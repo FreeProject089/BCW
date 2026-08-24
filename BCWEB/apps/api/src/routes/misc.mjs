@@ -171,7 +171,71 @@ import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../li
 import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
 
+// ── Home page: admin-editable copy and sections ─────────────────────────────
+//
+// The page has ~66 translated strings, each already a `t(key, fallback)`. A bespoke editor
+// with 66 named fields would go stale the first time somebody adds a line, so this is an
+// OVERLAY: {key: {en, fr}} consulted by `t()` before the dictionary. home.jsx does not
+// change, keys added later are editable for free, and a blank override means "ship the
+// default" rather than "ship an empty string".
+const HOME_KEY = 'site.home';
+// Which blocks exist, and whether they are shown. Named here rather than inferred, because
+// a toggle for a section that no longer exists is worse than no toggle: it looks like it
+// works. Anything absent from a stored value defaults to ON, so adding a section here never
+// silently hides it on a site that saved its config before the section existed.
+export const HOME_SECTIONS = ['poll', 'stats', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
+const HOME_DEFAULTS = { text: {}, sections: {} };
+const homeConfig = (row) => {
+  const v = { ...HOME_DEFAULTS, ...(row?.value || {}) };
+  const sections = {};
+  for (const k of HOME_SECTIONS) sections[k] = v.sections?.[k] !== false;
+  return { text: v.text || {}, sections };
+};
+
 export default async function miscRoutes(app) {
+  // Public: read on every page load, so it is cached and it is SMALL — only the keys an
+  // admin actually overrode travel, not the whole dictionary.
+  app.get('/site/home', async (req, reply) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
+    reply.header('Cache-Control', 'public, max-age=60');
+    return homeConfig(row);
+  });
+
+  app.get('/admin/site/home', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    return homeConfig(await p.adminSetting.findUnique({ where: { key: HOME_KEY } }));
+  });
+
+  app.put('/admin/site/home', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      // Keys are restricted to the home page's own namespace. Without that, this endpoint
+      // would be a way to rewrite ANY string on the site — including the wording of a
+      // consent notice or a payment confirmation — from a screen labelled "home page".
+      text: z.record(
+        z.string().regex(/^home\.[A-Za-z0-9._-]{1,60}$/),
+        z.object({ en: z.string().max(600).optional(), fr: z.string().max(600).optional() }),
+      ).optional(),
+      sections: z.record(z.enum(HOME_SECTIONS), z.boolean()).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
+    const current = homeConfig(row);
+    // An empty string DELETES the override rather than storing one. Otherwise clearing a box
+    // would publish a blank headline, and the way back would be knowing the original wording.
+    const text = { ...current.text, ...(b.data.text || {}) };
+    for (const [k, v] of Object.entries(text)) {
+      const en = (v?.en || '').trim(), fr = (v?.fr || '').trim();
+      if (!en && !fr) delete text[k];
+      else text[k] = { ...(en ? { en } : {}), ...(fr ? { fr } : {}) };
+    }
+    const value = { text, sections: { ...current.sections, ...(b.data.sections || {}) } };
+    await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'site.home', `text=${Object.keys(text).length} hidden=${Object.entries(value.sections).filter(([, on]) => !on).map(([k]) => k).join(',') || '-'}`);
+    return { ok: true, ...value };
+  });
+
   // Public: every visitor reads this to paint the site. Cheap and cacheable.
   app.get('/theme', async (req, reply) => {
     const p = await db();

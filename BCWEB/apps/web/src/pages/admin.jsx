@@ -23,7 +23,7 @@ import { readLayout, navAlignClass } from '../lib/navLayout.js';
 import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import BmmInspector from '../ui/bmm-inspector.jsx';
-import { useI18n } from '../i18n.jsx';
+import { useI18n, shippedText } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
@@ -263,6 +263,7 @@ export function Admin() {
       sub: [
         { id: 'navui', label: t('adm.tab.navui2', 'Topbar'), icon: Navigation },
         { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
+        { id: 'homepage', label: t('adm.tab.homepage', 'Home page'), icon: LayoutGrid },
       ] },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
@@ -274,6 +275,7 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
+        {s === 'homepage' && <HomePageEditor />}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -9603,6 +9605,110 @@ function MultiChannelInput({ value, onChange, placeholder }) {
  * not live. The hint under the header says so, because a missing button that is really a
  * missing STEP is the kind of thing people wait on forever.
  */
+/**
+ * Edit the home page's copy and switch its sections off.
+ *
+ * The page has ~66 translated strings, and a bespoke editor with 66 named fields would go
+ * stale the first time somebody adds a line. So this lists what is ACTUALLY on the page —
+ * every `home.*` key the shipped dictionary defines — and writes overrides for the ones an
+ * admin changes. A key added to the page tomorrow appears here with no work.
+ *
+ * An empty box is not an empty string: it deletes the override and the shipped wording
+ * comes back. Otherwise the only way to undo an edit would be remembering the original.
+ */
+function HomePageEditor() {
+  const { t, lang } = useI18n();
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/site/home'), []);
+  const [form, setForm] = useState(null);
+  const [sections, setSections] = useState(null);
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); } }, [data]);
+  if (loading || !form || !sections) return <Loading />;
+
+  // The shipped English is the list of what exists, and also the placeholder — so an empty
+  // box visibly shows the wording it will fall back to.
+  const shipped = useMemo(() => shippedText('home.'), []);
+  const keys = Object.keys(shipped).sort();
+  const shown = q.trim()
+    ? keys.filter((k) => k.includes(q.toLowerCase())
+        || (shipped[k].en + ' ' + shipped[k].fr).toLowerCase().includes(q.toLowerCase()))
+    : keys;
+  const setText = (k, l, v) => setForm((f) => ({ ...f, [k]: { ...(f[k] || {}), [l]: v } }));
+  const changed = Object.entries(form).filter(([, v]) => (v?.en || '').trim() || (v?.fr || '').trim()).length;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/site/home', { text: form, sections });
+      toast.success(t('hp.saved', 'Home page saved. Visitors see it within a minute (the page is cached).'));
+      reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const SECTIONS = [
+    ['poll', t('hp.s.poll', 'Pinned poll')],
+    ['stats', t('hp.s.stats', 'Headline numbers')],
+    ['products', t('hp.s.products', 'Products grid')],
+    ['why', t('hp.s.why', 'Why BetterCommunity')],
+    ['steps', t('hp.s.steps', 'How it works')],
+    ['dev', t('hp.s.dev', 'For developers')],
+    ['myo', t('hp.s.myo', 'Make Your Own')],
+    ['reviews', t('hp.s.reviews', 'Reviews')],
+    ['news', t('hp.s.news', 'Latest posts')],
+  ];
+
+  return (
+    <div className="space-y-5 max-w-4xl">
+      <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><LayoutGrid size={16} /> {t('hp.title', 'Home page')}</h2>
+        <p className="text-xs text-[var(--muted)]">{t('hp.desc', 'Switch sections off, and rewrite any line on the page. An empty box restores the wording the site ships with.')}</p>
+      </div>
+
+      <Card className="p-4">
+        <div className="text-sm font-medium mb-2">{t('hp.sections', 'Sections')}</div>
+        {/* The hero and the closing call-to-action have no switch on purpose: a landing
+            page with no headline is not a configuration, it is a broken page. */}
+        <p className="text-[11px] text-[var(--faint)] mb-2.5">{t('hp.sections.h', 'The headline and the closing call-to-action are always shown.')}</p>
+        <div className="grid sm:grid-cols-2 gap-1.5">
+          {SECTIONS.map(([k, label]) => (
+            <label key={k} className="flex items-center gap-2 text-sm py-1 cursor-pointer">
+              <input type="checkbox" checked={sections[k] !== false} onChange={(e) => setSections((x) => ({ ...x, [k]: e.target.checked }))} />
+              {label}
+            </label>
+          ))}
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+          <div className="text-sm font-medium">{t('hp.copy', 'Wording')}
+            <span className="ml-2 text-[11px] font-normal text-[var(--faint)]">{t('hp.copy.n', '{n} rewritten').replace('{n}', String(changed))}</span>
+          </div>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} className="w-56" />
+        </div>
+        <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+          {shown.map((k) => (
+            <div key={k} className="grid sm:grid-cols-2 gap-1.5 pb-2 border-b border-[var(--line)] last:border-0">
+              <div className="sm:col-span-2 text-[11px] text-[var(--faint)] font-mono truncate" title={k}>{k}</div>
+              <Input value={form[k]?.en || ''} onChange={(e) => setText(k, 'en', e.target.value)} placeholder={shipped[k].en || k} />
+              <Input value={form[k]?.fr || ''} onChange={(e) => setText(k, 'fr', e.target.value)} placeholder={shipped[k].fr} />
+            </div>
+          ))}
+          {!shown.length && <div className="text-xs text-[var(--muted)]">{t('hp.nomatch', 'No line matches that.')}</div>}
+        </div>
+      </Card>
+
+      <div className="flex items-center gap-3">
+        <Button variant="primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : <><Save size={15} /> {t('common.save', 'Save')}</>}</Button>
+        <span className="text-[11px] text-[var(--faint)]">{lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.')}</span>
+      </div>
+    </div>
+  );
+}
+
 function RolePanels({ panels, onChange, guildList }) {
   const { t } = useI18n();
   const [openId, setOpenId] = useState(null);

@@ -263,6 +263,11 @@ export function Home() {
   // cannot accidentally surface one that is unlisted or private. `.catch` because a poll
   // failing to load must never take the front page down with it.
   const { data: pollData } = useAsync(() => api.get('/polls?home=1').catch(() => null), []);
+  // Which blocks an admin has switched off, and the copy overrides (those are applied by
+  // t() itself — see I18nProvider). Anything missing counts as ON, so a section added after
+  // a site saved its config is never silently hidden.
+  const { data: homeCfg } = useAsync(() => api.get('/site/home').catch(() => null), []);
+  const show = (k) => homeCfg?.sections?.[k] !== false;
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const root = useScrollReveal();
@@ -319,6 +324,7 @@ export function Home() {
       </section>
 
       {/* products */}
+      {show('products') && (
       <section>
         <SectionKicker n="01" label={t('home.k.products', 'The suite')} />
         <div className="reveal-stagger grid md:grid-cols-4 gap-4">
@@ -337,8 +343,10 @@ export function Home() {
           ))}
         </div>
       </section>
+      )}
 
       {/* features */}
+      {show('why') && (
       <section>
         <SectionKicker n="02" label={t('home.k.why', 'Why BetterCommunity')} />
         <div className="reveal-stagger grid md:grid-cols-3 gap-4">
@@ -376,8 +384,10 @@ export function Home() {
           ))}
         </div>
       </section>
+      )}
 
       {/* how it works */}
+      {show('steps') && (
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
@@ -404,6 +414,7 @@ export function Home() {
           ))}
         </div>
       </section>
+      )}
 
       {/* Developers.
           A band, not a fifth product card: building on the platform is not another thing to
@@ -456,7 +467,7 @@ export function Home() {
           page that keeps advertising commissions after the team is full sells a promise
           nobody can keep, and the flag that decides it is the same one /myo and the intake
           form read. */}
-      {myo?.enabled !== false && (
+      {show('myo') && myo?.enabled !== false && (
         <section>
           <div className="reveal-on-scroll">
             <Card className="p-8 sm:p-10 relative overflow-hidden">
@@ -529,7 +540,7 @@ export function Home() {
       )}
 
       {/* community reviews / testimonials — admin-curated, hidden when off or empty */}
-      {reviewsData?.enabled && reviewsData.reviews?.length > 0 && (
+      {show('reviews') && reviewsData?.enabled && reviewsData.reviews?.length > 0 && (
         <section>
           <SectionKicker n="04" label={t('home.k.reviews', 'Reviews')} />
           <div className="reveal-on-scroll text-center mb-9">
@@ -573,7 +584,7 @@ export function Home() {
           The schema has said "optionally pinned to the home page" since polls shipped, and
           nothing ever rendered it — `pinned` only ever affected the sort order on /polls. So
           the field was half a feature: an admin could pin a poll and watch nothing happen. */}
-      {!!pollData?.polls?.length && (
+      {show('poll') && !!pollData?.polls?.length && (
         <section>
           <SectionKicker n="05" label={t('home.k.poll', 'Your say')} />
           <div className="reveal-on-scroll flex items-center justify-between mb-5">
@@ -589,6 +600,7 @@ export function Home() {
       )}
 
       {/* latest posts */}
+      {show('news') && (
       <section>
         <SectionKicker n={reviewsData?.enabled && reviewsData.reviews?.length ? '05' : '04'} label={t('home.k.news', 'From the blog')} />
         <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
@@ -639,6 +651,7 @@ export function Home() {
           );
         })()}
       </section>
+      )}
 
       {/* CTA / support */}
       <section className="reveal-on-scroll pb-4">

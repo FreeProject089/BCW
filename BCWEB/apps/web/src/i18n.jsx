@@ -2721,6 +2721,18 @@ const DICT = {
     'st.contrastlow': 'Contraste du texte du bouton {n}:1 — sous WCAG AA (4,5:1). L’encre a déjà basculé vers sa meilleure option ; cet accent est simplement difficile à écrire dessus.',
     'adm.tab.needs': 'À traiter', 'common.refresh': 'Actualiser',
     'common.reset': 'Réinitialiser',
+    'adm.tab.homepage': 'Page d’accueil',
+    'hp.title': 'Page d’accueil',
+    'hp.desc': 'Désactivez des sections et réécrivez n’importe quelle ligne de la page. Un champ vide rétablit le texte livré avec le site.',
+    'hp.sections': 'Sections',
+    'hp.sections.h': 'Le titre principal et l’appel à l’action final sont toujours affichés.',
+    'hp.s.poll': 'Sondage épinglé', 'hp.s.stats': 'Chiffres clés', 'hp.s.products': 'Grille des produits',
+    'hp.s.why': 'Pourquoi BetterCommunity', 'hp.s.steps': 'Comment ça marche', 'hp.s.dev': 'Pour les développeurs',
+    'hp.s.myo': 'Make Your Own', 'hp.s.reviews': 'Avis', 'hp.s.news': 'Derniers articles',
+    'hp.copy': 'Textes', 'hp.copy.n': '{n} réécrit(s)', 'hp.search': 'Rechercher dans les textes…',
+    'hp.nomatch': 'Aucune ligne ne correspond.',
+    'hp.saved': 'Page d’accueil enregistrée. Les visiteurs la voient sous une minute (la page est mise en cache).',
+    'hp.note': 'Un champ vide affiche le texte livré.', 'hp.note.fr': 'Le champ vide affiche le texte livré.',
     'nq.submissions': 'Soumissions à examiner', 'nq.reports': 'Signalements ouverts',
     'nq.contact': 'Messages non lus', 'nq.myo': 'Commandes en attente de réponse',
     'nq.k.submissions': 'Soumission', 'nq.k.reports': 'Signalement',
@@ -4235,8 +4247,48 @@ export const useI18n = () => useContext(Ctx);
 export function I18nProvider({ children }) {
   const [lang, setLangState] = useState(() => { try { return localStorage.getItem(KEY) || 'en'; } catch { return 'en'; } });
   const setLang = (l) => { setLangState(l); try { localStorage.setItem(KEY, l); } catch {} };
-  const t = (k, fb) => DICT[lang]?.[k] ?? DICT.en[k] ?? fb ?? k;
+
+  // Admin-authored copy, layered OVER the dictionary rather than replacing entries in it.
+  //
+  // Only the keys somebody actually overrode travel, so this is a few hundred bytes on a
+  // normal site and nothing at all on a fresh one. Fetched once here instead of in the home
+  // page, because `t()` is what consults it and `t()` is everywhere.
+  const [over, setOver] = useState(null);
+  useEffect(() => {
+    let live = true;
+    fetch('/api/site/home')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live) setOver(d?.text || {}); })
+      .catch(() => { if (live) setOver({}); });   // the site must render without this
+    return () => { live = false; };
+  }, []);
+
+  // `||`, not `??`: an override is only an override when it has words in it. An empty
+  // string means "not translated here", and must fall through to the dictionary rather than
+  // blanking the line — otherwise an admin who fills in French and leaves English empty
+  // erases the English.
+  const t = (k, fb) => over?.[k]?.[lang] || over?.[k]?.en || DICT[lang]?.[k] || DICT.en[k] || fb || k;
   return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
+}
+
+/**
+ * The shipped English, read-only, for the admin screen that rewrites home-page copy.
+ *
+ * Exported as a getter over one prefix rather than as the whole DICT: the admin bundle has
+ * no business holding a mutable reference to the live dictionary, and the only caller wants
+ * "what does the home page say today" — which is also the list of what EXISTS, so a line
+ * added to the page tomorrow shows up in that editor with no work.
+ */
+export function shippedText(prefix) {
+  const out = {};
+  // Enumerated from the FRENCH dictionary, which is the complete one. DICT.en holds only
+  // the ~270 strings that needed an explicit English entry — every other key gets its
+  // English from the `t(key, fallback)` call site and is absent here. Listing from DICT.en
+  // would have shown an admin four of the home page's sixty-odd lines and looked correct.
+  for (const k of Object.keys(DICT.fr)) {
+    if (k.startsWith(prefix)) out[k] = { en: DICT.en[k] || '', fr: DICT.fr[k] || '' };
+  }
+  return out;
 }
 
 // The site's available languages. Add a locale here (and its DICT block above)
