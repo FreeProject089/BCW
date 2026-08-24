@@ -346,7 +346,8 @@ export async function sweepAnalyticsRetention(p, log) {
     + await purgeOlderThan(p.interactionEvent, cfg.interactionDays, log, 'InteractionEvent')
     + await purgeOlderThan(p.webVital, cfg.vitalDays, log, 'WebVital')
     + await purgeOlderThan(p.loginAttempt, cfg.loginDays, log, 'LoginAttempt')
-    + await purgeOlderThan(p.errorEvent, cfg.errorDays, log, 'ErrorEvent');
+    + await purgeOlderThan(p.errorEvent, cfg.errorDays, log, 'ErrorEvent')
+    + await purgeOlderThan(p.sessionReplay, cfg.replayDays, log, 'SessionReplay');
   return purged;
 }
 

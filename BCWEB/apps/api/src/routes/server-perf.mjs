@@ -272,6 +272,50 @@ export default async function serverPerfRoutes(app) {
   // Acknowledge alerts. Without an id it acknowledges everything currently unacknowledged,
   // which is the honest meaning of the button ("I have seen these") — acknowledging is not
   // resolving, and nothing about the underlying condition changes.
+  /**
+   * Empty the performance history.
+   *
+   * The case this exists for is the one that produced the sawtooth: a second machine wrote
+   * into this database and half the history describes a host that was never the server. Once
+   * the second writer is gone, that history is not worth reading and cannot be repaired —
+   * only dropped.
+   *
+   * Scoped, because "clear" means four different things here and an admin should say which:
+   * the raw samples, the daily rollups derived from them, the alert log, or the outage
+   * record. `all` is spelled out rather than being the default — this is not recoverable.
+   */
+  const PERF_TABLES = {
+    samples: 'serverMetricSample',
+    daily: 'serverMetricDaily',
+    alerts: 'serverAlertLog',
+    outages: 'serviceOutage',
+  };
+  app.post('/admin/server/clear', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      table: z.enum([...Object.keys(PERF_TABLES), 'all']),
+      // Drop only what ANOTHER host wrote — the sawtooth case, where this server's own
+      // history is the part worth keeping.
+      otherHostsOnly: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const names = b.data.table === 'all' ? Object.keys(PERF_TABLES) : [b.data.table];
+    const cleared = {};
+    for (const name of names) {
+      const model = p[PERF_TABLES[name]];
+      if (!model) continue;
+      // otherHostsOnly applies to samples alone: they are the only rows that record WHO
+      // measured. A rollup is already a mix of every writer for that day, so "the other
+      // host's daily row" is not a thing that exists.
+      const where = (b.data.otherHostsOnly && name === 'samples')
+        ? { host: { notIn: [os.hostname(), ''] } }
+        : {};
+      const { count } = await model.deleteMany({ where }).catch(() => ({ count: 0 }));
+      cleared[name] = count;
+    }
+    return { ok: true, cleared, host: os.hostname() };
+  });
+
   app.post('/admin/server/alerts/ack', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const id = typeof req.body?.id === 'string' ? req.body.id : null;

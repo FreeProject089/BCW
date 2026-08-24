@@ -8,12 +8,16 @@
 // errorDays: ErrorEvent was in NO retention window — it grew forever, and it now also takes
 // server 5xx, which arrive far faster than browser reports. 90 days is plenty to spot and
 // fix a regression.
-export const RETENTION_DEFAULTS = { pageviewDays: 365, interactionDays: 120, vitalDays: 120, loginDays: 180, errorDays: 90 };
+// replayDays: SessionReplay had NO window at all, and it is the heaviest table by a wide
+// margin — every row carries a whole rrweb event stream as JSON. Five small tables were being
+// trimmed while the one that actually fills a disk grew forever. 30 days: a recording is
+// watched to understand a report that is days old, not months.
+export const RETENTION_DEFAULTS = { pageviewDays: 365, interactionDays: 120, vitalDays: 120, loginDays: 180, errorDays: 90, replayDays: 30 };
 
 // Merge a (possibly partial / untrusted) stored value over the defaults, coercing each
 // field to a finite number and falling back to the default when it isn't one.
 export function resolveRetention(raw) {
   const v = raw && typeof raw === 'object' ? raw : {};
   const pick = (k) => (Number.isFinite(Number(v[k])) ? Number(v[k]) : RETENTION_DEFAULTS[k]);
-  return { pageviewDays: pick('pageviewDays'), interactionDays: pick('interactionDays'), vitalDays: pick('vitalDays'), loginDays: pick('loginDays'), errorDays: pick('errorDays') };
+  return { pageviewDays: pick('pageviewDays'), interactionDays: pick('interactionDays'), vitalDays: pick('vitalDays'), loginDays: pick('loginDays'), errorDays: pick('errorDays'), replayDays: pick('replayDays') };
 }

@@ -1664,6 +1664,7 @@ function PerfCompare() {
 
 function AdminServerPerf() {
   const toast = useToast();
+  const dialog = useDialog();
   const { t } = useI18n();
   const { data, loading, reload } = useAsync(() => api.get('/admin/server/metrics'), []);
   const alerts = useAsync(() => api.get('/admin/server/alerts'), []);
@@ -1711,6 +1712,23 @@ function AdminServerPerf() {
       },
       onCancel: () => setAckPending(false),
     });
+  };
+  const [clearing, setClearing] = useState(false);
+  const clearHistory = async () => {
+    const ok = await doubleConfirm(dialog, {
+      title: t('sp.clr.title', 'Clear performance history'),
+      message: t('sp.clr.warn', 'This permanently deletes every stored sample, daily rollup, alert and outage record. Live readings are unaffected. It cannot be undone.'),
+      okLabel: t('sp.clr.go', 'Delete now'),
+    });
+    if (!ok) return;
+    setClearing(true);
+    try {
+      const r = await api.post('/admin/server/clear', { table: 'all' });
+      const n = Object.values(r?.cleared || {}).reduce((a, b) => a + (b || 0), 0);
+      toast.success(t('sp.clr.done', '{n} rows deleted.').replace('{n}', n.toLocaleString()));
+      reload(); alerts.reload(); outages.reload();
+    } catch { toast.error(t('sp.failed', 'Failed.')); }
+    finally { setClearing(false); }
   };
   const toggleDep = async (key, on) => {
     setDepsBusy(true);
@@ -1819,6 +1837,12 @@ function AdminServerPerf() {
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
           <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>
+          {/* The case this exists for is the sawtooth: a second machine wrote into this
+              database and half the history describes a host that was never the server.
+              Once the other writer is gone that history cannot be repaired, only dropped. */}
+          <Button size="sm" variant="ghost" disabled={clearing} onClick={clearHistory}>
+            {clearing ? <Spinner /> : <><Trash2 size={14} /> {t('sp.clear', 'Clear history')}</>}
+          </Button>
         </div>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
@@ -11843,9 +11867,68 @@ function AdminAnalytics() {
       {tab === 'events' && <EventsFeed days={days} hours={hours} />}
 
       {tab === 'data' && <RetentionCard />}
+      {tab === 'data' && <div className="mt-5"><ClearAnalyticsCard /></div>}
 
       <p className="text-[11px] text-[var(--faint)] mt-4">{t('an.geonote', 'Geo is resolved from the visitor IP (CDN country header, else an offline GeoIP lookup; local/private IPs get a sample location in dev). The privacy-friendly daily-rotating visitor hash can\'t track people across days.')}</p>
     </div>
+  );
+}
+
+/**
+ * Empty the analytics tables, now.
+ *
+ * A separate card from retention on purpose. Retention is a POLICY somebody sets once
+ * ("keep ninety days"); this is an ACT somebody takes today, almost always because a
+ * staging run or their own clicking filled the tables with data that describes nobody.
+ * Folding the two together means setting a window to 1 to clear it and then watching it
+ * quietly eat tomorrow's data too.
+ *
+ * Nothing here is recoverable, so it goes through the same type-CONFIRM speed bump as the
+ * rest of the irreversible admin surface.
+ */
+function ClearAnalyticsCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const [busy, setBusy] = useState(null);
+  const targets = [
+    ['pageview', t('an.clr.pageviews', 'Pageviews')],
+    ['interaction', t('an.clr.interactions', 'Interactions')],
+    ['vital', t('an.clr.vitals', 'Web Vitals')],
+    ['login', t('an.clr.logins', 'Login attempts')],
+    ['error', t('an.clr.errors', 'Errors')],
+    ['replay', t('an.clr.replays', 'Session replays')],
+  ];
+  const run = async (table, label) => {
+    const ok = await doubleConfirm(dialog, {
+      title: t('an.clr.title2', 'Delete analytics data'),
+      message: t('an.clr.warn', 'This permanently deletes {what}. It cannot be undone.').replace('{what}', label),
+      okLabel: t('an.clr.go', 'Delete now'),
+    });
+    if (!ok) return;
+    setBusy(table);
+    try {
+      const r = await api.post('/admin/analytics/clear', { table });
+      const n = Object.values(r?.cleared || {}).reduce((a, b) => a + (b || 0), 0);
+      toast.success(t('an.clr.done', '{n} rows deleted.').replace('{n}', n.toLocaleString()));
+    } catch { toast.error(t('an.clr.err', 'Could not clear that table.')); }
+    finally { setBusy(null); }
+  };
+  return (
+    <Card className="p-5 max-w-2xl">
+      <div className="flex items-center gap-2 mb-1"><Trash2 size={16} className="text-error" /><h3 className="font-semibold">{t('an.clr.title', 'Clear analytics')}</h3></div>
+      <p className="text-xs text-[var(--muted)] mb-4">{t('an.clr.desc', 'Delete collected data immediately, without waiting for a retention window. Clearing pageviews also drops the daily rollups derived from them.')}</p>
+      <div className="flex flex-wrap gap-2">
+        {targets.map(([k, label]) => (
+          <Button key={k} size="sm" variant="ghost" disabled={!!busy} onClick={() => run(k, label)}>
+            {busy === k ? <Spinner /> : <Trash2 size={13} />} {label}
+          </Button>
+        ))}
+        <Button size="sm" variant="danger" disabled={!!busy} onClick={() => run('all', t('an.clr.everything', 'every analytics table'))}>
+          {busy === 'all' ? <Spinner /> : <Trash2 size={13} />} {t('an.clr.all', 'Everything')}
+        </Button>
+      </div>
+    </Card>
   );
 }
 
@@ -11866,6 +11949,11 @@ function RetentionCard() {
     ['interactionDays', t('an.ret.interactions', 'Interactions'), data.tables.interaction],
     ['vitalDays', t('an.ret.vitals', 'Web Vitals'), data.tables.vital],
     ['loginDays', t('an.ret.logins', 'Login attempts'), data.tables.login],
+    ['errorDays', t('an.ret.errors', 'Errors'), data.tables.error],
+    // Session replays had no window at all until now, and they are far and away the
+    // heaviest rows here: each one carries a whole rrweb event stream. The card was
+    // trimming five small tables while the one that fills a disk grew forever.
+    ['replayDays', t('an.ret.replays', 'Session replays'), data.tables.replay],
   ];
   const set = (k, v) => setForm((f) => ({ ...f, [k]: Math.max(0, Math.min(3650, Math.floor(Number(v) || 0))) }));
   // Deferred behind the undo window: the PUT is idempotent and the server still holds the

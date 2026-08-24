@@ -767,10 +767,11 @@ export default async function analyticsRoutes(app) {
       ]);
       return { count, oldest: oldest?.createdAt || null };
     };
-    const [pageview, interaction, vital, login, error] = await Promise.all([
+    const [pageview, interaction, vital, login, error, replay] = await Promise.all([
       stat(p.analyticsEvent), stat(p.interactionEvent), stat(p.webVital), stat(p.loginAttempt), stat(p.errorEvent),
+      stat(p.sessionReplay),
     ]);
-    return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login, error } };
+    return { config: resolveRetention(row?.value), defaults: RETENTION_DEFAULTS, tables: { pageview, interaction, vital, login, error, replay } };
   });
 
   const retentionSchema = z.object({
@@ -779,6 +780,7 @@ export default async function analyticsRoutes(app) {
     vitalDays: z.number().int().min(0).max(3650),
     loginDays: z.number().int().min(0).max(3650),
     errorDays: z.number().int().min(0).max(3650),
+    replayDays: z.number().int().min(0).max(3650),
   }).partial();
   app.put('/admin/analytics/retention', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = retentionSchema.safeParse(req.body);
@@ -787,5 +789,49 @@ export default async function analyticsRoutes(app) {
     const cfg = resolveRetention(b.data); // normalize + fill defaults so the stored value is complete
     await p.adminSetting.upsert({ where: { key: 'analytics.retention' }, create: { key: 'analytics.retention', value: cfg }, update: { value: cfg } });
     return { ok: true, config: cfg };
+  });
+
+  /**
+   * Empty one analytics table, or all of them.
+   *
+   * A DIFFERENT action from retention, and deliberately a different endpoint. Retention is a
+   * policy — "keep ninety days" — and an admin sets it once. Clearing is an act somebody
+   * takes now, usually because a staging run filled the tables with their own clicks. Folding
+   * "delete everything" into a policy field means setting it to 1 to clear, watching it also
+   * delete tomorrow's data, and never trusting the field again.
+   *
+   * Nothing is soft-deleted and nothing is recoverable, so the caller must name the table (or
+   * say `all` explicitly) — there is no default.
+   */
+  const CLEARABLE = {
+    pageview: 'analyticsEvent',
+    interaction: 'interactionEvent',
+    vital: 'webVital',
+    login: 'loginAttempt',
+    error: 'errorEvent',
+    replay: 'sessionReplay',
+    daily: 'analyticsDaily',
+  };
+  app.post('/admin/analytics/clear', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
+    const b = z.object({ table: z.enum([...Object.keys(CLEARABLE), 'all']) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const names = b.data.table === 'all' ? Object.keys(CLEARABLE) : [b.data.table];
+    const cleared = {};
+    for (const name of names) {
+      const model = p[CLEARABLE[name]];
+      if (!model) continue;
+      // deleteMany with no filter, per table: one statement each rather than a transaction
+      // over seven, so a failure on the heaviest table does not roll back the six that worked.
+      const { count } = await model.deleteMany({}).catch(() => ({ count: 0 }));
+      cleared[name] = count;
+    }
+    // The rollup is derived from AnalyticsEvent, so clearing pageviews without it leaves a
+    // dashboard drawing history for rows that no longer exist.
+    if (names.includes('pageview') && !names.includes('daily')) {
+      const { count } = await p.analyticsDaily.deleteMany({}).catch(() => ({ count: 0 }));
+      cleared.daily = count;
+    }
+    return { ok: true, cleared };
   });
 }
