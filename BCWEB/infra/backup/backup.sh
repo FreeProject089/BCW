@@ -31,9 +31,34 @@ PROJECT="${COMPOSE_PROJECT_NAME:-bcweb}"         # compose project → volume na
 POSTGRES_USER="${POSTGRES_USER:-bcweb}"
 POSTGRES_DB="${POSTGRES_DB:-bcweb}"
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"               # optional rclone remote (off-site copy)
+BACKUP_AGE_RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"   # age public key -> encrypt the dump
+BACKUP_GPG_RECIPIENT="${BACKUP_GPG_RECIPIENT:-}"   # gpg public key id -> same, if you use gpg
 TS="$(date +%Y%m%d-%H%M%S)"
 
 log() { printf '[backup %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+
+# Encrypt one file in place, to a PUBLIC key. The server can write a backup and cannot read
+# one back — which is the point: the machine most likely to be compromised is the one taking
+# the backups, and a passphrase stored beside them protects nobody.
+#
+# Refuses rather than falling back. A backup that quietly writes plaintext under a name that
+# says it is encrypted is worse than one that never claimed to be.
+encrypt_file() {
+  local src="$1"
+  if [ -n "$BACKUP_AGE_RECIPIENT" ]; then
+    command -v age >/dev/null 2>&1 || { log "ERROR: BACKUP_AGE_RECIPIENT is set but 'age' is not installed"; exit 1; }
+    age -r "$BACKUP_AGE_RECIPIENT" -o "$src.age" "$src" || { log "ERROR: age failed"; exit 1; }
+    rm -f "$src"
+    printf '%s' "$src.age"
+  elif [ -n "$BACKUP_GPG_RECIPIENT" ]; then
+    command -v gpg >/dev/null 2>&1 || { log "ERROR: BACKUP_GPG_RECIPIENT is set but 'gpg' is not installed"; exit 1; }
+    gpg --batch --yes --trust-model always -r "$BACKUP_GPG_RECIPIENT" -o "$src.gpg" -e "$src" || { log "ERROR: gpg failed"; exit 1; }
+    rm -f "$src"
+    printf '%s' "$src.gpg"
+  else
+    printf '%s' "$src"
+  fi
+}
 mkdir -p "$BACKUP_DIR"
 cd "$COMPOSE_DIR"
 
@@ -44,6 +69,9 @@ if docker compose version >/dev/null 2>&1; then DC="docker compose"; else DC="do
 PG_OUT="$BACKUP_DIR/pg-$POSTGRES_DB-$TS.sql.gz"
 log "dumping Postgres ($POSTGRES_DB)…"
 $DC exec -T db pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > "$PG_OUT"
+# The dump holds every user's personal data in cleartext. Encrypted here, BEFORE the
+# off-site copy below — that copy lands in a bucket somebody else operates.
+PG_OUT="$(encrypt_file "$PG_OUT")"
 log "  → $(du -h "$PG_OUT" | cut -f1)  $PG_OUT"
 
 # ── 2. Object storage + audit anchor (from their Docker volumes) ─────────────

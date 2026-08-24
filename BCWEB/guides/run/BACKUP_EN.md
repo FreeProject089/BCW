@@ -51,6 +51,51 @@ The script runs `rclone copy "$BACKUP_DIR" "$BACKUP_REMOTE"` after each backup. 
 remote its own **lifecycle/versioning** (e.g. keep 30–90 days) so a bad local run can't
 delete your off-site history.
 
+## Encrypting the dump (recommended before any off-site copy)
+
+`pg_dump` writes **the whole database in cleartext** — every address, every profile, every
+session. rclone then copies that to a bucket somebody else operates. Encrypt it first:
+
+```bash
+# age (simplest). Generate the key OFF the server, keep the private half off it too.
+age-keygen -o backup.key            # do this on your own machine
+grep 'public key' backup.key        # -> age1...
+BACKUP_AGE_RECIPIENT=age1... infra/backup/backup.sh
+
+# or gpg, if that is what you already run
+BACKUP_GPG_RECIPIENT=you@example.com infra/backup/backup.sh
+```
+
+A **public** key on purpose. A passphrase would have to live on the machine taking the
+backups, which means the machine most likely to be compromised is the one that can read every
+backup it ever took. With a recipient key the server can only write; reading needs the private
+half, which never touches it.
+
+If the tool named is missing the script **stops** rather than writing plaintext under a name
+that says otherwise. Restore with `age -d -i backup.key pg-*.sql.gz.age | gunzip | psql …`
+(or `gpg -d`).
+
+## What an erasure request reaches, and what it does not
+
+Two different things are called "backup" here, and only one of them can be erased:
+
+| | What it is | Erasure |
+|---|---|---|
+| **Row & file history** (in the app, Advanced server) | A snapshot of a row before each edit, git-committed | **Yes.** Each user's snapshots are encrypted with their own key; erasing the account destroys the key, so their snapshots become unreadable — including in copies already synced elsewhere — while everybody else's still restore. |
+| **`backup.sh` dumps** | A full `pg_dump` for disaster recovery | **No.** A dump is a frozen copy of the whole database; a user erased today is still in yesterday's dump. |
+
+That second row is not a defect to hide, it is how dumps work — and the accepted answer is
+not to rewrite them. It is:
+
+1. **A short, documented retention window.** `RETENTION_DAYS` (14 by default) is how long an
+   erased person can still be in a dump. Say that number in your privacy policy.
+2. **Replay erasures after any restore.** A dump older than an erasure brings the person
+   back. Before the stack serves traffic again, re-run the erasures recorded since the dump
+   was taken — the audit log has them (`user.erased`).
+
+Restoring an old dump without step 2 undoes every erasure made since it was taken. Put it in
+the restore runbook, not in somebody's memory.
+
 ## Restore
 
 Run from `infra/compose/` (where `docker compose` sees the stack). **Restoring overwrites

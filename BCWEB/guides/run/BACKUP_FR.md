@@ -51,6 +51,53 @@ Le script lance `rclone copy` après chaque sauvegarde. Donne au remote sa propr
 **versioning/rétention** (ex. 30–90 jours) pour qu'une mauvaise exécution locale n'efface
 pas l'historique hors-site.
 
+## Chiffrer le dump (recommandé avant toute copie hors site)
+
+`pg_dump` écrit **toute la base en clair** — chaque adresse, chaque profil, chaque session.
+rclone copie ensuite ce fichier vers un stockage exploité par quelqu'un d'autre. Chiffrez-le
+d'abord :
+
+```bash
+# age (le plus simple). Générez la clé HORS du serveur, et gardez-y la moitié privée.
+age-keygen -o backup.key            # sur votre machine
+grep 'public key' backup.key        # -> age1...
+BACKUP_AGE_RECIPIENT=age1... infra/backup/backup.sh
+
+# ou gpg, si c'est ce que vous utilisez déjà
+BACKUP_GPG_RECIPIENT=vous@exemple.com infra/backup/backup.sh
+```
+
+Une clé **publique**, à dessein. Une phrase de passe devrait vivre sur la machine qui prend
+les sauvegardes — donc la machine la plus exposée serait celle qui peut lire toutes les
+sauvegardes qu'elle a jamais prises. Avec une clé destinataire, le serveur ne peut qu'écrire ;
+lire exige la moitié privée, qui ne le touche jamais.
+
+Si l'outil nommé est absent, le script **s'arrête** au lieu d'écrire du clair sous un nom qui
+prétend le contraire. Restauration : `age -d -i backup.key pg-*.sql.gz.age | gunzip | psql …`
+(ou `gpg -d`).
+
+## Ce qu'une demande d'effacement atteint, et ce qu'elle n'atteint pas
+
+Deux choses différentes s'appellent ici « sauvegarde », et une seule peut être effacée :
+
+| | Ce que c'est | Effacement |
+|---|---|---|
+| **Historique lignes & fichiers** (dans l'app, Gestion serveur avancée) | Un instantané de la ligne avant chaque modification, committé dans git | **Oui.** Les instantanés de chaque utilisateur sont chiffrés avec sa propre clé ; effacer le compte détruit la clé, donc ses instantanés deviennent illisibles — y compris dans les copies déjà synchronisées ailleurs — pendant que ceux des autres se restaurent toujours. |
+| **Dumps de `backup.sh`** | Un `pg_dump` complet, pour la reprise après sinistre | **Non.** Un dump est une copie figée de toute la base ; une personne effacée aujourd'hui est encore dans celui d'hier. |
+
+Cette seconde ligne n'est pas un défaut à cacher, c'est le fonctionnement d'un dump — et la
+réponse admise n'est pas de le réécrire. C'est :
+
+1. **Une durée de conservation courte et documentée.** `RETENTION_DAYS` (14 par défaut) est
+   la durée pendant laquelle une personne effacée peut encore figurer dans un dump. Écrivez
+   ce nombre dans votre politique de confidentialité.
+2. **Rejouer les effacements après toute restauration.** Un dump antérieur à un effacement
+   ramène la personne. Avant que la pile ne resserve du trafic, rejouez les effacements
+   enregistrés depuis la prise du dump — le journal d'audit les contient (`user.erased`).
+
+Restaurer un vieux dump sans l'étape 2 annule chaque effacement fait depuis. Mettez-la dans
+la procédure de restauration, pas dans la mémoire de quelqu'un.
+
 ## Restauration
 
 À lancer depuis `infra/compose/`. **La restauration écrase les données actuelles — refais
