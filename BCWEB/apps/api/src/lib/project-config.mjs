@@ -99,6 +99,11 @@ export const DEFAULT_STACKS = {
   bmm: {
   tabs: { stack: true },
   stack: {
+    // The code map is a SECOND view of this project, built from the repository rather
+    // than from the hand-drawn nodes below. Off for `community`, whose repo is private:
+    // publishing a map of a closed source tree is publishing the source tree's shape.
+    showCodeMap: true,
+    codeMapNote: 'Every file BMM is built from, and how they reach each other. Generated from the repository, not drawn by hand.',
     title: 'How it runs',
     nodes: [
       { id: 'ui', label: 'Frontend', kind: 'app', tech: 'TypeScript', note: 'The whole interface — library, profiles, repo tools, themes.' },
@@ -116,6 +121,11 @@ export const DEFAULT_STACKS = {
   bsm: {
   tabs: { stack: true },
   stack: {
+    // The code map is a SECOND view of this project, built from the repository rather
+    // than from the hand-drawn nodes below. Off for `community`, whose repo is private:
+    // publishing a map of a closed source tree is publishing the source tree's shape.
+    showCodeMap: true,
+    codeMapNote: 'The shape of Better Sound Maker, read straight from its repository.',
     title: 'How it runs',
     nodes: [
       { id: 'app', label: 'BSM app', kind: 'app', note: 'Builds and applies sound presets.' },
@@ -130,6 +140,11 @@ export const DEFAULT_STACKS = {
   installer: {
   tabs: { stack: true },
   stack: {
+    // The code map is a SECOND view of this project, built from the repository rather
+    // than from the hand-drawn nodes below. Off for `community`, whose repo is private:
+    // publishing a map of a closed source tree is publishing the source tree's shape.
+    showCodeMap: true,
+    codeMapNote: 'What BetterInstaller is made of — one crate at a time.',
     title: 'How it runs',
     nodes: [
       { id: 'ui', label: 'Installer UI', kind: 'app', tech: 'Slint + Rust', note: 'The installer window itself.' },

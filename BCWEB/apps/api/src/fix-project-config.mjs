@@ -50,6 +50,18 @@ for (const row of rows) {
     out.tabs = { ...(out.tabs || {}), stack: true };
     moved.push('stack (default "How it runs" graph)');
   }
+  // The code map shipped OFF: `showCodeMap` was in no default, so /projects/:key/codemap
+  // answered 404 for every project. A row that PREDATES the flag has no opinion about it,
+  // and adopting the default is the point of this script.
+  //
+  // Only when the key is ABSENT. An admin who set it to false meant false, and a repair
+  // script that argues with a decision is a script nobody runs twice.
+  const dflt = DEFAULT_STACKS[projKey]?.stack;
+  if (out.stack && dflt && out.stack.showCodeMap === undefined && dflt.showCodeMap !== undefined) {
+    out.stack.showCodeMap = dflt.showCodeMap;
+    if (dflt.codeMapNote && !out.stack.codeMapNote) out.stack.codeMapNote = dflt.codeMapNote;
+    moved.push(`showCodeMap=${dflt.showCodeMap}`);
+  }
   if (!moved.length) {
     console.log(`${row.key.padEnd(20)} déjà à jour`);
     continue;

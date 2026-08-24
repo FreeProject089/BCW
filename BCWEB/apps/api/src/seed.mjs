@@ -614,5 +614,32 @@ Commence avec le palier gratuit — aucune carte requise.
   }
 }
 
+// ── Code map sources ─────────────────────────────────────────────────────────
+//
+// The map needs three things and the config only supplied one: the flag (now in
+// DEFAULT_STACKS), a repository to read (here), and a SNAPSHOT — which is a GitHub crawl.
+//
+// The crawl is deliberately not done here. A seed that reaches the network is a seed that
+// fails on a rate limit or an offline machine, and it would be doing the job the webhook and
+// the Rebuild button already own. So this writes the address and says what is left.
+const CODE_REPOS = {
+  bmm: 'https://github.com/FreeProject089/BetterModsManager',
+  bsm: 'https://github.com/FreeProject089/Better-Sound.Maker',
+  installer: 'https://github.com/FreeProject089/BetterInstaller',
+};
+for (const [key, url] of Object.entries(CODE_REPOS)) {
+  const k = `codegraph.settings.${key}`;
+  const row = await p.adminSetting.findUnique({ where: { key: k } });
+  // An existing url is left alone: the row may carry a webhook secret this has no business
+  // regenerating, and an admin who changed the address meant it.
+  if (row?.value?.url) continue;
+  await p.adminSetting.upsert({
+    where: { key: k },
+    create: { key: k, value: { ...(row?.value || {}), url } },
+    update: { value: { ...(row?.value || {}), url } },
+  });
+}
+console.log(`  code map: ${Object.keys(CODE_REPOS).length} repositories configured — rebuild each from Admin → Projects → Code graph to fill it in`);
+
 console.log('[seed] done');
 process.exit(0);
