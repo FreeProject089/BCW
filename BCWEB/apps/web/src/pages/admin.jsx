@@ -8395,35 +8395,6 @@ function AdminSso() {
  * Indentation carries the shape, because the shape IS the meaning: three actions in a row
  * and three inside a hundred-iteration loop are the same list and very different files.
  */
-function BmmpaStep({ node, depth = 0, t }) {
-  const params = node.params ? Object.entries(node.params) : [];
-  return (
-    <>
-      <div className="border-l-2 border-[var(--line)] pl-2 py-0.5" style={{ marginLeft: depth * 14 }}>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[12px]">{node.type || node.kind}</span>
-          {/* A glyph, not colour alone: a faint red word is easy to skim past on a light
-              theme, and this is the thing not to skim. */}
-          {node.note && <span className="text-[10px] font-bold text-[var(--error)] border border-[var(--error)] rounded px-1">!</span>}
-          {node.refId && (node.refName
-            ? <span className="text-[11px] text-[var(--muted)]">→ {node.refName}</span>
-            : <span className="text-[11px] text-[var(--warning)]">→ {t('bmi.notIncluded', 'not in this file')}: <code>{node.refId}</code></span>)}
-        </div>
-        {params.length > 0 && (
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-            {params.map(([k, v]) => (
-              <span key={k} className="text-[10px] text-[var(--muted)] break-all">
-                <span className="text-[var(--faint)] mr-1">{k}</span>{v}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      {(node.children || []).map((c, i) => <BmmpaStep key={i} node={c} depth={depth + 1} t={t} />)}
-    </>
-  );
-}
-
 // Read a submitted BMM automation (.bmmpa) without running it.
 //
 // A preset arrives as a file whose contents nobody can see. The only way to know what it
@@ -9083,49 +9054,6 @@ function langOfName(name = '') {
     jsx: 'javascript', tsx: 'javascript', py: 'python', sh: 'bash', bash: 'bash',
     bmmpa: 'json', bmmnav: 'json', bmmreplay: 'json', mm: 'json',
   })[ext] || 'plain';
-}
-
-function SignatureVerdict({ v, t }) {
-  if (!v || v.state === 'unsigned') {
-    return (
-      <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2 mb-2">
-        {t('bmi.sig.unsigned', 'Unsigned — this file makes no claim about who wrote it. Not a fault: files written before BMM signed anything, and files written by other tools, look like this.')}
-      </div>
-    );
-  }
-  if (v.state === 'valid') {
-    return (
-      <div className="text-[12px] rounded-lg border border-[var(--success)] p-2 mb-2">
-        <div className="text-[var(--success)] font-medium">
-          {t('bmi.sig.valid', 'Intact — unchanged since it was signed.')}
-        </div>
-        <div className="text-[var(--muted)] mt-0.5 break-all">
-          {t('bmi.sig.key', 'Signing key')} <code>{String(v.authorId).slice(0, 16)}…</code>
-          {v.signedAt ? ` · ${new Date(v.signedAt).toLocaleString()}` : ''}
-        </div>
-        <div className="text-[var(--faint)] mt-0.5">
-          {t('bmi.sig.notidentity', 'A key is not a person: this says the file has not changed, not that its author is trustworthy.')}
-        </div>
-      </div>
-    );
-  }
-  if (v.state === 'tampered') {
-    return (
-      <div className="text-[12px] rounded-lg border border-[var(--error)] p-2 mb-2">
-        <div className="text-[var(--error)] font-medium">
-          {t('bmi.sig.tampered', 'ALTERED — this file carries a signature, and it does not match its contents.')}
-        </div>
-        <div className="text-[var(--muted)] mt-0.5">
-          {t('bmi.sig.tamperedwhy', 'Either it was edited after signing, or the signature block was copied from another file.')}
-        </div>
-      </div>
-    );
-  }
-  return (
-    <div className="text-[12px] rounded-lg border border-[var(--warning)] text-[var(--warning)] p-2 mb-2">
-      {t('bmi.sig.malformed', 'The signature block is not readable')}: {v.reason}
-    </div>
-  );
 }
 
 function AdminWebhooks() {

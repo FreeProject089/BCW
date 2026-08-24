@@ -38,6 +38,10 @@ import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
 import { lazyNamed } from '../lib/lazy-chunk.js';
 export { NOTIF, NOTIF_FALLBACK };
 function NotificationsPanel() {
+  // Wrapping two strings in t() last pass put a call into a scope that had never needed the
+  // hook — the page crashed on render with "t is not defined", and the build said nothing:
+  // an undefined identifier inside JSX is a runtime fact, not a compile one.
+  const { t } = useI18n();
   const nav = useNavigate();
   const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/me/notifications'), []);
