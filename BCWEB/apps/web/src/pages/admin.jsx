@@ -1770,6 +1770,7 @@ function AdminServerPerf() {
   const downtime = data?.downtime || [];
   const cg = data?.cgroupMemory;
   const totals = data?.totals || {};
+  const otherWriters = data?.otherWriters || [];
   const labels = depsCfg.data?.labels || {};
   const allKeys = depsCfg.data?.keys || Object.keys(deps);
   const enabledCfg = depsCfg.data?.enabled || {};
@@ -1855,6 +1856,15 @@ function AdminServerPerf() {
             old it is turns "why is CPU 3% when the box is busy" into an answerable question. */}
         {sampleAgeMin != null && <div className="text-[11px] text-[var(--faint)] mt-2">{t('sp.sampleAge', 'CPU, load, latency and uptime are from the last sample, taken {n} min ago. Memory and disk are read live.').replace('{n}', String(sampleAgeMin))}</div>}
         {cg?.usedBytes != null && <div className="text-[11px] text-[var(--faint)] mt-2">This process's own cgroup memory: {(cg.usedBytes / 1024 / 1024).toFixed(0)} MB{cg.limitBytes ? ` / ${(cg.limitBytes / 1024 / 1024).toFixed(0)} MB allocated` : ' (no cgroup limit set — showing real usage only)'}.</div>}
+        {/* A second machine writing into this history is a fact the admin must see, not a
+            rendering problem to hide. It is exactly what produced the famous sawtooth: a dev
+            machine pointed at the prod database, its samples interleaved with the server's,
+            and the chart alternated between two real hosts every tick. The chart above now
+            shows only THIS host's samples; this line says who else is writing. */}
+        {otherWriters.length > 0 && <div className="text-[11px] mt-2 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200">
+          {t('srvperf.otherWriters', 'Another instance is also recording metrics into this database:')}{' '}
+          {otherWriters.map((w) => `${w.host} (${w.samples})`).join(', ')} — {t('srvperf.otherWritersHint', 'the chart shows only this host. If that other writer is a dev machine pointed at the production database, that is worth fixing.')}
+        </div>}
       </Card>
 
       {/* Bandwidth served, broken down by what's consuming it (since the API last started). */}

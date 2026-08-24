@@ -462,6 +462,10 @@ export async function sampleAndAlert(p, log) {
     await p.serverMetricSample.create({ data: {
       cpuPct, memPct, diskPct, loadAvg1: os.loadavg()[0], uptimeSec: Math.round(process.uptime()), latencyMs,
       netRxKbps: rxKbps, netTxKbps: txKbps,
+      // Every number above is "the host as THIS process sees it" — stamp whose view it is,
+      // so a second writer (dev machine on the prod DB, an old container beside a new one)
+      // becomes a filterable fact instead of a sawtooth.
+      host: os.hostname(),
     } });
     // Summarise BEFORE pruning, or the summary would be missing exactly the days the prune
     // takes. Yesterday and today: yesterday because it is now complete, today so the dashboard

@@ -122,10 +122,27 @@ export default async function serverPerfRoutes(app) {
     const p = await db();
     const hoursBack = Math.min(Number(req.query?.hours) || (24 * 7), 24 * 30);
     const since = new Date(Date.now() - hoursBack * 3600e3);
-    const [history, probes] = await Promise.all([
-      p.serverMetricSample.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'asc' } }),
+    // ONE machine's samples, not everyone's. Every metric in a sample is "the host as its
+    // writer sees it": when a dev machine points at the prod database, or an old container
+    // runs beside a new one, two machines interleave into one series and the chart draws a
+    // sawtooth alternating between two real hosts — 24-core/1TB tiles over 4-vCPU history.
+    // We chart the ANSWERING host (plus pre-column rows, host ''), and report the other
+    // writers by name instead of silently hiding that they exist: a second writer is a fact
+    // the admin should see, not a rendering problem to suppress.
+    const me = os.hostname();
+    const [history, probes, writers] = await Promise.all([
+      p.serverMetricSample.findMany({
+        where: { createdAt: { gte: since }, host: { in: [me, ''] } },
+        orderBy: { createdAt: 'asc' },
+      }),
       cachedProbes(p),
+      p.serverMetricSample.groupBy({
+        by: ['host'], where: { createdAt: { gte: since } }, _count: { _all: true },
+      }).catch(() => []),
     ]);
+    const otherWriters = writers
+      .filter((w) => w.host !== me && w.host !== '')
+      .map((w) => ({ host: w.host, samples: w._count._all }));
     const { deps, ssl } = probes;
     const latest = history[history.length - 1] || null;
     // Downtime gaps: consecutive samples more than 2x the ~10-min tick apart imply
@@ -185,7 +202,7 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat() };
+    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat(), otherWriters, host: me };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

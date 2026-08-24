@@ -1322,6 +1322,12 @@ model ServerMetricSample {
   latencyMs Int?
   netRxKbps Int? // avg download throughput over the tick (kbit/s)
   netTxKbps Int? // avg upload throughput over the tick (kbit/s)
+  // WHO wrote this sample (os.hostname()). Every metric here is "the host as this process
+  // sees it" — and two processes on different machines sharing one database (a dev machine
+  // pointed at the prod DB, an old container beside a new one) interleave into a single
+  // series. The dashboard then draws a sawtooth alternating between two real machines, which
+  // reads as a haunted server. Default '' so three weeks of pre-column history stays valid.
+  host      String   @default("")
   createdAt DateTime @default(now())
 
   @@index([createdAt])

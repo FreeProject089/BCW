@@ -69,3 +69,71 @@ function toCurrentShape(cfg) {
 }
 
 export { toCurrentShape };
+
+// ── The default "How it runs" graphs ─────────────────────────────────────────
+//
+// Used by BOTH the seed (fresh install) and fix-project-config --write (existing install
+// whose rows predate the stack tab). One copy on purpose: two would drift, and the day they
+// differ a fresh site and a repaired site describe two different architectures.
+//
+// Each entry is spread into a project config: { tabs: {stack:true}, stack: {...} }.
+export const DEFAULT_STACKS = {
+  community: {
+  tabs: { stack: true },
+  stack: {
+    title: 'How it runs',
+    nodes: [
+      { id: 'edge', label: 'Caddy edge', kind: 'infra', tech: 'Caddy', note: 'TLS, anti-bot guards and routing in front of everything.' },
+      { id: 'web', label: 'Web app', kind: 'app', tech: 'React + Vite', note: 'The site itself — catalogs, blogs, dashboards.' },
+      { id: 'api', label: 'API', kind: 'service', tech: 'Node + Fastify', note: 'Accounts, catalogs, hosting, payments — every route the web app calls.' },
+      { id: 'db', label: 'Database', kind: 'db', tech: 'PostgreSQL + Prisma', note: 'The one source of truth.' },
+      { id: 'bot', label: 'Discord bot', kind: 'service', tech: 'discord.js', note: 'Community bridge: roles, announcements, Ko-fi tips.' },
+      { id: 'store', label: 'File storage', kind: 'infra', tech: 'S3-compatible', note: 'Hosted repos and catalog payloads.' },
+    ],
+    edges: [
+      { from: 'edge', to: 'web' }, { from: 'api', to: 'web', label: 'JSON' },
+      { from: 'db', to: 'api', label: 'SQL' }, { from: 'api', to: 'bot' }, { from: 'store', to: 'api' },
+    ],
+  },
+  },
+  bmm: {
+  tabs: { stack: true },
+  stack: {
+    title: 'How it runs',
+    nodes: [
+      { id: 'ui', label: 'Frontend', kind: 'app', tech: 'TypeScript', note: 'The whole interface — library, profiles, repo tools, themes.' },
+      { id: 'core', label: 'Rust core', kind: 'service', tech: 'Tauri v2 + Rust', note: 'File operations, hashing, signing, SSH/SFTP — everything that touches the disk.' },
+      { id: 'api', label: 'Plugin API', kind: 'service', tech: 'HTTP (localhost)', note: 'Local API that plugins, scripts and deeplinks talk to.' },
+      { id: 'mcp', label: 'MCP server / CLI', kind: 'service', tech: 'Rust (rmcp)', note: 'The same features for AI agents and the terminal.' },
+      { id: 'sched', label: 'Scheduler', kind: 'service', note: 'Automations: triggers, conditions and 70+ action types.' },
+    ],
+    edges: [
+      { from: 'core', to: 'ui' }, { from: 'core', to: 'api' },
+      { from: 'api', to: 'mcp', label: 'bridge' }, { from: 'core', to: 'sched' },
+    ],
+  },
+  },
+  bsm: {
+  tabs: { stack: true },
+  stack: {
+    title: 'How it runs',
+    nodes: [
+      { id: 'app', label: 'BSM app', kind: 'app', note: 'Builds and applies sound presets.' },
+      { id: 'catalog', label: 'Preset catalog', kind: 'service', tech: 'BetterCommunity', note: 'Where community presets are published and fetched from.' },
+    ],
+    edges: [{ from: 'catalog', to: 'app', label: 'presets' }],
+  },
+  },
+  betterinstaller: {
+  tabs: { stack: true },
+  stack: {
+    title: 'How it runs',
+    nodes: [
+      { id: 'ui', label: 'Installer UI', kind: 'app', tech: 'Slint + Rust', note: 'The installer window itself.' },
+      { id: 'assets', label: 'Platform assets', kind: 'service', tech: 'BetterCommunity', note: 'Where installers and update feeds are hosted.' },
+      { id: 'handoff', label: 'App handoff', kind: 'infra', note: 'Hands the installed app its first-run configuration.' },
+    ],
+    edges: [{ from: 'assets', to: 'ui', label: 'downloads' }, { from: 'ui', to: 'handoff' }],
+  },
+  },
+};

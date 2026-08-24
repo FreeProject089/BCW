@@ -14,8 +14,10 @@
 //   contributorsUrl                  → community.*
 //   legal { tos, license, readme, … }→ legal[] cards, one per non-empty link
 //
-// `stack` has no old equivalent, so nothing is invented for it — the "How it runs" tab simply
-// stays off until somebody describes one, which is the truthful state.
+// `stack` has no old equivalent to migrate — but a row with NO stack at all now receives the
+// same default graph a fresh seed writes (DEFAULT_STACKS, one shared copy), because that is
+// the case this script exists for: a live database whose rows predate the tab. A stack an
+// admin already built, even a one-node one, is never touched.
 //
 // Idempotent: a row already carrying the new shape is left alone, so running this twice is a
 // no-op rather than a second migration on top of the first.
@@ -27,7 +29,7 @@ import { db } from './lib/lib.mjs';
 
 const WRITE = process.argv.includes('--write');
 
-import { toCurrentShape } from './lib/project-config.mjs';
+import { toCurrentShape, DEFAULT_STACKS } from './lib/project-config.mjs';
 
 const p = await db();
 const rows = await p.adminSetting.findMany({ where: { key: { startsWith: 'project.' } } });
@@ -40,6 +42,14 @@ let changed = 0;
 for (const row of rows) {
   const cfg = row.value && typeof row.value === 'object' ? row.value : {};
   const { out, moved } = toCurrentShape(cfg);
+  // The default "How it runs" graph, for rows that have none. Checked on `out` so a row that
+  // is BOTH old-shaped and stackless gets one pass, not two runs.
+  const projKey = row.key.replace(/^project\./, '');
+  if (!out.stack?.nodes?.length && DEFAULT_STACKS[projKey]) {
+    out.stack = DEFAULT_STACKS[projKey].stack;
+    out.tabs = { ...(out.tabs || {}), stack: true };
+    moved.push('stack (default "How it runs" graph)');
+  }
   if (!moved.length) {
     console.log(`${row.key.padEnd(20)} déjà à jour`);
     continue;

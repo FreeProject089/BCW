@@ -1,7 +1,7 @@
 // One-shot seed: projects, an admin account, default hosting plans + admin settings.
 // Run inside the api container: `node src/seed.mjs` (idempotent).
 import argon2 from 'argon2';
-import { toCurrentShape } from './lib/project-config.mjs';
+import { toCurrentShape, DEFAULT_STACKS } from './lib/project-config.mjs';
 import { db } from './lib/lib.mjs';
 import { BLOG_FR } from './seed-blog-fr.mjs';
 
@@ -130,6 +130,10 @@ const projectConfigs = {
     name: 'BetterCommunity', tagline: 'The home for all Better projects.',
     links: { kofi: 'https://ko-fi.com/bettercommunity', github: 'https://github.com/FreeProject089' },
     downloads: [], contributors: [], progress: [], legal: {},
+    // "How it runs" — the tab renders c.stack.nodes, and a config without them has no tab at
+    // all. These are the seed DEFAULTS: real architecture, kept coarse on purpose, because an
+    // admin edits this by hand in the dashboard and a ten-node graph is where they stop.
+    ...DEFAULT_STACKS.community,
   },
   bmm: {
     name: 'Better Mods Manager', tagline: 'Apps, plugins & themes for DCS modding.', version: '0.9.11',
@@ -138,6 +142,7 @@ const projectConfigs = {
       { label: 'Source code', url: 'https://github.com/FreeProject089/BetterModsManager/archive/refs/heads/Tdev.zip' },
     ],
     releaseNotes: { owner: 'FreeProject089', repo: 'BetterModsManager', branch: 'Tdev', path: 'Update' },
+    ...DEFAULT_STACKS.bmm,
     links: {
       github: 'https://github.com/FreeProject089/BetterModsManager',
       discord: 'https://discord.gg/', kofi: 'https://ko-fi.com/bettercommunity',
@@ -175,6 +180,7 @@ const projectConfigs = {
   },
   bsm: {
     name: 'Better Sound Maker', tagline: 'Community sound presets.', version: '1.0.9',
+    ...DEFAULT_STACKS.bsm,
     downloads: [
       { label: 'Download (Windows)', url: 'https://github.com/FreeProject089/Better-Sound.Maker/releases/latest', primary: true },
       { label: 'Source code', url: 'https://github.com/FreeProject089/Better-Sound.Maker/archive/refs/heads/main.zip' },
@@ -185,6 +191,7 @@ const projectConfigs = {
   },
   installer: {
     name: 'BetterInstaller', tagline: 'The modern installer for the Better* suite.', version: '1.0.0',
+    ...DEFAULT_STACKS.betterinstaller,
     downloads: [{ label: 'Download source code', url: 'https://github.com/FreeProject089/BetterInstaller/archive/refs/heads/master.zip', primary: true }],
     links: { github: 'https://github.com/FreeProject089/BetterInstaller', kofi: 'https://ko-fi.com/bettercommunity' },
     contributors: STAFF, messages: [], progress: [],
@@ -211,6 +218,28 @@ for (const [key, value] of Object.entries(projectConfigs)) {
   const k = `project.${key}`;
   const { out } = toCurrentShape(value);
   await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: out }, update: {} });
+}
+
+// One pinned, open poll — so the home page's poll section EXISTS on a fresh install.
+//
+// The whole pipeline (route filter, PollSlider, the section markup) was complete and
+// invisible, because nothing ever created a poll that was pinned AND open: the section's
+// render condition. Only when there are no polls at all — a database with any poll in it
+// belongs to an admin who has already made their own choices about what is pinned.
+const anyPoll = await p.poll.findFirst({ select: { id: true } });
+if (!anyPoll) {
+  await p.poll.create({ data: {
+    question: 'What should the Better projects focus on next?',
+    description: 'Seed example — edit or replace it from Admin → Polls.',
+    audience: 'all', status: 'open', pinned: true, visibility: 'public',
+    options: { create: [
+      { label: 'More catalog content', sort: 0 },
+      { label: 'Performance & stability', sort: 1 },
+      { label: 'New tools & automations', sort: 2 },
+      { label: 'Documentation & tutorials', sort: 3 },
+    ] },
+  } });
+  console.log('  seeded one pinned home-page poll');
 }
 
 // Markdown guide — hosted in the blog and linked from the blog editor toolbar.

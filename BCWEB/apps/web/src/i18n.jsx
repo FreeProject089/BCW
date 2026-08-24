@@ -1092,6 +1092,8 @@ const DICT = {
     'verify.working': "Confirmation de ton email…",
     'promo.badge.default': 'Offre à durée limitée', 'promo.badge.dismiss': 'Fermer', 'promo.badge.d': 'j', 'promo.badge.h': 'h', 'promo.badge.m': 'min',
     'intro.brand': 'BetterCommunity', 'intro.dontshow': 'Ne plus afficher', 'intro.skip': "Passer l'intro",
+    'srvperf.otherWriters': "Une autre instance enregistre aussi des mesures dans cette base :",
+    'srvperf.otherWritersHint': "le graphique ne montre que cet hôte. Si cet autre écrivain est une machine de dev pointée sur la base de production, c'est à corriger.",
     'admin.2fa.title': 'Authentification à deux facteurs requise', 'admin.2fa.sub': "Le tableau de bord admin nécessite la 2FA sur ton compte, même pour les admins. Active-la dans ton profil pour continuer.", 'admin.2fa.cta': 'Aller au profil',
     'nav.home': 'Accueil', 'nav.apps': 'Applications', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Dépôts', 'nav.hosting': 'Hébergement', 'nav.projects': 'Projets', 'nav.dashboard': 'Tableau de bord', 'nav.admin': 'Admin',
