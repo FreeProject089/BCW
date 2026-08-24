@@ -361,6 +361,16 @@ export function Submit() {
               <div className="font-semibold">{t('sub2.host', 'Host my own catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.host.d', 'Publish and manage your own catalog. Free if you self-host the downloads, or paid to host the files with us.')}</div>
             </button>
+            {/* The third thing people come here to publish. Hosting a SERVER REPO (the thing
+                BMM syncs mods from) has a complete flow at /hosting, and nothing on this page
+                said so — someone with a repo to share was offered catalogs twice and their
+                actual case never. A LINK, not a third inline form: the hosting page already
+                carries pools, quotas and payment, and a duplicate here would drift. */}
+            <Link to="/hosting" className="text-left p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
+              <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
+              <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
+              <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>
+            </Link>
           </div>
         )}
     </div>

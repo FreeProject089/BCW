@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network, Lock } from 'lucide-react';
+import BmmInspector from '../ui/bmm-inspector.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast , Select } from '../ui/ui.jsx';
@@ -543,6 +544,11 @@ export default function DevTools() {
         { id: 'validate', label: t('dvt.val', 'Check a catalog feed'), el: <Validator />, needsAuth: true },
         // Reads the public deeplink list and builds the URL in the page. No account needed.
         { id: 'deeplink', label: t('dvt.dl.title', 'Build a bmm:// link'), el: <DeeplinkBuilder /> },
+        // The same inspector moderation uses, on the developer endpoint. The questions it
+        // answers — is my .bmmplug well-formed, does my .cbmp carry the entries I think,
+        // is this document still signed — are an AUTHOR's questions before they are a
+        // reviewer's. Signed-in, because the reads run on the server.
+        { id: 'inspect', label: t('dvt.inspect', 'Inspect a BMM file'), el: <BmmInspector endpoint="/dev/inspect" />, needsAuth: true },
       ],
     },
   ];

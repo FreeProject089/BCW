@@ -58,6 +58,13 @@ export function detectFormat(doc) {
   // taken without the console attached has neither, and it is still a replay.
   if (Array.isArray(doc.events) && ('console' in doc || 'rustLog' in doc || looksLikeRrweb(doc.events))) return 'bmmreplay';
   if (typeof doc.format_version === 'string' && Array.isArray(doc.mods)) return 'mm';
+  // A .bmp modpack DOCUMENT: mods carrying per-file manifests with hashes. Distinguished
+  // from a mod LIST ('mm') by shape, not by claim — a modpack's entries have mod_id and
+  // file_manifest, a list's have links/url.
+  if (Array.isArray(doc.mods) && doc.mods.some((m) => isObj(m) && typeof m.mod_id === 'string' && Array.isArray(m.file_manifest))) return 'bmp';
+  // A .cbmp modpack CATALOGUE's catalog.json: named packs, each pointing at a packs/*.bmp
+  // entry inside the same archive.
+  if (Array.isArray(doc.modpacks) && doc.modpacks.some((m) => isObj(m) && typeof m.file === 'string')) return 'cbmp';
   return null;
 }
 
@@ -190,6 +197,59 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav };
+  const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog };
   return { ok: true, format, signature, ...readers[format](doc) };
+}
+
+/**
+ * A .bmp modpack document.
+ *
+ * What a reviewer needs before approving: how many mods, how many carry a DOWNLOAD LINK a
+ * stranger's BMM will follow, and which hosts those links point at — the same question the
+ * mod-list reader answers, because it is the same risk in a different wrapper.
+ */
+function inspectModpack(doc) {
+  const mods = arr(doc.mods);
+  const hosts = new Map();
+  let linked = 0;
+  for (const m of mods.slice(0, 500)) {
+    if (typeof m?.download_link === 'string' && m.download_link) {
+      linked += 1;
+      try { const h = new URL(m.download_link).host; hosts.set(h, (hosts.get(h) || 0) + 1); } catch { /* not a URL */ }
+    }
+  }
+  const top = [...hosts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const files = mods.reduce((a, m) => a + arr(m?.file_manifest).length, 0);
+  return {
+    title: String(doc.name || '(unnamed modpack)').slice(0, 200),
+    summary: [
+      row('Mods', mods.length),
+      row('Files with hashes', files),
+      row('Direct download links', linked, linked ? 'warn' : undefined),
+      ...(top.length ? [row('Download hosts', top.map(([h, n]) => `${h} (${n})`).join(', '), 'warn')] : []),
+    ],
+  };
+}
+
+/**
+ * A .cbmp modpack catalogue's catalog.json.
+ *
+ * The entries point at packs/*.bmp INSIDE the same archive; a `file` outside packs/ (or
+ * trying to climb) is the thing to flag, because a reader extracting it is what path
+ * traversal needs. BMM's own reader refuses those; a reviewer should see them anyway.
+ */
+function inspectModpackCatalog(doc) {
+  const packs = arr(doc.modpacks);
+  const badPaths = packs
+    .map((m) => String(m?.file || ''))
+    .filter((f) => f && (!f.startsWith('packs/') || f.includes('..')));
+  return {
+    title: String(doc.name || '(unnamed modpack catalogue)').slice(0, 200),
+    summary: [
+      row('Version', String(doc.version || '1.0')),
+      row('Modpacks', packs.length),
+      ...(badPaths.length ? [row('Suspicious entry paths', badPaths.slice(0, 5).join(', '), 'warn')] : []),
+      row('Packs', packs.slice(0, 10).map((m) => m?.name || m?.id || '?').join(', ')),
+    ],
+  };
 }

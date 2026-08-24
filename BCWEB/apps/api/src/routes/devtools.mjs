@@ -458,6 +458,32 @@ export default async function devtoolRoutes(app) {
   // Same shape as the .bmmpa route and for the same reasons: the parsed value in the
   // body, never a URL — a tool for inspecting untrusted content must not become a way to
   // make the server fetch untrusted content. Nothing is executed, fetched or written.
+  // The same reader, for DEVELOPERS. A plugin author about to submit a .bmmplug, a repo
+  // owner checking a .cbmp they built — the questions this answers are theirs before they
+  // are a moderator's, and the reader is pure: nothing is executed, fetched or written, so
+  // the only thing the admin guard was protecting was the answer. Signed-in is still
+  // required: it is a compute endpoint, and anonymous callers have the rate budget of one
+  // shared bucket.
+  const inspectHandler = async (req, reply) => {
+    const b = z.object({
+      doc: z.any(),
+      archive: z.array(z.object({ name: z.string().max(400), sha256: z.string().length(64) })).max(4000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const report = inspectAny(b.data.doc);
+    if (b.data.archive) {
+      report.archiveSignature = verifyArchiveList(b.data.doc, b.data.archive, report.format);
+    }
+    return report;
+  };
+  app.post('/dev/inspect', {
+    // No role list: any signed-in account. A role LIST here is exact-match, not a tier —
+    // requireRole('USER') would 403 a moderator, which is the opposite of a wider door.
+    preHandler: requireRole(),
+    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    bodyLimit: 8 * 1024 * 1024,
+  }, inspectHandler);
+
   app.post('/admin/inspect', {
     preHandler: requireCap('manage_catalogs', 'MOD'),
     config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
