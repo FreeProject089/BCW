@@ -2866,6 +2866,17 @@ function SnapshotsPanel({ onChanged }) {
   const everyNow = data?.everyHours ?? 24;
   const [every, setEvery] = useState('');
 
+  // WHAT and WHERE. Both start as null meaning "not edited on this screen" — the saved
+  // value is what is shown until somebody actually changes it, so a reload landing between
+  // a keystroke and the Save does not quietly revert the other field.
+  const kindsNow = Array.isArray(data?.kinds) ? data.kinds : ['files'];
+  const [kinds, setKinds] = useState(null);
+  const kindsShown = kinds ?? kindsNow;
+  const toggleKind = (k) => setKinds(kindsShown.includes(k) ? kindsShown.filter((x) => x !== k) : [...kindsShown, k]);
+  const dirNow = data?.dir || '';
+  const [dir, setDir] = useState(null);
+  const dirShown = dir ?? dirNow;
+
   const take = async (kind) => {
     setBusy('new');
     try {
@@ -2919,10 +2930,24 @@ function SnapshotsPanel({ onChanged }) {
       const hours = every === '' ? undefined : Math.min(720, Math.max(1, Number(every) || everyNow));
       const r = await api.put('/server/backups/limit', {
         maxBytes: data?.maxBytes ?? null, keep: n, ...(hours ? { everyHours: hours } : {}),
+        // Sent only when this screen actually changed them, so saving a retention count from
+        // an older tab cannot reset somebody else's selection or destination.
+        ...(kinds ? { kinds } : {}), ...(dir === null ? {} : { dir: dir.trim() }),
       });
       toast.success(r.removed?.length ? t('snap.rotated', '{n} removed.').replace('{n}', String(r.removed.length)) : t('common.saved', 'Saved.'));
-      setKeep(''); setEvery(''); reload(); onChanged?.();
-    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+      setKeep(''); setEvery(''); setKinds(null); setDir(null); reload(); onChanged?.();
+    } catch (x) {
+      // The destination is the one field here that fails for a reason worth reading — a
+      // path that does not exist, a read-only mount. "Failed." would send somebody hunting.
+      toast.error(x?.data?.error === 'dir_not_writable'
+        ? t('snap.dir.now', 'That folder cannot be written to: {d}').replace('{d}', String(x.data.detail || '').slice(0, 120))
+        : x?.data?.error === 'bad_dir'
+          ? ({ not_absolute: t('snap.dir.abs', 'The destination must be a full path, starting from the root of the disk.'),
+               inside_files_root: t('snap.dir.inside', 'That folder is inside the tree being backed up — each backup would contain the previous ones.'),
+               is_root: t('snap.dir.root', 'That is the root of the disk. Pick a folder inside it.') }[x.data.reason]
+             || t('snap.dir.bad', 'That destination cannot be used.'))
+          : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
   };
 
   // Same reason as the history export: the signature travels in a response header, so a
@@ -2996,12 +3021,41 @@ function SnapshotsPanel({ onChanged }) {
           <Button size="sm" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
         </div>
       </div>
+      {/* WHAT and WHERE. Under the switch that governs them, and dimmed with it: a
+          selection for something that never runs is a control that lies about what it does. */}
+      <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 ${autoOn ? '' : 'opacity-50'}`}>
+        <span className="text-[11px] text-[var(--muted)]">{t('snap.what', 'Back up')}</span>
+        <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
+          <input type="checkbox" checked={kindsShown.includes('files')} disabled={!autoOn || !!busy} onChange={() => toggleKind('files')} />
+          {t('snap.what.files', 'Files')}
+        </label>
+        <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer"
+          title={t('snap.what.db.h', 'The history of row edits made through the DB console above — not a dump of the whole database.')}>
+          <input type="checkbox" checked={kindsShown.includes('db')} disabled={!autoOn || !!busy} onChange={() => toggleKind('db')} />
+          {t('snap.what.db', 'Database row history')}
+        </label>
+        <div className="flex items-center gap-1.5 flex-1 min-w-[260px]">
+          <span className="text-[11px] text-[var(--muted)] shrink-0">{t('snap.where', 'to')}</span>
+          <Input className="flex-1 min-w-0 font-mono !text-[11px]" value={dirShown} disabled={!!busy}
+            onChange={(e) => setDir(e.target.value)}
+            placeholder={data?.defaultDir || t('snap.where.ph', 'leave empty for the usual place')} />
+        </div>
+      </div>
+      {kindsShown.length === 0 && autoOn && (
+        <p className="text-[11px] text-warning mt-1">
+          {t('snap.what.none', 'Nothing is selected — the schedule will run and back up nothing.')}
+        </p>
+      )}
       <p className="text-[11px] text-[var(--faint)] mt-1.5">
         {!autoOn && <span className="text-warning">{t('snap.auto.off', 'Automatic backups are OFF — the only backups from here on are the ones you take by hand. ')}</span>}
         {keepNow > 0
           ? t('snap.keep.on', 'A backup every {h}h, keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.')
               .replace('{n}', String(keepNow)).replace('{h}', String(everyNow))
           : t('snap.keep.off', 'Rotation is off: backups are kept until you delete them, and nothing watches the disk for you.')}
+        {' '}
+        {/* Where they are actually written. The saved value, not the field being typed in,
+            because this sentence describes what the server will do, not what is unsaved. */}
+        <code className="font-mono">{dirNow || data?.defaultDir || ''}</code>
       </p>
 
       <div className="mt-3 rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-72 overflow-y-auto">
@@ -3018,6 +3072,11 @@ function SnapshotsPanel({ onChanged }) {
                   {snap.note || (snap.by === 'sweeper' ? t('snap.auto', 'automatic daily') : t('snap.manual', 'taken by hand'))}
                   {' · '}<code className="font-mono">{String(snap.sha256 || '').slice(0, 12)}</code>
                   {!snap.signature && <span className="text-warning"> · {t('snap.unsigned', 'unsigned')}</span>}
+                  {/* Changing the destination must never make existing backups disappear, so
+                      they stay listed and say where they are. */}
+                  {dirNow && snap.atDefault && (
+                    <span title={snap.dir}> · {t('snap.elsewhere', 'at the previous location')}</span>
+                  )}
                 </div>
               </div>
               <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setInspecting(snap.id)} title={t('snap.inspect', 'Inspect this backup')}><Eye size={13} /></Button>

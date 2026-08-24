@@ -10,7 +10,7 @@ import { db, requireRole, requireCanControlServer, requireElevated, issueElevate
 import { verifyTotp } from '../lib/totp.mjs';
 import { sealForOwner, openBackup } from '../lib/shred.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle } from '../lib/gitbackup.mjs';
-import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath } from '../lib/snapshots.mjs';
+import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath, checkSnapshotDir, SNAPSHOT_ROOT } from '../lib/snapshots.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
 // makes the admin confirm twice (a dialog, then typing this exact word), but
@@ -23,6 +23,41 @@ function requireConfirm(body) {
 // Snapshots kept per kind before the oldest is rotated out. Ten because it has to be a
 // number and this one spans a fortnight of daily runs; 0 disables rotation entirely.
 const DEFAULT_KEEP = 10;
+
+// What the automatic run backs up when nobody has said. Files only, because that is what
+// it did before this setting existed — every default in this blob follows the same rule,
+// so upgrading never changes what an install was already doing.
+const DEFAULT_KINDS = ['files'];
+
+/** The backup settings blob, with every default applied in ONE place.
+ *
+ *  Four callers used to each re-apply `?? 24` and `?? DEFAULT_KEEP` inline, and adding two
+ *  more fields to that pattern is how the sweeper and the admin screen end up disagreeing
+ *  about what "not set" means.
+ */
+async function backupCfg(p) {
+  const v = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
+  const kinds = Array.isArray(v.kinds) ? v.kinds.filter((k) => SNAPSHOT_KINDS.includes(k)) : null;
+  return {
+    maxBytes: v.maxBytes ?? null,
+    keep: v.keep ?? DEFAULT_KEEP,
+    // Absent means ON — see the note on the usage route.
+    auto: v.auto !== false,
+    everyHours: v.everyHours ?? 24,
+    // An empty list is a real choice ("automatic backups on, but of nothing"), so only an
+    // absent or unusable value falls back to the default.
+    kinds: kinds || DEFAULT_KINDS,
+    // null = the default directory. Stored as the admin typed it, resolved on use.
+    dir: typeof v.dir === 'string' && v.dir.trim() ? v.dir.trim() : null,
+    // Every place backups have ever been written, so changing the destination — in either
+    // direction — never hides what is already on disk. Reads use this; writes use `dir`.
+    pastDirs: Array.isArray(v.pastDirs) ? v.pastDirs.filter((d) => typeof d === 'string' && d.trim()) : [],
+  };
+}
+
+/** The list to SEARCH: the destination first (so `writeDir` picks it), then everywhere else.
+ *  SNAPSHOT_ROOT is appended by the store itself and does not need to be here. */
+const searchDirs = (cfg) => [cfg.dir, ...cfg.pastDirs].filter(Boolean);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const DANGEROUS = [requireRole('ADMIN'), requireCanControlServer(), requireElevated()];
@@ -670,23 +705,25 @@ export default async function serverControlRoutes(app) {
 
   app.get('/server/backups/usage', { preHandler: DANGEROUS }, async () => {
     const p = await db();
-    const row = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
-    const [filesBytes, dbBytes, snaps] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT), listSnapshots()]);
+    const cfg = await backupCfg(p);
+    const [filesBytes, dbBytes, snaps] = await Promise.all([repoSizeBytes(FILES_BACKUP_ROOT), repoSizeBytes(DB_BACKUP_ROOT), listSnapshots(searchDirs(cfg))]);
     // Snapshots count towards the total because they sit on the same disk. A usage figure
     // that ignores half of what it wrote is the reason a box runs out of space.
     const snapshotBytesTotal = snaps.reduce((n, s) => n + (s.bytes || 0), 0);
     return {
       filesBytes, dbBytes, snapshotBytes: snapshotBytesTotal, snapshotCount: snaps.length,
       totalBytes: filesBytes + dbBytes + snapshotBytesTotal,
-      maxBytes: row?.value?.maxBytes ?? null,
-      keep: row?.value?.keep ?? DEFAULT_KEEP,
-      // Absent means ON. The daily snapshot has always run, and an install that predates this
-      // setting has been backing itself up all along — reading a missing key as "off" would
-      // silently stop that on upgrade, and nothing would say so until somebody needed a backup.
-      auto: row?.value?.auto !== false,
-      // Same rule as `auto`: an install that predates this setting has been snapshotting
-      // daily, so a missing value reads as 24 rather than as anything new.
-      everyHours: row?.value?.everyHours ?? 24,
+      ...cfg,
+      // Absent `auto` means ON, absent `everyHours` means 24, absent `kinds` means files —
+      // all applied in backupCfg(), because an install that predates a setting has been
+      // backing itself up all along and an upgrade must not quietly change that.
+      //
+      // Where snapshots are written and where the default is, so the screen can show the
+      // real path rather than the word "default".
+      defaultDir: SNAPSHOT_ROOT,
+      // How many of the listed snapshots are NOT at the current destination — the number
+      // that explains why the total is larger than what the destination holds.
+      elsewhere: cfg.dir ? snaps.filter((sn) => sn.atDefault).length : 0,
     };
   });
 
@@ -705,26 +742,68 @@ export default async function serverControlRoutes(app) {
       // the two above: an older client sending only a size limit must not silently reset
       // somebody's cadence to the default.
       everyHours: z.number().int().min(1).max(720).optional(),
+      // WHAT the automatic run backs up. Optional like the rest; an empty array is allowed
+      // and means "nothing", which is a different statement from turning `auto` off — one
+      // says stop, the other says the schedule is fine but the selection is empty.
+      kinds: z.array(z.enum(['files', 'db'])).optional(),
+      // WHERE snapshots are written. Empty string clears it back to the default rather than
+      // storing "", so there is one representation of "as before" and not two.
+      dir: z.string().max(4096).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const prev = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
+
+    // Checked before it is stored: a destination that cannot be written is a setting that
+    // silently stops the backups, and the first symptom is an empty list months later.
+    let dir = prev.dir ?? null;
+    if (b.data.dir !== undefined) {
+      const v = checkSnapshotDir(b.data.dir, FILES_ROOT);
+      if (!v.ok) return reply.code(400).send({ error: 'bad_dir', reason: v.reason });
+      if (v.dir) {
+        try {
+          await fs.mkdir(v.dir, { recursive: true });
+          // mkdir succeeding does not mean we can write INTO it (a read-only mount, a
+          // directory owned by root). The only honest test is to write something.
+          const probe = path.join(v.dir, '.bcweb-write-test');
+          await fs.writeFile(probe, 'ok');
+          await fs.rm(probe, { force: true });
+        } catch (e) {
+          return reply.code(400).send({ error: 'dir_not_writable', detail: String(e?.message || e).slice(0, 200) });
+        }
+      }
+      dir = v.dir;
+    }
+
+    // Remember where backups used to go. Written on the CHANGE, because that is the only
+    // moment the old value still exists — recovering it afterwards means guessing.
+    const prevResolved = prev.dir ? path.resolve(prev.dir) : null;
+    const pastDirs = [...new Set([
+      ...(Array.isArray(prev.pastDirs) ? prev.pastDirs : []),
+      ...(prevResolved && prevResolved !== (dir && path.resolve(dir)) ? [prevResolved] : []),
+    ])].slice(-20);   // a bound, so a settings row cannot grow without limit
+
     const value = {
       maxBytes: b.data.maxBytes,
       keep: b.data.keep ?? prev.keep ?? DEFAULT_KEEP,
       auto: b.data.auto ?? prev.auto ?? true,
       everyHours: b.data.everyHours ?? prev.everyHours ?? 24,
+      kinds: b.data.kinds ?? prev.kinds ?? DEFAULT_KINDS,
+      dir,
+      pastDirs,
     };
     await p.adminSetting.upsert({ where: { key: 'backup.maxBytes' }, create: { key: 'backup.maxBytes', value }, update: { value } });
     // Turning automatic backups OFF is the kind of change somebody needs to be able to find
     // six months later, when the question is "why is there nothing to restore" — so it is
     // spelled out in the audit line rather than left implicit in a size change.
     await logAudit(p, req.user.uid, 'server.backup_limit',
-      `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}, automatic ${value.auto ? 'on' : 'OFF'}, every ${value.everyHours}h`, clientIp(req));
+      `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}, automatic ${value.auto ? 'on' : 'OFF'}, `
+      + `every ${value.everyHours}h, backing up ${value.kinds.join('+') || 'NOTHING'}, to ${value.dir || 'the default location'}`,
+      clientIp(req));
     // Lowering the count is an instruction about what to hold, so it takes effect now
     // rather than at the next snapshot — otherwise "keep 3" leaves twelve on disk until
     // someone happens to press the button.
-    const removed = await pruneSnapshots(value.keep);
+    const removed = await pruneSnapshots(value.keep, [value.dir, ...(value.pastDirs || [])].filter(Boolean));
     return { ok: true, removed };
   });
 
@@ -734,8 +813,16 @@ export default async function serverControlRoutes(app) {
 
   app.get('/server/backups/snapshots', { preHandler: DANGEROUS }, async () => {
     const p = await db();
-    const cfg = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
-    return { snapshots: await listSnapshots(), keep: cfg.keep ?? DEFAULT_KEEP };
+    const cfg = await backupCfg(p);
+    return {
+      snapshots: await listSnapshots(searchDirs(cfg)),
+      keep: cfg.keep,
+      everyHours: cfg.everyHours,
+      auto: cfg.auto,
+      kinds: cfg.kinds,
+      dir: cfg.dir,
+      defaultDir: SNAPSHOT_ROOT,
+    };
   });
 
   app.post('/server/backups/snapshots', { preHandler: DANGEROUS }, async (req, reply) => {
@@ -759,7 +846,7 @@ export default async function serverControlRoutes(app) {
     const skipped = [];
     for (const kind of kinds) {
       try {
-        made.push(await createSnapshot(kind, { by: req.user.uid, note: b.data.note, sign: (bytes) => signBytes(bytes, p) }));
+        made.push(await createSnapshot(kind, { by: req.user.uid, note: b.data.note, sign: (bytes) => signBytes(bytes, p), dir: (await backupCfg(p)).dir }));
       } catch {
         // Nothing has ever been backed up for this kind — a real state on a fresh box, and
         // not a reason to fail the half that did work.
@@ -768,16 +855,16 @@ export default async function serverControlRoutes(app) {
     }
     if (!made.length) return reply.code(404).send({ error: 'no_backups', detail: 'Nothing has been backed up yet.', skipped });
 
-    const cfg = (await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } }))?.value || {};
-    const rotated = await pruneSnapshots(cfg.keep ?? DEFAULT_KEEP);
+    const cfg = await backupCfg(p);
+    const rotated = await pruneSnapshots(cfg.keep, searchDirs(cfg));
     await logAudit(p, req.user.uid, 'server.backup_snapshot', `${made.map((m) => m.kind).join('+')}${rotated.length ? `, rotated ${rotated.length}` : ''}`, clientIp(req));
     return { ok: true, made, skipped, rotated };
   });
 
   app.get('/server/backups/snapshots/:id/download', { preHandler: DANGEROUS }, async (req, reply) => {
-    const hit = await snapshotBytes(req.params.id);
-    if (!hit) return reply.code(404).send({ error: 'not_found' });
     const p = await db();
+    const hit = await snapshotBytes(req.params.id, searchDirs(await backupCfg(p)));
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
     await logAudit(p, req.user.uid, 'server.backup_export', `snapshot ${hit.meta.id} (${hit.meta.bytes} bytes)`, clientIp(req));
     reply.header('Content-Type', 'application/octet-stream');
     reply.header('Content-Disposition', `attachment; filename="bcweb-${hit.meta.id}.bundle"`);
@@ -799,7 +886,7 @@ export default async function serverControlRoutes(app) {
    *  is a button that asks you to guess.
    */
   app.get('/server/backups/snapshots/:id/inspect', { preHandler: DANGEROUS }, async (req, reply) => {
-    const hit = await snapshotBytes(req.params.id);
+    const hit = await snapshotBytes(req.params.id, searchDirs(await backupCfg(await db())));
     if (!hit) return reply.code(404).send({ error: 'not_found' });
     const report = await inspectBundle(hit.bytes);
     // The digest recorded when it was written, checked against the file as it is now. This
@@ -851,6 +938,9 @@ export default async function serverControlRoutes(app) {
       by: req.user.uid,
       note: b.data.note || 'imported',
       sign: (bts) => signBytes(bts, p),
+      // Imported into the same place new ones are written, so an admin who set a destination
+      // finds everything in one directory rather than two.
+      dir: (await backupCfg(p)).dir,
     });
     await logAudit(p, req.user.uid, 'server.backup_imported', `${meta.id} (${meta.bytes} bytes)`, clientIp(req));
     return { ok: true, snapshot: meta, report };
@@ -868,13 +958,14 @@ export default async function serverControlRoutes(app) {
    */
   app.post('/server/backups/snapshots/:id/restore', { preHandler: DANGEROUS }, async (req, reply) => {
     if (!requireConfirm(req.body)) return reply.code(400).send({ error: 'confirm_required' });
-    const hit = await snapshotBytes(req.params.id);
+    const p = await db();
+    const cfg = await backupCfg(p);
+    const hit = await snapshotBytes(req.params.id, searchDirs(cfg));
     if (!hit) return reply.code(404).send({ error: 'not_found' });
 
     const report = await inspectBundle(hit.bytes);
     if (!report.valid) return reply.code(400).send({ error: 'invalid_bundle', detail: report.verify });
 
-    const p = await db();
     const kind = hit.meta.kind;
     const root = kind === 'db' ? DB_BACKUP_ROOT : FILES_BACKUP_ROOT;
 
@@ -882,7 +973,7 @@ export default async function serverControlRoutes(app) {
     // the rollback does not happen.
     let safety = null;
     try {
-      safety = await createSnapshot(kind, { by: req.user.uid, note: `before restoring ${hit.meta.id}`, sign: (bts) => signBytes(bts, p) });
+      safety = await createSnapshot(kind, { by: req.user.uid, note: `before restoring ${hit.meta.id}`, sign: (bts) => signBytes(bts, p), dir: cfg.dir });
     } catch (e) {
       return reply.code(409).send({ error: 'no_safety_snapshot', detail: 'Could not back up the current state, so nothing was rolled back.' });
     }
@@ -890,7 +981,7 @@ export default async function serverControlRoutes(app) {
     const applyToDisk = req.body?.applyToDisk === true && kind === 'files';
     let result;
     try {
-      result = await restoreFromBundle(root, snapshotPath(hit.meta.id), { applyToDisk: applyToDisk ? FILES_ROOT : null });
+      result = await restoreFromBundle(root, await snapshotPath(hit.meta.id, searchDirs(cfg)), { applyToDisk: applyToDisk ? FILES_ROOT : null });
     } catch (e) {
       return reply.code(500).send({ error: 'restore_failed', detail: String(e?.message || e).slice(0, 300), safetySnapshot: safety.id });
     }
@@ -904,8 +995,8 @@ export default async function serverControlRoutes(app) {
   app.delete('/server/backups/snapshots/:id', { preHandler: DANGEROUS }, async (req, reply) => {
     if (!validSnapshotId(req.params.id)) return reply.code(400).send({ error: 'invalid_input' });
     if (!requireConfirm(req.body)) return reply.code(400).send({ error: 'confirm_required' });
-    if (!(await deleteSnapshot(req.params.id))) return reply.code(404).send({ error: 'not_found' });
     const p = await db();
+    if (!(await deleteSnapshot(req.params.id, searchDirs(await backupCfg(p))))) return reply.code(404).send({ error: 'not_found' });
     await logAudit(p, req.user.uid, 'server.backup_delete', req.params.id, clientIp(req));
     return { ok: true };
   });

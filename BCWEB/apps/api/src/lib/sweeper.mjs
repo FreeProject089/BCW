@@ -28,7 +28,7 @@ import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
 import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
 import { pruneApiRequests } from './apiusage.mjs';
 import { runWebhookQueue } from './webhooks.mjs';
@@ -72,28 +72,54 @@ async function sweepDailyFileBackup(p, log) {
   const limitRow = cfgRow;   // already read above, for the interval
   if (limitRow?.value?.auto === false) return false;
 
+  // WHAT to back up. An absent list means files-only, which is what this did before the
+  // setting existed. An EMPTY list is a deliberate "nothing" and returns without writing
+  // the timestamp — otherwise the screen would show a fresh "last backup" for a run that
+  // produced no backup.
+  const kinds = Array.isArray(limitRow?.value?.kinds)
+    ? limitRow.value.kinds.filter((k) => k === 'files' || k === 'db')
+    : ['files'];
+  if (!kinds.length) return false;
+
+  // WHERE to write. null = the default location, exactly as before. Rotation is handed the
+  // past locations too, or it would count only what is at the current one and keep more than
+  // `keep` in total — silently, and on the disk somebody moved off to save space.
+  const dir = typeof limitRow?.value?.dir === 'string' && limitRow.value.dir.trim() ? limitRow.value.dir.trim() : null;
+  const pastDirs = Array.isArray(limitRow?.value?.pastDirs) ? limitRow.value.pastDirs.filter(Boolean) : [];
+  const allDirs = [dir, ...pastDirs].filter(Boolean);
+
   try {
+    // The size limit covers whichever repos are actually being snapshotted — measuring the
+    // file repo while backing up the database would guard the wrong number.
     const maxBytes = limitRow?.value?.maxBytes;
     if (maxBytes) {
-      const current = await repoSizeBytes(FILES_BACKUP_ROOT);
-      if (current > maxBytes) {
-        await gcRepo(FILES_BACKUP_ROOT);
-        const afterGc = await repoSizeBytes(FILES_BACKUP_ROOT);
-        if (afterGc > maxBytes) { log.warn({ afterGc, maxBytes }, 'sweeper: file backup repo over its size limit even after gc — skipping today\'s snapshot'); return false; }
+      const roots = kinds.map((k) => (k === 'db' ? DB_BACKUP_ROOT : FILES_BACKUP_ROOT));
+      const sizes = await Promise.all(roots.map(repoSizeBytes));
+      if (sizes.reduce((a, b) => a + b, 0) > maxBytes) {
+        await Promise.all(roots.map(gcRepo));
+        const afterSizes = await Promise.all(roots.map(repoSizeBytes));
+        const afterGc = afterSizes.reduce((a, b) => a + b, 0);
+        if (afterGc > maxBytes) { log.warn({ afterGc, maxBytes }, 'sweeper: backup repos over their size limit even after gc — skipping today\'s snapshot'); return false; }
       }
     }
-    await snapshotTree(FILES_BACKUP_ROOT, FILES_ROOT, 'daily snapshot');
+    // Only when files are in the selection: refreshing the tree is what makes the snapshot
+    // current, and it is pointless work when only the database was asked for.
+    if (kinds.includes('files')) await snapshotTree(FILES_BACKUP_ROOT, FILES_ROOT, 'daily snapshot');
     // Freeze today's history into a keepable artefact, then rotate. Doing this here and not
     // only behind the admin button is the difference between a retention policy and a
     // suggestion: nobody presses a button every day, and the day they would have is the day
     // the box is already on fire.
     const keep = limitRow?.value?.keep ?? 10;
-    await createSnapshot('files', { by: 'sweeper', note: 'daily snapshot', sign: (bytes) => signBytes(bytes, p) })
-      .then(() => pruneSnapshots(keep))
+    for (const kind of kinds) {
+      // Per kind, and each failure is its own: 'db' throwing because nothing has ever been
+      // written to the database backup repo (a real state on a fresh box) must not cost the
+      // file snapshot that succeeded a line earlier.
+      await createSnapshot(kind, { by: 'sweeper', note: 'automatic snapshot', sign: (bytes) => signBytes(bytes, p), dir })
+        .catch((e) => log.warn({ kind, e: String(e?.message || e) }, 'sweeper: snapshot archive failed (history still committed)'));
+    }
+    await pruneSnapshots(keep, allDirs)
       .then((removed) => { if (removed.length) log.info({ removed: removed.length }, 'sweeper: rotated old snapshots'); })
-      // A snapshot that cannot be written must not lose the day's history commit, which is
-      // already safely in the repo above.
-      .catch((e) => log.warn({ e: String(e?.message || e) }, 'sweeper: snapshot archive failed (history still committed)'));
+      .catch((e) => log.warn({ e: String(e?.message || e) }, 'sweeper: rotation failed'));
     await p.adminSetting.upsert({ where: { key }, create: { key, value: { at: new Date().toISOString() } }, update: { value: { at: new Date().toISOString() } } });
     return true;
   } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: daily file backup failed'); return false; }
