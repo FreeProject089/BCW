@@ -21,6 +21,7 @@ import { pollKofi } from './features/kofi.mjs';
 import { pollPayments } from './features/payments.mjs';
 import { pollDMs } from './features/dm.mjs';
 import { pollGiveaways } from './features/giveaways.mjs';
+import { pollRolePanels } from './features/rolepanel.mjs';
 import { pollLinks } from './features/links.mjs';
 import { temp, modStats } from './store.mjs';
 
@@ -54,7 +55,20 @@ function buildClient() {
       // The servers the bot is in — id + name + icon + member count — so the
       // dashboard renders a real bot-style server picker and can target a specific
       // server for per-server config.
-      guildList: [...c.guilds.cache.values()].slice(0, 200).map((g) => ({ id: g.id, name: String(g.name || '').slice(0, 120), icon: g.iconURL?.({ size: 64 }) || null, members: g.memberCount ?? null })),
+      // `roles` rides along so the dashboard can offer a role PICKER instead of a box to
+      // paste a snowflake into. @everyone and managed roles (a bot's or a boost's own role)
+      // are dropped: neither can be handed out, so offering them is offering a mistake.
+      // Position is kept because it is the only way the dashboard can warn that a role sits
+      // above the bot's own and therefore cannot be assigned.
+      guildList: [...c.guilds.cache.values()].slice(0, 200).map((g) => ({
+        id: g.id, name: String(g.name || '').slice(0, 120), icon: g.iconURL?.({ size: 64 }) || null, members: g.memberCount ?? null,
+        botTop: g.members.me?.roles?.highest?.position ?? null,
+        roles: [...g.roles.cache.values()]
+          .filter((r) => r.id !== g.id && !r.managed)
+          .sort((a, b) => b.position - a.position)
+          .slice(0, 100)
+          .map((r) => ({ id: r.id, name: String(r.name || '').slice(0, 100), color: r.hexColor || null, position: r.position })),
+      })),
       ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats }, logs: recentLogs(60),
     });
     beat();
@@ -88,6 +102,10 @@ function buildClient() {
     // Giveaways: post new ones + draw due ones (30s).
     pollGiveaways(c).catch(() => {});
     timers.push(setInterval(() => pollGiveaways(c).catch(() => {}), 30_000));
+    // Panels only move when an admin edits one, so a 60s cadence is plenty; a click on
+    // an already-posted panel is answered by the interaction handler, not by this.
+    pollRolePanels(c).catch(() => {});
+    timers.push(setInterval(() => pollRolePanels(c).catch(() => {}), 60_000));
     // Link buffer: refresh roles for accounts freshly linked via website Discord sign-in (30s).
     pollLinks(c).catch(() => {});
     timers.push(setInterval(() => pollLinks(c).catch(() => {}), 30_000));

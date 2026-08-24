@@ -5,6 +5,7 @@ import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
 import { checkGating } from './features/gating.mjs';
 import { handleGiveawayButton } from './features/giveaways.mjs';
+import { handleRolePanelInteraction } from './features/rolepanel.mjs';
 
 // Every bot response is an embed (brand-colored card) rather than bare text —
 // consistent look across alerts/blog/tips/commands. Shared with panel.mjs.
@@ -53,6 +54,10 @@ export async function handleInteraction(i) {
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
+  // Before the voice panel's catch-all, which claims every remaining component interaction.
+  // It returns false when the custom id is not one of its own, so this stays a filter and
+  // not a fork somebody has to keep in sync.
+  if (await handleRolePanelInteraction(i)) return;
   if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
 }
 

@@ -62,11 +62,44 @@ const DEFAULT_BOT_CONFIG = {
   // (Payment rows + bot.refundEvents).
   payments: { enabled: false, channelId: '', refundChannelId: '', channelIds: [], refundChannelIds: [] },
   limits: { maxTempChannels: 50, storageMB: 200 },
+  // Self-serve role panels — a rules post, or a "pick your pings" post, with the roles
+  // attached to it as buttons or as a dropdown. Each entry:
+  //   { id, channelId, title, body, asEmbed, color, mode: 'buttons'|'dropdown',
+  //     multi, roles: [{ roleId, label, emoji, description, style }] }
+  // The DEFINITION lives here and only an admin writes it. What the bot learns by posting
+  // (message id, what it last rendered) lives in a separate `bot.rolePanelState` key,
+  // because this object round-trips through the dashboard's save and anything the bot
+  // wrote into it would be clobbered by the next unrelated edit.
+  rolePanels: [],
   // Per-server overrides: guilds[guildId] = { moderation?, welcome?, joinToCreate?,
   // gating? }. A feature present here REPLACES the top-level default for that guild;
   // absent → the top-level config applies (so single-server setups need no changes).
   guilds: {},
 };
+
+/**
+ * What a role panel currently looks like, as one short string.
+ *
+ * The bot re-posts when this changes, which means there is no Publish button to press and
+ * no publishedAt to keep in sync: editing the panel in the dashboard IS publishing it, and
+ * an edit that changes nothing visible re-posts nothing. Same trick as the legal-document
+ * fingerprints, for the same reason — a version somebody has to remember to bump is a
+ * version that will be wrong.
+ *
+ * Deliberately covers only what a reader SEES. channelId is not in it: moving a panel to
+ * another channel is handled by the bot (it posts a new message there), not by pretending
+ * the content changed.
+ */
+function rolePanelHash(panel) {
+  const shape = JSON.stringify({
+    t: panel.title || '', b: panel.body || '', e: !!panel.asEmbed, c: panel.color || '',
+    m: panel.mode || 'buttons', u: !!panel.multi,
+    r: (panel.roles || []).map((r) => [r.roleId, r.label, r.emoji || '', r.description || '', r.style || '']),
+  });
+  let h = 0;
+  for (let i = 0; i < shape.length; i++) { h = ((h << 5) - h + shape.charCodeAt(i)) | 0; }
+  return (h >>> 0).toString(36);
+}
 
 async function getBotConfig(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'bot.config' } });
@@ -236,6 +269,46 @@ export default async function botRoutes(app) {
     // here; the fix is to keep the field out of the object that round-trips.
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.restart' } });
     return { config: await getBotConfig(p), restartAt: row?.value?.at || null };
+  });
+
+  /**
+   * The role panels that need posting or editing.
+   *
+   * The bot asks; the API decides. A panel is due when the fingerprint of what it should
+   * look like differs from the fingerprint of what was last posted — which covers "never
+   * posted" (no state at all) without a separate case.
+   */
+  app.get('/bot/rolepanels', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const cfg = await getBotConfig(p);
+    const stateRow = await p.adminSetting.findUnique({ where: { key: 'bot.rolePanelState' } });
+    const state = stateRow?.value || {};
+    const panels = (cfg.rolePanels || []).filter((x) => x && x.id && x.channelId);
+    return {
+      // Every panel, so the bot can answer a button press on an OLD message too — a member
+      // clicking a panel from last month must still get their role.
+      panels: panels.map((x) => ({ ...x, hash: rolePanelHash(x), state: state[x.id] || null })),
+      due: panels.filter((x) => {
+        const st = state[x.id];
+        return !st || st.hash !== rolePanelHash(x) || st.channelId !== x.channelId;
+      }).map((x) => x.id),
+    };
+  });
+
+  app.post('/bot/rolepanels/:id/posted', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      messageId: z.string().max(40),
+      channelId: z.string().max(40),
+      hash: z.string().max(40),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.rolePanelState' } });
+    const value = { ...(row?.value || {}), [req.params.id]: { ...b.data, at: new Date().toISOString() } };
+    await p.adminSetting.upsert({ where: { key: 'bot.rolePanelState' }, create: { key: 'bot.rolePanelState', value }, update: { value } });
+    return { ok: true };
   });
 
   /**
@@ -710,7 +783,18 @@ export default async function botRoutes(app) {
       uptimeSec: z.number().optional(), guilds: z.number().optional(), users: z.number().optional(), tempChannels: z.number().optional(), version: z.string().optional(), online: z.boolean().optional(), error: z.string().max(300).optional(),
       // The servers the bot is currently in (id + name) — lets the admin pick a
       // target server when configuring per-server blog routes.
-      guildList: z.array(z.object({ id: z.string().max(32), name: z.string().max(120), icon: z.string().max(400).nullable().optional(), members: z.number().nullable().optional() })).max(200).optional(),
+      // Every field must be declared: this schema strips unknown keys rather than
+      // rejecting them, so a role list the bot sends and the schema does not name would
+      // vanish here without a single error anywhere.
+      guildList: z.array(z.object({
+        id: z.string().max(32), name: z.string().max(120),
+        icon: z.string().max(400).nullable().optional(), members: z.number().nullable().optional(),
+        botTop: z.number().nullable().optional(),
+        roles: z.array(z.object({
+          id: z.string().max(32), name: z.string().max(100),
+          color: z.string().max(16).nullable().optional(), position: z.number().optional(),
+        })).max(100).optional(),
+      })).max(200).optional(),
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
       logs: z.array(z.object({ t: z.number(), level: z.string().max(10), msg: z.string().max(500) })).max(200).optional(), // recent bot console output → live logs tab

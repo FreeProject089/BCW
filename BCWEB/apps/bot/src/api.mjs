@@ -28,6 +28,10 @@ export const api = {
   heartbeat: (data) => call('POST', '/bot/heartbeat', data).catch(() => {}),
   // Report a failed connection (surfaced in the admin dashboard so the cause is visible).
   reportError: (error) => call('POST', '/bot/heartbeat', { online: false, error }).catch(() => {}),
+  // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
+  // message must still work), `due` names the ones whose rendered form has changed.
+  rolePanels: () => call('GET', '/bot/rolepanels').catch(() => ({ panels: [], due: [] })),
+  rolePanelPosted: (id, body) => call('POST', `/bot/rolepanels/${id}/posted`, body).catch(() => {}),
   // Blog announcements (multi-route): recent published posts (each tagged with its
   // source key) + each channel's already-announced set, so the bot can post the
   // right posts to the right channels. Marking done is per channel ({channelId,ids}).

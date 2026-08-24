@@ -9466,6 +9466,137 @@ function MultiChannelInput({ value, onChange, placeholder }) {
   );
 }
 
+/**
+ * Self-serve role panels: a rules post, or a "pick your pings" post, with roles attached.
+ *
+ * There is no Publish button, and that is the design rather than an omission. The bot
+ * re-posts a panel when the fingerprint of what it should look like changes, so saving IS
+ * publishing — which removes the state everybody gets wrong, the panel that is saved but
+ * not live. The hint under the header says so, because a missing button that is really a
+ * missing STEP is the kind of thing people wait on forever.
+ */
+function RolePanels({ panels, onChange, guildList }) {
+  const { t } = useI18n();
+  const [openId, setOpenId] = useState(null);
+  const set = (i, patch) => onChange(panels.map((p, k) => (k === i ? { ...p, ...patch } : p)));
+  const setRole = (i, ri, patch) => set(i, { roles: panels[i].roles.map((x, k) => (k === ri ? { ...x, ...patch } : x)) });
+  const add = () => {
+    // randomUUID, not an index or the title: this id is how the bot remembers which posted
+    // message belongs to this panel, so reordering or renaming must not change it.
+    const id = (crypto.randomUUID?.() || String(Date.now()));
+    onChange([...panels, { id, channelId: '', title: '', body: '', asEmbed: true, color: '#f59e0b', mode: 'buttons', multi: true, roles: [] }]);
+    setOpenId(id);
+  };
+  // Roles from every server the bot is in, deduplicated. A panel names a channel and the
+  // server follows from it, so making the admin pick a server first would be asking for
+  // something we do not need.
+  const allRoles = [];
+  const seen = new Set();
+  for (const gg of guildList) {
+    for (const r of (gg.roles || [])) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      allRoles.push({ ...r, aboveBot: gg.botTop != null && r.position >= gg.botTop });
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-[var(--faint)]">
+        {t('db.rp.hint', 'Saving publishes: the bot posts each panel and edits it in place whenever you change the wording or the roles. There is no separate publish step.')}
+      </p>
+      {panels.length === 0 && <div className="text-xs text-[var(--muted)]">{t('db.rp.none', 'No panels yet.')}</div>}
+      {panels.map((p, i) => {
+        const open = openId === p.id;
+        return (
+          <div key={p.id} className="rounded-lg border border-[var(--line)] p-2.5">
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setOpenId(open ? null : p.id)} className="flex-1 min-w-0 text-left text-sm font-medium truncate hover:text-[var(--primary-2)]">
+                {p.title || t('db.rp.untitled', '(untitled panel)')}
+                <span className="ml-2 text-[11px] font-normal text-[var(--faint)]">
+                  {(p.roles || []).length} {t('db.rp.roles', 'roles')} · {p.mode === 'dropdown' ? t('db.rp.dropdown', 'dropdown') : t('db.rp.buttons', 'buttons')}
+                </span>
+              </button>
+              <button type="button" onClick={() => onChange(panels.filter((_, k) => k !== i))} className="p-1.5 rounded-lg text-error hover:bg-error-bg" title={t('common.delete', 'Delete')}><Trash2 size={13} /></button>
+            </div>
+            {open && (
+              <div className="mt-2.5 space-y-2.5">
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <Field label={t('db.rp.channel', 'Channel id')}><Input value={p.channelId || ''} onChange={(e) => set(i, { channelId: e.target.value })} placeholder={t('db.f.chanid', 'Channel ID')} /></Field>
+                  <Field label={t('db.rp.title', 'Title')}><Input value={p.title || ''} onChange={(e) => set(i, { title: e.target.value })} maxLength={256} /></Field>
+                </div>
+                <Field label={t('db.rp.body', 'Message')} hint={t('db.rp.body.h', 'Discord markdown. The rules themselves go here.')}>
+                  <Textarea rows={5} value={p.body || ''} onChange={(e) => set(i, { body: e.target.value })} maxLength={3800} />
+                </Field>
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field label={t('db.rp.style', 'Presentation')}>
+                    <Select value={p.asEmbed ? 'embed' : 'plain'} onChange={(e) => set(i, { asEmbed: e.target.value === 'embed' })}>
+                      <option value="embed">{t('db.rp.embed', 'Embed')}</option>
+                      <option value="plain">{t('db.rp.plain', 'Plain message')}</option>
+                    </Select>
+                  </Field>
+                  {p.asEmbed && (
+                    <Field label={t('db.rp.color', 'Colour')}>
+                      <Input type="color" value={p.color || '#f59e0b'} onChange={(e) => set(i, { color: e.target.value })} className="w-16 !p-1" />
+                    </Field>
+                  )}
+                  <Field label={t('db.rp.mode', 'Roles as')}>
+                    <Select value={p.mode || 'buttons'} onChange={(e) => set(i, { mode: e.target.value })}>
+                      <option value="buttons">{t('db.rp.buttons', 'buttons')}</option>
+                      <option value="dropdown">{t('db.rp.dropdown', 'dropdown')}</option>
+                    </Select>
+                  </Field>
+                  {p.mode === 'dropdown' && (
+                    <label className="flex items-center gap-1.5 text-xs pb-2">
+                      <input type="checkbox" checked={p.multi !== false} onChange={(e) => set(i, { multi: e.target.checked })} />
+                      {t('db.rp.multi', 'Allow several at once')}
+                    </label>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="text-xs font-medium">{t('db.rp.rolelist', 'Roles offered')}</div>
+                  {(p.roles || []).map((r, ri) => {
+                    const known = allRoles.find((x) => x.id === r.roleId);
+                    return (
+                      <div key={ri} className="flex flex-wrap items-center gap-1.5">
+                        {/* A picker, not a box to paste a snowflake into — the bot reports its
+                            roles on every heartbeat. The last option keeps a role the bot
+                            cannot see yet (just created, or the bot is offline) selectable. */}
+                        <Select value={r.roleId || ''} onChange={(e) => setRole(i, ri, { roleId: e.target.value, label: r.label || (allRoles.find((a) => a.id === e.target.value)?.name || '') })} className="min-w-0 flex-1">
+                          <option value="">{t('db.rp.pickrole', 'Pick a role…')}</option>
+                          {allRoles.map((a) => <option key={a.id} value={a.id}>{a.name}{a.aboveBot ? ' ⚠' : ''}</option>)}
+                          {r.roleId && !known && <option value={r.roleId}>{r.roleId}</option>}
+                        </Select>
+                        <Input value={r.label || ''} onChange={(e) => setRole(i, ri, { label: e.target.value })} placeholder={t('db.rp.label', 'Button label')} className="w-36" maxLength={80} />
+                        <Input value={r.emoji || ''} onChange={(e) => setRole(i, ri, { emoji: e.target.value })} placeholder={t('db.rp.emoji', 'Emoji')} className="w-20" maxLength={40} />
+                        {p.mode === 'buttons' ? (
+                          <Select value={r.style || 'secondary'} onChange={(e) => setRole(i, ri, { style: e.target.value })} className="w-28">
+                            {['secondary', 'primary', 'success', 'danger'].map((v) => <option key={v} value={v}>{v}</option>)}
+                          </Select>
+                        ) : (
+                          <Input value={r.description || ''} onChange={(e) => setRole(i, ri, { description: e.target.value })} placeholder={t('db.rp.desc', 'Description')} className="w-40" maxLength={100} />
+                        )}
+                        <button type="button" onClick={() => set(i, { roles: p.roles.filter((_, k) => k !== ri) })} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={12} /></button>
+                        {/* The one failure that looks like a bug and is not: a role above the
+                            bot's own cannot be assigned by it, whatever its permissions say. */}
+                        {known?.aboveBot && <span className="w-full text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.rp.above', 'This role sits above the bot in Server Settings → Roles, so the bot cannot assign it.')}</span>}
+                      </div>
+                    );
+                  })}
+                  <Button size="sm" variant="ghost" onClick={() => set(i, { roles: [...(p.roles || []), { roleId: '', label: '', style: 'secondary' }] })}><Plus size={12} /> {t('db.rp.addrole', 'Add a role')}</Button>
+                  {(p.roles || []).length > 25 && <div className="text-[11px] text-warning">{t('db.rp.cap', 'Discord shows at most 25 — the rest are not posted.')}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <Button size="sm" variant="ghost" onClick={add}><Plus size={13} /> {t('db.rp.add', 'Add a panel')}</Button>
+    </div>
+  );
+}
+
 function BlogRoutes({ routes, onChange, guildList }) {
   const { t } = useI18n();
   const set = (i, patch) => onChange(routes.map((r, k) => (k === i ? { ...r, ...patch } : r)));
@@ -10087,6 +10218,18 @@ function AdminBot() {
       <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
         <ModuleCard icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
+        </ModuleCard>
+
+        {/* No enable toggle of its own: an empty panel list already means "off", and a
+            second switch on top of that is a way to have panels configured, saved, and
+            silently not live. */}
+        {/* `enabled` is deliberately NOT the panel count. ModuleCard hides its children when
+            enabled === false, so a card reporting "0 panels" would refuse to show the form
+            for adding the first one — the state it is most needed in. It has no switch
+            either: an empty list already means off, and a second switch on top of that is a
+            way to have panels configured, saved, and silently not live. */}
+        <ModuleCard icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
+          <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
         </ModuleCard>
 
         <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
