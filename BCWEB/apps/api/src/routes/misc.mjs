@@ -3,6 +3,7 @@ import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, n
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
+import { recordErasure, emailHash as erasureEmailHash } from '../lib/erasure-log.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
@@ -1780,6 +1781,21 @@ export default async function miscRoutes(app) {
     // depends on which branch it took is one nobody can reason about.
     const shredded = await shredUser(p, u.id).catch(() => false);
 
+    // Recorded OUTSIDE the database, beside the backups.
+    //
+    // A dump taken before today brings this person back when it is restored — and brings
+    // back a database with no record that the erasure happened, because the record was
+    // written after the dump. A log stored only in the database cannot survive the one
+    // event it exists for. `replay-erasures.mjs` reads this file after a restore.
+    //
+    // Its failure is REPORTED rather than swallowed: the erasure itself succeeded, and
+    // saying so while quietly failing to record it is what makes a later restore wrong.
+    const logged = await recordErasure({
+      userId: u.id,
+      emailHash: erasureEmailHash(u.email),
+      outcome, shredded, by: req.user.uid,
+    });
+
     // The cached copy still holds the old address, and it is what the next request reads.
     clearUserCache(u.id);
     clearAccountLockCache(u.id);
@@ -1787,11 +1803,11 @@ export default async function miscRoutes(app) {
     // The ORIGINAL address, recorded before it was replaced — an audit line reading
     // `closed+<id>@account.invalid` names nobody and is the one line that has to.
     await logAudit(p, req.user.uid, 'user.erased',
-      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account ${outcome}, backups ${shredded ? 'shredded' : 'had no key'})`, req.ip).catch(() => {});
+      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account ${outcome}, backups ${shredded ? 'shredded' : 'had no key'}${logged.ok ? '' : ', ERASURE LOG WRITE FAILED: ' + logged.error})`, req.ip).catch(() => {});
     // `shredded` is reported, not assumed: "had no key" means this account never had a
     // backup encrypted for it, which is a different fact from "the key was destroyed" and
     // the one somebody answering a regulator needs to be able to tell apart.
-    return { ok: true, ...done, outcome, heldBy, shredded };
+    return { ok: true, ...done, outcome, heldBy, shredded, logged: logged.ok, logError: logged.ok ? undefined : logged.error };
   });
 
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
