@@ -6,7 +6,7 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-python';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import {
+import { GraduationCap,
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
   Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle,
   Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2,
@@ -102,10 +102,10 @@ export function useElementWidth(fallback = 760) {
   }, []);
   return [ref, w];
 }
-export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package };
-export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack' };
+export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package, TUTORIAL: GraduationCap };
+export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack', TUTORIAL: 'Tutorial' };
 /** Every kind the CatalogKind enum holds, in the order screens show them. */
-export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK'];
+export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL'];
 
 /**
  * Which kinds each project publishes — and, by its absence, which projects publish nothing.
