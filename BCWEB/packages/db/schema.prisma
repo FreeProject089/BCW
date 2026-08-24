@@ -3226,6 +3226,15 @@ model BotAnnouncement {
   /// not are read by the same person at very different speeds.
   urgent    Boolean @default(false)
 
+  /// How it is presented: embed · text · both. Chosen per announcement rather than fixed in
+  /// the bot — a card and somebody talking are different registers, and an incident notice
+  /// and a promotion do not want the same one.
+  format    String  @default("embed")
+  /// Optional accent colour (hex) and banner image. NULL keeps the per-kind colour the bot
+  /// already picks, so an existing row renders exactly as it did.
+  color     String?
+  image     String?
+
   status    String    @default("pending") // pending · sent · failed
   error     String?
   createdAt DateTime  @default(now())

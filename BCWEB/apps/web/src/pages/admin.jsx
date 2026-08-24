@@ -9399,6 +9399,134 @@ const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['comm
  * It reports the OUTCOME, not the submission. "Queued" is what the old failures all looked
  * like too.
  */
+/**
+ * Write an announcement and send it down the real path.
+ *
+ * The dashboard could ROUTE announcements and test a route, but there was nowhere to write
+ * one — every real announcement was raised from elsewhere in the code. So this is not an
+ * extra option on an existing screen, it is the screen that was missing.
+ *
+ * It shares the queue, the routing and the failure reporting with every automatic
+ * announcement, which is the point: a hand-written notice that took a different path would
+ * be a second thing to keep working.
+ */
+function AnnounceComposer() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const [f, setF] = useState({ kind: 'custom', title: '', body: '', url: '', channelId: '', urgent: false, format: 'embed', color: '', image: '' });
+  const [busy, setBusy] = useState(false);
+  const hist = useAsync(() => api.get('/admin/bot/announcements'), []);
+  const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
+
+  const send = async () => {
+    if (!f.title.trim()) return toast.error(t('db.ac.needtitle', 'A title is required.'));
+    // Not behind the undo window: an announcement is read by people the moment it lands, and
+    // a six-second "maybe" is worse than a plain yes for something that cannot be recalled
+    // from anybody's notifications.
+    if (!await dialog.confirm({
+      title: t('db.ac.confirm.t', 'Send this announcement?'),
+      message: f.urgent
+        ? t('db.ac.confirm.urgent', 'It is marked URGENT, so the configured role is pinged. Discord notifications cannot be recalled.')
+        : t('db.ac.confirm.m', 'It goes to the channel configured for this kind. Discord notifications cannot be recalled.'),
+      okLabel: t('db.ac.send', 'Send'),
+      danger: f.urgent,
+    })) return;
+    setBusy(true);
+    try {
+      // Empty strings are OMITTED rather than sent: the API validates `url` as a URL and
+      // `color` as a hex triple, so an empty box would fail the whole request for a field
+      // the author deliberately left blank.
+      const body = { kind: f.kind, title: f.title.trim(), format: f.format, urgent: f.urgent };
+      if (f.body.trim()) body.body = f.body.trim();
+      if (f.url.trim()) body.url = f.url.trim();
+      if (f.channelId.trim()) body.channelId = f.channelId.trim();
+      if (f.color) body.color = f.color;
+      if (f.image.trim()) body.image = f.image.trim();
+      await api.post('/admin/bot/announce', body);
+      toast.success(t('db.ac.queued', 'Queued — the bot posts it within ~20 seconds. Watch the list below for the outcome.'));
+      setF((x) => ({ ...x, title: '', body: '', url: '', image: '' }));
+      setTimeout(() => hist.reload(), 3000);
+    } catch (e) {
+      toast.error(e?.data?.error === 'invalid_input' ? t('db.ac.invalid', 'Check the link and the image address — both must be full URLs.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const KINDS = [
+    ['custom', t('db.ac.k.custom', 'Announcement')],
+    ['event', t('db.ac.k.event', 'Event')],
+    ['promo', t('db.ac.k.promo', 'Promotion')],
+    ['incident', t('db.ac.k.incident', 'Incident')],
+  ];
+
+  return (
+    <>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <Field label={t('db.ac.kind', 'Kind')} hint={t('db.ac.kind.h', 'Decides the channel it routes to and its default colour.')}>
+          <Select value={f.kind} onChange={(e) => set('kind', e.target.value)}>
+            {KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </Select>
+        </Field>
+        <Field label={t('db.ac.channel', 'Channel override')} hint={t('db.ac.channel.h', 'Empty uses the channel configured for this kind.')}>
+          <Input value={f.channelId} onChange={(e) => set('channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+        </Field>
+      </div>
+      <Field label={t('db.ac.title', 'Title')}><Input value={f.title} onChange={(e) => set('title', e.target.value)} maxLength={200} /></Field>
+      <Field label={t('db.ac.body', 'Message')}><Textarea rows={4} value={f.body} onChange={(e) => set('body', e.target.value)} maxLength={1500} /></Field>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <Field label={t('db.ac.url', 'Link')} hint={t('db.ac.url.h', 'Optional. Makes the title clickable.')}>
+          <Input value={f.url} onChange={(e) => set('url', e.target.value)} placeholder="https://…" />
+        </Field>
+        <Field label={t('db.ac.image', 'Banner image')} hint={t('db.ac.image.h', 'Optional, embed only. A full https:// address.')}>
+          <Input value={f.image} onChange={(e) => set('image', e.target.value)} placeholder="https://…" />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={t('db.ac.format', 'Send as')} hint={t('db.ac.format.h', 'A card, somebody talking, or the mention in the message and the detail in a card.')}>
+          <Select value={f.format} onChange={(e) => set('format', e.target.value)}>
+            <option value="embed">{t('db.ac.f.embed', 'Embed')}</option>
+            <option value="text">{t('db.ac.f.text', 'Plain message')}</option>
+            <option value="both">{t('db.ac.f.both', 'Both')}</option>
+          </Select>
+        </Field>
+        {f.format !== 'text' && (
+          <Field label={t('db.ac.color', 'Colour')} hint={f.urgent ? t('db.ac.color.urgent', 'Ignored while urgent — urgent is always red.') : t('db.ac.color.h', 'Empty uses the colour for this kind.')}>
+            <div className="flex items-center gap-1.5">
+              <Input type="color" value={f.color || '#64748b'} onChange={(e) => set('color', e.target.value)} className="w-14 !p-1" disabled={f.urgent} />
+              {f.color && !f.urgent && <button type="button" onClick={() => set('color', '')} className="text-[11px] text-[var(--muted)] hover:text-[var(--text)]">{t('common.reset', 'Reset')}</button>}
+            </div>
+          </Field>
+        )}
+        <label className="flex items-center gap-1.5 text-xs pb-2">
+          <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
+          {t('db.ac.urgent', 'Urgent — ping the role, force red')}
+        </label>
+        <Button variant="primary" onClick={send} disabled={busy} className="ml-auto">
+          {busy ? <Spinner /> : <Send size={14} />} {t('db.ac.send', 'Send')}
+        </Button>
+      </div>
+
+      {/* What became of the last few. "Queued" is what every past failure looked like too,
+          so the list shows the OUTCOME and the reason, not the submission. */}
+      <div className="pt-2 border-t border-[var(--line)]">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-medium">{t('db.ac.recent', 'Recent announcements')}</span>
+          <button type="button" onClick={hist.reload} className="text-[11px] text-[var(--muted)] hover:text-[var(--text)]"><RefreshCw size={11} className="inline" /> {t('common.refresh', 'Refresh')}</button>
+        </div>
+        {(hist.data?.announcements || []).slice(0, 8).map((a) => (
+          <div key={a.id} className="flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0">
+            <Badge tone={a.status === 'sent' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
+            <span className="flex-1 min-w-0 truncate">{a.title}</span>
+            <span className="text-[var(--faint)] shrink-0">{a.kind}{a.format && a.format !== 'embed' ? ` · ${a.format}` : ''}</span>
+            {a.error && <span className="text-error truncate max-w-[40%]" title={a.error}>{a.error}</span>}
+          </div>
+        ))}
+        {!(hist.data?.announcements || []).length && <div className="text-[11px] text-[var(--muted)]">{t('db.ac.norecent', 'Nothing sent yet.')}</div>}
+      </div>
+    </>
+  );
+}
+
 function RouteTest({ kind, label, t }) {
   const [state, setState] = useState(null);   // null | 'sending' | {ok, error}
   const toast = useToast();
@@ -10247,6 +10375,12 @@ function AdminBot() {
         {/* Where each kind of announcement lands. Empty means the general channel, which is
             what every existing install already does — so this whole card changes nothing until
             somebody fills a box in. */}
+        <ModuleCard icon={Send} title={t('db.mod.announce', 'Write an announcement')}
+          desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
+          onToggle={null}>
+          <AnnounceComposer />
+        </ModuleCard>
+
         <ModuleCard icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
           desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
           enabled onToggle={null}>

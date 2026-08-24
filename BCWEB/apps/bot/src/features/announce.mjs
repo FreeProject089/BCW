@@ -59,19 +59,40 @@ export function startAnnouncer(client) {
                     continue;
                 }
                 const k = KIND[a.kind] || KIND.custom;
+                const heading = `${a.urgent ? '⚠ URGENT · ' : ''}${k.label} — ${a.title}`.slice(0, 250);
+                // An explicit colour wins over the per-kind one, but URGENT wins over both:
+                // a red-alert badge that an author accidentally made mint green is worse
+                // than no colour choice at all.
+                const colour = a.urgent ? 0xdc2626
+                    : (a.color ? parseInt(a.color.slice(1), 16) : k.colour);
                 const embed = {
-                    color: a.urgent ? 0xdc2626 : k.colour,
+                    color: colour,
                     // The urgency is in the title, not only in the colour.
-                    title: `${a.urgent ? '⚠ URGENT · ' : ''}${k.label} — ${a.title}`.slice(0, 250),
+                    title: heading,
                     ...(a.body ? { description: a.body.slice(0, 1500) } : {}),
                     ...(a.url ? { url: a.url } : {}),
+                    ...(a.image ? { image: { url: a.image } } : {}),
                     timestamp: new Date(a.createdAt).toISOString(),
                 };
-                const content = roleId ? `<@&${roleId}>` : undefined;
+                const mention = roleId ? `<@&${roleId}>` : '';
+                // Three registers, chosen per announcement:
+                //   embed  a card. The default, and what every row before this rendered as.
+                //   text   somebody talking. An incident read at 3am does not want a card.
+                //   both   the mention and the headline in the message, the detail in the
+                //          card — the shape a ping actually wants, because a mention above
+                //          a bare embed is easy to scroll past.
+                const format = a.format || 'embed';
+                const asText = [mention, `**${heading}**`, a.body || '', a.url || '']
+                    .filter(Boolean).join('\n').slice(0, 1900);
+                const payload = format === 'text'
+                    ? { content: asText, embeds: [] }
+                    : format === 'both'
+                        ? { content: [mention, `**${heading}**`].filter(Boolean).join('\n').slice(0, 1900), embeds: [embed] }
+                        : { ...(mention ? { content: mention } : {}), embeds: [embed] };
                 try {
                     await channel.send({
-                        ...(content ? { content, allowedMentions: { roles: [roleId] } } : {}),
-                        embeds: [embed],
+                        ...payload,
+                        ...(roleId ? { allowedMentions: { roles: [roleId] } } : {}),
                     });
                     await api.announcementResult(a.id, true);
                 } catch (e) {

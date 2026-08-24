@@ -1014,6 +1014,12 @@ export default async function botRoutes(app) {
       url: z.string().url().max(400).optional(),
       channelId: z.string().max(32).optional(),
       urgent: z.boolean().optional(),
+      // Named explicitly because this schema STRIPS unknown keys rather than rejecting
+      // them: a format the composer sends and the schema does not list would be dropped
+      // here, the row would save as an embed, and nothing anywhere would say why.
+      format: z.enum(['embed', 'text', 'both']).optional(),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      image: z.string().url().max(600).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
