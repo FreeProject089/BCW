@@ -322,7 +322,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
           </div>
           <div className="flex-1 min-w-0"><BlockFields block={b} onChange={(patch) => update(b.id, patch)} /></div>
           <div className="flex flex-col items-center gap-1 self-start pt-1">
-            <button type="button" className="text-[var(--faint)] hover:text-error" title="Delete" onClick={() => remove(b.id)}><Trash2 size={15} /></button>
+            <button type="button" className="text-[var(--faint)] hover:text-error" title={t('ve.delete', "Delete")} onClick={() => remove(b.id)}><Trash2 size={15} /></button>
             <div className="flex flex-col gap-0.5 mt-1">
               {[['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]].map(([a, Ico]) => (
                 <button key={a} type="button" title={`Align ${a}`} onClick={() => update(b.id, { align: b.align === a ? undefined : a })}
@@ -354,6 +354,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
 }
 
 function BlockFields({ block: b, onChange }) {
+  const { t } = useI18n();
   const ta = 'w-full bg-transparent border border-[var(--line)] rounded-lg p-2 text-sm outline-none focus:border-[var(--line-strong)] resize-y';
   const tag = (label) => <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1">{label}</div>;
   switch (b.type) {
@@ -362,39 +363,39 @@ function BlockFields({ block: b, onChange }) {
         <Select className="!w-auto !py-1.5 !text-sm" value={b.level} onChange={(e) => onChange({ level: Number(e.target.value) })}>
           <option value={2}>H2</option><option value={3}>H3</option>
         </Select>
-        <Input value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Heading" className="!py-1.5 !text-base !font-semibold" />
+        <Input value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.heading', "Heading")} className="!py-1.5 !text-base !font-semibold" />
       </div>
     );
-    case 'text': return <textarea className={ta} rows={3} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Write in markdown — **bold**, [links](url), `code`…" />;
-    case 'quote': return <><textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Quote…" /></>;
+    case 'text': return <textarea className={ta} rows={3} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.md', "Write in markdown \u2014 **bold**, [links](url), `code`\u2026")} />;
+    case 'quote': return <><textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.quote', "Quote\u2026")} /></>;
     case 'callout': return (
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
           <div><Select className="!w-auto !py-1.5 !text-sm" value={b.kind} onChange={(e) => onChange({ kind: e.target.value })}>{CALLOUT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</Select></div>
-          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Title" className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.ph.title', "Title")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
           <IconField value={b.icon} onChange={(v) => onChange({ icon: v })} />
-          <input type="color" value={b.color || '#7c3aed'} onChange={(e) => onChange({ color: e.target.value })} title="Custom colour" className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
+          <input type="color" value={b.color || '#7c3aed'} onChange={(e) => onChange({ color: e.target.value })} title={t('ve.customcolour', "Custom colour")} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
         </div>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Callout body (markdown)…" />
+        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.callout', "Callout body (markdown)\u2026")} />
       </div>
     );
     case 'card': return (
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
-          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Card title" className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.ph.cardtitle', "Card title")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
           <IconField value={b.icon} onChange={(v) => onChange({ icon: v })} />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Input value={b.href} onChange={(e) => onChange({ href: e.target.value })} placeholder="Link URL (optional)" className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
-          <Input value={b.image} onChange={(e) => onChange({ image: e.target.value })} placeholder="Image URL (optional)" className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+          <Input value={b.href} onChange={(e) => onChange({ href: e.target.value })} placeholder={t('ve.ph.linkurl', "Link URL (optional)")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+          <Input value={b.image} onChange={(e) => onChange({ image: e.target.value })} placeholder={t('ve.ph.imgurlopt', "Image URL (optional)")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
         </div>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Card description…" />
+        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.carddesc', "Card description\u2026")} />
       </div>
     );
     case 'image': return (
       <div className="flex flex-wrap gap-2">
-        <Input value={b.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="Image URL" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
-        <Input value={b.alt} onChange={(e) => onChange({ alt: e.target.value })} placeholder="Alt text" className="!py-1.5 !text-sm !w-40" />
+        <Input value={b.url} onChange={(e) => onChange({ url: e.target.value })} placeholder={t('ve.ph.imgurl', "Image URL")} className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+        <Input value={b.alt} onChange={(e) => onChange({ alt: e.target.value })} placeholder={t('ve.ph.alt', "Alt text")} className="!py-1.5 !text-sm !w-40" />
       </div>
     );
     case 'code': return (
@@ -405,8 +406,8 @@ function BlockFields({ block: b, onChange }) {
     );
     case 'collapsible': return (
       <div className="space-y-2">
-        <Input value={b.summary} onChange={(e) => onChange({ summary: e.target.value })} placeholder="Summary (click-to-expand label)" className="!py-1.5 !text-sm" />
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Hidden content (markdown)…" />
+        <Input value={b.summary} onChange={(e) => onChange({ summary: e.target.value })} placeholder={t('ve.ph.summary', "Summary (click-to-expand label)")} className="!py-1.5 !text-sm" />
+        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.hidden', "Hidden content (markdown)\u2026")} />
       </div>
     );
     case 'steps': {
@@ -415,22 +416,22 @@ function BlockFields({ block: b, onChange }) {
       return (
         <div className="space-y-2">
           <div className="flex flex-wrap gap-2">
-            <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Block title (optional)" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+            <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.ph.blocktitle', "Block title (optional)")} className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
             <select value={b.marker || '1'} onChange={(e) => onChange({ marker: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
               <option value="1">1, 2, 3</option><option value="a">A, B, C</option><option value="i">i, ii, iii</option><option value="dot">•</option>
             </select>
             <select value={b.orientation || 'vertical'} onChange={(e) => onChange({ orientation: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
               <option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>
             </select>
-            <input type="color" value={b.color || '#f97316'} onChange={(e) => onChange({ color: e.target.value })} title="Marker colour" className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
+            <input type="color" value={b.color || '#f97316'} onChange={(e) => onChange({ color: e.target.value })} title={t('ve.markercolour', "Marker colour")} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
           </div>
           {steps.map((st, i) => (
             <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
               <div className="flex gap-2">
                 <Input value={st.title} onChange={(e) => setStep(i, { title: e.target.value })} placeholder={`Step ${i + 1} title`} className="!py-1.5 !text-sm" />
-                <button type="button" className="btn btn-sm" title="Remove" onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
+                <button type="button" className="btn btn-sm" title={t('ve.remove', "Remove")} onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
               </div>
-              <textarea className={ta} rows={2} value={st.text} onChange={(e) => setStep(i, { text: e.target.value })} placeholder="Step body (markdown, callouts, code…)" />
+              <textarea className={ta} rows={2} value={st.text} onChange={(e) => setStep(i, { text: e.target.value })} placeholder={t('ve.ph.stepbody', "Step body (markdown, callouts, code\u2026)")} />
             </div>
           ))}
           <button type="button" className="btn btn-sm" onClick={() => onChange({ steps: [...steps, { title: '', text: '' }] })}>+ Step</button>
@@ -440,7 +441,7 @@ function BlockFields({ block: b, onChange }) {
     case 'roadmap': return (
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
-          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder="Roadmap title" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.ph.roadmap', "Roadmap title")} className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
           <select value={b.orientation || 'vertical'} onChange={(e) => onChange({ orientation: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
             <option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>
           </select>
@@ -451,8 +452,8 @@ function BlockFields({ block: b, onChange }) {
     );
     case 'columns': return (
       <div className="grid sm:grid-cols-2 gap-2">
-        <textarea className={ta} rows={3} value={b.left} onChange={(e) => onChange({ left: e.target.value })} placeholder="Left column (markdown)…" />
-        <textarea className={ta} rows={3} value={b.right} onChange={(e) => onChange({ right: e.target.value })} placeholder="Right column (markdown)…" />
+        <textarea className={ta} rows={3} value={b.left} onChange={(e) => onChange({ left: e.target.value })} placeholder={t('ve.ph.left', "Left column (markdown)\u2026")} />
+        <textarea className={ta} rows={3} value={b.right} onChange={(e) => onChange({ right: e.target.value })} placeholder={t('ve.ph.right', "Right column (markdown)\u2026")} />
       </div>
     );
     case 'align': return (
@@ -460,7 +461,7 @@ function BlockFields({ block: b, onChange }) {
         <select value={b.align || 'center'} onChange={(e) => onChange({ align: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
           <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
         </select>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder="Content (markdown)…" />
+        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.content', "Content (markdown)\u2026")} />
       </div>
     );
     case 'table': {
@@ -481,7 +482,7 @@ function BlockFields({ block: b, onChange }) {
                   <td key={ci}><input value={r[ci] ?? ''} onChange={(e) => setCell(ri, ci, e.target.value)} placeholder={ri === 0 ? 'Header' : ''}
                     className={`w-24 rounded-md border border-[var(--line)] bg-transparent px-1.5 py-1 text-sm outline-none focus:border-[var(--line-strong)] ${ri === 0 ? 'font-semibold' : ''}`} /></td>
                 ))}
-                <td><button type="button" onClick={() => delRow(ri)} title="Delete row" className="text-[var(--faint)] hover:text-error px-0.5"><Minus size={13} /></button></td>
+                <td><button type="button" onClick={() => delRow(ri)} title={t('ve.delrow', "Delete row")} className="text-[var(--faint)] hover:text-error px-0.5"><Minus size={13} /></button></td>
               </tr>
             ))}
           </tbody></table></div>
@@ -496,10 +497,10 @@ function BlockFields({ block: b, onChange }) {
     case 'file': return (
       <div className="space-y-2">
         {tag('File')}
-        <Input value={b.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="File name (e.g. pack.zip)" className="!py-1.5 !text-sm" />
+        <Input value={b.name} onChange={(e) => onChange({ name: e.target.value })} placeholder={t('ve.ph.filename', "File name (e.g. pack.zip)")} className="!py-1.5 !text-sm" />
         <div className="flex flex-wrap gap-2">
-          <Input value={b.href} onChange={(e) => onChange({ href: e.target.value })} placeholder="Download URL" className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
-          <Input value={b.size} onChange={(e) => onChange({ size: e.target.value })} placeholder="Size (e.g. 10 KB)" className="!py-1.5 !text-sm !w-32" />
+          <Input value={b.href} onChange={(e) => onChange({ href: e.target.value })} placeholder={t('ve.ph.dlurl', "Download URL")} className="!py-1.5 !text-sm flex-1 min-w-[140px]" />
+          <Input value={b.size} onChange={(e) => onChange({ size: e.target.value })} placeholder={t('ve.ph.size', "Size (e.g. 10 KB)")} className="!py-1.5 !text-sm !w-32" />
         </div>
       </div>
     );
@@ -515,7 +516,7 @@ function BlockFields({ block: b, onChange }) {
             {tags.map((tg, idx) => (
               <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] pl-1 pr-1.5 py-0.5"
                 style={{ color: tg.color || 'var(--primary)', background: tg.color ? `color-mix(in srgb, ${tg.color} 14%, transparent)` : undefined }}>
-                <input type="color" value={tg.color || '#7c3aed'} onChange={(e) => setTag(idx, { color: e.target.value })} title="Colour" className="w-4 h-4 rounded-full border-0 bg-transparent p-0 cursor-pointer" />
+                <input type="color" value={tg.color || '#7c3aed'} onChange={(e) => setTag(idx, { color: e.target.value })} title={t('ve.colour', "Colour")} className="w-4 h-4 rounded-full border-0 bg-transparent p-0 cursor-pointer" />
                 <input value={tg.text} onChange={(e) => setTag(idx, { text: e.target.value })} placeholder="Tag" className="bg-transparent border-0 outline-none text-xs font-semibold w-16" style={{ color: 'inherit' }} />
                 <button type="button" onClick={() => delTag(idx)} className="opacity-60 hover:opacity-100"><X size={11} /></button>
               </span>

@@ -15,6 +15,7 @@ import { useFetch, gb, DotDropdown, RepoStatusSelect, RepoCategorySelect, Status
 // picture behind it — which repo, which BCWEB account, and that owner's linked
 // BMM creator ids / Discord ids / Ko-fi donor status.
 function RepoIdentifyCard() {
+  const { t } = useI18n();
   const toast = useToast();
   const [fp, setFp] = useState('');
   const [res, setRes] = useState(null);
@@ -29,7 +30,7 @@ function RepoIdentifyCard() {
   };
   return (
     <Card className="p-4 mb-4">
-      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Fingerprint size={16} className="text-[var(--primary-2)]" /> Identify a repo by ID</div>
+      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Fingerprint size={16} className="text-[var(--primary-2)]" /> {t('radm.identify', "Identify a repo by ID")}</div>
       <p className="text-xs text-[var(--muted)] mb-3">Paste the <span className="font-mono">BCR-XXXX-XXXX</span> ID shown on a repo to resolve it to its owner and their linked identities (BMM creator ids, Discord, Ko-fi).</p>
       <div className="grid sm:grid-cols-[1fr_auto] gap-2">
         <Input value={fp} onChange={(e) => setFp(e.target.value)} placeholder="BCR-7K2M-9XQ4" onKeyDown={(e) => e.key === 'Enter' && lookup()} className="font-mono" />
@@ -41,7 +42,7 @@ function RepoIdentifyCard() {
           <div className="flex items-center gap-2"><GitBranch size={13} className="text-[var(--primary-2)]" /> <span className="font-medium">{res.repo.name}</span> <Badge tone={res.repo.hosted ? 'primary' : ''}>{res.repo.hosted ? 'hosted' : 'listed'}</Badge></div>
           <div className="text-[var(--muted)]"><Users size={12} className="inline mr-1" /> Owner: <b>{res.owner.displayName}</b> · {res.owner.email} <Badge>{res.owner.role}</Badge></div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">BCWEB id:</span> <span className="font-mono text-xs">{res.owner.id}</span></div>
-          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Creator ids:</span> {res.identity.creatorIds.length ? res.identity.creatorIds.map((c) => <span key={c} className="font-mono text-xs mr-1.5">{c}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
+          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">{t('radm.creatorids', "Creator ids:")}</span> {res.identity.creatorIds.length ? res.identity.creatorIds.map((c) => <span key={c} className="font-mono text-xs mr-1.5">{c}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Discord ids:</span> {res.identity.discordIds.length ? res.identity.discordIds.map((d) => <span key={d} className="font-mono text-xs mr-1.5">{d}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Ko-fi donor:</span> {res.identity.kofiDonor ? <Badge tone="green">yes</Badge> : <span className="text-[var(--faint)]">no</span>}</div>
         </div>
@@ -53,6 +54,7 @@ function RepoIdentifyCard() {
 /* Admin: live traffic across every repo — recent access events (15 min window,
    auto-refreshing) + a 24h per-repo download rollup. */
 function AdminRepoTraffic() {
+  const { t } = useI18n();
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(true);
   useEffect(() => {
@@ -68,15 +70,15 @@ function AdminRepoTraffic() {
     <Card className="p-4 mb-4">
       <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((v) => !v)}>
         <Wifi size={16} className="text-[var(--primary-2)]" />
-        <span className="font-semibold flex-1">Live repo traffic</span>
+        <span className="font-semibold flex-1">{t('radm.livetraffic', "Live repo traffic")}</span>
         {recent.length > 0 && <Badge tone="primary">{recent.length} in the last 15 min</Badge>}
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div className="mt-3 grid lg:grid-cols-2 gap-4">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Now (15 min)</div>
-            {!recent.length ? <div className="text-sm text-[var(--faint)] py-3">No traffic right now.</div> : (
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('radm.now15', "Now (15 min)")}</div>
+            {!recent.length ? <div className="text-sm text-[var(--faint)] py-3">{t('radm.notraffic', "No traffic right now.")}</div> : (
               <div className="divide-y divide-[var(--line)] max-h-64 overflow-auto rounded-lg border border-[var(--line)]">
                 {recent.map((e) => (
                   <div key={e.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
@@ -91,8 +93,8 @@ function AdminRepoTraffic() {
             )}
           </div>
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Last 24h — downloads per repo</div>
-            {!rollup.length ? <div className="text-sm text-[var(--faint)] py-3">No downloads in the last 24h.</div> : (
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('radm.last24', "Last 24h \u2014 downloads per repo")}</div>
+            {!rollup.length ? <div className="text-sm text-[var(--faint)] py-3">{t('radm.nodl24', "No downloads in the last 24h.")}</div> : (
               <div className="space-y-1.5 max-h-64 overflow-auto pr-1">
                 {rollup.map((r) => {
                   const max = rollup[0]?.count || 1;
@@ -282,10 +284,10 @@ export function AdminRepos() {
       <RepoIdentifyCard />
       <AdminRepoTraffic />
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Server size={16} className="text-[var(--primary-2)]" /> Server Repos</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Server size={16} className="text-[var(--primary-2)]" /> {t('radm.serverrepos', "Server Repos")}</h2>
         <div className="flex items-center gap-2">
           {pending > 0 && <Badge tone="amber"><Clock size={11} /> {pending} pending review</Badge>}
-          <Button size="sm" disabled={checkingAll} onClick={checkAll}>{checkingAll ? <Spinner /> : <><RefreshCw size={14} /> Check all</>}</Button>
+          <Button size="sm" disabled={checkingAll} onClick={checkAll}>{checkingAll ? <Spinner /> : <><RefreshCw size={14} /> {t('radm.checkall', "Check all")}</>}</Button>
         </div>
       </div>
       {/* Search + tier/status filters — the admin list can get long. */}
@@ -308,7 +310,7 @@ export function AdminRepos() {
         </div>
       </div>
       {loading ? <div className="text-[var(--muted)] text-sm py-4">Loading…</div>
-        : !allRepos.length ? <div className="text-[var(--muted)] text-sm py-4">No repos.</div>
+        : !allRepos.length ? <div className="text-[var(--muted)] text-sm py-4">{t('radm.norepos', "No repos.")}</div>
         : !repos.length ? <EmptyState icon={Search} title={t('arp.nomatch', 'No repos match your filters')} />
         : <div className="space-y-2">
           {repos.map((r) => (

@@ -170,7 +170,56 @@ for (const file of walk(ROOT)) {
     report(file, line, `${name}() is called but not imported or defined in this file — it throws at render`);
   }
 
-  // ── 3. hooks below an early return ──
+  // ── 3. t() called in a component that never bound it ──
+  //
+  // The one the camelCase rule above cannot see: `t` is a single lowercase letter, so rule 2
+  // skips it by design. And it is the easiest one to introduce — translating a file means
+  // adding t() calls, and a helper component two hundred lines down does not have the hook.
+  // The build is silent; the panel throws the first time somebody opens it.
+  //
+  // Scoped per top-level function: which one a line belongs to is the last `function Name(`
+  // above it, which is exactly how a reader works it out too.
+  {
+    // Built from the RAW source, not the stripped copy.
+    //
+    // The stripper cannot parse a regex literal that contains a quote, so in a file with
+    // one it blanks everything from there on: `export function SinglePollPage() {` came
+    // through as spaces, every later line was attributed to a function 400 lines above,
+    // and the gate named the wrong component. A `function Foo(` at column 0 inside a
+    // comment is rare enough to be the better risk.
+    const rawLines = src.split(LF);
+    const fns = [];
+    rawLines.forEach((l, i) => {
+      const m = l.match(/^(?:export\s+)?(?:default\s+)?function\s+([A-Za-z0-9_$]+)/);
+      if (m) fns.push({ name: m[1], line: i + 1 });
+    });
+    const owner = (n) => { let cur = null; for (const fn of fns) { if (fn.line <= n) cur = fn; else break; } return cur; };
+    const binds = new Set();
+    rawLines.forEach((l, i) => {
+      // Any shape that puts `t` in scope: the hook, a destructured prop, or a plain
+      // PARAMETER — `function timeAgo(iso, t)` is how half this codebase passes it, and
+      // missing that spelling reported three correct files as broken. `=` covers the fourth shape:
+      // `function Foo({ t = (k, d) => d })`, a prop with its own fallback.
+      if (/\bt\b\s*[,})=]/.test(l) && /(useI18n\(\)|function\s|=>)/.test(l)) {
+        const o = owner(i + 1);
+        if (o) binds.add(o.name);
+      }
+    });
+    const reported = new Set();
+    lines.forEach((l, i) => {
+      // `t(` and nothing more. Looking for a quoted key here found NOTHING, because
+      // `lines` is the comment- and STRING-stripped copy: by the time this reads it,
+      // `t('some.key')` is `t(        )`. The check was green for a file that was
+      // broken, which is the only failure mode a check must not have.
+      if (!/(^|[^.\w$])t\s*\(/.test(l)) return;
+      const o = owner(i + 1);
+      if (!o || binds.has(o.name) || reported.has(o.name)) return;
+      reported.add(o.name);
+      report(file, i + 1, `${o.name}() calls t() but never binds it — the build cannot see this, the render throws`);
+    });
+  }
+
+  // ── 4. hooks below an early return ──
   //
   // React counts hooks by call order. A hook placed after `if (loading) return <Loading/>`
   // runs on some renders and not others, which is error #310 and a blank page — and the

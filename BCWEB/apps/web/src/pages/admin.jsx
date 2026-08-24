@@ -2430,10 +2430,10 @@ function FileManager() {
                 </button>
                 {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{(e.size / 1024).toFixed(1)} KB</span>}
                 <span className="hidden group-hover:flex items-center gap-2 shrink-0">
-                  {!e.isDir && <button onClick={() => downloadEntry(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Download"><Download size={12} /></button>}
-                  {!e.isDir && <button onClick={() => viewHistory(dir === '.' ? e.name : `${dir}/${e.name}`)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Backup history"><History size={12} /></button>}
-                  <button onClick={() => rename(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title="Rename"><PenSquare size={12} /></button>
-                  <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-error" title="Delete"><Trash2 size={12} /></button>
+                  {!e.isDir && <button onClick={() => downloadEntry(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.download', "Download")}><Download size={12} /></button>}
+                  {!e.isDir && <button onClick={() => viewHistory(dir === '.' ? e.name : `${dir}/${e.name}`)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.bkphist', "Backup history")}><History size={12} /></button>}
+                  <button onClick={() => rename(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.rename', "Rename")}><PenSquare size={12} /></button>
+                  <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-error" title={t('adm2.delete', "Delete")}><Trash2 size={12} /></button>
                 </span>
               </div>
             )) : <div className="text-xs text-[var(--faint)] py-4 text-center">{data?.entries?.length ? t('fm.nomatches', 'No matches.') : t('fm.emptydir', 'Empty directory.')}</div>}
@@ -2550,7 +2550,7 @@ function DbViewer() {
                         {rows.rows.map((r, i) => (
                           <tr key={i} className="border-b border-[var(--line)] last:border-0">
                             {cols.map((c) => (
-                              <td key={c} onClick={() => { setCell({ col: c, value: r[c], pk: rows.pkColumn ? r[rows.pkColumn] : null }); setDraft(r[c] === null ? '' : cellText(r[c])); }} className="px-2 py-1.5 whitespace-nowrap max-w-[220px] truncate font-mono cursor-pointer hover:bg-[var(--surface-2)]" title="Click to view / edit">
+                              <td key={c} onClick={() => { setCell({ col: c, value: r[c], pk: rows.pkColumn ? r[rows.pkColumn] : null }); setDraft(r[c] === null ? '' : cellText(r[c])); }} className="px-2 py-1.5 whitespace-nowrap max-w-[220px] truncate font-mono cursor-pointer hover:bg-[var(--surface-2)]" title={t('adm2.clickedit', "Click to view / edit")}>
                                 {r[c] === null ? <span className="text-[var(--faint)]">null</span> : cellText(r[c])}
                               </td>
                             ))}
@@ -3767,7 +3767,7 @@ function AdminReviews() {
             </div>
           </div>
           <div className="grid sm:grid-cols-2 gap-3 flex-1 min-w-0">
-            <Field label={t('arv.author', 'Author')}><Input value={f.author} onChange={(e) => setF({ ...f, author: e.target.value })} placeholder="Jane D." /></Field>
+            <Field label={t('arv.author', 'Author')}><Input value={f.author} onChange={(e) => setF({ ...f, author: e.target.value })} placeholder={t('adm2.ph.name', "Jane D.")} /></Field>
             <Field label={t('arv.role', 'Role / subtitle')}><Input value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} placeholder="BMM power user" /></Field>
           </div>
         </div>
@@ -4127,7 +4127,7 @@ function AdminFaq() {
             public page rendered, so a French answer could never actually be entered. */}
         <div className="grid sm:grid-cols-[1fr_200px] gap-3">
           <Field label={t('faqa.q', 'Question')}><Input value={f.question} onChange={(e) => setF({ ...f, question: e.target.value })} placeholder={t('faqa.qph', 'How do I…?')} /></Field>
-          <Field label={t('faqa.cat', 'Category')}><Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="General" list="faq-cats" /><datalist id="faq-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
+          <Field label={t('faqa.cat', 'Category')}><Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder={t('adm2.ph.general', "General")} list="faq-cats" /><datalist id="faq-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         </div>
         <div className="grid sm:grid-cols-[1fr_200px] gap-3">
           <Field label={t('faqa.qfr', 'Question (FR)')} hint={t('faqa.frhint', 'Optional — falls back to the English when empty.')}><Input value={f.questionFr} onChange={(e) => setF({ ...f, questionFr: e.target.value })} placeholder={t('faqa.qfrph', 'Comment faire… ?')} /></Field>
@@ -8215,7 +8215,7 @@ function AdminCampaigns() {
           <Button size="sm" onClick={presetBlackFriday}><Tag size={13} /> {t('cmp.preset.bf', 'Black Friday')}</Button>
         </div>
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('cmp.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="Black Friday 2026" /></Field>
+          <Field label={t('cmp.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder={t('adm2.ph.promo', "Black Friday 2026")} /></Field>
           <Field label={t('cmp.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('cmp.k.custom', 'Custom') }, { value: 'black_friday', label: 'Black Friday' }, { value: 'new_year', label: t('cmp.k.ny', 'New Year') }, { value: 'flash', label: t('cmp.k.flash', 'Flash sale') }]} /></Field>
           <Field label={t('cmp.f.pct', '% off')}><Input type="number" value={f.percentOff} onChange={(e) => set('percentOff', e.target.value)} /></Field>
           <Field label={t('cmp.f.applies', 'Applies to')}><Dropdown className="w-full" value={f.appliesTo} onChange={(v) => set('appliesTo', v)} options={[{ value: 'all', label: t('cmp.a.all', 'All one-time purchases') }, { value: 'hosting', label: t('cmp.a.hosting', 'Hosting only') }, { value: 'boost', label: t('cmp.a.boost', 'Boost only') }, { value: 'myo', label: t('cmp.a.myo', 'Consultations only') }]} /></Field>
@@ -8225,7 +8225,7 @@ function AdminCampaigns() {
           <div className="text-[11px] text-[var(--faint)] -mt-1">{t('cmp.a.note', 'One-time payments only. Recurring subscriptions (catalog hosting, consolidated pools) are never discounted — a sale would outlive the campaign.')}</div>
           <Field label={t('cmp.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
           <Field label={t('cmp.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
-          <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder="Black Friday — 30% off!" /></Field>
+          <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder={t('adm2.ph.promoen', "Black Friday \u2014 30% off!")} /></Field>
           <Field label={t('cmp.f.msgfr', 'Badge message (FR)')}><Input value={f.badgeMessageFr} onChange={(e) => set('badgeMessageFr', e.target.value)} placeholder="Black Friday — 30% !" /></Field>
           <Field label={t('cmp.f.color', 'Badge color (hex, blank = brand)')}><Input value={f.badgeColor} onChange={(e) => set('badgeColor', e.target.value)} placeholder="#f97316" /></Field>
           <Field label={t('cmp.f.link', 'Badge link (optional)')} hint={t('cmp.f.link.h', 'Where clicking the badge goes: an internal path like /blog/black-friday, or a full https:// URL.')}><Input value={f.badgeLink} onChange={(e) => set('badgeLink', e.target.value)} placeholder="/blog/… or https://…" /></Field>
@@ -8314,7 +8314,7 @@ function AdminEvents() {
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.event', 'The event')}</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <Field label={t('ev.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder="New Year 2027" /></Field>
+          <Field label={t('ev.f.name', 'Name (internal)')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} placeholder={t('adm2.ph.newyear', "New Year 2027")} /></Field>
           <Field label={t('ev.f.kind', 'Kind')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'custom', label: t('ev.k.custom', 'Custom') }, { value: 'new_year', label: t('ev.k.ny', 'New Year') }, { value: 'national_holiday', label: t('ev.k.holiday', 'National holiday') }]} /></Field>
           {f.kind === 'national_holiday' && <Field label={t('ev.f.country', 'Country code (ISO, e.g. FR, US)')}><Input value={f.countryCode} onChange={(e) => set('countryCode', e.target.value.toUpperCase().slice(0, 2))} placeholder="FR" /></Field>}
           <Field label={t('ev.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
@@ -8326,7 +8326,7 @@ function AdminEvents() {
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.badge', 'Announcement badge')}</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Field label={t('ev.f.icon', 'Announcement icon (no emoji)')}><Select value={f.badgeIcon} onChange={(e) => set('badgeIcon', e.target.value)}><option value="sparkles">Sparkles</option><option value="party">Party</option><option value="flag">Flag</option><option value="gift">Gift</option><option value="star">Star</option><option value="rocket">Rocket</option><option value="calendar">Calendar</option><option value="bell">Bell</option></Select></Field>
-          <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder="Happy New Year!" /></Field>
+          <Field label={t('ev.f.titleen', 'Title (EN)')}><Input value={f.titleEn} onChange={(e) => set('titleEn', e.target.value)} placeholder={t('adm2.ph.happynewyear', "Happy New Year!")} /></Field>
           <Field label={t('ev.f.titlefr', 'Title (FR)')}><Input value={f.titleFr} onChange={(e) => set('titleFr', e.target.value)} placeholder="Bonne année !" /></Field>
           <Field label={t('ev.f.msgen', 'Message (EN)')}><Input value={f.messageEn} onChange={(e) => set('messageEn', e.target.value)} /></Field>
           <Field label={t('ev.f.msgfr', 'Message (FR)')}><Input value={f.messageFr} onChange={(e) => set('messageFr', e.target.value)} /></Field>
@@ -9327,7 +9327,7 @@ function AdminOAuthClients() {
       )}
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('oc.f.name', 'Client name')}><Input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="My service" /></Field>
+          <Field label={t('oc.f.name', 'Client name')}><Input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder={t('adm2.ph.service', "My service")} /></Field>
           <Field label={t('oc.f.type', 'Type')}><Select value={f.confidential ? 'conf' : 'pub'} onChange={(e) => setF((s) => ({ ...s, confidential: e.target.value === 'conf' }))}><option value="conf">{t('oc.t.conf', 'Confidential (server, has a secret)')}</option><option value="pub">{t('oc.t.pub', 'Public (SPA/mobile, PKCE only)')}</option></Select></Field>
         </div>
         <div className="mt-3"><Field label={t('oc.f.uris', 'Redirect URIs (one per line)')} hint={t('oc.f.uris.h', 'Absolute URLs the login flow may return to, e.g. https://app.example.com/callback')}><textarea className="input" rows={2} value={f.redirectUris} onChange={(e) => setF((s) => ({ ...s, redirectUris: e.target.value }))} placeholder="https://app.example.com/callback" /></Field></div>
@@ -10006,6 +10006,7 @@ function BotSwitch({ checked, onChange, disabled }) {
 // One server in the dashboard's server picker (avatar + name + member count),
 // MEE6/Dyno-style. `dot` shows a green marker when that server has custom config.
 function ServerBubble({ name, icon, sub, active, dot, onClick }) {
+  const { t } = useI18n();
   const initial = (name || '?').slice(0, 2).toUpperCase();
   return (
     <button onClick={onClick} title={name}
@@ -10016,7 +10017,7 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
         <div className="text-sm font-medium truncate">{name}</div>
         {sub && <div className="text-[10px] text-[var(--faint)] truncate">{sub}</div>}
       </div>
-      {dot && <span className="w-2 h-2 rounded-full bg-success shrink-0" title="Custom config" />}
+      {dot && <span className="w-2 h-2 rounded-full bg-success shrink-0" title={t('adm2.customcfg', "Custom config")} />}
     </button>
   );
 }
@@ -11186,7 +11187,8 @@ function AdminStorage() {
 // Page-journey funnel: readable HTML rows (from → to, bar ∝ count) instead of the
 // old scaled SVG sankey whose labels shrank to unreadable in narrow columns.
 function Sankey({ flows }) {
-  if (!flows.length) return <div className="text-sm text-[var(--faint)] py-6 text-center">No journeys yet — needs visitors viewing multiple pages.</div>;
+  const { t } = useI18n();
+  if (!flows.length) return <div className="text-sm text-[var(--faint)] py-6 text-center">{t('adm2.nojourneys', "No journeys yet \u2014 needs visitors viewing multiple pages.")}</div>;
   const top = flows.slice(0, 10);
   const max = Math.max(1, ...top.map((f) => f.count));
   const chip = (v) => <span className="font-mono text-xs px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] truncate max-w-[38%]" title={v}>{v}</span>;
@@ -12588,6 +12590,7 @@ function RetentionCard() {
 // Discord account search as PolicyAccountChips, plus a raw creator-id add (no
 // search index for that one, it's an opaque BMM-generated id).
 function PageWhitelistEditor({ items, onAdd, onRemove }) {
+  const { t } = useI18n();
   const [q, setQ] = useState(''); const [results, setResults] = useState(null); const [busy, setBusy] = useState(false);
   const [creatorId, setCreatorId] = useState('');
   const search = async () => {
@@ -12601,7 +12604,7 @@ function PageWhitelistEditor({ items, onAdd, onRemove }) {
   return (
     <div>
       <div className="flex gap-1.5">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search BC account / Discord…" onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('adm2.ph.searchacct', "Search BC account / Discord\u2026")} onKeyDown={(e) => e.key === 'Enter' && search()} />
         <Button size="sm" onClick={search}>{busy ? <Spinner /> : <Search size={13} />}</Button>
       </div>
       {results && (
@@ -12614,11 +12617,11 @@ function PageWhitelistEditor({ items, onAdd, onRemove }) {
                 {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
-          )) : <div className="text-[11px] text-[var(--faint)] px-1">No accounts found.</div>}
+          )) : <div className="text-[11px] text-[var(--faint)] px-1">{t('adm2.noaccounts', "No accounts found.")}</div>}
         </div>
       )}
       <div className="flex gap-1.5 mt-1.5">
-        <Input value={creatorId} onChange={(e) => setCreatorId(e.target.value)} placeholder="Add by BMM creator id…" onKeyDown={(e) => e.key === 'Enter' && addCreator()} />
+        <Input value={creatorId} onChange={(e) => setCreatorId(e.target.value)} placeholder={t('adm2.ph.addcreator', "Add by BMM creator id\u2026")} onKeyDown={(e) => e.key === 'Enter' && addCreator()} />
         <Button size="sm" onClick={addCreator}><Plus size={13} /></Button>
       </div>
       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -12627,7 +12630,7 @@ function PageWhitelistEditor({ items, onAdd, onRemove }) {
             <Users size={9} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : a.type === 'creator' ? 'Creator: ' : ''}{a.label || a.id}
             <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={10} /></button>
           </span>
-        )) : <span className="text-[11px] text-[var(--faint)]">No entries — nobody can view.</span>}
+        )) : <span className="text-[11px] text-[var(--faint)]">{t('adm2.noentries', "No entries \u2014 nobody can view.")}</span>}
       </div>
     </div>
   );
@@ -12658,22 +12661,23 @@ function VisibilitySection({ visibility, whitelist, onVisibility, onAddWhitelist
 // public project. Fully optional; the section collapses to just the checkbox
 // when off.
 function AnnouncementSection({ value, onChange }) {
+  const { t } = useI18n();
   const set = (k) => (v) => onChange({ ...value, [k]: v });
   return (
     <div className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] space-y-2">
-      <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--primary-2)]" /> Project announcement (countdown teaser)</label>
+      <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--primary-2)]" /> {t('adm2.projann', "Project announcement (countdown teaser)")}</label>
       {value.announceEnabled && (
         <div className="space-y-2 pl-1">
-          <Field label="Title"><Input value={value.announceTitle} onChange={(e) => set('announceTitle')(e.target.value)} placeholder="Something big is coming…" /></Field>
-          <Field label="Logo URL (optional)"><Input value={value.announceLogo || ''} onChange={(e) => set('announceLogo')(e.target.value)} placeholder="https://example.com/logo.png" /></Field>
-          <Field label="Markdown description"><Textarea rows={4} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder="Tell people what's coming — markdown supported." /></Field>
+          <Field label={t('adm2.title', "Title")}><Input value={value.announceTitle} onChange={(e) => set('announceTitle')(e.target.value)} placeholder={t('adm2.ph.teaser', "Something big is coming\u2026")} /></Field>
+          <Field label={t('adm2.logourl', "Logo URL (optional)")}><Input value={value.announceLogo || ''} onChange={(e) => set('announceLogo')(e.target.value)} placeholder="https://example.com/logo.png" /></Field>
+          <Field label={t('adm2.mddesc', "Markdown description")}><Textarea rows={4} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder={t('adm2.ph.mddesc', "Tell people what's coming \u2014 markdown supported.")} /></Field>
           {/* Optional CTA — points anywhere: an external URL, or an in-site
               /blog/<slug> or /docs/<slug> article. */}
           <div className="grid grid-cols-[130px_1fr] gap-2">
-            <Field label="Button label"><Input value={value.announceButtonLabel || ''} onChange={(e) => set('announceButtonLabel')(e.target.value)} placeholder="Learn more" /></Field>
-            <Field label="Button link (URL, or /blog/… /docs/…)"><Input value={value.announceButtonUrl || ''} onChange={(e) => set('announceButtonUrl')(e.target.value)} placeholder="/docs/roadmap" /></Field>
+            <Field label={t('adm2.btnlabel', "Button label")}><Input value={value.announceButtonLabel || ''} onChange={(e) => set('announceButtonLabel')(e.target.value)} placeholder={t('adm2.ph.learnmore', "Learn more")} /></Field>
+            <Field label={t('adm2.btnlink', "Button link (URL, or /blog/\u2026 /docs/\u2026)")}><Input value={value.announceButtonUrl || ''} onChange={(e) => set('announceButtonUrl')(e.target.value)} placeholder="/docs/roadmap" /></Field>
           </div>
-          <Field label="Reveal at"><Input type="datetime-local" value={value.announceRevealAt || ''} onChange={(e) => set('announceRevealAt')(e.target.value)} /></Field>
+          <Field label={t('adm2.revealat', "Reveal at")}><Input type="datetime-local" value={value.announceRevealAt || ''} onChange={(e) => set('announceRevealAt')(e.target.value)} /></Field>
           <label className="flex items-center gap-2 text-sm cursor-pointer pt-1"><input type="checkbox" checked={!!value.announceShowPage} onChange={(e) => set('announceShowPage')(e.target.checked)} /> Show the page behind the countdown (adds it as a first tab instead of hiding everything)</label>
           <p className="text-[11px] text-[var(--faint)]">
             {value.announceShowPage
@@ -12969,7 +12973,7 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
     <Modal open onClose={onClose} title={isNew ? t('sh.new', 'New project') : t('sh.e.edit', 'Edit {name}').replace('{name}', project.name)} icon={Sparkles} width="max-w-lg"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
       <div className="grid grid-cols-[1fr_110px] gap-3">
-        <Field label={t('sh.e.pname', 'Project name')}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Better Something" /></Field>
+        <Field label={t('sh.e.pname', 'Project name')}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('adm2.ph.bettersomething', "Better Something")} /></Field>
         <Field label={t('sh.e.pshort', 'Short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
       </div>
       <div className="mt-3"><Field label={t('sh.e.tagline', 'Tagline')}><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={t('sh.e.taglineph', 'One-line description')} /></Field></div>
@@ -13700,7 +13704,7 @@ function AdminNav() {
             </div>
             <div className="grid sm:grid-cols-2 gap-2.5">
               <Field label={t('nav.label.en', 'Label (EN)')}><Input value={it.label} onChange={(e) => patchItem(i, { label: e.target.value })} placeholder="Apps" /></Field>
-              <Field label={t('nav.label.fr', 'Label (FR)')}><Input value={it.labelFr} onChange={(e) => patchItem(i, { labelFr: e.target.value })} placeholder="Applications" /></Field>
+              <Field label={t('nav.label.fr', 'Label (FR)')}><Input value={it.labelFr} onChange={(e) => patchItem(i, { labelFr: e.target.value })} placeholder={t('adm2.ph.applications', "Applications")} /></Field>
             </div>
             <div className="flex flex-wrap items-end gap-2.5">
               <Field label={t('nav.icon', 'Icon')}><IconSelect value={it.icon} onChange={(v) => patchItem(i, { icon: v })} /></Field>
@@ -14246,7 +14250,7 @@ function AdminBadges() {
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <span className="grid place-items-center w-12 h-12 rounded-xl shrink-0" style={{ background: `color-mix(in srgb, ${edit.color} 16%, transparent)` }}><BadgeIcon badge={edit} size={24} /></span>
-            <Field label={t('ab.name', 'Name')} className="flex-1"><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="Verified" /></Field>
+            <Field label={t('ab.name', 'Name')} className="flex-1"><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder={t('adm2.ph.verified', "Verified")} /></Field>
           </div>
           <Field label={t('ab.description', 'Description (tooltip)')}><Input value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} placeholder={t('ab.desc.ph', 'Certified by the BetterCommunity team')} /></Field>
           <div className="grid sm:grid-cols-2 gap-3">
@@ -14836,7 +14840,7 @@ function AdminFooter() {
               className={`px-2.5 py-1 rounded-md ${device === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
           ))}
         </div>
-        <Field label={t('afoot.name', 'Brand name')}><Input className="!w-44" value={f.brand?.name || ''} onChange={(e) => setBrand({ name: e.target.value })} placeholder="BetterCommunity" /></Field>
+        <Field label={t('afoot.name', 'Brand name')}><Input className="!w-44" value={f.brand?.name || ''} onChange={(e) => setBrand({ name: e.target.value })} placeholder={t('adm2.ph.bettercommunity', "BetterCommunity")} /></Field>
         <Field label={t('afoot.logo', 'Logo URL')}><Input className="!w-52 font-mono !text-xs" value={f.brand?.logo || ''} onChange={(e) => setBrand({ logo: e.target.value })} placeholder="/logo.png" /></Field>
         <Field label={t('afoot.tagline', 'Tagline')}><Input className="!w-56" value={f.brand?.tagline || ''} onChange={(e) => setBrand({ tagline: e.target.value })} placeholder={t('afoot.taglineph', 'Empty = the default')} /></Field>
         <Field label={t('afoot.taglinefr', 'Tagline (FR)')}><Input className="!w-56" value={f.brand?.taglineFr || ''} onChange={(e) => setBrand({ taglineFr: e.target.value })} /></Field>
