@@ -22,6 +22,28 @@ export const CATALOG_KINDS_LOWER = CATALOG_KINDS.map((k) => k.toLowerCase());
  */
 export const INDEX_TYPE_ORDER = [...CATALOG_KINDS_LOWER, 'repo'];
 
+/**
+ * Kinds that are a DOCUMENT rather than a set of items.
+ *
+ *   repo_index     a list of Server Repos       — BMM's "Browse Server Repositories" reads it
+ *   catalog_index  a list of catalogues         — BMM's catalogue index reads it
+ *
+ * Not CatalogKind values, and not by oversight: that enum drives moderation queues, per-item
+ * payload uploads and feedField() plurals, none of which apply to a document with no items.
+ * They live in the `kinds String[]` column instead, which needs no migration, and their
+ * raw-only invariant is enforced at the API boundary like every other catalogue rule.
+ */
+export const DOCUMENT_KINDS = ['repo_index', 'catalog_index'];
+
+/** The top-level array each document kind carries — what the reader will look for. */
+export const DOCUMENT_KIND_FIELD = { repo_index: 'repos', catalog_index: 'catalogs' };
+
+/** True when this kind is a document (no items, raw mode only). */
+export const isDocumentKind = (v) => DOCUMENT_KINDS.includes(String(v || '').toLowerCase());
+
+/** Everything a catalogue may declare itself as, lower-case — items and documents alike. */
+export const ALL_HOSTABLE_LOWER = [...CATALOG_KINDS_LOWER, ...DOCUMENT_KINDS];
+
 /** True when `v` names a kind, whatever case it arrives in. */
 export const isCatalogKind = (v) => CATALOG_KINDS.includes(String(v || '').toUpperCase());
 

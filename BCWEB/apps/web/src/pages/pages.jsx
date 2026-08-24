@@ -6,7 +6,7 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-python';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { GraduationCap,
+import { Library, GraduationCap,
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
   Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle,
   Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2,
@@ -102,10 +102,23 @@ export function useElementWidth(fallback = 760) {
   }, []);
   return [ref, w];
 }
-export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package, TUTORIAL: GraduationCap };
-export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack', TUTORIAL: 'Tutorial' };
+export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package, TUTORIAL: GraduationCap, REPO_INDEX: Server, CATALOG_INDEX: Library };
+export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack', TUTORIAL: 'Tutorial', REPO_INDEX: 'Server-Repo list', CATALOG_INDEX: 'Catalogue index' };
 /** Every kind the CatalogKind enum holds, in the order screens show them. */
 export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL'];
+
+/**
+ * Kinds that are a DOCUMENT — one JSON file listing addresses — rather than a set of items.
+ *
+ * Separate from ALL_KINDS on purpose, and the separation is load-bearing: ALL_KINDS drives
+ * the official-submission picker and the moderation surfaces, and neither of these can be
+ * SUBMITTED (there is no payload to review) — only HOSTED. Offering them where items are
+ * proposed would create a queue for a thing nobody can put in it.
+ */
+export const DOCUMENT_KINDS = ['REPO_INDEX', 'CATALOG_INDEX'];
+export const isDocumentKind = (k) => DOCUMENT_KINDS.includes(String(k || '').toUpperCase());
+/** The top-level array each document carries, for the upload validator. */
+export const DOCUMENT_KIND_FIELD = { REPO_INDEX: 'repos', CATALOG_INDEX: 'catalogs' };
 
 /**
  * Which kinds each project publishes — and, by its absence, which projects publish nothing.

@@ -191,7 +191,7 @@ const projectConfigs = {
   },
   installer: {
     name: 'BetterInstaller', tagline: 'The modern installer for the Better* suite.', version: '1.0.0',
-    ...DEFAULT_STACKS.betterinstaller,
+    ...DEFAULT_STACKS.installer,
     downloads: [{ label: 'Download source code', url: 'https://github.com/FreeProject089/BetterInstaller/archive/refs/heads/master.zip', primary: true }],
     links: { github: 'https://github.com/FreeProject089/BetterInstaller', kofi: 'https://ko-fi.com/bettercommunity' },
     contributors: STAFF, messages: [], progress: [],

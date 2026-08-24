@@ -124,7 +124,10 @@ export const DEFAULT_STACKS = {
     edges: [{ from: 'catalog', to: 'app', label: 'presets' }],
   },
   },
-  betterinstaller: {
+  // Keyed by the PROJECT KEY as the seed and the database use it ('installer', not
+  // 'betterinstaller'): fix-project-config looks these up by the row name, so a key that
+  // merely reads right matches nothing and repairs nothing, without an error.
+  installer: {
   tabs: { stack: true },
   stack: {
     title: 'How it runs',

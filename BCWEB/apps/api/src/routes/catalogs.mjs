@@ -1,5 +1,5 @@
 import argon2 from 'argon2';
-import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER } from '../lib/catalog-kinds.mjs';
+import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind, ALL_HOSTABLE_LOWER } from '../lib/catalog-kinds.mjs';
 import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
@@ -175,6 +175,18 @@ function emitManagedFeed(catalog, items, kind, priv) {
 // validated on save), narrowed to the requested kind's top-level array when possible.
 function emitRawFeed(catalog, kind) {
   const raw = catalog.rawJson || {};
+  // A DOCUMENT kind carries its own top-level array and its own reader; it is served under
+  // that field, with the description too — a catalogue index shows its own name and blurb in
+  // BMM's index browser, and dropping them would leave an unlabelled list of URLs.
+  const docField = DOCUMENT_KIND_FIELD[String(kind).toLowerCase()];
+  if (docField) {
+    return {
+      version: raw.version || '1.0',
+      name: raw.name || catalog.name,
+      description: raw.description || catalog.description || '',
+      [docField]: Array.isArray(raw[docField]) ? raw[docField] : [],
+    };
+  }
   const key = kind === 'PLUGIN' ? 'plugins' : kind === 'THEME' ? 'themes' : kind === 'PRESET' ? 'presets' : 'apps';
   return { version: raw.version || '1.0', name: raw.name || catalog.name, [key]: Array.isArray(raw[key]) ? raw[key] : [] };
 }
@@ -187,6 +199,12 @@ const rawFeedSchema = z.object({
   themes: z.array(z.record(z.any())).max(2000).optional(),
   apps: z.array(z.record(z.any())).max(2000).optional(),
   presets: z.array(z.record(z.any())).max(2000).optional(),
+  // Document kinds. `repos` is BMM's repo-catalogue shape ({name,url,description,region});
+  // `catalogs` is its index shape ({type,url,name,...}). Both stay `z.record(z.any())` for
+  // the same reason the four above do: BMM's readers already validate and DROP what they
+  // cannot route, and a stricter schema here would refuse a document a newer BMM understands.
+  repos: z.array(z.record(z.any())).max(2000).optional(),
+  catalogs: z.array(z.record(z.any())).max(2000).optional(),
 }).passthrough();
 
 // Access config the owner can set: whitelist (ips/keys/accounts) + a bans sub-object.
@@ -203,7 +221,7 @@ const accessSchema = accessList.extend({ bans: accessList.optional() });
 // lives in its rawJson feed, and the item-create route refuses anything that isn't `managed`
 // — so its `items` relation is structurally empty. Counting it reported "0 items" for a raw
 // catalog holding fifty plugins, on the public browse page and its own dashboard alike.
-const RAW_FEED_ARRAYS = ['plugins', 'themes', 'apps', 'presets'];
+const RAW_FEED_ARRAYS = ['plugins', 'themes', 'apps', 'presets', 'repos', 'catalogs'];
 const rawFeedCount = (j) => (j && typeof j === 'object' && !Array.isArray(j)
   ? RAW_FEED_ARRAYS.reduce((n, k) => n + (Array.isArray(j[k]) ? j[k].length : 0), 0)
   : 0);
@@ -249,6 +267,19 @@ function publicContents(c) {
   if (c.mode === 'raw') {
     const raw = c.rawJson || {};
     const kind = catalogKind(c);
+    const docField = DOCUMENT_KIND_FIELD[kind.toLowerCase()];
+    if (docField) {
+      // A document's entries are ADDRESSES, so the preview shows what it points at rather
+      // than pretending each line is an installable item. Whitelisted field by field, same
+      // rule as below: the stored JSON is author-supplied and passthrough-validated.
+      return (Array.isArray(raw[docField]) ? raw[docField] : []).slice(0, 300).map((e, i) => ({
+        id: `doc-${i}`, kind,
+        name: String(e?.name ?? e?.url ?? '—').slice(0, 120),
+        version: String(e?.type ?? e?.region ?? '').slice(0, 24),
+        description: String(e?.description ?? '').slice(0, 400),
+        tags: [], external: true,
+      }));
+    }
     const list = raw.plugins || raw.themes || raw.apps || [];
     return list.slice(0, 300).map((e, i) => ({
       id: `raw-${i}`, kind,
@@ -645,10 +676,10 @@ export default async function communityCatalogRoutes(app) {
       // One kind per catalog (see catalogKind). `kinds` is still accepted for older clients,
       // but only as a single-element array — a mixed feed is rejected rather than stored and
       // discovered to be unreadable later.
-      kind: z.enum(CATALOG_KINDS_LOWER).optional(),
+      kind: z.enum(ALL_HOSTABLE_LOWER).optional(),
       // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
       // of a blanket invalid_input it cannot act on; an empty array means "not specified".
-      kinds: z.array(z.enum(CATALOG_KINDS_LOWER)).max(CATALOG_KINDS_LOWER.length).optional(),
+      kinds: z.array(z.enum(ALL_HOSTABLE_LOWER)).max(ALL_HOSTABLE_LOWER.length).optional(),
       visibility: z.enum(['public', 'private']).default('public'),
       groupId: z.string().optional(),
       storageGB: z.number().min(0.5).max(2000).optional().default(1),
@@ -671,6 +702,13 @@ export default async function communityCatalogRoutes(app) {
       if (!linked) return reply.code(403).send({ error: 'creator_link_required' });
     }
     if (b.data.mode === 'raw' && !b.data.rawJson) return reply.code(400).send({ error: 'raw_needs_json' });
+    // A document kind has no items to host, so `managed` is not a mode it can be in — the
+    // pool slice it would reserve has nothing to hold. Refused with a name rather than
+    // silently coerced: a caller that asked for managed storage should learn it got none.
+    const wantKind = b.data.kind || b.data.kinds?.[0] || 'app';
+    if (isDocumentKind(wantKind) && b.data.mode !== 'raw') {
+      return reply.code(400).send({ error: 'document_kind_is_raw_only' });
+    }
     // A managed catalog reserves a slice of a pool the owner controls (fungible with
     // repos — the same poolBytes). The slice is checked against the pool's free space.
     let groupId = null, quotaBytes = 0n;
@@ -687,7 +725,7 @@ export default async function communityCatalogRoutes(app) {
     let slug = base; for (let i = 2; await p.communityCatalog.findUnique({ where: { slug } }); i++) slug = `${base}-${i}`;
     const c = await p.communityCatalog.create({ data: {
       ownerId: req.user.uid, name: b.data.name, slug, description: b.data.description,
-      mode: b.data.mode, kinds: [b.data.kind || b.data.kinds?.[0] || 'app'], visibility: b.data.visibility,
+      mode: b.data.mode, kinds: [wantKind], visibility: b.data.visibility,
       listed: b.data.visibility === 'public', groupId, storageQuotaBytes: quotaBytes,
       freePlan: b.data.mode === 'raw',
       shareKey: crypto.randomBytes(12).toString('base64url'),
@@ -728,10 +766,10 @@ export default async function communityCatalogRoutes(app) {
     const b = z.object({
       name: z.string().trim().min(2).max(80).optional(),
       description: z.string().max(2000).optional(),
-      kind: z.enum(CATALOG_KINDS_LOWER).optional(),
+      kind: z.enum(ALL_HOSTABLE_LOWER).optional(),
       // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
       // of a blanket invalid_input it cannot act on; an empty array means "not specified".
-      kinds: z.array(z.enum(CATALOG_KINDS_LOWER)).max(CATALOG_KINDS_LOWER.length).optional(),
+      kinds: z.array(z.enum(ALL_HOSTABLE_LOWER)).max(ALL_HOSTABLE_LOWER.length).optional(),
       visibility: z.enum(['public', 'private']).optional(),
       listed: z.boolean().optional(),
       access: accessSchema.optional(),

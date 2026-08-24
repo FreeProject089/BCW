@@ -7,7 +7,7 @@ import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { api, uploadPayload } from '../lib/api.js';
-import { kindLabel, kindsFor } from './pages.jsx';
+import { kindLabel, kindsFor, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind } from './pages.jsx';
 
 // BMM publishes automations as PRESET too — the same enum value BSM uses for an audio
 // preset, told apart by the project. Leaving it out of this list meant a BMM user had no
@@ -214,8 +214,35 @@ function HostCatalog({ onBack }) {
   const onRaw = async (f) => {
     setRawFile(f); setRawJson(null);
     if (!f) return;
-    try { const j = JSON.parse(await f.text()); if (!(j.plugins || j.themes || j.apps)) throw 0; setRawJson(j); toast.success(t('sub2.raw.ok', 'Catalog feed read.')); }
-    catch { toast.error(t('sub2.raw.bad', 'Not a valid BMM catalog.json (needs plugins/themes/apps).')); }
+    // The field a document must carry depends on which document it is: a repo list has
+    // `repos`, an index has `catalogs`. Checking for the WRONG one is how "my file is
+    // rejected and I can see the data right there" happens.
+    const docField = DOCUMENT_KIND_FIELD[String(form.kind).toUpperCase()];
+    try {
+      const j = JSON.parse(await f.text());
+      if (docField) {
+        if (!Array.isArray(j[docField])) throw 0;
+        setRawJson(j);
+        toast.success(t('sub2.raw.okDoc', 'Read {n} entries.').replace('{n}', j[docField].length));
+        return;
+      }
+      if (!(j.plugins || j.themes || j.apps || j.presets)) throw 0;
+      setRawJson(j);
+      toast.success(t('sub2.raw.ok', 'Catalog feed read.'));
+    } catch {
+      toast.error(docField
+        ? t('sub2.raw.badDoc', 'That file has no "{f}" array — export it from BMM first.').replace('{f}', docField)
+        : t('sub2.raw.bad', 'Not a valid BMM catalog.json (needs plugins/themes/apps).'));
+    }
+  };
+
+  // Switching to a document kind forces raw mode and drops a file read for the other shape:
+  // "Host files with us" reserves pool space for items a document does not have, and a
+  // plugins feed left staged under a repo-list kind would be uploaded as the wrong thing.
+  const setKind = (kind) => {
+    const doc = isDocumentKind(kind);
+    setForm((s0) => ({ ...s0, kind, ...(doc ? { mode: 'raw' } : {}) }));
+    if (doc !== isDocumentKind(form.kind)) { setRawFile(null); setRawJson(null); }
   };
 
   const create = () => {
@@ -276,7 +303,7 @@ function HostCatalog({ onBack }) {
         <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
 
         <Field label={t('sub2.kind', 'Catalog type')} hint={t('sub2.kind.h', 'A catalog serves one type. BMM reads plugins, themes and apps from separate URLs, each with its own format, so a mixed catalog is one no client can read — create a second catalog for another type.')}>
-          <Select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <Select value={form.kind} onChange={(e) => setKind(e.target.value)}>
             {/* DERIVED, not listed. A hardcoded list here is the reason PRESET was
                 unreachable for months while the API accepted it all along, and then MODPACK
                 after it: this dropdown is the last place a kind has to be repeated, so it was
@@ -288,13 +315,26 @@ function HostCatalog({ onBack }) {
             {kindsFor('bmm').map((K) => (
               <option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>
             ))}
+            {/* Documents, in their own group: they are a different sort of thing — one JSON
+                file listing addresses, with no items and no payloads — and a flat list would
+                invite "host my plugins" and "host a list of other people's catalogues" to be
+                read as the same choice. */}
+            <optgroup label={t('sub2.kind.docs', 'Lists & indexes')}>
+              {DOCUMENT_KINDS.map((K) => (
+                <option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>
+              ))}
+            </optgroup>
           </Select>
         </Field>
 
         <Field label={t('sub2.mode', 'Hosting mode')}>
           <div className="grid sm:grid-cols-2 gap-2">
             {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
-              ['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]].map(([m, Icon, label, desc]) => (
+              // A document has no items and no payloads, so there is nothing for a storage
+              // pool to hold. The option is REMOVED rather than shown-and-refused: an offer
+              // the server will reject is worse than no offer.
+              ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
+            ].map(([m, Icon, label, desc]) => (
               <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-left p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
