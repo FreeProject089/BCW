@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -409,6 +409,7 @@ export function Dashboard() {
     { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
     { id: 'reports', label: t('dash.reports', 'Reports & contact'), icon: MessageSquare },
+    { id: 'data', label: t('dash.mydata', 'Your data'), icon: HardDriveDownload },
   ];
   return (
     <>
@@ -511,11 +512,149 @@ export function Dashboard() {
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
           {s === 'reports' && <MyReports />}
+          {s === 'data' && <MyData />}
         </>)}
       </SideDash>
 
       <ItemEditModal open={!!editing} item={editing} onClose={() => setEditing(null)} onDone={() => items.reload()} />
     </>
+  );
+}
+
+// Same shape as the copies in uploads.jsx and admin.jsx. Not shared, because none of the
+// three is exported and hoisting one into a lib touches three files for one number.
+const fmtBytes = (n) => {
+  n = Number(n) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 ** 2) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+};
+
+// Take a copy of your own content — the account record, your repos' files, your catalog
+// items and their uploads, in one archive.
+//
+// The size is shown BEFORE the button rather than after the click. A backup of everything
+// somebody owns can be gigabytes, and a download that starts with no idea how long it will
+// run is one people cancel halfway and assume is broken.
+function MyData() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.get('/me/backup/preview'), []);
+  const [want, setWant] = useState({ account: true, repos: true, catalog: true });
+  const [busy, setBusy] = useState('');
+  const { lang } = useI18n();
+
+  const picked = Object.entries(want).filter(([, v]) => v).map(([k]) => k);
+  // Only the parts actually ticked, so the figure under the button matches what will be
+  // downloaded rather than what exists.
+  const bytes = (want.repos ? data?.repoBytes || 0 : 0) + (want.catalog ? data?.itemBytes || 0 : 0);
+
+  // A plain <a href> would work, but it cannot tell a 429 or a 400 from a file — the browser
+  // would save the JSON error under a .zip name. Fetching first means a failure is a toast.
+  const download = async (url, filename, key) => {
+    setBusy(key);
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        throw Object.assign(new Error('http'), { status: res.status, body: await res.json().catch(() => null) });
+      }
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      toast.success(t('data.done', 'Downloaded.'));
+    } catch (x) {
+      toast.error(x?.status === 429
+        ? t('data.rate', 'A backup was taken recently — try again in a little while.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+
+  const Check = ({ k, label, hint }) => (
+    <label className="flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" className="mt-0.5" checked={want[k]} onChange={(e) => setWant((w) => ({ ...w, [k]: e.target.checked }))} />
+      <span className="min-w-0">
+        <span className="text-sm">{label}</span>
+        <span className="block text-[11px] text-[var(--muted)]">{hint}</span>
+      </span>
+    </label>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-1 font-semibold"><HardDriveDownload size={16} className="text-[var(--primary-2)]" /> {t('data.title', 'Back up your content')}</div>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          {t('data.sub', 'One archive with your account record, every file in the repos you own, and every catalog item you uploaded. Nothing is deleted here — this only makes you a copy.')}
+        </p>
+
+        {loading ? <Loading /> : (<>
+          <div className="grid sm:grid-cols-3 gap-3 mb-4">
+            <Check k="account" label={t('data.account', 'Account record')}
+              hint={t('data.account.h', 'What the site holds about you, as JSON. Passwords and tokens are left out.')} />
+            <Check k="repos" label={t('data.repos', 'Repo files')}
+              hint={t('data.repos.h', '{n} repo(s), {b}').replace('{n}', String(data?.repos?.length || 0)).replace('{b}', fmtBytes(data?.repoBytes || 0))} />
+            <Check k="catalog" label={t('data.catalog', 'Catalog items')}
+              hint={t('data.catalog.h', '{n} item(s), {b}').replace('{n}', String(data?.items?.length || 0)).replace('{b}', fmtBytes(data?.itemBytes || 0))} />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" disabled={!picked.length || !!busy}
+              onClick={() => download(`/api/me/backup?what=${picked.join(',')}&lang=${lang}`, `bettercommunity-backup-${new Date().toISOString().slice(0, 10)}.zip`, 'zip')}>
+              {busy === 'zip' ? <Spinner /> : <HardDriveDownload size={15} />} {t('data.take', 'Download the archive')}
+            </Button>
+            <Button disabled={!!busy} onClick={() => download('/api/me/export', 'bettercommunity-data.json', 'json')}>
+              {busy === 'json' ? <Spinner /> : <FileJson size={15} />} {t('data.json', 'Account record only (JSON)')}
+            </Button>
+            <span className="text-xs text-[var(--faint)] ml-auto">
+              {picked.length ? t('data.size', 'About {b}').replace('{b}', fmtBytes(bytes)) : t('data.nothing', 'Nothing selected')}
+            </span>
+          </div>
+
+          {/* Said before the download, not discovered inside it: an item with no uploaded
+              file has nothing to put in the archive, and an empty folder reads as a fault. */}
+          {want.catalog && data?.items?.some((i) => !i.hasFile) && (
+            <p className="text-[11px] text-[var(--faint)] mt-2">
+              {t('data.linkonly', '{n} of your items link to a file hosted elsewhere — the archive carries their details, not the file.')
+                .replace('{n}', String(data.items.filter((i) => !i.hasFile).length))}
+            </p>
+          )}
+          <p className="text-[11px] text-[var(--faint)] mt-2">
+            {t('data.manifest', 'The archive contains a manifest.json listing what went in — and anything that could not be read. Read it before assuming the copy is complete.')}
+          </p>
+        </>)}
+      </Card>
+
+      {/* Per item, because the common need is one file back — usually the one attached to a
+          submission that is still pending or was suspended, which the public link refuses. */}
+      {!loading && !!data?.items?.length && (
+        <Card className="p-5">
+          <div className="font-semibold mb-1">{t('data.one', 'Get one item back')}</div>
+          <p className="text-sm text-[var(--muted)] mb-3">
+            {t('data.one.s', 'The file you uploaded, whatever the item’s status — including while it waits for review, or after it was suspended.')}
+          </p>
+          <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-80 overflow-y-auto">
+            {data.items.map((it) => (
+              <div key={it.id} className="px-3 py-2 flex items-center gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm truncate">{it.name}</div>
+                  <div className="text-[11px] text-[var(--faint)]">
+                    {it.status} · {it.hasFile ? fmtBytes(it.bytes) : t('data.nofile', 'no uploaded file')}
+                  </div>
+                </div>
+                <Button size="sm" variant="ghost" disabled={!it.hasFile || !!busy}
+                  title={it.hasFile ? t('common.download', 'Download') : t('data.nofile', 'no uploaded file')}
+                  onClick={() => download(`/api/me/catalog/${it.id}/download`, it.slug || it.name, it.id)}>
+                  {busy === it.id ? <Spinner /> : <Download size={14} />}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
   );
 }
 

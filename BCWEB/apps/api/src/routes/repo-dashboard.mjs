@@ -6,6 +6,7 @@ import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode } from '../lib
 import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA } from './repos.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
 import { getObject } from '../lib/storage.mjs';
+import { zipEntryName } from '../lib/zip-path.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 
@@ -200,7 +201,10 @@ export default async function repoDashboardRoutes(app) {
     for (const f of files) {
       try {
         const { body } = await getObject(f.key);
-        archive.append(body, { name: f.path });
+        // NOT f.path directly: a repo file may be registered at '../../x' (the upload
+        // validator permits '.', so a '..' segment passes), and this archive is handed to
+        // collaborators and to anyone holding the repo password.
+        archive.append(body, { name: zipEntryName(f.path) });
       } catch (e) { req.log?.warn?.({ path: f.path, e: String(e?.message || e) }, 'zip: failed to fetch file, skipping'); }
     }
     await archive.finalize();

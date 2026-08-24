@@ -23,7 +23,12 @@ const REPO_EXPORT_MAX_BYTES = Math.max(1, Number(process.env.REPO_EXPORT_MAX_MB)
 const FILE_RL = { rateLimit: { max: 6000, timeWindow: '1 minute' } };
 
 const fileSer = (f) => ({ ...f, size: Number(f.size) });
-const norm = (p) => p.replace(/\\/g, '/').replace(/^\/+/, '').split('/').map((s) => s.replace(/[^a-zA-Z0-9._-]/g, '_')).join('/').slice(0, 200);
+// Every character outside [A-Za-z0-9._-] becomes '_', which PERMITS '.', so a segment of
+// exactly '..' used to pass through whole — and a repo file path is later used as a zip
+// entry name. '.' and '..' are dropped here so a traversal segment never reaches a row.
+// Archives sanitise again on the way out (lib/zip-path.mjs), because rows registered
+// before this line existed still hold whatever they hold.
+const norm = (p) => p.replace(/\\/g, '/').replace(/^\/+/, '').split('/').map((s) => s.replace(/[^a-zA-Z0-9._-]/g, '_')).filter((s) => s !== '.' && s !== '..').join('/').slice(0, 200);
 
 // ── Runtime sandbox enforcement (the serving side of the sandbox) ──
 // The real client IP as observed by our trusted proxy (Caddy appends it last).
