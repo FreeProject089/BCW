@@ -258,6 +258,7 @@ model User {
   @@index([status])
   @@index([closedEmailHash])
   @@index([priorUserId])
+  dataKey           UserDataKey?
 }
 
 // A GitHub/Discord identity linked to a website account — powers "Continue with
@@ -1989,6 +1990,24 @@ model AdminSetting {
 // exists to show visitors what shipped in each release. Two saves inside one version
 // overwrite that row; here they are two entries, because "what changed at 14:02" is a
 // different question from "what does 1.2.0 look like".
+/// One encryption key per user — the erasure mechanism for backups.
+///
+/// Row backups are git-committed JSON, and git is append-only: a user deleted from the live
+/// tables stays in every snapshot taken before that. Rewriting git history invalidates every
+/// hash and breaks every restore that referenced one, so instead each user's backups are
+/// encrypted with their own key and erasure is deleting the key. One person becomes
+/// unreadable; everybody else stays restorable.
+///
+/// Minted lazily on the first backup that needs it — a key for an account that never had one
+/// taken is a secret stored for nothing.
+model UserDataKey {
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String   @id
+  /// 32 random bytes. Never leaves the server, and never appears in an API response.
+  key       Bytes
+  createdAt DateTime @default(now())
+}
+
 model ProjectConfigRevision {
   id        String   @id @default(cuid())
   // 'bmm' | 'bsm' | … for a fixed project, or 'sc:<id>' for a showcase project — the

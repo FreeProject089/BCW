@@ -49,7 +49,19 @@ async function sweepDailyFileBackup(p, log) {
   const key = 'backup.lastFullSnapshot';
   const row = await p.adminSetting.findUnique({ where: { key } });
   const last = row?.value?.at ? new Date(row.value.at).getTime() : 0;
-  if (Date.now() - last < DAY_MS) return false;
+
+  // How often, in hours. Read BEFORE the age check, because the whole point of the setting
+  // is to change when the next one happens — a value read after would take effect a day
+  // late, which is the same as not working.
+  //
+  // Clamped to [1, 720]. Below an hour this is a sweeper that mostly makes snapshots, and
+  // above a month "automatic backup" stops describing anything. An absent or unusable value
+  // is 24: this setting arrived after the daily snapshot did, and reading a missing one as
+  // anything else would change the behaviour of every existing install.
+  const cfgRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
+  const hours = Number(cfgRow?.value?.everyHours);
+  const interval = (Number.isFinite(hours) && hours > 0 ? Math.min(720, Math.max(1, hours)) : 24) * 3600_000;
+  if (Date.now() - last < interval) return false;
 
   // The admin switch (Advanced server → Backups). Checked BEFORE the timestamp is written, and
   // returning without writing it — so switching automatic backups back on takes effect on the
@@ -57,7 +69,7 @@ async function sweepDailyFileBackup(p, log) {
   //
   // A missing key means ON: this setting arrived after the daily snapshot did, and reading an
   // absent value as "off" would quietly stop backups on every existing install.
-  const limitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
+  const limitRow = cfgRow;   // already read above, for the interval
   if (limitRow?.value?.auto === false) return false;
 
   try {

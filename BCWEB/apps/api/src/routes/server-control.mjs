@@ -8,6 +8,7 @@ import fsSync from 'node:fs';
 import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
+import { sealForOwner, openBackup } from '../lib/shred.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle } from '../lib/gitbackup.mjs';
 import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath } from '../lib/snapshots.mjs';
 
@@ -498,6 +499,28 @@ export default async function serverControlRoutes(app) {
   // against the real catalog (same pattern as everywhere else here), sensitive-
   // looking columns (password/secret/token/hash/totp) are refused outright, and
   // the value itself is always passed as a bound parameter, never interpolated.
+
+  /**
+   * Whose row is this?
+   *
+   * Read from the row itself rather than from a table-name list: a list has to be edited
+   * every time a model gains an owner, and the day somebody forgets is the day a table of
+   * personal data starts being backed up in the clear.
+   *
+   * The order matters. A BlogPost has an authorId; a ServerRepo has an ownerId; a Session
+   * has a userId. A row with several is attributed to the FIRST one found, which is the one
+   * naming the person the row is about rather than a moderator who touched it — `actorId` is
+   * deliberately absent for exactly that reason.
+   */
+  const ownerOfRow = (row) => {
+    for (const k of ['userId', 'ownerId', 'authorId']) {
+      if (typeof row?.[k] === 'string' && row[k]) return row[k];
+    }
+    // The User table itself: the row IS the person.
+    if (typeof row?.id === 'string' && typeof row?.email === 'string') return row.id;
+    return null;
+  };
+
   const serializeRow = (r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === 'bigint' ? v.toString() : v instanceof Date ? v.toISOString() : v]));
 
   app.put('/server/db/table/:name/cell', { preHandler: DANGEROUS, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {
@@ -520,7 +543,12 @@ export default async function serverControlRoutes(app) {
     // "commit right before HEAD is the pre-edit state" pattern as file backups.
     const oldRows = await p.$queryRawUnsafe(`SELECT * FROM "${req.params.name}" WHERE "${pkCol}" = $1`, b.data.pk);
     if (oldRows[0]) {
-      await backupFile(DB_BACKUP_ROOT, `${req.params.name}/${b.data.pk}.json`, JSON.stringify(serializeRow(oldRows[0]), null, 2), `${req.user.uid} edited ${req.params.name}.${b.data.column} (pk=${b.data.pk})`)
+      // Encrypted with the ROW OWNER's key when the row belongs to somebody, so a later
+      // erasure request reaches this snapshot too — git is append-only and the alternative
+      // is rewriting history, which invalidates every hash and every restore. A row with no
+      // owner (a config, a setting) is written as before: nothing to erase, no key to keep.
+      const payload = await sealForOwner(p, ownerOfRow(oldRows[0]), JSON.stringify(serializeRow(oldRows[0]), null, 2));
+      await backupFile(DB_BACKUP_ROOT, `${req.params.name}/${b.data.pk}.json`, payload, `${req.user.uid} edited ${req.params.name}.${b.data.column} (pk=${b.data.pk})`)
         .catch((e) => req.log?.warn?.({ e: String(e) }, 'db backup failed (continuing)'));
     }
     try {
@@ -554,13 +582,30 @@ export default async function serverControlRoutes(app) {
     const pkCol = await singlePkColumn(p, b.data.table);
     if (!pkCol) return reply.code(400).send({ error: 'no_single_pk' });
     let historical;
-    try { historical = JSON.parse(await fileAtCommit(DB_BACKUP_ROOT, req.params.hash, `${b.data.table}/${b.data.pk}.json`)); }
-    catch { return reply.code(404).send({ error: 'backup_not_found' }); }
+    try {
+      const raw = await fileAtCommit(DB_BACKUP_ROOT, req.params.hash, `${b.data.table}/${b.data.pk}.json`);
+      const opened = await openBackup(p, raw);
+      // "The owner asked to be erased" is a NORMAL answer here, not an error to swallow.
+      // A restore screen that shows a parse failure where it should say this is a screen
+      // that gets reported as broken — and it would also be the only place the erasure is
+      // visible, so saying it plainly is the point.
+      if (!opened.ok) {
+        return reply.code(410).send({
+          error: opened.reason === 'shredded' ? 'owner_erased' : 'unreadable',
+          detail: opened.reason === 'shredded'
+            ? 'This snapshot belonged to an account that has been erased. Its key was destroyed, so the contents can no longer be read — by anyone, including from a copy of this backup.'
+            : 'The snapshot could not be decrypted. It was written for a different key, or the file was altered.',
+        });
+      }
+      historical = JSON.parse(opened.text);
+    } catch { return reply.code(404).send({ error: 'backup_not_found' }); }
     const cols = await p.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${b.data.table}`;
     const colNames = new Set(cols.map((c) => c.column_name));
     const currentRows = await p.$queryRawUnsafe(`SELECT * FROM "${b.data.table}" WHERE "${pkCol}" = $1`, b.data.pk);
     if (!currentRows[0]) return reply.code(404).send({ error: 'row_not_found' });
-    await backupFile(DB_BACKUP_ROOT, `${b.data.table}/${b.data.pk}.json`, JSON.stringify(serializeRow(currentRows[0]), null, 2), `${req.user.uid} restored ${b.data.table} (pk=${b.data.pk}) to ${req.params.hash.slice(0, 8)}`).catch(() => {});
+    await backupFile(DB_BACKUP_ROOT, `${b.data.table}/${b.data.pk}.json`,
+      await sealForOwner(p, ownerOfRow(currentRows[0]), JSON.stringify(serializeRow(currentRows[0]), null, 2)),
+      `${req.user.uid} restored ${b.data.table} (pk=${b.data.pk}) to ${req.params.hash.slice(0, 8)}`).catch(() => {});
     const restored = []; const skipped = [];
     for (const [col, val] of Object.entries(historical)) {
       if (col === pkCol) continue; // never rewrite the primary key itself
@@ -639,6 +684,9 @@ export default async function serverControlRoutes(app) {
       // setting has been backing itself up all along — reading a missing key as "off" would
       // silently stop that on upgrade, and nothing would say so until somebody needed a backup.
       auto: row?.value?.auto !== false,
+      // Same rule as `auto`: an install that predates this setting has been snapshotting
+      // daily, so a missing value reads as 24 rather than as anything new.
+      everyHours: row?.value?.everyHours ?? 24,
     };
   });
 
@@ -653,6 +701,10 @@ export default async function serverControlRoutes(app) {
       // `keep`: an older client that only sends maxBytes must not switch automatic backups off
       // as a side effect of saving a size limit.
       auto: z.boolean().optional(),
+      // How often the automatic snapshot runs, in hours. Optional for the same reason as
+      // the two above: an older client sending only a size limit must not silently reset
+      // somebody's cadence to the default.
+      everyHours: z.number().int().min(1).max(720).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -661,13 +713,14 @@ export default async function serverControlRoutes(app) {
       maxBytes: b.data.maxBytes,
       keep: b.data.keep ?? prev.keep ?? DEFAULT_KEEP,
       auto: b.data.auto ?? prev.auto ?? true,
+      everyHours: b.data.everyHours ?? prev.everyHours ?? 24,
     };
     await p.adminSetting.upsert({ where: { key: 'backup.maxBytes' }, create: { key: 'backup.maxBytes', value }, update: { value } });
     // Turning automatic backups OFF is the kind of change somebody needs to be able to find
     // six months later, when the question is "why is there nothing to restore" — so it is
     // spelled out in the audit line rather than left implicit in a size change.
     await logAudit(p, req.user.uid, 'server.backup_limit',
-      `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}, automatic ${value.auto ? 'on' : 'OFF'}`, clientIp(req));
+      `size ${b.data.maxBytes ?? 'unlimited'} bytes, keep ${value.keep || 'all'}, automatic ${value.auto ? 'on' : 'OFF'}, every ${value.everyHours}h`, clientIp(req));
     // Lowering the count is an instruction about what to hold, so it takes effect now
     // rather than at the next snapshot — otherwise "keep 3" leaves twelve on disk until
     // someone happens to press the button.

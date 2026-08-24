@@ -2863,6 +2863,8 @@ function SnapshotsPanel({ onChanged }) {
   // Absent means ON — the daily snapshot predates this switch, so an install that never set
   // it has been backing up all along and must keep doing so.
   const autoOn = data?.auto !== false;
+  const everyNow = data?.everyHours ?? 24;
+  const [every, setEvery] = useState('');
 
   const take = async (kind) => {
     setBusy('new');
@@ -2912,9 +2914,14 @@ function SnapshotsPanel({ onChanged }) {
     }
     setBusy('keep');
     try {
-      const r = await api.put('/server/backups/limit', { maxBytes: data?.maxBytes ?? null, keep: n });
+      // Sent together: two fields behind one Save button must be one request, or half the
+      // form saves and the other half looks like it did.
+      const hours = every === '' ? undefined : Math.min(720, Math.max(1, Number(every) || everyNow));
+      const r = await api.put('/server/backups/limit', {
+        maxBytes: data?.maxBytes ?? null, keep: n, ...(hours ? { everyHours: hours } : {}),
+      });
       toast.success(r.removed?.length ? t('snap.rotated', '{n} removed.').replace('{n}', String(r.removed.length)) : t('common.saved', 'Saved.'));
-      setKeep(''); reload(); onChanged?.();
+      setKeep(''); setEvery(''); reload(); onChanged?.();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
   };
 
@@ -2973,10 +2980,17 @@ function SnapshotsPanel({ onChanged }) {
           </span>
         </label>
         <div className="flex items-center gap-1.5 ml-auto">
-          <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer mr-1" title={t('snap.auto.hint', 'Take a backup automatically once a day')}>
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer mr-1" title={t('snap.auto.hint', 'Take a backup automatically on a schedule')}>
             <input type="checkbox" checked={autoOn} disabled={!!busy} onChange={(e) => saveAuto(e.target.checked)} />
-            {t('snap.auto.label', 'Daily automatic')}
+            {t('snap.auto.label', 'Automatic')}
           </label>
+          {/* The cadence, next to the switch that governs it. Disabled when automatic
+              backups are off, because a schedule for something that never runs is a control
+              that lies about what it does. */}
+          <span className="text-[11px] text-[var(--muted)]">{t('snap.every', 'every')}</span>
+          <Input className="w-16" type="number" min="1" max="720" value={every} disabled={!autoOn || !!busy}
+            onChange={(e) => setEvery(e.target.value)} placeholder={String(everyNow)} />
+          <span className="text-[11px] text-[var(--muted)]">{t('snap.hours', 'h')}</span>
           <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
           <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
           <Button size="sm" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
@@ -2985,7 +2999,8 @@ function SnapshotsPanel({ onChanged }) {
       <p className="text-[11px] text-[var(--faint)] mt-1.5">
         {!autoOn && <span className="text-warning">{t('snap.auto.off', 'Automatic backups are OFF — the only backups from here on are the ones you take by hand. ')}</span>}
         {keepNow > 0
-          ? t('snap.keep.on', 'Keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.').replace('{n}', String(keepNow))
+          ? t('snap.keep.on', 'A backup every {h}h, keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.')
+              .replace('{n}', String(keepNow)).replace('{h}', String(everyNow))
           : t('snap.keep.off', 'Rotation is off: backups are kept until you delete them, and nothing watches the disk for you.')}
       </p>
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser} from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
+import { shredUser } from '../lib/shred.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
@@ -1768,6 +1769,17 @@ export default async function miscRoutes(app) {
       )).filter(Boolean);
       if (!u.closedAt) await anonymiseAccount(p, u);
     }
+    // The key that makes this person's old backups readable.
+    //
+    // Deleting the user row cascades to it, so the `delete` path is covered by the schema.
+    // The ANONYMISE fallback is not: the row survives, so the key would survive with it and
+    // every snapshot taken before today would stay readable — which is the erasure not
+    // happening, in the one case where a foreign key forced the softer outcome.
+    //
+    // Called for both, unconditionally. It is idempotent, and an erasure that quietly
+    // depends on which branch it took is one nobody can reason about.
+    const shredded = await shredUser(p, u.id).catch(() => false);
+
     // The cached copy still holds the old address, and it is what the next request reads.
     clearUserCache(u.id);
     clearAccountLockCache(u.id);
@@ -1775,8 +1787,11 @@ export default async function miscRoutes(app) {
     // The ORIGINAL address, recorded before it was replaced — an audit line reading
     // `closed+<id>@account.invalid` names nobody and is the one line that has to.
     await logAudit(p, req.user.uid, 'user.erased',
-      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account ${outcome})`, req.ip).catch(() => {});
-    return { ok: true, ...done, outcome, heldBy };
+      `${u.email} (${done.totals?.deleted ?? 0} deleted, ${done.totals?.detached ?? 0} detached, account ${outcome}, backups ${shredded ? 'shredded' : 'had no key'})`, req.ip).catch(() => {});
+    // `shredded` is reported, not assumed: "had no key" means this account never had a
+    // backup encrypted for it, which is a different fact from "the key was destroyed" and
+    // the one somebody answering a regulator needs to be able to tell apart.
+    return { ok: true, ...done, outcome, heldBy, shredded };
   });
 
   // Mail it to the ADDRESS ON THE ACCOUNT, and nowhere else.
