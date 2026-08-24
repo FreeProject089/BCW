@@ -1164,6 +1164,10 @@ function GlobalAccessPolicyCard() {
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.policy && !policy) setPolicy(data.policy); /* eslint-disable-next-line */ }, [data]);
 
+  // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
+  // below meant one hook count on the loading render and a larger one once the data
+  // arrived — React error #310. Found by check-undefined-jsx, not by anyone using it.
+  const undoSave = useUndoableSave(reload);
   if (!policy) return <Card className="p-5">{loading ? <Loading /> : null}</Card>;
 
   const addTo = (field, val) => setPolicy((s) => ({ ...s, [field]: [...new Set([...(s[field] || []), val])] }));
@@ -1175,7 +1179,6 @@ function GlobalAccessPolicyCard() {
   });
   const rmAccount = (field, entry) => setPolicy((s) => ({ ...s, [field]: (s[field] || []).filter((a) => !(a.type === entry.type && a.id === entry.id)) }));
 
-  const undoSave = useUndoableSave(reload);
   const save = () => {
     setBusy(true);
     undoSave(() => api.put('/admin/access-policy', policy),
@@ -9070,17 +9073,6 @@ function ConfigDiff() {
  * into a name the page cannot vouch for.
  */
 
-/** A file name to a Prism language. Unknown extensions fall through to plain text, which is
- *  what an unhighlighted <pre> already was — never a wrong grammar, which mis-colours a file
- *  and makes it read as something it is not. */
-function langOfName(name = '') {
-  const ext = String(name).split('.').pop()?.toLowerCase();
-  return ({
-    json: 'json', js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'javascript',
-    jsx: 'javascript', tsx: 'javascript', py: 'python', sh: 'bash', bash: 'bash',
-    bmmpa: 'json', bmmnav: 'json', bmmreplay: 'json', mm: 'json',
-  })[ext] || 'plain';
-}
 
 function AdminWebhooks() {
   const { t } = useI18n(); const toast = useToast();
@@ -9625,11 +9617,15 @@ function HomePageEditor() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); } }, [data]);
-  if (loading || !form || !sections) return <Loading />;
-
+  // ABOVE the early return below. Placed after it this was a conditional hook: React counted
+  // three hooks on the loading render and four once the data arrived, which is error #310 and
+  // a blank page. The same mistake this file already warns about in AdminBot, made anyway.
+  //
   // The shipped English is the list of what exists, and also the placeholder — so an empty
   // box visibly shows the wording it will fall back to.
   const shipped = useMemo(() => shippedText('home.'), []);
+  if (loading || !form || !sections) return <Loading />;
+
   const keys = Object.keys(shipped).sort();
   const shown = q.trim()
     ? keys.filter((k) => k.includes(q.toLowerCase())
@@ -10257,6 +10253,10 @@ function AdminBot() {
   const [tokenInput, setTokenInput] = useState('');
   const [scope, setScope] = useState(''); // '' = global defaults, else a guild id (per-server config)
   useEffect(() => { if (data?.config) setCfg(data.config); }, [data]);
+  // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
+  // below meant one hook count on the loading render and a larger one once the data
+  // arrived — React error #310. Found by check-undefined-jsx, not by anyone using it.
+  const undoSave = useUndoableSave(reload);
   if (loading || !cfg) return <Loading />;
   const status = data?.status;
   const online = status?.online && status?.at && (Date.now() - new Date(status.at).getTime() < 180000);
@@ -10274,7 +10274,6 @@ function AdminBot() {
     for (let i = 0; i < keys.length - 1; i++) o = (o[keys[i]] ??= {});
     o[keys[keys.length - 1]] = val; return next;
   });
-  const undoSave = useUndoableSave(reload);
   const save = () => undoSave(() => api.put('/admin/bot/config', { config: cfg }),
     t('db.saved', 'Bot config saved.'), { errorFor: () => t('db.savefail', 'Save failed.') });
   const botDisabled = cfg.enabled === false;
@@ -12399,6 +12398,10 @@ function RetentionCard() {
   const [form, setForm] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.config) setForm(data.config); }, [data]);
+  // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
+  // below meant one hook count on the loading render and a larger one once the data
+  // arrived — React error #310. Found by check-undefined-jsx, not by anyone using it.
+  const undoSave = useUndoableSave(reload);
   if (loading || !form) return <Loading />;
   const ageDays = (iso) => (iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 864e5)) : null);
   const rows = [
@@ -12415,7 +12418,6 @@ function RetentionCard() {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: Math.max(0, Math.min(3650, Math.floor(Number(v) || 0))) }));
   // Deferred behind the undo window: the PUT is idempotent and the server still holds the
   // previous windows, so Undo just means the request never went out.
-  const undoSave = useUndoableSave(reload);
   const save = () => {
     setBusy(true);
     undoSave(() => api.put('/admin/analytics/retention', form),

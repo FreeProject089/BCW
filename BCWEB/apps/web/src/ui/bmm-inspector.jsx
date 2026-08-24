@@ -15,6 +15,23 @@ import { useI18n } from '../i18n.jsx';
 import { Card, Button, Textarea, Badge, Spinner, useToast } from './ui.jsx';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import ReplayPlayer from './ReplayPlayer.jsx';
+// Left behind by the extraction from admin.jsx, which had it in scope from its own
+// imports. A bare function call to an unbound name is a RUNTIME fact, not a compile
+// one, so the build shipped a panel that threw the moment somebody opened a file.
+import { highlightCode } from '../pages/pages.jsx';
+
+/** A file name to a Prism language. Unknown extensions fall through to plain text, which is
+ *  what an unhighlighted <pre> already was — never a wrong grammar, which mis-colours a file
+ *  and makes it read as something it is not. */
+function langOfName(name = '') {
+  const ext = String(name).split('.').pop()?.toLowerCase();
+  return ({
+    json: 'json', js: 'javascript', mjs: 'javascript', cjs: 'javascript', ts: 'javascript',
+    jsx: 'javascript', tsx: 'javascript', py: 'python', sh: 'bash', bash: 'bash',
+    bmmpa: 'json', bmmnav: 'json', bmmreplay: 'json', mm: 'json',
+  })[ext] || 'plain';
+}
+
 
 // Moved here WITH the inspector rather than left behind in admin.jsx. JSX resolves a
 // component identifier at render, not at build, so the extraction shipped a page that
