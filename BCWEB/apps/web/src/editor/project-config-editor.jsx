@@ -89,6 +89,7 @@ function MediaFieldInline({ value, onChange, placeholder, accept }) {
 
 // One editable row in a repeatable list, with drag-to-reorder + delete.
 function Repeatable({ items, onChange, render, add, addLabel, empty }) {
+  const { t } = useI18n();
   const [dragIdx, setDragIdx] = useState(null);
   const move = (from, to) => { const a = [...items]; const [x] = a.splice(from, 1); a.splice(to, 0, x); onChange(a); };
   return (
@@ -98,7 +99,7 @@ function Repeatable({ items, onChange, render, add, addLabel, empty }) {
         <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragOver={(e) => e.preventDefault()}
           onDrop={() => { if (dragIdx != null && dragIdx !== i) move(dragIdx, i); setDragIdx(null); }}
           className={`flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 ${dragIdx === i ? 'opacity-50' : ''}`}>
-          <span className="cursor-grab text-[var(--faint)] mt-1.5 shrink-0" title="Drag to reorder"><GripVertical size={14} /></span>
+          <span className="cursor-grab text-[var(--faint)] mt-1.5 shrink-0" title={t('pce.drag', "Drag to reorder")}><GripVertical size={14} /></span>
           <div className="flex-1 min-w-0">{render(it, (patch) => onChange(items.map((x, j) => j === i ? { ...x, ...patch } : x)))}</div>
           <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="text-[var(--faint)] hover:text-error mt-1.5 shrink-0"><Trash2 size={14} /></button>
         </div>
@@ -110,13 +111,14 @@ function Repeatable({ items, onChange, render, add, addLabel, empty }) {
 
 // Small icon-picker button (chosen glyph + name).
 function IconBtn({ value, onChange }) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-sm text-[var(--muted)] hover:text-[var(--text)] shrink-0">
         {value ? <IconGlyph name={value} size={15} /> : <ShieldCheck size={15} />}<span>{value || 'icon'}</span>
       </button>
-      {open && <IconPicker title="Pick an icon" onPick={onChange} onClose={() => setOpen(false)} />}
+      {open && <IconPicker title={t('pce.pickicon', "Pick an icon")} onPick={onChange} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -193,12 +195,12 @@ function CodeGraphSettings({ projectKey }) {
   const copy = () => { navigator.clipboard?.writeText(state?.deliverTo || ''); toast.success(t('cg.copied', 'Address copied.')); };
 
   return (
-    <Section icon={Network} title="Code graph" desc="Read the repository so the architecture view stays current. A GitHub webhook rebuilds it on every push; the button below does the same by hand.">
-      <Field label="Repository">
+    <Section icon={Network} title={t('pce.codegraph', "Code graph")} desc="Read the repository so the architecture view stays current. A GitHub webhook rebuilds it on every push; the button below does the same by hand.">
+      <Field label={t('pce.repo', "Repository")}>
         <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://github.com/owner/repo" />
       </Field>
 
-      <Field label="Webhook secret" hint={
+      <Field label={t('pce.whsecret', "Webhook secret")} hint={
         state?.secretFrom === 'env'
           ? 'Currently coming from the server environment (GITHUB_WEBHOOK_SECRET). Type one here to override it for this project only.'
           : state?.secretFrom === 'page'
@@ -212,7 +214,7 @@ function CodeGraphSettings({ projectKey }) {
       {/* The address to paste into GitHub, built for them — guessing the shape of it is the
           usual reason a webhook never fires. */}
       {state?.deliverTo && (
-        <Field label="Send it to" hint="GitHub → Settings → Webhooks → Add webhook. Content type: application/json. Event: push.">
+        <Field label={t('pce.sendto', "Send it to")} hint="GitHub → Settings → Webhooks → Add webhook. Content type: application/json. Event: push.">
           <div className="flex items-center gap-2">
             <Input readOnly value={state.deliverTo} className="flex-1 font-mono !text-[12px]" />
             <Button type="button" size="sm" onClick={copy}><Copy size={13} /> Copy</Button>
@@ -232,7 +234,7 @@ function CodeGraphSettings({ projectKey }) {
           {state.snapshot.endpointStats?.links} call/route link(s).
         </div>
       ) : (
-        <div className="text-[11px] text-[var(--faint)]">Never read yet.</div>
+        <div className="text-[11px] text-[var(--faint)]">{t('pce.neverread', "Never read yet.")}</div>
       )}
     </Section>
   );
@@ -313,7 +315,7 @@ function StackDetect({ onDraft, hasExisting }) {
 
   return (
     <div className="rounded-xl border border-[var(--line)] p-3 space-y-2">
-      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Build it from a repository</div>
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('pce.buildfromrepo', "Build it from a repository")}</div>
       <p className="text-[11px] text-[var(--faint)]">
         Reads compose files and package manifests and proposes the components. It only ever reports
         what a file actually said — nothing is invented — and you edit the result before saving.
@@ -322,9 +324,9 @@ function StackDetect({ onDraft, hasExisting }) {
         <Input className="flex-1 min-w-[200px]" value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://github.com/owner/repo" />
         <Button type="button" size="sm" disabled={busy || !url.trim()} onClick={() => run({ url: url.trim() }, url.trim())}>
-          {busy ? <Spinner /> : <><Github size={13} /> Read it</>}
+          {busy ? <Spinner /> : <><Github size={13} /> {t('pce.readit', "Read it")}</>}
         </Button>
-        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={pickFolder}>Pick a folder</Button>
+        <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={pickFolder}>{t('pce.pickfolder', "Pick a folder")}</Button>
         <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={pickZip}>…or a zip</Button>
       </div>
 
@@ -348,7 +350,7 @@ function StackDetect({ onDraft, hasExisting }) {
           <div className="text-[11px] text-[var(--faint)]">Read from: {draft.evidence.join(', ')}</div>
           {(draft.notes || []).map((n, i) => <div key={i} className="text-[11px] text-[var(--warning)]">{n}</div>)}
           <div className="flex gap-2">
-            <Button type="button" size="sm" variant="primary" onClick={apply}>Use these</Button>
+            <Button type="button" size="sm" variant="primary" onClick={apply}>{t('pce.usethese', "Use these")}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(null)}>Discard</Button>
           </div>
         </div>
@@ -416,26 +418,26 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
     const usingDefaults = !Array.isArray(c.cards) || !c.cards.length;
     return (
       <div className="space-y-3">
-        <Section icon={Eye} title="Header" defaultOpen desc="Leave a field empty to keep the built-in wording.">
-          <Field label="Title"><Input value={hero.title || ''} onChange={(e) => setIn('hero', { title: e.target.value })} placeholder="Build on BetterCommunity" /></Field>
-          <Field label="Intro"><Textarea rows={2} value={hero.body || ''} onChange={(e) => setIn('hero', { body: e.target.value })} placeholder="What somebody can build here, in a sentence or two." /></Field>
-          <Field label="Small print under the buttons"><Input value={hero.note || ''} onChange={(e) => setIn('hero', { note: e.target.value })} placeholder="A key takes about a minute…" /></Field>
-          <Field label="Heading above the cards"><Input value={hero.toolsTitle || ''} onChange={(e) => setIn('hero', { toolsTitle: e.target.value })} placeholder="Everything here" /></Field>
+        <Section icon={Eye} title={t('pce.header', "Header")} defaultOpen desc="Leave a field empty to keep the built-in wording.">
+          <Field label={t('pce.title', "Title")}><Input value={hero.title || ''} onChange={(e) => setIn('hero', { title: e.target.value })} placeholder={t('pce.ph.build', "Build on BetterCommunity")} /></Field>
+          <Field label={t('pce.intro', "Intro")}><Textarea rows={2} value={hero.body || ''} onChange={(e) => setIn('hero', { body: e.target.value })} placeholder={t('pce.ph.intro', "What somebody can build here, in a sentence or two.")} /></Field>
+          <Field label={t('pce.smallprint', "Small print under the buttons")}><Input value={hero.note || ''} onChange={(e) => setIn('hero', { note: e.target.value })} placeholder="A key takes about a minute…" /></Field>
+          <Field label={t('pce.cardhead', "Heading above the cards")}><Input value={hero.toolsTitle || ''} onChange={(e) => setIn('hero', { toolsTitle: e.target.value })} placeholder={t('pce.ph.everything', "Everything here")} /></Field>
         </Section>
 
-        <Section icon={ListTodo} title="Blocks" desc="Turn a whole block of the page off.">
+        <Section icon={ListTodo} title={t('pce.blocks', "Blocks")} desc="Turn a whole block of the page off.">
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={sections.jobs !== false} onChange={(e) => setIn('sections', { jobs: e.target.checked })} />
             Show the “which of the two jobs is yours” pair
           </label>
         </Section>
 
-        <Section icon={Boxes} title="Cards" badge={cards.length} defaultOpen
+        <Section icon={Boxes} title={t('pce.cards', "Cards")} badge={cards.length} defaultOpen
           desc="What the page lists under the heading. Reorder by dragging.">
           {usingDefaults && (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[var(--line)] p-2 text-xs text-[var(--faint)]">
               <span>Showing the built-in cards. Editing one makes this page’s own list, and the built-ins stop applying.</span>
-              <Button type="button" size="sm" onClick={() => set({ cards: DEFAULT_DEV_CARDS.map((x) => ({ ...x })) })}>Start from these</Button>
+              <Button type="button" size="sm" onClick={() => set({ cards: DEFAULT_DEV_CARDS.map((x) => ({ ...x })) })}>{t('pce.startfromthese', "Start from these")}</Button>
             </div>
           )}
           {!usingDefaults && (
@@ -464,7 +466,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           )}
         </Section>
 
-        <Section icon={Link2} title="Links">
+        <Section icon={Link2} title={t('pce.links', "Links")}>
           <div className="grid sm:grid-cols-2 gap-3">
             {LINK_FIELDS.map(([k, label]) => (
               <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
@@ -478,13 +480,13 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   return (
     <div className="space-y-3">
       {/* Basics */}
-      <Section icon={Eye} title="Basics" defaultOpen>
-        <Field label="Tagline"><Input value={c.tagline || ''} onChange={(e) => set({ tagline: e.target.value })} placeholder="One-line description shown under the title" /></Field>
-        <Field label="Version (optional)"><Input value={c.version || ''} onChange={(e) => set({ version: e.target.value })} placeholder="1.4.0" /></Field>
+      <Section icon={Eye} title={t('pce.basics', "Basics")} defaultOpen>
+        <Field label={t('pce.tagline', "Tagline")}><Input value={c.tagline || ''} onChange={(e) => set({ tagline: e.target.value })} placeholder={t('pce.ph.tagline', "One-line description shown under the title")} /></Field>
+        <Field label={t('pce.version', "Version (optional)")}><Input value={c.version || ''} onChange={(e) => set({ version: e.target.value })} placeholder="1.4.0" /></Field>
       </Section>
 
       {/* Links */}
-      <Section icon={Link2} title="Links" badge={Object.values(links).filter(Boolean).length || null}>
+      <Section icon={Link2} title={t('pce.links', "Links")} badge={Object.values(links).filter(Boolean).length || null}>
         <div className="grid sm:grid-cols-2 gap-3">
           {LINK_FIELDS.map(([k, label]) => (
             <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
@@ -494,13 +496,13 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             icon (lucide / simple:brand) + label. (The old single customLabel/
             customUrl pair is auto-migrated into this list on first edit.) */}
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Custom links</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('pce.customlinks', "Custom links")}</div>
           <Repeatable items={customLinks} onChange={(v) => setIn('links', { custom: v, customLabel: undefined, customUrl: undefined })} addLabel="Add link" empty="No custom links yet."
             add={() => ({ icon: 'link', label: 'Docs', url: '' })}
             render={(it, patch) => (
               <div className="flex items-center gap-2">
                 <IconBtn value={it.icon} onChange={(v) => patch({ icon: v })} />
-                <Input className="!w-32" value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Label" />
+                <Input className="!w-32" value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder={t('pce.ph.label', "Label")} />
                 <Input className="flex-1" value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" />
               </div>
             )} />
@@ -508,15 +510,15 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       </Section>
 
       {/* Downloads */}
-      <Section icon={Download} title="Downloads" badge={downloads.length || null}>
+      <Section icon={Download} title={t('pce.downloads', "Downloads")} badge={downloads.length || null}>
         <Repeatable items={downloads} onChange={(v) => set({ downloads: v })} addLabel="Add download" empty="No download buttons yet."
           add={() => ({ label: 'Download', url: '', primary: downloads.length === 0 })}
           render={(it, patch) => (
             <div className="grid grid-cols-[auto_1fr_1.6fr_auto] gap-2 items-center">
               <IconBtn value={it.icon} onChange={(v) => patch({ icon: v })} />
-              <Input value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Label" />
+              <Input value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder={t('pce.ph.label', "Label")} />
               <Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" />
-              <button type="button" onClick={() => patch({ primary: !it.primary })} title="Primary button"
+              <button type="button" onClick={() => patch({ primary: !it.primary })} title={t('pce.primarybtn', "Primary button")}
                 className={`px-2 py-1.5 rounded-lg border text-xs flex items-center gap-1 ${it.primary ? 'border-[var(--primary)] text-[var(--primary)]' : 'border-[var(--line)] text-[var(--faint)]'}`}>
                 <Star size={12} className={it.primary ? 'fill-[var(--primary)]' : ''} /> Primary
               </button>
@@ -525,15 +527,15 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       </Section>
 
       {/* Overview media */}
-      <Section icon={ImageIcon} title="Overview media" desc="Shown at the top of the Overview tab. Use one — a video/replay wins over a still image.">
-        <MediaField label="Cover image" value={ov.image} onChange={(v) => setIn('overview', { image: v })} accept="image/*" preview="image" />
-        <MediaField label="Video (mp4/webm)" value={ov.video} onChange={(v) => setIn('overview', { video: v })} accept="video/mp4,video/webm" preview="video" />
+      <Section icon={ImageIcon} title={t('pce.media', "Overview media")} desc="Shown at the top of the Overview tab. Use one — a video/replay wins over a still image.">
+        <MediaField label={t('pce.cover', "Cover image")} value={ov.image} onChange={(v) => setIn('overview', { image: v })} accept="image/*" preview="image" />
+        <MediaField label={t('pce.video', "Video (mp4/webm)")} value={ov.video} onChange={(v) => setIn('overview', { video: v })} accept="video/mp4,video/webm" preview="video" />
         <MediaField label="rrweb replay JSON" hint="Upload an rrweb recording (.json) or paste its URL — plays as a live in-app preview." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" />
         <MediaField label="rrweb page URL (alternative)" value={ov.rrwebUrl} onChange={(v) => setIn('overview', { rrwebUrl: v })} accept="application/json,.json" />
       </Section>
 
       {/* Progress tracker */}
-      <Section icon={ListTodo} title="Progress tracker" desc="Show a live roadmap on the Overview tab.">
+      <Section icon={ListTodo} title={t('pce.progress', "Progress tracker")} desc="Show a live roadmap on the Overview tab.">
         <div className="inline-flex rounded-xl border border-[var(--line)] p-0.5 text-sm">
           {[['none', 'Off'], ['remote', 'Remote URL'], ['inline', 'Build here']].map(([m, label]) => (
             <button key={m} type="button"
@@ -551,7 +553,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           <div className="space-y-1.5">
             <div className="flex items-end gap-2">
               <div className="flex-1"><Field label="progress.json URL" hint="A raw URL — auto-refreshed and cached for 5 min. Save first, then Test."><Input value={c.progressSource || ''} onChange={(e) => set({ progressSource: e.target.value })} placeholder="https://raw.githubusercontent.com/…/progress.json" /></Field></div>
-              <Button type="button" size="sm" onClick={testRemote}><Play size={13} /> Test saved</Button>
+              <Button type="button" size="sm" onClick={testRemote}><Play size={13} /> {t('pce.testsaved', "Test saved")}</Button>
             </div>
           </div>
         )}
@@ -559,21 +561,21 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         {progMode === 'inline' && (
           <div className="space-y-3">
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Code %"><Input type="number" min={0} max={100} value={prog.code ?? 0} onChange={(e) => setProg({ code: Number(e.target.value) })} /></Field>
-              <Field label="Art / visual %"><Input type="number" min={0} max={100} value={prog.art ?? 0} onChange={(e) => setProg({ art: Number(e.target.value) })} /></Field>
-              <Field label="Last update"><Input value={prog.lastUpdate || ''} onChange={(e) => setProg({ lastUpdate: e.target.value })} placeholder="Jul 2026" /></Field>
+              <Field label={t('pce.pctcode', "Code %")}><Input type="number" min={0} max={100} value={prog.code ?? 0} onChange={(e) => setProg({ code: Number(e.target.value) })} /></Field>
+              <Field label={t('pce.pctart', "Art / visual %")}><Input type="number" min={0} max={100} value={prog.art ?? 0} onChange={(e) => setProg({ art: Number(e.target.value) })} /></Field>
+              <Field label={t('pce.lastupdate', "Last update")}><Input value={prog.lastUpdate || ''} onChange={(e) => setProg({ lastUpdate: e.target.value })} placeholder={t('pce.ph.month', "Jul 2026")} /></Field>
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">Categories</div>
             <Repeatable items={prog.categories || []} onChange={(v) => setProg({ categories: v })} addLabel="Add category" empty="No categories yet."
               add={() => ({ name: 'New category', items: [] })}
               render={(cat, patch) => (
                 <div className="space-y-2">
-                  <Input value={cat.name || ''} onChange={(e) => patch({ name: e.target.value })} placeholder="Category name" className="font-medium" />
+                  <Input value={cat.name || ''} onChange={(e) => patch({ name: e.target.value })} placeholder={t('pce.ph.category', "Category name")} className="font-medium" />
                   <Repeatable items={cat.items || []} onChange={(v) => patch({ items: v })} addLabel="Add item" empty="No items."
                     add={() => ({ label: 'New item', status: 'planned', percent: 0 })}
                     render={(it, ipatch) => (
                       <div className="grid grid-cols-[1fr_120px_84px] gap-2 items-center">
-                        <Input value={it.label || ''} onChange={(e) => ipatch({ label: e.target.value })} placeholder="Item label" />
+                        <Input value={it.label || ''} onChange={(e) => ipatch({ label: e.target.value })} placeholder={t('pce.ph.item', "Item label")} />
                         <select value={it.status || 'planned'} onChange={(e) => ipatch({ status: e.target.value })} className="input !py-1.5 !text-sm">
                           {STATUS_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                         </select>
@@ -585,15 +587,15 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
 
             {/* Live preview — renders exactly like the public Overview tab. */}
             <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> Live preview</div>
-              <ProgressTracker data={prog} title="Progress" lang="en" />
+              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> {t('pce.livepreview', "Live preview")}</div>
+              <ProgressTracker data={prog} title={t('pce.progress2', "Progress")} lang="en" />
             </div>
           </div>
         )}
       </Section>
 
       {/* How it runs */}
-      <Section icon={Network} title="How it runs" desc="A diagram of the pieces this project is made of, shown on its own tab. It is a description you write — never the live infrastructure, which is admin-only for a reason." badge={stackNodes.length || null}>
+      <Section icon={Network} title={t('pce.howruns', "How it runs")} desc="A diagram of the pieces this project is made of, shown on its own tab. It is a description you write — never the live infrastructure, which is admin-only for a reason." badge={stackNodes.length || null}>
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={stackOn} onChange={(e) => {
             // On a showcase page the sub-tab checkboxes are the established switch, and this
@@ -610,8 +612,8 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         )}
 
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label="Tab title" hint="Defaults to “How it runs”."><Input value={stack.title || ''} onChange={(e) => setIn('stack', { title: e.target.value })} placeholder="How it runs" /></Field>
-          <Field label="Intro line (optional)"><Input value={stack.note || ''} onChange={(e) => setIn('stack', { note: e.target.value })} placeholder="A short sentence above the diagram" /></Field>
+          <Field label={t('pce.tabtitle', "Tab title")} hint="Defaults to “How it runs”."><Input value={stack.title || ''} onChange={(e) => setIn('stack', { title: e.target.value })} placeholder={t('pce.ph.howruns', "How it runs")} /></Field>
+          <Field label={t('pce.introline', "Intro line (optional)")}><Input value={stack.note || ''} onChange={(e) => setIn('stack', { note: e.target.value })} placeholder="A short sentence above the diagram" /></Field>
           {/* Publishing a code map is a decision, not a default. It describes how somebody's
               repository is laid out, which files matter and what calls what — true of a public
               repository too, and nothing else here turns a detail public because a feature
@@ -637,13 +639,13 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               read from the source. What is editable is the framing and the scope. */}
           {!isShowcase && stack.showCodeMap === true && (
             <div className="space-y-2 mt-2 pl-6">
-              <Field label="Intro line for the code map (optional)"
+              <Field label={t('pce.introcodemap', "Intro line for the code map (optional)")}
                 hint="Your words, shown above the map. The standing explanation of what a code map is stays underneath it.">
                 <Textarea rows={2} value={stack.codeMapNote || ''}
                   onChange={(e) => setIn('stack', { codeMapNote: e.target.value })}
                   placeholder="e.g. The front end never touches your files — every read goes through a Rust command." />
               </Field>
-              <Field label="Paths to keep out of it"
+              <Field label={t('pce.excludepaths', "Paths to keep out of it")}
                 hint="One per line. A folder takes everything under it. These are removed on the SERVER — they are not sent to the browser at all, so they cannot be read out of the response either. The page says how many were left out, never which.">
                 <Textarea rows={3}
                   value={(stack.codeMapHide || []).join('\n')}
@@ -670,18 +672,18 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           render={(n, patch) => (
             <div className="space-y-2">
               <div className="grid grid-cols-[1fr_120px] gap-2">
-                <Input value={n.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder="Name (e.g. API)" className="font-medium" />
+                <Input value={n.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder={t('pce.ph.piecename', "Name (e.g. API)")} className="font-medium" />
                 <select value={n.kind || 'app'} onChange={(e) => patch({ kind: e.target.value })} className="input !py-1.5 !text-sm">
                   {STACK_KIND_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-[110px_1fr_100px] gap-2">
                 <Input value={n.id || ''} onChange={(e) => patch({ id: e.target.value })} placeholder="id" className="!py-1.5 !text-xs font-mono" />
-                <Input value={n.tech || ''} onChange={(e) => patch({ tech: e.target.value })} placeholder="Built with (Fastify, Postgres…)" className="!py-1.5 !text-sm" />
+                <Input value={n.tech || ''} onChange={(e) => patch({ tech: e.target.value })} placeholder={t('pce.ph.builtwith', "Built with (Fastify, Postgres\u2026)")} className="!py-1.5 !text-sm" />
                 <Input value={n.version || ''} onChange={(e) => patch({ version: e.target.value })} placeholder="version" className="!py-1.5 !text-sm" />
               </div>
-              <Textarea rows={2} value={n.note || ''} onChange={(e) => patch({ note: e.target.value })} placeholder="What this piece does, in a sentence or two." className="!text-sm" />
-              <Input value={n.docs || ''} onChange={(e) => patch({ docs: e.target.value })} placeholder="Documentation URL (optional)" className="!py-1.5 !text-sm" />
+              <Textarea rows={2} value={n.note || ''} onChange={(e) => patch({ note: e.target.value })} placeholder={t('pce.ph.piecedesc', "What this piece does, in a sentence or two.")} className="!text-sm" />
+              <Input value={n.docs || ''} onChange={(e) => patch({ docs: e.target.value })} placeholder={t('pce.ph.docurl', "Documentation URL (optional)")} className="!py-1.5 !text-sm" />
             </div>
           )} />
 
@@ -706,26 +708,26 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         {/* Live preview — the same component the public tab renders. */}
         {stackNodes.length > 0 && (
           <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> Live preview</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={12} /> {t('pce.livepreview', "Live preview")}</div>
             <StackMap stack={stack} />
           </div>
         )}
       </Section>
 
       {/* Release notes */}
-      <Section icon={ScrollText} title="Release notes (GitHub)" desc="Pulls .md files from a GitHub repo path — shown on the Release Notes tab.">
+      <Section icon={ScrollText} title={t('pce.relnotes', "Release notes (GitHub)")} desc="Pulls .md files from a GitHub repo path — shown on the Release Notes tab.">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Owner"><Input value={rn.owner || ''} onChange={(e) => setIn('releaseNotes', { owner: e.target.value })} placeholder="org-or-user" /></Field>
+          <Field label={t('pce.owner', "Owner")}><Input value={rn.owner || ''} onChange={(e) => setIn('releaseNotes', { owner: e.target.value })} placeholder="org-or-user" /></Field>
           <Field label="Repo"><Input value={rn.repo || ''} onChange={(e) => setIn('releaseNotes', { repo: e.target.value })} placeholder="my-repo" /></Field>
-          <Field label="Branch"><Input value={rn.branch || ''} onChange={(e) => setIn('releaseNotes', { branch: e.target.value })} placeholder="main" /></Field>
-          <Field label="Path (folder of .md)"><Input value={rn.path || ''} onChange={(e) => setIn('releaseNotes', { path: e.target.value })} placeholder="changelogs" /></Field>
+          <Field label={t('pce.branch', "Branch")}><Input value={rn.branch || ''} onChange={(e) => setIn('releaseNotes', { branch: e.target.value })} placeholder="main" /></Field>
+          <Field label={t('pce.mdpath', "Path (folder of .md)")}><Input value={rn.path || ''} onChange={(e) => setIn('releaseNotes', { path: e.target.value })} placeholder="changelogs" /></Field>
         </div>
         {isShowcase && <p className="text-[11px] text-[var(--faint)]"><Github size={11} className="inline" /> Remember to enable the "Release notes" sub-tab in the project settings for this to show.</p>}
       </Section>
 
       {/* Community */}
-      <Section icon={Users} title="Community" badge={(contributors.length + messages.length) || null}>
-        <Field label="Community link (Discord/forum)"><Input value={community.url || ''} onChange={(e) => setIn('community', { url: e.target.value })} placeholder="https://discord.gg/…" /></Field>
+      <Section icon={Users} title={t('pce.community', "Community")} badge={(contributors.length + messages.length) || null}>
+        <Field label={t('pce.communitylink', "Community link (Discord/forum)")}><Input value={community.url || ''} onChange={(e) => setIn('community', { url: e.target.value })} placeholder="https://discord.gg/…" /></Field>
 
         {/* Contributors — build them right here (no external JSON needed). A URL
             still works as an alternative for teams that host their own list. */}
@@ -741,13 +743,13 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <Input value={it.role || ''} onChange={(e) => patch({ role: e.target.value })} placeholder="Role" className="!w-32" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Input value={it.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder="Category (e.g. team, contributors)" />
-                  <MediaFieldInline value={it.pfp} onChange={(v) => patch({ pfp: v })} placeholder="Avatar URL / upload" accept="image/*" />
+                  <Input value={it.category || ''} onChange={(e) => patch({ category: e.target.value })} placeholder={t('pce.ph.contribcat', "Category (e.g. team, contributors)")} />
+                  <MediaFieldInline value={it.pfp} onChange={(v) => patch({ pfp: v })} placeholder={t('pce.ph.avatar', "Avatar URL / upload")} accept="image/*" />
                 </div>
-                <Textarea rows={2} value={it.description || ''} onChange={(e) => patch({ description: e.target.value })} placeholder="Short bio (optional)" />
+                <Textarea rows={2} value={it.description || ''} onChange={(e) => patch({ description: e.target.value })} placeholder={t('pce.ph.bio', "Short bio (optional)")} />
                 <div className="grid grid-cols-2 gap-2">
                   <Input value={it.links?.github || ''} onChange={(e) => patch({ links: { ...it.links, github: e.target.value } })} placeholder="GitHub URL" />
-                  <Input value={it.links?.website || ''} onChange={(e) => patch({ links: { ...it.links, website: e.target.value } })} placeholder="Website URL" />
+                  <Input value={it.links?.website || ''} onChange={(e) => patch({ links: { ...it.links, website: e.target.value } })} placeholder={t('pce.ph.website', "Website URL")} />
                 </div>
               </div>
             )} />
@@ -755,25 +757,25 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
 
         {/* Community messages / ticker */}
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Messages (ticker)</div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('pce.ticker', "Messages (ticker)")}</div>
           <Repeatable items={messages} onChange={(v) => setIn('community', { messages: v })} addLabel="Add message" empty="No messages."
             add={() => ({ from: '', text: '' })}
             render={(it, patch) => (
               <div className="grid grid-cols-[130px_1fr] gap-2">
                 <Input value={it.from || ''} onChange={(e) => patch({ from: e.target.value })} placeholder="From" />
-                <Input value={it.text || ''} onChange={(e) => patch({ text: e.target.value })} placeholder="Message" />
+                <Input value={it.text || ''} onChange={(e) => patch({ text: e.target.value })} placeholder={t('pce.ph.message', "Message")} />
               </div>
             )} />
         </div>
 
         <details>
-          <summary className="text-xs text-[var(--muted)] cursor-pointer">Advanced: load contributors from a JSON URL instead</summary>
-          <div className="mt-2"><Field label="Contributors JSON URL" hint="Overrides the inline list above when set."><Input value={community.contributorsUrl || ''} onChange={(e) => setIn('community', { contributorsUrl: e.target.value })} placeholder="https://raw.githubusercontent.com/…/contributors.json" /></Field></div>
+          <summary className="text-xs text-[var(--muted)] cursor-pointer">{t('pce.contribadv', "Advanced: load contributors from a JSON URL instead")}</summary>
+          <div className="mt-2"><Field label={t('pce.contribjson', "Contributors JSON URL")} hint="Overrides the inline list above when set."><Input value={community.contributorsUrl || ''} onChange={(e) => setIn('community', { contributorsUrl: e.target.value })} placeholder="https://raw.githubusercontent.com/…/contributors.json" /></Field></div>
         </details>
       </Section>
 
       {/* Legal — object shape (fixed projects) vs card array (showcase) */}
-      <Section icon={ShieldCheck} title="Legal" badge={legalIsArray ? (legalArr.length || null) : (Object.values(legalObj).filter(Boolean).length || null)}>
+      <Section icon={ShieldCheck} title={t('pce.legal', "Legal")} badge={legalIsArray ? (legalArr.length || null) : (Object.values(legalObj).filter(Boolean).length || null)}>
         {legalIsArray ? (
           <Repeatable items={legalArr} onChange={(v) => set({ legal: v })} addLabel="Add legal card" empty="No legal cards yet."
             add={() => ({ icon: 'shield', title: 'License', text: '', url: '' })}
@@ -781,22 +783,22 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
                   <IconBtn value={it.icon} onChange={(v) => patch({ icon: v })} />
-                  <Input value={it.title || ''} onChange={(e) => patch({ title: e.target.value })} placeholder="Title" />
+                  <Input value={it.title || ''} onChange={(e) => patch({ title: e.target.value })} placeholder={t('pce.ph.title', "Title")} />
                 </div>
-                <Textarea rows={2} value={it.text || ''} onChange={(e) => patch({ text: e.target.value })} placeholder="Short description (optional)" />
-                <Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="Link URL (optional)" />
+                <Textarea rows={2} value={it.text || ''} onChange={(e) => patch({ text: e.target.value })} placeholder={t('pce.ph.shortdesc', "Short description (optional)")} />
+                <Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder={t('pce.ph.linkurl', "Link URL (optional)")} />
               </div>
             )} />
         ) : (
           <div className="space-y-3">
             <div className="grid grid-cols-[1fr_1.4fr] gap-3">
-              <Field label="License name"><Input value={legalObj.license || ''} onChange={(e) => setLegalObj({ license: e.target.value })} placeholder="MIT" /></Field>
-              <Field label="License URL"><Input value={legalObj.licenseUrl || ''} onChange={(e) => setLegalObj({ licenseUrl: e.target.value })} placeholder="https://…/LICENSE" /></Field>
+              <Field label={t('pce.licname', "License name")}><Input value={legalObj.license || ''} onChange={(e) => setLegalObj({ license: e.target.value })} placeholder="MIT" /></Field>
+              <Field label={t('pce.licurl', "License URL")}><Input value={legalObj.licenseUrl || ''} onChange={(e) => setLegalObj({ licenseUrl: e.target.value })} placeholder="https://…/LICENSE" /></Field>
             </div>
-            <Field label="Terms of Use URL"><Input value={legalObj.tos || ''} onChange={(e) => setLegalObj({ tos: e.target.value })} placeholder="https://…/terms" /></Field>
-            <Field label="Privacy Policy URL"><Input value={legalObj.privacy || ''} onChange={(e) => setLegalObj({ privacy: e.target.value })} placeholder="https://…/privacy" /></Field>
+            <Field label={t('pce.tosurl', "Terms of Use URL")}><Input value={legalObj.tos || ''} onChange={(e) => setLegalObj({ tos: e.target.value })} placeholder="https://…/terms" /></Field>
+            <Field label={t('pce.privurl', "Privacy Policy URL")}><Input value={legalObj.privacy || ''} onChange={(e) => setLegalObj({ privacy: e.target.value })} placeholder="https://…/privacy" /></Field>
             <Field label="README URL"><Input value={legalObj.readme || ''} onChange={(e) => setLegalObj({ readme: e.target.value })} placeholder="https://…/README.md" /></Field>
-            <button type="button" onClick={() => set({ legal: [] })} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] underline">Switch to card-style legal (advanced)</button>
+            <button type="button" onClick={() => set({ legal: [] })} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] underline">{t('pce.legalcards', "Switch to card-style legal (advanced)")}</button>
           </div>
         )}
       </Section>
@@ -804,12 +806,12 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       {/* Blog limits — showcase ("Other Projects") pages only. Caps how much this page's
           own blog can hold; enforced when a new article is created (blog.mjs). 0 = off. */}
       {isShowcase && (
-        <Section icon={ScrollText} title="Blog limits" desc="Cap this page's own blog. New articles are refused once a limit is reached. Leave 0 for no limit.">
+        <Section icon={ScrollText} title={t('pce.bloglimits', "Blog limits")} desc="Cap this page's own blog. New articles are refused once a limit is reached. Leave 0 for no limit.">
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label="Max articles" hint="Maximum number of blog posts on this page.">
+            <Field label={t('pce.maxarticles', "Max articles")} hint="Maximum number of blog posts on this page.">
               <Input type="number" min={0} value={c.blogMaxPosts ?? ''} onChange={(e) => set({ blogMaxPosts: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} placeholder="0 = unlimited" />
             </Field>
-            <Field label="Max total size (KB)" hint="Combined size of every article body (EN + FR).">
+            <Field label={t('pce.maxsize', "Max total size (KB)")} hint="Combined size of every article body (EN + FR).">
               <Input type="number" min={0} value={c.blogMaxKB ?? ''} onChange={(e) => set({ blogMaxKB: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} placeholder="0 = unlimited" />
             </Field>
           </div>
