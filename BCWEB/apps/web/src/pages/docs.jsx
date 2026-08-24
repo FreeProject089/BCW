@@ -633,7 +633,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
         {page && <Button variant="ghost" className="!text-error mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         {page && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="Show the comment thread to readers on the published page"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="{t('docs.comments.showReaders', 'Show the comment thread to readers on the published page')}"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
         <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
@@ -652,7 +652,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
         <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Page title" /></Field>
-        <Field label="Titre (FR)" hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder="Titre de la page" /></Field>
+        <Field label="Titre (FR)" hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
         <Field label="Catégorie (FR)"><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder="Guides / Installation" /></Field>
         <Field label="Category" hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Guides / Setup" />
           <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>

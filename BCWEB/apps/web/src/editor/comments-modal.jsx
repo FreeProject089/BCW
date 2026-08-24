@@ -27,6 +27,7 @@ const CAvatar = ({ a }) => <UserAvatar user={{ id: a?.author?.id, displayName: a
 // reply editors lost focus after each keystroke ("letter by letter"). `ctx` carries the
 // handlers/state so identity stays stable and inputs keep focus.
 function CommentBody({ c, isReply, ctx }) {
+  const { t } = useI18n();
   const { canWrite, editing, setEditing, busy, saveEdit, setReplyTo, replyTo, replyBody, setReplyBody, reply, toggleResolved, del, onJump, onClose, openHistory } = ctx;
   const edited = c.edited || c.updatedAt !== c.createdAt;
   return (
@@ -35,7 +36,7 @@ function CommentBody({ c, isReply, ctx }) {
         <CAvatar a={c} />
         <span className="text-sm font-medium">{c.author?.name}</span>
         <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}</span>
-        {edited && <button onClick={() => openHistory(c.id)} title="View this comment's edit history" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> edited</button>}
+        {edited && <button onClick={() => openHistory(c.id)} title={t('cm.history', "View this comment's edit history")} className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> {t('cm.edited', 'edited')}</button>}
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-success flex items-center gap-0.5"><Check size={10} /> resolved</span>}
         {c.participants?.length > 1 && (
           <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
@@ -47,7 +48,7 @@ function CommentBody({ c, isReply, ctx }) {
         )}
       </div>
       {c.anchor && !isReply && (onJump
-        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title="Jump to this section" className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
         : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ml-8 mt-1.5">
@@ -153,7 +154,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
     <Modal open onClose={onClose} title="Comments" icon={MessageSquare} width="max-w-2xl"
       footer={<>
         <span className="text-xs mr-auto flex items-center gap-1.5 text-[var(--faint)]">
-          {data?.commentsPublic ? <><Globe size={13} className="text-success" /> Visible to readers</> : <><Lock size={13} /> Editors only</>}
+          {data?.commentsPublic ? <><Globe size={13} className="text-success" /> {t('cm.visible', 'Visible to readers')}</> : <><Lock size={13} /> {t('cm.editorsOnly', 'Editors only')}</>}
         </span>
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </>}>
@@ -170,7 +171,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
             </div>
           )}
           <div className="space-y-3 max-h-[58vh] overflow-y-auto scroll-thin pr-1">
-            {roots.length === 0 && <EmptyState icon={MessageSquare} title="No comments yet" sub={canWrite ? 'Start the discussion below.' : 'Nothing here yet.'} />}
+            {roots.length === 0 && <EmptyState icon={MessageSquare} title={t('cm.none', 'No comments yet')} sub={canWrite ? t('cm.start', 'Start the discussion below.') : t('cm.nothing', 'Nothing here yet.')} />}
             {roots.map((c) => {
               const isCol = collapsed.has(c.id);
               const replies = repliesOf(c.id);

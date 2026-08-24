@@ -84,7 +84,7 @@ function NotificationsPanel() {
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Notifications {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
         <div className="flex items-center gap-3">
-          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--primary-2)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> Mark all read</button>}
+          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--primary-2)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> {t('dash.notif.markAll', 'Mark all read')}</button>}
           {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-error hover:border-error transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={clearAll}><Trash2 size={13} /> Clear all</button>}
           {/* The way out to the centre, which is the only place the per-category switches
               live. This card can mark and delete; it cannot say "stop sending me this". */}
@@ -109,7 +109,7 @@ function NotificationsPanel() {
             {!n.readAt && <span className="w-2 h-2 rounded-full bg-[var(--primary)] mt-1.5 shrink-0" />}
             <button className="text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); del(n); }}><Trash2 size={13} /></button>
           </Card>); })}
-      </div> : <EmptyState icon={Bell} title="All caught up" sub="You have no notifications." />)}
+      </div> : <EmptyState icon={Bell} title={t('dash.notif.caughtUp', 'All caught up')} sub={t('dash.notif.caughtUpSub', 'You have no notifications.')} />)}
     </div>
   );
 }

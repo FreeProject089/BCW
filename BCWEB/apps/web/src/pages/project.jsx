@@ -300,8 +300,8 @@ export default function ProjectPage() {
   const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err } = useFetch(() => api.get(`/projects/${key}`), [key]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title="Not available" sub="You don't have access to this page." />;
-  if (err) return <EmptyState icon={Boxes} title="Project not found" />;
+  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
+  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
   const c = data.config;
   const hasCatalog = key === 'bmm' || key === 'bsm';
   const tabs = [
@@ -641,7 +641,7 @@ function Legal({ c }) {
     (l.privacy || l.privacyFr) && { icon: FileText, title: 'Privacy Policy', sub: 'How your data is handled', url: pick(l.privacy, l.privacyFr) },
     (l.readme || l.readmeFr) && { icon: BookOpen, title: 'README', sub: 'Project documentation', url: pick(l.readme, l.readmeFr) },
   ].filter(Boolean);
-  if (!docs.length) return <EmptyState icon={ShieldCheck} title="No legal documents" sub="License / ToS / Privacy / README are set in the admin dashboard." />;
+  if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')} sub={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
   return (
     <div className="max-w-2xl">
       {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
@@ -691,7 +691,7 @@ export function OtherProjects() {
               </Link>
             ))}
           </div>
-        ) : <EmptyState icon={Boxes} title="No projects yet" sub="Featured projects will appear here." />}
+        ) : <EmptyState icon={Boxes} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')} />}
     </div>
   );
 }
@@ -737,8 +737,8 @@ export function ShowcaseProjectPage() {
   const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err, refetch } = useFetch(() => api.get(`/showcase/${slug}`), [slug]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title="Not available" sub="You don't have access to this page." />;
-  if (err) return <EmptyState icon={Boxes} title="Project not found" />;
+  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
+  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
   // Full-takeover countdown (no page behind it).
   if (data.announcement && !data.project) return <AnnouncementTeaser announcement={data.announcement} onReveal={refetch} />;
   const proj = data.project; const cfg = proj.config || {}; const T = cfg.tabs || {};

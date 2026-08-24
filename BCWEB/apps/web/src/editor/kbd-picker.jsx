@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
 
 // Shortcut builder: pick Windows or macOS style, toggle modifiers, type the key —
 // live preview, then insert `:kbd[…]`. Touch-friendly (all taps, one text field).
@@ -13,6 +14,7 @@ const MODS = [
 const COMMON_KEYS = ['A', 'C', 'V', 'S', 'Z', 'F', 'K', 'P', 'Enter', 'Esc', 'Tab', 'Space', 'F5', '↑', '↓', '←', '→'];
 
 export default function KbdPicker({ onPick, onClose }) {
+  const { t } = useI18n();
   const [os, setOs] = useState('win');
   const [mods, setMods] = useState({ ctrl: true, alt: false, shift: false, meta: false });
   const [key, setKey] = useState('S');
@@ -23,7 +25,7 @@ export default function KbdPicker({ onPick, onClose }) {
     <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onMouseDown={onClose}>
       <div className="card modal-card w-full max-w-sm p-0 overflow-hidden anim-pop" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]">
-          <span className="font-semibold">Insert a shortcut</span>
+          <span className="font-semibold">{t('kbd.insert', 'Insert a shortcut')}</span>
           <button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button>
         </div>
         <div className="p-4 space-y-4">

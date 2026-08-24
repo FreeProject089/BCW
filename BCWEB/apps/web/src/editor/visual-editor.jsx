@@ -5,6 +5,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
+import { useI18n } from '../i18n.jsx';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 
@@ -290,6 +291,7 @@ function blockMd(b) {
 }
 
 export default function VisualEditor({ value, onChange, minHeight = 300 }) {
+  const { t } = useI18n();
   const [blocks, setBlocks] = useState(() => parse(value));
   const lastOut = useRef(serialize(blocks));
   const [addOpen, setAddOpen] = useState(false);
@@ -314,7 +316,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
         <div key={b.id} draggable onDragStart={() => { dragId.current = b.id; }} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(b.id)}
           className="group rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-2.5 flex gap-2">
           <div className="flex flex-col items-center gap-1 pt-1 text-[var(--faint)]">
-            <span className="cursor-grab active:cursor-grabbing" title="Drag to reorder"><GripVertical size={15} /></span>
+            <span className="cursor-grab active:cursor-grabbing" title={t('ve.dragReorder', 'Drag to reorder')}><GripVertical size={15} /></span>
             <button type="button" className="hover:text-[var(--text)] disabled:opacity-30" disabled={idx === 0} onClick={() => move(idx, idx - 1)}><ChevronUp size={13} /></button>
             <button type="button" className="hover:text-[var(--text)] disabled:opacity-30" disabled={idx === blocks.length - 1} onClick={() => move(idx, idx + 1)}><ChevronDown size={13} /></button>
           </div>
@@ -336,7 +338,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
       {addOpen && (
         <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onClick={() => setAddOpen(false)}>
           <div className="card modal-card w-full max-w-sm p-0 overflow-hidden anim-pop" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]"><span className="font-semibold">Add a block</span><button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]"><span className="font-semibold">{t('ve.addBlock', 'Add a block')}</span><button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
             <div className="p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
               {BLOCK_TYPES.map((bt) => (
                 <button key={bt.type} type="button" onClick={() => add(bt.type)} className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] text-sm">

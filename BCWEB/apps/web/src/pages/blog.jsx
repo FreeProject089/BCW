@@ -312,6 +312,7 @@ const readSavedBadges = () => { try { return JSON.parse(localStorage.getItem(SAV
 /* Badge picker: classic [NEW]-style chips, coloured presets, your saved customs, and
    a colour-picker builder (customs persist in localStorage). Mobile-friendly modal. */
 function BadgePicker({ onPick, onPickRaw, onClose }) {
+  const { t } = useI18n();
   const [label, setLabel] = useState('Custom');
   const [color, setColor] = useState('#7c3aed');
   const [saved, setSaved] = useState(readSavedBadges);
@@ -324,7 +325,7 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onMouseDown={onClose}>
       <div className="card modal-card w-full max-w-md p-0 overflow-hidden anim-pop max-h-[80vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)] shrink-0"><span className="font-semibold">Insert a badge</span><button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)] shrink-0"><span className="font-semibold">{t('be.badge.title', 'Insert a badge')}</span><button onClick={onClose} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
         <div className="p-3 overflow-auto">
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">Classic</div>
           <div className="flex flex-wrap gap-2">
@@ -737,7 +738,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         <span className="text-xs text-[var(--faint)] ml-auto">Cover &amp; blog are shared across languages</span>
       </div>
       {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
-      {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> Also show the cover at the top of the article</label>}
+      {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> {t('be.coverInBody', 'Also show the cover at the top of the article')}</label>}
 
       {/* excerpt — rich editor (like content) */}
       <div className="mt-4">
@@ -758,7 +759,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           <input type="checkbox" checked={f.showToc} onChange={(e) => setF((s) => ({ ...s, showToc: e.target.checked }))} />
         </label>
         <p className="text-xs text-[var(--faint)] mt-1">Auto-built from your headings, shown at the top of the post. Leave off to place your own with the <b>Table of contents</b> block.</p>
-        {f.showToc && <input className="input !py-1.5 !text-sm mt-2" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder="Heading (default: On this page)" />}
+        {f.showToc && <input className="input !py-1.5 !text-sm mt-2" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder={t('be.toc.headingPh', 'Heading (default: On this page)')} />}
       </div>
 
       {/* reactions + collaborators (shared across languages) */}
