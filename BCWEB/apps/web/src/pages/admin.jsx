@@ -10568,35 +10568,17 @@ function AdminBot() {
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
       {/* Masonry columns (not a 2-col grid): the expanded Payments card is much
           taller than the collapsed ones, so a grid left a big empty gap beside it.
-          Columns let the short cards pack tight regardless of neighbour height. */}
+      {/* ═══════════ GLOBAL — cross-server ═══════════ */}
+      {/*
+          Three groups, not one heap. These nine cards sat in the order they were written,
+          which put "Write an announcement" four cards away from "Where announcements go"
+          and "Message every member" between two things about channels.
+
+          Masonry columns rather than a grid, still: the expanded Payments card is much
+          taller than the collapsed ones, and a grid left a hole beside it.
+      */}
+      <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel — what you send by hand, where it lands, and the sources that post on their own.")} />
       <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
-        <ModuleCard icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
-          <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
-        </ModuleCard>
-
-        {/* No enable toggle of its own: an empty panel list already means "off", and a
-            second switch on top of that is a way to have panels configured, saved, and
-            silently not live. */}
-        {/* `enabled` is deliberately NOT the panel count. ModuleCard hides its children when
-            enabled === false, so a card reporting "0 panels" would refuse to show the form
-            for adding the first one — the state it is most needed in. It has no switch
-            either: an empty list already means off, and a second switch on top of that is a
-            way to have panels configured, saved, and silently not live. */}
-        <ModuleCard icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
-          <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
-        </ModuleCard>
-
-        <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
-          <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
-            <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
-          </Field>
-          {/* Optional on purpose. Left empty, incidents keep going to the performance
-              channel — which is what every existing configuration already does, so adding
-              this field cannot change anyone's setup by being present. */}
-          <Field label={t('db.f.alertch2', 'Incidents channel id (optional)')} hint={t('db.f.alertch2.h', 'A service going unreachable, error bursts, and any future alert type. Leave empty to send everything to the performance channel.')}>
-            <Input value={g('alerts.generalChannelId')} onChange={(e) => set('alerts.generalChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
-          </Field>
-        </ModuleCard>
 
         {/* Where each kind of announcement lands. Empty means the general channel, which is
             what every existing install already does — so this whole card changes nothing until
@@ -10605,10 +10587,6 @@ function AdminBot() {
           desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
           onToggle={null}>
           <AnnounceComposer guildList={guildList} />
-        </ModuleCard>
-
-        <ModuleCard icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
-          <DmBroadcast />
         </ModuleCard>
 
         <ModuleCard icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
@@ -10646,6 +10624,21 @@ function AdminBot() {
             </div>
           ))}
         </ModuleCard>
+        <ModuleCard icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
+          <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
+        </ModuleCard>
+
+        <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
+          <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
+            <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          </Field>
+          {/* Optional on purpose. Left empty, incidents keep going to the performance
+              channel — which is what every existing configuration already does, so adding
+              this field cannot change anyone's setup by being present. */}
+          <Field label={t('db.f.alertch2', 'Incidents channel id (optional)')} hint={t('db.f.alertch2.h', 'A service going unreachable, error bursts, and any future alert type. Leave empty to send everything to the performance channel.')}>
+            <Input value={g('alerts.generalChannelId')} onChange={(e) => set('alerts.generalChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
+          </Field>
+        </ModuleCard>
 
         <ModuleCard icon={Heart} title={t('db.mod.kofi', 'Ko-fi tips')} desc={t('db.mod.kofi.d', 'Thank supporters automatically with a running total.')} enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
           <Field label={t('db.f.tipsch', 'Tips channel id')} hint={t('db.f.tipsch.h', 'Each new tip is posted as a thank-you embed. Old tips are never re-posted.')}>
@@ -10666,6 +10659,30 @@ function AdminBot() {
             <PaymentsDiag />
           </div>
         </ModuleCard>
+      </div>
+
+      <SectionTitle icon={Users} title={t('db.sec.members', "Members")} sub={t('db.sec.members.sub', "Aimed at people rather than at a channel.")} />
+      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+
+        {/* No enable toggle of its own: an empty panel list already means "off", and a
+            second switch on top of that is a way to have panels configured, saved, and
+            silently not live. */}
+        {/* `enabled` is deliberately NOT the panel count. ModuleCard hides its children when
+            enabled === false, so a card reporting "0 panels" would refuse to show the form
+            for adding the first one — the state it is most needed in. It has no switch
+            either: an empty list already means off, and a second switch on top of that is a
+            way to have panels configured, saved, and silently not live. */}
+        <ModuleCard icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
+          <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
+        </ModuleCard>
+
+        <ModuleCard icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
+          <DmBroadcast />
+        </ModuleCard>
+      </div>
+
+      <SectionTitle icon={Sliders} title={t('db.sec.limits', "Limits")} />
+      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
 
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
           <div className="grid grid-cols-2 gap-2">
