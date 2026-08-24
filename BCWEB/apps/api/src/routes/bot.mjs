@@ -652,6 +652,104 @@ export default async function botRoutes(app) {
     return { ok: true, giftCode };
   });
 
+  /**
+   * DM everybody the bot has seen.
+   *
+   * Deliberately NOT the existing DM queue: that is a capped array (200) drained twenty at a
+   * time, and pushing a thousand recipients into it keeps the last two hundred and drops the
+   * rest without a word. A broadcast keeps its own row with the recipients still to reach,
+   * so progress survives a bot restart and "did it finish" is answerable.
+   *
+   * Discord rate-limits DMs hard and treats a burst as spam, which is a risk to the BOT, not
+   * just to the message — so the bot drains this slowly and the UI says so. Members who have
+   * closed their DMs simply fail; that is recorded as a count, not retried forever.
+   */
+  app.post('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      message: z.string().trim().min(1).max(1500),
+      // Only members who linked a BetterCommunity account, when asked. A DM to somebody who
+      // never opted into anything is the kind of message that gets a bot reported.
+      linkedOnly: z.boolean().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+
+    const linked = new Set((await p.discordLink.findMany({ select: { discordId: true } })).map((l) => l.discordId));
+    // DiscordActivity records only real members the scan has seen — there is no `bot`
+    // column to filter on, and selecting one would make Prisma refuse the whole query.
+    const all = await p.discordActivity.findMany({ select: { discordId: true } });
+    const ids = all
+      .map((m) => m.discordId)
+      .filter((id) => (b.data.linkedOnly ? linked.has(id) : true));
+
+    if (!ids.length) return reply.code(400).send({ error: 'no_recipients' });
+
+    const value = {
+      id: genCode(),
+      message: b.data.message.slice(0, 1900),
+      pending: ids,
+      total: ids.length,
+      sent: 0,
+      failed: 0,
+      startedAt: new Date().toISOString(),
+      by: req.user?.uid || null,
+    };
+    await p.adminSetting.upsert({ where: { key: 'bot.dmBroadcast' }, create: { key: 'bot.dmBroadcast', value }, update: { value } });
+    await logAudit(p, req.user.uid, 'bot.dm-all', `recipients=${ids.length} linkedOnly=${!!b.data.linkedOnly}`);
+    return { ok: true, recipients: ids.length };
+  });
+
+  /** Where a broadcast has got to — the dashboard polls this rather than guessing. */
+  app.get('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const v = (await p.adminSetting.findUnique({ where: { key: 'bot.dmBroadcast' } }))?.value || null;
+    if (!v) return { broadcast: null };
+    return { broadcast: { id: v.id, total: v.total, sent: v.sent, failed: v.failed, remaining: (v.pending || []).length, startedAt: v.startedAt } };
+  });
+
+  app.delete('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    await p.adminSetting.deleteMany({ where: { key: 'bot.dmBroadcast' } });
+    await logAudit(p, req.user.uid, 'bot.dm-all.stop', 'cancelled');
+    return { ok: true };
+  });
+
+  /** The bot takes a small slice, sends it, and says what happened. */
+  app.get('/bot/dm-all/pending', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const v = (await p.adminSetting.findUnique({ where: { key: 'bot.dmBroadcast' } }))?.value;
+    if (!v || !(v.pending || []).length) return { batch: [] };
+    // Ten at a time. The bot spaces them out further; this is the ceiling on how much
+    // damage one poll can do if something downstream misbehaves.
+    return { id: v.id, message: v.message, batch: v.pending.slice(0, 10) };
+  });
+
+  app.post('/bot/dm-all/result', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      id: z.string().max(40),
+      sent: z.array(z.string().max(32)).max(50),
+      failed: z.array(z.string().max(32)).max(50),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.dmBroadcast' } });
+    const v = row?.value;
+    // A result for a broadcast that has been cancelled or replaced is dropped rather than
+    // applied to the new one, which would corrupt its counters.
+    if (!v || v.id !== b.data.id) return { ok: true, stale: true };
+    const done = new Set([...b.data.sent, ...b.data.failed]);
+    const value = {
+      ...v,
+      pending: (v.pending || []).filter((x) => !done.has(x)),
+      sent: (v.sent || 0) + b.data.sent.length,
+      failed: (v.failed || 0) + b.data.failed.length,
+    };
+    await p.adminSetting.update({ where: { key: 'bot.dmBroadcast' }, data: { value } });
+    return { ok: true, remaining: value.pending.length };
+  });
+
   app.get('/bot/dm/pending', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
@@ -1080,6 +1178,13 @@ export default async function botRoutes(app) {
       format: z.enum(['embed', 'text', 'both']).optional(),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
       image: z.string().url().max(600).optional(),
+      // A role to mention, chosen per announcement. The routing config already had one per
+      // kind, but it only fires for an urgent message — which left no way to ping a role
+      // for something that simply matters and is not an emergency.
+      //
+      // '' is meaningful and different from absent: it means "mention nobody", overriding
+      // whatever the routing config would have done. Absent means "use the config".
+      roleId: z.string().max(32).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

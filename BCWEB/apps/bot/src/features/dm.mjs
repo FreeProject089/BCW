@@ -38,3 +38,50 @@ export async function pollDMs(client) {
     if (done.length) await api.dmSent(done);
   } finally { _running = false; }
 }
+
+/**
+ * Drain an admin broadcast: the same DM, to everybody the bot has seen.
+ *
+ * PACED ON PURPOSE. Discord rate-limits direct messages hard and treats a burst as spam,
+ * and the account that gets flagged is the BOT — the cost of going fast is not a slow
+ * message, it is a dead integration. Ten per poll, spaced a second apart, and the poll runs
+ * every 30 seconds: about 1200 members an hour. A broadcast is not an urgent channel.
+ *
+ * Progress lives server-side (the remaining recipients are a row, not a variable), so a bot
+ * restart resumes where it stopped instead of starting over — which for a broadcast means
+ * DMing everyone twice.
+ */
+let _bcRunning = false;
+export async function pollDMBroadcast(client) {
+    if (_bcRunning) return;
+    _bcRunning = true;
+    try {
+        const cfg = await config();
+        if (!cfg.enabled) return;
+        const job = await api.dmAllPending();
+        if (!job?.batch?.length) return;
+        const sent = [], failed = [];
+        for (const id of job.batch) {
+            try {
+                const user = await client.users.fetch(id);
+                const content = String(job.message || '')
+                    .replaceAll('{user}', `<@${id}>`)
+                    .replaceAll('{username}', user?.username || 'there')
+                    .replaceAll('{server}', 'BetterCommunity')
+                    .slice(0, 2000);
+                await user.send({ content });
+                sent.push(id);
+            } catch (e) {
+                // Closed DMs, no shared server, a stale id. Counted as failed and never
+                // retried — a broadcast that keeps knocking is exactly what gets reported.
+                failed.push(id);
+                console.warn(`[bot] broadcast DM to ${id} failed: ${e.message}`);
+            }
+            await new Promise((r) => setTimeout(r, 1000));
+        }
+        // Reported even when everything failed: the server needs those ids off the pending
+        // list, or the same ten are retried for ever.
+        await api.dmAllResult(job.id, sent, failed);
+        console.log(`[bot] broadcast: ${sent.length} sent, ${failed.length} failed this batch`);
+    } finally { _bcRunning = false; }
+}

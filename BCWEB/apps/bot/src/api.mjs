@@ -31,6 +31,11 @@ export const api = {
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.
   rolePanels: () => call('GET', '/bot/rolepanels').catch(() => ({ panels: [], due: [] })),
+  // Broadcast DMs. A failure to reach the API returns an EMPTY batch rather than
+  // throwing: a broadcast that cannot be read is a broadcast that waits, not one that
+  // crashes the poller and stops every other DM with it.
+  dmAllPending: () => call('GET', '/bot/dm-all/pending').catch(() => ({ batch: [] })),
+  dmAllResult: (id, sent, failed) => call('POST', '/bot/dm-all/result', { id, sent, failed }).catch(() => {}),
   rolePanelPosted: (id, body) => call('POST', `/bot/rolepanels/${id}/posted`, body).catch(() => {}),
   // Blog announcements (multi-route): recent published posts (each tagged with its
   // source key) + each channel's already-announced set, so the bot can post the

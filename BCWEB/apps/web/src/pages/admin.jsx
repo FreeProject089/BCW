@@ -9408,11 +9408,100 @@ const BLOG_SOURCES = [['*', 'All blogs'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['comm
  * announcement, which is the point: a hand-written notice that took a different path would
  * be a second thing to keep working.
  */
-function AnnounceComposer() {
+/**
+ * One message, to every member the bot has seen, by DM.
+ *
+ * The loudest thing this dashboard can do, so the screen says what it will cost before it
+ * says how to start it: how many people, that Discord paces DMs and a burst gets a bot
+ * flagged for spam, and that it cannot be unsent. Progress is polled from the server rather
+ * than tracked here, because the sending happens in the bot and a page refresh must not
+ * lose the answer to "did it finish".
+ */
+function DmBroadcast() {
   const { t } = useI18n();
   const toast = useToast();
   const dialog = useDialog();
-  const [f, setF] = useState({ kind: 'custom', title: '', body: '', url: '', channelId: '', urgent: false, format: 'embed', color: '', image: '' });
+  const [msg, setMsg] = useState('');
+  const [linkedOnly, setLinkedOnly] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const { data, reload } = useAsync(() => api.get('/admin/bot/dm-all').catch(() => ({ broadcast: null })), []);
+  const bc = data?.broadcast || null;
+
+  // Poll only while one is running. A dashboard that keeps asking about a job that finished
+  // an hour ago is a request every few seconds for a number that never changes again.
+  useEffect(() => {
+    if (!bc || bc.remaining === 0) return undefined;
+    const id = setInterval(reload, 10_000);
+    return () => clearInterval(id);
+  }, [bc?.remaining, bc?.id]); // eslint-disable-line
+
+  const start = async () => {
+    if (!msg.trim()) return toast.error(t('db.dma.needmsg', 'Write the message first.'));
+    if (!await doubleConfirm(dialog, {
+      title: t('db.dma.confirm.t', 'Message every member?'),
+      message: t('db.dma.confirm.m', 'This sends one direct message to every member the bot has seen. Discord paces DMs and treats a burst as spam, so it takes hours — and none of it can be unsent.'),
+      okLabel: t('db.dma.confirm.ok', 'Start sending'),
+    })) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/bot/dm-all', { message: msg.trim(), linkedOnly });
+      toast.success(t('db.dma.started', 'Sending to {n} member(s). The bot works through them slowly.').replace('{n}', String(r.recipients)));
+      setMsg(''); reload();
+    } catch (e) {
+      toast.error(e?.data?.error === 'no_recipients' ? t('db.dma.norecip', 'No members match — the bot has not scanned anyone yet.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  const stop = async () => {
+    if (!await dialog.confirm({ title: t('db.dma.stop.t', 'Stop this broadcast?'), message: t('db.dma.stop.m', 'Members already messaged keep their message. The rest are never contacted.'), okLabel: t('db.dma.stop.ok', 'Stop'), danger: true })) return;
+    try { await api.del('/admin/bot/dm-all'); toast.success(t('db.dma.stopped', 'Stopped.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  return (
+    <>
+      {bc && bc.remaining > 0 ? (
+        <div className="space-y-2">
+          <div className="text-sm">{t('db.dma.running', 'Sending: {sent} delivered, {failed} unreachable, {left} to go (of {total}).')
+            .replace('{sent}', String(bc.sent)).replace('{failed}', String(bc.failed))
+            .replace('{left}', String(bc.remaining)).replace('{total}', String(bc.total))}</div>
+          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+            <div className="h-full bg-[var(--primary)]" style={{ width: `${Math.round(((bc.total - bc.remaining) / Math.max(1, bc.total)) * 100)}%` }} />
+          </div>
+          {/* "Unreachable" is its own number, not folded into failures: a closed DM is the
+              member's own setting and nothing an admin can fix by retrying. */}
+          <p className="text-[11px] text-[var(--faint)]">{t('db.dma.unreachable', 'Unreachable means the member has direct messages closed — not an error you can retry.')}</p>
+          <Button size="sm" variant="ghost" className="!text-error" onClick={stop}>{t('db.dma.stopbtn', 'Stop sending')}</Button>
+        </div>
+      ) : (
+        <>
+          {bc && <div className="text-[11px] text-[var(--faint)] mb-2">{t('db.dma.done', 'Last broadcast: {sent} delivered, {failed} unreachable, of {total}.')
+            .replace('{sent}', String(bc.sent)).replace('{failed}', String(bc.failed)).replace('{total}', String(bc.total))}</div>}
+          <Field label={t('db.dma.msg', 'Message')} hint={t('db.dma.msg.h', '{username} and {server} are substituted per recipient. Plain text — a DM is not a channel post.')}>
+            <Textarea rows={4} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={1500} />
+          </Field>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} />
+            {t('db.dma.linked', 'Only members who linked a BetterCommunity account')}
+          </label>
+          {/* On by default, and the reason is stated: an unsolicited DM to somebody who never
+              connected anything is what gets a bot reported to Discord. */}
+          <p className="text-[11px] text-[var(--faint)]">{t('db.dma.linked.h', 'Recommended. An unsolicited direct message to somebody who never linked anything is what gets a bot reported.')}</p>
+          <Button variant="primary" onClick={start} disabled={busy}>{busy ? <Spinner /> : <Send size={14} />} {t('db.dma.send', 'Send to everyone')}</Button>
+        </>
+      )}
+    </>
+  );
+}
+
+function AnnounceComposer({ guildList = [] }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  // roleId starts as undefined, not '': absent means "use the role configured for this
+  // kind", '' means "mention nobody". They are different instructions and the API tells
+  // them apart, so the form has to as well.
+  const [f, setF] = useState({ kind: 'custom', title: '', body: '', url: '', channelId: '', urgent: false, format: 'embed', color: '', image: '', roleId: undefined });
   const [busy, setBusy] = useState(false);
   const hist = useAsync(() => api.get('/admin/bot/announcements'), []);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -9441,6 +9530,7 @@ function AnnounceComposer() {
       if (f.channelId.trim()) body.channelId = f.channelId.trim();
       if (f.color) body.color = f.color;
       if (f.image.trim()) body.image = f.image.trim();
+      if (f.roleId !== undefined) body.roleId = f.roleId;
       await api.post('/admin/bot/announce', body);
       toast.success(t('db.ac.queued', 'Queued — the bot posts it within ~20 seconds. Watch the list below for the outcome.'));
       setF((x) => ({ ...x, title: '', body: '', url: '', image: '' }));
@@ -9495,6 +9585,18 @@ function AnnounceComposer() {
             </div>
           </Field>
         )}
+        {/* Every role the bot can see, deduplicated across servers — it reports them on
+            each heartbeat. The two entries above the list are not roles: they are the two
+            answers that are not "this one". */}
+        <Field label={t('db.ac.ping', 'Mention')} hint={t('db.ac.ping.h', 'Who gets pinged. The default follows the routing settings, which only ping when a message is urgent.')}>
+          <Select value={f.roleId === undefined ? '' : (f.roleId || 'none')}
+            onChange={(e) => set('roleId', e.target.value === '' ? undefined : (e.target.value === 'none' ? '' : e.target.value))}>
+            <option value="">{t('db.ac.ping.default', 'Default for this kind')}</option>
+            <option value="none">{t('db.ac.ping.none', 'Nobody')}</option>
+            {[...new Map(guildList.flatMap((g) => (g.roles || []).map((r) => [r.id, r]))).values()]
+              .map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
+          </Select>
+        </Field>
         <label className="flex items-center gap-1.5 text-xs pb-2">
           <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
           {t('db.ac.urgent', 'Urgent — ping the role, force red')}
@@ -10486,7 +10588,11 @@ function AdminBot() {
         <ModuleCard icon={Send} title={t('db.mod.announce', 'Write an announcement')}
           desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
           onToggle={null}>
-          <AnnounceComposer />
+          <AnnounceComposer guildList={guildList} />
+        </ModuleCard>
+
+        <ModuleCard icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
+          <DmBroadcast />
         </ModuleCard>
 
         <ModuleCard icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}

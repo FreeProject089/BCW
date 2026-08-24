@@ -41,9 +41,15 @@ export function routeFor(cfg = {}, a = {}) {
             : general ? 'the general channel'
                 : perf ? 'the alerts channel' : 'nothing';
 
-    // Only for an urgent one, and only the role belonging to THIS kind — never the general
-    // one, which would ping everybody about a commission.
-    const roleId = a.urgent ? (String(roles[a.kind] || '').trim() || null) : null;
+    // A role named on the announcement itself wins, and '' on the announcement means
+    // "mention nobody" — it must not fall through to the configured role, or an author who
+    // deliberately chose silence gets a ping anyway.
+    //
+    // Otherwise the old rule: only for an urgent one, and only the role belonging to THIS
+    // kind — never the general one, which would ping everybody about a commission.
+    const roleId = a.roleId !== undefined && a.roleId !== null
+        ? (String(a.roleId).trim() || null)
+        : (a.urgent ? (String(roles[a.kind] || '').trim() || null) : null);
 
     return { channelId, roleId, from };
 }

@@ -19,7 +19,7 @@ import { pollBlog } from './features/blog.mjs';
 import { pollAlerts } from './features/alerts.mjs';
 import { pollKofi } from './features/kofi.mjs';
 import { pollPayments } from './features/payments.mjs';
-import { pollDMs } from './features/dm.mjs';
+import { pollDMs, pollDMBroadcast } from './features/dm.mjs';
 import { pollGiveaways } from './features/giveaways.mjs';
 import { pollRolePanels } from './features/rolepanel.mjs';
 import { pollLinks } from './features/links.mjs';
@@ -99,6 +99,8 @@ function buildClient() {
     // Admin DMs / gift codes: deliver promptly (30s).
     pollDMs(c).catch(() => {});
     timers.push(setInterval(() => pollDMs(c).catch(() => {}), 30_000));
+    // Same cadence as single DMs; the pacing that matters is inside the drainer.
+    timers.push(setInterval(() => pollDMBroadcast(c).catch(() => {}), 30_000));
     // Giveaways: post new ones + draw due ones (30s).
     pollGiveaways(c).catch(() => {});
     timers.push(setInterval(() => pollGiveaways(c).catch(() => {}), 30_000));
