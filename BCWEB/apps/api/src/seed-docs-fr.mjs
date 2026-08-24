@@ -688,7 +688,33 @@ Un dépôt supprimé est conservé **72 heures** avant l'effacement de ses fichi
 
 ## Gérer les accès
 
-Depuis le tableau de bord du dépôt, tu règles les accès (public / liste blanche), les bannissements et la limite d'envoi — le tout dans le bac à sable.`,
+Depuis le tableau de bord du dépôt, tu règles les accès (public / liste blanche), les bannissements et la limite d'envoi — le tout dans le bac à sable.
+
+## Verrouiller un dépôt par clé
+
+Un **mot de passe de téléchargement** est un secret partagé : quiconque l'a peut synchroniser, et quiconque l'a peut le transmettre. C'est ce qu'on veut pour un groupe, et le problème quand on veut n'admettre qu'une seule machine.
+
+Une **clé publique** ne circule pas ainsi. Colle la moitié publique dans **Accès → Clés autorisées** du tableau de bord ; le client doit détenir la moitié privée et *signer* à chaque requête. Rien de ce qui passe sur le réseau ne peut être rejoué ailleurs, et révoquer un accès revient à supprimer une ligne.
+
+:::warning[La première clé verrouille le dépôt pour tout le monde]
+Sans aucune clé listée, la vérification ne s'applique pas. Dès qu'une clé est listée, elle devient une condition sur **chaque** requête — ajoute donc ta propre clé avant celle des autres, sinon tu te fermes la porte de ton propre dépôt.
+:::
+
+Acceptés : **ed25519, RSA et ECDSA** (nistp256/384/521), au format OpenSSH sur une ligne, celui que contient déjà ton fichier \`.pub\` — \`ssh-ed25519 AAAAC3… toi@machine\`. DSA n'est pas pris en charge : OpenSSH l'a retiré. Une ligne illisible est refusée au moment où tu la colles plutôt qu'enregistrée, car une clé que rien ne peut vérifier serait une exigence que rien ne pourrait jamais satisfaire.
+
+Attention, il s'agit bien de la moitié **publique**. Ne colle jamais une clé privée ici.
+
+## Ce que le client envoie
+
+Pas la clé — une attestation signée à durée de vie courte, dans l'en-tête \`X-BMM-Key-Proof\` :
+
+\`\`\`
+X-BMM-Key-Proof: bmmk2.<charge>.<signature>
+\`\`\`
+
+La charge nomme le destinataire (ce serveur) : une preuve capturée ici ne peut pas être rejouée contre un autre. Côté BMM, la moitié privée se configure une fois dans **Paramètres → Identité & API → Clés d'identité** ; seul le chemin est conservé, et le fichier est lu au moment de signer.
+
+Une requête sans preuve face à un dépôt verrouillé répond **401**, pas 403 — le client peut y faire quelque chose, et BMM lit un 401 comme « il y a un identifiant à fournir ».`,
   },
 
   // ── Rédaction ───────────────────────────────────────────────────────────────

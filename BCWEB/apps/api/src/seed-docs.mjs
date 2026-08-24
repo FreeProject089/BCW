@@ -697,7 +697,33 @@ A deleted repo is kept for **72 hours** before its files are removed — you can
 
 ## Managing access
 
-From your repo dashboard you can set access (public / whitelist), bans, and the upload limit — all within the sandbox.`,
+From your repo dashboard you can set access (public / whitelist), bans, and the upload limit — all within the sandbox.
+
+## Locking a repo to a key
+
+A **download password** is a shared secret: whoever has it can sync, and whoever has it can pass it on. That is what you want for a group, and the problem when you want to admit exactly one machine.
+
+A **public key** cannot be handed on. Paste the public half into **Access → Authorised keys** on your repo dashboard; the client has to hold the matching private half and *sign* for it on every request. Nothing sent over the wire can be replayed elsewhere, and revoking access is deleting one line.
+
+:::warning[Adding the first key locks the repo for everyone]
+With no keys listed, the check does not apply. The moment one key is listed it becomes a condition on **every** request — so add your own key before you add anybody else's, or you will lock yourself out of your own repo.
+:::
+
+Accepted: **ed25519, RSA and ECDSA** (nistp256/384/521), in the one-line OpenSSH form your \`.pub\` file already contains — \`ssh-ed25519 AAAAC3… you@machine\`. DSA is not supported; OpenSSH removed it. A line that cannot be parsed is refused as you paste it rather than stored, because a key nothing can verify would be a requirement nothing could ever satisfy.
+
+Note this is the **public** half. Never paste a private key here.
+
+## What the client sends
+
+Not the key — a short-lived signed statement, in the \`X-BMM-Key-Proof\` header:
+
+\`\`\`
+X-BMM-Key-Proof: bmmk2.<payload>.<signature>
+\`\`\`
+
+The payload names the audience (this server), so a proof captured here cannot be replayed against a different one. In BMM the private half is configured once under **Settings → Identity & API → Identity keys**; only the path is stored, and the file is read at the moment a proof is signed.
+
+A request with no proof against a locked repo answers **401**, not 403 — the client can do something about it, and BMM reads a 401 as "there is a credential to supply".`,
   },
 
   // ── Authoring ───────────────────────────────────────────────────────────────

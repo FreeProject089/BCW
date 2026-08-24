@@ -111,10 +111,13 @@ export function PubkeyList({ items, onAdd, onRemove }) {
   const add = () => {
     const line = v.trim();
     if (!line) return;
-    // The server refuses a non-ed25519 key too — but it refuses it after a round trip, on a
+    // The server refuses an unsupported key too — but it refuses it after a round trip, on a
     // form the person may already have navigated away from. Saying it here is the difference
-    // between a correction and a mystery. (Only ed25519 is verifiable; storing anything else
-    // would be storing a requirement nothing could ever satisfy.)
+    // between a correction and a mystery.
+    //
+    // Supported means ed25519, RSA and ECDSA, since the v2 proof format; before that it was
+    // ed25519 alone. Anything else is refused rather than stored, because a key nothing can
+    // verify would be a requirement nothing could ever satisfy.
     if (!splitKey(line)) {
       setErr(/^ssh-dss/.test(line)
         ? t('acck.wrongtype', 'DSA keys are not supported — OpenSSH removed them. Use ed25519, RSA or ECDSA.')
