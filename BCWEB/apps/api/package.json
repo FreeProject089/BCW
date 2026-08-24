@@ -23,7 +23,8 @@
     "fix:project-config": "node src/fix-project-config.mjs",
     "seed:all": "npm run seed && npm run seed:docs && npm run seed:faq && npm run seed:site",
     "site:export": "node src/site-config.mjs export",
-    "site:import": "node src/site-config.mjs import"
+    "site:import": "node src/site-config.mjs import",
+    "clear-demo": "node src/clear-demo.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.637.0",

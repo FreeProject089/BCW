@@ -1891,7 +1891,11 @@ function AdminServerPerf() {
             machine pointed at the prod database, its samples interleaved with the server's,
             and the chart alternated between two real hosts every tick. The chart above now
             shows only THIS host's samples; this line says who else is writing. */}
-        {otherWriters.length > 0 && <div className="text-[11px] mt-2 px-3 py-2 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200">
+        {/* .alert-warning, not raw amber shades. text-amber-200 over bg-amber-500/10 is
+            legible on the dark theme and is pale yellow on pale yellow in the light one —
+            the same family as the white-on-white bugs. The class uses --warning, which is
+            a dark orange on light and a bright amber on dark. */}
+        {otherWriters.length > 0 && <div className="text-[11px] mt-2 px-3 py-2 rounded-lg alert-warning">
           {t('srvperf.otherWriters', 'Another instance is also recording metrics into this database:')}{' '}
           {otherWriters.map((w) => `${w.host} (${w.samples})`).join(', ')} — {t('srvperf.otherWritersHint', 'the chart shows only this host. If that other writer is a dev machine pointed at the production database, that is worth fixing.')}
         </div>}
@@ -9646,7 +9650,6 @@ function HomePageEditor() {
 
   const SECTIONS = [
     ['poll', t('hp.s.poll', 'Pinned poll')],
-    ['stats', t('hp.s.stats', 'Headline numbers')],
     ['products', t('hp.s.products', 'Products grid')],
     ['why', t('hp.s.why', 'Why BetterCommunity')],
     ['steps', t('hp.s.steps', 'How it works')],

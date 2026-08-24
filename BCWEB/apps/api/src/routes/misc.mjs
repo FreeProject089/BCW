@@ -183,7 +183,7 @@ const HOME_KEY = 'site.home';
 // a toggle for a section that no longer exists is worse than no toggle: it looks like it
 // works. Anything absent from a stored value defaults to ON, so adding a section here never
 // silently hides it on a site that saved its config before the section existed.
-export const HOME_SECTIONS = ['poll', 'stats', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
+export const HOME_SECTIONS = ['poll', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
 const HOME_DEFAULTS = { text: {}, sections: {} };
 const homeConfig = (row) => {
   const v = { ...HOME_DEFAULTS, ...(row?.value || {}) };

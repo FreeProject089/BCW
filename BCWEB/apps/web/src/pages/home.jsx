@@ -296,30 +296,11 @@ export function Home() {
             <Link to="/repos"><Button variant="primary" className="!px-6 !py-3">{t('home.cta.repos', 'Browse Server Repos')} <ArrowRight size={16} /></Button></Link>
             <Link to="/hosting"><Button className="!px-6 !py-3">{t('home.cta.host')}</Button></Link>
           </div>
-          {(() => {
-            const s = stats || {};
-            // Only counts that stay meaningful at any point in the site's life —
-            // "members"/"hosted repos" read as hollow vanity numbers early on, so
-            // they were dropped; items & downloads are the ones worth bragging about.
-            const rows = [
-              [Package, s.items, t('home.stat.items', 'Mods & presets')],
-              [Download, s.downloads, t('home.stat.downloads', 'Downloads')],
-            ].filter(([, v]) => v > 0); // real counts only — zeros are hidden, never faked
-            if (rows.length < 2) return null; // a lone stat looks odd — wait until the site has some life
-            return (
-              <div className="anim-slide mt-12 flex flex-wrap justify-center gap-x-12 gap-y-4" style={{ animationDelay: '320ms' }}>
-                {rows.map(([I, v, label]) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={16} className="text-[var(--primary-2)]" /></span>
-                    <div className="text-left">
-                      <div className="text-xl font-extrabold leading-none tabular-nums"><CountUp value={v} /></div>
-                      <div className="text-[10px] text-[var(--faint)] mt-1 font-semibold uppercase tracking-wider">{label}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+          {/* The headline counts are gone. They were the two numbers a visitor cannot
+              act on — a total of mods and a total of downloads say nothing about whether
+              THIS site has what they came for, and a growing number is only impressive to
+              the person who runs the site. The section toggle for them went with them:
+              a switch for something that no longer exists is worse than no switch. */}
         </div>
       </section>
 
