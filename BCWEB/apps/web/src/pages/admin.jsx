@@ -9880,7 +9880,12 @@ function PaymentsDiag() {
 
 function AdminBot() {
   const toast = useToast();
+  const dialog = useDialog();
   const { t } = useI18n();
+  // Declared here, above the `loading` early return below — a useState placed next to the
+  // handler that uses it would be a CONDITIONAL hook call, and React throws the moment the
+  // data arrives and the early return stops firing.
+  const [restarting, setRestarting] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/config'), []);
   const [cfg, setCfg] = useState(null);
   const [previewNonce, setPreviewNonce] = useState(0);
@@ -9915,6 +9920,21 @@ function AdminBot() {
     if (!tokenInput.trim()) return toast.error(t('db.token.entered', 'Enter a token.'));
     try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved', 'Token saved — the bot will connect within ~20s.')); setTokenInput(''); reload(); }
     catch (x) { toast.error(x.data?.error === 'bot_enabled' ? t('db.token.offfirst', 'Disable the bot first to change its token.') : x.data?.error === 'token_from_env' ? t('db.token.fromenv', 'Token is set via env — can’t change it here.') : t('db.token.failed', 'Failed.')); }
+  };
+  // A RECONNECT, not a process restart: the API cannot signal the bot's container, but the
+  // bot re-reads its config every 20 seconds and already knows how to rebuild a client. The
+  // label says "reconnect" for that reason — an admin who presses "restart" expecting new
+  // code, and gets a reconnect, concludes the deploy failed.
+  const restartBot = async () => {
+    if (!await dialog.confirm({
+      title: t('db.restart.t', 'Reconnect the bot?'),
+      message: t('db.restart.m', 'The bot drops its Discord connection and opens a new one within ~20 seconds. In-flight commands are lost; scheduled polling resumes on its own. This does NOT deploy new bot code.'),
+      okLabel: t('db.restart.ok', 'Reconnect'),
+    })) return;
+    setRestarting(true);
+    try { await api.post('/admin/bot/restart'); toast.success(t('db.restart.sent', 'Reconnecting — the bot picks this up within ~20s.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setRestarting(false); }
   };
   const clearToken = async () => {
     try { await api.put('/admin/bot/token', { token: null }); toast.success(t('db.token.cleared', 'Token cleared.')); reload(); }
@@ -10028,6 +10048,17 @@ function AdminBot() {
             <p className="text-xs text-warning flex items-center gap-1.5"><Bell size={12} /> {t('db.token.needoff', 'Turn the bot off (master switch) and Save to change the token.')}</p>
           )}
           {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none', 'No token set — add one (or set DISCORD_TOKEN in compose .env) to bring the bot online.')}</div>}
+          {/* Offered whenever a token exists, including while the bot is offline — a stuck
+              connection is exactly when somebody wants this, and requiring it to be online
+              first would withhold the button in the only case that needs it. */}
+          {(data?.hasToken || data?.tokenFromEnv) && (
+            <div className="mt-3 pt-3 border-t border-[var(--line)] flex items-center gap-2 flex-wrap">
+              <Button size="sm" variant="ghost" disabled={restarting} onClick={restartBot}>
+                {restarting ? <Spinner /> : <RefreshCw size={13} />} {t('db.restart', 'Reconnect bot')}
+              </Button>
+              <span className="text-[11px] text-[var(--faint)]">{t('db.restart.h', 'Drops and re-opens the Discord connection. Does not deploy new code.')}</span>
+            </div>
+          )}
         </Card>
 
         {data?.storage && (

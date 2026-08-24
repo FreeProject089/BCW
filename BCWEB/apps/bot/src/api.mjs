@@ -20,7 +20,9 @@ async function call(method, path, body) {
 }
 
 export const api = {
-  getConfig: () => call('GET', '/bot/config').then((r) => r.config),
+  // restartAt travels beside the config, not inside it (see the route). It is folded in
+  // here so the 20s supervisor tick sees it without a second request.
+  getConfig: () => call('GET', '/bot/config').then((r) => ({ ...r.config, restartAt: r.restartAt || null })),
   // The Discord token, managed from the admin dashboard (null when unset/disabled).
   getToken: () => call('GET', '/bot/token').then((r) => r.token).catch(() => null),
   heartbeat: (data) => call('POST', '/bot/heartbeat', data).catch(() => {}),

@@ -228,7 +228,35 @@ export default async function botRoutes(app) {
   // ── Bot ↔ API (shared secret) ──
   app.get('/bot/config', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    return { config: await getBotConfig(await db()) };
+    const p = await db();
+    // restartAt rides ALONGSIDE the config, never inside it. The admin dashboard reads its
+    // config with GET /admin/bot/config and writes the whole object straight back on save —
+    // anything merged into it would be persisted into bot.config by the next unrelated save
+    // and then re-trigger a restart forever. Same reserved-field trap as everywhere else
+    // here; the fix is to keep the field out of the object that round-trips.
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.restart' } });
+    return { config: await getBotConfig(p), restartAt: row?.value?.at || null };
+  });
+
+  /**
+   * Ask the bot to reconnect.
+   *
+   * There is no process to kill from here — the bot is its own container and the API cannot
+   * signal it. What it DOES do every 20 seconds is read this config, and it already knows
+   * how to tear a client down and build a new one, because that is what a token rotation
+   * does. So a restart is a timestamp: the bot notices the value changed and takes the same
+   * path it takes for a new token.
+   *
+   * That means it is a RECONNECT, not a process restart — new code still needs a redeploy.
+   * The button says so, because an admin who presses "restart" expecting new code and gets
+   * a reconnect will conclude the deploy failed.
+   */
+  app.post('/admin/bot/restart', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const at = new Date().toISOString();
+    const value = { at, by: req.user?.id || null };
+    await p.adminSetting.upsert({ where: { key: 'bot.restart' }, create: { key: 'bot.restart', value }, update: { value } });
+    return { ok: true, at };
   });
   // ── Blog announcements (bot ↔ API, shared secret) ──
   // Multi-route: the bot posts the SAME post to several channels (across servers),

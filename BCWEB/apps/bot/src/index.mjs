@@ -135,9 +135,25 @@ async function resolveToken() {
   try { return await api.getToken(); } catch { return null; }
 }
 
+// The restart stamp we have already acted on. Seeded on the FIRST tick rather than left
+// null, or every deploy of this container would reconnect once for no reason — the stamp
+// would look new simply because this process had never seen it.
+let lastRestartAt;
 async function tick() {
-  let enabled = true;
-  try { enabled = (await config(true))?.enabled !== false; } catch { /* keep last */ }
+  let enabled = true, cfg = null;
+  try { cfg = await config(true); enabled = cfg?.enabled !== false; } catch { /* keep last */ }
+  // An admin pressed Reconnect. Take the same path a token rotation takes — that code is
+  // already the one that tears a client down cleanly and rebuilds it.
+  if (cfg) {
+    const stamp = cfg.restartAt || null;
+    if (lastRestartAt === undefined) lastRestartAt = stamp;
+    else if (stamp && stamp !== lastRestartAt) {
+      lastRestartAt = stamp;
+      console.log('[bot] reconnect requested from the dashboard.');
+      await disconnect();
+      backoffUntil = 0; lastTriedToken = null; // a deliberate reconnect is not a retry
+    }
+  }
   const token = enabled ? await resolveToken() : null;
   if (token && token !== lastTriedToken) backoffUntil = 0; // a new token retries immediately
   if (Date.now() < backoffUntil) return;                   // backing off after a failed login
