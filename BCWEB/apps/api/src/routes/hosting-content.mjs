@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import archiver from 'archiver';
 import { db, requireRole, optionalAuth, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList, safeEqual } from '../lib/lib.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
+import { zipEntryName } from '../lib/zip-path.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
@@ -442,7 +443,10 @@ export default async function hostingContentRoutes(app) {
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', () => { try { reply.raw.destroy(); } catch { /* already closed */ } });
     for (const f of repo.files) {
-      try { const { body } = await getObject(f.key); archive.append(body, { name: f.path }); } catch { /* skip unreadable file */ }
+      // zipEntryName, not f.path: a repo file may be registered at '../../x' (rows written
+      // before norm() dropped those segments still hold them), and THIS archive is extracted
+      // by a moderator reviewing the repo — the author choosing the name is not the victim.
+      try { const { body } = await getObject(f.key); archive.append(body, { name: zipEntryName(f.path) }); } catch { /* skip unreadable file */ }
     }
     archive.finalize();
     return reply.send(archive);

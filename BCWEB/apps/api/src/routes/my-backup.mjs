@@ -30,6 +30,9 @@ import { zipEntryName } from '../lib/zip-path.mjs';
 import { throttle } from './hosting-content.mjs';
 import { effUpload } from './repos.mjs';
 
+// For a Content-Disposition filename, and ONLY that: it needs no path semantics, it just
+// must not break the header. Zip ENTRY names go through zipEntryName instead — this one
+// permits '.', so it would pass a name of '..' straight through.
 const safeName = (s) => String(s || '').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'unnamed';
 
 const README = {
@@ -268,7 +271,10 @@ export default async function myBackupRoutes(app) {
     }
 
     for (const repo of repos) {
-      const folder = `repos/${safeName(repo.name)}`;
+      // zipEntryName for the FOLDER too. safeName permits '.', so a repo literally named
+      // '..' produced 'repos/..' and every entry interpolated from it escaped — the
+      // per-file call below would have caught it, the catalog interpolation would not.
+      const folder = zipEntryName('repos', repo.name);
       for (const f of repo.files) {
         // Through zipEntryName, not template interpolation: f.path is whatever the owner
         // registered, and '..' survives the upload validation (see lib/zip-path.mjs).
@@ -287,22 +293,23 @@ export default async function myBackupRoutes(app) {
     }
 
     for (const item of items) {
-      const folder = `catalog/${safeName(item.slug || item.name)}`;
+      const folder = zipEntryName('catalog', item.slug || item.name);
       const meta = JSON.stringify({
         id: item.id, name: item.name, slug: item.slug, kind: item.kind, status: item.status,
         version: item.version, description: item.description, tags: item.tags, meta: item.meta,
         createdAt: item.createdAt, updatedAt: item.updatedAt,
         payloadSize: item.payloadKey ? item.payloadSize : 0,
       }, null, 2);
-      archive.append(meta, { name: `${folder}/item.json` });
-      add(`${folder}/item.json`, Buffer.byteLength(meta));
+      const metaName = zipEntryName(folder, 'item.json');
+      archive.append(meta, { name: metaName });
+      add(metaName, Buffer.byteLength(meta));
       if (!item.payloadKey) {
         // Not a failure: a link-only item never had a file here. Saying which is the
         // difference between "nothing was uploaded" and "your file is missing".
         manifest.entries.push({ name: `${folder}/`, bytes: 0, note: 'link-only item, no uploaded file' });
         continue;
       }
-      const name = `${folder}/${safeName(item.slug || item.name)}`;
+      const name = zipEntryName(folder, item.slug || item.name);
       try {
         const { body } = await getObject(item.payloadKey);
         archive.append(body, { name });
