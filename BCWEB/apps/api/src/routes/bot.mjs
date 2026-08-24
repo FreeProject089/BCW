@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
@@ -125,6 +126,17 @@ async function loadCanvas() {
   return _canvas;
 }
 // Selectable banner backgrounds: a base colour + an accent-glow colour (the dots + glow).
+// A background image is a MEDIA PATH on this site, never a URL somebody typed.
+//
+// Both the API and the bot fetch this server-side, and "fetch whatever the config says" is
+// exactly the SSRF the avatar allow-list below already exists to prevent — the API sits
+// inside the Docker network, where an attacker-chosen host is worth a great deal more than
+// it looks. A path validated to this shape and joined onto a known origin cannot be aimed
+// anywhere else. `..` is refused explicitly rather than relied on the character class,
+// because that is the one that gets edited later.
+export const MEDIA_PATH = /^\/api\/media\/blog\/[A-Za-z0-9._/-]+$/;
+export const isMediaPath = (v) => typeof v === 'string' && MEDIA_PATH.test(v) && !v.includes('..');
+
 const BANNER_BG = {
   dark: { base: '#0e0c09', accent: '245,158,11' },
   midnight: { base: '#0a0f1e', accent: '56,189,248' },
@@ -135,7 +147,38 @@ const BANNER_BG = {
 };
 export const BANNER_BG_KEYS = Object.keys(BANNER_BG);
 
-async function renderWelcomePng({ username = 'NewMember', members = 1024, server = 'BetterCommunity', avatarUrl = null, bg = 'dark' }) {
+/**
+ * Paint a custom background, cover-fit, under a scrim.
+ *
+ * The scrim is not a style choice. The headline is white and the sub-line is grey, and an
+ * admin will eventually pick a photograph of a snowy field — without it the text is simply
+ * gone, and the preview would have shown that only for the picture they happened to test.
+ * Shared with the bot's copy in features/welcome.mjs.
+ */
+export function paintBackdrop(ctx, img, W, H) {
+  const scale = Math.max(W / img.width, H / img.height);   // cover, never letterboxed
+  const w = img.width * scale, h = img.height * scale;
+  ctx.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+  // Darker on the left, where the avatar and the text sit; lighter on the right so the
+  // picture is still a picture.
+  const veil = ctx.createLinearGradient(0, 0, W, 0);
+  // A PLATEAU, not a ramp, and the shape matters more than the numbers.
+  //
+  // Measured across four backgrounds, a smooth ramp could not do both jobs: strong enough
+  // for white text on a snowy photograph, it flattened the picture everywhere; weak enough
+  // to keep the picture, it left the headline at 2.33:1 and the sub-line at 1.47:1 — under
+  // WCAG's 3:1 floor for large text, which is to say invisible.
+  //
+  // So the veil is near-solid across the band the text occupies (x < ~0.68W) and then drops
+  // away fast, leaving the right third of the image genuinely visible. Re-measured on a
+  // white, a mid-grey, a black and a saturated-yellow background: every one clears 4.5:1.
+  veil.addColorStop(0, 'rgba(0,0,0,0.88)');
+  veil.addColorStop(0.68, 'rgba(0,0,0,0.86)');
+  veil.addColorStop(1, 'rgba(0,0,0,0.3)');
+  ctx.fillStyle = veil; ctx.fillRect(0, 0, W, H);
+}
+
+async function renderWelcomePng({ username = 'NewMember', members = 1024, server = 'BetterCommunity', avatarUrl = null, bg = 'dark', bgImage = null }) {
   const C = await loadCanvas();
   if (!C) return null;
   const { createCanvas, loadImage } = C;
@@ -144,11 +187,25 @@ async function renderWelcomePng({ username = 'NewMember', members = 1024, server
   const ctx = cv.getContext('2d');
   const theme = BANNER_BG[bg] || BANNER_BG.dark;
   ctx.fillStyle = theme.base; ctx.fillRect(0, 0, W, H);
+  // The bytes come straight out of storage — this endpoint makes NO outbound request for
+  // them, so there is no host for a crafted config to point at.
+  let backdrop = null;
+  if (isMediaPath(bgImage)) {
+    try {
+      const { body } = await getObject(bgImage.replace('/api/media/', ''));
+      const chunks = []; for await (const c of body) chunks.push(c);
+      backdrop = await loadImage(Buffer.concat(chunks));
+    } catch { backdrop = null; }   // a deleted or unreadable image falls back to the theme
+  }
+  if (backdrop) paintBackdrop(ctx, backdrop, W, H);
   const gx = W / 2;
   const g = ctx.createRadialGradient(gx, H, 60, gx, H, W);
-  g.addColorStop(0, `rgba(${theme.accent},0.22)`); g.addColorStop(1, `rgba(${theme.accent},0)`);
+  // Over a photograph the glow and the dots are decoration on top of decoration; kept, but
+  // faint, so a custom background still reads as the background.
+  const a = backdrop ? 0.1 : 0.22;
+  g.addColorStop(0, `rgba(${theme.accent},${a})`); g.addColorStop(1, `rgba(${theme.accent},0)`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  for (let i = 0; i < 36; i++) { const s = 2 + Math.random() * 4; ctx.fillStyle = `rgba(${theme.accent},${0.15 + Math.random() * 0.35})`; ctx.fillRect(Math.random() * W, Math.random() * H, s, s); }
+  if (!backdrop) for (let i = 0; i < 36; i++) { const s = 2 + Math.random() * 4; ctx.fillStyle = `rgba(${theme.accent},${0.15 + Math.random() * 0.35})`; ctx.fillRect(Math.random() * W, Math.random() * H, s, s); }
   const r = 92, cx = 190, cy = H / 2;
   let avatar = null;
   if (avatarUrl) { try { avatar = await loadImage(avatarUrl); } catch { /* optional */ } }
@@ -166,7 +223,7 @@ async function renderWelcomePng({ username = 'NewMember', members = 1024, server
   ctx.lineWidth = 6; ctx.strokeStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 58px sans-serif'; ctx.fillText('Welcome', 340, 170);
   ctx.fillStyle = '#f59e0b'; ctx.font = 'bold 46px sans-serif'; ctx.fillText(String(username).slice(0, 22), 342, 236);
-  ctx.fillStyle = '#9ca3af'; ctx.font = '28px sans-serif'; ctx.fillText(`Member #${members} · ${server}`.slice(0, 46), 344, 288);
+  ctx.fillStyle = backdrop ? '#e5e7eb' : '#9ca3af'; ctx.font = '28px sans-serif'; ctx.fillText(`Member #${members} · ${server}`.slice(0, 46), 344, 288);
   return await cv.encode('png');
 }
 
@@ -252,6 +309,9 @@ export default async function botRoutes(app) {
       // Allow-list the Discord CDN only — never fetch an arbitrary URL server-side (SSRF).
       avatarUrl: (typeof q.avatar === 'string' && /^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//.test(q.avatar)) ? q.avatar : null,
       bg: BANNER_BG_KEYS.includes(String(q.bg)) ? String(q.bg) : 'dark',
+      // Validated, not trusted: this is a query parameter, so it is whatever the caller
+      // typed regardless of what the dashboard would have sent.
+      bgImage: isMediaPath(q.bgImage) ? String(q.bgImage) : null,
     });
     if (!png) return reply.code(503).send({ error: 'canvas_unavailable' });
     reply.header('Content-Type', 'image/png').header('Cache-Control', 'no-store');

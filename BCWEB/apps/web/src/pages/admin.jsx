@@ -10518,6 +10518,30 @@ function AdminBot() {
                     className={`w-8 h-8 rounded-lg border-2 transition ${(sg('welcome.gifBg') || 'dark') === k ? 'border-[var(--primary)] scale-105' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} style={{ background: col }} />
                 ))}
               </div>
+              {/* A path on this site, not a URL box — and the hint says where to get one.
+                  Both the API and the bot fetch this server-side, so accepting any address
+                  would be handing an admin-editable field a request from inside the network.
+                  Upload on the Uploads page, copy the link, paste it here. */}
+              <Field className="mt-2.5" label={t('db.f.bgimg', 'Custom background image')}
+                hint={t('db.f.bgimg.h', 'Optional, and it replaces the colour above. Upload the image on the Uploads page and paste its /api/media/… link. The banner darkens the left side so the text stays readable whatever the picture is.')}>
+                <div className="flex items-center gap-1.5">
+                  <Input value={sg('welcome.bgImage')} onChange={(e) => sset('welcome.bgImage', e.target.value)}
+                    placeholder="/api/media/blog/…" />
+                  {sg('welcome.bgImage') && (
+                    <button type="button" onClick={() => { sset('welcome.bgImage', ''); setPreviewNonce((n) => n + 1); }}
+                      className="p-1.5 rounded-lg text-error hover:bg-error-bg" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => setPreviewNonce((n) => n + 1)}><RefreshCw size={12} /> {t('db.f.bgimg.see', 'Preview')}</Button>
+                </div>
+              </Field>
+              {/* Said where somebody is pasting, not in a doc. A path that fails this shape
+                  is ignored SILENTLY by both renderers — they fall back to the colour — so
+                  without this the only symptom would be a background that never appears. */}
+              {sg('welcome.bgImage') && !/^\/api\/media\/blog\/[A-Za-z0-9._/-]+$/.test(sg('welcome.bgImage')) && (
+                <div className="text-[11px] text-warning flex items-center gap-1 mt-1">
+                  <AlertTriangle size={11} /> {t('db.f.bgimg.bad', 'That is not an uploaded-media link. It must start with /api/media/blog/ — the colour will be used instead.')}
+                </div>
+              )}
             </div>
             {/* Discord-style preview — a chat message from the bot; the FRAME follows the app
                 theme (was hard-dark), the banner PNG itself keeps its chosen background. */}
@@ -10532,7 +10556,7 @@ function AdminBot() {
                   <div className="flex items-center gap-1.5 text-sm"><span className="font-semibold text-[var(--text)]">{scopeName || 'BetterCommunity'}</span><span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[var(--primary)] text-white uppercase">Bot</span><span className="text-[10px] text-[var(--faint)]">{t('db.today', 'Today')}</span></div>
                   <div className="text-sm text-[var(--muted)] mt-0.5">{previewMsg(sg('welcome.joinMessage')) || '—'}</div>
                   <img alt="Welcome banner preview" className="mt-1.5 w-full max-w-md rounded-lg block border border-[var(--line)]"
-                    src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&bg=${sg('welcome.gifBg') || 'dark'}&_=${previewNonce}`}
+                    src={`/api/admin/bot/welcome-preview.png?server=${encodeURIComponent(scopeName)}&members=${status?.users || 1024}&username=NewMember&bg=${sg('welcome.gifBg') || 'dark'}&bgImage=${encodeURIComponent(sg('welcome.bgImage') || '')}&_=${previewNonce}`}
                     onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                 </div>
               </div>

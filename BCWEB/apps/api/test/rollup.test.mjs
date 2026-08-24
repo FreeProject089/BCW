@@ -37,6 +37,31 @@ test('rollup aggregates a day into views (count) + visitors (distinct), idempote
   const at = new Date(); at.setUTCDate(at.getUTCDate() - 10); at.setUTCHours(10, 0, 0, 0);
   const dayKey = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
   const tag = `roll-${Date.now()}`;
+
+  // Clear this day FIRST, and clear it again at the end.
+  //
+  // The rollup aggregates a whole day, so the assertion below is over every event on it —
+  // not just the four seeded here. Without this the test was green exactly ONCE per
+  // database: each run left its four rows behind, and the second run saw 8, the third 12.
+  // It looked like a rollup bug (`views = 16`, expected 4) and was a fixture leak.
+  //
+  // Scoped to the `roll-` prefix and to this one day, so a developer's real analytics data
+  // is never what gets deleted.
+  const wipe = async () => {
+    await p.analyticsEvent.deleteMany({ where: { visitor: { startsWith: 'roll-' }, createdAt: { gte: dayKey, lt: new Date(dayKey.getTime() + 86400000) } } });
+    await p.analyticsDaily.deleteMany({ where: { day: dayKey } });
+  };
+  await wipe();
+  // And the gate. The first half of this test needs the FULL recompute to run, which only
+  // happens when analytics.rollupAt is absent — otherwise the rollup does its trailing
+  // 3-day window and a day 10 days back is never touched, so no row exists at all.
+  //
+  // The key is written by the test's own first run as much as by a running server, so
+  // clearing it here is what makes the test repeatable rather than green-once. It is also
+  // why "stop the API before running the tests" was necessary advice: this removes the
+  // need for it.
+  await p.adminSetting.deleteMany({ where: { key: 'analytics.rollupAt' } });
+
   // 4 events, 3 distinct visitors, all on that day.
   for (const v of [`${tag}-a`, `${tag}-a`, `${tag}-b`, `${tag}-c`]) {
     await p.analyticsEvent.create({ data: { path: '/x', visitor: v, createdAt: at } });
@@ -55,4 +80,6 @@ test('rollup aggregates a day into views (count) + visitors (distinct), idempote
   const again = await p.analyticsDaily.findUnique({ where: { day: dayKey } });
   assert.equal(again.views, 4);
   assert.equal(again.visitors, 3);
+
+  await wipe();   // leave the database as we found it, so the next run starts clean too
 });
