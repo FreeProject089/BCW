@@ -11100,6 +11100,8 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
   const ptSig = (points || []).map((p) => `${p.lat},${p.lng},${p.color},${p.avatarSeed || ''}`).join('|');
   const chSig = (choropleth || []).map((c) => `${c.cc}:${c.count}`).join('|');
   const stablePts = useMemo(() => points || [], [ptSig]); // eslint-disable-line
+  // Bumped when the GPU takes our WebGL context back, to rebuild the map from scratch.
+  const [epoch, setEpoch] = useState(0);
   const empty = choropleth ? (!choropleth.length && !stablePts.length) : !stablePts.length;
 
   useEffect(() => {
@@ -11118,6 +11120,23 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
       map.on('error', () => {});
+      // A browser hands out a small, fixed number of WebGL contexts and takes the oldest
+      // back when it runs short — the analytics tab alone builds two maps, and the hero
+      // holds a three.js context. When that happens the canvas does not error, it simply
+      // stops painting: a black rectangle where the map was, and a console warning.
+      //
+      // So recover instead of reporting. The event is preventDefault'd (without that the
+      // context is gone for good and cannot be restored) and the map is rebuilt on the
+      // next frame from the same props — the effect below re-applies projection, and the
+      // choropleth and marker effects re-run off `ready`.
+      map.getCanvas().addEventListener('webglcontextlost', (e) => {
+        e.preventDefault();
+        if (disposed) return;
+        setReady(false);
+        try { map.remove(); } catch { /* already torn down */ }
+        mapRef.current = null;
+        requestAnimationFrame(() => { if (!disposed) setEpoch((n) => n + 1); });
+      }, { once: true });
       map.on('load', () => {
         if (disposed) return;
         try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {}
@@ -11146,7 +11165,7 @@ function AnalyticsMap({ points, choropleth, infoByName, height = 420 }) {
       try { mapRef.current?.remove(); } catch {} mapRef.current = null;
     };
     // eslint-disable-next-line
-  }, []);
+  }, [epoch]);
 
   useEffect(() => { const map = mapRef.current; if (map) { try { map.setProjection({ type: mode === 'globe' ? 'globe' : 'mercator' }); } catch {} } }, [mode]);
 

@@ -665,7 +665,11 @@ const htmlEscape = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;')
 
 function renderAutoindex(displayPath, entries) {
   const rows = [
-    `<html><head><title>Index of ${htmlEscape(displayPath)}</title></head><body>`,
+    // The doctype is not decoration: without it a browser renders this listing in QUIRKS
+    // mode and Chrome logs a warning naming the URL. nginx's own autoindex omits it, and
+    // this page copies nginx — but copying a 1990s quirk is not a feature. It changes
+    // nothing for BMM, whose parser walks the <pre> lines and never looks at the head.
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Index of ${htmlEscape(displayPath)}</title></head><body>`,
     `<h1>Index of ${htmlEscape(displayPath)}</h1><hr><pre><a href="../">../</a>`,
   ];
   for (const e of entries) {
