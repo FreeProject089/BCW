@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Bold, Italic, Strikethrough, Code, Link2, Hash, MessageSquarePlus, Palette, X } from 'lucide-react';
 
@@ -30,6 +31,7 @@ function caretXY(ta, pos) {
 }
 
 export default function SelectionToolbar({ taRef, value, onChange }) {
+  const { t } = useI18n();
   const [pos, setPos] = useState(null); // { top, left } or null
   const [sub, setSub] = useState(null); // 'color' | 'comment' | null
   const selRef = useRef({ s: 0, e: 0 });
@@ -98,7 +100,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
         <div className="absolute top-full mt-1 left-0 flex items-center gap-1 p-1.5 rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
           {COLORS.map((c) => <button key={c} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => color(c)} className="w-5 h-5 rounded-full border border-black/20" style={{ background: c }} />)}
           {/* full colour picker — applies when the native dialog closes */}
-          <input type="color" defaultValue="#7c3aed" title="Custom colour"
+          <input type="color" defaultValue="#7c3aed" title={t('st.customcolour', "Custom colour")}
             onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
             onChange={(e) => color(e.target.value)}
             className="w-6 h-6 rounded-full border border-[var(--line)] bg-transparent p-0 cursor-pointer" />
@@ -112,11 +114,11 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
       {sub === 'comment' && (
         <div className="absolute top-full mt-1 left-0 w-64 p-2 rounded-lg border border-[var(--line-strong)] shadow-xl space-y-1.5" style={{ background: 'var(--bg-solid)' }}>
           <div className="flex items-center justify-between text-xs font-semibold text-[var(--muted)]">Comment <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => setSub(null)}><X size={13} /></button></div>
-          <textarea autoFocus rows={2} placeholder="Comment text…" onMouseDown={(e) => e.stopPropagation()} defaultValue="" onChange={(e) => { cmt.current.text = e.target.value; }} className="w-full text-sm rounded-md border border-[var(--line)] bg-transparent p-1.5 outline-none" />
-          <input placeholder="Link (optional)" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.link = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
-          <input placeholder="Image URL (optional)" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.img = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
-          <input placeholder="Video URL (optional)" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.video = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
-          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addComment} className="w-full text-sm rounded-md bg-[var(--primary)] text-white py-1 font-medium">Add comment</button>
+          <textarea autoFocus rows={2} placeholder={t('st.ph.text', "Comment text\u2026")} onMouseDown={(e) => e.stopPropagation()} defaultValue="" onChange={(e) => { cmt.current.text = e.target.value; }} className="w-full text-sm rounded-md border border-[var(--line)] bg-transparent p-1.5 outline-none" />
+          <input placeholder={t('st.ph.link', "Link (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.link = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
+          <input placeholder={t('st.ph.img', "Image URL (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.img = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
+          <input placeholder={t('st.ph.video', "Video URL (optional)")} onMouseDown={(e) => e.stopPropagation()} onChange={(e) => { cmt.current.video = e.target.value; }} className="w-full text-xs rounded-md border border-[var(--line)] bg-transparent px-2 py-1 outline-none" />
+          <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={addComment} className="w-full text-sm rounded-md bg-[var(--primary)] text-white py-1 font-medium">{t('st.addcomment', "Add comment")}</button>
         </div>
       )}
     </div>, document.body);

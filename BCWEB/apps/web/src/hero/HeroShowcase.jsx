@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react';
+import { useI18n } from '../i18n.jsx';
 import { Boxes, Music2, Server, Rocket, TrendingUp, Star, Newspaper } from 'lucide-react';
 
 // Linear-style product showcase: a stylized app screenshot tilted in 3D that
 // straightens as you scroll. Pure CSS 3D + a scroll listener (reliable everywhere).
 export default function HeroShowcase() {
+  const { t } = useI18n();
   const wrap = useRef(null);
   const card = useRef(null);
   useEffect(() => {
@@ -50,12 +52,12 @@ export default function HeroShowcase() {
               ))}
             </aside>
             <main className="p-4">
-              <div className="text-sm font-semibold mb-3">Overview</div>
+              <div className="text-sm font-semibold mb-3">{t('hs.overview', "Overview")}</div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
-                <Stat icon={Boxes} label="Catalog items" value="128" />
-                <Stat icon={Server} label="Server repos" value="34" />
-                <Stat icon={TrendingUp} label="Pageviews" value="9.2k" />
-                <Stat icon={Star} label="Featured" value="6" />
+                <Stat icon={Boxes} label={t('hs.catalogitems', "Catalog items")} value="128" />
+                <Stat icon={Server} label={t('hs.serverrepos', "Server repos")} value="34" />
+                <Stat icon={TrendingUp} label={t('hs.pageviews', "Pageviews")} value="9.2k" />
+                <Stat icon={Star} label={t('hs.featured', "Featured")} value="6" />
               </div>
               <div className="rounded-xl border border-[var(--line)] p-3">
                 <div className="text-[11px] text-[var(--faint)] uppercase tracking-wider mb-2">Activity</div>

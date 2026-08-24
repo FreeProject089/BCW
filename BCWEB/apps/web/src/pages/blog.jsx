@@ -343,12 +343,12 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
             ))}
           </div>
           {saved.length > 0 && <>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">My badges</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">{t('blg.mybadges', "My badges")}</div>
             <div className="flex flex-wrap gap-2">
               {saved.map(([l, c]) => (
                 <span key={l} className="inline-flex items-center gap-1 text-xs font-bold pl-2.5 pr-1 py-1 rounded-full border" style={chipStyle(c)}>
                   <button type="button" onClick={() => { onPick(l, c); onClose(); }} className="bg-transparent border-0 cursor-pointer font-bold" style={{ color: 'inherit' }}>{l}</button>
-                  <button type="button" title="Remove" onClick={() => persist(saved.filter((s) => s[0] !== l))} className="opacity-60 hover:opacity-100"><X size={11} /></button>
+                  <button type="button" title={t('blg.remove', "Remove")} onClick={() => persist(saved.filter((s) => s[0] !== l))} className="opacity-60 hover:opacity-100"><X size={11} /></button>
                 </span>
               ))}
             </div>
@@ -356,12 +356,12 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">Custom</div>
           <div className="flex items-center gap-2 flex-wrap">
             <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 cursor-pointer shrink-0" />
-            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label" className="input !py-1.5 !text-sm flex-1 min-w-[100px]" onKeyDown={(e) => e.key === 'Enter' && add(true)} />
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('blg.ph.label', "Label")} className="input !py-1.5 !text-sm flex-1 min-w-[100px]" onKeyDown={(e) => e.key === 'Enter' && add(true)} />
             <span className="text-xs font-bold px-2.5 py-1 rounded-full border" style={chipStyle(color)}>{label || 'Label'}</span>
           </div>
           <div className="flex gap-2 mt-2">
-            <Button size="sm" variant="primary" onClick={() => add(true)}>Add & save</Button>
-            <Button size="sm" variant="ghost" onClick={() => add(false)}>Add once</Button>
+            <Button size="sm" variant="primary" onClick={() => add(true)}>{t('blg.addsave', "Add & save")}</Button>
+            <Button size="sm" variant="ghost" onClick={() => add(false)}>{t('blg.addonce', "Add once")}</Button>
           </div>
         </div>
       </div>
@@ -489,9 +489,9 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
             {tool(ImagePlus, () => pickImage((u) => insert(`\n![image](${u})\n`)), 'Image')}{tool(Youtube, ytEmbed, 'YouTube')}{tool(Video, videoEmbed, 'Video')}
             <span className="w-px h-5 bg-[var(--line)] mx-1 self-center" />
-            <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title="Insert a badge (classic, preset or custom)"><TagIcon size={14} /> Badges</button>
+            <button type="button" onClick={() => setBadgePick(true)} className="btn btn-sm" title={t('blg.insbadge', "Insert a badge (classic, preset or custom)")}><TagIcon size={14} /> Badges</button>
             <div className="relative">
-              <button ref={blocksBtnRef} type="button" onClick={openBlocks} className="btn btn-sm" title="Insert a content block (callout, tabs, cards…)"><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
+              <button ref={blocksBtnRef} type="button" onClick={openBlocks} className="btn btn-sm" title={t('blg.insblock', "Insert a content block (callout, tabs, cards\u2026)")}><BlocksIcon size={14} /> Blocks <ChevronDown size={12} /></button>
               {/* Portalled to <body>, and that is the whole fix.
                   `position: fixed` does NOT resolve against the viewport when an ancestor
                   carries a transform — and `.modal-card` has `.anim-pop`, whose
@@ -512,7 +512,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
           </>}
         </>}
         <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ml-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
-        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title="Markdown guide"><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
+        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
@@ -704,8 +704,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           <div className="flex-1">
             {merge.conflicts > 0
               ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved while you were editing.{' '}
-                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>Reopen resolver</button>}</>}</>
-              : <><b>Merged cleanly with someone else's edits.</b> Review the content and Save again.</>}
+                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>{t('blg.reopen', "Reopen resolver")}</button>}</>}</>
+              : <><b>{t('blg.merged', "Merged cleanly with someone else's edits.")}</b> {t('blg.reviewsave', "Review the content and Save again.")}</>}
           </div>
           <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
         </div>
@@ -726,16 +726,16 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       {/* meta row (shared: blog scope + cover) */}
       <div className="flex flex-wrap items-center gap-2 mt-3">
         <select className="input !w-auto !py-2" value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}>
-          <optgroup label="Projects">
+          <optgroup label={t('blg.projects', "Projects")}>
             {(scopes?.projects || [{ key: 'community', name: 'Community' }]).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{pr.name}</option>)}
           </optgroup>
-          {(scopes?.showcases || []).length > 0 && <optgroup label="Other projects">
+          {(scopes?.showcases || []).length > 0 && <optgroup label={t('blg.otherprojects', "Other projects")}>
             {scopes.showcases.map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{s.name}</option>)}
           </optgroup>}
         </select>
-        <Button type="button" size="sm" onClick={pickCover}><ImagePlus size={14} /> {f.cover ? 'Change cover' : 'Add cover'}</Button>
-        {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> Remove</Button>}
-        <span className="text-xs text-[var(--faint)] ml-auto">Cover &amp; blog are shared across languages</span>
+        <Button type="button" size="sm" onClick={pickCover}><ImagePlus size={14} /> {f.cover ? t('blg.changecover', 'Change cover') : t('blg.addcover', 'Add cover')}</Button>
+        {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> {t('blg.removecover', 'Remove')}</Button>}
+        <span className="text-xs text-[var(--faint)] ml-auto">{t('blg.sharedlang', 'Cover & blog are shared across languages')}</span>
       </div>
       {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
       {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> {t('be.coverInBody', 'Also show the cover at the top of the article')}</label>}
@@ -755,10 +755,10 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       {/* table of contents (sommaire) */}
       <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
         <label className="flex items-center justify-between text-sm font-medium cursor-pointer">
-          <span>Table of contents (sommaire)</span>
+          <span>{t('blg.toclong', "Table of contents (sommaire)")}</span>
           <input type="checkbox" checked={f.showToc} onChange={(e) => setF((s) => ({ ...s, showToc: e.target.checked }))} />
         </label>
-        <p className="text-xs text-[var(--faint)] mt-1">Auto-built from your headings, shown at the top of the post. Leave off to place your own with the <b>Table of contents</b> block.</p>
+        <p className="text-xs text-[var(--faint)] mt-1">Auto-built from your headings, shown at the top of the post. Leave off to place your own with the <b>{t('blg.toc', "Table of contents")}</b> block.</p>
         {f.showToc && <input className="input !py-1.5 !text-sm mt-2" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder={t('be.toc.headingPh', 'Heading (default: On this page)')} />}
       </div>
 
@@ -781,8 +781,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           )}
         </div>
         <div className="rounded-xl border border-[var(--line)] p-3">
-          <div className="text-sm font-medium">Collaborators</div>
-          <p className="text-xs text-[var(--faint)] mt-1">Add co-authors by email — their avatars show on the post.</p>
+          <div className="text-sm font-medium">{t('blg.collaborators', 'Collaborators')}</div>
+          <p className="text-xs text-[var(--faint)] mt-1">{t('blg.coauthorhint', 'Add co-authors by email — their avatars show on the post.')}</p>
           <div className="flex gap-1.5 mt-2">
             <Input value={collab} onChange={(e) => setCollab(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }} placeholder="collaborator@email.com" className="!py-1.5 !text-sm" />
             <Button type="button" size="sm" onClick={addCoAuthor}><Plus size={14} /></Button>

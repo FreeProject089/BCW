@@ -2721,6 +2721,83 @@ const DICT = {
     'st.contrastlow': 'Contraste du texte du bouton {n}:1 — sous WCAG AA (4,5:1). L’encre a déjà basculé vers sa meilleure option ; cet accent est simplement difficile à écrire dessus.',
     'adm.tab.needs': 'À traiter', 'common.refresh': 'Actualiser',
     'common.reset': 'Réinitialiser',
+    'app.delete': 'Supprimer',
+    'common.close2': 'Fermer',
+    'ct.title2': 'Contact',
+    'dc.ph.name': 'Mon lanceur de mods',
+    'dsh.clearall': 'Tout effacer',
+    'hs.catalogitems': 'Entrées du catalogue',
+    'hs.featured': 'Mis en avant',
+    'hs.overview': 'Vue d’ensemble',
+    'hs.pageviews': 'Pages vues',
+    'hs.serverrepos': 'Dépôts serveur',
+    'ip.ourprojects': 'Projets Better*',
+    'nav.language': 'Langue',
+    'radm.paste': 'Collez l’identifiant <span class=\"font-mono\">BCR-XXXX-XXXX</span> affiché sur un dépôt pour retrouver son propriétaire et ses identités liées (identifiants créateur BMM, Discord, Ko-fi).',
+    'rrw.loading': 'Chargement de l’aperçu en direct…',
+    'sb.ph.name': 'Mes plugins serveur',
+    'th.todark': 'Passer en sombre',
+    'th.toggle': 'Changer de thème',
+    'th.tolight': 'Passer en clair',
+    'adm3.blogtab': 'Afficher l’onglet « Blog » sur la page du projet',
+    'adm3.webvitals': 'Web Vitals',
+    'cm.comments': 'Commentaires',
+    'cm.custompin': 'Épingle personnalisée…',
+    'cm.historytitle': 'Historique du commentaire',
+    'cm.nohistory': 'Aucun historique',
+    'cm.nosection': 'Aucune section (commentaire général)',
+    'cm.ph.edit': 'Modifier le commentaire — blocs, tableaux et images acceptés…',
+    'cm.ph.pin': 'Épingler à une section / ligne (optionnel)',
+    'cm.ph.reply': 'Répondre…',
+    'dm.apply': 'Appliquer la résolution',
+    'dm.resolveall': 'Tout résoudre en :',
+    'prj.comingsoon': 'Bientôt disponible',
+    'prj.installedmods': 'Mods installés',
+    'prj.nothinghere': 'Rien ici',
+    'prj.opencommunity': 'Ouvrir la communauté',
+    'rps.accounts': 'Comptes',
+    'rps.creatorid': 'Identifiant créateur',
+    'rps.noaccounts': 'Aucun compte trouvé.',
+    'rps.ph.search': 'Rechercher un identifiant créateur / Discord / nom d’utilisateur…',
+    'st.addcomment': 'Ajouter le commentaire',
+    'st.customcolour': 'Couleur personnalisée',
+    'st.ph.img': 'URL de l’image (optionnel)',
+    'st.ph.link': 'Lien (optionnel)',
+    'st.ph.text': 'Texte du commentaire…',
+    'st.ph.video': 'URL de la vidéo (optionnel)',
+    'blg.addcover': 'Ajouter une couverture',
+    'blg.changecover': 'Changer la couverture',
+    'blg.coauthorhint': 'Ajoutez des co-auteurs par e-mail — leurs avatars apparaissent sur l’article.',
+    'blg.collaborators': 'Collaborateurs',
+    'blg.removecover': 'Retirer',
+    'blg.sharedlang': 'La couverture et le blog sont partagés entre les langues',
+    'blg.addonce': 'Ajouter une fois',
+    'blg.addsave': 'Ajouter et enregistrer',
+    'blg.insbadge': 'Insérer un badge (classique, prédéfini ou personnalisé)',
+    'blg.insblock': 'Insérer un bloc de contenu (encadré, onglets, cartes…)',
+    'blg.mdguide': 'Guide markdown',
+    'blg.merged': 'Fusionné proprement avec les modifications de quelqu’un d’autre.',
+    'blg.mybadges': 'Mes badges',
+    'blg.otherprojects': 'Autres projets',
+    'blg.ph.label': 'Libellé',
+    'blg.projects': 'Projets',
+    'blg.remove': 'Retirer',
+    'blg.reopen': 'Rouvrir le résolveur',
+    'blg.reviewsave': 'Relisez le contenu et enregistrez à nouveau.',
+    'blg.toc': 'Sommaire',
+    'blg.toclong': 'Sommaire',
+    'dcs.category': 'Catégorie (EN)',
+    'dcs.catfr': 'Catégorie (FR)',
+    'dcs.merged': 'Fusionné proprement avec les modifications de quelqu’un d’autre.',
+    'dcs.order': 'Ordre',
+    'dcs.ph.cat': 'Guides / Setup',
+    'dcs.ph.catfr': 'Guides / Installation',
+    'dcs.ph.pagetitle': 'Titre de la page',
+    'dcs.reopen': 'Rouvrir le résolveur',
+    'dcs.reviewsave': 'Relisez et enregistrez à nouveau.',
+    'dcs.title': 'Titre',
+    'dcs.titlefr': 'Titre (FR)',
+    'dcs.togglesidebar': 'Afficher/masquer la barre latérale',
     'db.sec.posts': 'Annonces et publications',
     'db.sec.posts.sub': 'Tout ce que le bot écrit dans un salon — ce que vous envoyez à la main, où ça atterrit, et les sources qui publient d’elles-mêmes.',
     'db.sec.members': 'Membres',
@@ -4478,6 +4555,7 @@ export const LANGS = [
 // Topbar switcher. With exactly two languages it's a fast one-tap toggle; once a
 // third language is added it becomes a proper dropdown listing every language.
 export function LangToggle() {
+  const { t } = useI18n();
   const { lang, setLang } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -4490,14 +4568,14 @@ export function LangToggle() {
   if (LANGS.length <= 2) {
     const other = LANGS.find((l) => l.code !== lang) || LANGS[0];
     return (
-      <button className="nav-link" onClick={() => setLang(other.code)} title={`Language — ${other.label}`} aria-label="Language">
+      <button className="nav-link" onClick={() => setLang(other.code)} title={`Language — ${other.label}`} aria-label={t('nav.language', 'Language')}>
         <Languages size={16} /> <span className="text-xs font-semibold uppercase">{lang}</span>
       </button>
     );
   }
   return (
     <div className="relative" ref={ref}>
-      <button className="nav-link" onClick={() => setOpen((o) => !o)} title="Language" aria-label="Language" aria-expanded={open}>
+      <button className="nav-link" onClick={() => setOpen((o) => !o)} title={t('nav.language', 'Language')} aria-label={t('nav.language', 'Language')} aria-expanded={open}>
         <Languages size={16} /> <span className="text-xs font-semibold uppercase">{lang}</span>
       </button>
       {open && (
@@ -4522,6 +4600,7 @@ export function LangToggle() {
 // render as an OS-grey menu — this was the last one left. Self-contained (no import from
 // ui.jsx, which would cycle back through useI18n here); mirrors LangToggle's opaque menu.
 export function LangSelect({ className = '' }) {
+  const { t } = useI18n();
   const { lang, setLang } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -4535,7 +4614,7 @@ export function LangSelect({ className = '' }) {
   }, [open]);
   return (
     <div className={`relative inline-flex ${className}`} ref={ref}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label="Language"
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={t('nav.language', 'Language')}
         className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors">
         <Languages size={14} className="shrink-0" /> {cur.label}
         <ChevronDown size={13} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />

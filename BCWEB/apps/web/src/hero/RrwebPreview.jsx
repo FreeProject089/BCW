@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
+import { useI18n } from '../i18n.jsx';
 
 // Plays a real BMM rrweb session as a transparent, auto-looping preview.
 // Uses rrweb's raw Replayer (matches BMM's rrweb v2) + manual scaling so it
 // reliably fits the window. rrweb + the 26 MB replay are lazy-loaded.
 export default function RrwebPreview({ url, onFail }) {
+  const { t } = useI18n();
   const wrap = useRef(null);   // visible, sized box
   const stage = useRef(null);  // where the Replayer mounts (gets scaled)
   const [status, setStatus] = useState('loading');
@@ -46,7 +48,7 @@ export default function RrwebPreview({ url, onFail }) {
   return (
     <div ref={wrap} className="bmm-replay" style={{ width: '100%', minHeight: 260, position: 'relative', overflow: 'hidden' }}>
       <div ref={stage} style={{ position: 'absolute', top: 0, left: 0 }} />
-      {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--muted)]">Loading live preview…</div>}
+      {status === 'loading' && <div className="absolute inset-0 grid place-items-center text-sm text-[var(--muted)]">{t('rrw.loading', "Loading live preview\u2026")}</div>}
     </div>
   );
 }

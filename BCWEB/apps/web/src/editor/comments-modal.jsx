@@ -52,7 +52,7 @@ function CommentBody({ c, isReply, ctx }) {
         : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ml-8 mt-1.5">
-          <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder="Edit comment — supports blocks, tables, images…" />
+          <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder={t('cm.ph.edit', "Edit comment \u2014 supports blocks, tables, images\u2026")} />
           <div className="flex gap-1.5 mt-1.5"><Button size="sm" variant="primary" disabled={busy} onClick={saveEdit}>Save</Button><Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
         </div>
       ) : (
@@ -68,7 +68,7 @@ function CommentBody({ c, isReply, ctx }) {
       )}
       {replyTo === c.id && (
         <div className="ml-8 mt-2 flex gap-1.5">
-          <Input value={replyBody} autoFocus onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(c.id); } }} placeholder="Reply…" className="!py-1.5 !text-sm" />
+          <Input value={replyBody} autoFocus onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(c.id); } }} placeholder={t('cm.ph.reply', "Reply\u2026")} className="!py-1.5 !text-sm" />
           <Button size="sm" variant="primary" disabled={busy} onClick={() => reply(c.id)}><Send size={13} /></Button>
         </div>
       )}
@@ -151,7 +151,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const fmtFull = (d) => { try { return new Date(d).toLocaleString(); } catch { return ''; } };
 
   return (
-    <Modal open onClose={onClose} title="Comments" icon={MessageSquare} width="max-w-2xl"
+    <Modal open onClose={onClose} title={t('cm.comments', "Comments")} icon={MessageSquare} width="max-w-2xl"
       footer={<>
         <span className="text-xs mr-auto flex items-center gap-1.5 text-[var(--faint)]">
           {data?.commentsPublic ? <><Globe size={13} className="text-success" /> {t('cm.visible', 'Visible to readers')}</> : <><Lock size={13} /> {t('cm.editorsOnly', 'Editors only')}</>}
@@ -215,13 +215,13 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
             {sections.length && !customAnchor ? (
               <Select className="!py-1.5 !text-sm flex-1" value={draft.anchor}
                 onChange={(e) => { if (e.target.value === '__custom__') { setCustomAnchor(true); setDraft({ ...draft, anchor: '' }); } else setDraft({ ...draft, anchor: e.target.value }); }}>
-                <option value="">No section (general comment)</option>
+                <option value="">{t('cm.nosection', "No section (general comment)")}</option>
                 {sections.map((s) => <option key={s} value={s}>{s}</option>)}
-                <option value="__custom__">Custom pin…</option>
+                <option value="__custom__">{t('cm.custompin', "Custom pin\u2026")}</option>
               </Select>
             ) : (
               <div className="flex-1 flex items-center gap-1.5">
-                <Input value={draft.anchor} autoFocus={customAnchor} onChange={(e) => setDraft({ ...draft, anchor: e.target.value })} placeholder="Pin to a section/line (optional)" className="!py-1.5 !text-sm" />
+                <Input value={draft.anchor} autoFocus={customAnchor} onChange={(e) => setDraft({ ...draft, anchor: e.target.value })} placeholder={t('cm.ph.pin', "Pin to a section/line (optional)")} className="!py-1.5 !text-sm" />
                 {sections.length > 0 && <button className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] whitespace-nowrap" onClick={() => { setCustomAnchor(false); setDraft({ ...draft, anchor: '' }); }}>sections</button>}
               </div>
             )}
@@ -233,7 +233,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
       {/* A single comment's edit history — every version (newest first) with who + when.
           Nothing is lost when a comment is collaboratively edited. */}
       {history && (
-        <Modal open onClose={() => setHistory(null)} title="Comment history" icon={History} width="max-w-lg"
+        <Modal open onClose={() => setHistory(null)} title={t('cm.historytitle', "Comment history")} icon={History} width="max-w-lg"
           footer={<Button variant="ghost" onClick={() => setHistory(null)}>Close</Button>}>
           {history.revisions === null ? <div className="grid place-items-center py-8"><Spinner /></div>
             : history.revisions.length ? (
@@ -249,7 +249,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                   </div>
                 ))}
               </div>
-            ) : <EmptyState icon={History} title="No history" sub="This comment hasn't been edited." />}
+            ) : <EmptyState icon={History} title={t('cm.nohistory', "No history")} sub="This comment hasn't been edited." />}
         </Modal>
       )}
 

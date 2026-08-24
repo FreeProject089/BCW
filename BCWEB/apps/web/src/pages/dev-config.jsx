@@ -350,7 +350,7 @@ function OAuthAppsPanel() {
       {form ? (
         <div className="rounded-lg border border-[var(--line)] p-3 space-y-2.5">
           <Field label={t('dev.name', 'App name')} hint={t('dev.name.h', 'Shown on the consent screen. Changing it later drops the staff review.')}>
-            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="My Mod Launcher" />
+            <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder={t('dc.ph.name', "My Mod Launcher")} />
           </Field>
           <Field label={t('dev.uris', 'Redirect URIs')} hint={t('dev.uris.h', 'One per line, matched exactly. https only — except http://localhost for development. This is where the authorization code is delivered, so it is the one field worth double-checking.')}>
             <Textarea rows={3} value={form.redirectUris} onChange={(e) => setForm((f) => ({ ...f, redirectUris: e.target.value }))} placeholder={'https://myapp.example.com/callback\nhttp://localhost:5173/callback'} />

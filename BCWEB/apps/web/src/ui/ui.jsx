@@ -295,6 +295,7 @@ export function EmptyState({ icon: Icon, title, sub, children }) {
 
 /* ── Modal ── */
 export function Modal({ open, onClose, title, icon: Icon, children, footer, width = 'max-w-md' }) {
+  const { t } = useI18n();
   const cardRef = useRef(null);
   const restoreRef = useRef(null);
   const titleId = useId();
@@ -346,7 +347,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
           {Icon && <Icon size={18} className="text-[var(--primary-2)]" />}
           <div id={titleId} className="font-semibold flex-1 min-w-0 truncate">{title}</div>
-          <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label="Close"><X size={16} /></button>
+          <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label={t('common.close2', "Close")}><X size={16} /></button>
         </div>
         <div className="px-5 py-4 overflow-auto">{children}</div>
         {footer && <div className="px-5 py-4 border-t border-[var(--line)] flex justify-end gap-2 shrink-0 flex-wrap">{footer}</div>}

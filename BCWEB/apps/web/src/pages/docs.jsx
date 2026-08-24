@@ -204,7 +204,7 @@ export default function Docs() {
       {/* Content */}
       <main className="flex-1 min-w-0 w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="flex items-center gap-2 mb-2">
-          <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title="Toggle sidebar"><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
+          <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title={t('dcs.togglesidebar', "Toggle sidebar")}><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
           {page && (canEdit || page.commentsPublic) && <div className="ml-auto flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => setReaderComments(true)}><MessageSquare size={14} /> {t('docs.comments', 'Comments')}</Button>
             {canEdit && <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> {t('docs.edit')}</Button>}
@@ -644,20 +644,20 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
           <div className="flex-1">
             {merge.conflicts > 0
               ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved this page while you were editing.{' '}
-                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>Reopen resolver</button>}</>}</>
-              : <><b>Merged cleanly with someone else's edits.</b> Review and Save again.</>}
+                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>{t('dcs.reopen', "Reopen resolver")}</button>}</>}</>
+              : <><b>{t('dcs.merged', "Merged cleanly with someone else's edits.")}</b> {t('dcs.reviewsave', "Review and Save again.")}</>}
           </div>
           <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
-        <Field label="Title"><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Page title" /></Field>
-        <Field label="Titre (FR)" hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
-        <Field label="Catégorie (FR)"><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder="Guides / Installation" /></Field>
-        <Field label="Category" hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder="Guides / Setup" />
+        <Field label={t('dcs.title', "Title")}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('dcs.ph.pagetitle', "Page title")} /></Field>
+        <Field label={t('dcs.titlefr', "Titre (FR)")} hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
+        <Field label={t('dcs.catfr', "Cat\u00e9gorie (FR)")}><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder={t('dcs.ph.catfr', "Guides / Installation")} /></Field>
+        <Field label={t('dcs.category', "Category")} hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder={t('dcs.ph.cat', "Guides / Setup")} />
           <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         <Field label="Icon"><Input value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })} placeholder="book" className="!w-24" /></Field>
-        <Field label="Order"><Input type="number" value={f.order} onChange={(e) => setF({ ...f, order: e.target.value })} className="!w-20" /></Field>
+        <Field label={t('dcs.order', "Order")}><Input type="number" value={f.order} onChange={(e) => setF({ ...f, order: e.target.value })} className="!w-20" /></Field>
       </div>
       <div className="flex items-center gap-1 mb-2">
         {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import { ICON_NAMES, IconGlyph, APP_ICON_KEYS } from '../ui/md.jsx';
@@ -61,6 +62,7 @@ export function LucideCdnIcon({ name, size = 18, className = '' }) {
 const MAX_SHOWN = 96;
 
 export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) {
+  const { t } = useI18n();
   const [q, setQ] = useState('');
   const [lucide, setLucide] = useState(ICON_NAMES);
   const [simple, setSimple] = useState([]);
@@ -88,7 +90,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
         <div className="p-3 overflow-auto">
           {/* Our own project logos — usable in the topbar, blog, docs, faq. */}
           {(() => { const pj = APP_ICON_KEYS.filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)); return pj.length > 0 && <>
-            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">Better* projects</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('ip.ourprojects', "Better* projects")}</div>
             <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5 mb-4">
               {pj.map((k) => (
                 <button key={k} type="button" title={PROJECT_LABEL[k] || k} onClick={() => { onPick(`app:${k}`); onClose(); }}

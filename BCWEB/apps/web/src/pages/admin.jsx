@@ -7163,7 +7163,7 @@ function AdminProjects() {
       </Card>}
       {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
         <PenSquare size={15} className="text-[var(--primary-2)] shrink-0" />
-        <div className="flex-1"><span className="font-medium text-sm">Show "Blog" tab on the project page</span><p className="text-xs text-[var(--muted)]">Adds a Blog tab to {M.name}'s own page, showing only {M.name}'s posts.</p></div>
+        <div className="flex-1"><span className="font-medium text-sm">{t('adm3.blogtab', 'Show "Blog" tab on the project page')}</span><p className="text-xs text-[var(--muted)]">Adds a Blog tab to {M.name}'s own page, showing only {M.name}'s posts.</p></div>
         <button onClick={toggleBlogTab} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showBlogTab ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showBlogTab ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
@@ -11484,7 +11484,7 @@ function WebVitals() {
   return (
     <Card className="p-5 mb-4">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> Web Vitals <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
+        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} /> {t('adm3.webvitals', 'Web Vitals')} <span className="text-[11px] font-normal text-[var(--faint)]">{t('an.wv.sub', 'real-user performance')}</span></div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}

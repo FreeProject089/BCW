@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { useI18n } from '../i18n.jsx';
 
 // White/orange (light) ↔ black/orange (dark). Persisted; applied on <html>.
 const KEY = 'bcw_theme';
@@ -215,10 +216,11 @@ export function ThemeProvider({ children }) {
 // Clean sliding switch: a single high-contrast knob carrying the current mode's icon
 // slides across a track that fills with the accent when dark. No overlapping icons.
 export function ThemeToggle() {
+  const { t } = useI18n();
   const { theme, toggle } = useTheme();
   const dark = theme === 'dark';
   return (
-    <button onClick={toggle} title={dark ? 'Switch to light' : 'Switch to dark'} aria-label="Toggle theme" role="switch" aria-checked={dark}
+    <button onClick={toggle} title={dark ? t('th.tolight', "Switch to light") : t('th.todark', "Switch to dark")} aria-label={t('th.toggle', "Toggle theme")} role="switch" aria-checked={dark}
       className="relative inline-block h-6 w-11 rounded-full transition-colors shrink-0 align-middle border"
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full transition-transform duration-200 ease-out"

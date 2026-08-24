@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useI18n } from '../i18n.jsx';
 import { Modal, Button } from '../ui/ui.jsx';
 import { merge3Hunks, assembleHunks, lineStat } from '../lib/merge3.js';
 import { GitMerge, Check, ChevronDown, ChevronRight, User as UserIcon, Users } from 'lucide-react';
@@ -9,6 +10,7 @@ import { GitMerge, Check, ChevronDown, ChevronRight, User as UserIcon, Users } f
 // <<<<<<< markers in the textarea. Auto-merged / unchanged regions show as context.
 // onResolve(text) receives the assembled result.
 export default function DiffMergeModal({ open, onClose, base, mine, theirs, labels = { mine: 'Your version', theirs: 'Their version' }, langLabel, onResolve }) {
+  const { t } = useI18n();
   const { hunks, conflicts } = useMemo(() => merge3Hunks(base, mine, theirs), [base, mine, theirs]);
   const [choices, setChoices] = useState({});      // conflict-hunk index → 'mine'|'theirs'|'both'|'theirs-mine'
   const [expanded, setExpanded] = useState({});    // common-hunk index → bool (context expand)
@@ -46,12 +48,12 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
           <span className="font-mono text-[11px]"><span className="text-success">+{stat.added}</span> <span className="text-error">−{stat.removed}</span> <span className="text-[var(--faint)]">their changes</span></span>
         </span>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={!allResolved} onClick={apply}><Check size={14} /> Apply resolution</Button>
+        <Button variant="primary" disabled={!allResolved} onClick={apply}><Check size={14} /> {t('dm.apply', "Apply resolution")}</Button>
       </>}>
       {/* Bulk actions */}
       {conflictIdxs.length > 1 && (
         <div className="flex items-center gap-2 mb-3 text-xs">
-          <span className="text-[var(--muted)]">Resolve all as:</span>
+          <span className="text-[var(--muted)]">{t('dm.resolveall', "Resolve all as:")}</span>
           <button onClick={() => acceptAll('mine')} className="px-2 py-1 rounded-md border border-success-border text-success hover:bg-success-bg">Yours</button>
           <button onClick={() => acceptAll('theirs')} className="px-2 py-1 rounded-md border border-info-border text-info hover:bg-info-bg">Theirs</button>
           <button onClick={() => acceptAll('both')} className="px-2 py-1 rounded-md border border-[var(--line)] text-[var(--muted)] hover:bg-[var(--surface-2)]">Both</button>

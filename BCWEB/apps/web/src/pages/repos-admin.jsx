@@ -31,7 +31,7 @@ function RepoIdentifyCard() {
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Fingerprint size={16} className="text-[var(--primary-2)]" /> {t('radm.identify', "Identify a repo by ID")}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">Paste the <span className="font-mono">BCR-XXXX-XXXX</span> ID shown on a repo to resolve it to its owner and their linked identities (BMM creator ids, Discord, Ko-fi).</p>
+      <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('radm.paste', 'Paste the <span class=\"font-mono\">BCR-XXXX-XXXX</span> ID shown on a repo to resolve it to its owner and their linked identities (BMM creator ids, Discord, Ko-fi).') }} />
       <div className="grid sm:grid-cols-[1fr_auto] gap-2">
         <Input value={fp} onChange={(e) => setFp(e.target.value)} placeholder="BCR-7K2M-9XQ4" onKeyDown={(e) => e.key === 'Enter' && lookup()} className="font-mono" />
         <Button variant="primary" disabled={busy} onClick={lookup}>{busy ? <Spinner /> : <><Search size={14} /> Identify</>}</Button>

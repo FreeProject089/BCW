@@ -289,7 +289,7 @@ function HostCatalog({ onBack }) {
       <button onClick={onBack} className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ArrowLeft size={14} /> {t('common.back', 'Back')}</button>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="My Server Plugins" /></Field>
+          <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('sb.ph.name', "My Server Plugins")} /></Field>
           {/* Optional, and blank means open — the same meaning it has everywhere else here. */}
           <Field label={t('sub2.pw', 'Download password (optional)')} hint={t('sub2.pw.hint', 'Anyone syncing is asked for it. Leave empty for an open catalogue.')}>
             <Input type="password" value={form.syncPassword} autoComplete="new-password"

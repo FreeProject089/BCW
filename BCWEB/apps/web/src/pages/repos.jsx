@@ -311,6 +311,7 @@ function MyChipList({ label, items, onAdd, onRemove, placeholder }) {
 // non-admin /accounts/search endpoint repo owners already use in the per-repo
 // dashboard's SettingsTab (minimal fields, no email/role exposed).
 function MyAccountChips({ label, items, onAdd, onRemove }) {
+  const { t } = useI18n();
   const [q, setQ] = useState(''); const [results, setResults] = useState(null); const [busy, setBusy] = useState(false);
   const search = async () => {
     if (q.trim().length < 2) return setResults(null);
@@ -323,7 +324,7 @@ function MyAccountChips({ label, items, onAdd, onRemove }) {
     <div>
       <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{label}</div>
       <div className="flex gap-1.5">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search creator id / Discord / username…" onKeyDown={(e) => e.key === 'Enter' && search()} />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('rps.ph.search', "Search creator id / Discord / username\u2026")} onKeyDown={(e) => e.key === 'Enter' && search()} />
         <Button size="sm" onClick={search}>{busy ? <Spinner /> : <Search size={13} />}</Button>
       </div>
       {results && (
@@ -336,7 +337,7 @@ function MyAccountChips({ label, items, onAdd, onRemove }) {
                 {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
-          )) : <div className="text-[11px] text-[var(--faint)] px-1">No accounts found.</div>}
+          )) : <div className="text-[11px] text-[var(--faint)] px-1">{t('rps.noaccounts', "No accounts found.")}</div>}
         </div>
       )}
       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -394,14 +395,14 @@ function MyAccessPolicyCard() {
             <div className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} className="text-success" /> {t('repos.mypolicy.wl', 'Whitelist')}</div>
               <MyChipList label="IPs" items={policy.whitelistIps || []} onAdd={(v) => addTo('whitelistIps', v)} onRemove={(v) => rm('whitelistIps', v)} placeholder="203.0.113.4" />
-              <MyChipList label="Creator ID" items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
-              <MyAccountChips label="Accounts" items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
+              <MyChipList label={t('rps.creatorid', "Creator ID")} items={policy.whitelistKeys || []} onAdd={(v) => addTo('whitelistKeys', v)} onRemove={(v) => rm('whitelistKeys', v)} placeholder="BMM creator id…" />
+              <MyAccountChips label={t('rps.accounts', "Accounts")} items={policy.whitelistAccounts || []} onAdd={(e) => addAccount('whitelistAccounts', e)} onRemove={(e) => rmAccount('whitelistAccounts', e)} />
             </div>
             <div className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} className="text-error" /> {t('repos.mypolicy.bl', 'Blacklist')}</div>
               <MyChipList label="IPs" items={policy.bannedIps || []} onAdd={(v) => addTo('bannedIps', v)} onRemove={(v) => rm('bannedIps', v)} placeholder="198.51.100.7" />
-              <MyChipList label="Creator ID" items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
-              <MyAccountChips label="Accounts" items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
+              <MyChipList label={t('rps.creatorid', "Creator ID")} items={policy.bannedKeys || []} onAdd={(v) => addTo('bannedKeys', v)} onRemove={(v) => rm('bannedKeys', v)} placeholder="BMM creator id…" />
+              <MyAccountChips label={t('rps.accounts', "Accounts")} items={policy.bannedAccounts || []} onAdd={(e) => addAccount('bannedAccounts', e)} onRemove={(e) => rmAccount('bannedAccounts', e)} />
             </div>
           </div>
           <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('repos.mypolicy.save', 'Save policy')}</Button></div>

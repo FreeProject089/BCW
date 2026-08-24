@@ -476,7 +476,7 @@ function NavNotifications() {
                   <span className="text-[11px] text-[var(--faint)]">{timeAgo(n.createdAt, t('notif.justnow'))}</span>
                 </span>
               </button>
-              <button onClick={() => del(n)} title="Delete" className="shrink-0 text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100 transition mt-0.5"><Trash2 size={13} /></button>
+              <button onClick={() => del(n)} title={t('app.delete', "Delete")} className="shrink-0 text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100 transition mt-0.5"><Trash2 size={13} /></button>
             </div>
           ); }) : <div className="px-3 py-8 text-center text-sm text-[var(--muted)]">{t('notif.none')}</div>}
           </div>
@@ -653,7 +653,7 @@ function Nav() {
       case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>;
       case 'lang': return <LangToggle key="u-lang" />;
       case 'theme': return <ThemeToggle key="u-theme" />;
-      case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label="Settings"><SettingsIcon size={16} /></NavLink>;
+      case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label={t('nav.settings', 'Settings')}><SettingsIcon size={16} /></NavLink>;
       case 'dashboard': return <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>;
       case 'admin': return <NavLink key="u-adm" to="/admin" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.admin')} aria-label={t('nav.admin')}><Shield size={15} /></NavLink>;
       case 'profile': return <Link key="u-prof" to="/profile" className="rounded-full p-0.5 hover:ring-2 hover:ring-[var(--line-strong)] transition" title={user.displayName}><Avatar user={user} size={28} /></Link>;

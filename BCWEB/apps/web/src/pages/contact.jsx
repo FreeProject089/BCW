@@ -50,6 +50,7 @@ const TEMPLATES = {
 };
 
 export function Contact() {
+  const { t } = useI18n();
   const { lang } = useI18n();
   const { user } = useAuth();
   const toast = useToast();
@@ -104,7 +105,7 @@ export function Contact() {
   };
   return (
     <div className="max-w-4xl mx-auto">
-      <PageHeader icon={Mail} title="Contact" subtitle={fr ? 'Questions, bugs, partenariats — écris-nous.' : 'Questions, bug reports, partnerships — reach the team.'} />
+      <PageHeader icon={Mail} title={t('ct.title2', "Contact")} subtitle={fr ? 'Questions, bugs, partenariats — écris-nous.' : 'Questions, bug reports, partnerships — reach the team.'} />
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         {channels.map((c) => (
           <a key={c.label} href={c.href} target="_blank" rel="noreferrer">

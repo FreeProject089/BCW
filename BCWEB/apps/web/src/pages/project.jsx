@@ -250,6 +250,7 @@ function CtaButton({ button }) {
 // the full-page takeover teaser AND the inline "Countdown" first tab, so both modes
 // look identical. `bare` drops the "Coming soon" chip/heading chrome for the tab.
 function CountdownBlock({ announcement, done, cd, bare }) {
+  const { t } = useI18n();
   const unit = (v, label) => (
     <div className="flex flex-col items-center">
       <div className="text-3xl md:text-4xl font-extrabold tabular-nums bg-[var(--surface-2)] border border-[var(--line)] rounded-xl px-4 py-3 min-w-[4.5rem] text-center">{String(v).padStart(2, '0')}</div>
@@ -259,7 +260,7 @@ function CountdownBlock({ announcement, done, cd, bare }) {
   return (
     <div className={`max-w-2xl mx-auto text-center ${bare ? 'py-4' : 'py-10'}`}>
       {announcement.logo && <img src={announcement.logo} alt="" className="w-20 h-20 rounded-2xl object-contain mx-auto mb-5 shadow-lg bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />}
-      {!bare && <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2"><Sparkles size={13} /> Coming soon</div>}
+      {!bare && <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2"><Sparkles size={13} /> {t('prj.comingsoon', "Coming soon")}</div>}
       {(announcement.title || !bare) && <h1 className={`${bare ? 'text-2xl' : 'text-3xl md:text-4xl'} font-extrabold tracking-tight mb-4`}>{announcement.title || 'Something big is coming'}</h1>}
       {!done ? (
         <div className="flex items-center justify-center gap-2 md:gap-4 my-8">
@@ -392,6 +393,7 @@ export default function ProjectPage() {
 // BMM live-session preview. The recording already contains the app window, so we
 // show it FRAMELESS (no chrome, no background) — it just floats.
 function AppPreview({ pkey, replayUrl }) {
+  const { t } = useI18n();
   const ref = useRef(null);
   const [failed, setFailed] = useState(false);
   const useReplay = replayUrl && !failed;
@@ -427,7 +429,7 @@ function AppPreview({ pkey, replayUrl }) {
             ))}
           </aside>
           <main className="p-4">
-            <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold">Installed mods</div><div className="text-[11px] px-2 py-1 rounded-md" style={{ background: 'rgba(249,115,22,0.15)', color: '#fdba74' }}>+ Add mod</div></div>
+            <div className="flex items-center justify-between mb-3"><div className="text-sm font-semibold">{t('prj.installedmods', "Installed mods")}</div><div className="text-[11px] px-2 py-1 rounded-md" style={{ background: 'rgba(249,115,22,0.15)', color: '#fdba74' }}>+ Add mod</div></div>
             <div className="space-y-2">
               {mods.map(([name, cat, on]) => (
                 <div key={name} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: '#15171e', border: '1px solid rgba(255,255,255,0.06)' }}>
@@ -683,7 +685,7 @@ export function OtherProjects() {
                       : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
-                      {p.isAnnouncing && <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1"><Clock size={11} /> Coming soon</div>}
+                      {p.isAnnouncing && <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', "Coming soon")}</div>}
                     </div>
                   </div>
                   {p.tagline && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.tagline}</p>}
@@ -703,15 +705,16 @@ function ShowcaseCommunity({ cfg, c, slug }) {
       <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
       <div className="font-semibold mb-1">Community</div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">{t('proj.joinCommunity', 'Join the community for this project.')}</p>
-      <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> Open community</Button></a>
+      <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> {t('prj.opencommunity', "Open community")}</Button></a>
     </Card>
   );
   return <Community c={c} communityUrl={c.contributorsUrl ? `/showcase/${slug}/community` : null} />;
 }
 
 function ShowcaseLegal({ legal, lang }) {
+  const { t } = useI18n();
   const pick = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? (v[lang] ?? v.en ?? Object.values(v)[0]) : v;
-  if (!legal.length) return <EmptyState icon={ShieldCheck} title="Nothing here" sub="Legal cards are set in the admin dashboard." />;
+  if (!legal.length) return <EmptyState icon={ShieldCheck} title={t('prj.nothinghere', "Nothing here")} sub="Legal cards are set in the admin dashboard." />;
   return (
     <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
       {legal.map((card, i) => {
