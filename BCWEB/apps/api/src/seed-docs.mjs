@@ -584,6 +584,107 @@ Full field list, including \`repo\` and \`preset\` catalogs:
 `,
   },
   {
+    slug: 'bmmscript', category: 'Using BMM', title: 'BMMScript & sharing automations', icon: 'terminal', order: 204,
+    body: `::toc[On this page]
+
+# BMMScript
+
+BMM's scheduler builds automations from blocks. **BMMScript** is the same automations written
+as text — and it is not a second engine. It **compiles to the blocks**: the text becomes
+exactly the steps the block editor produces, and the same runner executes them.
+
+Three things follow, and they are the whole design.
+
+- **It is never behind the app.** An action is written \`do <name>(…)\` and the language
+  holds no list of action names. An action added to BMM is writable in script the same day.
+- **Either direction.** Code opens as blocks; blocks print as code. Neither loses anything.
+- **It cannot do more than a block can.** Permissions, variable substitution, loop limits and
+  error handling are the runner's, unchanged.
+
+:::warning[There is one compiler, and it is in BMM]
+Nothing on this site compiles BMMScript, and nothing should. A second implementation would be
+behind the app the day it was written — and it would be the one telling authors their scripts
+are fine. The [checker in /dev/tools](/dev/tools?tool=bmmscript) reads the shape and the names,
+and says out loud when it could not check the names.
+:::
+
+## Sharing a .bmmscript
+
+A \`.bmmscript\` is a plain text file, so it shares like any other. Double-click one and BMM
+**opens** it — it does not run it.
+
+What you get is a review screen: the file is compiled first (a broken one names the line rather
+than half-running), every step is listed, and every script body is printed in full rather than
+summarised as "runs a script".
+
+| The file | What opening it offers |
+|---|---|
+| grants itself nothing | one click to run — everything it does, you could do with the app’s own buttons |
+| grants \`command\`, \`script\`, \`deeplink\` or \`stopProcess\` | Run stays disabled until you tick that you have read what it does |
+
+Those four are the only things a task can do that the app’s own buttons cannot. **Run it now**
+and **Add to my tasks** are separate buttons, because running a file once and keeping it forever
+are different intentions.
+
+## Publishing a catalogue of automations
+
+An automation catalogue is a \`PRESET\` catalogue on a **BMM** project. The entry POINTS at a
+\`.bmmpa\` — the file BMM already exports and imports — rather than describing its contents, so
+there is no second parser to keep in step with the first.
+
+:::tip[BMM writes the whole folder for you]
+**Settings → Scheduler → From a catalogue… → Publish my own…** picks your automations and writes
+one signed \`.bmmpa\` each plus a \`catalog.json\` beside them. Drop the folder anywhere static.
+:::
+
+\`\`\`json
+{
+  "version": "1.0",
+  "name": "My automations",
+  "presets": [
+    {
+      "id": "nightly-tidy",
+      "name": "Nightly tidy",
+      "description": "Scan, then disable anything huge",
+      "version": "1.0",
+      "download_url": "nightly-tidy.bmmpa",
+      "tasks": 1
+    }
+  ]
+}
+\`\`\`
+
+| Field | Required | What it does |
+|---|---|---|
+| \`id\` | yes | Unique within the catalogue. Listing one twice keeps the first. |
+| \`name\` | yes | What people see. |
+| \`download_url\` | yes | Where the \`.bmmpa\` lives. **Relative is preferred** — see below. |
+| \`description\` | no | One or two lines. |
+| \`version\` | no | Shown beside the name. |
+| \`tags\` | no | Up to eight. |
+| \`tasks\` | no | How many automations are inside. Omitted means "not stated", which is not zero. |
+
+### Relative addresses, and why they are the default
+
+A \`download_url\` of \`nightly-tidy.bmmpa\` resolves against wherever BMM fetched the catalogue
+from. A catalogue that names its own host stops working the moment it is moved, mirrored or
+forked — and being forked is the normal life of a folder on GitHub.
+
+Absolute \`http(s)\` addresses work too, for files that genuinely live somewhere else. Anything
+that is not http(s) **after resolving** is dropped — an absolute URL keeps its own scheme through
+resolution, so the check has to be on the result.
+
+:::warning[A .bmmpa can carry scripts]
+Which is why BMM signs it on export, shows every step before importing, and imports tasks
+**disabled** — never registering an OS scheduled task on the file author’s say-so.
+:::
+
+:::card{title="Every action, condition and value" href=https://freeproject089.github.io/BMM-Docs/features/bmmscript-reference/ icon=book}
+The complete reference — 75 actions with their parameters, 28 conditions, the values a
+comparison can read — generated from BMM's own registry.
+:::`,
+  },
+  {
     slug: 'preset-catalog', category: 'BetterCommunity', title: 'Preset catalog (BSM)', icon: 'sliders', order: 305,
     body: `::toc[On this page]
 

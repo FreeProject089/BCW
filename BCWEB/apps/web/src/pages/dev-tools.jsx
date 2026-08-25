@@ -12,6 +12,7 @@ import { useAsync } from './pages.jsx';
 import { useAuth } from './auth.jsx';
 import { ApiConsole } from './dev.jsx';
 import CodeMap from '../ui/code-map.jsx';
+import { lintBmmScript } from '../lib/bmmscript-lint.js';
 
 // /dev/tools — the two things a developer wants that are not "call an endpoint".
 //
@@ -253,6 +254,82 @@ function DeeplinkBuilder() {
  * that asked you to paste a signing secret into a server would be teaching a bad habit
  * regardless of what that server promised to do with it.
  */
+// Checking a .bmmscript before publishing it, WITHOUT being a second compiler.
+//
+// BMM has exactly one BMMScript compiler, in Rust, and the language only works because there
+// is one: the text compiles to the block editor's own steps, so it can never be behind the
+// app. A compiler over here would be behind the day it was written, and it would be the one
+// telling authors their scripts are fine.
+//
+// So it checks the shape, and it checks NAMES against the vocabulary BMM publishes. Without
+// that asset it says the names went unchecked rather than rendering a clean bill of health,
+// because the alternative is telling somebody their script is fine after reading none of it.
+function BmmScriptChecker() {
+  const { t } = useI18n();
+  const [src, setSrc] = useState('');
+  const { data: vocab, loading } = useAsync(() => api.get('/assets/bmms-vocabulary.json').catch(() => null), []);
+  const result = src.trim() ? lintBmmScript(src, vocab) : null;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-1 font-medium">
+        <FlaskConical size={16} className="text-[var(--primary-2)]" /> {t('dvt.bms.title', 'Check a .bmmscript')}
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">
+        {t('dvt.bms.sub', 'Braces that do not balance, and names BMM does not have. It is not the compiler — BMM has the only one — so a file that passes here can still fail to compile.')}
+      </p>
+      <Textarea
+        className="font-mono text-[12px]" rows={14} spellCheck={false}
+        value={src} onChange={(e) => setSrc(e.target.value)}
+        placeholder={`task "Nightly tidy" {
+    every day at 03:00
+    allow script
+
+    do mods.scan()
+}`} />
+
+      {!loading && !vocab && (
+        <p className="mt-3 text-[12px] text-[var(--muted)]">
+          {t('dvt.bms.novocab', 'BMM has not published its vocabulary yet, so only the shape is checked. In BMM run `node scripts/gen-bmms-reference.mjs`, then upload dist-assets/bmms-vocabulary.json as the platform asset `bmms-vocabulary.json`. This reads it rather than keeping its own list of action names, which would be wrong the next time an action is added.')}
+        </p>
+      )}
+
+      {result && (
+        <div className="mt-3">
+          {result.problems.length === 0 ? (
+            <div className="flex items-start gap-2 text-[12px]">
+              <CheckCircle2 size={15} className="text-[var(--ok)] shrink-0 mt-[1px]" />
+              <span>
+                {result.checkedNames
+                  ? t('dvt.bms.okNames', 'Balanced, and every action, condition and engine it names exists in BMM.')
+                  : t('dvt.bms.okShape', 'Balanced. The NAMES went unchecked — see above.')}
+              </span>
+            </div>
+          ) : (
+            <ul className="space-y-1.5">
+              {result.problems.map((pb, i) => (
+                <li key={i} className="flex items-start gap-2 text-[12px]">
+                  <AlertTriangle size={15} className="text-[var(--warn)] shrink-0 mt-[1px]" />
+                  <span>
+                    {pb.line > 0 && <b className="tabular-nums">{t('dvt.bms.line', 'Line')} {pb.line}: </b>}
+                    {pb.text}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* What it GRANTS is not a problem and must not be painted as one — it is the thing
+              the person who receives the file will be asked to confirm, so the author should
+              see it before they publish. */}
+          {result.notes.map((n, i) => (
+            <p key={i} className="mt-2 text-[12px] text-[var(--muted)]">{n}</p>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function SignatureChecker() {
   const { t } = useI18n();
   const [secret, setSecret] = useState('');
@@ -549,6 +626,9 @@ export default function DevTools() {
         // is this document still signed — are an AUTHOR's questions before they are a
         // reviewer's. Signed-in, because the reads run on the server.
         { id: 'inspect', label: t('dvt.inspect', 'Inspect a BMM file'), el: <BmmInspector endpoint="/dev/inspect" />, needsAuth: true },
+        // Entirely in the page: it reads a published vocabulary and checks text. Nothing is
+        // uploaded, which matters for a file that may hold somebody's shell script.
+        { id: 'bmmscript', label: t('dvt.bms.title', 'Check a .bmmscript'), el: <BmmScriptChecker /> },
       ],
     },
   ];
