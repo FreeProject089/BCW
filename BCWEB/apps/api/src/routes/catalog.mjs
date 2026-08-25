@@ -183,6 +183,31 @@ const presetSchema = z.object({
   assetPaths: z.array(z.string().max(300)).max(10000),
 }).passthrough();
 
+/**
+ * `PRESET` means two different things, and this is the only place that knows which.
+ *
+ * For **BSM** it is an audio preset: a single JSON document whose metadata IS the item, which
+ * is why it can be shared by pasting and why presetSchema demands `assetPaths`.
+ *
+ * For **BMM** it is a scheduled-task catalogue: the entry POINTS at a `.bmmpa`, exactly as
+ * every other BMM catalogue kind points at its file. The feed already emits it that way
+ * (`presets: [{ download_url }]`, read by BMM's preset-catalog reader) — but every write path
+ * ran the BSM schema over it regardless of project, so a BMM automation could never be
+ * submitted at all. The feed and the validator described different things through one enum
+ * value, and each was self-consistent, which is why nothing failed loudly.
+ *
+ * Returns an error string, or null when the metadata is right for its project.
+ */
+export function checkPresetMeta(projectKey, meta) {
+  if (projectKey === 'bmm') {
+    // A .bmmpa the client can fetch. Not validated further here: BMM signs and inspects the
+    // file itself, and a second opinion from a server that cannot open it would be a guess.
+    const url = meta?.download_url || meta?.downloadUrl || meta?.url;
+    return url ? null : 'invalid_preset_no_download_url';
+  }
+  return presetSchema.safeParse(meta).success ? null : 'invalid_preset';
+}
+
 const submitSchema = z.object({
   projectKey: z.enum(['bmm', 'bsm', 'community']),
   kind: z.enum(CATALOG_KINDS),
@@ -413,10 +438,10 @@ export default async function catalogRoutes(app) {
     const parsed = submitSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
     const d = parsed.data;
-    // BSM presets must match the preset schema (validated server-side).
+    // What a PRESET has to look like depends on WHOSE it is — see checkPresetMeta.
     if (d.kind === 'PRESET') {
-      const ok = presetSchema.safeParse(d.meta);
-      if (!ok.success) return reply.code(400).send({ error: 'invalid_preset', details: ok.error.flatten() });
+      const bad = checkPresetMeta(d.projectKey, d.meta);
+      if (bad) return reply.code(400).send({ error: bad });
     }
     const p = await db();
     if (req.user.role === 'USER') {
@@ -519,7 +544,7 @@ export default async function catalogRoutes(app) {
     const created = [];
     for (const e of b.data.entries) {
       if (e.kind !== 'PRESET' && !(e.meta?.download_url || e.meta?.downloadUrl || e.meta?.url)) continue;
-      if (e.kind === 'PRESET' && !presetSchema.safeParse(e.meta).success) continue;
+      if (e.kind === 'PRESET' && checkPresetMeta(b.data.projectKey, e.meta)) continue;
       // Skipped like any other invalid entry, so one blocked link in a hundred does not
       // reject the batch — the response already reports `skipped`.
       if (await blockedFor(p, urlsOfMeta(e.meta))) continue;
@@ -541,8 +566,8 @@ export default async function catalogRoutes(app) {
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
     const d = parsed.data;
     if (d.kind === 'PRESET') {
-      const ok = presetSchema.safeParse(d.meta);
-      if (!ok.success) return reply.code(400).send({ error: 'invalid_preset', details: ok.error.flatten() });
+      const bad = checkPresetMeta(d.projectKey, d.meta);
+      if (bad) return reply.code(400).send({ error: bad });
     }
     const p = await db();
     const project = await p.project.findUnique({ where: { key: d.projectKey } });
@@ -712,10 +737,21 @@ export default async function catalogRoutes(app) {
     }).parse(req.body || {});
     // A replacement payloadKey must be one the caller uploaded (`uploads/<uid>/…`).
     if (patch.payloadKey && !patch.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
-    // Presets must still satisfy the preset schema after an edit.
+    // A preset must still be a valid one after an edit — by ITS project's rule. Changing
+    // three of the four write paths and leaving this one would be the same bug in a quieter
+    // place: an automation you could submit and then never edit.
+    //
+    // `project` is not on the row, so it is fetched here rather than widening the lookup
+    // above, which several other paths share.
+    // projectId is nullable on the row; findUnique with a null id throws rather than
+    // returning nothing. An item with no project falls through to the stricter BSM rule,
+    // which is the behaviour it had before any of this.
+    const presetProject = item.kind === 'PRESET' && patch.meta && item.projectId
+      ? (await p.project.findUnique({ where: { id: item.projectId }, select: { key: true } }))?.key
+      : null;
     if (item.kind === 'PRESET' && patch.meta) {
-      const ok = presetSchema.safeParse(patch.meta);
-      if (!ok.success) return reply.code(400).send({ error: 'invalid_preset', details: ok.error.flatten() });
+      const bad = checkPresetMeta(presetProject, patch.meta);
+      if (bad) return reply.code(400).send({ error: bad });
     }
 
     // Re-uploading a payload is billed by size past the free tier, same as a brand
