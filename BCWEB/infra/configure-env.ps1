@@ -158,8 +158,13 @@ Write-Host ''
 Write-Host ("-- Derived " + ('-' * 40)) -ForegroundColor Cyan
 
 if ((Get-Answer 'DB_MODE') -eq 'managed') {
-  Write-Host '   - the bundled Postgres container is not started' -ForegroundColor DarkGray
-  Write-Host '   - DATABASE_URL is used as given, so the parts below are ignored' -ForegroundColor DarkGray
+  Write-Host '   - DATABASE_URL is used as given, so POSTGRES_USER/DB are ignored by the API' -ForegroundColor DarkGray
+  # Said plainly because the first version of this message claimed the opposite. The db
+  # service carries no profiles:, so up -d starts it whatever the DB mode - it simply ends up
+  # unused. Compose has no per-service off switch short of editing the file.
+  Write-Host '   ! the bundled Postgres container STILL STARTS and sits unused. To stop that' -ForegroundColor Yellow
+  Write-Host '     you must edit infra/compose/docker-compose.yml - there is no .env switch.' -ForegroundColor Yellow
+  Write-Host '     POSTGRES_PASSWORD is still required: compose refuses to start without it.' -ForegroundColor Yellow
 }
 
 $replicas = Get-Answer 'API_REPLICAS'

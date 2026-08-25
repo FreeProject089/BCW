@@ -38,7 +38,7 @@ _S2|Database|info||| Two shapes. Bundled Postgres is a container this compose fi
 DB_MODE|Database|choice|bundled,managed|Postgres: bundled or managed|`bundled` is the normal answer and needs nothing else from you.\n`managed` means you paste two connection strings and the db container is not started.
 POSTGRES_USER|Database|text|bcweb|Database user|when:DB_MODE=bundled
 POSTGRES_DB|Database|text|bcweb|Database name|when:DB_MODE=bundled
-POSTGRES_PASSWORD|Database|secret||Database password|when:DB_MODE=bundled  Generated for you. WRITE IT DOWN: the volume keeps the password it was\ncreated with, and changing this line later locks you out of your own database.
+POSTGRES_PASSWORD|Database|secret||Database password|Generated for you. WRITE IT DOWN: the volume keeps the password it was created\nwith, and changing this line later locks you out of your own database.\nAsked even in managed mode: the compose file declares it as required, so a .env without\nit refuses to start the whole stack \u2014 not just the database.
 DATABASE_URL|Database|text||Pooled connection string|when:DB_MODE=managed  From your provider. Use the POOLED endpoint if they give you two.\nExample: postgresql://user:pass@host:5432/bcweb?sslmode=require
 DIRECT_DATABASE_URL|Database|text|=DATABASE_URL|Direct connection string|when:DB_MODE=managed  The NON-pooled endpoint. Migrations cannot run through a pooler,\nso if your provider gives two URLs this must be the direct one. Same value is fine when\nthere is only one.
 

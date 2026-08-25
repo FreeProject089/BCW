@@ -203,8 +203,13 @@ echo
 printf '%s── Derived %s%s\n' "$CY" "$(printf '─%.0s' 1 2 3 4 5 6 7 8 9 10)" "$R"
 
 if [ "$(get DB_MODE)" = managed ]; then
-  printf '   %s· the bundled Postgres container is not started (COMPOSE_PROFILES has no `db`)%s\n' "$DIM" "$R"
-  printf '   %s· DATABASE_URL is used as given, so the parts below are ignored%s\n' "$DIM" "$R"
+  printf '   %s· DATABASE_URL is used as given, so POSTGRES_USER/DB are ignored by the API%s\n' "$DIM" "$R"
+  # Said plainly because the first version of this message claimed the opposite. The `db`
+  # service carries no `profiles:`, so `up -d` starts it whatever the DB mode — it simply
+  # ends up unused. Compose has no per-service off switch short of editing the file.
+  printf '   %s! the bundled Postgres container STILL STARTS and sits unused. To stop that you%s\n' "$YE" "$R"
+  printf '   %s  have to edit infra/compose/docker-compose.yml — there is no .env switch for it.%s\n' "$YE" "$R"
+  printf '   %s  POSTGRES_PASSWORD is still required: compose refuses to start without it.%s\n' "$YE" "$R"
 fi
 
 replicas=$(get API_REPLICAS)
