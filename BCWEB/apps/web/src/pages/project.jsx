@@ -18,7 +18,7 @@ import { useAuth } from './auth.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { GithubIcon, KofiIcon, DiscordIcon, RedditIcon, AppLogo, APP_LOGO } from '../ui/brand.jsx';
 import { MessageSquare } from 'lucide-react';
-import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+import { Button, Card, Badge, PageHeader, EmptyState, Spinner, Modal, Input, Textarea, Field, useToast } from '../ui/ui.jsx';
 
 // Which tab is actually shown. A `?tab=` naming one that is switched OFF must not render it:
 // hiding the link while still serving the content means an admin who turns a tab off has not
@@ -666,6 +666,117 @@ function Legal({ c }) {
 /* ─────────────────────────  Other projects (showcase)  ───────────────────────── */
 
 // Public list of admin-curated "other projects".
+/**
+ * Asking for a project to be listed here.
+ *
+ * Shown ONLY when an admin has opened one of the two doors. With both shut this renders
+ * nothing at all — not a disabled button, not a "coming soon": an invitation on a site whose
+ * owner is not reading submissions is worse than no invitation.
+ *
+ * The free and paid doors are independent. Either, both, or neither.
+ */
+function RequestListing() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { user } = useAuth();
+  const [cfg, setCfg] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({ name: '', short: '', url: '', icon: '', description: '', pitch: '' });
+
+  useEffect(() => { api.get('/showcase-requests/config').then(setCfg).catch(() => setCfg(null)); }, []);
+  if (!cfg || (!cfg.requestsEnabled && !cfg.paidEnabled)) return null;
+
+  const money = (c, cur) => new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format((c || 0) / 100);
+
+  const submit = async (paid) => {
+    if (!f.name.trim() || !f.short.trim()) return toast.error(t('rl.need', 'A name and a short label are required.'));
+    setBusy(true);
+    try {
+      const r = await api.post('/showcase-requests', { ...f, paid });
+      // A paid request answers with a checkout URL. Following it is the whole point, so it
+      // happens here rather than behind a second button somebody has to find.
+      if (r?.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
+      toast.success(t('rl.sent', 'Sent \u2014 we will reply either way.'));
+      setOpen(false);
+      setF({ name: '', short: '', url: '', icon: '', description: '', pitch: '' });
+    } catch (e) {
+      const code = e?.body?.error;
+      toast.error(
+        code === 'too_many_open' ? t('rl.toomany', 'You already have the maximum number of requests waiting for an answer.')
+          : code === 'payments_unavailable' ? t('rl.nopay', 'Payments are unavailable right now \u2014 your request was saved, unpaid.')
+            : t('rl.fail', 'Could not send that.'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-5 mt-6">
+      <div className="flex items-start gap-3 flex-wrap">
+        <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] text-[var(--primary-2)] shrink-0">
+          <Sparkles size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold">{t('rl.title', 'Built something? Ask to be listed here.')}</div>
+          <p className="text-sm text-[var(--muted)] mt-1">
+            {t('rl.sub', 'Tell us what it is and we will take a look. Every request gets an answer, and a page only goes up once somebody here has read it.')}
+          </p>
+        </div>
+        {!open && <Button onClick={() => setOpen(true)}>{t('rl.open', 'Ask to be listed')}</Button>}
+      </div>
+
+      {open && (
+        <div className="mt-4 pt-4 border-t border-[var(--line)]">
+          {!user && <p className="text-sm text-warning mb-3">{t('rl.signin', 'Sign in first \u2014 a request is a conversation, and we need somewhere to send the answer.')}</p>}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('rl.name', 'Project name')}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="My Project" /></Field>
+            {/* Not derived from the name: "Better Sound Maker" would become "BET", and the
+                whole point of the field is that a person picks the letters. */}
+            <Field label={t('rl.short', 'Short label')} hint={t('rl.shorthint', '3\u20134 characters, shown on the card and in the topbar.')}>
+              <Input value={f.short} maxLength={8} onChange={(e) => setF({ ...f, short: e.target.value })} placeholder="MYP" />
+            </Field>
+            <Field label={t('rl.url', 'Where it lives')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder="https://github.com/you/project" /></Field>
+            <Field label={t('rl.icon', 'Icon URL')}><Input value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })} placeholder="https://…/icon.png" /></Field>
+            <div className="sm:col-span-2">
+              <Field label={t('rl.desc', 'What it does')}><Textarea rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
+            </div>
+            <div className="sm:col-span-2">
+              <Field label={t('rl.pitch', 'Why it belongs here')} hint={t('rl.pitchhint', 'The part a reviewer actually reads.')}>
+                <Textarea rows={3} value={f.pitch} onChange={(e) => setF({ ...f, pitch: e.target.value })} />
+              </Field>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mt-4">
+            {cfg.requestsEnabled && (
+              <Button disabled={busy || !user} onClick={() => submit(false)}>{busy ? <Spinner /> : t('rl.send', 'Send the request')}</Button>
+            )}
+            {cfg.paidEnabled && (
+              <Button variant={cfg.requestsEnabled ? 'ghost' : 'primary'} disabled={busy || !user} onClick={() => submit(true)}>
+                {t('rl.pay', 'Pay {p} to be reviewed sooner').replace('{p}', money(cfg.priceCents, cfg.currency))}
+              </Button>
+            )}
+            <div className="flex-1" />
+            <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel', 'Cancel')}</Button>
+          </div>
+
+          {/* Said on the form, not only in the code. Somebody about to pay deserves to know
+              what the money does before they click, not after they are rejected. */}
+          {cfg.paidEnabled && (
+            <p className="text-[11px] text-[var(--faint)] mt-3">
+              {t('rl.paynote', 'Paying buys a place in the review queue \u2014 it does not buy a listing, and it does not change the answer. If we say no to a paid request, get in touch about a refund.')}
+            </p>
+          )}
+          {cfg.maxOpenPerUser > 0 && (
+            <p className="text-[11px] text-[var(--faint)] mt-1">
+              {t('rl.cap', 'Up to {n} requests can be waiting for an answer at once.').replace('{n}', String(cfg.maxOpenPerUser))}
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function OtherProjects() {
   const { t } = useI18n();
   const { data, loading } = useFetch(() => api.get('/showcase'), []);
@@ -694,6 +805,7 @@ export function OtherProjects() {
             ))}
           </div>
         ) : <EmptyState icon={Boxes} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')} />}
+      <RequestListing />
     </div>
   );
 }

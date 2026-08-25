@@ -162,6 +162,27 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
+      // A paid "list my project" request → marked paid, and it joins the SAME queue.
+      //
+      // It does not approve anything, and that is the whole design: paying buys a place in
+      // the review queue, never a listing. A page that appears because money arrived is an
+      // advert, and the grid stops meaning anything the moment it holds one.
+      if (meta.type === 'showcase_request' && meta.requestId && meta.userId) {
+        const r = await p.showcaseRequest.findUnique({ where: { id: meta.requestId } });
+        if (r && r.userId === meta.userId && !r.paid) {
+          await p.showcaseRequest.update({ where: { id: r.id }, data: { paid: true } });
+          await p.payment.create({ data: {
+            userId: meta.userId, kind: 'SHOWCASE_LISTING',
+            description: `Showcase listing review — "${r.name}"`,
+            amountCents: s.amount_total ?? r.paidCents, currency: s.currency || r.currency || 'usd',
+            stripeSessionId: s.id,
+          } }).catch(() => {});   // a bookkeeping row must never block a payment
+          await notify(p, meta.userId, 'showcase_paid',
+            `Your request to list "${r.name}" is paid and in the review queue. Paying does not decide the answer — we will reply either way.`).catch(() => {});
+        }
+        return { received: true };
+      }
+
       // "Make Your Own" quote payment → the product build starts.
       if (meta.type === 'myo_quote' && meta.quoteId && meta.requestId && meta.userId) {
         const q = await p.myoQuote.findUnique({ where: { id: meta.quoteId }, include: { request: true } });

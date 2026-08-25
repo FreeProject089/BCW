@@ -236,6 +236,7 @@ model User {
   reportMessages       ReportMessage[]
   reportParticipations ReportParticipant[]
   socialConnections    SocialConnection[]
+  showcaseRequests     ShowcaseRequest[]
   loginAttempts        LoginAttempt[]
   auditLogEntries      AuditLogEntry[]
   repoFavorites        RepoFavorite[]
@@ -2076,6 +2077,49 @@ model KofiDonation {
 // Admin-curated "Other projects" showcase. Each has a name, a short tag (3-4 chars),
 // and a flexible config (tabs, links, overview media, progress source, release-notes
 // source, community, legal cards) rendered by a BMM/BSM-style project page.
+/// Somebody asking for their project to appear in "Other projects".
+///
+/// The showcase was admin-only: the grid existed and there was no way in from outside, so
+/// the answer to "can my project be listed" was an e-mail, if the person thought to send one.
+///
+/// A request is ALWAYS reviewed, including a paid one. Paying buys a place in the queue and
+/// nothing else — a listing that appears because money arrived is an advert, and the grid
+/// stops meaning anything the moment it holds one.
+model ShowcaseRequest {
+  id          String   @id @default(cuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  /// What the applicant proposes. The slug is a suggestion — staff can change it on approval,
+  /// and it is not unique here because two pending requests may well ask for the same one.
+  slug        String
+  name        String
+  short       String
+  url         String   @default("")
+  icon        String   @default("")
+  description String   @default("")
+  /// Why it belongs in the grid, in the applicant's words. Read by whoever reviews it.
+  pitch       String   @default("")
+  /// pending · approved · rejected
+  status      String   @default("pending")
+  /// Paid requests are marked here by the Stripe webhook. Kept even after approval so a
+  /// refund question years later has an answer.
+  paid        Boolean  @default(false)
+  paidCents   Int      @default(0)
+  currency    String   @default("usd")
+  /// What staff said, shown to the applicant. A rejection with no reason is one that gets
+  /// resubmitted unchanged.
+  reviewNote  String   @default("")
+  reviewedAt  DateTime?
+  reviewerId  String?
+  /// The page it became, once approved.
+  projectId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+}
+
 model ShowcaseProject {
   id             String     @id @default(cuid())
   slug           String     @unique
@@ -2284,6 +2328,10 @@ enum PaymentKind {
   HOSTING
   MYO_CONSULTATION // "Make Your Own" consultation fee (opens the advice conversation)
   MYO_PRODUCT // "Make Your Own" quote payment (starts the actual product build)
+  /// Paying to have a project reviewed for the "Other projects" grid. Appended last so
+  /// existing rows keep their ordinal. It buys a REVIEW, not a listing — which is why a
+  /// refund question can arise on this kind and does not on the others.
+  SHOWCASE_LISTING
 }
 
 // Billing history / invoices (one-time feature promotions, hosting charges…).

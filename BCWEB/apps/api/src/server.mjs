@@ -46,6 +46,7 @@ import oidcProviderRoutes from './routes/oidc-provider.mjs';
 import linkRoutes from './routes/links.mjs';
 import botRoutes from './routes/bot.mjs';
 import showcaseRoutes from './routes/showcase.mjs';
+import showcaseRequestRoutes from './routes/showcase-requests.mjs';
 import announcementRoutes from './routes/announcements.mjs';
 import roleRoutes from './routes/roles.mjs';
 import myoRoutes from './routes/myo.mjs';
@@ -293,6 +294,7 @@ await app.register(oidcProviderRoutes);
 await app.register(linkRoutes);
 await app.register(botRoutes);
 await app.register(showcaseRoutes);
+await app.register(showcaseRequestRoutes);
 await app.register(announcementRoutes);
 await app.register(roleRoutes); // custom roles + per-project edit grants
 await app.register(myoRoutes); // "Make Your Own" commission service

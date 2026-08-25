@@ -7129,6 +7129,91 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
   );
 }
 
+/**
+ * People asking for their project to be listed in "Other projects".
+ *
+ * Sits on the Projects tab because that is where the grid it feeds is managed. Without a
+ * screen the routes would accept requests into a table nobody opens — which is the same as
+ * not answering, except the person was told they would get a reply.
+ *
+ * Approving CREATES the page, unpublished and unlisted. It does not put anything in front of
+ * anyone: somebody still has to fill it in and decide to show it. Approval means "yes, this
+ * belongs here", not "publish it now", and those are different decisions on different days.
+ */
+function ShowcaseQueue() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [status, setStatus] = useState('pending');
+  const { data, reload, loading } = useAsync(() => api.get(`/admin/showcase-requests?status=${status}`), [status]);
+  const [busy, setBusy] = useState('');
+  const [note, setNote] = useState({});
+
+  const rows = data?.requests || [];
+  const counts = data?.counts || {};
+  const money = (c, cur) => new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format((c || 0) / 100);
+
+  const act = async (id, what) => {
+    setBusy(id);
+    try {
+      await api.post(`/admin/showcase-requests/${id}/${what}`, { note: note[id] || '' });
+      toast.success(what === 'approve' ? t('sq.approved', 'Approved \u2014 the page is created, unpublished.') : t('sq.rejected', 'Rejected.'));
+      reload();
+    } catch (e) {
+      toast.error(e?.body?.error === 'slug_taken' ? t('sq.slugtaken', 'A page already uses that address \u2014 change the slug on the request first.') : t('sq.fail', 'That did not work.'));
+    } finally { setBusy(''); }
+  };
+
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2">
+          <Inbox size={15} className="text-[var(--primary-2)]" /> {t('sq.title', 'Listing requests')}
+          {counts.pending > 0 && <Badge tone="warn">{counts.pending}</Badge>}
+        </div>
+        <Select className="!w-auto !py-1.5 !text-xs" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="pending">{t('sq.pending', 'Waiting')}</option>
+          <option value="approved">{t('sq.approved2', 'Approved')}</option>
+          <option value="rejected">{t('sq.rejected2', 'Rejected')}</option>
+        </Select>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">
+        {t('sq.sub', 'Approving creates the page unpublished and unlisted \u2014 it does not put anything in front of anyone. A PAID request has no more claim than a free one; the payment bought a place in this queue.')}
+      </p>
+      {loading ? <Spinner />
+        : rows.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('sq.none', 'Nothing here.')}</div>
+          : <div className="space-y-2">
+            {rows.map((r) => (
+              <div key={r.id} className="rounded-lg border border-[var(--line)] p-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm">{r.name}</span>
+                  <span className="text-[11px] font-mono text-[var(--faint)]">/{r.slug}</span>
+                  <Badge>{r.short}</Badge>
+                  {/* Paid is stated plainly and given no weight. Showing it is honesty about
+                      what happened; treating it as a reason would be the thing this whole
+                      feature is careful not to be. */}
+                  {r.paid && <Badge tone="ok">{t('sq.paid', 'paid')} {money(r.paidCents, r.currency)}</Badge>}
+                  <div className="flex-1" />
+                  <span className="text-[11px] text-[var(--faint)]">{r.user?.displayName || r.user?.email}</span>
+                </div>
+                {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--primary-2)] underline break-all">{r.url}</a>}
+                {r.description && <p className="text-xs text-[var(--muted)] mt-1.5 whitespace-pre-wrap">{r.description}</p>}
+                {r.pitch && <p className="text-xs mt-1.5 whitespace-pre-wrap"><b>{t('sq.why', 'Why:')}</b> {r.pitch}</p>}
+                {r.status === 'pending' ? (
+                  <div className="flex items-center gap-2 flex-wrap mt-2.5">
+                    <Input className="!text-xs flex-1 !min-w-[180px]" value={note[r.id] || ''}
+                      onChange={(e) => setNote({ ...note, [r.id]: e.target.value })}
+                      placeholder={t('sq.note', 'A line back to them \u2014 a rejection with no reason gets resubmitted unchanged')} />
+                    <Button size="sm" disabled={busy === r.id} onClick={() => act(r.id, 'approve')}>{t('sq.approve', 'Approve')}</Button>
+                    <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => act(r.id, 'reject')}>{t('sq.reject', 'Reject')}</Button>
+                  </div>
+                ) : r.reviewNote ? <p className="text-[11px] text-[var(--faint)] mt-2">{t('sq.said', 'You said:')} {r.reviewNote}</p> : null}
+              </div>
+            ))}
+          </div>}
+    </Card>
+  );
+}
+
 function AdminProjects() {
   const toast = useToast(); const { t } = useI18n();
   const { data, reload } = useAsync(() => api.get('/projects'), []);
@@ -7283,6 +7368,9 @@ function AdminProjects() {
         </Button>}
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
+      {/* Above the per-project editors: a request waiting for an answer is the thing on this
+          screen with somebody at the other end of it. */}
+      {canMngProjects && <ShowcaseQueue />}
       {/* Project chooser — a self-contained rail that wraps cleanly (and gives the chips a
           subtle surface so they aren't see-through under Translucent surfaces). The built-in
           projects and the showcase ones share one grid; a labelled divider separates them
@@ -13522,6 +13610,13 @@ const SETTINGS_GROUPS = [
     ['seo.descriptionFr', 'Site description (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
     ['seo.ogImage', 'Link preview image URL', 'The picture shown when the site is shared on Discord, X or anywhere else. 1200x630 is the size everything crops to. Empty = no image, which renders as a plain text link.', 'text'],
   ] },
+  { title: 'Other projects', gk: 'showcase', icon: Layers, keys: [
+    ['showcase.requestsEnabled', 'Accept listing requests (free)', 'Shows a "Submit your project" form on /projects. Off, and the form is not offered and the route refuses \u2014 a submission box on a site whose owner is not reading submissions is worse than no box. Every request is still reviewed here before anything appears.', 'bool'],
+    ['showcase.paidEnabled', 'Accept PAID listing requests', 'Adds a paid option beside the free one (or instead of it, if the free one is off). Paying buys a place in the review queue and NOTHING else \u2014 the answer is still yours, and a rejected paid request may owe a refund.', 'bool'],
+    ['showcase.priceCents', 'Paid request price (cents)', 'What the paid option charges, once, in the currency below. 2000 = 20.00.', 'number'],
+    ['showcase.currency', 'Paid request currency', 'Three-letter code, lowercase \u2014 usd, eur, chf. Must be one Stripe accepts for your account.', 'text'],
+    ['showcase.maxOpenPerUser', 'Max pending requests per person', 'How many un-reviewed requests one account may hold at once. Someone who can open fifty can bury the queue. 0 = no limit.', 'number'],
+  ] },
 ];
 
 // One-line description shown under each settings-group header panel.
@@ -13532,6 +13627,7 @@ const GROUP_DESC = {
   'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
   'Feature flags': 'Master on/off switches. Each one says what it does NOT turn off, which is usually the part that matters.',
   'Search & discoverability': 'Google Tag, search-engine verification, and what a search result or a shared link says. Nothing here is consent-gated except the tag, which still waits for the Analytics cookie.',
+  'Other projects': 'Whether people can ask for their project to be listed in the /projects grid, and whether they can pay to be looked at sooner. Both are OFF until you turn them on, and neither ever approves anything by itself.',
 };
 
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
