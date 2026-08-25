@@ -9,7 +9,7 @@
 // have sold, deleted or already transferred the thing; accepting on the strength of a
 // week-old check would hand over something they no longer have.
 import { z } from 'zod';
-import { db, requireRole, notify, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, notify, logAudit, clientIp, poolFreeBytes } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 
 /** Send, and if it fails say so in the log instead of nowhere.
@@ -45,11 +45,18 @@ async function ownedTarget(p, kind, id, userId) {
 
 /** Why this object cannot be handed over yet, or null if it can.
  *
- *  Billing is the one that matters. A hosted repo is paid for by a subscription anchored
- *  to its owner's Stripe customer; move the repo and the new owner holds something the old
- *  owner is still being charged for, with neither able to fix it from their own dashboard.
- *  Cancel or move the billing first — refusing here is the only honest option, because the
- *  alternative is a silent double-bind discovered on the next invoice. */
+ *  Billing is the one that matters, and there are two kinds of it.
+ *
+ *  A **solo hosted repo** is paid for by a subscription anchored to the repo itself. Move
+ *  it and the old owner keeps being charged for something they no longer have, with
+ *  neither side able to fix it from their own dashboard. That still refuses.
+ *
+ *  A repo **in a pool** is different: the pool is the thing that was bought, and the repo
+ *  is a slice of it. Accepting moves the slice into one of the RECIPIENT's pools (see
+ *  `movePlan`), so the sender's pool simply has room again afterwards and nobody is billed
+ *  for anybody else's content. That is also what stops the failure this design exists to
+ *  prevent: leave the repo in the sender's pool and the day they stop paying, the sweeper
+ *  suspends a repo that belongs to somebody else. */
 async function transferBlocker(p, kind, target) {
   if (kind !== 'repo') return null;
   const repo = await p.serverRepo.findUnique({ where: { id: target.id }, select: { hosted: true, groupId: true, freePlan: true } });
@@ -60,11 +67,69 @@ async function transferBlocker(p, kind, target) {
   // had. Deleting it and letting them claim their own is the honest path.
   if (repo?.freePlan) return 'free_plan';
   if (!repo?.hosted) return null;
+  if (repo.groupId) return null;                       // a pool slice — it can move, see movePlan
   const sub = await p.subscription.findFirst({
-    where: { status: 'active', OR: [{ serverRepoId: target.id }, ...(repo.groupId ? [{ hostingGroupId: repo.groupId }] : [])] },
+    where: { status: 'active', serverRepoId: target.id },
     select: { id: true },
   });
   return sub ? 'active_subscription' : null;
+}
+
+/**
+ * Where the recipient would put this, and whether it fits.
+ *
+ * Storage does not follow the object and it does not stay behind either: the object moves
+ * INTO a pool the recipient already owns. Anything else leaves one of them paying for the
+ * other's content — and if the slice stayed in the sender's pool, the sender cancelling
+ * their subscription would suspend a repo that is no longer theirs.
+ *
+ * Deliberately NOT allowed to create a free pool on the recipient's behalf: the free tier
+ * is one claim per account (FreeTierClaim), and spending somebody's claim for them, inside
+ * a flow they think is "accept a gift", is exactly the silent wrong this file already
+ * refuses to do for `free_plan` repos.
+ *
+ * Returns { need, pools, chosen, ok }. `need` is the reserved QUOTA, not the bytes on disk:
+ * the quota is what the pool has given away, and admitting a repo on its current usage
+ * would let it grow past a ceiling the pool never agreed to.
+ */
+async function movePlan(p, kind, targetId, toUserId, preferredPoolId = null) {
+  if (kind !== 'repo') return { need: 0n, pools: [], chosen: null, ok: true };
+  const repo = await p.serverRepo.findUnique({ where: { id: targetId }, select: { storageQuotaBytes: true, groupId: true, hosted: true } });
+  const need = repo?.hosted ? (repo.storageQuotaBytes || 0n) : 0n;
+  if (!need) return { need: 0n, pools: [], chosen: null, ok: true };
+
+  const groups = await p.hostingGroup.findMany({ where: { ownerId: toUserId }, select: { id: true, name: true, poolBytes: true, freePlan: true } });
+  const pools = [];
+  for (const g of groups) {
+    const free = await poolFreeBytes(p, g);
+    pools.push({ id: g.id, name: g.name, freePlan: g.freePlan, freeBytes: free, fits: free >= need });
+  }
+  return { need, ...choosePool(need, pools, preferredPoolId) };
+}
+
+/**
+ * Which pool takes it, and if none, why not.
+ *
+ * Split out from the counting above and exported because this is the part with rules in
+ * it, and rules are worth testing without a database in the way. The counting is a SUM;
+ * this is the decision.
+ *
+ *   · A pool the caller NAMED is used, or refused by name — never silently swapped for
+ *     another one. Somebody who picked a pool has a reason, and quietly using a different
+ *     one moves their content somewhere they did not choose.
+ *   · With no preference, the roomiest that fits. Accepting a gift should not require
+ *     first understanding your own pool layout.
+ *   · "You have no pools" and "none of your pools is big enough" are different problems
+ *     with different fixes, so they are different reasons.
+ */
+export function choosePool(need, pools, preferredPoolId = null) {
+  const preferred = preferredPoolId ? pools.find((x) => x.id === preferredPoolId) : null;
+  if (preferredPoolId && !preferred) return { pools, chosen: null, ok: false, reason: 'no_such_pool' };
+  if (preferred && !preferred.fits) return { pools, chosen: null, ok: false, reason: 'pool_too_small' };
+  const chosen = preferred
+    || pools.filter((x) => x.fits).sort((a, b) => (b.freeBytes > a.freeBytes ? 1 : -1))[0]
+    || null;
+  return { pools, chosen, ok: !!chosen, reason: chosen ? null : (pools.length ? 'insufficient_pool_space' : 'no_pool') };
 }
 
 export default async function transferRoutes(app) {
@@ -148,7 +213,23 @@ export default async function transferRoutes(app) {
       message: t.message, reason: t.reason || '', createdAt: t.createdAt, respondedAt: t.respondedAt, expiresAt: t.expiresAt,
       counterparty: byId[side === 'in' ? t.fromUserId : t.toUserId] || { displayName: '(deleted)' },
     });
-    return { incoming: incoming.map((t) => view(t, 'in')), outgoing: outgoing.map((t) => view(t, 'out')) };
+    // What accepting would cost, per incoming offer, so the answer is on the screen with
+    // the button rather than behind it. A 409 explaining the pool is full AFTER somebody
+    // pressed Accept is a refusal; the same sentence before they press it is information.
+    const inbound = incoming.map((t) => view(t, 'in'));
+    for (const t of inbound) {
+      if (t.status !== 'pending' || t.kind !== 'repo') continue;
+      const plan = await movePlan(p, t.kind, t.targetId, req.user.uid).catch(() => null);
+      if (!plan) continue;
+      t.storage = {
+        needBytes: String(plan.need),
+        fits: plan.ok,
+        reason: plan.reason || null,
+        pools: plan.pools.map((x) => ({ id: x.id, name: x.name, freeBytes: String(x.freeBytes), fits: x.fits })),
+        chosenPoolId: plan.chosen?.id || null,
+      };
+    }
+    return { incoming: inbound, outgoing: outgoing.map((t) => view(t, 'out')) };
   });
 
   // ── Accept ──────────────────────────────────────────────────────────────────
@@ -170,14 +251,38 @@ export default async function transferRoutes(app) {
     const blocker = await transferBlocker(p, tr.kind, target);
     if (blocker) return reply.code(409).send({ error: blocker });
 
+    // Where it lands, and whether there is room — checked HERE and not when the offer was
+    // sent. Two offers accepted an hour apart against the same pool would both have passed
+    // a check made at send time, and the pool would be over its ceiling with no way to tell
+    // which acceptance did it.
+    const wanted = z.object({ poolId: z.string().max(64).nullish() }).safeParse(req.body || {});
+    const plan = await movePlan(p, tr.kind, tr.targetId, req.user.uid, wanted.success ? (wanted.data.poolId || null) : null);
+    if (!plan.ok) {
+      return reply.code(409).send({
+        error: plan.reason || 'insufficient_pool_space',
+        needBytes: String(plan.need),
+        pools: plan.pools.map((x) => ({ id: x.id, name: x.name, freeBytes: String(x.freeBytes), fits: x.fits })),
+      });
+    }
+
     // Claim the request BEFORE moving anything: two accepts racing must not both move it.
     const claimed = await p.ownershipTransfer.updateMany({ where: { id: tr.id, status: 'pending' }, data: { status: 'accepted', respondedAt: new Date() } });
     if (!claimed.count) return reply.code(409).send({ error: 'not_pending' });
 
-    if (tr.kind === 'repo') await p.serverRepo.update({ where: { id: tr.targetId }, data: { ownerId: req.user.uid } });
-    else await p.catalogItem.update({ where: { id: tr.targetId }, data: { ownerId: req.user.uid } });
+    if (tr.kind === 'repo') {
+      // Owner and pool in ONE write. Splitting them leaves a window where the repo belongs
+      // to the recipient and still draws on the sender's pool — which is the exact state
+      // the sweeper turns into "somebody else's repo suspended because I stopped paying".
+      await p.serverRepo.update({
+        where: { id: tr.targetId },
+        data: { ownerId: req.user.uid, ...(plan.chosen ? { groupId: plan.chosen.id } : {}) },
+      });
+    } else {
+      await p.catalogItem.update({ where: { id: tr.targetId }, data: { ownerId: req.user.uid } });
+    }
 
-    await logAudit(p, req.user.uid, 'ownership.accepted', `${tr.kind} "${tr.targetName}" from ${tr.fromUserId}`, clientIp(req));
+    await logAudit(p, req.user.uid, 'ownership.accepted',
+      `${tr.kind} "${tr.targetName}" from ${tr.fromUserId}${plan.chosen ? ` → pool ${plan.chosen.name}` : ''}`, clientIp(req));
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
     const from = await p.user.findUnique({ where: { id: tr.fromUserId }, select: { email: true } });
     await notify(p, tr.fromUserId, 'Transfer accepted', `${me?.displayName || 'They'} accepted "${tr.targetName}". It is no longer yours.`).catch(() => {});

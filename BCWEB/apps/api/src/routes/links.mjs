@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, hashApiKey, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
@@ -103,12 +103,45 @@ export default async function linkRoutes(app) {
     return { accounts };
   });
 
+  /**
+   * What this account still has published under its creator identity.
+   *
+   * Unlinking a creator id while repos or catalogs exist is a way to lock yourself out of
+   * your own content and not find out for weeks: BMM authenticates to a repo with the
+   * `X-Creator-ID` header, and both the per-repo whitelist and the site-wide access policy
+   * hold creator ids. Drop the link and those entries stop matching — the repo is still
+   * there, still billed, and its owner is refused by their own allow-list.
+   *
+   * So the count is computed in one place and used twice: to disable the control, and to
+   * refuse the request if it is called anyway.
+   */
+  const publishedUnderIdentity = async (p, userId) => {
+    const c = await ownedContent(p, userId);
+    // Everything BMM can reach while holding an `X-Creator-ID` header. Pools and
+    // subscriptions are money, not identity, so they are not in this sum — they block
+    // closing an account, which is a different question with a different answer.
+    return { repos: c.repos, catalogs: c.catalogs, items: c.items,
+             total: c.repos + c.catalogs + c.items };
+  };
+
   // ── Website side (logged in): list / redeem / unlink creator ids ──
   app.get('/me/creator-links', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const links = await p.creatorLink.findMany({ where: { userId: req.user.uid }, orderBy: { linkedAt: 'desc' } });
     const now = Date.now();
-    return { links: links.map((l) => ({ id: l.id, creatorId: l.creatorId, displayName: l.displayName, linkedAt: l.linkedAt, unlinkableAt: l.unlinkableAt, locked: new Date(l.unlinkableAt).getTime() > now })) };
+    // Sent whether or not anything is blocked: a control that refuses on click without
+    // having said it would reads as a bug, and the numbers are what makes the reason
+    // actionable ("2 repos, 1 catalog") rather than a rule the user has to take on faith.
+    const hosting = await publishedUnderIdentity(p, req.user.uid);
+    return {
+      hosting,
+      links: links.map((l) => ({
+        id: l.id, creatorId: l.creatorId, displayName: l.displayName,
+        linkedAt: l.linkedAt, unlinkableAt: l.unlinkableAt,
+        locked: new Date(l.unlinkableAt).getTime() > now,
+        blockedByContent: hosting.total > 0,
+      })),
+    };
   });
 
   app.post('/me/creator-links', { preHandler: requireRole() }, async (req, reply) => {
@@ -205,6 +238,11 @@ export default async function linkRoutes(app) {
     const link = await p.creatorLink.findUnique({ where: { id: req.params.id } });
     if (!link || link.userId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
     if (new Date(link.unlinkableAt).getTime() > Date.now()) return reply.code(423).send({ error: 'locked', unlinkableAt: link.unlinkableAt });
+    // Checked here as well as in the list, and not only because a client can call this
+    // directly: the list was fetched at some point in the past, and a repo created since
+    // must not be orphaned by a button that was correct when it was drawn.
+    const hosting = await publishedUnderIdentity(p, req.user.uid);
+    if (hosting.total > 0) return reply.code(409).send({ error: 'has_hosted_content', ...hosting });
     await p.creatorLink.delete({ where: { id: link.id } });
     return { ok: true };
   });

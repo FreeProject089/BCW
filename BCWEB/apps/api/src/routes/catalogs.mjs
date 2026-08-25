@@ -4,7 +4,7 @@ import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
-import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClientIdentity, accessListMatches, pubkeyLineSchema, pubkeyErrorCode, policyBans, policyWhitelist, getGlobalAccessPolicy, getUserAccessPolicy, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClientIdentity, accessListMatches, pubkeyLineSchema, pubkeyErrorCode, policyBans, policyWhitelist, getGlobalAccessPolicy, getUserAccessPolicy, safeEqual, poolFreeBytes } from '../lib/lib.mjs';
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
@@ -27,16 +27,6 @@ const KINDS = CATALOG_KINDS;
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const GiB = 1024 ** 3;
 
-// Free bytes left in a storage pool: its poolBytes minus what repos AND catalogs in it
-// have already reserved. Storage is fungible — a repo and a catalog draw from the same
-// poolBytes, so both must be subtracted.
-async function poolFreeBytes(p, group) {
-  const [repoAgg, catAgg] = await Promise.all([
-    p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
-    p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
-  ]);
-  return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n);
-}
 
 // A community catalog is served ONLY when it's ACTIVE (not admin-suspended / unpaid).
 // SUSPENDED and HIDDEN return 404 to everyone, owner included on the public routes.

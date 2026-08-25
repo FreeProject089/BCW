@@ -1105,3 +1105,47 @@ export async function applyScheduledUpdate(p, model, row) {
   const next = { ...row.scheduledNext, scheduledAt: null, scheduledNext: null };
   return model.update({ where: { id: row.id }, data: next }).catch(() => row);
 }
+
+/**
+ * What an account still owns.
+ *
+ * Two features ask this question — closing an account, and unlinking the creator id the
+ * content is published under — and they want the same numbers for the same reason: you
+ * cannot walk away from something that is still yours and still being served. Counting it
+ * twice is how the two answers drift, so it is counted here and each caller decides its
+ * own policy on top.
+ *
+ * They deliberately do NOT share the policy. Closure blocks on subscriptions, pools, repos
+ * and items but not on catalogs; the creator-id unlink blocks on anything BMM reaches with
+ * an `X-Creator-ID` header, which includes them. Same facts, different rules, both visible.
+ */
+export async function ownedContent(p, userId) {
+  const [subscriptions, repos, items, pools, catalogs] = await Promise.all([
+    p.subscription.count({ where: { userId, status: 'active' } }).catch(() => 0),
+    p.serverRepo.count({ where: { ownerId: userId } }).catch(() => 0),
+    p.catalogItem.count({ where: { ownerId: userId } }).catch(() => 0),
+    p.hostingGroup.count({ where: { ownerId: userId } }).catch(() => 0),
+    p.communityCatalog.count({ where: { ownerId: userId } }).catch(() => 0),
+  ]);
+  return { subscriptions, repos, items, pools, catalogs };
+}
+
+/**
+ * Free bytes left in a storage pool.
+ *
+ * Storage is fungible: a repo and a catalog draw from the same `poolBytes`, so both are
+ * subtracted. Quota, not usage — what a repo has RESERVED is what the pool has given away,
+ * and letting a second repo reserve the same bytes because the first has not filled them
+ * yet is how a pool goes over its own ceiling.
+ *
+ * Lives here rather than in catalogs.mjs (where it was written) because ownership transfers
+ * ask the same question, and a second implementation of "how much room is left" is a second
+ * answer waiting to disagree with the first.
+ */
+export async function poolFreeBytes(p, group) {
+  const [repoAgg, catAgg] = await Promise.all([
+    p.serverRepo.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+    p.communityCatalog.aggregate({ where: { groupId: group.id }, _sum: { storageQuotaBytes: true } }),
+  ]);
+  return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n);
+}

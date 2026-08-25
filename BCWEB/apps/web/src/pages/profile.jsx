@@ -316,6 +316,9 @@ export function TransfersCard({ className = '' }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState('');
 
+  // Which pool the recipient picked, per offer. Not in `data`, because reloading the list
+  // must not silently move a choice they already made onto a different pool.
+  const [poolPick, setPoolPick] = useState({});
   const load = () => api.get('/me/transfers').then(setData).catch(() => setData({ incoming: [], outgoing: [] }));
   useEffect(() => { load(); }, []);
 
@@ -325,7 +328,20 @@ export function TransfersCard({ className = '' }) {
     no_longer_owned: t('tr.err.notowned', 'The sender no longer owns it — the offer has been withdrawn.'),
     active_subscription: t('tr.err.sub', 'It has an active hosting subscription. That has to be cancelled or moved first.'),
     free_plan: t('tr.err.free', 'It is on the free plan, and the free tier is one per account — the person receiving it could not hold it without spending a free claim they never made. Delete it and let them create their own.'),
+    // The three storage refusals are separate on purpose: they have three different fixes.
+    no_pool: t('tr.err.nopool', 'You have no storage pool to put it in. Buy hosting first — what you take on, you host.'),
+    insufficient_pool_space: t('tr.err.nospace', 'None of your pools has room for it. Free some space or make a pool bigger, then accept.'),
+    pool_too_small: t('tr.err.poolsmall', 'That pool does not have room for it. Pick another, or make it bigger.'),
+    no_such_pool: t('tr.err.nosuchpool', 'That storage pool is not one of yours.'),
   }[e] || t('prof.failed', 'Failed.'));
+
+  /** Bytes, for a sentence rather than a table. */
+  const gb = (n) => {
+    const v = Number(n || 0);
+    if (v <= 0) return '0';
+    if (v < 1024 ** 3) return `${(v / 1024 ** 2).toFixed(v < 10 * 1024 ** 2 ? 1 : 0)} MB`;
+    return `${(v / 1024 ** 3).toFixed(v < 10 * 1024 ** 3 ? 1 : 0)} GB`;
+  };
 
   // accept | decline (the recipient says no) | cancel (the sender takes their own offer
   // back). The last two hit the same endpoint — the server decides which it is from who is
@@ -372,7 +388,8 @@ export function TransfersCard({ className = '' }) {
     }
     setBusy(tr.id);
     try {
-      await api.post(`/me/transfers/${tr.id}/${kind === 'accept' ? 'accept' : 'decline'}`, body);
+      await api.post(`/me/transfers/${tr.id}/${kind === 'accept' ? 'accept' : 'decline'}`,
+        kind === 'accept' ? { ...(body || {}), poolId: poolPick[tr.id] || undefined } : body);
       toast.success(kind === 'accept' ? t('tr.accepted', 'It is yours.')
         : kind === 'decline' ? t('tr.declined', 'Declined. They have been told.')
         : t('tr.cancelled', 'Offer withdrawn.'));
@@ -436,6 +453,36 @@ export function TransfersCard({ className = '' }) {
                       <div className={`text-[11px] mt-2 ${expiryTone(d)}`}>
                         {t('tr.expires', 'Expires in {n} day(s)').replace('{n}', String(d))}
                       </div>
+                      {/* What accepting costs, BEFORE the button rather than in the error
+                          after it. A hosted repo moves into one of your pools — it does not
+                          stay in the sender's, or the day they stop paying it would be
+                          suspended out from under you. */}
+                      {tr.storage && Number(tr.storage.needBytes) > 0 && (
+                        <div className={`text-[11px] mt-2 ${tr.storage.fits ? 'text-[var(--muted)]' : 'text-warning'}`}>
+                          {tr.storage.fits
+                            ? t('tr.storeOk', 'Takes {n} of your storage, moved into “{p}”.')
+                                .replace('{n}', gb(tr.storage.needBytes))
+                                .replace('{p}', (tr.storage.pools.find((x) => x.id === tr.storage.chosenPoolId) || {}).name || '—')
+                            : t('tr.storeNo', 'Needs {n} of storage and no pool of yours has room. Free some space or add a pool, then accept.')
+                                .replace('{n}', gb(tr.storage.needBytes))}
+                        </div>
+                      )}
+                      {/* The picker only appears when there is a choice to make. One pool is
+                          not a decision, and a select with a single option is furniture. */}
+                      {tr.storage && Number(tr.storage.needBytes) > 0 && tr.storage.pools.filter((x) => x.fits).length > 1 && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-[11px] text-[var(--faint)]">{t('tr.intoPool', 'Into')}</span>
+                          <Select
+                            className="text-[12px] py-1"
+                            value={poolPick[tr.id] || tr.storage.chosenPoolId || ''}
+                            onChange={(e) => setPoolPick((v) => ({ ...v, [tr.id]: e.target.value }))}
+                          >
+                            {tr.storage.pools.filter((x) => x.fits).map((x) => (
+                              <option key={x.id} value={x.id}>{x.name} — {gb(x.freeBytes)} {t('tr.free', 'free')}</option>
+                            ))}
+                          </Select>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {/* Both answers are answers. Decline is not a ghost link tucked at the edge:
@@ -1063,7 +1110,10 @@ function CreatorLinks() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
-  const load = () => api.get('/me/creator-links').then((d) => setLinks(d.links || [])).catch(() => {});
+  const [hosting, setHosting] = useState({ repos: 0, catalogs: 0, total: 0 });
+  const load = () => api.get('/me/creator-links')
+    .then((d) => { setLinks(d.links || []); setHosting(d.hosting || { repos: 0, catalogs: 0, total: 0 }); })
+    .catch(() => {});
   useEffect(() => { load(); }, []);
   const link = async () => {
     if (!code.trim()) return;
@@ -1089,7 +1139,7 @@ function CreatorLinks() {
         try { await api.del(`/me/creator-links/${l.id}`); load(); }
         // A 423 is the 2-week lock: the row must come back, or the list would claim an
         // unlink the server refused.
-        catch (x) { setMsg(x.status === 423 ? 'locked' : 'error'); setTimeout(() => setMsg(''), 3000); }
+        catch (x) { setMsg(x.status === 423 ? 'locked' : x.status === 409 ? 'hosted' : 'error'); setTimeout(() => setMsg(''), 4000); load(); }
         finally { unhide(l.id); }
       },
       onCancel: () => unhide(l.id),
@@ -1108,14 +1158,29 @@ function CreatorLinks() {
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
             <BadgeCheck size={15} className="text-success shrink-0" />
             <div className="flex-1 min-w-0"><div className="font-mono text-xs truncate">{l.creatorId}{l.displayName ? ` · ${l.displayName}` : ''}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}{l.locked ? ` · ${t('cl.unlockable', 'unlockable')} ${fdate(l.unlinkableAt)}` : ''}</div></div>
-            {l.locked ? <Lock size={14} className="text-[var(--faint)]" title={t('cl.locked2w', 'Locked for 2 weeks')} /> : <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-error" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>}
+            {l.locked
+              ? <Lock size={14} className="text-[var(--faint)]" title={t('cl.locked2w', 'Locked for 2 weeks')} />
+              /* Not a disabled button: a control that looks pressable and then refuses is
+                 worse than one that explains itself. The lock beside it already means
+                 "not yet", so this one says why in its own words. */
+              : l.blockedByContent
+                ? <Lock size={14} className="text-warning shrink-0" title={t('cl.blockedTip', 'You still host content under this identity. Transfer or delete it first.')} />
+                : <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-error" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>}
           </div>
         ))}
       </div>}
+      {hosting.total > 0 && visible.length > 0 && (
+        <p className="text-[11px] text-warning mb-3 flex items-start gap-1.5">
+          <Lock size={12} className="mt-0.5 shrink-0" />
+          <span>{t('cl.blocked', 'Unlinking is off while you host content: BMM signs in to your repos with this creator id, and both the repo whitelist and the site access policy are written in terms of it — unlink and your own allow-list can refuse you. You have {r} repo(s) and {c} catalog(s); transfer or delete them first.')
+            .replace('{r}', String(hosting.repos)).replace('{c}', String(hosting.catalogs))}</span>
+        </p>
+      )}
       <div className="flex gap-2">
         <Input value={code} maxLength={9} onChange={(e) => { const s = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8); setCode(s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s); }} placeholder={t('cl.ph', 'Code from BMM (e.g. K7P39QMX)')} onKeyDown={(e) => e.key === 'Enter' && link()} />
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
+      {msg === 'hosted' && <div className="text-sm text-warning mt-2">{t('cl.blockedShort', 'Still hosting content under this creator id — transfer or delete it first.')}</div>}
       {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
       {/* Already linked? Then the key minted at link time never happened for you, and
           unlinking to trigger it is blocked for two weeks. One button, same panel. */}

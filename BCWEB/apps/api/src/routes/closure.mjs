@@ -25,7 +25,7 @@
 import { z } from 'zod';
 import { issueSanction } from '../lib/sanctions.mjs';
 import crypto from 'node:crypto';
-import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, clientIp, clearSession, notify, ownedContent } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { deleteObject } from '../lib/storage.mjs';
 
@@ -42,12 +42,10 @@ const money = (c, cur) => `${((c || 0) / 100).toFixed(2)} ${String(cur || 'usd')
 
 /** Everything standing between this account and closure. Empty array = good to go. */
 async function closureBlockers(p, userId) {
-  const [subs, repos, items, pools] = await Promise.all([
-    p.subscription.count({ where: { userId, status: 'active' } }),
-    p.serverRepo.count({ where: { ownerId: userId } }),
-    p.catalogItem.count({ where: { ownerId: userId } }),
-    p.hostingGroup.count({ where: { ownerId: userId } }).catch(() => 0),
-  ]);
+  // The counting is shared with the creator-id unlink (lib/ownedContent); the POLICY below
+  // is this feature's own. Catalogs are counted there and deliberately not blocked here:
+  // teardown suspends them, and an account has never been held open by one.
+  const { subscriptions: subs, repos, items, pools } = await ownedContent(p, userId);
   const out = [];
   // Ordered by what has to be dealt with FIRST: you cannot transfer a repo whose
   // subscription is still live, so telling someone about the repo before the subscription
