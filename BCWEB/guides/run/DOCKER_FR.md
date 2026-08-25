@@ -43,7 +43,9 @@ healthy avant que `api`/`provisioner` démarrent ; `caddy` est devant tout.
   **nginx** qui sert `dist/` avec `apps/web/nginx.conf` (cache immutable sur les
   `/assets/*` hashés, no-cache sur `index.html`, fallback SPA). ⚠️ Les variables
   `VITE_*` sont **figées au build** — changer `VITE_GTM_ID` exige un rebuild, pas un
-  simple restart.
+  simple restart. (C'est pourquoi l'id Google Tag se règle désormais depuis le dashboard :
+  Réglages d'hébergement → Recherche & visibilité, sans rebuild. La variable l'emporte
+  toujours là où elle est définie.)
 - **`apps/bot/Dockerfile`** — `node:20-alpine`, deps prod uniquement, polices pour la
   bannière. Tourne au ralenti proprement sans token.
 - **`apps/provisioner/Dockerfile`** — petit worker Node + client Prisma.

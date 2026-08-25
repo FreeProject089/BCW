@@ -104,7 +104,7 @@ Callback à déclarer chez chaque fournisseur : `<SITE_URL>/api/auth/oauth/<prov
 ## 12. Divers
 | Variable | Rôle |
 |---|---|
-| `VITE_GTM_ID` | ID Google Tag Manager (analytics front, optionnel). Injecté au build. |
+| `VITE_GTM_ID` | Id Google Tag / GA4. **Préférez le dashboard** (Réglages d’hébergement → Recherche & visibilité) : sans rebuild. Celle-ci est figée au build et l’emporte. Soumise au consentement dans les deux cas. |
 | `NODE_OPTIONS` | flags V8 pour l'API. L'image pose déjà `--max-old-space-size=384` : V8 dimensionne son heap sur la RAM de **l'hôte** et ne lit *pas* la limite cgroup — dans un conteneur limité en mémoire, un heap non borné dépasse la limite et se fait OOM-kill au lieu de collecter. À monter en même temps que la limite mémoire du conteneur. |
 | `KOFI_WEBHOOK_TOKEN` | token de vérification du webhook Ko-fi. Posé ici, il **prime** sur le token défini en admin et le verrouille dans le dashboard (même logique que `DISCORD_TOKEN`). Vide = géré depuis l'UI admin. |
 | `TWITCH_CLIENT_ID` / `TWITCH_CLIENT_SECRET` | **connexion de profil** Twitch (pas le login). Enregistre `<SITE_URL>/api/auth/connect/twitch/callback`. |

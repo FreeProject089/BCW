@@ -42,6 +42,8 @@ before `api`/`provisioner` start; `caddy` fronts everything.
   plain **nginx** serving `dist/` with `apps/web/nginx.conf` (immutable cache on
   hashed `/assets/*`, no-cache on `index.html`, SPA fallback). ⚠️ `VITE_*` vars are
   **baked at build time** — changing `VITE_GTM_ID` requires a rebuild, not a restart.
+  (Which is why the Google Tag id is settable from the dashboard now: Hosting settings
+  → Search & discoverability, no rebuild. The variable still wins where it is set.)
 - **`apps/bot/Dockerfile`** — `node:20-alpine`, prod-only deps, fonts for the welcome
   banner. Idles cleanly when no token is configured.
 - **`apps/provisioner/Dockerfile`** — small Node worker + Prisma client.
