@@ -4,6 +4,13 @@
 > **jamais commité** (il contient tes secrets). Ce document explique chaque variable.
 > 🇬🇧 [ENV_EN.md](ENV_EN.md) · déploiement complet : [DEPLOY_FR.md](DEPLOY_FR.md) · add-ons : [ADDONS_FR.md](ADDONS_FR.md)
 
+**Tu n'es pas obligé de l'écrire à la main.** `infra/configure-env.sh` (ou `configure-env.ps1`
+sous Windows) demande chaque valeur, l'explique, génère les secrets et refuse les combinaisons
+qui ne peuvent pas marcher — voir
+[DEPLOY_SCRIPTS_FR.md](DEPLOY_SCRIPTS_FR.md#configure-envsh--construire-le-env-toi-même). Cette
+page est la référence de ce que chaque réponse veut dire, et pour modifier un .env que tu as
+déjà.
+
 **Générer les secrets** : `openssl rand -hex 32` pour les clés (`JWT_SECRET`, etc.).
 
 ---

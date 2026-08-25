@@ -5,6 +5,12 @@
 > The real `.env` lives in `infra/compose/.env` (copied from `.env.example`). It is **never
 > committed** (it holds your secrets). This document explains every variable.
 
+**You do not have to write it by hand.** `infra/configure-env.sh` (or `configure-env.ps1` on
+Windows) asks for each value, explains it, generates the secrets, and refuses combinations that
+cannot work — see
+[DEPLOY_SCRIPTS_EN.md](DEPLOY_SCRIPTS_EN.md#configure-envsh--building-the-env-yourself). This
+page is the reference for what each answer means, and for editing a .env you already have.
+
 **Generate secrets** with `openssl rand -hex 32` (for `JWT_SECRET`, etc.).
 
 ---

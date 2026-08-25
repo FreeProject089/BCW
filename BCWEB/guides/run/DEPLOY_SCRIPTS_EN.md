@@ -2,17 +2,22 @@
 
 *🇫🇷 [Version française](DEPLOY_SCRIPTS_FR.md).*
 
-Four scripts in `infra/`. They do different things and are not interchangeable; picking the
+Five scripts in `infra/`. They do different things and are not interchangeable; picking the
 wrong one costs you either time or a database.
 
 ## The cheat sheet
 
 ```bash
+infra/configure-env.sh  # build a .env by answering questions, each one explained
 infra/bootstrap.sh      # FIRST time on a fresh machine
 infra/deploy.sh         # normal update — backs up, rolls back on its own
 infra/deploy-fast.sh    # small update — rebuilds only what changed
 infra/rollback.sh       # go back deliberately, after the fact
 ```
+
+`configure-env.ps1` is the same wizard on Windows. Both read `infra/env-spec.txt`, so they ask
+the same questions in the same order — there is no Linux version and Windows version of the
+configuration to keep in step.
 
 Every one of them takes `--dry-run`, which prints each step and changes nothing. It is safe to
 run right now, production included, and it is the best way to find out what a script will do
@@ -20,6 +25,7 @@ before it does it.
 
 | Your situation | The script |
 |---|---|
+| You want to decide each setting rather than accept generated ones | `configure-env.sh` |
 | Fresh machine, nothing installed | `bootstrap.sh` |
 | You pushed code and want it live | `deploy.sh` |
 | A copy fix, some CSS, nothing touching the database | `deploy-fast.sh` |
@@ -57,6 +63,45 @@ If nothing under `apps/` or `packages/` changed, it says so and rebuilds nothing
 
 !!! warning "`deploy-fast.sh` does not roll back"
     That is what makes it fast. If it fails, run `infra/rollback.sh`.
+
+---
+
+## `configure-env.sh` — building the .env yourself
+
+`bootstrap.sh` generates a .env and gets on with it. This one asks, and every question says
+what the value does and what happens if you skip it. Use it when you want to understand what
+you are configuring rather than accept the defaults — or when you are switching a running
+install to a managed database or to several API replicas.
+
+```bash
+./infra/configure-env.sh                 # writes infra/compose/.env
+./infra/configure-env.sh --force         # overwrite an existing one (a backup is kept)
+./infra/configure-env.sh --out /tmp/env  # write elsewhere, change nothing
+```
+
+It refuses to overwrite an existing .env without `--force`, and for a specific reason:
+rewriting `POSTGRES_PASSWORD` against an already-initialised database locks you out of your own
+Postgres. The volume keeps the password it was created with, and no amount of editing the .env
+afterwards undoes that.
+
+**It corrects you where a combination cannot work.** Asking for three API replicas with Redis
+off turns Redis on and says so — without it every replica runs the background sweeper, so
+subscriptions get suspended twice and expiry e-mails go out twice. Derived values are always
+announced, never applied silently.
+
+The file it writes is built FROM `.env.example`, so every explanatory comment survives and any
+variable the wizard does not ask about still lands with its documented default.
+
+### Choosing a managed database
+
+Answer `managed` and it asks for the two connection strings instead of a password. Two things
+it tells you at the end, both of which surprise people:
+
+- **The bundled Postgres container still starts.** The `db` service carries no compose profile,
+  so `up -d` brings it up whatever the DB mode — it simply ends up unused. Stopping that means
+  editing `infra/compose/docker-compose.yml`; there is no .env switch for it.
+- **`POSTGRES_PASSWORD` is still required.** That same service declares it as mandatory, so a
+  .env without it refuses to start the whole stack, not just the database.
 
 ---
 

@@ -2,17 +2,22 @@
 
 *🇬🇧 [English version](DEPLOY_SCRIPTS_EN.md).*
 
-Quatre scripts dans `infra/`. Ils font des choses différentes et ne sont pas interchangeables ;
+Cinq scripts dans `infra/`. Ils font des choses différentes et ne sont pas interchangeables ;
 choisir le mauvais coûte soit du temps, soit une base de données.
 
 ## L'aide-mémoire
 
 ```bash
+infra/configure-env.sh  # construire un .env en répondant à des questions, chacune expliquée
 infra/bootstrap.sh      # PREMIÈRE fois sur une machine neuve
 infra/deploy.sh         # mise à jour normale — sauvegarde, retour arrière automatique
 infra/deploy-fast.sh    # petite mise à jour — ne reconstruit que ce qui a changé
 infra/rollback.sh       # revenir en arrière volontairement, après coup
 ```
+
+`configure-env.ps1` est le même assistant sous Windows. Les deux lisent `infra/env-spec.txt`,
+donc ils posent les mêmes questions dans le même ordre — il n'y a pas une configuration version
+Linux et une version Windows à maintenir en phase.
 
 Chacun accepte `--dry-run`, qui affiche chaque étape sans rien changer. C'est sans risque à
 lancer maintenant, y compris en production, et c'est la meilleure façon de découvrir ce qu'un
@@ -20,6 +25,7 @@ script va faire avant qu'il le fasse.
 
 | Ta situation | Le script |
 |---|---|
+| Tu veux décider chaque réglage plutôt que d'accepter ceux qui sont générés | `configure-env.sh` |
 | Machine neuve, rien d'installé | `bootstrap.sh` |
 | Tu as poussé du code et tu veux le déployer | `deploy.sh` |
 | Une correction de texte, un CSS, rien qui touche la base | `deploy-fast.sh` |
@@ -57,6 +63,47 @@ Si rien dans `apps/` ni `packages/` n'a changé, elle te le dit et ne reconstrui
 
 !!! warning "`deploy-fast.sh` ne revient pas en arrière"
     C'est ce qui la rend rapide. Si elle échoue, `infra/rollback.sh`.
+
+---
+
+## `configure-env.sh` — construire le .env toi-même
+
+`bootstrap.sh` génère un .env et passe à la suite. Celui-ci demande, et chaque question dit ce
+que la valeur fait et ce qui se passe si tu la sautes. Sers-t'en quand tu veux comprendre ce que
+tu configures plutôt qu'accepter les défauts — ou quand tu fais passer une installation en
+service à une base managée ou à plusieurs répliques d'API.
+
+```bash
+./infra/configure-env.sh                 # écrit infra/compose/.env
+./infra/configure-env.sh --force         # écraser un .env existant (une sauvegarde est gardée)
+./infra/configure-env.sh --out /tmp/env  # écrire ailleurs, ne rien changer
+```
+
+Il refuse d'écraser un .env existant sans `--force`, et pour une raison précise : réécrire
+`POSTGRES_PASSWORD` face à une base déjà initialisée te ferme la porte de ton propre Postgres.
+Le volume garde le mot de passe avec lequel il a été créé, et aucune modification du .env
+ensuite n'y change quoi que ce soit.
+
+**Il te corrige quand une combinaison ne peut pas marcher.** Demander trois répliques d'API avec
+Redis désactivé rallume Redis et te le dit — sans lui, chaque réplique exécute le balayeur de
+fond, donc les abonnements sont suspendus deux fois et les e-mails d'expiration partent en
+double. Les valeurs déduites sont toujours annoncées, jamais appliquées en silence.
+
+Le fichier écrit est construit À PARTIR de `.env.example`, donc chaque commentaire explicatif
+survit et toute variable que l'assistant ne demande pas arrive quand même avec son défaut
+documenté.
+
+### Choisir une base managée
+
+Réponds `managed` et il demande les deux chaînes de connexion au lieu d'un mot de passe. Deux
+choses qu'il te dit à la fin, et qui surprennent à chaque fois :
+
+- **Le conteneur Postgres inclus démarre quand même.** Le service `db` ne porte aucun profil
+  compose, donc `up -d` le lance quel que soit le mode de base — il finit simplement inutilisé.
+  L'arrêter demande de modifier `infra/compose/docker-compose.yml` ; il n'y a pas d'interrupteur
+  dans le .env pour ça.
+- **`POSTGRES_PASSWORD` reste obligatoire.** Ce même service le déclare comme requis, donc un
+  .env sans lui refuse de démarrer toute la stack, pas seulement la base.
 
 ---
 

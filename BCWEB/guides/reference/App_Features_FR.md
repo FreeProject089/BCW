@@ -106,6 +106,17 @@
 - **Other projects** — les admins mettent en avant N'IMPORTE quel projet avec le même
   style de page, sans code (géré depuis le dashboard admin) ; chacun obtient
   `/project/<slug>` + une carte.
+- **Demandes de listing** — les gens hors de l'équipe peuvent demander que leur projet
+  figure dans la grille, gratuitement ou en payant, chaque porte s'ouvrant séparément
+  (les deux fermées par défaut). Payer achète une place dans la file de revue et rien
+  d'autre ; approuver crée la page non publiée et non listée.
+  → [OTHER_PROJECTS_GUIDE_FR.md](OTHER_PROJECTS_GUIDE_FR.md)
+- **Outils développeur** (`/dev/tools`) — inspecter un fichier BMM (le même inspecteur
+  que la modération, sur un endpoint développeur) et vérifier un `.bmmscript` avant de le
+  publier. Le vérificateur contrôle la **forme** (accolades déséquilibrées) et les **noms**
+  face au vocabulaire que BMM publie — volontairement pas un second compilateur, puisque
+  BMM n'en a qu'un, en Rust, et qu'une copie ici serait fausse dès le jour de son
+  écriture.
 - **Annonces de projet** — teaser à compte à rebours avant lancement, épinglage en
   topbar, bascule auto vers la vraie page à l'heure de révélation ; barrière de
   visibilité par page.

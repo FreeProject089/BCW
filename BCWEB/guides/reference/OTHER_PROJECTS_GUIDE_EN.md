@@ -6,6 +6,8 @@
 
 Everything here is managed from **Admin → Content → Other projects** (create/edit/delete) and **Admin → Content → Projects** (the shared config editor, where each Other Project appears as its own tab).
 
+People outside the team can also *ask* to be listed, once an admin opens that door — section 9.
+
 ---
 
 ## 1. Creating a project
@@ -133,3 +135,58 @@ Each Other Project can have its own blog space:
 - **Tease an unreleased project**: New project → announcement enabled with a reveal date → pin to topbar → visibility Unlisted (or Public at reveal).
 - **Beta gated to testers**: visibility Whitelist → add testers by BC account/Discord/creator id → share the direct link.
 - **Coordinated v2 launch**: Schedule an update with the v2 config timed to your release moment — the page flips itself while you sleep.
+
+---
+
+## 9. Letting people ask to be listed
+
+Everything above is the admin creating a page. This section is the other direction: somebody
+who is not staff asking for their project to be in the grid.
+
+**Both doors are off by default**, and a fresh install offers nothing. Turn them on in
+**Admin → Hosting settings → Other projects**:
+
+| Setting | What it does |
+|---|---|
+| Accept listing requests (free) | Shows a *Submit your project* form on `/projects`. |
+| Accept PAID listing requests | Adds a paid option beside the free one — or instead of it, if the free one is off. |
+| Paid request price (cents) | `2000` = 20.00, charged once. |
+| Paid request currency | Lowercase three-letter code (`usd`, `eur`, `chf`); Stripe must accept it for your account. |
+| Max pending requests per person | How many un-reviewed requests one account may hold. `0` = no limit. |
+
+With neither on, the form is not rendered *and* `POST /showcase-requests` refuses — the switch is
+not decoration on a route that would have accepted anyway. A submission box on a site whose
+owner is not reading submissions is worse than no box.
+
+**Paying does not buy a listing.** A paid request goes through the same review as a free one;
+the money buys a place in the queue and nothing else. That sentence is on the form itself, above
+the button, because somebody about to pay deserves to know it before they click rather than
+after they are rejected. If you reject a paid request, a refund is owed and no code issues it —
+that is a conversation.
+
+### Reviewing them
+
+The queue sits at the top of **Admin → Content → Projects**, above the per-project editors,
+filterable by pending / approved / rejected. Requesters need a **verified e-mail**, because a
+rejection with a reason is useless if it cannot reach anybody.
+
+Before approving you can correct the **slug** and the **short label** — the applicant's are a
+proposal, and a slug is a URL that cannot be changed painlessly later.
+
+**Approving creates the page unpublished and unlisted.** It puts nothing in front of anybody:
+the page exists at its own address, stays out of the `/projects` grid, and somebody still has to
+fill in the config (section 2) and decide to show it (section 3). Approval means "yes, this
+belongs here", not "publish it now" — different decisions, usually on different days.
+
+A slug that already belongs to a live project is refused at approval rather than silently
+overwriting it. At submission time the clash is handled differently: the request keeps a
+suffixed slug, because two people may propose the same name and both deserve an answer.
+
+### From the applicant's side
+
+The form is on `/projects`, and their own requests are listed with the status. They can
+**withdraw** one while it is still pending. A free withdrawal deletes the request; a **paid** one
+is kept and marked rejected instead — money changed hands, and deleting the only record of what
+it was for helps nobody.
+
+---

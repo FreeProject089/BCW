@@ -95,6 +95,15 @@
   release notes, community, legal.
 - **Other projects** — admins feature ANY project with the same page style, no code
   (managed from the admin dashboard); each gets `/project/<slug>` + a card.
+- **Listing requests** — people outside the team can ask for their project to be in the
+  grid, free or paid, each door switched on separately (both off by default). Paying
+  buys a place in the review queue and nothing else; approval creates the page
+  unpublished and unlisted. → [OTHER_PROJECTS_GUIDE_EN.md](OTHER_PROJECTS_GUIDE_EN.md)
+- **Developer tools** (`/dev/tools`) — inspect a BMM file (the same inspector moderation
+  uses, on a developer endpoint) and check a `.bmmscript` before publishing it. The
+  checker verifies **shape** (unbalanced braces) and **names** against the vocabulary BMM
+  publishes — deliberately not a second compiler, since BMM's only one is in Rust and a
+  copy here would be wrong the day it was written.
 - **Project Announcements** — pre-launch countdown teaser, topbar pin, auto-swap to the
   real page at reveal time; per-page visibility gate.
 - **Scheduled updates** — stage project content to go live at a future date/time (lazy,

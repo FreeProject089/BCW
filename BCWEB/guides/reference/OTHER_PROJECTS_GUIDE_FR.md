@@ -11,6 +11,9 @@ Tout se gère depuis **Admin → Contenu → Autres projets** (créer/éditer/su
 **Admin → Contenu → Projets** (l'éditeur de config partagé, où chaque Autre projet apparaît
 comme son propre onglet).
 
+Les gens hors de l'équipe peuvent aussi *demander* à être listés, une fois qu'un admin ouvre
+cette porte — section 9.
+
 ---
 
 ## 1. Créer un projet
@@ -158,3 +161,60 @@ semble périmé, utilise **Config des projets → Rafraîchir les caches**.
 - **Teaser un projet non sorti** : Nouveau projet → annonce activée avec une date de révélation → épingle à la topbar → visibilité Non listé (ou Public à la révélation).
 - **Bêta réservée aux testeurs** : visibilité Liste blanche → ajoute les testeurs par compte BC/Discord/creator id → partage le lien direct.
 - **Lancement v2 coordonné** : Planifie une mise à jour avec la config v2 calée sur ton moment de sortie — la page bascule toute seule pendant que tu dors.
+
+---
+
+## 9. Laisser les gens demander à être listés
+
+Tout ce qui précède, c'est l'admin qui crée une page. Cette section va dans l'autre sens :
+quelqu'un qui n'est pas de l'équipe demande que son projet figure dans la grille.
+
+**Les deux portes sont fermées par défaut**, et une installation neuve ne propose rien. Ouvre-les
+depuis **Admin → Réglages d'hébergement → Autres projets** :
+
+| Réglage | Ce qu'il fait |
+|---|---|
+| Accepter les demandes de listing (gratuit) | Affiche un formulaire *Proposer ton projet* sur `/projects`. |
+| Accepter les demandes PAYANTES | Ajoute une option payante à côté de la gratuite — ou à sa place, si la gratuite est fermée. |
+| Prix d'une demande payante (centimes) | `2000` = 20,00, facturé une fois. |
+| Devise | Code de trois lettres en minuscules (`usd`, `eur`, `chf`) ; Stripe doit l'accepter pour ton compte. |
+| Demandes en attente max par personne | Combien de demandes non traitées un compte peut avoir. `0` = sans limite. |
+
+Si aucune n'est ouverte, le formulaire n'est pas rendu *et* `POST /showcase-requests` refuse —
+l'interrupteur n'est pas une décoration devant une route qui aurait accepté quand même. Une boîte
+à propositions sur un site dont le propriétaire ne lit pas les propositions est pire que pas de
+boîte du tout.
+
+**Payer n'achète pas un listing.** Une demande payante passe par la même revue qu'une gratuite ;
+l'argent achète une place dans la file et rien d'autre. Cette phrase est sur le formulaire
+lui-même, au-dessus du bouton, parce que quelqu'un qui s'apprête à payer mérite de le savoir
+avant de cliquer plutôt qu'après un refus. Si tu refuses une demande payante, un remboursement
+est dû et aucun code ne l'émet — c'est une conversation.
+
+### Les traiter
+
+La file se trouve en haut de **Admin → Contenu → Projets**, au-dessus des éditeurs par projet,
+filtrable par en attente / approuvées / refusées. Les demandeurs doivent avoir une **adresse
+e-mail vérifiée**, parce qu'un refus motivé ne sert à rien s'il n'atteint personne.
+
+Avant d'approuver tu peux corriger le **slug** et le **libellé court** — ceux du demandeur sont
+une proposition, et un slug est une URL qu'on ne change pas sans douleur ensuite.
+
+**Approuver crée la page non publiée et non listée.** Ça ne met rien devant personne : la page
+existe à sa propre adresse, reste hors de la grille `/projects`, et quelqu'un doit encore
+remplir la config (section 2) et décider de l'afficher (section 3). Approuver veut dire « oui,
+ça a sa place ici », pas « publie-le maintenant » — deux décisions différentes, généralement
+prises des jours différents.
+
+Un slug qui appartient déjà à un projet en ligne est refusé à l'approbation plutôt qu'écrasé en
+silence. À la soumission le conflit est traité autrement : la demande garde un slug suffixé,
+parce que deux personnes peuvent proposer le même nom et méritent chacune une réponse.
+
+### Côté demandeur
+
+Le formulaire est sur `/projects`, et leurs propres demandes y sont listées avec leur statut.
+Ils peuvent en **retirer** une tant qu'elle est en attente. Un retrait gratuit supprime la
+demande ; une demande **payante** est conservée et marquée refusée — de l'argent a changé de
+mains, et effacer la seule trace de ce à quoi il servait n'aide personne.
+
+---
