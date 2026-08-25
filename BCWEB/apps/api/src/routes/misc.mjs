@@ -650,19 +650,72 @@ export default async function miscRoutes(app) {
 
   // (Server-repo routes live in routes/repos.mjs.)
 
+  // ── SEO + Google Tag, configured at RUNTIME ────────────────────────────────
+  //
+  // The GTM container id used to be VITE_GTM_ID, baked in at BUILD time. Turning analytics
+  // on therefore meant editing an env file and rebuilding the site, which is not something
+  // you do to try a tag - so in practice it was never on. It lives in
+  // AdminSetting['seo.config'] now, like nav.config and footer.config: no schema change, no
+  // migration, and an empty/absent config behaves exactly as before.
+  //
+  // The consent gate does NOT move. The tag still loads only after the visitor accepts the
+  // Analytics category, which is the promise /legal/cookies makes; making the id editable
+  // must not quietly make it load earlier.
+  // Public. Only the fields the page needs to render - never the whole stored blob, so a
+  // field added here later cannot leak by being included in something already public.
+  app.get('/seo', async (req, reply) => {
+    const p = await db();
+    const rows = await p.adminSetting.findMany({ where: { key: { startsWith: 'seo.' } } });
+    const c = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    const str = (k) => (typeof c[k] === 'string' ? c[k] : '');
+    reply.header('Cache-Control', 'public, max-age=300');
+    // An ALLOWLIST, not the stored object. Returning everything under `seo.` would mean a key
+    // added here later becomes public the moment somebody sets it, without anyone deciding
+    // that it should be.
+    return {
+      // Omitted entirely when the toggle is off, so the page has nothing to load even if its
+      // own check were wrong one day.
+      gtmId: c['seo.gtmOn'] === true ? str('seo.gtmId') : '',
+      googleVerify: str('seo.googleVerify'),
+      bingVerify: str('seo.bingVerify'),
+      description: str('seo.description'),
+      descriptionFr: str('seo.descriptionFr'),
+      ogImage: str('seo.ogImage'),
+    };
+  });
+
   // ── SEO: dynamic sitemap (incl. Other Projects + blog posts) + robots.txt ──
   app.get('/sitemap.xml', async (req, reply) => {
     const p = await db();
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
-    const staticRoutes = ['/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact', '/legal', '/legal/about', '/legal/privacy', '/legal/terms', '/legal/cookies', '/legal/refunds', '/p/bmm', '/p/bsm', '/p/installer'];
-    const [showcase, posts] = await Promise.all([
+    // Every public page. Seven were missing — including /docs and /faq, which are the two
+    // pages most likely to answer what somebody typed into a search engine, and the ones a
+    // site gets found through. A page absent from the sitemap is not forbidden, but it is
+    // not offered either.
+    const staticRoutes = [
+      '/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact',
+      '/docs', '/faq', '/users', '/myo', '/status', '/dev', '/2fa',
+      '/legal', '/legal/about', '/legal/privacy', '/legal/terms', '/legal/cookies', '/legal/refunds',
+      '/p/bmm', '/p/bsm', '/p/installer',
+    ];
+    const [showcase, posts, docs, cat, seoRow] = await Promise.all([
       p.showcaseProject.findMany({ where: { published: true }, select: { slug: true, updatedAt: true } }),
       p.blogPost.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true } }),
+      // Docs pages are the site's actual content, and none of them were listed.
+      p.docPage.findMany({ select: { slug: true, updatedAt: true } }).catch(() => []),
+      // Published catalogue items each have a page worth finding.
+      p.catalogItem.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true }, take: 2000 }).catch(() => []),
+      p.adminSetting.findUnique({ where: { key: 'seo.config' } }).catch(() => null),
     ]);
+    // A path an admin marked noindex must not be advertised here either — a sitemap that
+    // lists a page the meta tag asks robots to skip is the site contradicting itself.
+    const noindex = new Set((seoRow?.value?.noindexPaths || []).map(String));
     const urls = [
-      ...staticRoutes.map((r) => ({ loc: site + r })),
+      ...staticRoutes.filter((r) => !noindex.has(r)).map((r) => ({ loc: site + r })),
       ...showcase.map((s) => ({ loc: `${site}/project/${s.slug}`, lastmod: s.updatedAt })),
       ...posts.map((b) => ({ loc: `${site}/blog/${b.slug}`, lastmod: b.updatedAt })),
+      ...docs.map((d) => ({ loc: `${site}/docs/${d.slug}`, lastmod: d.updatedAt })),
+      ...cat.map((c) => ({ loc: `${site}/catalog/${c.slug}`, lastmod: c.updatedAt })),
     ];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
@@ -2331,6 +2384,13 @@ export default async function miscRoutes(app) {
       const requestedGB = Number(value);
       if (diskGB != null && Number.isFinite(requestedGB) && requestedGB * (1024 ** 3) > diskGB) {
         return reply.code(400).send({ error: 'exceeds_disk', diskGB: +(diskGB / (1024 ** 3)).toFixed(1) });
+      }
+    }
+    // A mistyped Google tag id is the worst kind of wrong: the script loads, nothing reports,
+    // and there is no error anywhere to notice. Refused here rather than stored.
+    if (req.params.key === 'seo.gtmId' && value) {
+      if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
+        return reply.code(400).send({ error: 'bad_gtm_id' });
       }
     }
     await p.adminSetting.upsert({ where: { key: req.params.key }, create: { key: req.params.key, value }, update: { value } });
