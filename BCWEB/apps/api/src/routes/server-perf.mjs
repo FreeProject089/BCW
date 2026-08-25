@@ -126,13 +126,27 @@ export default async function serverPerfRoutes(app) {
     // writer sees it": when a dev machine points at the prod database, or an old container
     // runs beside a new one, two machines interleave into one series and the chart draws a
     // sawtooth alternating between two real hosts — 24-core/1TB tiles over 4-vCPU history.
-    // We chart the ANSWERING host (plus pre-column rows, host ''), and report the other
-    // writers by name instead of silently hiding that they exist: a second writer is a fact
-    // the admin should see, not a rendering problem to suppress.
+    //
+    // WHICH one is now a choice, because "the host that answered" is only right while there
+    // is one API container. The sampler runs from the sweeper, the sweeper is leader-elected
+    // with a 9.5-minute lock on a 10-minute tick — so the lock lapses before each tick and
+    // the WRITER rotates. Caddy round-robins, so the READER rotates too, independently. At
+    // API_REPLICAS=3 that filter shows whichever third of the samples matched whoever
+    // answered, a different third on every refresh, and reports your own replicas as
+    // strangers writing into your database.
+    //
+    // `all` charts every host together. It is not the default and should not be: averaging a
+    // 4-vCPU server with a 24-core dev box is the sawtooth again, wearing a different hat.
+    // It is right when the hosts ARE comparable — replicas of one deployment — and the
+    // person looking at the screen is the one who knows that.
     const me = os.hostname();
+    const wantHost = typeof req.query?.host === 'string' ? req.query.host : '';
+    const hostFilter = wantHost === 'all'
+      ? {}
+      : { host: { in: [wantHost || me, ''] } };
     const [history, probes, writers] = await Promise.all([
       p.serverMetricSample.findMany({
-        where: { createdAt: { gte: since }, host: { in: [me, ''] } },
+        where: { createdAt: { gte: since }, ...hostFilter },
         orderBy: { createdAt: 'asc' },
       }),
       cachedProbes(p),
@@ -143,6 +157,13 @@ export default async function serverPerfRoutes(app) {
     const otherWriters = writers
       .filter((w) => w.host !== me && w.host !== '')
       .map((w) => ({ host: w.host, samples: w._count._all }));
+    // Every host with samples in the window, for the selector. Sorted by volume so the one
+    // doing most of the reporting is first — which on a rotating fleet is nobody in
+    // particular, and that is itself worth seeing.
+    const hosts = writers
+      .filter((w) => w.host !== '')
+      .map((w) => ({ host: w.host, samples: w._count._all }))
+      .sort((a, b) => b.samples - a.samples);
     const { deps, ssl } = probes;
     const latest = history[history.length - 1] || null;
     // Downtime gaps: consecutive samples more than 2x the ~10-min tick apart imply
@@ -202,7 +223,7 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat(), otherWriters, host: me };
+    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

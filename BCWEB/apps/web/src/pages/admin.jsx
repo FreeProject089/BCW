@@ -1676,7 +1676,10 @@ function AdminServerPerf() {
   const toast = useToast();
   const dialog = useDialog();
   const { t } = useI18n();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/server/metrics'), []);
+  // Which host's samples the chart draws. '' = whichever container answered, which is the
+  // right default for one API and a lottery for several — hence the selector below.
+  const [pickHost, setPickHost] = useState('');
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/server/metrics${pickHost ? `?host=${encodeURIComponent(pickHost)}` : ''}`), [pickHost]);
   const alerts = useAsync(() => api.get('/admin/server/alerts'), []);
   const outages = useAsync(() => api.get('/admin/server/outages'), []);
   const depsCfg = useAsync(() => api.get('/admin/server/deps-config'), []);
@@ -1824,7 +1827,6 @@ function AdminServerPerf() {
   const downtime = data?.downtime || [];
   const cg = data?.cgroupMemory;
   const totals = data?.totals || {};
-  const otherWriters = data?.otherWriters || [];
   const labels = depsCfg.data?.labels || {};
   const allKeys = depsCfg.data?.keys || Object.keys(deps);
   const enabledCfg = depsCfg.data?.enabled || {};
@@ -1925,10 +1927,29 @@ function AdminServerPerf() {
             legible on the dark theme and is pale yellow on pale yellow in the light one —
             the same family as the white-on-white bugs. The class uses --warning, which is
             a dark orange on light and a bright amber on dark. */}
-        {otherWriters.length > 0 && <div className="text-[11px] mt-2 px-3 py-2 rounded-lg alert-warning">
-          {t('srvperf.otherWriters', 'Another instance is also recording metrics into this database:')}{' '}
-          {otherWriters.map((w) => `${w.host} (${w.samples})`).join(', ')} — {t('srvperf.otherWritersHint', 'the chart shows only this host. If that other writer is a dev machine pointed at the production database, that is worth fixing.')}
-        </div>}
+        {/* Several hosts writing is a FACT, and it has two completely different causes: API
+            replicas of this deployment (normal, and the reason the chart needs a selector),
+            or a dev machine pointed at the production database (not normal). The panel cannot
+            tell them apart — nothing in a hostname says which — so it states what it sees
+            and lets the person who knows decide. It used to assert the second cause, which
+            reads as an alarm every ten minutes on a perfectly healthy replicated install. */}
+        {(data.hosts?.length || 0) > 1 && (
+          <div className="text-[11px] mt-2 px-3 py-2 rounded-lg alert-info flex items-center gap-2 flex-wrap">
+            <span>
+              {t('srvperf.multihost', '{n} hosts are recording metrics into this database.').replace('{n}', String(data.hosts.length))}{' '}
+              {t('srvperf.multihostHint', 'Replicas of this deployment, or something else pointed at the same database — a hostname cannot say which.')}
+            </span>
+            <div className="flex-1" />
+            <Select className="!w-auto !py-1 !text-[11px]" value={pickHost} onChange={(e) => setPickHost(e.target.value)}>
+              <option value="">{t('srvperf.hostAnswering', 'This container ({h})').replace('{h}', data.host || '?')}</option>
+              {data.hosts.map((h) => <option key={h.host} value={h.host}>{h.host} ({h.samples})</option>)}
+              {/* Averaging only makes sense when the hosts are comparable. Offered, never
+                  the default: a 4-vCPU server averaged with a 24-core dev box is the
+                  sawtooth this column was added to kill, wearing a different hat. */}
+              <option value="all">{t('srvperf.hostAll', 'All hosts together')}</option>
+            </Select>
+          </div>
+        )}
       </Card>
 
       {/* Bandwidth served, broken down by what's consuming it (since the API last started). */}
