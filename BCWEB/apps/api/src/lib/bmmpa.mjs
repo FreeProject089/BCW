@@ -36,6 +36,11 @@ const REF_ACTIONS = {
   'modpack.enable': 'modpack',
   'modpack.disable': 'modpack',
   'profile.activate': 'profile',
+  // A plugin is a dependency like a launch pack: the exporter carries its manifest in
+  // `includes.plugins`, so a reviewer sees the plugin's name instead of an opaque id.
+  // `plugin.delete` is absent on purpose — nothing is carried for something removed.
+  'plugin.apply': 'plugin',
+  'plugin.compare': 'plugin',
 };
 
 /**
