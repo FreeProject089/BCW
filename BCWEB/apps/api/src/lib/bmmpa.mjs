@@ -120,8 +120,19 @@ function walkSteps(steps, out, depth = 0) {
         }
       }
     }
+    // A `call` names a BLOCK. It is a step KIND rather than an action, so REF_ACTIONS could
+    // never have found it — and BMM's runner ABORTS on a missing block, so an unresolved one
+    // is a task that stops dead rather than one that quietly does less.
+    if (String(st?.kind || '') === 'call' && st?.block) {
+      node.refKind = 'block';
+      node.refId = String(st.block);
+    }
     for (const key of ['steps', 'then', 'else', 'onError', 'default']) {
       if (Array.isArray(st?.[key])) node.children.push(...walkSteps(st[key], out, depth + 1));
+    }
+    // Parallel branches too, or every step inside one is invisible to a moderator.
+    if (Array.isArray(st?.branches)) {
+      for (const b of st.branches) if (Array.isArray(b)) node.children.push(...walkSteps(b, out, depth + 1));
     }
     if (Array.isArray(st?.cases)) {
       for (const c of st.cases) if (Array.isArray(c?.steps)) node.children.push(...walkSteps(c.steps, out, depth + 1));
@@ -173,6 +184,10 @@ export function inspectBmmpa(doc) {
   const included = {
     launchpack: new Set(asArray(doc.includes?.launchpacks).map((x) => String(x?.id ?? ''))),
     modpack: new Set(asArray(doc.includes?.modpacks).map((x) => String(x?.id ?? x?.name ?? ''))),
+    plugin: new Set(asArray(doc.includes?.plugins).map((x) => String(x?.id ?? ''))),
+    // Blocks arrive as ONE object of name → steps, not a list of rows — so the KEYS are the
+    // ids, and asArray()[0] is that object rather than an entry in a list.
+    block: new Set(Object.keys(asArray(doc.includes?.blocks)[0] || {})),
   };
   const unresolved = [];
   const resolve = (nodes) => {
@@ -199,6 +214,8 @@ export function inspectBmmpa(doc) {
     includes: {
       launchpacks: asArray(doc.includes?.launchpacks).length,
       modpacks: asArray(doc.includes?.modpacks).length,
+      plugins: asArray(doc.includes?.plugins).length,
+      blocks: Object.keys(asArray(doc.includes?.blocks)[0] || {}).length,
     },
     unresolved,
     needsReview: out.some((t) => t.perms.length > 0 || t.reaching.length > 0),
