@@ -1683,6 +1683,9 @@ function AdminServerPerf() {
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
   const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, outages: true, vitals: true }); // collapsible sections
   const [outageOpen, setOutageOpen] = useState(null);
+  // Ticks only while an outage is live. A timer that runs on a healthy page is a render a
+  // second for nothing, and this screen is heavy enough already.
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const toggleSec = (k) => setSec((s) => ({ ...s, [k]: !s[k] }));
   useEffect(() => {
     const cur = data?.net; if (!cur) return;
@@ -1761,8 +1764,30 @@ function AdminServerPerf() {
       cause: t('sp.out.server.cause', 'No sample was recorded for this period — the process was down or restarting.'),
       startedAt: d.from, endedAt: d.to, seconds: (d.minutes || 0) * 60, ongoing: false,
     }));
-    return [...dep, ...srv].sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
+    // Ongoing first, then newest. Sorting purely by start time could put a live outage
+    // below three finished ones, which is the opposite of what this list is for.
+    return [...dep, ...srv].sort((a, b) => (b.ongoing ? 1 : 0) - (a.ongoing ? 1 : 0) || new Date(b.startedAt) - new Date(a.startedAt));
   }, [outages.data, data?.downtime, t]);
+
+  const liveOutages = useMemo(() => mergedOutages.filter((o) => o.ongoing), [mergedOutages]);
+
+  /** How long an outage has ACTUALLY lasted.
+   *
+   *  `seconds` comes from the server and is correct forever for a finished outage. For a
+   *  live one it is frozen at the moment of the fetch, so it has to be measured from the
+   *  start instead — otherwise the page sits there saying "3 min" half an hour in.
+   */
+  const realSeconds = (o) => (o.ongoing ? Math.max(0, (nowTick - new Date(o.startedAt).getTime()) / 1000) : o.seconds);
+
+  // The tick, and a refetch, both only while something is down. 30s on the data so "it
+  // ended" arrives without anybody pressing anything.
+  useEffect(() => {
+    if (!liveOutages.length) return undefined;
+    const tick = setInterval(() => setNowTick(Date.now()), 1000);
+    const refetch = setInterval(() => { outages.reload?.(); }, 30_000);
+    return () => { clearInterval(tick); clearInterval(refetch); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveOutages.length]);
 
   // Availability per source over the same window the outages were fetched for. The server's
   // own row is computed from the same gaps, so the two numbers are comparable.
@@ -2112,6 +2137,48 @@ function AdminServerPerf() {
           <EmptyState icon={CheckCircle2} title={t('sp.out.none', 'No outage recorded')}
             sub={t('sp.out.nonesub2', 'Nothing has been unreachable, and the server has not stopped reporting, in the window kept. Both are measured by the same 10-minute check that raises the alerts — anything shorter than one interval is invisible to it.')} />
         ) : (<>
+          {/* Happening NOW, said before the history. Somebody who opens this page during an
+              incident is not browsing — they want what is down, since when, and whether it
+              is the box or a dependency, without reading a list to find out. */}
+          {liveOutages.length > 0 && (
+            <div className="rounded-xl border border-[var(--error)]/40 bg-[var(--error)]/5 p-3 mb-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[var(--error)]">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  {/* Motion is the fastest way to read "this is not history". Guarded by the
+                      reduced-motion preference, where the ring is simply static. */}
+                  <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--error)] opacity-60" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--error)]" />
+                </span>
+                {liveOutages.length === 1
+                  ? t('sp.out.live1', 'Something is down right now')
+                  : t('sp.out.liveN', '{n} things are down right now').replace('{n}', String(liveOutages.length))}
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {liveOutages.map((o) => (
+                  <div key={`live-${o.key}`} className="text-[13px] flex flex-wrap items-baseline gap-x-2">
+                    <b>{o.label}</b>
+                    <span className="text-[var(--muted)]">
+                      {o.source === 'server'
+                        ? t('sp.out.live.server', 'the server has stopped reporting — the process is down or restarting')
+                        : t('sp.out.live.dep', 'not answering its check')}
+                    </span>
+                    <span className="tabular-nums text-[var(--error)] font-medium">
+                      {t('sp.out.live.for', 'for {d}').replace('{d}', fmtDur(realSeconds(o)))}
+                    </span>
+                    <span className="text-[11px] text-[var(--faint)] tabular-nums">
+                      {t('sp.out.live.since', 'since {t}').replace('{t}', new Date(o.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {/* What the number can and cannot tell you. The probes run on an interval, so
+                  "0 min" during an incident means "less than one round", not "fine". */}
+              <div className="text-[11px] text-[var(--faint)] mt-2">
+                {t('sp.out.live.note', 'Checked every 10 minutes, so the start time is accurate to within one round. This panel refreshes itself while an outage lasts.')}
+              </div>
+            </div>
+          )}
+
           {/* Availability per source, including the server itself. A percentage without the
               time behind it is a number you cannot argue with, so both are shown. */}
           {uptimeRows.length > 0 && (
@@ -2140,7 +2207,7 @@ function AdminServerPerf() {
                 <div key={o.key} role="button" tabIndex={0} onClick={() => setOutageOpen(o)}
                   onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setOutageOpen(o); } }}
                   className="flex items-start gap-3 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 group cursor-pointer hover:border-[var(--ring)] transition-colors">
-                  <Badge tone={o.ongoing ? 'red' : o.seconds >= 3600 ? 'red' : 'amber'} className="shrink-0 tabular-nums mt-0.5">{fmtDur(o.seconds)}</Badge>
+                  <Badge tone={o.ongoing ? 'red' : o.seconds >= 3600 ? 'red' : 'amber'} className="shrink-0 tabular-nums mt-0.5">{fmtDur(realSeconds(o))}</Badge>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="font-medium">{o.label}</span>
@@ -2148,7 +2215,12 @@ function AdminServerPerf() {
                       <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
                         {o.source === 'server' ? t('sp.out.src.server', 'stopped reporting') : t('sp.out.src.dep', 'unreachable')}
                       </span>
-                      {o.ongoing && <span className="text-[10px] uppercase tracking-wider text-error">{t('sp.out.stillnow', 'still down')}</span>}
+                      {o.ongoing && (
+                        <span className="text-[10px] uppercase tracking-wider text-error inline-flex items-center gap-1">
+                          <span className="motion-safe:animate-pulse inline-block w-1.5 h-1.5 rounded-full bg-[var(--error)]" />
+                          {t('sp.out.stillnow', 'still down')}
+                        </span>
+                      )}
                     </div>
                     {o.cause && <div className="text-[11px] text-[var(--muted)] break-words">{o.cause}</div>}
                     <div className="text-[11px] text-[var(--faint)] tabular-nums">
@@ -2167,7 +2239,7 @@ function AdminServerPerf() {
           </div>
           {outageOpen && (
             <Modal open onClose={() => setOutageOpen(null)} width="max-w-lg" icon={AlertTriangle}
-              title={`${outageOpen.label} · ${fmtDur(outageOpen.seconds)}`}>
+              title={`${outageOpen.label} · ${fmtDur(realSeconds(outageOpen))}`}>
               <div className="space-y-3 text-[13px]">
                 {outageOpen.cause && <div className="rounded-lg bg-[var(--surface-2)] border border-[var(--line)] p-3 break-words">{outageOpen.cause}</div>}
                 <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
