@@ -223,7 +223,7 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
+    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: await getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

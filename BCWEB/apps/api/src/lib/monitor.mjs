@@ -9,6 +9,7 @@ import tls from 'node:tls';
 import { Transform } from 'node:stream';
 import { realDiskStats, capacityStatus } from '../routes/hosting.mjs';
 import { ALERT_THRESHOLDS } from './thresholds.mjs';
+import { getRedis } from './redis.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
 
@@ -158,7 +159,50 @@ function bwCategory(url = '') {
   if (url.startsWith('/media/') || url.startsWith('/api/media/')) return 'media';
   return 'other';
 }
-export function getBandwidthByCat() { return { ..._bwByCat }; }
+// What has already been pushed to the shared counter, so each flush sends only the delta.
+const _bwPushed = { repo: 0, catalog: 0, media: 0, other: 0 };
+
+/**
+ * Push this container's new bytes into the shared counter.
+ *
+ * Counting stays in-process because it happens on every response and a Redis round trip per
+ * response is a real cost on a hot path. Only the DELTA is pushed, once per sample tick, so
+ * the shared total is the fleet's and no byte is counted twice.
+ *
+ * Without Redis this does nothing and the reader falls back to the local number — which is
+ * correct for a single container, and is exactly the deployment that has no Redis.
+ */
+export async function flushBandwidth() {
+  const r = getRedis();
+  if (!r) return;
+  try {
+    for (const k of Object.keys(_bwByCat)) {
+      const delta = _bwByCat[k] - _bwPushed[k];
+      if (delta > 0) { await r.hincrby('bcw:bw', k, delta); _bwPushed[k] = _bwByCat[k]; }
+    }
+  } catch { /* a Redis hiccup must not fail a metrics tick */ }
+}
+
+/**
+ * Bytes served by category.
+ *
+ * The fleet's total when Redis is there, this container's when it is not. It used to be
+ * this container's always — which reads as "since the API last started" on one box, and as
+ * "since some container at random last started" once there are replicas, because whichever
+ * one answers the request is the one whose counter you get.
+ */
+export async function getBandwidthByCat() {
+  const r = getRedis();
+  if (r) {
+    try {
+      const h = await r.hgetall('bcw:bw');
+      if (h && Object.keys(h).length) {
+        return { repo: Number(h.repo) || 0, catalog: Number(h.catalog) || 0, media: Number(h.media) || 0, other: Number(h.other) || 0 };
+      }
+    } catch { /* fall through to the local count */ }
+  }
+  return { ..._bwByCat };
+}
 
 // ── Live per-repo upload throughput ──
 // Bytes actually SENT to clients for each hosted repo's files, timestamped, so we can
@@ -451,6 +495,8 @@ export async function recordOutages(p, deps, inGrace) {
 
 export async function sampleAndAlert(p, log) {
   try {
+    // Before the sample is written, so the number the panel reads is never a tick behind.
+    await flushBandwidth();
     const [cpuPct, deps] = await Promise.all([sampleCpuPct(), checkDependencies(p)]);
     const disk = realDiskStats();
     const diskPct = disk.totalBytes ? 100 * (1 - disk.freeBytes / disk.totalBytes) : 0;
