@@ -1149,3 +1149,49 @@ export async function poolFreeBytes(p, group) {
   ]);
   return group.poolBytes - (repoAgg._sum.storageQuotaBytes || 0n) - (catAgg._sum.storageQuotaBytes || 0n);
 }
+
+/**
+ * How long people get before hosted content is destroyed.
+ *
+ * These were three hardcoded `3 * DAY_MS` and the word "72h" written into four
+ * notification bodies. That is fine until the day somebody wants a week, at which point
+ * the number changes in the code and the sentences keep promising 72 hours — the exact
+ * shape of drift this codebase has been bitten by before.
+ *
+ * So: one place, read from admin settings, and every message that mentions a duration
+ * takes it from here instead of spelling it out.
+ *
+ *   · `lapseHours`  — term ended or cancelled. The content is suspended (read-only for its
+ *                     owner, so it can still be downloaded for backup) and destroyed at the
+ *                     end of the window unless the term is renewed or the content moved.
+ *   · `unpaidHours` — a payment that FAILED, which is usually a card that expired rather
+ *                     than a decision. Longer by default for exactly that reason.
+ *   · `warnHours`   — how far ahead of the end of a term the warning goes out.
+ *
+ * Clamped to [1, 8760]: zero means "delete without a window", which no admin means to type,
+ * and a year is already far past the point where this is a grace period.
+ */
+export async function hostingGrace(p) {
+  const KEYS = ['hosting.graceLapseHours', 'hosting.graceUnpaidHours', 'hosting.warnBeforeHours'];
+  let rows = [];
+  try { rows = await p.adminSetting.findMany({ where: { key: { in: KEYS } } }); } catch { /* defaults */ }
+  const get = (k, d) => {
+    const n = Number(rows.find((r) => r.key === k)?.value);
+    return Number.isFinite(n) && n > 0 ? Math.min(8760, Math.max(1, Math.round(n))) : d;
+  };
+  return {
+    lapseHours: get('hosting.graceLapseHours', 72),
+    unpaidHours: get('hosting.graceUnpaidHours', 168),
+    warnHours: get('hosting.warnBeforeHours', 72),
+  };
+}
+
+/** "72 hours" / "7 days" — whichever a person would actually say. */
+export function humanHours(h) {
+  const n = Math.max(1, Math.round(Number(h) || 0));
+  if (n % 24 === 0 && n >= 24) {
+    const d = n / 24;
+    return d === 1 ? '24 hours' : `${d} days`;
+  }
+  return n === 1 ? '1 hour' : `${n} hours`;
+}

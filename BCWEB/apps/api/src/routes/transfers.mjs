@@ -9,7 +9,7 @@
 // have sold, deleted or already transferred the thing; accepting on the strength of a
 // week-old check would hand over something they no longer have.
 import { z } from 'zod';
-import { db, requireRole, notify, logAudit, clientIp, poolFreeBytes } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, notify, logAudit, clientIp, poolFreeBytes } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 
 /** Send, and if it fails say so in the log instead of nowhere.
@@ -291,6 +291,82 @@ export default async function transferRoutes(app) {
       await mail(app, 'transfer-accepted', { to: from.email, subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject });
     }
     return { ok: true };
+  });
+
+  // ── Staff: who handed what to whom ─────────────────────────────────────
+  //
+  // Every ownership question staff get asked is a history question — "who owned this when
+  // it was reported", "why is this repo in that person's pool", "did anyone actually agree
+  // to this". The rows have always held the answer; nothing read them back.
+  //
+  // Read-only, deliberately. Staff moving content between accounts by hand is a different
+  // and much heavier power than watching it move, and the whole design of this file is
+  // that nothing changes hands without the recipient saying yes.
+  app.get('/admin/transfers', { preHandler: requireCap('manage_repos', 'MOD') }, async (req) => {
+    const p = await db();
+    const q = z.object({
+      status: z.enum(['all', 'pending', 'accepted', 'declined', 'cancelled']).default('all'),
+      kind: z.enum(['all', 'repo', 'catalog']).default('all'),
+      // Matches the object's name or either party's e-mail — the three things somebody
+      // arrives with. A support message never opens with a cuid.
+      search: z.string().max(120).default(''),
+      take: z.coerce.number().int().min(1).max(200).default(100),
+    }).safeParse(req.query || {});
+    const f = q.success ? q.data : { status: 'all', kind: 'all', search: '', take: 100 };
+
+    const search = f.search.trim();
+    // The search has to reach USERS, and the transfer table only holds their ids.
+    const matchedUsers = search
+      ? await p.user.findMany({ where: { email: { contains: search, mode: 'insensitive' } }, select: { id: true }, take: 50 })
+      : [];
+    const uids = matchedUsers.map((u) => u.id);
+
+    const where = {
+      ...(f.status === 'all' ? {} : { status: f.status }),
+      ...(f.kind === 'all' ? {} : { kind: f.kind }),
+      ...(search ? { OR: [
+        { targetName: { contains: search, mode: 'insensitive' } },
+        { targetId: search },
+        ...(uids.length ? [{ fromUserId: { in: uids } }, { toUserId: { in: uids } }] : []),
+      ] } : {}),
+    };
+
+    const rows = await p.ownershipTransfer.findMany({ where, orderBy: { createdAt: 'desc' }, take: f.take });
+    const ids = [...new Set(rows.flatMap((r) => [r.fromUserId, r.toUserId]))];
+    const users = ids.length
+      ? await p.user.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, email: true } })
+      : [];
+    const byId = Object.fromEntries(users.map((u) => [u.id, u]));
+    const gone = { displayName: '(deleted)', email: '' };
+
+    // Whether the object still exists, and who holds it NOW. An accepted transfer from
+    // last year is only half an answer: the question is usually "and where is it today",
+    // and the row cannot know — it may have moved twice more since.
+    const repoIds = rows.filter((r) => r.kind === 'repo').map((r) => r.targetId);
+    const itemIds = rows.filter((r) => r.kind === 'catalog').map((r) => r.targetId);
+    const [repos, items] = await Promise.all([
+      repoIds.length ? p.serverRepo.findMany({ where: { id: { in: repoIds } }, select: { id: true, ownerId: true, name: true, groupId: true } }) : [],
+      itemIds.length ? p.catalogItem.findMany({ where: { id: { in: itemIds } }, select: { id: true, ownerId: true, name: true } }) : [],
+    ]);
+    const nowOwner = Object.fromEntries([...repos, ...items].map((x) => [x.id, x]));
+
+    const counts = await p.ownershipTransfer.groupBy({ by: ['status'], _count: { _all: true } }).catch(() => []);
+    return {
+      counts: Object.fromEntries(counts.map((c) => [c.status, c._count._all])),
+      transfers: rows.map((r) => {
+        const live = nowOwner[r.targetId];
+        return {
+          id: r.id, kind: r.kind, targetId: r.targetId, targetName: r.targetName,
+          status: r.status === 'pending' && r.expiresAt < new Date() ? 'expired' : r.status,
+          message: r.message, reason: r.reason || '',
+          createdAt: r.createdAt, respondedAt: r.respondedAt, expiresAt: r.expiresAt,
+          from: byId[r.fromUserId] || gone,
+          to: byId[r.toUserId] || gone,
+          // null when the object is gone — which is itself the answer to "where is it now".
+          current: live ? { exists: true, name: live.name, ownerId: live.ownerId, isRecipient: live.ownerId === r.toUserId } : { exists: false },
+        };
+      }),
+    };
   });
 
   // ── Decline / cancel ────────────────────────────────────────────────────────

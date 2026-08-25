@@ -1,8 +1,9 @@
 // Scheduled-deletion sweeper. Catalog items and hosted repos can be marked with a
-// `deleteAt` (a 72h grace window — e.g. a user delete, or a failed hosting payment).
+// `deleteAt` (a grace window — e.g. a user delete, or a failed hosting payment; the
+// hosting ones are admin-configurable, see hostingGrace in lib.mjs).
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
-import { db, notify, catalogLog, clearAccountLockCache } from './lib.mjs';
+import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
 import { sweepAttention } from './attention.mjs';
 import { PENDING_QUEUES } from '../routes/misc.mjs';
 import { sendMail, mailShell, emailEnabled } from './mail.mjs';
@@ -160,7 +161,7 @@ async function sweepRejectedPayloads(p, log) {
   return purged;
 }
 
-// Hard-delete community catalogs whose 72h grace elapsed: their managed items' payload
+// Hard-delete community catalogs whose grace elapsed: their managed items' payload
 // bytes go, then the rows (CommunityCatalogItem cascades on catalog delete).
 async function sweepCommunityCatalogs(p, log) {
   const due = await p.communityCatalog.findMany({ where: { deleteAt: { lte: new Date() } }, include: { items: { select: { payloadKey: true } } }, take: 20 });
@@ -175,7 +176,7 @@ async function sweepCommunityCatalogs(p, log) {
 
 // The actual destruction, in one place.
 //
-// Exported because the owner can also choose to skip the 72h wait, and that path must
+// Exported because the owner can also choose to skip the wait, and that path must
 // destroy exactly what the sweeper destroys. A second copy in the route would be a second
 // thing to remember when a repo grows a new kind of attached row — and the copy that
 // forgot would leave orphaned bytes nobody is billed for and nobody can find.
@@ -200,10 +201,14 @@ async function sweepRepos(p, log) {
 // nothing else in the codebase ever looks at `currentPeriodEnd` once it's written.
 // Without this, a repo whose term lapsed just stayed ONLINE forever. This suspends
 // the repo (and every sibling repo in its pool, if grouped — they share one paid
-// term) and opens the same 72h delete-grace window used everywhere else.
+// term) and opens the delete-grace window — `hosting.graceLapseHours`, 72h by default.
 async function sweepExpiredSubscriptions(p, log) {
   const now = new Date();
-  const deleteAt = new Date(now.getTime() + 3 * DAY_MS);
+  // Read once per sweep, not per subscription: it is one row, and fifty lookups to get the
+  // same number is fifty round trips for a value that cannot change mid-loop.
+  const grace = await hostingGrace(p);
+  const window = humanHours(grace.lapseHours);
+  const deleteAt = new Date(now.getTime() + grace.lapseHours * 3600_000);
   const expired = await p.subscription.findMany({
     where: { status: 'active', currentPeriodEnd: { lte: now } },
     include: { serverRepo: { include: { group: { include: { repos: true } } } }, hostingGroup: { include: { repos: true } } },
@@ -215,11 +220,11 @@ async function sweepExpiredSubscriptions(p, log) {
       if (sub.hostingGroupId && sub.hostingGroup) {
         // Pool subscription: mark it expired, then recompute the pool's storage from its
         // REMAINING active subs. A single-sub pool drops to 0 → recompute suspends repos +
-        // hides catalogs (72h grace), exactly as before. A merged pool with other active
+        // hides catalogs (same grace), exactly as before. A merged pool with other active
         // subs just shrinks by this sub's contribution and keeps its content online.
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
         await recomputePoolBytes(p, sub.hostingGroupId);
-        await notify(p, sub.hostingGroup.ownerId, 'hosting_stopped', `A subscription on your storage pool "${sub.hostingGroup.name}" has ended — the pool shrank by its share; anything over the remaining space is suspended (72h grace) unless you renew.`);
+        await notify(p, sub.hostingGroup.ownerId, 'hosting_stopped', `A subscription on your storage pool "${sub.hostingGroup.name}" has ended — the pool shrank by its share; anything over the remaining space is suspended unless you renew. You have ${window} to renew, move it, or download it before it is deleted.`);
         handled++;
       } else if (sub.serverRepoId && sub.serverRepo) {
         const repo = sub.serverRepo;
@@ -229,7 +234,7 @@ async function sweepExpiredSubscriptions(p, log) {
           if (r.status !== 'SUSPENDED') await p.serverRepo.update({ where: { id: r.id }, data: { status: 'SUSPENDED', deleteAt } });
         }
         await p.subscription.update({ where: { id: sub.id }, data: { status: 'expired' } });
-        await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in 72h unless you renew.`);
+        await notify(p, repo.ownerId, 'hosting_stopped', `Your hosting term for "${repo.name}"${repo.groupId ? ' (and its pool)' : ''} has ended — it's suspended and will be deleted in ${window} unless you renew. It stays readable in the meantime, so you can download a copy.`);
         handled++;
       } else {
         // Orphan sub (neither anchor) — just mark expired so it stops being scanned.
@@ -327,12 +332,15 @@ async function sweepDiscordActivityCap(p, log) {
   } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: discord activity cap failed'); return 0; }
 }
 
-// Warn 72h ahead of a lapsing term (once per term — flagged in the repo's existing
+// Warn ahead of a lapsing term (once per term — flagged in the repo's existing
 // misc `settings` JSON bag so no schema change is needed). Only fires for terms
-// that haven't already lapsed/been scheduled for deletion.
+// that haven't already lapsed/been scheduled for deletion. How far ahead is an admin
+// setting: a week's notice is useless if the sweeper only looks three days out.
 async function sweepExpiryWarnings(p, log) {
   const now = new Date();
-  const soon = new Date(now.getTime() + 3 * DAY_MS);
+  const grace = await hostingGrace(p);
+  const lead = humanHours(grace.warnHours);
+  const soon = new Date(now.getTime() + grace.warnHours * 3600_000);
   // One warning per term, tracked on the subscription (works for both a repo sub and a
   // pool sub). warnedAt is cleared on renewal so the next term warns again.
   const soonExpiring = await p.subscription.findMany({
@@ -345,9 +353,9 @@ async function sweepExpiryWarnings(p, log) {
     try {
       await p.subscription.update({ where: { id: sub.id }, data: { warnedAt: now } });
       if (sub.hostingGroup) {
-        await notify(p, sub.hostingGroup.ownerId, 'hosting_expiring', `Your storage pool "${sub.hostingGroup.name}" expires in 72 hours — renew to keep its repos and catalogs online.`);
+        await notify(p, sub.hostingGroup.ownerId, 'hosting_expiring', `Your storage pool "${sub.hostingGroup.name}" expires in ${lead} — renew to keep its repos and catalogs online.`);
       } else if (sub.serverRepo) {
-        await notify(p, sub.serverRepo.ownerId, 'hosting_expiring', `"${sub.serverRepo.name}" hosting expires in 72 hours — renew to keep it online, or it will be suspended and later deleted.`);
+        await notify(p, sub.serverRepo.ownerId, 'hosting_expiring', `"${sub.serverRepo.name}" hosting expires in ${lead} — renew to keep it online, or it will be suspended and later deleted.`);
       }
       warned++;
     } catch (e) { log.warn({ id: sub.id, e: String(e?.message || e) }, 'sweeper: expiry warning failed'); }

@@ -1,4 +1,4 @@
-import { db, notify } from '../lib/lib.mjs';
+import { db, notify, hostingGrace, humanHours } from '../lib/lib.mjs';
 import { mintGiftCode } from '../lib/gift.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
@@ -472,7 +472,25 @@ export default async function stripeWebhook(app) {
         if (sub.hostingGroupId) {
           await recomputePoolBytes(p, sub.hostingGroupId);
         } else if (sub.serverRepoId) {
-          await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { status: 'SUSPENDED' } }).catch(() => {});
+          // Suspended AND scheduled, which it was not before: a cancelled solo repo was
+          // suspended for ever and never cleaned up, so the one path that ends a
+          // subscription without a lapse quietly kept its storage indefinitely. The
+          // deadline is the admin's window, and every renewal path in this file already
+          // clears `deleteAt`, so paying puts it straight back.
+          //
+          // A card that failed gets the longer window. Stripe says which it was, and the
+          // difference is real: cancelling is a decision, an expired card is an accident,
+          // and giving both the same three days punishes the accident.
+          const why = event.data.object?.cancellation_details?.reason || '';
+          const { lapseHours, unpaidHours } = await hostingGrace(p);
+          const hours = why === 'payment_failed' ? unpaidHours : lapseHours;
+          const deleteAt = new Date(Date.now() + hours * 3600e3);
+          const repo = await p.serverRepo.findUnique({ where: { id: sub.serverRepoId }, select: { name: true, ownerId: true } }).catch(() => null);
+          await p.serverRepo.update({ where: { id: sub.serverRepoId }, data: { status: 'SUSPENDED', deleteAt } }).catch(() => {});
+          if (repo?.ownerId) {
+            await notify(p, repo.ownerId, 'hosting_stopped',
+              `Hosting for "${repo.name}" has stopped. It stays readable for ${humanHours(hours)} so you can download a copy or move it — renew before then and nothing is lost.`).catch(() => {});
+          }
         }
       } else {
         // Not a repo subscription — check for a recurring catalog-file-hosting

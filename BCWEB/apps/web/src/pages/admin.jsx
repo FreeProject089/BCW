@@ -3,7 +3,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -229,6 +229,7 @@ export function Admin() {
       sub: [
         { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
+        { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
         isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
       ].filter(Boolean) },
     isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
@@ -371,6 +372,7 @@ export function Admin() {
         {s === 'faq' && <AdminFaq />}
         {s === 'repos' && <AdminRepos />}
         {s === 'pools' && <AdminPools />}
+        {s === 'transfers' && <AdminTransfers />}
         {/* Plugin/theme verification used to live here; the moderation queue now owns that
             review step, so the standalone panels were a second, diverging place to do it. */}
         {s === 'catalogs' && <AdminCatalogCreator />}
@@ -6431,6 +6433,114 @@ function AdminMail() {
           </Button>
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Who handed what to whom.
+ *
+ * Read-only, and that is the point: every ownership question support gets is a HISTORY
+ * question — who owned this when it was reported, why is this repo in that person's pool,
+ * did anybody actually agree to this. The answer has always been in the table; nothing
+ * read it back.
+ *
+ * Each row also says where the object is TODAY, because an accepted transfer from last
+ * year is only half an answer — it may have moved twice more since, and the row cannot
+ * know that.
+ */
+function AdminTransfers() {
+  const { t } = useI18n();
+  const [status, setStatus] = useState('all');
+  const [kind, setKind] = useState('all');
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
+  // Debounced: this searches USERS as well as transfers, so a keystroke is two queries.
+  useEffect(() => { const h = setTimeout(() => setQ(search.trim()), 300); return () => clearTimeout(h); }, [search]);
+  const { data, loading } = useAsync(
+    () => api.get(`/admin/transfers?status=${status}&kind=${kind}&search=${encodeURIComponent(q)}`),
+    [status, kind, q],
+  );
+  const rows = data?.transfers || [];
+  const counts = data?.counts || {};
+  const when = (d) => (d ? new Date(d).toLocaleString() : '—');
+  const tone = (st) => ({ accepted: 'green', declined: 'red', cancelled: '', expired: '' }[st] || 'amber');
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-semibold mb-1 flex items-center gap-2">
+          <ArrowRightLeft size={16} className="text-[var(--primary-2)]" /> {t('adt.title', 'Ownership transfers')}
+        </h2>
+        <p className="text-sm text-[var(--muted)]">
+          {t('adt.sub', 'Every hand-over offered on the site, whether or not it was taken. Nothing here changes anything — content only moves when the person receiving it accepts.')}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Select value={status} onChange={(e) => setStatus(e.target.value)} className="w-auto">
+          <option value="all">{t('adt.all', 'Any outcome')} ({Object.values(counts).reduce((a, b) => a + b, 0)})</option>
+          <option value="pending">{t('adt.pending', 'Waiting')} ({counts.pending || 0})</option>
+          <option value="accepted">{t('adt.accepted', 'Accepted')} ({counts.accepted || 0})</option>
+          <option value="declined">{t('adt.declined', 'Declined')} ({counts.declined || 0})</option>
+          <option value="cancelled">{t('adt.cancelled', 'Withdrawn')} ({counts.cancelled || 0})</option>
+        </Select>
+        <Select value={kind} onChange={(e) => setKind(e.target.value)} className="w-auto">
+          <option value="all">{t('adt.anykind', 'Repos and items')}</option>
+          <option value="repo">{t('adt.repos', 'Repos')}</option>
+          <option value="catalog">{t('adt.items', 'Catalog items')}</option>
+        </Select>
+        <Input
+          className="flex-1 min-w-[220px]"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t('adt.search', 'Name, id, or either party’s e-mail')}
+        />
+      </div>
+
+      {loading && !rows.length ? <Spinner /> : !rows.length ? (
+        <Card className="p-6 text-sm text-[var(--muted)]">{t('adt.none', 'Nothing matches.')}</Card>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <Card key={r.id} className="p-3.5">
+              <div className="flex items-start gap-3 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge tone={tone(r.status)}>{t(`adt.st.${r.status}`, r.status)}</Badge>
+                    <span className="text-[11px] uppercase tracking-wide text-[var(--faint)]">
+                      {r.kind === 'repo' ? t('adt.repo', 'repo') : t('adt.item', 'item')}
+                    </span>
+                    <span className="font-medium text-sm truncate">{r.targetName}</span>
+                  </div>
+                  <div className="text-[12px] text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
+                    <span>{r.from.displayName}</span>
+                    {r.from.email && <span className="text-[var(--faint)]">({r.from.email})</span>}
+                    <ArrowRight size={12} className="text-[var(--faint)]" />
+                    <span>{r.to.displayName}</span>
+                    {r.to.email && <span className="text-[var(--faint)]">({r.to.email})</span>}
+                  </div>
+                  {r.message && <p className="text-[12px] text-[var(--muted)] mt-1.5 pl-2 border-l-2 border-[var(--line)]">{r.message}</p>}
+                  {r.reason && <p className="text-[12px] text-[var(--muted)] mt-1.5 pl-2 border-l-2 border-error">{t('adt.reason', 'Declined:')} {r.reason}</p>}
+                </div>
+                <div className="text-[11px] text-[var(--faint)] text-right shrink-0 space-y-0.5">
+                  <div>{t('adt.offered', 'Offered')} {when(r.createdAt)}</div>
+                  {r.respondedAt && <div>{t('adt.answered', 'Answered')} {when(r.respondedAt)}</div>}
+                  {/* The question support is actually holding. */}
+                  <div className={r.current.exists ? '' : 'text-warning'}>
+                    {!r.current.exists
+                      ? t('adt.gone', 'The object no longer exists')
+                      : r.current.isRecipient
+                        ? t('adt.withRecipient', 'Now held by the recipient')
+                        : t('adt.movedOn', 'Now held by someone else')}
+                  </div>
+                  <div className="font-mono text-[10px] opacity-60">{r.targetId}</div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -13646,6 +13756,11 @@ const SETTINGS_GROUPS = [
     ['seo.descriptionFr', 'Site description (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
     ['seo.ogImage', 'Link preview image URL', 'The picture shown when the site is shared on Discord, X or anywhere else. 1200x630 is the size everything crops to. Empty = no image, which renders as a plain text link.', 'text'],
   ] },
+  { title: 'Hosting lifecycle', gk: 'hosting', icon: Clock, keys: [
+    ['hosting.graceLapseHours', 'Grace after a term ends (hours)', 'A hosting term that ended — or a subscription somebody cancelled — suspends the content instead of deleting it, and this is how long they have before it IS deleted. Suspended is read-only, not gone: the owner can still download a copy, move it to another account, or renew and have it come straight back. 72 = three days.', 'number'],
+    ['hosting.graceUnpaidHours', 'Grace after a FAILED payment (hours)', 'The same window, for the case where the card failed rather than the person deciding. Longer on purpose: cancelling is a decision, an expired card is an accident, and the same three days punishes the accident. It applies from the moment Stripe gives up retrying, not from the first failure. 168 = one week.', 'number'],
+    ['hosting.warnBeforeHours', 'Warn this long before a term ends (hours)', 'How far ahead the "your hosting expires soon" notice goes out. Raising the grace above this means people hear about the deadline after it is the only thing left — keep it at least as long as the notice period you want them to act on.', 'number'],
+  ] },
   { title: 'Other projects', gk: 'showcase', icon: Layers, keys: [
     ['showcase.requestsEnabled', 'Accept listing requests (free)', 'Shows a "Submit your project" form on /projects. Off, and the form is not offered and the route refuses \u2014 a submission box on a site whose owner is not reading submissions is worse than no box. Every request is still reviewed here before anything appears.', 'bool'],
     ['showcase.paidEnabled', 'Accept PAID listing requests', 'Adds a paid option beside the free one (or instead of it, if the free one is off). Paying buys a place in the review queue and NOTHING else \u2014 the answer is still yours, and a rejected paid request may owe a refund.', 'bool'],
@@ -13663,6 +13778,7 @@ const GROUP_DESC = {
   'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
   'Feature flags': 'Master on/off switches. Each one says what it does NOT turn off, which is usually the part that matters.',
   'Search & discoverability': 'Google Tag, search-engine verification, and what a search result or a shared link says. Nothing here is consent-gated except the tag, which still waits for the Analytics cookie.',
+  'Hosting lifecycle': 'How long people keep their data after the money stops. Suspended is read-only, never gone — the whole point of the window is that it can be undone by renewing, and that a backup can still be taken during it.',
   'Other projects': 'Whether people can ask for their project to be listed in the /projects grid, and whether they can pay to be looked at sooner. Both are OFF until you turn them on, and neither ever approves anything by itself.',
 };
 

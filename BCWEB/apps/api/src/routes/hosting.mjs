@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { normaliseGiftTarget } from '../lib/gift.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
-import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp, hostingGrace } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
@@ -191,7 +191,11 @@ export async function recomputePoolBytes(p, groupId) {
   if (bytes === was) return;
   await p.hostingGroup.update({ where: { id: groupId }, data: { poolBytes: bytes } });
   if (bytes === 0n && was > 0n) {
-    const deleteAt = new Date(Date.now() + 72 * 3600e3);
+    // The window is an admin setting, not 72 hard-coded hours — see hostingGrace. It is
+    // the same window everywhere content is scheduled for destruction, so a site that
+    // gives people a week gives them a week here too.
+    const { lapseHours } = await hostingGrace(p);
+    const deleteAt = new Date(Date.now() + lapseHours * 3600e3);
     await p.serverRepo.updateMany({ where: { groupId, status: { not: 'SUSPENDED' } }, data: { status: 'SUSPENDED', deleteAt } });
     await p.communityCatalog.updateMany({ where: { groupId, status: 'ACTIVE' }, data: { status: 'HIDDEN', listed: false, deleteAt } });
   } else if (bytes > 0n && was === 0n) {
