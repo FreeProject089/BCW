@@ -10633,11 +10633,17 @@ function AdminBot() {
           which put "Write an announcement" four cards away from "Where announcements go"
           and "Message every member" between two things about channels.
 
-          Masonry columns rather than a grid, still: the expanded Payments card is much
-          taller than the collapsed ones, and a grid left a hole beside it.
+          A GRID, not CSS columns — changed after you said things move when you toggle one.
+          Measured, both layouts with the real classes: expanding one card in the masonry
+          moved all five siblings and pushed four of them into the OTHER column. The grid
+          moves only the rows BELOW it, and nothing ever changes column, so the card you
+          just clicked and the one beside it stay where they were.
+
+          The cost is a gap under a tall card. That is the right trade and I had it
+          backwards: tight packing is worth nothing if you lose what you were looking at.
       */}
       <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel — what you send by hand, where it lands, and the sources that post on their own.")} />
-      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+      <div className="grid md:grid-cols-2 gap-4 items-start">
 
         {/* Where each kind of announcement lands. Empty means the general channel, which is
             what every existing install already does — so this whole card changes nothing until
@@ -10721,7 +10727,7 @@ function AdminBot() {
       </div>
 
       <SectionTitle icon={Users} title={t('db.sec.members', "Members")} sub={t('db.sec.members.sub', "Aimed at people rather than at a channel.")} />
-      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+      <div className="grid md:grid-cols-2 gap-4 items-start">
 
         {/* No enable toggle of its own: an empty panel list already means "off", and a
             second switch on top of that is a way to have panels configured, saved, and
@@ -10741,7 +10747,7 @@ function AdminBot() {
       </div>
 
       <SectionTitle icon={Sliders} title={t('db.sec.limits', "Limits")} />
-      <div className="columns-1 md:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+      <div className="grid md:grid-cols-2 gap-4 items-start">
 
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
           <div className="grid grid-cols-2 gap-2">
@@ -10977,22 +10983,51 @@ function AdminBotMembers() {
   const { t } = useI18n();
   const [q, setQ] = useState('');
   const [link, setLink] = useState(''); // '' | 'linked' | 'unlinked'
+  const [sort, setSort] = useState('recent');
+  const [role, setRole] = useState('');
+  const [roleList, setRoleList] = useState([]);
   const [rows, setRows] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [counts, setCounts] = useState(null); // { all, linked, unlinked }
   const [busy, setBusy] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const load = async (append = false, linkOverride) => {
+  // Overrides rather than reading state: a filter click has to load with the value it just
+  // set, and setState is not applied yet when the handler runs.
+  const load = async (append = false, over = {}) => {
     setBusy(true);
-    const lk = linkOverride !== undefined ? linkOverride : link;
+    const lk = over.link !== undefined ? over.link : link;
+    const so = over.sort !== undefined ? over.sort : sort;
+    const ro = over.role !== undefined ? over.role : role;
     try {
       const skip = append ? (rows?.length || 0) : 0;
-      const { members, hasMore: more, counts: c } = await api.get(`/admin/bot/members?q=${encodeURIComponent(q)}&skip=${skip}&take=30${lk ? `&link=${lk}` : ''}`);
+      const qs = `q=${encodeURIComponent(q)}&skip=${skip}&take=30&sort=${so}`
+        + (lk ? `&link=${lk}` : '') + (ro ? `&role=${encodeURIComponent(ro)}` : '');
+      const { members, hasMore: more, counts: c, roles: rl } = await api.get(`/admin/bot/members?${qs}`);
       setRows(append ? [...(rows || []), ...members] : members); setHasMore(more); if (c) setCounts(c);
+      if (Array.isArray(rl)) setRoleList(rl);
     } catch { if (!append) setRows([]); } finally { setBusy(false); }
   };
+
+  // What is on screen, as a file. The roster is the one thing here somebody reasonably
+  // wants outside the browser — for a mail-merge, or to diff against last month.
+  const exportCsv = () => {
+    const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const head = ['discordId', 'username', 'nickname', 'linkedAccount', 'joined', 'lastMessage', 'roles'];
+    const body = (rows || []).map((m) => [
+      m.discordId, m.username, m.nickname, m.linkedUser?.displayName || '',
+      m.guildJoinedAt || '', m.lastMessageAt || '', (m.roles || []).join(' '),
+    ].map(esc).join(','));
+    const blob = new Blob([[head.join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `discord-members-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  };
   useEffect(() => { load(false); /* eslint-disable-next-line */ }, []);
-  const pickLink = (v) => { setLink(v); load(false, v); };
+  const pickLink = (v) => { setLink(v); load(false, { link: v }); };
+  const pickSort = (v) => { setSort(v); load(false, { sort: v }); };
+  const pickRole = (v) => { setRole(v); load(false, { role: v }); };
   const since = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
   const tabs = [['', t('bm.all', 'All'), counts?.all], ['linked', t('bm.linked', 'Linked'), counts?.linked], ['unlinked', t('bm.notlinked', 'Not linked'), counts?.unlinked]];
   return (
@@ -11011,6 +11046,26 @@ function AdminBotMembers() {
               {label}{n != null && <span className="text-[var(--faint)]">{n}</span>}
             </button>
           ))}
+        </div>
+        {/* Sort and role sit BESIDE the search, not under it: all three narrow the same
+            list, and a control that lives somewhere else reads as doing something else. */}
+        <div className="flex flex-wrap gap-2 mb-3 items-center">
+          <Select className="!w-auto !py-2" value={sort} onChange={(e) => pickSort(e.target.value)}>
+            <option value="recent">{t('bm.sort.recent', 'Recently active')}</option>
+            <option value="quiet">{t('bm.sort.quiet', 'Quiet the longest')}</option>
+            <option value="newest">{t('bm.sort.newest', 'Newest members')}</option>
+            <option value="oldest">{t('bm.sort.oldest', 'Longest-standing')}</option>
+            <option value="name">{t('bm.sort.name', 'Name (A–Z)')}</option>
+          </Select>
+          {roleList.length > 0 && (
+            <Select className="!w-auto !py-2" value={role} onChange={(e) => pickRole(e.target.value)}>
+              <option value="">{t('bm.role.any', 'Any role')}</option>
+              {roleList.map((r) => <option key={r} value={r}>{r}</option>)}
+            </Select>
+          )}
+          <Button size="sm" variant="ghost" disabled={!rows?.length} onClick={exportCsv} title={t('bm.export.h', 'Download the rows currently listed')}>
+            <Download size={14} /> {t('bm.export', 'CSV')}
+          </Button>
         </div>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />

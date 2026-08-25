@@ -257,23 +257,48 @@ export default async function botRoutes(app) {
     const skip = Math.max(0, Number(req.query?.skip) || 0);
     const q = String(req.query?.q || '').trim();
     const link = ['linked', 'unlinked'].includes(req.query?.link) ? req.query.link : null;
+    // A closed set, mapped to an orderBy here — never a field name from the query, which
+    // would let a caller order by anything in the row.
+    const SORTS = {
+      recent: { updatedAt: 'desc' },
+      quiet: { lastMessageAt: { sort: 'asc', nulls: 'first' } },
+      newest: { guildJoinedAt: { sort: 'desc', nulls: 'last' } },
+      oldest: { guildJoinedAt: { sort: 'asc', nulls: 'last' } },
+      name: { username: 'asc' },
+    };
+    const sort = SORTS[req.query?.sort] ? req.query.sort : 'recent';
+    // One role name, matched exactly. `has` on a String[] is an index-friendly containment
+    // test; a `contains` would make "mod" match "moderator" and quietly widen the filter.
+    const role = String(req.query?.role || '').trim();
     // All linked Discord ids (bounded by account count) — lets us filter the member table
     // by link status and report the linked/unlinked totals for the header.
     const linkedIds = (await p.discordLink.findMany({ select: { discordId: true } })).map((l) => l.discordId);
     const qWhere = q ? { OR: [{ username: { contains: q, mode: 'insensitive' } }, { discordId: { contains: q } }] } : {};
-    const where = { ...qWhere, ...(link === 'linked' ? { discordId: { in: linkedIds } } : link === 'unlinked' ? { discordId: { notIn: linkedIds } } : {}) };
+    const where = {
+      ...qWhere,
+      ...(link === 'linked' ? { discordId: { in: linkedIds } } : link === 'unlinked' ? { discordId: { notIn: linkedIds } } : {}),
+      ...(role ? { roles: { has: role } } : {}),
+    };
     const [rows, total, allTotal, linkedTotal] = await Promise.all([
-      p.discordActivity.findMany({ where, orderBy: { updatedAt: 'desc' }, take, skip }),
+      p.discordActivity.findMany({ where, orderBy: SORTS[sort], take, skip }),
       p.discordActivity.count({ where }),
       p.discordActivity.count(),
       p.discordActivity.count({ where: { discordId: { in: linkedIds } } }),
     ]);
+    // Distinct role names across the roster. Capped: a server with thousands of roles
+    // should slow nothing down, and a picker past a few hundred entries is unusable anyway.
+    const roleRows = await p.discordActivity.findMany({ select: { roles: true }, take: 5000 });
+    const allRoles = [...new Set(roleRows.flatMap((r) => r.roles || []))].sort((a, b) => a.localeCompare(b)).slice(0, 200);
     const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, include: { user: { select: { id: true, displayName: true, email: true } } } });
     const linkByDiscordId = Object.fromEntries(links.map((l) => [l.discordId, l.user]));
     return {
       members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null })),
       total, hasMore: skip + rows.length < total,
       counts: { all: allTotal, linked: linkedTotal, unlinked: allTotal - linkedTotal },
+      // Every role the bot has seen, so the filter is a list to pick from rather than a
+      // name to remember. Built from the rows the scan holds, which is the only place this
+      // service knows about roles at all.
+      roles: allRoles,
     };
   });
   app.put('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
