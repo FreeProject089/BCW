@@ -2709,8 +2709,23 @@ function DbViewer() {
 // and host power control are NOT wired up — they'd require mounting the Docker
 // socket (and, for power, a privileged agent), a docker-compose change with real
 // security implications that hasn't been made.
+// The three tools behind the elevation gate. A table rather than three hardcoded buttons,
+// so the switcher and the panel below it can never disagree about what exists.
+const ADV_TOOLS = [
+  { id: 'files', k: 'asa.t.files', label: 'File manager', icon: Files },
+  { id: 'db', k: 'asa.t.db', label: 'Database', icon: Database },
+  { id: 'backups', k: 'asa.t.backups', label: 'Backups', icon: Archive },
+];
+
 function AdminServerAdvanced() {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n(); const { user: me } = useAuth();
+  // In the URL, so a refresh or a shared link lands on the tool you were in. `replace`, not
+  // push: switching between three tools should not mean three presses of Back to leave.
+  const [advSp, setAdvSp] = useSearchParams();
+  const advTool = ADV_TOOLS.some((x) => x.id === advSp.get('tool')) ? advSp.get('tool') : 'files';
+  const setAdvTool = (id) => setAdvSp((prev) => {
+    const n = new URLSearchParams(prev); n.set('tool', id); return n;
+  }, { replace: true });
   const me2fa = useAsync(() => api.get('/me/2fa'), []);
   const elevateStatus = useAsync(() => api.get('/server/elevate/status').catch(() => ({ elevated: false })), []);
   const [code, setCode] = useState('');
@@ -2749,11 +2764,36 @@ function AdminServerAdvanced() {
           <div className="mt-2"><TotpQuickFill onFill={(c) => setCode(c)} /></div>
         </Card>
       ) : (
-        <div className="space-y-4">
-          <FileManager />
-          <DbViewer />
-          <BackupManager />
-        </div>
+        <>
+          {/* One tool at a time. Measured before changing it: stacked, this panel was 2983px
+              on an 812px screen, so reaching Backups meant scrolling past the whole file
+              manager and the whole database viewer. Nothing overflowed — the page fitted the
+              width and was still a pile, which is why "not responsive" was the right word
+              for it anyway.
+
+              The same control at every size on purpose: this is a picker, and a picker that
+              becomes something else at a breakpoint is two things to learn. */}
+          <div className="flex gap-1.5 mb-4 overflow-x-auto no-scrollbar pb-1">
+            {ADV_TOOLS.map((tl) => (
+              <button key={tl.id} type="button" onClick={() => setAdvTool(tl.id)}
+                aria-current={advTool === tl.id ? 'true' : undefined}
+                className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition press ${
+                  advTool === tl.id
+                    ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]'
+                    : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+                }`}>
+                <tl.icon size={15} className={advTool === tl.id ? 'text-[var(--primary-2)]' : ''} />
+                {t(tl.k, tl.label)}
+              </button>
+            ))}
+          </div>
+          {/* Mounted one at a time rather than hidden with CSS: the database viewer and the
+              file manager both fetch on mount, and keeping all three alive would have every
+              one of them polling for a screen nobody is looking at. */}
+          {advTool === 'files' && <FileManager />}
+          {advTool === 'db' && <DbViewer />}
+          {advTool === 'backups' && <BackupManager />}
+        </>
       )}
     </div>
   );
@@ -3234,7 +3274,7 @@ function BackupManager() {
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2 text-sm"><History size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('bkp.title', 'Backup storage')}</span></div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('bkp.sub', "Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).")}</p>
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.filehist', 'File history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.filesBytes || 0)}</div></div>
         <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.dbhist', 'DB row history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.dbBytes || 0)}</div></div>
       </div>
@@ -10822,7 +10862,7 @@ function AdminBot() {
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Field label={t('db.f.maxtemp', 'Max temp channels')}><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
             <Field label={t('db.f.dbcap', 'Member DB cap (MB)')} hint={t('db.f.dbcap.h', 'Oldest inactive members are pruned once over.')}><Input type="number" value={g('limits.storageMB')} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
           </div>
@@ -10880,7 +10920,7 @@ function AdminBot() {
                 <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
                 <Input value={lb.lobbyChannelId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value } : x))} placeholder={t('db.jtc.lobbych', 'Lobby voice channel ID')} />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input value={lb.categoryId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value } : x))} placeholder={t('db.jtc.catid', 'Category id (auto if empty)')} />
                   <Input value={lb.tempCategoryName || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value } : x))} placeholder={t('db.jtc.tempcat', 'Temp category name')} />
                 </div>
