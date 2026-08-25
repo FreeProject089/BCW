@@ -5,22 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" type="image/png" href="/logo.png" />
   <title>BetterCommunity — The home for all Better* projects</title>
-  <meta name="description" content="BetterCommunity is the hub for every Better* project: browse moderated catalogs of apps, plugins, themes and BSM presets, manage your uploads, and host your Server-Repos." />
+  <!-- ONE description, used in all three places below.
+       There were three different ones — meta, og and twitter each said something slightly
+       different, and none of them mentioned hosting, Make Your Own, the docs or the status
+       page. They do not fall back to one another, so three of them is three chances to be
+       out of date rather than one. Around 155 characters, which is what gets shown. -->
+  <meta name="description" content="The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own." />
   <meta name="theme-color" content="#f97316" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://bettercommunity.ch/" />
-  <!-- Open Graph -->
+  <!-- Open Graph — what Discord, Slack, Telegram and Facebook read.
+       This is the HOME card only. Every other page is unfurled server-side by /og, which
+       reads the page's own title, description and cover — crawlers do not run JavaScript,
+       so a card cannot be built in the app. -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="BetterCommunity" />
   <meta property="og:title" content="BetterCommunity — The home for all Better* projects" />
-  <meta property="og:description" content="The central hub for Better* projects, featuring community resources, plugins, presets, server repositories, and tools for creators and developers." />
+  <meta property="og:description" content="The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own." />
   <meta property="og:image" content="https://bettercommunity.ch/logo.png" />
+  <meta property="og:image:alt" content="BetterCommunity" />
   <meta property="og:url" content="https://bettercommunity.ch/" />
-  <!-- Twitter -->
+  <meta property="og:locale" content="en_GB" />
+  <meta property="og:locale:alternate" content="fr_FR" />
+  <!-- Twitter / X.
+       `summary`, deliberately, and not `summary_large_image`: the image here is the LOGO,
+       and a logo in a large card is a small mark floating in a wide grey box. Pages with a
+       real cover get the large shape from /og, which picks the card from the picture. -->
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="BetterCommunity — The home for all Better* projects" />
-    <meta name="twitter:description" content="Moderated catalogs, community presets, accounts and hosted Server-Repos for the Better* ecosystem." />
+  <meta name="twitter:description" content="The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own." />
   <meta name="twitter:image" content="https://bettercommunity.ch/logo.png" />
+  <meta name="twitter:image:alt" content="BetterCommunity" />
   <!-- Organization structured data -->
   <script type="application/ld+json">
     {"@context":"https://schema.org","@type":"Organization","name":"BetterCommunity","url":"https://bettercommunity.ch/","logo":"https://bettercommunity.ch/logo.png","sameAs":["https://github.com/FreeProject089","https://discord.com/invite/CTaaEF9R75"]}

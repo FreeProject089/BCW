@@ -5,7 +5,7 @@
 // its name to an unauthenticated crawler.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { metaForPath, renderOgHtml } from '../src/routes/og.mjs';
+import { metaForPath, metaForRequest, renderOgHtml } from '../src/routes/og.mjs';
 import { track, cleanupFixtures } from './helpers/fixtures.mjs';
 
 const FALLBACK_TITLE = 'BetterCommunity — The home for all Better* projects';
@@ -69,4 +69,61 @@ test('listed repo unfurls; unlisted repo falls back', { skip }, async () => {
   const mUnlisted = await metaForPath(`/r/${unlisted.id}`);
   assert.equal(mUnlisted.title, FALLBACK_TITLE);
   assert.ok(!mUnlisted.title.includes('PrivRepo'), 'unlisted repo name must not leak');
+});
+
+// ── the pages added to the static table, and the card shape ─────────────────
+//
+// Half the site had no entry, and a page with no entry unfurls as the generic site card —
+// so sharing /docs or /myo said nothing about what was shared. These are the ones somebody
+// is most likely to paste.
+test('the pages people actually share have their own card', async () => {
+  const cases = [
+    ['/docs', /^Docs —/], ['/dev', /^Developers —/], ['/myo', /^Make Your Own —/],
+    ['/status', /^Status —/], ['/users', /^Members —/], ['/2fa', /^Authenticator —/],
+    ['/legal/privacy', /^Privacy —/], ['/legal/terms', /^Terms —/],
+    ['/legal/refunds', /^Payments & refunds —/], ['/legal/about', /^About —/],
+  ];
+  for (const [path, re] of cases) {
+    const m = await metaForPath(path);
+    assert.match(m.title, re, path);
+    assert.notEqual(m.title, FALLBACK_TITLE, `${path} must not fall back`);
+    // A description that repeats the title wastes the only two lines a preview gets.
+    assert.ok(m.description.length > 30, `${path} needs a real description`);
+    assert.ok(!m.description.startsWith(m.title), `${path} description must not restate the title`);
+  }
+});
+
+test('a trailing slash matches the same page', async () => {
+  assert.equal((await metaForPath('/docs/')).title, (await metaForPath('/docs')).title);
+});
+
+test('the card shape follows the picture, not a fixed choice', () => {
+  // A logo in a large card is a small mark floating in a wide grey box; a real cover is
+  // what the large shape is for.
+  const cover = renderOgHtml({ title: 'T', description: 'd', image: 'https://x.example/c.png', url: 'https://u/', type: 'article' });
+  const logo = renderOgHtml({ title: 'T', description: 'd', image: 'https://bettercommunity.ch/logo.png', url: 'https://u/', type: 'website' });
+  assert.match(cover, /twitter:card" content="summary_large_image"/);
+  assert.match(logo, /twitter:card" content="summary"/);
+  // Dimensions belong to the large card only — declaring 1200x630 for a logo tells the
+  // crawler to expect a shape it is not going to get.
+  assert.match(cover, /og:image:width" content="1200"/);
+  assert.ok(!/og:image:width/.test(logo), 'a summary card must not claim large-card dimensions');
+});
+
+test('the locale follows the language the link was shared in', () => {
+  assert.match(renderOgHtml({ title: 'T', description: 'd', image: 'i', url: 'u', type: 'website' }, 'fr'), /og:locale" content="fr_FR"/);
+  assert.match(renderOgHtml({ title: 'T', description: 'd', image: 'i', url: 'u', type: 'website' }, 'en'), /og:locale" content="en_GB"/);
+});
+
+test('every card names its image for a screen reader', () => {
+  const html = renderOgHtml({ title: 'My Page', description: 'd', image: 'https://x/c.png', url: 'u', type: 'website' });
+  assert.match(html, /og:image:alt" content="My Page"/);
+  assert.match(html, /twitter:image:alt" content="My Page"/);
+});
+
+test('an unreachable database cannot take the unfurl down', async () => {
+  // pageOverride reads AdminSetting. Without a DB it must fall through to the derived
+  // card rather than throwing — a crawler getting a 500 is a link that unfurls as nothing.
+  const m = await metaForRequest('/docs', 'en');
+  assert.match(m.title, /^Docs —/);
 });

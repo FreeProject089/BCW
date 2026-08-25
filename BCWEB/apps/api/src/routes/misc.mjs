@@ -2388,6 +2388,25 @@ export default async function miscRoutes(app) {
     }
     // A mistyped Google tag id is the worst kind of wrong: the script loads, nothing reports,
     // and there is no error anywhere to notice. Refused here rather than stored.
+    // Per-page unfurl overrides. Validated because this one is a LIST an admin builds by
+    // hand, and a bad row would only show up as a shared link that unfurls wrong — seen by
+    // everyone except the person who typed it.
+    if (req.params.key === 'seo.pages') {
+      const pageSchema = z.array(z.object({
+        // Exact internal paths only. An absolute URL here would let one site set another
+        // site's card, and a wildcard would silently cover pages nobody listed.
+        path: z.string().trim().min(1).max(200).refine((v) => v.startsWith('/'), 'internal paths only'),
+        title: z.string().trim().max(160).optional().default(''),
+        titleFr: z.string().trim().max(160).optional().default(''),
+        description: z.string().trim().max(320).optional().default(''),
+        descriptionFr: z.string().trim().max(320).optional().default(''),
+        image: z.string().trim().max(400).optional().default(''),
+      })).max(200);
+      const parsed = pageSchema.safeParse(value);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
+      await p.adminSetting.upsert({ where: { key: 'seo.pages' }, create: { key: 'seo.pages', value: parsed.data }, update: { value: parsed.data } });
+      return { ok: true };
+    }
     if (req.params.key === 'seo.gtmId' && value) {
       if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
         return reply.code(400).send({ error: 'bad_gtm_id' });

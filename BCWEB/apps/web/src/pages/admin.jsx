@@ -13377,6 +13377,94 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   );
 }
 
+/**
+ * Per-page link previews.
+ *
+ * What Discord, X, Slack and the rest show when somebody pastes a link. Those crawlers do
+ * NOT run JavaScript — they read the raw HTML and leave — so this cannot be done in the
+ * page. It is served by the unfurl prerender the edge already routes bot traffic to, which
+ * is why an override typed here changes a shared link and a description typed in the SEO
+ * rows above does not.
+ *
+ * Every page already has a sensible card derived from what it is (a blog post uses its own
+ * title and cover). This is for the ones worth saying something better about, so an empty
+ * field keeps whatever was derived rather than blanking it.
+ */
+function SeoPagesCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get('/admin/settings')
+      .then((d) => setRows(Array.isArray(d?.settings?.['seo.pages']) ? d.settings['seo.pages'] : []))
+      .catch(() => setRows([]));
+  }, []);
+
+  const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+  const badPath = (v) => !!v && !String(v).startsWith('/');
+  const save = async () => {
+    // Refused here as well as on the server, because the server answers with a field path
+    // and an index — accurate, and not what somebody staring at a form needs to be told.
+    const bad = rows.find((r) => badPath(r.path) || !String(r.path || '').trim());
+    if (bad) return toast.error(t('ogp.badpath', 'Every row needs a path starting with / — for example /hosting.'));
+    setBusy(true);
+    try {
+      await api.put('/admin/settings/seo.pages', { value: rows });
+      toast.success(t('hs.saved', 'Saved.'));
+    } catch { toast.error(t('hs.savefail', 'Save failed.')); }
+    finally { setBusy(false); }
+  };
+
+  if (!rows) return <Card className="p-4 mb-4"><Spinner /></Card>;
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2">
+          <Share2 size={15} className="text-[var(--primary-2)]" /> {t('ogp.title', 'Link previews, per page')}
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setRows([...rows, { path: '', title: '', titleFr: '', description: '', descriptionFr: '', image: '' }])}>
+          <Plus size={13} /> {t('ogp.add', 'Add a page')}
+        </Button>
+        <Button size="sm" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('hs.save', 'Save')}</Button>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">
+        {t('ogp.sub', 'What Discord, X and Slack show when a link is pasted. Every page already has a card built from what it is — a blog post uses its own title and cover — so leave a field empty to keep that. Exact paths only: no wildcards, so nothing is covered that you did not list.')}
+      </p>
+      {rows.length === 0
+        ? <div className="text-xs text-[var(--faint)]">{t('ogp.none', 'No overrides — every page uses its built-in card.')}</div>
+        : <div className="space-y-3">
+          {rows.map((r, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Input className={`!w-56 !text-xs font-mono ${badPath(r.path) ? '!border-error-border' : ''}`}
+                  value={r.path || ''} onChange={(e) => set(i, { path: e.target.value })} placeholder="/hosting" />
+                <div className="flex-1" />
+                <button onClick={() => setRows(rows.filter((_, n) => n !== i))}
+                  className="p-1 rounded text-error hover:bg-error-bg"><Trash2 size={13} /></button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <Input className="!text-xs" value={r.title || ''} onChange={(e) => set(i, { title: e.target.value })} placeholder={t('ogp.titleEn', 'Title (EN)')} />
+                <Input className="!text-xs" value={r.titleFr || ''} onChange={(e) => set(i, { titleFr: e.target.value })} placeholder={t('ogp.titleFr', 'Title (FR)')} />
+                <Input className="!text-xs" value={r.description || ''} onChange={(e) => set(i, { description: e.target.value })} placeholder={t('ogp.descEn', 'Description (EN)')} />
+                <Input className="!text-xs" value={r.descriptionFr || ''} onChange={(e) => set(i, { descriptionFr: e.target.value })} placeholder={t('ogp.descFr', 'Description (FR)')} />
+                <Input className="sm:col-span-2 !text-xs font-mono" value={r.image || ''} onChange={(e) => set(i, { image: e.target.value })} placeholder={t('ogp.img', 'Image URL — absolute, 1200×630')} />
+              </div>
+              {/* Two lines are all a preview gets, and going over does not wrap: it is cut,
+                  usually mid-word. Counted while typing rather than discovered on Discord. */}
+              <div className="text-[10px] text-[var(--faint)] mt-1.5">
+                {(r.description || '').length > 160 || (r.descriptionFr || '').length > 160
+                  ? <span className="text-warning">{t('ogp.long', 'Over ~160 characters is cut off in most previews.')}</span>
+                  : t('ogp.count', '{n} / ~160 characters').replace('{n}', String(Math.max((r.description || '').length, (r.descriptionFr || '').length)))}
+              </div>
+            </div>
+          ))}
+        </div>}
+    </Card>
+  );
+}
+
 // Hosting settings, grouped by what they actually govern (capacity ceilings vs.
 // pricing knobs vs. feature flags) instead of one flat undifferentiated grid —
 // each field gets a real description of its effect, not just a bare label.
@@ -13460,6 +13548,12 @@ function TelemetryConfigCard() {
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data?.config) setF({ storageGB: String(Math.round((data.config.storageLimitMb / 1024) * 100) / 100), retentionDays: String(data.config.retentionDays), deleteDelayH: String(data.config.deleteDelayH) }); }, [data]);
+  // ABOVE the three guards below, for the reason spelled out on the access-policy card:
+  // useUndoableSave calls useToast() and useI18n(), so leaving it underneath meant a
+  // different hook count on the loading render than on the loaded one — React error #310,
+  // and this panel has THREE early returns, one of which fires whenever the telemetry
+  // service is unreachable.
+  const undoSave = useUndoableSave(reload);
   if (loading) return null;
   if (data && data.available === false) {
     const notcfg = data.error === 'telemetry_not_configured';
@@ -13474,7 +13568,6 @@ function TelemetryConfigCard() {
   const usedGB = (data.used_bytes || 0) / (1024 ** 3);
   const limitGB = Number(f.storageGB) || 0;
   const pct = limitGB > 0 ? Math.min(100, (usedGB / limitGB) * 100) : 0;
-  const undoSave = useUndoableSave(reload);
   const save = () => {
     setBusy(true);
     undoSave(() => api.put('/admin/telemetry/config', { storageLimitMb: Math.round(Number(f.storageGB) * 1024), retentionDays: Number(f.retentionDays), deleteDelayH: Number(f.deleteDelayH) }),
@@ -16008,6 +16101,9 @@ function AdminSettings() {
           </div>
         ))}
       </div>
+      {/* Not a row in the table above: this one is a LIST an admin builds, not a single
+          value, so it cannot be a key/label/type entry like the rest. */}
+      <SeoPagesCard />
     </div>
   );
 }
