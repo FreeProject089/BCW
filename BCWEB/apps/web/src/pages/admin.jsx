@@ -9903,10 +9903,12 @@ function MultiChannelInput({ value, onChange, placeholder }) {
 function HomePageEditor() {
   const { t, lang } = useI18n();
   const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/site/home'), []);
+  const { data, err, loading, reload } = useAsync(() => api.get('/admin/site/home'), []);
   const [form, setForm] = useState(null);
   const [sections, setSections] = useState(null);
   const [q, setQ] = useState('');
+  const [filter, setFilter] = useState('all');   // all | changed | off
+  const [openGroups, setOpenGroups] = useState({});
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); } }, [data]);
   // ABOVE the early return below. Placed after it this was a conditional hook: React counted
@@ -9916,15 +9918,69 @@ function HomePageEditor() {
   // The shipped English is the list of what exists, and also the placeholder — so an empty
   // box visibly shows the wording it will fall back to.
   const shipped = useMemo(() => shippedText('home.'), []);
-  if (loading || !form || !sections) return <Loading />;
+  if (loading) return <Loading />;
+  // A FAILED load used to sit on "Loading…" forever: useAsync clears `loading` and sets
+  // `err`, but the guard only asked whether the form had arrived, so a 404 or a 500 rendered
+  // a spinner with nothing behind it and no way to tell that anything had gone wrong.
+  // Found while checking this screen against an API that did not have the route yet.
+  if (err || !form || !sections) {
+    return (
+      <EmptyState icon={AlertTriangle} title={t('hp.failed', 'Could not load the home page text')}
+        sub={t('hp.failed.s', 'The page settings did not come back. Nothing has been changed — try again, and check the API is reachable.')}>
+        <Button onClick={() => reload()}><RefreshCw size={15} /> {t('common.retry', 'Try again')}</Button>
+      </EmptyState>
+    );
+  }
 
-  const keys = Object.keys(shipped).sort();
-  const shown = q.trim()
-    ? keys.filter((k) => k.includes(q.toLowerCase())
-        || (shipped[k].en + ' ' + shipped[k].fr).toLowerCase().includes(q.toLowerCase()))
-    : keys;
+  // Which section a line belongs to, from the prefix the keys already carry. `home.step2.d`
+  // is the second card of "How it works"; nothing but this table knows that, and without it
+  // the editor made you know it.
+  const GROUPS = [
+    { id: '__always', label: t('hp.g.always', 'Always shown'), always: true, prefixes: ['badge', 'brand', 'hero1', 'hero2', 'sub', 'cta', 'cta2', 'stat', 'pipe', 'k'] },
+    { id: 'poll', label: t('hp.s.poll', 'Pinned poll'), prefixes: ['poll'] },
+    { id: 'products', label: t('hp.s.products', 'Products grid'), prefixes: ['feat'] },
+    { id: 'why', label: t('hp.s.why', 'Why BetterCommunity'), prefixes: ['why'] },
+    { id: 'steps', label: t('hp.s.steps', 'How it works'), prefixes: ['steps', 'step', 'step1', 'step2', 'step3'] },
+    { id: 'dev', label: t('hp.s.dev', 'For developers'), prefixes: ['dev'] },
+    { id: 'myo', label: t('hp.s.myo', 'Make Your Own'), prefixes: ['myo', 'kofi'] },
+    { id: 'reviews', label: t('hp.s.reviews', 'Reviews'), prefixes: ['reviews'] },
+    { id: 'news', label: t('hp.s.news', 'Latest posts'), prefixes: ['news', 'morePosts'] },
+  ];
+
+  const isChanged = (k) => !!((form[k]?.en || '').trim() || (form[k]?.fr || '').trim());
+  const changed = Object.keys(shipped).filter(isChanged).length;
   const setText = (k, l, v) => setForm((f) => ({ ...f, [k]: { ...(f[k] || {}), [l]: v } }));
-  const changed = Object.entries(form).filter(([, v]) => (v?.en || '').trim() || (v?.fr || '').trim()).length;
+  // One button instead of clearing two boxes. The row is REMOVED rather than set to empty
+  // strings, so what is saved says "not overridden" instead of "overridden with nothing".
+  const resetLine = (k) => setForm((f) => { const n = { ...f }; delete n[k]; return n; });
+
+  const needle = q.trim().toLowerCase();
+  const matches = (k) => {
+    if (needle && !(k.toLowerCase().includes(needle)
+      || `${shipped[k].en} ${shipped[k].fr}`.toLowerCase().includes(needle))) return false;
+    if (filter === 'changed') return isChanged(k);
+    return true;
+  };
+
+  // Assigned by prefix, and anything that matches nothing lands in the always-on group
+  // rather than vanishing — a key added tomorrow must still be editable today.
+  const allKeys = Object.keys(shipped).sort();
+  const claimed = new Set();
+  const rowsFor = (g) => {
+    const own = allKeys.filter((k) => {
+      const seg = k.split('.')[1];
+      return g.prefixes.includes(seg);
+    });
+    own.forEach((k) => claimed.add(k));
+    return own;
+  };
+  const grouped = GROUPS.map((g) => ({ ...g, keys: rowsFor(g) }));
+  const orphans = allKeys.filter((k) => !claimed.has(k));
+  if (orphans.length) grouped[0].keys = [...grouped[0].keys, ...orphans];
+
+  const visible = grouped
+    .map((g) => ({ ...g, keys: g.keys.filter(matches) }))
+    .filter((g) => g.keys.length && (filter !== 'off' || (!g.always && sections[g.id] === false)));
 
   const save = async () => {
     setBusy(true);
@@ -9936,61 +9992,112 @@ function HomePageEditor() {
     finally { setBusy(false); }
   };
 
-  const SECTIONS = [
-    ['poll', t('hp.s.poll', 'Pinned poll')],
-    ['products', t('hp.s.products', 'Products grid')],
-    ['why', t('hp.s.why', 'Why BetterCommunity')],
-    ['steps', t('hp.s.steps', 'How it works')],
-    ['dev', t('hp.s.dev', 'For developers')],
-    ['myo', t('hp.s.myo', 'Make Your Own')],
-    ['reviews', t('hp.s.reviews', 'Reviews')],
-    ['news', t('hp.s.news', 'Latest posts')],
+  const FILTERS = [
+    ['all', t('hp.f.all', 'Everything'), Object.keys(shipped).length],
+    ['changed', t('hp.f.changed', 'Rewritten'), changed],
+    ['off', t('hp.f.off', 'Switched off'), grouped.filter((g) => !g.always && sections[g.id] === false).length],
   ];
 
   return (
-    <div className="space-y-5 max-w-4xl">
-      <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><LayoutGrid size={16} /> {t('hp.title', 'Home page')}</h2>
-        <p className="text-xs text-[var(--muted)]">{t('hp.desc', 'Switch sections off, and rewrite any line on the page. An empty box restores the wording the site ships with.')}</p>
+    <div className="space-y-4 max-w-4xl pb-24">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="font-semibold mb-1 flex items-center gap-2"><LayoutGrid size={16} /> {t('hp.title', 'Home page')}</h2>
+          <p className="text-xs text-[var(--muted)] max-w-xl">{t('hp.desc2', 'Every line of the public home page, grouped by the section it appears in. Switch a section off, or rewrite any line — an empty box keeps the wording the site ships with.')}</p>
+        </div>
+        {/* An editor for a public page with no way to go and look at it asks you to keep
+            the result in your head. */}
+        <a href="/" target="_blank" rel="noreferrer"
+          className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition shrink-0">
+          <ExternalLink size={13} /> {t('hp.view', 'View the page')}
+        </a>
       </div>
 
-      <Card className="p-4">
-        <div className="text-sm font-medium mb-2">{t('hp.sections', 'Sections')}</div>
-        {/* The hero and the closing call-to-action have no switch on purpose: a landing
-            page with no headline is not a configuration, it is a broken page. */}
-        <p className="text-[11px] text-[var(--faint)] mb-2.5">{t('hp.sections.h', 'The headline and the closing call-to-action are always shown.')}</p>
-        <div className="grid sm:grid-cols-2 gap-1.5">
-          {SECTIONS.map(([k, label]) => (
-            <label key={k} className="flex items-center gap-2 text-sm py-1 cursor-pointer">
-              <input type="checkbox" checked={sections[k] !== false} onChange={(e) => setSections((x) => ({ ...x, [k]: e.target.checked }))} />
-              {label}
-            </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {FILTERS.map(([v, label, n]) => (
+            <button key={v} type="button" onClick={() => setFilter(v)}
+              aria-current={filter === v ? 'true' : undefined}
+              className={`px-3 py-1.5 text-xs flex items-center gap-1.5 transition ${filter === v ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              {label} <span className="text-[var(--faint)] tabular-nums">{n}</span>
+            </button>
           ))}
         </div>
-      </Card>
-
-      <Card className="p-4">
-        <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-          <div className="text-sm font-medium">{t('hp.copy', 'Wording')}
-            <span className="ml-2 text-[11px] font-normal text-[var(--faint)]">{t('hp.copy.n', '{n} rewritten').replace('{n}', String(changed))}</span>
-          </div>
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} className="w-56" />
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+          <Input className="!pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} />
         </div>
-        <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
-          {shown.map((k) => (
-            <div key={k} className="grid sm:grid-cols-2 gap-1.5 pb-2 border-b border-[var(--line)] last:border-0">
-              <div className="sm:col-span-2 text-[11px] text-[var(--faint)] font-mono truncate" title={k}>{k}</div>
-              <Input value={form[k]?.en || ''} onChange={(e) => setText(k, 'en', e.target.value)} placeholder={shipped[k].en || k} />
-              <Input value={form[k]?.fr || ''} onChange={(e) => setText(k, 'fr', e.target.value)} placeholder={shipped[k].fr} />
+      </div>
+
+      {!visible.length && (
+        <Card className="p-6 text-center text-sm text-[var(--muted)]">{t('hp.nomatch', 'No line matches that.')}</Card>
+      )}
+
+      {visible.map((g) => {
+        const off = !g.always && sections[g.id] === false;
+        // Open by default while searching or filtering: a fold that hides the thing you just
+        // searched for is a search that looks broken.
+        const open = openGroups[g.id] ?? (!!needle || filter !== 'all' || !off);
+        const nChanged = g.keys.filter(isChanged).length;
+        return (
+          <Card key={g.id} className={`p-0 overflow-hidden ${off ? 'opacity-70' : ''}`}>
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--line)]">
+              <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.id]: !open }))}
+                aria-expanded={open} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                <ChevronDown size={15} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
+                <span className="font-medium text-sm truncate">{g.label}</span>
+                <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
+                {nChanged > 0 && <Badge tone="green" className="shrink-0">{t('hp.g.rewritten', '{n} rewritten').replace('{n}', String(nChanged))}</Badge>}
+                {off && <Badge className="shrink-0">{t('hp.g.hidden', 'hidden')}</Badge>}
+              </button>
+              {/* The section switch lives ON its group. It used to be in a separate card, so
+                  turning a section off and finding its wording were two different places. */}
+              {!g.always ? (
+                <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer shrink-0">
+                  <input type="checkbox" checked={sections[g.id] !== false}
+                    onChange={(e) => setSections((x) => ({ ...x, [g.id]: e.target.checked }))} />
+                  {t('hp.g.show', 'Show')}
+                </label>
+              ) : (
+                /* No switch on purpose: a landing page with no headline is not a
+                   configuration, it is a broken page. */
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{t('hp.g.always.h', 'always on')}</span>
+              )}
             </div>
-          ))}
-          {!shown.length && <div className="text-xs text-[var(--muted)]">{t('hp.nomatch', 'No line matches that.')}</div>}
-        </div>
-      </Card>
 
-      <div className="flex items-center gap-3">
+            {open && (
+              <div className="p-3 space-y-2.5">
+                {g.keys.map((k) => (
+                  <div key={k} className="grid sm:grid-cols-2 gap-1.5 pb-2.5 border-b border-[var(--line)] last:border-0 last:pb-0">
+                    <div className="sm:col-span-2 flex items-center gap-2">
+                      <span className="text-[11px] text-[var(--faint)] font-mono truncate" title={k}>{k}</span>
+                      {isChanged(k) && (
+                        <button type="button" onClick={() => resetLine(k)}
+                          className="text-[11px] text-[var(--muted)] hover:text-[var(--error)] inline-flex items-center gap-1 shrink-0 ml-auto"
+                          title={t('hp.reset.h', 'Put this line back to the wording the site ships with')}>
+                          <RotateCcw size={11} /> {t('hp.reset', 'Reset')}
+                        </button>
+                      )}
+                    </div>
+                    <Input value={form[k]?.en || ''} onChange={(e) => setText(k, 'en', e.target.value)} placeholder={shipped[k].en || k} />
+                    <Input value={form[k]?.fr || ''} onChange={(e) => setText(k, 'fr', e.target.value)} placeholder={shipped[k].fr} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        );
+      })}
+
+      {/* Sticky: Save used to sit under a 60vh scroller, and it is the one control you need
+          from wherever you happen to be on the page. */}
+      <div className="sticky bottom-0 -mx-1 px-1 pt-3 pb-3 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)] flex items-center gap-3 flex-wrap">
         <Button variant="primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : <><Save size={15} /> {t('common.save', 'Save')}</>}</Button>
-        <span className="text-[11px] text-[var(--faint)]">{lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.')}</span>
+        <span className="text-[11px] text-[var(--faint)]">
+          {changed > 0
+            ? t('hp.pending', '{n} line(s) rewritten').replace('{n}', String(changed))
+            : (lang === 'fr' ? t('hp.note.fr', 'Le champ vide affiche le texte livré.') : t('hp.note', 'An empty box shows the shipped wording.'))}
+        </span>
       </div>
     </div>
   );
