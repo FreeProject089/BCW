@@ -11797,7 +11797,22 @@ function GeoPanel({ countries, regions, cities, days, hours }) {
               <div key={`${r.label}-${i}`} className="flex items-center gap-3 text-sm">
                 <span className="text-[var(--muted)] w-40 shrink-0 flex items-center gap-2 truncate">
                   <Flag cc={r.country || r.label} />
-                  <span className="truncate">{tab === 'countries' ? countryName(r.label) : r.label}{tab === 'cities' && r.region ? <span className="text-[var(--faint)]"> · {r.region}</span> : null}</span>
+                  {/* A region arrives as an ISO 3166-2 subdivision CODE — 'AG', 'IDF', 'QC',
+                      'MN' — because that is what geoip-lite returns. On its own that is
+                      cryptic and worse, ambiguous: 'MN' is Minnesota here and Mongolia's
+                      country code elsewhere, and a reader cannot tell which they are looking
+                      at. There is no Intl API for subdivisions and a 5,000-row table is not
+                      worth carrying, so the code is shown as a code and the COUNTRY is named
+                      beside it. Cities already arrive as names and are left alone. */}
+                  <span className="truncate">
+                    {tab === 'countries' ? countryName(r.label)
+                      : tab === 'regions'
+                        ? <>
+                            <span className="font-mono">{r.label}</span>
+                            {r.country ? <span className="text-[var(--faint)]"> · {countryName(r.country)}</span> : null}
+                          </>
+                        : <>{r.label}{r.region ? <span className="text-[var(--faint)]"> · {r.region}, {countryName(r.country)}</span> : null}</>}
+                  </span>
                 </span>
                 <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(r.count / max) * 100}%` }} /></div>
                 <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>

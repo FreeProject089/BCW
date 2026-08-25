@@ -52,19 +52,26 @@ function isPrivateIp(ip) {
 // not visible (a request that reaches the API inside the Docker network, a proxy that
 // forgot X-Forwarded-For). So the gate is NODE_ENV, checked here rather than trusted to an
 // operator remembering to set ANALYTICS_DEV_GEO=0.
+// `region` is the ISO 3166-2 subdivision CODE, matching what geoip-lite returns in
+// production ('AG', 'IDF', 'QC', 'ENG', 'MN' — verified against real IPs). It used to hold
+// NAMES here, so the same database column carried two vocabularies depending on which
+// machine wrote the row: a dev database listing "Vaud" and production listing "VD", grouped
+// separately and rendered differently, with nothing to say why.
+//
+// `city` stays a NAME, because that is also what geoip-lite returns for it.
 const DEV_CITIES = [
-  { country: 'US', region: 'California', city: 'San Francisco', lat: 37.77, lng: -122.42 },
-  { country: 'US', region: 'New York', city: 'New York', lat: 40.71, lng: -74.01 },
-  { country: 'GB', region: 'England', city: 'London', lat: 51.51, lng: -0.13 },
-  { country: 'FR', region: 'Île-de-France', city: 'Paris', lat: 48.86, lng: 2.35 },
-  { country: 'DE', region: 'Berlin', city: 'Berlin', lat: 52.52, lng: 13.40 },
-  { country: 'ES', region: 'Madrid', city: 'Madrid', lat: 40.42, lng: -3.70 },
-  { country: 'CA', region: 'Ontario', city: 'Toronto', lat: 43.65, lng: -79.38 },
-  { country: 'BR', region: 'São Paulo', city: 'São Paulo', lat: -23.55, lng: -46.63 },
-  { country: 'IN', region: 'Maharashtra', city: 'Mumbai', lat: 19.08, lng: 72.88 },
-  { country: 'JP', region: 'Tokyo', city: 'Tokyo', lat: 35.68, lng: 139.69 },
-  { country: 'AU', region: 'New South Wales', city: 'Sydney', lat: -33.87, lng: 151.21 },
-  { country: 'CH', region: 'Vaud', city: 'Lausanne', lat: 46.52, lng: 6.63 },
+  { country: 'US', region: 'CA', city: 'San Francisco', lat: 37.77, lng: -122.42 },
+  { country: 'US', region: 'NY', city: 'New York', lat: 40.71, lng: -74.01 },
+  { country: 'GB', region: 'ENG', city: 'London', lat: 51.51, lng: -0.13 },
+  { country: 'FR', region: 'IDF', city: 'Paris', lat: 48.86, lng: 2.35 },
+  { country: 'DE', region: 'BE', city: 'Berlin', lat: 52.52, lng: 13.40 },
+  { country: 'ES', region: 'MD', city: 'Madrid', lat: 40.42, lng: -3.70 },
+  { country: 'CA', region: 'ON', city: 'Toronto', lat: 43.65, lng: -79.38 },
+  { country: 'BR', region: 'SP', city: 'São Paulo', lat: -23.55, lng: -46.63 },
+  { country: 'IN', region: 'MH', city: 'Mumbai', lat: 19.08, lng: 72.88 },
+  { country: 'JP', region: '13', city: 'Tokyo', lat: 35.68, lng: 139.69 },
+  { country: 'AU', region: 'NSW', city: 'Sydney', lat: -33.87, lng: 151.21 },
+  { country: 'CH', region: 'VD', city: 'Lausanne', lat: 46.52, lng: 6.63 },
 ];
 /** Dev geo is allowed only outside production, and can still be turned off there.
  *  Opt-OUT in dev, impossible in production — the two are not the same switch. */

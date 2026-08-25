@@ -65,3 +65,47 @@ test('outside production the fallback still fills the screens', async () => {
     assert.match(String(g.country), /^[A-Z]{2}$/, 'dev traffic should still resolve to somewhere');
     assert.ok(Number.isFinite(g.lat) && Number.isFinite(g.lng), 'and to real coordinates');
 });
+
+// ── One vocabulary in the region column ─────────────────────────────────────
+//
+// geoip-lite returns `region` as an ISO 3166-2 subdivision CODE and `city` as a NAME —
+// verified against real IPs: 84.75.1.1 → {CH, AG, Lenzburg}, 92.184.96.1 → {FR, IDF, Paris},
+// 24.48.0.1 → {CA, QC, Montreal}.
+//
+// The dev fallback used to write region NAMES ("Vaud", "Île-de-France"), so the same database
+// column carried two vocabularies depending on which machine wrote the row. They group
+// separately, render differently, and nothing in the data says why.
+test('the dev fallback writes region CODES, like production does', async () => {
+  process.env.NODE_ENV = 'development';
+  process.env.ANALYTICS_DEV_GEO = '1';
+
+  // The sample table is only reached when the dev machine's real public IP CANNOT be
+  // resolved — and on a machine with internet it always can, so without this the test
+  // exercises real geo data and passes no matter what the table says. Found by regressing
+  // one entry to a name and watching it stay green.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('offline, for this test'); };
+  let geoOf;
+  try {
+    ({ geoOf } = await import(`../src/lib/geo.mjs?vocab=${Date.now()}`));
+
+  // Several distinct visitors, so more than one entry of the sample table is exercised.
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) {
+    const g = await geoOf({ headers: { 'user-agent': `probe-${i}` }, ip: '127.0.0.1' });
+    // The dev machine's real public IP may resolve, in which case this is real data and the
+    // sample table was not used — that path is the other test's business.
+    if (!g.region) continue;
+    seen.add(g.region);
+    assert.match(g.region, /^[A-Z0-9]{1,4}$/,
+      `region "${g.region}" is a name, not an ISO 3166-2 code — production writes codes`);
+    if (g.city) {
+      // Cities stay names, because that is what geoip-lite returns for them. A city reduced
+      // to a code would be the same mistake pointed the other way.
+      assert.ok(/[a-z]/.test(g.city), `city "${g.city}" looks like a code, not a name`);
+    }
+  }
+  // If nothing was sampled the test proved nothing — say so rather than pass.
+  assert.ok(seen.size >= 2, `only ${seen.size} distinct region(s) sampled — the fallback table was not exercised`);
+  } finally { globalThis.fetch = realFetch; }
+});
