@@ -15,6 +15,11 @@ import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
 import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-default.js';
+// The bundled brand marks, from the component that RENDERS them — a copy here would say
+// "built-in" for icons the footer has no icon for, which is the one case the preview exists
+// to catch.
+import { SOCIAL_ICONS } from '../App.jsx';
+const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
@@ -13420,6 +13425,15 @@ const SETTINGS_GROUPS = [
     ['features.webhooksEnabled', 'Incoming webhooks (Ko-fi, code push)', 'Off = Ko-fi tips and repository push events are refused with 503. The Stripe webhook is deliberately NOT included — cutting that one makes the billing database drift away from Stripe.', 'bool'],
     ['features.publicApiEnabled', 'Public API (/v1) enabled', 'Off = every API-key route answers 503, including read-only ones. The site itself is unaffected; this only governs third-party keys.', 'bool'],
   ] },
+  { title: 'Search & discoverability', gk: 'seo', icon: Globe, keys: [
+    ['seo.gtmOn', 'Google Tag enabled', 'Master switch for Google Tag Manager / GA4. The tag STILL only loads after a visitor accepts the Analytics cookie category — this switch decides whether it is offered at all, never whether consent is needed.', 'bool'],
+    ['seo.gtmId', 'Google Tag id', 'GTM-XXXXXXX for a Tag Manager container, or G-XXXXXXXXXX for a GA4 measurement id. Both are accepted and loaded the right way — feeding a G- id to the container script fails silently, which is why it is checked on save.', 'text'],
+    ['seo.googleVerify', 'Google Search Console token', 'The verification string Google gives you (the content of its meta tag, not the whole tag). Until this is set the property cannot be verified, so the sitemap cannot be submitted and nothing about indexing can be seen. This is step one of being in Google.', 'text'],
+    ['seo.bingVerify', 'Bing Webmaster token', 'Same idea for Bing — which is also where DuckDuckGo gets its results.', 'text'],
+    ['seo.description', 'Site description (EN)', 'The sentence a search result and every shared link show. Around 150 characters is what gets displayed; longer is cut mid-word. Empty keeps the built-in text.', 'text'],
+    ['seo.descriptionFr', 'Site description (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
+    ['seo.ogImage', 'Link preview image URL', 'The picture shown when the site is shared on Discord, X or anywhere else. 1200x630 is the size everything crops to. Empty = no image, which renders as a plain text link.', 'text'],
+  ] },
 ];
 
 // One-line description shown under each settings-group header panel.
@@ -13429,6 +13443,7 @@ const GROUP_DESC = {
   'Security & audit logs': 'How long the tamper-evident staff action log is kept.',
   'Pricing': 'What customers pay — per GB, Mbps, CPU, boost & catalog hosting.',
   'Feature flags': 'Master on/off switches. Each one says what it does NOT turn off, which is usually the part that matters.',
+  'Search & discoverability': 'Google Tag, search-engine verification, and what a search result or a shared link says. Nothing here is consent-gated except the tag, which still waits for the Analytics cookie.',
 };
 
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
@@ -15044,7 +15059,10 @@ function SocialIconPreview({ icon }) {
   const [bad, setBad] = useState(false);
   const key = String(icon || '').trim().toLowerCase();
   useEffect(() => { setBad(false); }, [key]);
-  const bundled = ['github', 'discord', 'reddit', 'kofi'].includes(key);
+  // Read from the renderer's own map. A hand-kept copy here said "built-in brand icon"
+  // for names the footer had no icon for — the preview reassuring you about the exact
+  // case it exists to catch.
+  const bundled = Object.prototype.hasOwnProperty.call(SOCIAL_ICONS, key);
   if (!key) return <span className="w-7 h-7 shrink-0 rounded-lg border border-dashed border-[var(--line)]" />;
   if (bundled) {
     return (
@@ -15225,16 +15243,32 @@ function AdminFooter() {
                     are 404s while `github` still resolves, which is a trap you cannot
                     reason your way out of. Now you see it fail while typing. */}
                 <SocialIconPreview icon={x.icon} />
-                <Input className="!w-28 !text-xs" value={x.icon || ''} onChange={(e) => setSocial(i, { icon: e.target.value })} placeholder="github" />
+                {/* A picker over what the footer can actually DRAW, plus a custom escape
+                    hatch. Typing the name was guesswork: the list of bundled marks exists
+                    only in App.jsx, and getting it wrong produced an empty circle rather
+                    than an error. Choosing "Custom" gives the text field back for a network
+                    nobody anticipated. */}
+                <Select className="!w-32 !text-xs !py-1.5"
+                        value={SOCIAL_KEYS.includes(String(x.icon || '').toLowerCase()) ? String(x.icon).toLowerCase() : '_custom'}
+                        onChange={(e) => setSocial(i, { icon: e.target.value === '_custom' ? '' : e.target.value })}>
+                  {SOCIAL_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
+                  <option value="_custom">{t('afoot.custom', 'Custom…')}</option>
+                </Select>
+                {!SOCIAL_KEYS.includes(String(x.icon || '').toLowerCase()) && (
+                  <Input className="!w-28 !text-xs" value={x.icon || ''} onChange={(e) => setSocial(i, { icon: e.target.value })}
+                         placeholder={t('afoot.lucidename', 'lucide name')} />
+                )}
                 <Input className="!w-36 !text-xs" value={x.label || ''} onChange={(e) => setSocial(i, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
-                <Input className="!w-72 !text-xs font-mono" value={x.href || ''} onChange={(e) => setSocial(i, { href: e.target.value })} placeholder="https://..." />
+                <Input className={`!w-72 !text-xs font-mono ${x.href && !/^(https?:\/\/|\/|mailto:)/i.test(x.href) ? '!border-error-border' : ''}`}
+                       value={x.href || ''} onChange={(e) => setSocial(i, { href: e.target.value })} placeholder="https://..."
+                       title={x.href && !/^(https?:\/\/|\/|mailto:)/i.test(x.href) ? t('afoot.badurl', 'Start with https://, / or mailto:') : ''} />
                 <button onClick={() => setBrand({ socials: move(socialList, i, -1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">&uarr;</button>
                 <button onClick={() => setBrand({ socials: move(socialList, i, 1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">&darr;</button>
                 <button onClick={() => setBrand({ socials: socialList.filter((_, n) => n !== i) })} className="p-1 rounded text-error hover:bg-error-bg"><Trash2 size={12} /></button>
               </div>
             ))}
           </div>)}
-        <p className="text-[11px] text-[var(--faint)] mt-2">{t('afoot.iconhint', 'github, discord, reddit, kofi, or any lucide icon name.')}</p>
+        <p className="text-[11px] text-[var(--faint)] mt-2">{t('afoot.iconhint2', 'Pick a bundled brand mark, or Custom for a lucide icon name. lucide has no brand icons, so a custom name for a well-known network draws an empty circle — the preview shows it failing while you type.')}</p>
       </Card>
 
       {/* Newsletter copy. Empty field = keep following the translated built-in string. */}

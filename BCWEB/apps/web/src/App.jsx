@@ -10,10 +10,12 @@ import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
-import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, APP_LOGO } from './ui/brand.jsx';
+import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
+  MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, APP_LOGO } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
 import { loadGtmIfConsented } from './lib/gtm.js';
+import { applySeoHead, setCanonical } from './lib/seo.js';
 import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
@@ -786,7 +788,23 @@ const SOCIAL = [
 ];
 // The bundled brand marks, by the key a configured social stores. lucide dropped its brand
 // icons, so these cannot come from the icon picker and have to be resolvable by name.
-const SOCIAL_ICONS = { github: GithubIcon, discord: DiscordIcon, reddit: RedditIcon, kofi: KofiIcon };
+// The bundled brand marks, keyed by what a configured social stores.
+//
+// This list used to hold four, and everything else fell through to a lucide name — which
+// looks like a sensible escape hatch and is a trap: lucide DROPPED its brand icons, so
+// `youtube`, `twitch`, `instagram` and the rest resolve to a 404, and the renderer paints a
+// mask whose URL 404s as nothing at all. An admin adding YouTube got an empty circle
+// indistinguishable from a working button, with no error anywhere.
+//
+// So every network somebody is actually likely to add is bundled. The lucide fallback stays
+// for the ones nobody anticipated, where an empty circle is at least an honest "we do not
+// have this one" rather than a silent failure on a mainstream network.
+export const SOCIAL_ICONS = {
+  github: GithubIcon, discord: DiscordIcon, reddit: RedditIcon, kofi: KofiIcon,
+  x: XIcon, twitter: XIcon, youtube: YoutubeIcon, twitch: TwitchIcon,
+  mastodon: MastodonIcon, bluesky: BlueskyIcon, instagram: InstagramIcon,
+  telegram: TelegramIcon, tiktok: TiktokIcon,
+};
 // One social button, from config. A known brand key renders the bundled SVG; anything else
 // is taken as a lucide name so an admin can add a network we never anticipated.
 function FooterSocial({ item }) {
@@ -795,6 +813,9 @@ function FooterSocial({ item }) {
     <a href={item.href} target={/^https?:/i.test(item.href) ? '_blank' : undefined} rel="noreferrer" title={item.label}
       className="grid place-items-center w-9 h-9 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] transition">
       {Brand ? <Brand size={16} className={item.icon === 'kofi' ? 'text-orange-400' : ''} /> : <LucideCdnIcon name={item.icon} size={16} />}
+      {/* The label is the accessible name. `title` alone is a tooltip, not a name, so a
+          screen reader announced twelve identical "link"s. */}
+      <span className="sr-only">{item.label || item.icon}</span>
     </a>
   );
 }
@@ -1093,7 +1114,7 @@ function AnnouncementBanner() {
 export default function App() {
   const loc = useLocation();
   const toast = useToast();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   // Session replay is imported LAZILY and last: it is the only one of these that can pull in
   // rrweb, and a visitor who declined analytics or an install with the switch off must never
   // download it. initReplay() checks consent before the dynamic import resolves anything heavy.
@@ -1101,6 +1122,14 @@ export default function App() {
     loadGtmIfConsented(); initVitals(); initInteractions(); initErrors();
     import('./lib/replay.js').then((m) => m.initReplay()).catch(() => {});
   }, []);
+  // Search-engine head tags. Separate from the block above because it is NOT analytics and
+  // must not be consent-gated: a description and an ownership token are part of the page, not
+  // something done to the visitor.
+  useEffect(() => { applySeoHead(lang); }, [lang]);
+  // A single-page app serves the same HTML at every path, so without a canonical link every
+  // route claims to be the same document — and duplicate content is the one SEO problem that
+  // quietly caps a whole site rather than one page.
+  useEffect(() => { setCanonical(loc.pathname); }, [loc.pathname]);
   // Global "you don't have permission" toast — the api client dispatches bcw:forbidden on
   // any missing_permission 403, so the user is told exactly what they lack no matter which
   // screen triggered it.
