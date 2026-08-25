@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network, Lock } from 'lucide-react';
+import { FileJson, Activity, ArrowLeft, CheckCircle2, AlertTriangle, XCircle, FlaskConical , Link2 as LinkIcon, ShieldCheck, Copy, Network, Lock, Wrench, ChevronDown, Search } from 'lucide-react';
 import BmmInspector from '../ui/bmm-inspector.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -563,6 +563,8 @@ export default function DevTools() {
   // The hash is the selection, not a scroll target. `#deeplink` already addressed a tool and
   // already worked in a shared link; it now SELECTS it, so every link anybody has sent still
   // lands on the right thing and lands on it directly.
+  const [navOpen, setNavOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [active, setActive] = useState(() => {
     const want = (typeof window !== 'undefined' ? window.location.hash : '').replace('#', '');
     return ALL_TOOLS.some((x) => x.id === want) ? want : ALL_TOOLS[0]?.id;
@@ -580,11 +582,25 @@ export default function DevTools() {
 
   const pick = (id) => {
     setActive(id);
+    setNavOpen(false);
+    setQuery('');
     // replaceState, not a new entry: clicking through five tools should not mean five presses
     // of Back to leave the page.
     if (typeof window !== 'undefined') window.history.replaceState(null, '', `#${id}`);
   };
   const current = ALL_TOOLS.find((x) => x.id === active) || ALL_TOOLS[0];
+  const currentGroup = GROUPS.find((g) => g.tools.some((tl) => tl.id === current?.id));
+  const currentIdx = ALL_TOOLS.findIndex((x) => x.id === current?.id);
+
+  // Matched on the tool's label AND its group's, so "installer" finds the recipe checker
+  // without it having to repeat the word. Not fuzzy, for the reason SideDash is not: a
+  // match that surfaces the wrong tool for a word you know exists is worse than no match.
+  const q = query.trim().toLowerCase();
+  const hits = q
+    ? GROUPS.flatMap((g) => g.tools.map((tl) => ({ ...tl, group: g })))
+        .filter((tl) => `${tl.label} ${t(tl.group.k, tl.group.label)}`.toLowerCase().includes(q))
+        .slice(0, 8)
+    : [];
 
   if (loading) return null;
 
@@ -618,8 +634,62 @@ export default function DevTools() {
           the category in front, "the installer one" is found without reading the others.
           On a narrow screen it sits above the panel and scrolls sideways; from `lg` it is a
           column beside it, which is where a tool picker belongs. */}
+      {/* Phone: the same dropdown sheet the dashboards use. The rail below hides its group
+          headings under `lg`, so on a phone it was eight unlabelled chips in a swipeable row
+          with nothing to say which you had already passed. */}
+      <div className="lg:hidden relative z-20">
+        <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
+          className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
+          <Wrench size={16} className="text-[var(--primary-2)] shrink-0" />
+          <span className="flex-1 text-left truncate">{current?.label}</span>
+          <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{currentIdx + 1}/{ALL_TOOLS.length}</span>
+          <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {navOpen && <>
+          {/* Catches the tap that closes it. Below the sheet in z-order, over everything else. */}
+          <div className="fixed inset-0 z-10" onClick={() => setNavOpen(false)} />
+          <div className="card absolute left-0 right-0 mt-2 p-2 anim-pop z-20 max-h-[62vh] overflow-y-auto scroll-thin shadow-lg">
+            {ALL_TOOLS.length > 6 && (
+              <div className="relative px-1 pt-1 pb-1.5">
+                <Search size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+                <input value={query} onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) pick(hits[0].id); if (e.key === 'Escape') setQuery(''); }}
+                  placeholder={t('dvt.search', 'Jump to a tool…')} aria-label={t('dvt.search', 'Jump to a tool…')}
+                  className="w-full pl-7 pr-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--primary)]" />
+              </div>
+            )}
+            {q ? (
+              <div className="space-y-0.5">
+                {hits.length ? hits.map((tl) => (
+                  <button key={tl.id} onClick={() => pick(tl.id)}
+                    className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
+                    <span className="truncate">{tl.label}</span>
+                    <span className="text-[10px] text-[var(--faint)] truncate ml-auto">{t(tl.group.k, tl.group.label)}</span>
+                  </button>
+                )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{t('dvt.nohit', 'No tool by that name.')}</div>}
+              </div>
+            ) : GROUPS.map((g) => (
+              <div key={g.id}>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] px-2 mt-2 first:mt-0 mb-1">{t(g.k, g.label)}</div>
+                {g.tools.map((tl) => (
+                  <button key={tl.id} onClick={() => pick(tl.id)}
+                    aria-current={active === tl.id ? 'true' : undefined}
+                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${
+                      active === tl.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'
+                    }`}>
+                    <span className="truncate">{tl.label}</span>
+                    {/* Said on the picker, not after the tap — same rule as the rail. */}
+                    {tl.needsAuth && !user && <span className="text-[10px] text-[var(--faint)] ml-auto shrink-0">{t('dvt.needsAcc', 'needs an account')}</span>}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </>}
+      </div>
+
       <div className="grid lg:grid-cols-[190px_1fr] gap-5 items-start">
-        <nav className="lg:sticky lg:top-20 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0"
+        <nav className="hidden lg:flex lg:sticky lg:top-20 lg:flex-col gap-1"
           aria-label={t('dvt.jump', 'Choose a tool')}>
           {GROUPS.map((g) => (
             <div key={g.id} className="shrink-0 lg:w-full">

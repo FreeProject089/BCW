@@ -2721,6 +2721,8 @@ const DICT = {
     'st.contrastlow': 'Contraste du texte du bouton {n}:1 — sous WCAG AA (4,5:1). L’encre a déjà basculé vers sa meilleure option ; cet accent est simplement difficile à écrire dessus.',
     'adm.tab.needs': 'À traiter', 'common.refresh': 'Actualiser',
     'common.reset': 'Réinitialiser',
+    'dvt.nohit': 'Aucun outil de ce nom.',
+    'dvt.search': 'Aller à un outil…',
     'bm.export': 'CSV',
     'bm.export.h': 'Télécharger les lignes actuellement listées',
     'bm.role.any': 'N’importe quel rôle',
