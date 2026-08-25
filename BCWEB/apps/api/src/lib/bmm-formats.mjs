@@ -65,8 +65,19 @@ export function detectFormat(doc) {
   // A .cbmp modpack CATALOGUE's catalog.json: named packs, each pointing at a packs/*.bmp
   // entry inside the same archive.
   if (Array.isArray(doc.modpacks) && doc.modpacks.some((m) => isObj(m) && typeof m.file === 'string')) return 'cbmp';
+  // Any other BMM catalogue's catalog.json — automations, plugins, themes, apps, tutorials.
+  // LAST on purpose: `modpacks` is also one of these arrays, and a .cbmp has a reader that
+  // knows more about it than this one does, so it must win the tie.
+  //
+  // The shape, not a claim: one of the known arrays, holding objects. A document that says
+  // `version: '1.0'` and nothing else is not a catalogue, and neither is `{ presets: 3 }`.
+  if (CATALOG_ARRAYS.some((k) => Array.isArray(doc[k]) && doc[k].some(isObj))) return 'bmmcat';
   return null;
 }
+
+/** The arrays a BMM catalogue can list its entries under. Kept beside the frontend's copy
+ *  in core/catalog-bundle.ts — BMM publishes the vocabulary, this reads it. */
+const CATALOG_ARRAYS = ['presets', 'plugins', 'themes', 'apps', 'modpacks', 'tutorials', 'catalogs', 'items'];
 
 /** A row in the summary. `tone` is advisory: 'warn' marks something a reviewer should read
  *  before approving, never something the reader disapproves of on its own. */
@@ -197,7 +208,7 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog };
+  const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog };
   return { ok: true, format, signature, ...readers[format](doc) };
 }
 
@@ -251,5 +262,62 @@ function inspectModpackCatalog(doc) {
       ...(badPaths.length ? [row('Suspicious entry paths', badPaths.slice(0, 5).join(', '), 'warn')] : []),
       row('Packs', packs.slice(0, 10).map((m) => m?.name || m?.id || '?').join(', ')),
     ],
+  };
+}
+
+/**
+ * Any other BMM catalogue's catalog.json — the document at the root of a bundle.
+ *
+ * The question a reviewer is holding is not "what does this list", it is **where does each
+ * entry come from**. A catalogue is a set of addresses somebody else will follow, and the
+ * three kinds do not carry the same risk:
+ *
+ *   · a name INSIDE the archive — packed with it, and reviewable right here;
+ *   · an http(s) URL — a host to look at, and content that can change after review;
+ *   · anything else — a scheme, an absolute path, a `..`. BMM's readers refuse those, and a
+ *     reviewer should see that somebody tried.
+ *
+ * The counts are the summary. A catalogue that is entirely packed is a self-contained thing
+ * that will do tomorrow what it does now; one that is entirely remote is a list of links,
+ * and reviewing it means reviewing the hosts.
+ */
+function inspectCatalog(doc) {
+  const rows = [];
+  for (const key of CATALOG_ARRAYS) {
+    for (const e of arr(doc[key])) {
+      if (!isObj(e)) continue;
+      const v = e.download_url ?? e.url ?? e.file ?? e.path;
+      rows.push({ key, name: String(e.name || e.id || '?').slice(0, 80), addr: typeof v === 'string' ? v.trim() : '' });
+    }
+  }
+  const remote = rows.filter((r) => /^https?:\/\//i.test(r.addr));
+  const refused = rows.filter((r) => r.addr && !/^https?:\/\//i.test(r.addr)
+    && (/^[a-z][a-z0-9+.-]*:/i.test(r.addr) || r.addr.startsWith('/') || r.addr.startsWith('\\')
+        || /^[a-z]:/i.test(r.addr) || r.addr.split(/[/\\]/).some((seg) => seg === '..')));
+  const packed = rows.filter((r) => r.addr && !remote.includes(r) && !refused.includes(r));
+  const noAddress = rows.filter((r) => !r.addr);
+
+  const hosts = [...new Set(remote.map((r) => { try { return new URL(r.addr).host; } catch { return '?'; } }))];
+  const kinds = [...new Set(rows.map((r) => r.key))];
+
+  return {
+    title: String(doc.name || '(unnamed catalogue)').slice(0, 200),
+    summary: [
+      row('Version', String(doc.version || '1.0')),
+      row('Lists', kinds.join(', ') || '—'),
+      row('Entries', rows.length),
+      row('Packed with the catalogue', packed.length),
+      row('Fetched from elsewhere', remote.length, remote.length ? 'warn' : undefined),
+      ...(hosts.length ? [row('Hosts', hosts.slice(0, 6).join(', '), 'warn')] : []),
+      // Both of these are the reviewer's business and neither stops BMM working: it drops
+      // the entry. Somebody publishing a catalogue full of them is the finding.
+      ...(refused.length ? [row('Addresses BMM will refuse', refused.slice(0, 5).map((r) => `${r.name}: ${r.addr}`).join(', '), 'warn')] : []),
+      ...(noAddress.length ? [row('Entries with no address', noAddress.length, 'warn')] : []),
+      row('Entries', rows.slice(0, 10).map((r) => r.name).join(', ')),
+    ],
+    // The names the archive is expected to hold, so the caller can say whether it does.
+    // Reported rather than judged: this reader is given ONE document and has never seen
+    // the archive around it.
+    packedNames: packed.map((r) => r.addr).slice(0, 500),
   };
 }

@@ -242,8 +242,13 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
       // .bmp entries too: a .cbmp modpack catalogue carries its packs as packs/*.bmp, and
       // those ARE JSON documents — skipping them showed a reviewer the catalogue's index and
       // hid exactly the entries whose download links need reviewing.
+      // .bmmpa too: a catalogue BUNDLE carries its automations as *.bmmpa beside the
+      // catalog.json, and those ARE JSON documents. Skipping them showed a reviewer the
+      // catalogue's index and hid every automation it is actually shipping — which is the
+      // only part with permissions and deeplinks in it.
       const lname = row.name.toLowerCase();
-      if ((!lname.endsWith('.json') && !lname.endsWith('.bmp')) || row.size > 512 * 1024) continue;
+      const readable = lname.endsWith('.json') || lname.endsWith('.bmp') || lname.endsWith('.bmmpa');
+      if (!readable || row.size > 512 * 1024) continue;
       try {
         const got = await readZipEntry(file, row);
         if (got.binary || got.truncated) continue;
@@ -251,7 +256,21 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
         if (rep.ok) known.push({ name: row.name, ...rep });
       } catch { /* not a BMM document — the listing already says what it is */ }
     }
-    if (known.length) setArch((prev) => (prev ? { ...prev, known } : prev));
+    // A BUNDLE promises things. Whether it carries them is the review question, and it is
+    // one only this side can answer: the reader is handed one document at a time and has
+    // never seen the archive around it.
+    //
+    // Cross-checked case-insensitively and on the base name, because a zip written on
+    // Windows and read on Linux disagrees about neither of those but a reviewer would be
+    // told "missing" for a file plainly in the list.
+    const cat = known.find((k) => k.format === 'bmmcat');
+    let bundle = null;
+    if (cat && Array.isArray(cat.packedNames)) {
+      const have = new Set(listing.entries.map((e) => e.name.toLowerCase().replace(/^.*[/\\]/, '')));
+      const missing = cat.packedNames.filter((n) => !have.has(String(n).toLowerCase().replace(/^.*[/\\]/, '')));
+      bundle = { promised: cat.packedNames.length, missing };
+    }
+    if (known.length || bundle) setArch((prev) => (prev ? { ...prev, known, ...(bundle ? { bundle } : {}) } : prev));
   };
 
   const openEntry = async (row) => {
@@ -349,6 +368,27 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
             <div className="rounded-lg border border-[var(--error)] p-2 mb-2 text-[12px]">
               <div className="font-medium text-[var(--error)] mb-0.5">{t('bmi.zipwarn', 'Paths that leave the archive')}</div>
               {arch.warnings.map((w, i) => <div key={i} className="text-[var(--muted)] break-all">{w}</div>)}
+            </div>
+          )}
+
+          {/* A catalogue BUNDLE: does it carry what it lists?
+              The one thing a reviewer cannot see from the entry list, because it means
+              reading the catalogue and the listing against each other. A complete bundle is
+              a self-contained thing; an incomplete one is a promise its author has not
+              noticed breaking. */}
+          {arch.bundle && (
+            <div className={`rounded-lg border p-2 mb-2 text-[12px] ${arch.bundle.missing.length ? 'border-[var(--warning)]' : 'border-[var(--line)]'}`}>
+              <div className={`font-medium mb-0.5 ${arch.bundle.missing.length ? 'text-warning' : ''}`}>
+                {arch.bundle.missing.length
+                  ? t('bmi.bundleShort', 'This catalogue names files the archive does not hold')
+                  : t('bmi.bundleOk', 'Self-contained — every file this catalogue names is in the archive')}
+              </div>
+              <div className="text-[var(--muted)]">
+                {t('bmi.bundleCount', '{n} packed entr(y/ies)').replace('{n}', String(arch.bundle.promised))}
+                {arch.bundle.missing.length > 0 && (
+                  <> · <span className="break-all">{arch.bundle.missing.slice(0, 8).join(', ')}</span></>
+                )}
+              </div>
             </div>
           )}
 
