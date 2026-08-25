@@ -1,0 +1,84 @@
+# The questions the .env wizard asks — ONE list, read by both configure-env.sh and
+# configure-env.ps1.
+#
+# Two scripts asking their own questions is two lists that drift, and the drift is invisible:
+# the Linux operator and the Windows operator end up with different files and nobody finds out
+# until one deployment behaves differently from the other. So the questions live here and the
+# scripts only do the asking.
+#
+# Pipe-delimited rather than JSON on purpose. The target for the shell version is a minimal
+# Alpine container with no jq, and a hand-rolled JSON parser in POSIX sh is a much better way
+# to lose an afternoon than a format with one separator in it.
+#
+# FORMAT   KEY | SECTION | KIND | DEFAULT | PROMPT | HELP
+#
+#   KIND     text     free text
+#            secret   offered a generated value; hidden while typing if the shell can
+#            bool     true / false
+#            choice   DEFAULT holds the options, comma-separated; the first is the default
+#            url      like text, but a trailing slash is stripped
+#            info     asks nothing; HELP is printed as a note. Used to explain a section.
+#
+#   HELP     one line. `\n` becomes a line break. Say what it DOES and what happens if it is
+#            left empty — an operator reading this at 2am is deciding, not browsing.
+#
+#   ASK-IF   a KEY may be prefixed `when:OTHERKEY=value ` to be asked only when that holds.
+#
+# Anything not listed here is written from .env.example unchanged, so a variable added to the
+# example without being added here still lands in the file with its default and its comment.
+
+# ── 1. Identity ──────────────────────────────────────────────────────────────
+_S1|Identity|info||| These are the values that make the site *yours*. Everything else has a\nworking default; these do not.
+SITE_DOMAIN|Identity|url|http://localhost:5176|The address people type|With https:// and no trailing slash. This is what Caddy gets a certificate for,\nand what every link in an e-mail points at. Wrong here = working site, broken e-mails.
+SITE_URL|Identity|url|=SITE_DOMAIN|The address the API builds links with|Almost always the same as above. It differs only when the API answers on another\nhostname than the one visitors use.
+COOKIE_DOMAIN|Identity|text|=host(SITE_DOMAIN)|Cookie domain|The bare hostname, no scheme and no port — `bettercommunity.ch`. Set it to the\nparent (`.example.com`) only if you serve several subdomains that must share a login.\nWrong here = you can sign in and are signed out on the next page.
+
+# ── 2. The database ──────────────────────────────────────────────────────────
+_S2|Database|info||| Two shapes. Bundled Postgres is a container this compose file runs and backs up\nfor you. Managed is somebody else's Postgres (Neon, Supabase, RDS, your own box).
+DB_MODE|Database|choice|bundled,managed|Postgres: bundled or managed|`bundled` is the normal answer and needs nothing else from you.\n`managed` means you paste two connection strings and the db container is not started.
+POSTGRES_USER|Database|text|bcweb|Database user|when:DB_MODE=bundled
+POSTGRES_DB|Database|text|bcweb|Database name|when:DB_MODE=bundled
+POSTGRES_PASSWORD|Database|secret||Database password|when:DB_MODE=bundled  Generated for you. WRITE IT DOWN: the volume keeps the password it was\ncreated with, and changing this line later locks you out of your own database.
+DATABASE_URL|Database|text||Pooled connection string|when:DB_MODE=managed  From your provider. Use the POOLED endpoint if they give you two.\nExample: postgresql://user:pass@host:5432/bcweb?sslmode=require
+DIRECT_DATABASE_URL|Database|text|=DATABASE_URL|Direct connection string|when:DB_MODE=managed  The NON-pooled endpoint. Migrations cannot run through a pooler,\nso if your provider gives two URLs this must be the direct one. Same value is fine when\nthere is only one.
+
+# ── 3. Scale ─────────────────────────────────────────────────────────────────
+_S3|Scale|info||| Leave these alone until something is actually slow. Every one of them adds a\nmoving part, and a moving part you added "just in case" is one you have to debug later.
+API_REPLICAS|Scale|text|1|How many API containers|1 is right until one container saturates. More than 1 REQUIRES Redis (below):\nwithout it every replica runs the background sweeper, so subscriptions get suspended twice\nand expiry e-mails go out twice.
+REDIS_ENABLED|Scale|bool|true|Run Redis|Shared cache, rate limiter, background-job election and the live-chat bus.\nKeep it on. It is only optional at all because a single container can work without it.
+COMPOSE_PROFILES|Scale|choice|,pgbouncer|Connection pooler (PgBouncer)|Empty = no pooler. Turn it on when you raise API_REPLICAS:\neach replica opens its own connections, and Postgres runs out of connection slots long\nbefore it runs out of CPU.
+
+# ── 4. Accounts ──────────────────────────────────────────────────────────────
+_S4|Accounts|info||| The first administrator, and the secret that signs every session.
+SEED_ADMIN_EMAIL|Accounts|text|admin@example.com|First admin e-mail|Created by the seed step, once. Changing it afterwards does nothing —\nthe account already exists.
+SEED_ADMIN_PASSWORD|Accounts|secret||First admin password|Set it BEFORE seeding. Re-running the seed never resets a password that has\nsince been changed, which is a feature and also means a typo here is permanent.
+JWT_SECRET|Accounts|secret||Session signing secret|Generated. Changing it later signs everybody out at once — which is also how\nyou revoke every session in an emergency.
+
+# ── 5. E-mail ────────────────────────────────────────────────────────────────
+_S5|E-mail|info||| Without this the site works and sends nothing: no verification, no password\nreset, no expiry warnings. People can still sign in with a provider below.
+EMAIL_ENABLED|E-mail|bool|false|Send e-mail|Say no now and add it later — it is four lines in the .env.
+SMTP_HOST|E-mail|text||SMTP host|when:EMAIL_ENABLED=true  e.g. mail.infomaniak.com
+SMTP_PORT|E-mail|text|587|SMTP port|when:EMAIL_ENABLED=true  465 = implicit TLS, anything else = STARTTLS.
+SMTP_USER|E-mail|text||SMTP user|when:EMAIL_ENABLED=true  A real mailbox you created, not an alias.
+SMTP_PASS|E-mail|secret||SMTP password|when:EMAIL_ENABLED=true  That mailbox's password.
+SMTP_FROM|E-mail|text||From header|when:EMAIL_ENABLED=true  e.g. BetterCommunity <noreply@your-domain>
+
+# ── 6. Optional integrations ─────────────────────────────────────────────────
+_S6|Integrations|info||| Every one of these is optional, and leaving a pair EMPTY hides its button\nrather than breaking the page. Add them whenever you like; none needs a rebuild.
+STRIPE_SECRET_KEY|Integrations|secret||Stripe secret key|Empty = no payments anywhere. Hosting stays free-tier only.
+STRIPE_WEBHOOK_SECRET|Integrations|secret||Stripe webhook secret|when:STRIPE_SECRET_KEY=*  The whsec_… Stripe prints. Without it, payments are taken\nand never recorded — the worst of the two failure modes.
+DISCORD_TOKEN|Integrations|secret||Discord bot token|Empty = the bot container idles cleanly. It does not crash-loop.
+GITHUB_CLIENT_ID|Integrations|text||GitHub OAuth client id|Empty = no "Continue with GitHub" button.
+GITHUB_CLIENT_SECRET|Integrations|secret||GitHub OAuth secret|when:GITHUB_CLIENT_ID=*
+DISCORD_CLIENT_ID|Integrations|text||Discord OAuth client id|Empty = no "Continue with Discord" button. Different from the bot token above.
+DISCORD_CLIENT_SECRET|Integrations|secret||Discord OAuth secret|when:DISCORD_CLIENT_ID=*
+GOOGLE_CLIENT_ID|Integrations|text||Google OAuth client id|Empty = no "Continue with Google" button.
+GOOGLE_CLIENT_SECRET|Integrations|secret||Google OAuth secret|when:GOOGLE_CLIENT_ID=*
+
+# ── 7. Secrets with sane generated values ────────────────────────────────────
+_S7|Secrets|info||| Generated. You never type these, and nothing outside this machine needs them.
+REDIS_PASSWORD|Secrets|secret||Redis password|Internal to the compose network.
+BOT_SHARED_SECRET|Secrets|secret||Bot ↔ API shared secret|What the Discord bot authenticates with. Both sides read this one value.
+AUDIT_SECRET|Secrets|secret||Audit-log HMAC key|Signs the tamper-evident staff action log. Changing it does not erase history,\nit makes every entry before the change unverifiable — so treat it as permanent.
+LINK_LOOKUP_SECRET|Secrets|secret||Account-link lookup secret|
+TELEMETRY_ADMIN_KEY|Secrets|secret||Telemetry admin key|Only used if you run the BMM telemetry service.
