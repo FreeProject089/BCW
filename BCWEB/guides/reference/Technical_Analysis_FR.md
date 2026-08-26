@@ -269,7 +269,7 @@ Ils ne révèlent rien seuls et ne sont pas des secrets.
 
 ---
 
-## 9. Modèle de sécurité (résumé — audit complet dans SECURITY_AUDIT.md)
+## 9. Modèle de sécurité
 
 - **Auth** : argon2id, cookies/2FA/step-up signés HMAC, TOTP 2FA requise pour les
   niveaux admin, élévation step-up pour server-control, CSRF OAuth via `state` signé.

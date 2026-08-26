@@ -13,8 +13,8 @@ import { boundedSet } from './boundedmap.mjs';
 // for falsiness, so the local one is used below rather than quietly swapped.
 import { geoOf, parseUA } from './geo.mjs';
 
-// Constant-time string comparison for shared secrets / tokens / signatures
-// (SECURITY_AUDIT: avoid the timing side-channel of `a === b`). Length-safe:
+// Constant-time string comparison for shared secrets / tokens / signatures — `a === b`
+// returns as soon as two bytes differ, which is a timing side-channel. Length-safe:
 // hashes both sides to a fixed width first so it never leaks length and never
 // throws on a mismatch, then does the real timing-safe compare.
 export function safeEqual(a, b) {

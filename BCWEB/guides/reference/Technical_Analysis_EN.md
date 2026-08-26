@@ -264,7 +264,7 @@ They reveal nothing on their own and aren't secrets.
 
 ---
 
-## 9. Security model (summary — full audit in SECURITY_AUDIT.md)
+## 9. Security model
 
 - **Auth**: argon2id, HMAC-signed cookies/2FA/step-up tokens, TOTP 2FA required for
   admin tiers, step-up elevation for server-control, OAuth CSRF via signed `state`.

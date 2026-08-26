@@ -136,8 +136,7 @@ Before pointing a real domain at this:
   goals + rate). See [guides/API_Reference_EN.md](./guides/reference/API_Reference_EN.md) §15.
 - **Abuse/security**: Caddy + Fastify anti-bot/anti-DDoS, proof-of-work on
   signup/contact, constant-time secret compares (`safeEqual`), SSRF-guarded outbound
-  fetch. Full CWE audit + remediations: [`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md)
-  (no high-severity issues; secret compares fixed, DB-viewer audit tables read-only).
+  fetch. DB-viewer audit tables are read-only.
 
 ### Still open (scale / ops, not blockers)
 - **OS-level** repo isolation in `apps/provisioner` (`spinUpRepoContainer` extension

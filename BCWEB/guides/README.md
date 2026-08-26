@@ -71,7 +71,6 @@ the reasoning, not as a to-do list. Don't follow them as setup instructions.
 ## Elsewhere in the repo
 
 - Project overview → [`../README.md`](../README.md)
-- Security audit → [`../SECURITY_AUDIT.md`](../SECURITY_AUDIT.md)
 - Load/stress harness + **measured numbers** → [`../loadtest/BENCHMARK.md`](../loadtest/BENCHMARK.md)
   ([FR](../loadtest/BENCHMARK_FR.md)). Run it: `cd loadtest && npm install && node run.mjs` →
   open `report.html`.
