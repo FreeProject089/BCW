@@ -62,6 +62,20 @@ export function detectFormat(doc) {
   // recognised BMM format", which tells a moderator the file is junk when it is a perfectly
   // ordinary list they simply cannot read. Recognised by its own claim; the header beside it
   // is what the format keeps readable ON PURPOSE, so there is something to check.
+  // A PLUGIN's manifest.
+  //
+  // The unknown-format hint has told moderators to "paste the plugin.json from inside"
+  // since it was written, and until now doing that returned "not a recognised BMM format".
+  // The advice was right and the reader was missing.
+  //
+  // Identified by a field only a plugin has — not by `id` + `name`, which a theme.json also
+  // carries, and misreading a theme as a plugin would report permissions and scripts for a
+  // document that has neither.
+  if (typeof doc.id === 'string' && typeof doc.name === 'string'
+      && (typeof doc.apply_mode === 'string' || Array.isArray(doc.permissions)
+          || isObj(doc.modlist) || Array.isArray(doc.assets) || Array.isArray(doc.scripts))) {
+    return 'bmmplug';
+  }
   if (doc.bmm_locked === true && isObj(doc.sealed)) return 'mm-locked';
   // A SERVER REPO manifest. Before the extras work a repo.json fell through every branch
   // and came back as "not a recognised BMM format" — which is the file a moderator opening
@@ -280,8 +294,93 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog, repo: inspectRepo };
+  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog, repo: inspectRepo, bmmplug: inspectPlugin };
   return { ok: true, format, signature, ...readers[format](doc) };
+}
+
+/**
+ * A plugin's manifest (`plugin.json`).
+ *
+ * A plugin is the one thing in this system that is CODE running inside somebody's BMM, so
+ * the summary is ordered by what a moderator has to decide: what it may reach (permissions),
+ * whether it runs anything (scripts), what it changes (its mod list), and what it ships
+ * alongside (assets).
+ *
+ * The asset list is a DECLARATION written from disk when the plugin was packed. It can
+ * still be edited by hand afterwards, so it is reported as what the manifest says — the
+ * archive is the only thing that settles it, and nobody reading a pasted manifest has one.
+ */
+function inspectPlugin(doc) {
+  const perms = arr(doc.permissions).filter((p) => typeof p === 'string');
+  const scripts = arr(doc.scripts).filter((p) => typeof p === 'string');
+  const assets = arr(doc.assets).filter(isObj);
+  const scriptAssets = assets.filter((a) => String(a.kind) === 'script');
+  const required = arr(doc.modlist?.required_mods);
+
+  const summary = [
+    row('Id', doc.id || '—'),
+    row('Version', doc.version || '—'),
+    row('Author', doc.author || '—'),
+  ];
+  if (doc.game) summary.push(row('Game', String(doc.game)));
+
+  // Permissions first: it is the row that says what this code may reach, and every other
+  // row is less important than that one.
+  summary.push(perms.length
+    ? row('Permissions', perms.join(', '), 'warn')
+    : row('Permissions', 'none'));
+
+  // Whether it RUNS anything, from either signal. `has_scripts` is the author's checkbox and
+  // `scripts` is the list; a plugin with the box ticked and an empty list still runs
+  // something, and one with a list and the box unticked certainly does.
+  if (doc.has_scripts || scripts.length) {
+    summary.push(row(
+      'Runs scripts',
+      scripts.length ? scripts.join(', ') : 'yes — not listed by name',
+      'warn',
+    ));
+  }
+  if (typeof doc.apply_mode === 'string' && doc.apply_mode !== 'modlist') {
+    summary.push(row('On apply', doc.apply_mode, doc.apply_mode === 'modlist' ? undefined : 'warn'));
+  }
+  if (required.length) {
+    summary.push(row('Requires mods', String(required.length)));
+    if (doc.modlist?.strict) {
+      // Strict means it turns OTHER mods off. That is a bigger action than "installs these".
+      summary.push(row('Strict list', 'yes — turns everything else off', 'warn'));
+    }
+  }
+  if (arr(doc.folders).length) summary.push(row('Bundled folders', String(arr(doc.folders).length)));
+
+  if (assets.length) {
+    const byKind = new Map();
+    for (const a of assets) {
+      const k = String(a.kind || 'other');
+      byKind.set(k, (byKind.get(k) || 0) + 1);
+    }
+    summary.push(row(
+      'Ships files',
+      [...byKind].map(([k, n]) => `${n} ${k}${n > 1 ? 's' : ''}`).join(', '),
+      scriptAssets.length ? 'warn' : undefined,
+    ));
+    if (scriptAssets.length) {
+      // Named. A shipped script is not the same as a declared one — nothing runs it
+      // automatically — but it is a program in the archive, and a moderator should be told
+      // its name rather than a count.
+      summary.push(row('Shipped scripts', scriptAssets.map((a) => String(a.path)).join(', '), 'warn'));
+    }
+  }
+  if (doc.website) summary.push(row('Website', String(doc.website)));
+
+  return {
+    title: String(doc.name || '(unnamed plugin)').slice(0, 200),
+    summary,
+    detail: assets.slice(0, 100).map((a) => ({
+      name: String(a.path || '?').slice(0, 200),
+      note: [String(a.kind || 'other'), a.size ? `${Math.max(1, Math.round(Number(a.size) / 1024))} KB` : '']
+        .filter(Boolean).join(' · '),
+    })),
+  };
 }
 
 /**
