@@ -63,6 +63,13 @@ export function detectFormat(doc) {
   // ordinary list they simply cannot read. Recognised by its own claim; the header beside it
   // is what the format keeps readable ON PURPOSE, so there is something to check.
   if (doc.bmm_locked === true && isObj(doc.sealed)) return 'mm-locked';
+  // A SERVER REPO manifest. Before the extras work a repo.json fell through every branch
+  // and came back as "not a recognised BMM format" — which is the file a moderator opening
+  // a hosted repo is most likely to be holding, and the one that now carries plugins.
+  //
+  // Recognised by `profiles` being an array of objects with `mods`. Not by `name` + `version`,
+  // which half the documents in this file also have.
+  if (Array.isArray(doc.profiles) && doc.profiles.some((p) => isObj(p) && Array.isArray(p.mods))) return 'repo';
   if (typeof doc.format_version === 'string' && Array.isArray(doc.mods)) return 'mm';
   // A .bmp modpack DOCUMENT: mods carrying per-file manifests with hashes. Distinguished
   // from a mod LIST ('mm') by shape, not by claim — a modpack's entries have mod_id and
@@ -273,8 +280,99 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog };
+  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog, repo: inspectRepo };
   return { ok: true, format, signature, ...readers[format](doc) };
+}
+
+/**
+ * The kinds a repo can carry besides mods, and which of them are CODE.
+ *
+ * `plugin` runs inside BMM; `task` is an automation that can run commands on the machine.
+ * They are the two a moderator has to look at, so they are named here rather than left for
+ * a reader to infer from a `kind` string. BMM ticks neither by default and installs both
+ * disabled — this is the third place that fact is enforced, and the only one a moderator
+ * ever sees.
+ */
+const EXTRA_CODE_KINDS = new Set(['plugin', 'task']);
+
+/** How each kind reads in a summary. An unknown kind keeps its own name. */
+const EXTRA_LABEL = {
+  plugin: 'plugin', task: 'automation', theme: 'theme', modlist: 'mod list',
+  bundle: 'catalogue bundle', catalog: 'catalogue', app: 'app source',
+};
+
+/**
+ * A Server-Repo manifest (`repo.json`).
+ *
+ * Three questions, in the order a moderator asks them: how big is it, where do its files
+ * come from, and — since a repo stopped being only mods — what ELSE is in it.
+ *
+ * The last one is flagged whenever it contains code. A repo that hands somebody a plugin is
+ * not doing anything wrong, and it is also not the same object as a repo of mods; the
+ * difference has to be visible before approval, not after.
+ */
+function inspectRepo(doc) {
+  const profiles = arr(doc.profiles);
+  const mods = profiles.flatMap((p) => arr(p?.mods));
+  const hosts = new Map();
+  for (const m of mods.slice(0, 1000)) {
+    for (const l of arr(m?.download_links)) {
+      if (typeof l?.url !== 'string') continue;
+      try { const h = new URL(l.url).host; hosts.set(h, (hosts.get(h) || 0) + 1); } catch { /* not a URL */ }
+    }
+  }
+  const top = [...hosts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const extras = arr(doc.extras).filter(isObj);
+  const byKind = new Map();
+  for (const e of extras) {
+    const k = String(e.kind || '?');
+    byKind.set(k, (byKind.get(k) || 0) + 1);
+  }
+  const code = extras.filter((e) => EXTRA_CODE_KINDS.has(String(e.kind)));
+
+  const summary = [
+    row('Author', doc.author || '—'),
+    row('Version', doc.version || '—'),
+    row('Profiles', profiles.length),
+    row('Mods', mods.length),
+  ];
+  // Where the FILES live, when that is not next to the manifest. A manifest published on
+  // one host whose mods come from another is a normal arrangement and an important fact.
+  if (doc.files_base_url) summary.push(row('Files served from', String(doc.files_base_url), 'warn'));
+  if (top.length) {
+    summary.push(row('Download hosts', top.map(([h, n]) => `${h} (${n})`).join(', ')));
+  }
+  if (doc.require_login) summary.push(row('Requires a BetterCommunity login', 'yes'));
+  if (extras.length) {
+    summary.push(row(
+      'Also carries',
+      [...byKind].map(([k, n]) => `${n} ${EXTRA_LABEL[k] || k}${n > 1 ? 's' : ''}`).join(', '),
+      code.length ? 'warn' : undefined,
+    ));
+  }
+  if (code.length) {
+    // Named, not counted. "1 plugin" is a number; "dcs-helper" is something a moderator can
+    // go and look at.
+    summary.push(row('Code in this repo', code.map((e) => String(e.name || e.id)).join(', '), 'warn'));
+  }
+
+  return {
+    title: String(doc.name || '(unnamed repo)').slice(0, 200),
+    summary,
+    // One line per extra rather than per mod: a repo has hundreds of mods and the list of
+    // them is not what anybody is reading this screen for.
+    detail: extras.slice(0, 100).map((e) => ({
+      name: String(e.name || e.id || '?').slice(0, 200),
+      note: [
+        EXTRA_LABEL[String(e.kind)] || String(e.kind || '?'),
+        e.author ? `by ${e.author}` : '',
+        e.url ? `→ ${e.url}` : '',
+        e.locked ? 'locked' : '',
+        e.file && !e.file.sha256_hash ? 'NO HASH' : '',
+      ].filter(Boolean).join(' · '),
+    })),
+  };
 }
 
 /**
