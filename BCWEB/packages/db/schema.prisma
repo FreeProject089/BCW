@@ -44,6 +44,9 @@ enum CatalogKind {
   /// downloadable thing. Added last, so existing rows keep their ordinal.
   MODPACK
   TUTORIAL
+  /// A .mm mod list — the oldest shareable thing in BMM, and the last one to get a
+  /// catalogue. Appended, so existing rows keep their ordinal.
+  LIST
 }
 
 enum ItemStatus {

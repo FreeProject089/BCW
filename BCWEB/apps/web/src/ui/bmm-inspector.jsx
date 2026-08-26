@@ -247,7 +247,11 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
       // catalogue's index and hid every automation it is actually shipping — which is the
       // only part with permissions and deeplinks in it.
       const lname = row.name.toLowerCase();
-      const readable = lname.endsWith('.json') || lname.endsWith('.bmp') || lname.endsWith('.bmmpa');
+      // .mm too: a bundle of MOD LISTS carries them, and they are JSON documents the
+      // reader already knows ('mm'). Skipping them showed the catalogue and hid every
+      // list it ships — which is where the download links are.
+      const readable = lname.endsWith('.json') || lname.endsWith('.bmp')
+        || lname.endsWith('.bmmpa') || lname.endsWith('.mm');
       if (!readable || row.size > 512 * 1024) continue;
       try {
         const got = await readZipEntry(file, row);

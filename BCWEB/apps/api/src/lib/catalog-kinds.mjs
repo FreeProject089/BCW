@@ -9,7 +9,7 @@
 // So: one array, and everything else derived from it.
 
 /** The database enum values, and the canonical order everything sorts by. */
-export const CATALOG_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL'];
+export const CATALOG_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL', 'LIST'];
 
 /** The same, lower-case — what the public API and BMM's feeds use on the wire. */
 export const CATALOG_KINDS_LOWER = CATALOG_KINDS.map((k) => k.toLowerCase());

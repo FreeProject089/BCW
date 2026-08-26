@@ -77,7 +77,7 @@ export function detectFormat(doc) {
 
 /** The arrays a BMM catalogue can list its entries under. Kept beside the frontend's copy
  *  in core/catalog-bundle.ts — BMM publishes the vocabulary, this reads it. */
-const CATALOG_ARRAYS = ['presets', 'plugins', 'themes', 'apps', 'modpacks', 'tutorials', 'catalogs', 'items'];
+const CATALOG_ARRAYS = ['presets', 'plugins', 'themes', 'apps', 'modpacks', 'tutorials', 'lists', 'catalogs', 'items'];
 
 /** A row in the summary. `tone` is advisory: 'warn' marks something a reviewer should read
  *  before approving, never something the reader disapproves of on its own. */

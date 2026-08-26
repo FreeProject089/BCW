@@ -6,7 +6,7 @@ import 'prismjs/components/prism-bash';
 import 'prismjs/components/prism-javascript';
 import 'prismjs/components/prism-python';
 import { Link, useParams, useSearchParams, useNavigate } from 'react-router-dom';
-import { Library, GraduationCap,
+import { Library, GraduationCap, ListChecks,
   Boxes, Music2, Puzzle, Palette, Server, Rocket, Download, ArrowRight, Search, Upload,
   Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle,
   Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2,
@@ -102,10 +102,10 @@ export function useElementWidth(fallback = 760) {
   }, []);
   return [ref, w];
 }
-export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package, TUTORIAL: GraduationCap, REPO_INDEX: Server, CATALOG_INDEX: Library };
-export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack', TUTORIAL: 'Tutorial', REPO_INDEX: 'Server-Repo list', CATALOG_INDEX: 'Catalogue index' };
+export const KIND_ICON = { APP: Boxes, PLUGIN: Puzzle, THEME: Palette, PRESET: FileJson, MODPACK: Package, TUTORIAL: GraduationCap, LIST: ListChecks, REPO_INDEX: Server, CATALOG_INDEX: Library };
+export const KIND_LABEL = { APP: 'App', PLUGIN: 'Plugin', THEME: 'Theme', PRESET: 'Preset', MODPACK: 'Modpack', TUTORIAL: 'Tutorial', LIST: 'Mod list', REPO_INDEX: 'Server-Repo list', CATALOG_INDEX: 'Catalogue index' };
 /** Every kind the CatalogKind enum holds, in the order screens show them. */
-export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL'];
+export const ALL_KINDS = ['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'TUTORIAL', 'LIST'];
 
 /**
  * Kinds that are a DOCUMENT — one JSON file listing addresses — rather than a set of items.
