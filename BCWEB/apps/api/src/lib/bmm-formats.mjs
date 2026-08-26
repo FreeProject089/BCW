@@ -92,16 +92,38 @@ const row = (label, value, tone) => ({ label, value: String(value), ...(tone ? {
  */
 function inspectModList(doc) {
   const mods = arr(doc.mods);
-  const urls = [];
+  const hostsOf = (urls) => {
+    const hosts = new Map();
+    for (const u of urls) {
+      try { const h = new URL(u).host; hosts.set(h, (hosts.get(h) || 0) + 1); } catch { /* not a URL */ }
+    }
+    return [...hosts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  };
+
+  // `download_links`, which is what the format actually calls it.
+  //
+  // This read `m.links` and `m.url`. Neither field has ever existed in a .mm — the entry
+  // carries `download_links: [{url, link_type, label}]` — so "Download hosts" said "—" and
+  // every entry's note was empty, for every list ever inspected. Nothing failed; a moderator
+  // was simply told the list pointed nowhere.
+  const dl = [];
   for (const m of mods.slice(0, 500)) {
-    for (const l of arr(m?.links)) if (typeof l?.url === 'string') urls.push(l.url);
-    if (typeof m?.url === 'string') urls.push(m.url);
+    for (const l of arr(m?.download_links)) if (typeof l?.url === 'string') dl.push(l.url);
   }
-  const hosts = new Map();
-  for (const u of urls) {
-    try { const h = new URL(u).host; hosts.set(h, (hosts.get(h) || 0) + 1); } catch { /* not a URL */ }
+
+  // Where the mods will UPDATE from, which is a different question and the one that matters
+  // for moderation: installing a shared list wires each mod to these, so a list can hand
+  // somebody an update source they never chose.
+  const upd = [];
+  for (const m of mods.slice(0, 500)) {
+    if (typeof m?.source_repo === 'string') upd.push(m.source_repo);
+    if (typeof m?.update_url === 'string') upd.push(m.update_url);
+    for (const u of arr(m?.update_sources)) if (typeof u?.url === 'string') upd.push(u.url);
   }
-  const top = [...hosts].sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const updHosts = hostsOf(upd);
+  const dlHosts = hostsOf(dl);
+  const notes = mods.slice(0, 500).filter((m) => String(m?.install_notes || '').trim()).length;
+
   return {
     title: String(doc.name || '(unnamed list)').slice(0, 200),
     summary: [
@@ -109,14 +131,26 @@ function inspectModList(doc) {
       row('Game', String(doc.game_name || '—')),
       row('Author', String(doc.author || '—')),
       row('Created', String(doc.created_at || '—')),
-      row('Download hosts', top.length ? top.map(([h, n]) => `${h} (${n})`).join(', ') : '—'),
+      row('Download hosts', dlHosts.length ? dlHosts.map(([h, n]) => `${h} (${n})`).join(', ') : '—'),
+      // Flagged, not merely listed. Every one of these becomes an update source on the
+      // machine that installs the list.
+      ...(updHosts.length
+        ? [row('Update hosts', updHosts.map(([h, n]) => `${h} (${n})`).join(', '), 'warn')]
+        : []),
+      ...(arr(doc.tag_defs).length ? [row('Tag definitions', arr(doc.tag_defs).length)] : []),
+      ...(arr(doc.modpacks).length ? [row('Modpacks carried', arr(doc.modpacks).length)] : []),
+      ...(notes ? [row('Entries with install notes', notes)] : []),
       // A path hint is a string from someone else's machine. Harmless, but it is the field
       // most likely to carry a person's name, and a moderator should see that it is there.
       ...(doc.game_path_hint ? [row('Path hint', String(doc.game_path_hint), 'warn')] : []),
     ],
     detail: mods.slice(0, 200).map((m) => ({
       name: String(m?.name || '(unnamed)').slice(0, 200),
-      note: arr(m?.links).map((l) => String(l?.url || '')).filter(Boolean).join(' · ').slice(0, 300),
+      note: [
+        ...arr(m?.download_links).map((l) => String(l?.url || '')),
+        ...(m?.source_repo ? [`updates: ${m.source_repo}`] : []),
+        ...(m?.update_url ? [`updates: ${m.update_url}`] : []),
+      ].filter(Boolean).join(' · ').slice(0, 300),
     })),
   };
 }
