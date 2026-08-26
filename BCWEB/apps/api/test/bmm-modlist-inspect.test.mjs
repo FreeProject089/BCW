@@ -79,6 +79,29 @@ describe('a mod list', () => {
     assert.equal(String(val(rep, 'Entries with install notes')), '1');
   });
 
+  test('a LOCKED list is recognised, not reported as junk', () => {
+    // Its contents are encrypted, so it has no `mods` and no `format_version`. Without the
+    // locked branch it fell through every reader and came back as "not a recognised BMM
+    // format" — which tells a moderator the file is damaged when it is an ordinary list they
+    // simply cannot read, and sends them looking for a problem that is not there.
+    const locked = {
+      bmm_locked: true, name: 'Secret Ops', author: 'me', game_name: 'DCS',
+      created_at: '2026-08-26T00:00:00Z', mods_count: 12, sealed: { bmm_enc: 1 },
+    };
+    assert.equal(detectFormat(locked), 'mm-locked');
+
+    const rep = inspectAny(locked);
+    assert.equal(rep.ok, true);
+    assert.equal(rep.title, 'Secret Ops');
+    // The fact that governs every other line, and it is flagged: nothing below it could be
+    // checked against the actual contents.
+    assert.equal(tone(rep, 'Encrypted'), 'warn');
+    assert.equal(val(rep, 'Author'), 'me');
+    // "claimed", because a count in a header is what the author wrote, not what is inside.
+    assert.match(String(val(rep, 'Mods')), /claimed/);
+    assert.deepEqual(rep.detail, [], 'there is nothing to list');
+  });
+
   test('the path hint is still flagged — it carries a person\'s name more often than not', () => {
     const rep = inspectAny(list([], { game_path_hint: 'C:/Users/somebody/DCS' }));
     assert.equal(tone(rep, 'Path hint'), 'warn');

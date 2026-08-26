@@ -57,6 +57,12 @@ export function detectFormat(doc) {
   // `console`/`rustLog` identify BMM's own export. They are not required any more: a recording
   // taken without the console attached has neither, and it is still a replay.
   if (Array.isArray(doc.events) && ('console' in doc || 'rustLog' in doc || looksLikeRrweb(doc.events))) return 'bmmreplay';
+  // A LOCKED mod list. Its contents are encrypted, so it has no `mods` and no
+  // `format_version` — and without this it fell through every branch and came back as "not a
+  // recognised BMM format", which tells a moderator the file is junk when it is a perfectly
+  // ordinary list they simply cannot read. Recognised by its own claim; the header beside it
+  // is what the format keeps readable ON PURPOSE, so there is something to check.
+  if (doc.bmm_locked === true && isObj(doc.sealed)) return 'mm-locked';
   if (typeof doc.format_version === 'string' && Array.isArray(doc.mods)) return 'mm';
   // A .bmp modpack DOCUMENT: mods carrying per-file manifests with hashes. Distinguished
   // from a mod LIST ('mm') by shape, not by claim — a modpack's entries have mod_id and
@@ -90,6 +96,31 @@ const row = (label, value, tone) => ({ label, value: String(value), ...(tone ? {
  * somebody else will follow, so the hosts are the thing to look at — a list whose entries
  * all point at one unknown domain is a different object from one pointing at Nexus.
  */
+/**
+ * A locked mod list: what it claims to be, and the fact that nothing else can be checked.
+ *
+ * Said plainly rather than dressed up. A moderator holding one of these can verify the name,
+ * the author and the size of the claim — and nothing about its contents, because the contents
+ * are not in the file in any readable form. Pretending otherwise, or reporting it as damaged,
+ * both send somebody looking for a problem that is not there.
+ */
+function inspectLockedModList(doc) {
+  const n = Number(doc.mods_count) || 0;
+  return {
+    title: String(doc.name || '(unnamed list)').slice(0, 200),
+    summary: [
+      // Flagged, because it is the fact that governs every other line: none of what follows
+      // could be checked against the actual contents.
+      row('Encrypted', 'yes — the contents cannot be inspected without the passphrase', 'warn'),
+      row('Mods', n ? `${n} (claimed)` : '—'),
+      row('Game', String(doc.game_name || '—')),
+      row('Author', String(doc.author || '—')),
+      row('Created', String(doc.created_at || '—')),
+    ],
+    detail: [],
+  };
+}
+
 function inspectModList(doc) {
   const mods = arr(doc.mods);
   const hostsOf = (urls) => {
@@ -242,7 +273,7 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog };
+  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog };
   return { ok: true, format, signature, ...readers[format](doc) };
 }
 
