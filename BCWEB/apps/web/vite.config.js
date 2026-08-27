@@ -39,6 +39,15 @@ export default defineConfig({
         // with the app code — trying to split react out created a circular chunk
         // (some vendor lib imports react which imports back into vendor).
         manualChunks(id) {
+          // Our own files come first, and only where leaving it to Rollup measurably hurts.
+          //
+          // ProjectShowcase is dynamically imported by BOTH an eager page (home.jsx) and a
+          // lazy one (dev.jsx). Left alone, Rollup answers that by rebalancing — and what it
+          // chose was to pull the whole of dev.jsx UP into the entry chunk, so every visitor
+          // downloaded the developer hub. +6 KB gzip on the entry, 5 over budget, and the
+          // sourcemap named the culprit (457 entry modules → 458, the new one being
+          // dev.jsx). Naming the chunk pins it and the rebalancing stops.
+          if (id.includes('/hero/ProjectShowcase')) return 'showcase';
           if (!id.includes('node_modules')) return;
           if (id.includes('three')) return 'vendor-three';
           if (id.includes('rrweb')) return 'vendor-rrweb';

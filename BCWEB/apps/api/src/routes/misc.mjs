@@ -194,6 +194,67 @@ const homeConfig = (row) => {
   return { text: v.text || {}, sections };
 };
 
+
+// ── The showcase: what the two landing pages open with ──────────────────────
+//
+// Both landing pages used to open with a paragraph. A paragraph is what a site says about
+// itself; what a visitor is deciding is whether the thing LOOKS like something they want,
+// and that question is answered by seeing it move.
+//
+// One list, not two. The home page and the developer hub show the same projects, so an
+// admin who adds one adds it once — two lists would drift the first week and the second
+// page would quietly be a month behind.
+const SHOWCASE_KEY = 'site.showcase';
+/** Media a browser can actually play here, and the one BMM format we render ourselves. */
+export const SHOWCASE_KINDS = ['image', 'video', 'replay'];
+/** How the media sits in its frame. This is the zoom: fill it, or show all of it. */
+export const SHOWCASE_FITS = ['cover', 'contain'];
+
+/**
+ * Is this something we are willing to put in a `src` or an `href`?
+ *
+ * `javascript:` in an href is a script the visitor runs by clicking a project, and `data:`
+ * in a src is a document with its own origin. Both arrive here from an admin form, which is
+ * a smaller threat than an open one and still not a reason to accept a scheme nothing needs.
+ * Same-origin paths are allowed because that is where an uploaded PlatformAsset lives.
+ */
+export const safeUrl = (v) => {
+  const u = String(v || '').trim();
+  if (!u) return false;
+  if (u.startsWith('/') && !u.startsWith('//')) return true;
+  return /^https?:\/\//i.test(u);
+};
+
+const showcaseItem = z.object({
+  id: z.string().trim().min(1).max(60),
+  title: z.object({ en: z.string().max(80).optional(), fr: z.string().max(80).optional() }).optional(),
+  blurb: z.object({ en: z.string().max(200).optional(), fr: z.string().max(200).optional() }).optional(),
+  href: z.string().trim().max(500).refine((v) => !v || safeUrl(v), 'unsafe_url').optional(),
+  kind: z.enum(SHOWCASE_KINDS),
+  url: z.string().trim().max(500).refine(safeUrl, 'unsafe_url'),
+  /** A still shown while a video loads, and what it shows when autoplay is refused. */
+  poster: z.string().trim().max(500).refine((v) => !v || safeUrl(v), 'unsafe_url').optional(),
+  fit: z.enum(SHOWCASE_FITS).optional(),
+  /** Per-item zoom on top of `fit`. 1 is untouched; the range is what stays legible. */
+  scale: z.number().min(0.5).max(2).optional(),
+});
+
+// A landing page, not a gallery. Twelve is already more than anybody scrolls past, and the
+// cap is what stops this endpoint from becoming a way to make the front page enormous.
+const SHOWCASE_MAX = 12;
+
+const showcaseConfig = (row) => {
+  const v = row?.value || {};
+  const items = Array.isArray(v.items) ? v.items : [];
+  return {
+    // Off by default. A site that has never configured this keeps the hero it has, rather
+    // than gaining an empty black rectangle the day this ships.
+    enabled: v.enabled === true && items.length > 0,
+    intervalMs: Number.isFinite(v.intervalMs) ? Math.min(30000, Math.max(2000, v.intervalMs)) : 6000,
+    items: items.slice(0, SHOWCASE_MAX),
+  };
+};
+
 export default async function miscRoutes(app) {
   // Public: read on every page load, so it is cached and it is SMALL — only the keys an
   // admin actually overrode travel, not the whole dictionary.
@@ -202,6 +263,65 @@ export default async function miscRoutes(app) {
     const row = await p.adminSetting.findUnique({ where: { key: HOME_KEY } });
     reply.header('Cache-Control', 'public, max-age=60');
     return homeConfig(row);
+  });
+
+
+  // Public. Read on both landing pages, so it is cached and it is small.
+  app.get('/site/showcase', async (req, reply) => {
+    const p = await db();
+    reply.header('Cache-Control', 'public, max-age=60');
+    return showcaseConfig(await p.adminSetting.findUnique({ where: { key: SHOWCASE_KEY } }));
+  });
+
+  app.get('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: SHOWCASE_KEY } });
+    // The RAW stored value, not showcaseConfig's: the editor has to be able to see a list
+    // that is switched off, or turning it back on would mean retyping it.
+    const v = row?.value || {};
+    return {
+      enabled: v.enabled === true,
+      intervalMs: Number.isFinite(v.intervalMs) ? v.intervalMs : 6000,
+      items: Array.isArray(v.items) ? v.items : [],
+      kinds: SHOWCASE_KINDS,
+      fits: SHOWCASE_FITS,
+      max: SHOWCASE_MAX,
+    };
+  });
+
+  app.put('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      enabled: z.boolean().optional(),
+      intervalMs: z.number().int().min(2000).max(30000).optional(),
+      items: z.array(showcaseItem).max(SHOWCASE_MAX).optional(),
+    }).safeParse(req.body);
+    // The reason is named. "invalid_input" on a form with twelve rows and four fields each
+    // is a puzzle, and the commonest failure here is a URL with a scheme we refuse.
+    if (!b.success) {
+      return reply.code(400).send({
+        error: 'invalid_input',
+        detail: b.error.issues.slice(0, 4).map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+      });
+    }
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: SHOWCASE_KEY } });
+    const cur = row?.value || {};
+    // Two ids the same would make React reuse one panel for two projects, and the second
+    // would inherit the first one's playing video.
+    const items = b.data.items ?? (Array.isArray(cur.items) ? cur.items : []);
+    const seen = new Set();
+    for (const it of items) {
+      if (seen.has(it.id)) return reply.code(400).send({ error: 'duplicate_id', detail: it.id });
+      seen.add(it.id);
+    }
+    const value = {
+      enabled: b.data.enabled ?? cur.enabled === true,
+      intervalMs: b.data.intervalMs ?? (Number.isFinite(cur.intervalMs) ? cur.intervalMs : 6000),
+      items,
+    };
+    await p.adminSetting.upsert({ where: { key: SHOWCASE_KEY }, create: { key: SHOWCASE_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'site.showcase', `on=${value.enabled} items=${items.length}`);
+    return showcaseConfig({ value });
   });
 
   app.get('/admin/site/home', { preHandler: requireRole('ADMIN') }, async () => {

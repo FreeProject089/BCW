@@ -1,4 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+// Lazily, for the same reason home.jsx does: the showcase pulls in rrweb the moment a
+// `.bmmreplay` panel is shown, and a developer reading about API keys must not pay for it.
+const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -404,9 +407,11 @@ export default function DevHub() {
   // What an admin saved for this page. Absent (or a 404 before it has ever been saved) leaves
   // every default in place, so the page never depends on the config existing.
   const [cfg, setCfg] = useState(null);
+  const [showcase, setShowcase] = useState(null);
   useEffect(() => {
     let on = true;
     api.get('/projects/developers').then((d) => { if (on) setCfg(d.config || d || null); }).catch(() => {});
+    api.get('/site/showcase').then((d) => { if (on) setShowcase(d); }).catch(() => {});
     return () => { on = false; };
   }, []);
   const hero = cfg?.hero || {};
@@ -472,6 +477,14 @@ export default function DevHub() {
           </p>
         )}
       </div>
+
+      {/* The same projects the home page opens with, and deliberately the same list: two
+          lists would drift the first week and this page would quietly be a month behind. */}
+      {showcase?.enabled && (
+        <div className="mb-12">
+          <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+        </div>
+      )}
 
       {/* ONE fork, first: which of the two things are you building?
           Getting this wrong is the mistake that costs a day, and the names do not give it

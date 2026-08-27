@@ -3,7 +3,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -281,7 +281,7 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
-        {s === 'homepage' && <HomePageEditor />}
+        {s === 'homepage' && <><ShowcaseEditor /><HomePageEditor /></>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -10124,6 +10124,155 @@ function MultiChannelInput({ value, onChange, placeholder }) {
  * An empty box is not an empty string: it deletes the override and the shipped wording
  * comes back. Otherwise the only way to undo an edit would be remembering the original.
  */
+
+// ── The showcase both landing pages open with ────────────────────────────────
+//
+// One list, edited once. The home page and /dev show the same projects, because two lists
+// would drift the first week and the second page would quietly be a month behind.
+//
+// Everything here ends up in a `src` or an `href` on a public page, so the API refuses any
+// scheme that is not http(s) or a same-origin path. This form does not re-implement that
+// check — it reports what the API said, which is the only version that is actually enforced.
+function ShowcaseEditor() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, err, loading, reload } = useAsync(() => api.get('/admin/site/showcase'), []);
+  const [cfg, setCfg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) setCfg({ enabled: !!data.enabled, intervalMs: data.intervalMs || 6000, items: data.items || [] }); }, [data]);
+
+  if (loading) return <Loading />;
+  if (err || !cfg) {
+    return (
+      <EmptyState icon={AlertTriangle} title={t('shsc.failed', 'Could not load the showcase')}
+        sub={t('shsc.failed.s', 'Nothing has been changed. Try again, and check the API is reachable.')}>
+        <Button onClick={() => reload()}><RefreshCw size={15} /> {t('common.retry', 'Try again')}</Button>
+      </EmptyState>
+    );
+  }
+
+  const set = (i, patch) => setCfg((c) => ({ ...c, items: c.items.map((it, j) => (j === i ? { ...it, ...patch } : it)) }));
+  const move = (i, by) => setCfg((c) => {
+    const to = i + by;
+    if (to < 0 || to >= c.items.length) return c;
+    const items = c.items.slice();
+    [items[i], items[to]] = [items[to], items[i]];
+    return { ...c, items };
+  });
+  const add = () => setCfg((c) => ({
+    ...c,
+    // A generated id, because two the same make React reuse one panel for two projects and
+    // the second inherits the first one's playing video. The API refuses duplicates too.
+    items: [...c.items, { id: `p${c.items.length + 1}-${Math.random().toString(36).slice(2, 7)}`, kind: 'image', url: '', fit: 'cover', scale: 1, title: {}, blurb: {} }],
+  }));
+  const drop = (i) => setCfg((c) => ({ ...c, items: c.items.filter((_, j) => j !== i) }));
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/site/showcase', cfg);
+      toast.success(t('common.saved', 'Saved.'));
+      reload();
+    } catch (e) {
+      // The API names which row and which field. Swallowing that leaves somebody staring
+      // at twelve rows and four fields each, told only "invalid input".
+      toast.error(e?.detail ? `${t('shsc.rejected', 'Rejected')} — ${e.detail}` : t('common.failed', 'Failed.'));
+    }
+    setBusy(false);
+  };
+
+  const KINDS = [
+    { v: 'image', l: t('shsc.k.image', 'Image / GIF') },
+    { v: 'video', l: t('shsc.k.video', 'Video (webm, mp4)') },
+    { v: 'replay', l: t('shsc.k.replay', 'BMM session replay (.bmmreplay)') },
+  ];
+
+  return (
+    <Card className="p-4 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h3 className="font-semibold flex items-center gap-2"><LayoutGrid size={16} /> {t('shsc.title', 'Landing showcase')}</h3>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={cfg.enabled} onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })} />
+          {t('shsc.on', 'Show it on the landing pages')}
+        </label>
+        <div className="ml-auto flex items-center gap-2">
+          <label className="text-xs text-[var(--muted)]">{t('shsc.every', 'Every')}</label>
+          <Input type="number" min={2} max={30} className="!w-20" value={Math.round(cfg.intervalMs / 1000)}
+            onChange={(e) => setCfg({ ...cfg, intervalMs: Math.min(30, Math.max(2, Number(e.target.value) || 6)) * 1000 })} />
+          <span className="text-xs text-[var(--muted)]">{t('shsc.seconds', 'seconds')}</span>
+        </div>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-4">
+        {t('shsc.sub', 'The projects both the home page and /dev open with, shown as media instead of described. Switched off, or with no rows, each page keeps the hero it has.')}
+      </p>
+
+      {!cfg.items.length && (
+        <p className="text-sm text-[var(--faint)] mb-3">{t('shsc.none', 'Nothing in it yet.')}</p>
+      )}
+
+      <div className="space-y-3">
+        {cfg.items.map((it, i) => (
+          <div key={it.id || i} className="rounded-xl border border-[var(--line)] p-3" style={{ background: 'var(--surface)' }}>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="text-xs font-mono text-[var(--faint)]">#{i + 1}</span>
+              <Input className="!w-40" value={it.id || ''} onChange={(e) => set(i, { id: e.target.value })}
+                placeholder={t('shsc.f.id', 'id')} />
+              <Select className="!w-52" value={it.kind || 'image'} onChange={(e) => set(i, { kind: e.target.value })}>
+                {KINDS.map((k) => <option key={k.v} value={k.v}>{k.l}</option>)}
+              </Select>
+              <div className="ml-auto flex gap-1">
+                <Button size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('shsc.up', 'Move up')}><ChevronUp size={14} /></Button>
+                <Button size="sm" onClick={() => move(i, 1)} disabled={i === cfg.items.length - 1} aria-label={t('shsc.down', 'Move down')}><ChevronDown size={14} /></Button>
+                <Button size="sm" onClick={() => drop(i)} aria-label={t('common.delete', 'Delete')}><Trash2 size={14} /></Button>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-2">
+              <Field label={t('shsc.f.url', 'Media URL')} hint={t('shsc.f.urlHint', 'https://… or a path on this site, such as an uploaded asset.')}>
+                <Input value={it.url || ''} onChange={(e) => set(i, { url: e.target.value })} placeholder="https://…/demo.webm" />
+              </Field>
+              <Field label={t('shsc.f.href', 'Where clicking it goes')} hint={t('shsc.f.hrefHint', 'Optional. A path like /p/bmm, or a full address.')}>
+                <Input value={it.href || ''} onChange={(e) => set(i, { href: e.target.value })} placeholder="/p/bmm" />
+              </Field>
+              {it.kind === 'video' && (
+                <Field label={t('shsc.f.poster', 'Poster image')} hint={t('shsc.f.posterHint', 'Shown while the video loads, and instead of it when a browser refuses to autoplay.')}>
+                  <Input value={it.poster || ''} onChange={(e) => set(i, { poster: e.target.value })} placeholder="https://…/still.png" />
+                </Field>
+              )}
+              {/* The zoom, per item, because "how big should this look" is a fact about the
+                  picture and not about the page. */}
+              <Field label={t('shsc.f.fit', 'Zoom')} hint={t('shsc.f.fitHint', 'Fill crops the edges; Fit shows all of it and letterboxes. The slider adjusts either.')}>
+                <div className="flex items-center gap-2">
+                  <Select className="!w-32" value={it.fit || 'cover'} onChange={(e) => set(i, { fit: e.target.value })}>
+                    <option value="cover">{t('shsc.fit.cover', 'Fill (zoom in)')}</option>
+                    <option value="contain">{t('shsc.fit.contain', 'Fit (zoom out)')}</option>
+                  </Select>
+                  <input type="range" min="0.5" max="2" step="0.05" className="flex-1"
+                    value={it.scale ?? 1} onChange={(e) => set(i, { scale: Number(e.target.value) })} />
+                  <span className="text-xs font-mono text-[var(--muted)] w-10 text-right">{(it.scale ?? 1).toFixed(2)}×</span>
+                </div>
+              </Field>
+            </div>
+
+            {/* Both languages, like every other public string on this site. */}
+            <div className="grid sm:grid-cols-2 gap-2 mt-2">
+              <Field label={t('shsc.f.titleEn', 'Title (EN)')}><Input value={it.title?.en || ''} onChange={(e) => set(i, { title: { ...it.title, en: e.target.value } })} /></Field>
+              <Field label={t('shsc.f.titleFr', 'Title (FR)')}><Input value={it.title?.fr || ''} onChange={(e) => set(i, { title: { ...it.title, fr: e.target.value } })} /></Field>
+              <Field label={t('shsc.f.blurbEn', 'One line (EN)')}><Input value={it.blurb?.en || ''} onChange={(e) => set(i, { blurb: { ...it.blurb, en: e.target.value } })} /></Field>
+              <Field label={t('shsc.f.blurbFr', 'One line (FR)')}><Input value={it.blurb?.fr || ''} onChange={(e) => set(i, { blurb: { ...it.blurb, fr: e.target.value } })} /></Field>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-2 mt-4">
+        <Button onClick={add} disabled={cfg.items.length >= (data?.max || 12)}><Plus size={15} /> {t('shsc.add', 'Add a project')}</Button>
+        <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
+      </div>
+    </Card>
+  );
+}
+
 function HomePageEditor() {
   const { t, lang } = useI18n();
   const toast = useToast();

@@ -1,4 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
+// Lazily: the showcase pulls in rrweb the moment a `.bmmreplay` panel is shown, and a
+// visitor to a site with no showcase configured must not pay for any of it.
+const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import {
   Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight,
@@ -267,6 +270,10 @@ export function Home() {
   // t() itself — see I18nProvider). Anything missing counts as ON, so a section added after
   // a site saved its config is never silently hidden.
   const { data: homeCfg } = useAsync(() => api.get('/site/home').catch(() => null), []);
+  // The projects, as media. Absent or switched off leaves the hero exactly as it was — a
+  // site that has never configured this must not gain an empty black rectangle the day it
+  // ships.
+  const { data: showcase } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
   const show = (k) => homeCfg?.sections?.[k] !== false;
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -296,6 +303,14 @@ export function Home() {
             <Link to="/repos"><Button variant="primary" className="!px-6 !py-3">{t('home.cta.repos', 'Browse Server Repos')} <ArrowRight size={16} /></Button></Link>
             <Link to="/hosting"><Button className="!px-6 !py-3">{t('home.cta.host')}</Button></Link>
           </div>
+          {/* The projects, moving, under the one line that names the site. This is what the
+              page opens with now: a paragraph is what a site says about itself, and what a
+              visitor is deciding is whether the thing looks like something they want. */}
+          {showcase?.enabled && (
+            <div className="anim-slide mt-14" style={{ animationDelay: '320ms' }}>
+              <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+            </div>
+          )}
           {/* The headline counts are gone. They were the two numbers a visitor cannot
               act on — a total of mods and a total of downloads say nothing about whether
               THIS site has what they came for, and a growing number is only impressive to
