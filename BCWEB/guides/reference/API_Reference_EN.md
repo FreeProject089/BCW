@@ -549,6 +549,29 @@ before it is published.
 | POST | `/dev/validate-feed` | signed in | Check a catalogue feed (by URL or body). |
 | GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | The generated maps behind the admin dashboard. |
 
+
+### The two artifacts these tools read
+
+Neither checker keeps its own copy of what it is checking against, and both say so on screen
+when the artifact is missing rather than pretending every name they do not recognise is a typo.
+
+| Asset key | Produced by | Feeds |
+|---|---|---|
+| `bmms-vocabulary.json` | `node scripts/gen-bmms-reference.mjs` in BMM | the `.bmmscript` checker |
+| `installer-schema` | `bpkg schema --out schema/installer-schema.json` in BetterInstaller | `POST /dev/validate-recipe` |
+
+Upload each as a platform asset under that key.
+
+!!! warning "They go stale silently, and only on this side"
+
+    BMM's CI regenerates its vocabulary and fails if somebody forgets — so the file in that
+    repository is always right. Nothing here can tell that the copy uploaded to this site is
+    six months older.
+
+    The symptom is a checker that reports valid action names as unknown, which reads as a broken
+    file rather than a stale upload. Re-upload after BMM's language grows: it is currently 90
+    actions, 32 conditions and 54 keywords.
+
 **What the inspector recognises.** By SHAPE, never by a claim in the file — a document saying
 `format: "mm"` proves nothing about itself, and a signed one that lies about its own type is
 exactly the case moderation exists for:

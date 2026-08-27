@@ -555,6 +555,31 @@ artefact avant sa publication.
 | POST | `/dev/validate-feed` | connecté | Vérifier un flux de catalogue (par URL ou corps). |
 | GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | Les cartes générées derrière le tableau de bord admin. |
 
+
+### Les deux artefacts que lisent ces outils
+
+Aucun des deux vérificateurs ne garde sa propre copie de ce contre quoi il vérifie, et tous deux
+le disent à l'écran quand l'artefact manque, plutôt que de faire passer pour une faute chaque
+nom qu'ils ne reconnaissent pas.
+
+| Clé d'asset | Produit par | Alimente |
+|---|---|---|
+| `bmms-vocabulary.json` | `node scripts/gen-bmms-reference.mjs` dans BMM | le vérificateur `.bmmscript` |
+| `installer-schema` | `bpkg schema --out schema/installer-schema.json` dans BetterInstaller | `POST /dev/validate-recipe` |
+
+Téléverse chacun comme asset de plateforme sous cette clé.
+
+!!! warning "Ils périment en silence, et seulement de ce côté"
+
+    La CI de BMM régénère son vocabulaire et échoue si quelqu'un oublie — le fichier dans ce
+    dépôt est donc toujours juste. Rien ici ne peut savoir que la copie téléversée sur ce site a
+    six mois de retard.
+
+    Le symptôme est un vérificateur qui signale des noms d'actions valides comme inconnus, ce
+    qui se lit comme un fichier cassé plutôt que comme un téléversement périmé. Re-téléverse
+    quand le langage de BMM grandit : il est actuellement à 90 actions, 32 conditions et 54
+    mots-clés.
+
 **Ce que l'inspecteur reconnaît.** Par la FORME, jamais par ce que le fichier prétend être — un
 document qui dit `format: "mm"` ne prouve rien sur lui-même, et un fichier signé qui ment sur son
 propre type est exactement le cas pour lequel la modération existe :
