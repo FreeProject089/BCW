@@ -2121,6 +2121,7 @@ const DICT = {
     'sub2.bulk.title': 'Adhésion en masse', 'sub2.bulk.desc': 'Ce fichier catalogue contient {n} entrées. Chacune devient sa propre proposition au catalogue officiel. Décoche celles à ignorer.',
     'sub2.bulk.submit': 'Tout proposer', 'sub2.bulk.done': '{n} éléments proposés pour revue.', 'sub2.bulk.none': 'Aucune entrée n’avait d’URL de téléchargement utilisable.', 'sub2.bulk.pick': 'Choisis au moins une entrée.',
     'sub2.nourl': 'pas d’URL de téléchargement — sera ignorée',
+    'sub2.nosha': 'pas de somme de contrôle — BMM avertira avant d’installer celle-ci',
     'sub2.catname': 'Un nom de catalogue est requis.', 'sub2.catname.l': 'Nom du catalogue',
     'sub2.pw': "Mot de passe de téléchargement (facultatif)",
     'sub2.pw.hint': "Il est demandé à quiconque synchronise. Laissez vide pour un catalogue ouvert.",

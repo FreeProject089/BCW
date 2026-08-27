@@ -159,7 +159,7 @@ function OfficialSubmit({ onBack }) {
               <label key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-[var(--line)] cursor-pointer">
                 <input type="checkbox" checked={e._skip !== true} onChange={(ev) => setBulk((b) => ({ entries: b.entries.map((x, j) => j === i ? { ...x, _skip: !ev.target.checked } : x) }))} />
                 <Badge tone="">{kindLabel(e.kind, projectKey)}</Badge>
-                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL — will be skipped')}</div></div>
+                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL — will be skipped')}</div>{e.kind === 'APP' && e.meta.download_url && !e.meta.sha256 && (<div className="text-[11px] text-[var(--warning,#f59e0b)]">{t('sub2.nosha', 'no checksum — BMM will warn before installing this one')}</div>)}</div>
               </label>
             ))}
           </div>
@@ -196,7 +196,7 @@ function OfficialSubmit({ onBack }) {
           )}
           <div>
             <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced — edit metadata JSON')}</button>
-            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(JSON.stringify(kind === 'APP' ? { category: 'other', price: 'free', download_url: '' } : kind === 'PLUGIN' ? { game: '', download_url: '' } : { name: form.name }, null, 2))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
+            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(JSON.stringify(kind === 'APP' ? { category: 'other', price: 'free', download_url: '', file_type: 'exe', size: 0, sha256: '' } : kind === 'PLUGIN' ? { game: '', download_url: '' } : { name: form.name }, null, 2))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
           </div>
           <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={submitOne}>{busy ? <Spinner /> : <><Upload size={15} /> {t('sub.forreview', 'Submit for review')}</>}</Button></div>
         </Card>
