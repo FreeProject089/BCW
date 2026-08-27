@@ -32,7 +32,29 @@ function catalogEntries(json, projectKey) {
   const out = [];
   for (const pl of json.plugins || []) out.push({ kind: 'PLUGIN', name: pl.name || pl.id, version: pl.version || '1.0.0', description: pl.description || '', tags: pl.tags || [], meta: { download_url: pl.download_url || pl.url || '', game: pl.game || '', icon_url: pl.icon_url || null } });
   for (const th of json.themes || []) out.push({ kind: 'THEME', name: th.name || th.id, version: th.version || '1.0.0', description: th.description || '', tags: th.tags || [], meta: { download_url: th.url || th.download_url || '' } });
-  for (const a of json.apps || []) out.push({ kind: 'APP', name: a.title || a.name || a.id, version: a.version || '1.0.0', description: a.description || '', tags: a.tags || [], meta: { download_url: a.download?.url || a.download_url || '', category: a.category || 'other' } });
+  // Carry everything emitManagedFeed reads back out. It reads sha256, file_type, size,
+  // price, requirements, md_link and images — and this kept two of them, so importing a BMM
+  // catalogue here and re-serving it silently dropped the CHECKSUM. BMM verifies that hash
+  // before it runs an installer; an entry that arrives without one installs behind a warning
+  // instead, and nobody could have told why.
+  for (const a of json.apps || []) out.push({
+    kind: 'APP',
+    name: a.title || a.name || a.id,
+    version: a.version || '1.0.0',
+    description: a.description || '',
+    tags: a.tags || [],
+    meta: {
+      download_url: a.download?.url || a.download_url || '',
+      category: a.category || 'other',
+      price: a.price || 'free',
+      file_type: a.download?.file_type || undefined,
+      size: a.download?.size || undefined,
+      sha256: a.download?.sha256 || undefined,
+      requirements: a.requirements || undefined,
+      md_link: a.md_link || undefined,
+      images: a.images || undefined,
+    },
+  });
   return out.filter((e) => e.name);
 }
 
