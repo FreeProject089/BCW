@@ -232,6 +232,9 @@ and sends are admin-triggered only (no auto-send on publish).
 | POST | `/admin/users/:id/moderate` | admin | **Suspend / ban / reactivate** an account (`action`, optional `durationHours` = temporary else permanent, `reason`). Signs the user out within ~15s, blocks login with the reason + remaining time, emails + notifies them. Staff/self are protected. |
 | GET | `/admin/settings` · PUT `/admin/settings/:key` | admin | Pricing/hosting knobs. |
 | GET | `/admin/storage` · `/admin/billing/users` | admin | Storage: per-area object usage **+ a grand total across all tiers** (object storage, DB, backups, telemetry) each labelled local/remote; + paying/free users. |
+| GET | `/site/showcase` | — | The projects both landing pages (`/` and `/dev`) open with, as media: `{ enabled, intervalMs, items[] }`. Cached 60s. `enabled` is false unless an admin turned it on **and** there is at least one item, so a site that never configured it keeps the hero it has. |
+| GET | `/admin/site/showcase` | admin | The RAW stored value, including a list that is switched off — the editor has to see it, or turning it back on would mean retyping it. Also returns `kinds`, `fits` and `max`. |
+| PUT | `/admin/site/showcase` | admin | `{ enabled?, intervalMs? (2–30s), items? }`. Each item is `{ id, kind: image\|video\|replay, url, href?, poster?, fit: cover\|contain, scale: 0.5–2, title{en,fr}, blurb{en,fr} }`, max 12. Every URL must be `http(s)` or a same-origin path — `javascript:`, `data:`, `file:` and a protocol-relative `//host` are refused, because each of these ends up in a `src` or an `href` on a public page. Duplicate ids are refused (React would reuse one panel for two projects). A rejection names the offending row and field rather than saying `invalid_input`. |
 | GET | `/reviews` | — | Landing testimonials feed: `{ enabled, reviews[] }` (each with EN `body` + `bodyFr`). |
 | GET/POST/PATCH/DELETE | `/admin/reviews[/:id]` | admin | Manage landing testimonials (author/role/EN+FR text/rating/enabled/order). |
 | PUT | `/admin/reviews/settings` | admin | Toggle the whole reviews section on/off (`{ enabled }`). |
@@ -580,6 +583,7 @@ exactly the case moderation exists for:
 |---|---|
 | `bmmpa` | `magic: "BMMPA"`, or an array/`tasks` of objects with `steps` |
 | `bmmnav` | `format: "bmmnav"` |
+| `bmmlaunch` | a launch pack: `kind: "bmm-launchpack"`, or a `name` alongside `exe_paths[]` |
 | `bmmreplay` | `events` alongside `console`/`rustLog`, or a bare rrweb event array |
 | `bmmplug` | a plugin manifest: `id` + `name` **and** one of `apply_mode` / `permissions` / `modlist` / `assets` / `scripts` |
 | `mm-locked` | `bmm_locked: true` + a `sealed` block (contents encrypted; the header stays readable on purpose) |
@@ -594,6 +598,13 @@ is the file a moderator opening a hosted repo is most likely to be holding — a
 carries plugins, themes, scheduled tasks and catalogues as extras. A **plugin manifest** is what
 the unknown-format hint has been telling people to paste for as long as it has existed, while
 doing so answered "not a recognised BMM format": the advice was right and the reader was missing.
+
+A **launch pack** is the newest and the loudest: its entire content is a list of programs that
+will be started on the machine that imports it. The reader says how many, prints every path
+exactly as written — never resolving one, never opening one — and flags two things a filename
+cannot show: which programs go through a **shell** (BMM's own launcher runs a `.ps1` with the
+execution policy bypassed and a `.bat` through `cmd`), and which are named by a **relative**
+path, which resolves against whatever folder happens to be current when it fires.
 
 A plugin is the one thing here that is CODE running inside somebody's BMM, so its summary is
 ordered by what has to be decided about it: what it may reach (permissions), whether it runs

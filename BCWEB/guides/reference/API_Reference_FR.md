@@ -238,6 +238,9 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | POST | `/admin/users/:id/moderate` | admin | **Suspendre / bannir / réactiver** un compte (`action`, `durationHours` optionnel = temporaire sinon permanent, `reason`). Déconnecte l'utilisateur en ~15s, bloque le login avec la raison + temps restant, e-maile + notifie. Staff/soi-même protégés. |
 | GET | `/admin/settings` · PUT `/admin/settings/:key` | admin | Boutons de prix/hébergement. |
 | GET | `/admin/storage` · `/admin/billing/users` | admin | Stockage : usage objet par zone **+ un total général sur tous les paliers** (stockage objet, BD, backups, télémétrie) chacun étiqueté local/distant ; + utilisateurs payants/gratuits. |
+| GET | `/site/showcase` | — | Les projets par lesquels s'ouvrent les deux landing pages (`/` et `/dev`), en média : `{ enabled, intervalMs, items[] }`. Caché  60 s. `enabled` est faux tant qu'un admin ne l'a pas activé **et** qu'il n'y a pas au moins un élément, pour qu'un site jamais configuré garde son hero. |
+| GET | `/admin/site/showcase` | admin | La valeur stockée BRUTE, y compris une liste désactivée — l'éditeur doit la voir, sinon la réactiver signifierait tout retaper. Renvoie aussi `kinds`, `fits` et `max`. |
+| PUT | `/admin/site/showcase` | admin | `{ enabled?, intervalMs? (2–30 s), items? }`. Chaque élément est `{ id, kind: image\|video\|replay, url, href?, poster?, fit: cover\|contain, scale: 0.5–2, title{en,fr}, blurb{en,fr} }`, 12 au maximum. Chaque URL doit être `http(s)` ou un chemin de même origine — `javascript:`, `data:`, `file:` et un `//hôte` relatif au protocole sont refusés, parce que chacun finit dans un `src` ou un `href` sur une page publique. Les ids en double sont refusés (React réutiliserait un panneau pour deux projets). Un refus nomme la ligne et le champ fautifs plutôt que de dire `invalid_input`. |
 | GET | `/reviews` | — | Feed de témoignages du landing : `{ enabled, reviews[] }` (chacun avec `body` EN + `bodyFr`). |
 | GET/POST/PATCH/DELETE | `/admin/reviews[/:id]` | admin | Gérer les témoignages du landing (auteur/rôle/texte EN+FR/note/activé/ordre). |
 | PUT | `/admin/reviews/settings` | admin | Activer/désactiver toute la section avis (`{ enabled }`). |
@@ -588,6 +591,7 @@ propre type est exactement le cas pour lequel la modération existe :
 |---|---|
 | `bmmpa` | `magic: "BMMPA"`, ou un tableau/`tasks` d'objets avec `steps` |
 | `bmmnav` | `format: "bmmnav"` |
+| `bmmlaunch` | un launch pack : `kind: "bmm-launchpack"`, ou un `name` accompagné de `exe_paths[]` |
 | `bmmreplay` | `events` avec `console`/`rustLog`, ou un tableau rrweb nu |
 | `bmmplug` | manifeste de plugin : `id` + `name` **et** l'un de `apply_mode` / `permissions` / `modlist` / `assets` / `scripts` |
 | `mm-locked` | `bmm_locked: true` + un bloc `sealed` (contenu chiffré ; l'en-tête reste lisible exprès) |
@@ -603,6 +607,14 @@ celui qui porte désormais plugins, thèmes, tâches planifiées et catalogues e
 **manifeste de plugin** est ce que l'aide « format inconnu » disait de coller depuis toujours,
 alors que le faire répondait « format BMM non reconnu » : le conseil était juste, c'est le
 lecteur qui manquait.
+
+Un **launch pack** est le plus récent et le plus bruyant : son contenu entier est une liste de
+programmes qui seront lancés sur la machine qui l'importe. Le lecteur dit combien, imprime
+chaque chemin exactement tel qu'écrit — sans jamais en résoudre ni en ouvrir un — et signale
+deux choses qu'un nom de fichier ne peut pas montrer : lesquels passent par un **shell** (le
+lanceur de BMM exécute un `.ps1` avec la stratégie d'exécution contournée et un `.bat` par
+`cmd`), et lesquels sont désignés par un chemin **relatif**, résolu selon le dossier courant au
+moment du déclenchement.
 
 Un plugin est la seule chose ici qui est du CODE tournant dans le BMM de quelqu'un : son résumé
 est donc ordonné par ce qu'il faut décider — ce qu'il peut atteindre (permissions), s'il exécute
