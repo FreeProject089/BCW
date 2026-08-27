@@ -54,6 +54,12 @@ export function detectFormat(doc) {
   }
   if (doc.magic === 'BMMPA' || arr(doc.tasks).some((x) => isObj(x) && Array.isArray(x.steps))) return 'bmmpa';
   if (doc.format === 'bmmnav') return 'bmmnav';
+  // A launch pack (.bmmlaunch): a name and a list of programs to start. `kind` is the marker
+  // the writer puts there deliberately; the shape alone still decides, so a file trimmed by
+  // hand or written by an older BMM is not rejected over a missing field.
+  if (doc.kind === 'bmm-launchpack' || (Array.isArray(doc.exe_paths) && typeof doc.name === 'string')) {
+    return 'bmmlaunch';
+  }
   // `console`/`rustLog` identify BMM's own export. They are not required any more: a recording
   // taken without the console attached has neither, and it is still a replay.
   if (Array.isArray(doc.events) && ('console' in doc || 'rustLog' in doc || looksLikeRrweb(doc.events))) return 'bmmreplay';
@@ -249,6 +255,41 @@ function inspectReplay(input) {
  * sandbox with its own permissions — the one part of a navbar file that does something
  * rather than just naming a place.
  */
+/**
+ * A launch pack: which programs it would start on the machine that imports it.
+ *
+ * The only reason to inspect one. A pack is a list of executables somebody else chose, and
+ * a moderator or a recipient deciding whether to trust it is deciding about that list —
+ * not about a name and an icon.
+ */
+function inspectLaunchPack(doc) {
+  const exes = arr(doc.exe_paths).filter((x) => typeof x === 'string');
+  // BMM's own launcher runs these through `powershell -ExecutionPolicy Bypass` or `cmd /c`,
+  // rather than starting them as programs. Worth a warn row: a `.exe` announces what it is,
+  // a `.ps1` in a shared pack is somebody else's code about to run with the policy off.
+  const scripted = exes.filter((p) => /\.(ps1|bat|cmd|vbs)$/i.test(p.trim()));
+  // Relative means "resolved against whatever folder is current when it fires", which a file
+  // that travels between machines cannot promise anything about.
+  const relative = exes.filter((p) => {
+    const t = p.trim();
+    return t && !/^\\\\/.test(t) && !/^[a-z]:[\\/]/i.test(t) && !t.startsWith('/');
+  });
+  return {
+    title: 'Launch pack',
+    summary: [
+      row('Name', String(doc.name ?? '(unnamed)').slice(0, 120), String(doc.name ?? '').trim() ? undefined : 'warn'),
+      row('Programs', exes.length, exes.length ? undefined : 'warn'),
+      row('Run through a shell', scripted.length, scripted.length ? 'warn' : undefined),
+      row('Relative paths', relative.length, relative.length ? 'warn' : undefined),
+    ],
+    detail: exes.slice(0, 100).map((p) => ({
+      name: (p.trim().split(/[\\/]/).filter(Boolean).pop() || p).slice(0, 120),
+      // Printed exactly as written, never resolved and never opened.
+      note: String(p).slice(0, 300),
+    })),
+  };
+}
+
 function inspectNav(doc) {
   const items = arr(doc.items ?? doc.nav ?? doc.entries);
   const pages = items.filter((i) => typeof i?.url === 'string' && i.url.startsWith('bmmpage://'));
@@ -294,7 +335,7 @@ export function inspectAny(doc) {
   // reviewer needs to see rather than a blank space where a verdict would go.
   const signature = verifyDocument(doc, format);
   if (format === 'bmmpa') return { ok: true, format, signature, bmmpa: inspectBmmpa(doc) };
-  const readers = { mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog, repo: inspectRepo, bmmplug: inspectPlugin };
+  const readers = { bmmlaunch: inspectLaunchPack, mm: inspectModList, 'mm-locked': inspectLockedModList, bmmreplay: inspectReplay, bmmnav: inspectNav, bmp: inspectModpack, cbmp: inspectModpackCatalog, bmmcat: inspectCatalog, repo: inspectRepo, bmmplug: inspectPlugin };
   return { ok: true, format, signature, ...readers[format](doc) };
 }
 
