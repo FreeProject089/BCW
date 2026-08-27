@@ -28,11 +28,9 @@ import { ReportJoin } from './ui/report.jsx';
 import Avatar from './ui/Avatar.jsx';
 // Eager: the initial landing routes + nav-critical modules (the notification map is
 // rendered by the always-present nav bell, which keeps dashboard.jsx in the main chunk).
-import NotFound from './pages/notfound.jsx';
 import { NOTIF, NOTIF_FALLBACK } from './ui/notif.js'; // tiny data module — kept eager for the nav bell
 import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
-import { Auth } from './pages/signin.jsx';
 import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
 import { lazyChunk, lazyNamed, installPreloadErrorHandler } from './lib/lazy-chunk.js';
@@ -53,6 +51,14 @@ const DevConfig = lazyChunk(() => import('./pages/dev-config.jsx'));
 const NotificationCentre = lazyChunk(() => import('./pages/notifications.jsx'));
 const SanctionPage = lazyChunk(() => import('./pages/sanction.jsx'));
 const DevTools = lazyChunk(() => import('./pages/dev-tools.jsx'));
+// The 404 page carries the Orb Fall canvas game — a whole game, in the entry chunk, for a
+// route almost nobody reaches. Split out it is worth 9 KB gzip, which is what the bundle
+// budget was over by, and it costs a Suspense flash on a page that is already a surprise.
+const NotFound = lazyChunk(() => import('./pages/notfound.jsx'));
+// Sign-in is a route like any other. It was eager because it is important, which is not
+// the same as being needed on first paint: somebody arriving at the home page does not
+// need the sign-in form until they click.
+const Auth = lazyChunk(() => import('./pages/signin.jsx').then((m) => ({ default: m.Auth })));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');

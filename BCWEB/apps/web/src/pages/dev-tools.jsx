@@ -298,7 +298,7 @@ function BmmScriptChecker() {
         <div className="mt-3">
           {result.problems.length === 0 ? (
             <div className="flex items-start gap-2 text-[12px]">
-              <CheckCircle2 size={15} className="text-[var(--ok)] shrink-0 mt-[1px]" />
+              <CheckCircle2 size={15} className="text-[var(--success)] shrink-0 mt-[1px]" />
               <span>
                 {result.checkedNames
                   ? t('dvt.bms.okNames', 'Balanced, and every action, condition and engine it names exists in BMM.')
@@ -309,7 +309,7 @@ function BmmScriptChecker() {
             <ul className="space-y-1.5">
               {result.problems.map((pb, i) => (
                 <li key={i} className="flex items-start gap-2 text-[12px]">
-                  <AlertTriangle size={15} className="text-[var(--warn)] shrink-0 mt-[1px]" />
+                  <AlertTriangle size={15} className="text-[var(--warning)] shrink-0 mt-[1px]" />
                   <span>
                     {pb.line > 0 && <b className="tabular-nums">{t('dvt.bms.line', 'Line')} {pb.line}: </b>}
                     {pb.text}
