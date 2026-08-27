@@ -100,7 +100,10 @@
   buys a place in the review queue and nothing else; approval creates the page
   unpublished and unlisted. → [OTHER_PROJECTS_GUIDE_EN.md](OTHER_PROJECTS_GUIDE_EN.md)
 - **Developer tools** (`/dev/tools`) — inspect a BMM file (the same inspector moderation
-  uses, on a developer endpoint) and check a `.bmmscript` before publishing it. The
+  uses, on a developer endpoint) and check a `.bmmscript` before publishing it. The inspector
+  reads ten BMM document types **by shape**, never by what the file claims to be — including
+  a Server-Repo manifest and a plugin manifest, the two a reviewer is most likely to be
+  holding. Full table → [API_Reference_EN.md](API_Reference_EN.md) §34. The
   checker verifies **shape** (unbalanced braces) and **names** against the vocabulary BMM
   publishes — deliberately not a second compiler, since BMM's only one is in Rust and a
   copy here would be wrong the day it was written.

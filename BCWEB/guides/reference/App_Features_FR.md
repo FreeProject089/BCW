@@ -113,7 +113,10 @@
   → [OTHER_PROJECTS_GUIDE_FR.md](OTHER_PROJECTS_GUIDE_FR.md)
 - **Outils développeur** (`/dev/tools`) — inspecter un fichier BMM (le même inspecteur
   que la modération, sur un endpoint développeur) et vérifier un `.bmmscript` avant de le
-  publier. Le vérificateur contrôle la **forme** (accolades déséquilibrées) et les **noms**
+  publier. L'inspecteur lit dix types de documents BMM **par leur forme**, jamais par ce que le
+  fichier prétend être — dont un manifeste de Server-Repo et un manifeste de plugin, les deux
+  qu'un relecteur a le plus de chances d'avoir sous la main. Table complète →
+  [API_Reference_FR.md](API_Reference_FR.md) §34. Le vérificateur contrôle la **forme** (accolades déséquilibrées) et les **noms**
   face au vocabulaire que BMM publie — volontairement pas un second compilateur, puisque
   BMM n'en a qu'un, en Rust, et qu'une copie ici serait fausse dès le jour de son
   écriture.

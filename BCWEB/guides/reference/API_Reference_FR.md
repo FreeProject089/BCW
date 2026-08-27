@@ -543,4 +543,55 @@ L’endpoint de forward-auth appelé par l’edge pour protéger le tableau de b
 | GET | `/admin/telemetry-access/users` | superadmin | Qui peut atteindre le tableau de bord. |
 | PUT | `/admin/telemetry-access/:userId` | superadmin | Accorder ou révoquer l’accès au tableau de bord. |
 
-*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*
+## 34. Outils développeur (`devtools.mjs`)
+L'inspecteur, les cartes qu'affiche le tableau de bord admin, et deux vérificateurs qui lisent un
+artefact avant sa publication.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/dev/inspect` | connecté | Lire un document BMM et dire ce que c'est. |
+| POST | `/admin/inspect` | `manage_catalogs` / mod | Le même lecteur, côté modération. |
+| POST | `/dev/validate-recipe` | connecté | Vérifier un `installer.toml` BetterInstaller contre le schéma publié. |
+| POST | `/dev/validate-feed` | connecté | Vérifier un flux de catalogue (par URL ou corps). |
+| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | Les cartes générées derrière le tableau de bord admin. |
+
+**Ce que l'inspecteur reconnaît.** Par la FORME, jamais par ce que le fichier prétend être — un
+document qui dit `format: "mm"` ne prouve rien sur lui-même, et un fichier signé qui ment sur son
+propre type est exactement le cas pour lequel la modération existe :
+
+| Rapporté comme | Reconnu par |
+|---|---|
+| `bmmpa` | `magic: "BMMPA"`, ou un tableau/`tasks` d'objets avec `steps` |
+| `bmmnav` | `format: "bmmnav"` |
+| `bmmreplay` | `events` avec `console`/`rustLog`, ou un tableau rrweb nu |
+| `bmmplug` | manifeste de plugin : `id` + `name` **et** l'un de `apply_mode` / `permissions` / `modlist` / `assets` / `scripts` |
+| `mm-locked` | `bmm_locked: true` + un bloc `sealed` (contenu chiffré ; l'en-tête reste lisible exprès) |
+| `repo` | manifeste de Server-Repo : `profiles[]` portant des `mods` |
+| `mm` | `format_version` + `mods[]` |
+| `bmp` | modpack : `mods[]` dont les entrées ont `mod_id` + `file_manifest` |
+| `cbmp` | catalogue de modpacks : `modpacks[]` avec un `file` chacun |
+| `bmmcat` | tout autre catalogue — vérifié en DERNIER, parce que `modpacks` est aussi l'un de ses tableaux |
+
+Deux sont récents, et les deux étaient un trou plutôt qu'un choix. Un **manifeste `repo`** est le
+fichier qu'un modérateur ouvrant un repo hébergé a le plus de chances d'avoir sous la main — et
+celui qui porte désormais plugins, thèmes, tâches planifiées et catalogues en extras. Un
+**manifeste de plugin** est ce que l'aide « format inconnu » disait de coller depuis toujours,
+alors que le faire répondait « format BMM non reconnu » : le conseil était juste, c'est le
+lecteur qui manquait.
+
+Un plugin est la seule chose ici qui est du CODE tournant dans le BMM de quelqu'un : son résumé
+est donc ordonné par ce qu'il faut décider — ce qu'il peut atteindre (permissions), s'il exécute
+quelque chose (scripts), ce qu'il change (sa liste de mods), puis ce qu'il livre à côté (assets).
+La liste d'assets est une **déclaration** — écrite depuis le disque à l'empaquetage, et modifiable
+à la main ensuite — : elle est rapportée comme ce que dit le manifeste, pas comme le contenu réel
+de l'archive.
+
+`signature` est rapporté pour **tous** les formats, y compris ceux que BMM ne signe pas encore :
+« non signé » est une réponse, et c'est celle qu'un relecteur doit voir plutôt qu'un blanc là où
+devrait être un verdict. Pour une archive, les entrées voyagent en `name` + `sha256` et le fichier
+ne quitte jamais la machine du relecteur — la signature couvre exactement cette liste.
+
+Rien ici n'écrit. Un inspecteur de contenu non fiable qui stocke ce qu'il a lu est un moyen de
+faire stocker du contenu.
+
+*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

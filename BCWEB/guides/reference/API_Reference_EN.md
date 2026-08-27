@@ -537,4 +537,53 @@ The forward-auth endpoint the edge calls to gate the BMM telemetry dashboard, an
 | GET | `/admin/telemetry-access/users` | superadmin | Who may reach the dashboard. |
 | PUT | `/admin/telemetry-access/:userId` | superadmin | Grant or revoke dashboard access. |
 
-*Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*
+## 34. Developer tools (`devtools.mjs`)
+The inspector, the maps the admin dashboard draws from, and two checkers that read an artifact
+before it is published.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/dev/inspect` | signed in | Read a BMM document and report what it is. |
+| POST | `/admin/inspect` | `manage_catalogs` / mod | The same reader, on the moderation door. |
+| POST | `/dev/validate-recipe` | signed in | Check a BetterInstaller `installer.toml` against the published schema. |
+| POST | `/dev/validate-feed` | signed in | Check a catalogue feed (by URL or body). |
+| GET | `/admin/schema-map`, `/admin/rbac-map`, `/admin/compose-map`, `/admin/secrets-map`, `/admin/infra-map`, `/admin/migration-map`, `/admin/data-flow`, `/admin/config-diff` | superadmin | The generated maps behind the admin dashboard. |
+
+**What the inspector recognises.** By SHAPE, never by a claim in the file — a document saying
+`format: "mm"` proves nothing about itself, and a signed one that lies about its own type is
+exactly the case moderation exists for:
+
+| Reported as | Recognised by |
+|---|---|
+| `bmmpa` | `magic: "BMMPA"`, or an array/`tasks` of objects with `steps` |
+| `bmmnav` | `format: "bmmnav"` |
+| `bmmreplay` | `events` alongside `console`/`rustLog`, or a bare rrweb event array |
+| `bmmplug` | a plugin manifest: `id` + `name` **and** one of `apply_mode` / `permissions` / `modlist` / `assets` / `scripts` |
+| `mm-locked` | `bmm_locked: true` + a `sealed` block (contents encrypted; the header stays readable on purpose) |
+| `repo` | a Server-Repo manifest: `profiles[]` carrying `mods` |
+| `mm` | `format_version` + `mods[]` |
+| `bmp` | modpack: `mods[]` whose entries have `mod_id` + `file_manifest` |
+| `cbmp` | modpack catalogue: `modpacks[]` with a `file` each |
+| `bmmcat` | any other catalogue — checked LAST, because `modpacks` is one of its arrays too |
+
+Two of these are recent, and both existed as a hole rather than a decision. A **`repo` manifest**
+is the file a moderator opening a hosted repo is most likely to be holding — and the one that now
+carries plugins, themes, scheduled tasks and catalogues as extras. A **plugin manifest** is what
+the unknown-format hint has been telling people to paste for as long as it has existed, while
+doing so answered "not a recognised BMM format": the advice was right and the reader was missing.
+
+A plugin is the one thing here that is CODE running inside somebody's BMM, so its summary is
+ordered by what has to be decided about it: what it may reach (permissions), whether it runs
+anything (scripts), what it changes (its mod list), then what it ships alongside (assets). The
+asset list is a **declaration** — written from disk when the plugin was packed, and editable by
+hand afterwards — so it is reported as what the manifest says, not as what is in the archive.
+
+`signature` is reported for **every** format, including the ones BMM does not sign yet:
+"unsigned" is an answer, and it is the one a reviewer needs to see rather than a blank space
+where a verdict would go. For an archive the entries travel as `name` + `sha256` and the file
+itself never leaves the reviewer's machine — the signature covers exactly that list.
+
+Nothing here writes. An inspector for untrusted content that stores what it read is a way to get
+content stored.
+
+*Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*
