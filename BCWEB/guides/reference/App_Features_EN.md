@@ -147,6 +147,40 @@
   badge shows the country flag and can link to a URL you choose; users can turn the
   fireworks off in Settings),
   announcements (site-wide banner + typed notifications, body size limit, per-type icons).
+- **Page builder** — build a public page out of blocks, and edit the ones the site
+  already ships. It opens on the page **as visitors see it**, with an edit layer over the
+  top, so a change is judged against the real thing rather than a wireframe of it.
+  - *Layout*: section, row, column, and a **card grid** whose cards hold other blocks —
+    so a card is not a title-and-blurb pair with a third field bolted on later. Each card
+    takes an image or a colour fill, an icon, a link and any content inside.
+  - *Content*: heading, **text (full BCWEB custom markdown — every directive, not a
+    subset)**, buttons (filled or outline, three sizes — the same two classes the
+    markdown `:button` directive renders, so a page and a doc page cannot drift), image,
+    spacer, **divider** (line, dashed, dots, gradient or plain space, optionally labelled), and a **stat** reading one of eleven live site
+    numbers.
+  - *Dynamic*: the landing sections themselves — showcase, products, news, poll, reviews,
+    Make-Your-Own, dev tools — each with **styles**, because the same news is a different
+    section at the top of a page and at the bottom of one.
+  - `{{members}}`, `{{downloads}}` and the rest are substituted in any text. The list is an
+    allowlist, not a path into the database, and an unknown name renders as nothing rather
+    than as `undefined`.
+  - The site-wide orb is a **page setting**, not a block — it is mounted once behind
+    everything, and a block that "contained" it would be a second orb in front of the first.
+- **Official projects** — add and edit the projects the site is about from the dashboard.
+  The built-in keys still exist; new ones are ordinary rows, so a project no longer needs a
+  migration to be born.
+- **Content export** (Advanced server management) — docs, blog, FAQ, legal versions, site
+  settings, reviews and account records, as one JSON file per section in a zip, with the row
+  count of each shown before you choose. Accounts are records only — no password hashes, no
+  2FA secrets, no tokens. Catalogues and repositories are off by default because their rows
+  point at files the zip does not carry. It is an export, not a restore point; see
+  **[BACKUP_EN.md](../run/BACKUP_EN.md)** for which of the three "backups" answers which
+  question.
+- **Markdown kit download** (`/dev/markdown`) — take the renderer itself. Tick the parts you
+  want — the 384 emoji shortcodes, the inline brand logos, the two blocks that need a
+  component of yours (`:::roadmap`, `:::replay`) — and the zip is packed with the rest cut
+  out at marked regions, file list and size shown first. A part that fails to cut cleanly
+  refuses to pack rather than shipping a file with a dangling import.
 - **Server** — live perf dashboard (CPU/RAM/disk/uptime totals + hover values +
   Discord alerts); Advanced server management (DB viewer with audit log, file manager,
   Docker, restart/power) behind a server-control grant + step-up 2FA.

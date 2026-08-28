@@ -137,17 +137,42 @@ vérifie encore (`/admin/security` → vérifier la chaîne).
 
 ## Les sauvegardes dans l’app sont autre chose
 
-« Gestion serveur avancée → Stockage des sauvegardes » a ses propres outils, et ils ne
-remplacent **rien** de ce qui précède. Confondre les deux est l’erreur dangereuse, donc
+« Gestion serveur avancée » a deux outils à elle, et aucun ne **remplace** ce qui précède.
+Trois choses s’appellent « sauvegarde » ici ; les confondre est l’erreur dangereuse, donc
 clairement :
 
-| | `infra/backup/backup.sh` | Snapshots dans l’app |
-|---|---|---|
-| Données Postgres (comptes, dépôts, catalogues, paiements) | **Oui** | **Non** |
-| Objets MinIO (fichiers envoyés, octets des dépôts hébergés) | **Oui** | **Non** |
-| Historique d’édition des fichiers touchés via le gestionnaire | Non | **Oui** |
-| Historique d’édition des lignes touchées via le visualiseur BDD | Non | **Oui** |
-| Survit à la perte de la machine | Oui, une fois copié hors site | Seulement si téléchargé |
+| | `infra/backup/backup.sh` | Snapshots dans l’app | Export du contenu |
+|---|---|---|---|
+| Données Postgres (comptes, dépôts, catalogues, paiements) | **Oui** | Non | En partie — en JSON lisible, voir plus bas |
+| Objets MinIO (fichiers envoyés, octets des dépôts hébergés) | **Oui** | Non | Non |
+| Historique d’édition des fichiers touchés via le gestionnaire | Non | **Oui** | Non |
+| Historique d’édition des lignes touchées via le visualiseur BDD | Non | **Oui** | Non |
+| Peut être restauré dans BCWEB | **Oui** | **Oui** | **Non** — c’est un export, pas un point de restauration |
+| Lisible sans BCWEB | Non | Non | **Oui** — du JSON brut dans un zip |
+| Survit à la perte de la machine | Oui, une fois copié hors site | Seulement si téléchargé | Seulement si téléchargé |
+
+### Export du contenu
+
+« Gestion serveur avancée → Export du contenu » télécharge le contenu **écrit** — docs,
+blog, FAQ, versions des pages légales, réglages du site, avis et fiches de comptes — sous
+forme d’un fichier JSON par section dans un zip. Chaque section affiche son nombre de lignes
+avant le téléchargement : tu fais un choix, pas une supposition.
+
+Il existe pour les questions auxquelles les deux autres répondent mal : *que disait cette
+page le mois dernier*, *je déménage vers une autre installation*, *je veux lire ce qu’il y a
+dedans sans base de données*.
+
+Trois choses à son sujet sont délibérées et à connaître avant de compter dessus :
+
+- **Ce n’est pas un point de restauration.** Rien ne relît un export de contenu. Pour « le
+  serveur a disparu », utilise le script en haut de cette page.
+- **Les comptes ne sont que des fiches** — id, e-mail, nom affiché, rôle, statut, bio,
+  avatar. Aucun hash de mot de passe, aucun secret 2FA, aucun token. C’est ce qui rend le zip
+  sûr à garder sur un portable, et c’est pourquoi restaurer les gens veut dire les réinviter.
+- **Catalogues et dépôts sont désactivés par défaut.** Leurs lignes sont des métadonnées qui
+  pointent vers des fichiers MinIO que le zip ne contient pas. Activés par défaut, l’archive
+  paraîtrait plus complète qu’elle ne l’est — c’est le pire défaut d’une sauvegarde, parce
+  qu’on s’en aperçoit au moment où on en a besoin.
 
 Un snapshot applicatif est un **bundle git de cet historique d’édition**, figé avec sa
 taille, un sha256 et une signature Ed25519. Il répond à « remets ce fichier ». Il ne répond

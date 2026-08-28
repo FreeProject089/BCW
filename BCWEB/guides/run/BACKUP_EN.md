@@ -139,16 +139,41 @@ verifies (`/admin/security` → verify chain).
 
 ## The in-app backups are a different thing
 
-"Advanced server management → Backup storage" has its own backup tools, and they do **not**
-replace anything above. Confusing the two is the dangerous mistake, so plainly:
+Advanced server management has two of its own tools, and neither **replaces** anything
+above. Three things are called "backup" here; confusing them is the dangerous mistake, so
+plainly:
 
-| | `infra/backup/backup.sh` | In-app snapshots |
-|---|---|---|
-| Postgres data (accounts, repos, catalogs, payments) | **Yes** | **No** |
-| MinIO objects (uploaded files, hosted repo bytes) | **Yes** | **No** |
-| Edit history of files touched through the file manager | No | **Yes** |
-| Edit history of DB rows touched through the DB viewer | No | **Yes** |
-| Survives losing the machine | Yes, once copied off-site | Only if downloaded |
+| | `infra/backup/backup.sh` | In-app snapshots | Content export |
+|---|---|---|---|
+| Postgres data (accounts, repos, catalogs, payments) | **Yes** | No | Partly — as readable JSON, see below |
+| MinIO objects (uploaded files, hosted repo bytes) | **Yes** | No | No |
+| Edit history of files touched through the file manager | No | **Yes** | No |
+| Edit history of DB rows touched through the DB viewer | No | **Yes** | No |
+| Can be restored back into BCWEB | **Yes** | **Yes** | **No** — it is an export, not a restore point |
+| Readable without BCWEB | No | No | **Yes** — plain JSON in a zip |
+| Survives losing the machine | Yes, once copied off-site | Only if downloaded | Only if downloaded |
+
+### Content export
+
+"Advanced server management → Content export" downloads the **written** content — docs,
+blog, FAQ, legal versions, site settings, reviews and account records — as one JSON file per
+section inside a zip. Each section shows its row count before you download, so you take a
+choice rather than a guess.
+
+It exists for the questions the other two answer badly: *what did that page say last month*,
+*I am moving to another install*, *I want to read what is in there without a database*.
+
+Three things about it are deliberate and worth knowing before you rely on it:
+
+- **It is not a restore point.** Nothing reads a content export back in. For "the server is
+  gone", use the script at the top of this page.
+- **Accounts are records only** — id, email, display name, role, status, bio, avatar. No
+  password hashes, no 2FA secrets, no tokens. That is what makes the zip safe to keep on a
+  laptop, and it is why restoring people means re-inviting them.
+- **Catalogues and repositories are off by default.** Their rows are metadata pointing at
+  files in MinIO that the zip does not contain. On by default, the archive would look more
+  complete than it is — which is a backup's worst failure, because you find out when you
+  need it.
 
 An in-app snapshot is a **git bundle of that edit history**, frozen with its size, a
 sha256, and an Ed25519 signature. It answers "put that file back". It does not answer "the

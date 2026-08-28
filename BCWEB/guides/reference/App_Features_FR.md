@@ -161,6 +161,45 @@
   cantonnés au ciel, badge fête nationale avec le drapeau du pays et un lien cliquable au
   choix ; désactivables par l'utilisateur dans les Réglages), annonces (bannière site +
   notifications typées, limite de taille de corps, icônes par type).
+- **Constructeur de pages** — bâtir une page publique à partir de blocs, et modifier
+  celles que le site fournit déjà. Il s'ouvre sur la page **telle que la voient les
+  visiteurs**, avec une couche d'édition par-dessus : une modification se juge donc contre
+  la vraie chose, pas contre un croquis.
+  - *Mise en page* : section, ligne, colonne, et une **grille de cartes** dont les cartes
+    contiennent d'autres blocs — une carte n'est donc pas un couple titre-résumé auquel
+    on visse un troisième champ plus tard. Chaque carte prend une image ou un fond de
+    couleur, une icône, un lien, et n'importe quel contenu à l'intérieur.
+  - *Contenu* : titre, **texte (tout le markdown personnalisé BCWEB — chaque directive,
+    pas un sous-ensemble)**, boutons (plein ou contour, trois tailles — les deux mêmes classes que
+    rend la directive markdown `:button`, une page et une page de docs ne peuvent donc pas
+    diverger), image, espace, **séparateur** (trait, tirets, points, dégradé ou simple
+    espace, avec libellé si tu veux) et un **chiffre**
+    qui lit l'un des onze nombres du site en direct.
+  - *Dynamique* : les sections de la page d'accueil elles-mêmes — vitrine, produits,
+    actualités, sondage, avis, Make-Your-Own, outils dev — chacune avec des **styles**,
+    parce que les mêmes actualités ne sont pas la même section en haut d'une page et en bas.
+  - `{{members}}`, `{{downloads}}` et les autres sont remplacés dans n'importe quel texte.
+    La liste est une liste blanche, pas un chemin dans la base, et un nom inconnu ne rend
+    rien plutôt que `undefined`.
+  - L'orbe du site est un **réglage de page**, pas un bloc — il est monté une seule fois
+    derrière tout, et un bloc qui le « contiendrait » ferait un second orbe devant le premier.
+- **Projets officiels** — ajouter et modifier depuis le dashboard les projets dont le site
+  parle. Les clés intégrées existent toujours ; les nouvelles sont des lignes ordinaires,
+  donc un projet n'a plus besoin d'une migration pour naître.
+- **Export du contenu** (Advanced server management) — docs, blog, FAQ, versions des pages
+  légales, réglages du site, avis et fiches de comptes, en un fichier JSON par section dans
+  un zip, avec le nombre de lignes de chacune affiché avant de choisir. Les comptes ne sont
+  que des fiches — aucun hash de mot de passe, aucun secret 2FA, aucun token. Catalogues et
+  dépôts sont désactivés par défaut, leurs lignes pointant vers des fichiers que le zip ne
+  transporte pas. C'est un export, pas un point de restauration ; voir
+  **[BACKUP_FR.md](../run/BACKUP_FR.md)** pour savoir laquelle des trois « sauvegardes »
+  répond à quelle question.
+- **Téléchargement du kit markdown** (`/dev/markdown`) — prendre le moteur de rendu
+  lui-même. Coche les parties voulues — les 384 raccourcis emoji, les logos de marque
+  inline, les deux blocs qui réclament un composant à toi (`:::roadmap`, `:::replay`) — et
+  le zip est fabriqué avec le reste découpé à des régions marquées, la liste des fichiers et
+  la taille annoncées d'abord. Une partie qui ne se découpe pas proprement refuse de
+  s'emballer plutôt que de livrer un fichier avec un import dans le vide.
 - **Serveur** — dashboard perf en direct (totaux CPU/RAM/disque/uptime + valeurs au
   survol + alertes Discord) ; Advanced server management (DB viewer avec journal
   d'audit, gestionnaire de fichiers, Docker, redémarrage/power) derrière un droit
