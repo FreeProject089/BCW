@@ -18,6 +18,7 @@ import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
 import { HomeV2, HomeV3 } from './home-variants.jsx';
+import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -315,9 +316,19 @@ export function Home() {
           </h1>
           <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
-            <Link to="/repos"><Button variant="primary" className="!px-6 !py-3">{t('home.cta.repos', 'Browse Server Repos')} <ArrowRight size={16} /></Button></Link>
-            <Link to="/hosting"><Button className="!px-6 !py-3">{t('home.cta.host')}</Button></Link>
+            {heroCtas(user, t).map((c) => (
+              <Link key={c.to} to={c.to}>
+                <Button variant={c.primary ? 'primary' : undefined} className="!px-6 !py-3">
+                  {c.label}{c.arrow && <ArrowRight size={16} />}
+                </Button>
+              </Link>
+            ))}
           </div>
+          {/* Answers the question that stops a stranger before any of the copy does. Absent
+              for a member, who settled it when they signed up. */}
+          {heroNote(user, t) && (
+            <p className="anim-slide text-[13px] text-[var(--faint)] mt-3.5" style={{ animationDelay: '280ms' }}>{heroNote(user, t)}</p>
+          )}
           {/* The projects, moving, under the one line that names the site. This is what the
               page opens with now: a paragraph is what a site says about itself, and what a
               visitor is deciding is whether the thing looks like something they want. */}
@@ -673,10 +684,13 @@ export function Home() {
               primary vanishes on orange. Taking the slab away lets the buttons be the
               buttons this site uses everywhere else. */}
           <div className="relative reveal-stagger">
-            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.cta2.title')}</h2>
-            <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{t('home.cta2.sub')}</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{closingCta(user, t).title}</h2>
+            <p className="text-[var(--muted)] mt-3 max-w-lg mx-auto leading-relaxed">{closingCta(user, t).sub}</p>
             <div className="flex flex-wrap gap-3 justify-center mt-7">
-              <Link to="/auth"><Button variant="primary" className="!px-6 !py-3">{t('home.cta2.start')} <ArrowRight size={16} /></Button></Link>
+              {/* Was an unconditional "Get started" pointing at /auth — offered to somebody
+                  already signed in, which is an invitation to create the account they are
+                  using to read it. */}
+              <Link to={closingCta(user, t).action.to}><Button variant="primary" className="!px-6 !py-3">{closingCta(user, t).action.label} <ArrowRight size={16} /></Button></Link>
               <a href="https://discord.com/invite/CTaaEF9R75" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('home.cta2.discord', 'Join the Discord')}</Button></a>
               <a href="https://ko-fi.com/bettercommunity" target="_blank" rel="noreferrer"><Button className="!px-6 !py-3"><KofiIcon size={16} className="text-orange-400" /> {t('home.cta2.kofi')}</Button></a>
             </div>

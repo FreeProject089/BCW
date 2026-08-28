@@ -26,6 +26,9 @@ import { thumb } from '../lib/img.js';
 import { AppLogo } from '../ui/brand.jsx';
 import { PollTeaser } from './polls.jsx';
 import { useI18n } from '../i18n.jsx';
+// One rule for all three landing pages. Written three times it would be right once:
+// v1 could learn about the signed-in visitor and these two not, and both would render.
+import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 
 // Same lazy boundary as v1's: a visitor to a site with no showcase configured must not pay
 // for rrweb, whichever landing page they land on.
@@ -43,7 +46,7 @@ export function HomeV2(ctx) {
   // what every other page here does, and threading `t` through props makes the
   // binding invisible to the check that exists to catch a missing one.
   const { t } = useI18n();
-  const { show, showcase, products } = ctx;
+  const { show, showcase, products, user } = ctx;
   const posts = postsOf(ctx);
   return (
     <div className="space-y-16">
@@ -57,6 +60,19 @@ export function HomeV2(ctx) {
           <p className="mt-4 text-[15px] leading-relaxed text-[var(--muted)] max-w-prose">
             {t('home.v2.lede', 'Tools for managing, sharing and hosting mods. Pick the one you came for.')}
           </p>
+          {/* This page had no button on it. "One screen, no story" was read as "no ask" — so
+              the only way off the fold was one of four product rows, and a visitor who wanted
+              the site rather than a product had nowhere to go. */}
+          <div className="mt-6 flex flex-wrap gap-3">
+            {heroCtas(user, t).map((c) => (
+              <Link key={c.to} to={c.to}>
+                <Button variant={c.primary ? 'primary' : undefined} className="!px-5 !py-2.5">
+                  {c.label}{c.arrow && <ArrowRight size={15} />}
+                </Button>
+              </Link>
+            ))}
+          </div>
+          {heroNote(user, t) && <p className="mt-3 text-[12px] text-[var(--faint)]">{heroNote(user, t)}</p>}
 
           {show('products') && (
             <ul className="mt-8 space-y-2">
@@ -128,7 +144,7 @@ export function HomeV2(ctx) {
 
 export function HomeV3(ctx) {
   const { t } = useI18n();
-  const { show, pollData, reviewsData, myo } = ctx;
+  const { show, pollData, reviewsData, myo, user } = ctx;
   const posts = postsOf(ctx);
   const reviews = (reviewsData?.reviews || []).slice(0, 3);
   const offers = (myo?.products || []).slice(0, 3);
@@ -142,6 +158,16 @@ export function HomeV3(ctx) {
         <span className="text-[13px] text-[var(--muted)]">
           {t('home.v3.sub', 'Releases, decisions being made, and what people are saying.')}
         </span>
+        {/* Only for somebody who is not signed in. This page is written for the third visit
+            and had no way in at all — a stranger who landed on it could read the feed and
+            never be offered an account. A member needs nothing here, and gets nothing. */}
+        {!user && (
+          <Link to={closingCta(user, t).action.to} className="ml-auto">
+            <Button variant="primary" className="!px-4 !py-2">
+              {closingCta(user, t).action.label} <ArrowRight size={15} />
+            </Button>
+          </Link>
+        )}
       </header>
 
       <div className="grid lg:grid-cols-3 gap-6 items-start">
