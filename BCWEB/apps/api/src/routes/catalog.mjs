@@ -17,6 +17,7 @@ import { hasProjectLink, replyNeedsLink, requirementFor } from '../lib/project-l
 // meant the payments switch added to that one would have left every catalog checkout
 // running. Same client, same gate, one place to change.
 import { stripe } from './hosting.mjs';
+import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -52,7 +53,8 @@ const KINDS = CATALOG_KINDS;
 // cache key — each distinct key pins a whole feed payload in the L1 map — nor silently widen
 // the query to every project (an unknown key made findUnique throw, the catch swallow it, and
 // the projectId filter drop off, so `?project=junk` returned EVERY project's items).
-const PROJECT_KEYS = ['community', 'bmm', 'bsm', 'installer', 'developers'];
+// The five names were written out here, and in ten other files. With `Project.key` a string
+// they are no longer a fixed set, so this asks the table — the only place that knows.
 // Zip entries whose text is safe to preview inline during moderation review.
 const INSPECT_TEXT_EXT = /\.(json|txt|md|css|js|mjs|cjs|ts|lua|cfg|ini|yml|yaml|xml|toml|csv|log|sh)$/i;
 const INSPECT_TEXT_MAX = 256 * 1024;
@@ -209,7 +211,9 @@ export function checkPresetMeta(projectKey, meta) {
 }
 
 const submitSchema = z.object({
-  projectKey: z.enum(['bmm', 'bsm', 'community']),
+  // Any project may receive a submission now that there can be more than five. The handler
+  // checks the one named actually exists; the shape guard is what the enum gave for free.
+  projectKey: z.string().regex(KEY_SHAPE),
   kind: z.enum(CATALOG_KINDS),
   name: z.string().min(2).max(80),
   description: z.string().max(4000).default(''),
@@ -342,7 +346,7 @@ export default async function catalogRoutes(app) {
     const p = await db();
     if (await officialGate(p, req, reply)) return; // access control runs per-request (may 403)
     const reqProject = String(req.query?.project || 'bmm').toLowerCase();
-    const projectKey = PROJECT_KEYS.includes(reqProject) ? reqProject : 'bmm';
+    const projectKey = (await isProjectKey(reqProject)) ? reqProject : 'bmm';
     const reqKind = String(req.query?.kind || 'app').toUpperCase();
     const kind = KINDS.includes(reqKind) ? reqKind : 'APP';
     reply.header('Cache-Control', 'public, max-age=300');
@@ -520,7 +524,7 @@ export default async function catalogRoutes(app) {
   app.post('/catalog/bulk', { preHandler: requireVerifiedEmail(), config: { rateLimit: { max: 30, timeWindow: '1 hour' } } }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const b = z.object({
-      projectKey: z.enum(['bmm', 'bsm', 'community']),
+      projectKey: z.string().regex(KEY_SHAPE),
       entries: z.array(z.object({
         kind: z.enum(CATALOG_KINDS),
         name: z.string().trim().min(2).max(80),
@@ -604,7 +608,7 @@ export default async function catalogRoutes(app) {
     // contents — "BMM plugins" — the way a community catalog page shows its own. Validated
     // against the enum for the same reason the feed does it: an unknown key made findUnique
     // throw, the catch swallow it, and the filter silently drop off.
-    if (req.query?.project && PROJECT_KEYS.includes(req.query.project)) {
+    if (req.query?.project && await isProjectKey(req.query.project)) {
       where.project = { key: String(req.query.project) };
     }
     if (req.query?.status && ['PENDING', 'PUBLISHED', 'REJECTED', 'HIDDEN', 'SUSPENDED'].includes(req.query.status)) {

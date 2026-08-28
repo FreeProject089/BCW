@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.join(here, '../../web/src/ui/md.jsx');
+const SRC = path.join(here, '../../web/src/markdown/index.jsx');
 const DOC = path.join(here, '../../../guides/reference/CUSTOM_MARKDOWN.md');
 
 const src = fs.readFileSync(SRC, 'utf8');

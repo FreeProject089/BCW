@@ -231,6 +231,44 @@ Centred block.
 
 ---
 
+## Buttons
+
+One shape, three sizes, any colour — and a logo when it is a brand.
+
+```
+:button[Watch]{brand=youtube href=https://youtube.com/…}
+:button[Read the guide]{color=#0a7 size=lg href=/docs}
+:button[Quietly]{color=#0a7 outline href=/docs}
+```
+
+`brand=` sets the colour **and** the logo together — `youtube` `discord` `kofi` `github`
+`twitch` `x` `reddit` `telegram` — because a YouTube-red button wearing a Discord glyph is a
+mistake nobody makes on purpose. Sizes are `sm` `md` `lg`; `outline` is the quiet version;
+`:btn[…]` is the short name.
+
+A button with no `href` renders as a plain span rather than a dead link.
+
+---
+
+## Tabs
+
+```
+::::tabs
+:::tab{title="Windows"}
+Run `install.exe`.
+:::
+:::tab{title="Linux"}
+Run `./install.sh`.
+:::
+::::
+```
+
+Four colons outside, three inside — the same rule as steps and columns. A panel holds
+whatever a document holds, including other blocks; the strip reads its labels off the panels,
+so a tab's name and its content cannot drift apart.
+
+---
+
 ## Download link
 
 ```

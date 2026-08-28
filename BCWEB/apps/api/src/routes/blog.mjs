@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
+import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/$/, '');
 
@@ -26,7 +27,10 @@ async function notifyNewsletterOfPost(p, post, opts, allowed) {
 // handler (kept out of the schema itself via .refine() so `.partial()` still
 // works for PATCH — ZodEffects, which .refine() produces, has no .partial()).
 const postSchema = z.object({
-  projectKey: z.enum(['community', 'bmm', 'bsm', 'installer', 'developers']).optional(),
+  // A string checked against the projects that EXIST, not against a list written here.
+  // `.optional()` and the shape guard stay; the membership test moved to the handler,
+  // which is the only place that can await it.
+  projectKey: z.string().regex(KEY_SHAPE).optional(),
   showcaseSlug: z.string().max(80).optional(),
   title: z.string().min(2).max(160),
   excerpt: z.string().max(2000).default(''),
@@ -513,7 +517,7 @@ export default async function blogRoutes(app) {
 
   const grantSchema = z.object({
     userId: z.string().min(1),
-    projectKey: z.enum(['community', 'bmm', 'bsm', 'installer', 'developers']).optional().nullable(),
+    projectKey: z.string().regex(KEY_SHAPE).optional().nullable(),
     showcaseSlug: z.string().max(80).optional().nullable(),
   });
   app.post('/admin/blog-permissions', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
+import { KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Custom roles + per-project edit grants.
 //
@@ -102,7 +103,10 @@ export default async function roleRoutes(app) {
 
   const projGrant = z.object({
     userId: z.string().min(1),
-    projectKey: z.enum(['community', 'bmm', 'bsm', 'installer']).optional().nullable(),
+    // This list was missing `developers` outright, so a grant for the developer blog was
+    // refused by a copy nobody updated when that project arrived — exactly the failure this
+    // change is about.
+    projectKey: z.string().regex(KEY_SHAPE).optional().nullable(),
     showcaseSlug: z.string().max(80).optional().nullable(),
     allShowcase: z.boolean().optional().default(false),
   }).refine((v) => v.allShowcase || v.projectKey || v.showcaseSlug, { message: 'no_scope' });

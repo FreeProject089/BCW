@@ -7503,8 +7503,11 @@ function ShowcaseQueue() {
   );
 }
 
+// The five the seed creates and the server refuses to delete. Named here only so the delete
+// button is not offered for them — the refusal itself lives in projects.mjs.
+const BUILTIN_KEYS = ['community', 'bmm', 'bsm', 'installer', 'developers'];
 function AdminProjects() {
-  const toast = useToast(); const { t } = useI18n();
+  const toast = useToast(); const { t } = useI18n(); const dialog = useDialog();
   const { data, reload } = useAsync(() => api.get('/projects'), []);
   // Showcase ("Other projects") are configurable here too — added automatically.
   const show = useAsync(() => api.get('/admin/showcase'), []);
@@ -7534,9 +7537,63 @@ function AdminProjects() {
   // already scope their lists to the granted projects.
   const canMngProjects = !!adminMeta.data?.canManage;
   const canMngShowcase = !!show.data?.canManage;
-  const allKeys = ['community', 'bmm', 'bsm', 'installer', 'developers'];
+  // From the API. This was the five names again — a sixth copy of the Prisma enum — so a
+  // project added anywhere else was invisible here, which is the one screen where it has
+  // to appear. `/projects` is already loaded above and lists exactly what exists.
+  const allKeys = Object.keys(projects);
   const keys = canMngProjects ? allKeys : allKeys.filter((k) => (adminMeta.data?.projects || []).some((p) => p.key === k));
   const isShowcase = active.startsWith('sc:');
+  const [newKey, setNewKey] = useState('');
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  /** Create an official project: the row, and the starter config that makes its page render. */
+  const addProject = async () => {
+    const key = newKey.trim().toLowerCase();
+    const name = newName.trim();
+    if (!/^[a-z][a-z0-9-]{1,30}$/.test(key)) {
+      return toast.error(t('adm.proj.badkey', 'A key is lower-case letters, digits and dashes \u2014 it appears in the URL.'));
+    }
+    if (!name) return toast.error(t('adm.proj.noname', 'Give it a name.'));
+    setAdding(true);
+    try {
+      await api.post('/admin/projects', { key, name });
+      setNewKey(''); setNewName('');
+      await reload();
+      setActive(key);
+      toast.success(t('adm.proj.added', 'Added. Its page is empty \u2014 edit it below.'));
+    } catch (e) {
+      // The server distinguishes "that key is taken" from "that key is malformed", and saying
+      // which is the difference between fixing it and guessing.
+      const code = e?.data?.error;
+      toast.error(code === 'key_taken' ? t('adm.proj.taken', 'That key is already a project.') : String(e?.message || e));
+    } finally { setAdding(false); }
+  };
+
+  /** Remove one. Refused for the built-ins and for anything still attached to content. */
+  const removeProject = async (key) => {
+    const ok = await dialog.confirm({
+      title: t('adm.proj.delT', 'Delete this project?'),
+      body: t('adm.proj.delB', 'Its page config goes with it. Posts, catalogue items and catalogues must be moved or deleted first.'),
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.del(`/admin/projects/${encodeURIComponent(key)}`);
+      await reload();
+      toast.success(t('adm.proj.deleted', 'Deleted.'));
+    } catch (e) {
+      const d = e?.data;
+      if (d?.error === 'project_in_use') {
+        // Counted and named, rather than a refusal with no reason: the admin has to know WHAT
+        // is in the way to be able to move it.
+        return toast.error(t('adm.proj.inuse', 'Still in use: {p} post(s), {i} catalogue item(s), {c} catalogue(s).')
+          .replace('{p}', d.posts).replace('{i}', d.items).replace('{c}', d.catalogs));
+      }
+      if (d?.error === 'builtin_project') return toast.error(t('adm.proj.builtin', 'The five built-in projects cannot be deleted.'));
+      toast.error(String(e?.message || e));
+    }
+  };
   const activeManageable = isShowcase ? canMngShowcase : canMngProjects;
   // Keep `active` on something the viewer may actually edit (a grantee's default 'bmm' might
   // not be theirs). Runs once the scoped lists arrive.
@@ -7695,6 +7752,30 @@ function AdminProjects() {
           </div>
         );
       })()}
+      {/* Add an official project.
+          Managers only, and next to the rail it changes, because that rail was the one place
+          a project has to appear and it used to list five names written into this file. */}
+      {canMngProjects && (
+        <Card className="p-4 mb-4">
+          <div className="flex items-center gap-2 mb-1"><Plus size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('adm.proj.add', 'Add an official project')}</span></div>
+          <p className="text-xs text-[var(--muted)] mb-3">
+            {t('adm.proj.add.d', 'An official project can carry a catalogue and take blog permissions — that is what a showcase page cannot do. The key appears in its URL and cannot be changed afterwards.')}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input className="sm:max-w-[12rem] !font-mono" value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder={t('adm.proj.keyph', 'key (e.g. bqm)')} />
+            <Input className="flex-1" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('adm.proj.nameph', 'Display name')} />
+            <Button variant="primary" onClick={addProject} loading={adding}><Plus size={14} /> {t('adm.proj.addbtn', 'Add')}</Button>
+          </div>
+          {/* Deleting one is rare and destructive, so it lives with the thing it deletes rather
+              than as a row of bins beside every chip. */}
+          {!BUILTIN_KEYS.includes(active) && !isShowcase && allKeys.includes(active) && (
+            <button type="button" onClick={() => removeProject(active)}
+              className="mt-3 text-[11px] text-[var(--muted)] hover:text-error inline-flex items-center gap-1.5">
+              <Trash2 size={12} /> {t('adm.proj.del', 'Delete {name}').replace('{name}', projMeta(active).name)}
+            </button>
+          )}
+        </Card>
+      )}
       {/* Progress tracker source: pull the project's progress.json from a URL. */}
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>

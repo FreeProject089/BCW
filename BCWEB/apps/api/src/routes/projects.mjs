@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
+import { toCurrentShape } from '../lib/project-config.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
@@ -7,16 +8,22 @@ import { buildCodeGraph, sourcePathsToFetch, tracePath, entryPoints } from '../l
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
 import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
 import { snapshotKey, settingsKey, secretFor, rebuildSnapshot } from './code-webhook.mjs';
+import { projectKeys, isProjectKey, forgetProjectKeys, BUILTIN_PROJECT_KEYS, KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Per-project, admin-editable config (downloads, links, contributors, progress,
 // legal, release-notes source) stored as an AdminSetting row `project.<key>`.
 // 'developers' is the /dev hub. It was listed in the admin's project rail but NOT here, so
 // selecting it, editing it and pressing save answered `unknown_project` — an editor for a page
 // the server refused to store. The two lists have to be one list.
-const KEYS = ['community', 'bmm', 'bsm', 'installer', 'developers'];
+// Was a hand-written copy of the Prisma enum. `Project.key` is a string now, so the list is
+// whatever rows exist — asked of the table, cached for a few seconds, and awaited at each
+// call site rather than read once at module load: a project created after boot has to work
+// without a restart.
+const KEYS = () => projectKeys();
+/** Every project except `community`, which is always public and has no visibility gate. */
+const VISIBILITY = async () => (await projectKeys()).filter((k) => k !== 'community');
 // 'community' always stays public — it's the site's own community hub, not an
 // admin-curated project someone might want to soft-launch or gate.
-const VISIBILITY_KEYS = KEYS.filter((k) => k !== 'community');
 const settingKey = (k) => `project.${k}`;
 
 async function getConfig(p, key) {
@@ -103,10 +110,82 @@ export default async function projectRoutes(app) {
   // Admin: raw visibility/schedule state per fixed project — the public
   // GET /projects only exposes a computed `visible` bool for the CURRENT
   // visitor, not the admin-editable settings themselves.
+  /**
+   * Add an official project.
+   *
+   * "Official" is not a label here — it is the thing a ShowcaseProject cannot be. A showcase
+   * page already has a name, an icon, a blog and a visibility gate; what it cannot be is the
+   * target of a CatalogItem or of a `projectKey` permission grant, because both of those point
+   * at Project. So adding one used to mean editing a Prisma enum, writing a migration and
+   * deploying.
+   *
+   * Creating the row is half of it. The page also needs a CONFIG — `/p/<key>` answers
+   * `not_configured` and renders nothing without one — so a starter config is written in the
+   * same request. A project that exists and 404s is worse than no project.
+   */
+  app.post('/admin/projects', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
+    const b = z.object({
+      key: z.string().trim().regex(KEY_SHAPE, 'bad_key'),
+      name: z.string().trim().min(1).max(60),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.message });
+    const { key, name } = b.data;
+
+    const p = await db();
+    if (await p.project.findUnique({ where: { key } })) return reply.code(409).send({ error: 'key_taken' });
+
+    const project = await p.project.create({ data: { key, name } });
+    // The starter config, through the same shaper the seed and the repair use — so a project
+    // created here and a project created by the seed are the same shape from the first render.
+    const cfg = toCurrentShape({ name, key, tagline: '', sections: {} });
+    await p.adminSetting.upsert({
+      where: { key: settingKey(key) },
+      create: { key: settingKey(key), value: cfg },
+      update: { value: cfg },
+    });
+    forgetProjectKeys();
+    await logAudit(p, req.user.uid, 'project.create', `${key} (${name})`, clientIp(req));
+    return reply.code(201).send({ project: { key: project.key, name: project.name } });
+  });
+
+  /**
+   * Delete one.
+   *
+   * The five the seed makes are refused: `community` is the fallback blog space and is exempt
+   * from the visibility gate in code, and the other four are named in the seeds, the docs and
+   * the catalogue feeds. Deleting one would leave those pointing at nothing.
+   *
+   * Anything still attached is refused too, and SAID rather than cascaded — a project with
+   * fifty catalogue items behind it is not something to remove because a confirm dialog was
+   * clicked. The counts come back so the screen can say what is in the way.
+   */
+  app.delete('/admin/projects/:key', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
+    const { key } = req.params;
+    if (BUILTIN_PROJECT_KEYS.includes(key)) return reply.code(400).send({ error: 'builtin_project' });
+    const p = await db();
+    const row = await p.project.findUnique({ where: { key } });
+    if (!row) return reply.code(404).send({ error: 'unknown_project' });
+
+    const [posts, items, catalogs] = await Promise.all([
+      p.blogPost.count({ where: { projectId: row.id } }),
+      p.catalogItem.count({ where: { projectId: row.id } }),
+      p.communityCatalog.count({ where: { projectId: row.id } }),
+    ]);
+    if (posts || items || catalogs) return reply.code(409).send({ error: 'project_in_use', posts, items, catalogs });
+
+    await p.blogPermission.deleteMany({ where: { projectKey: key } });
+    await p.projectPermission.deleteMany({ where: { projectKey: key } });
+    await p.adminSetting.deleteMany({ where: { key: settingKey(key) } });
+    await p.project.delete({ where: { key } });
+    forgetProjectKeys();
+    await logAudit(p, req.user.uid, 'project.delete', key, clientIp(req));
+    return { ok: true };
+  });
+
   app.get('/admin/projects', { preHandler: requireEditor() }, async (req) => {
     const p = await db();
     const manage = canManageProjects(req.user);
-    const rows = await p.project.findMany({ where: { key: { in: KEYS } } });
+    const rows = await p.project.findMany({ where: { key: { in: await KEYS() } } });
     // A non-manager grantee sees only the fixed projects they hold an edit grant for.
     let list = rows;
     if (!manage) { const g = await projectGrants(req.user.uid); list = rows.filter((r) => g.projectKeys.has(r.key)); }
@@ -116,14 +195,17 @@ export default async function projectRoutes(app) {
   app.get('/projects', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
     const [rows, projectRows0] = await Promise.all([
-      p.adminSetting.findMany({ where: { key: { in: KEYS.map(settingKey) } } }),
+      p.adminSetting.findMany({ where: { key: { in: (await KEYS()).map(settingKey) } } }),
       p.project.findMany({ select: { key: true, showOnHomeNews: true, showBlogTab: true, visibility: true, visibilityWhitelist: true, scheduledAt: true } }),
     ]);
     // Perf: only touch the DB for a scheduled swap when a row is ACTUALLY due —
     // the old code fired 3 findUnique + up-to-3 update round-trips on EVERY hit
     // of this hot endpoint even when nothing was ever scheduled.
     const now = Date.now();
-    const due = projectRows0.filter((r) => r.scheduledAt && new Date(r.scheduledAt).getTime() <= now && VISIBILITY_KEYS.includes(r.key));
+    // Awaited ONCE, above the filter: a synchronous callback cannot await, and inlining it
+    // there is a syntax error rather than a slow loop.
+    const visKeys = await VISIBILITY();
+    const due = projectRows0.filter((r) => r.scheduledAt && new Date(r.scheduledAt).getTime() <= now && visKeys.includes(r.key));
     let projectRows = projectRows0;
     if (due.length) {
       await Promise.all(due.map((r) => applyProjectSchedule(p, r.key)));
@@ -132,18 +214,18 @@ export default async function projectRoutes(app) {
     const byKey = Object.fromEntries(projectRows.map((r) => [r.key, r]));
     const out = {};
     // If a schedule just swapped config, re-read those keys' settings rows.
-    const settingRows = due.length ? await p.adminSetting.findMany({ where: { key: { in: KEYS.map(settingKey) } } }) : rows;
+    const settingRows = due.length ? await p.adminSetting.findMany({ where: { key: { in: (await KEYS()).map(settingKey) } } }) : rows;
     for (const r of settingRows) out[r.key.replace('project.', '')] = r.value;
     // Kept separate from `out` (the free-form config JSON the admin edits as raw
     // text) so it never gets mixed into — or accidentally stripped from — that blob.
-    const homeNews = Object.fromEntries(KEYS.map((k) => [k, byKey[k]?.showOnHomeNews !== false]));
-    const blogTab = Object.fromEntries(KEYS.map((k) => [k, byKey[k]?.showBlogTab === true]));
+    const homeNews = Object.fromEntries((await KEYS()).map((k) => [k, byKey[k]?.showOnHomeNews !== false]));
+    const blogTab = Object.fromEntries((await KEYS()).map((k) => [k, byKey[k]?.showBlogTab === true]));
     // Lets the topbar hide a pill for a key the current visitor can't view.
     // Fast path: public/unlisted keys (the overwhelmingly common case) need no
     // DB work in canViewPage — only whitelist keys do, so we skip the await
     // entirely unless a key is actually gated.
     const visible = {};
-    for (const k of KEYS) {
+    for (const k of await KEYS()) {
       const pr = byKey[k];
       visible[k] = !pr || pr.visibility === 'public' || pr.visibility === 'unlisted' || k === 'community'
         ? true
@@ -153,9 +235,9 @@ export default async function projectRoutes(app) {
   });
 
   app.get('/projects/:key', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
-    if (VISIBILITY_KEYS.includes(req.params.key)) await applyProjectSchedule(p, req.params.key);
+    if ((await VISIBILITY()).includes(req.params.key)) await applyProjectSchedule(p, req.params.key);
     const cfg = await getConfig(p, req.params.key);
     if (!cfg) return reply.code(404).send({ error: 'not_configured' });
     const row = await p.project.findUnique({ where: { key: req.params.key }, select: { showBlogTab: true, visibility: true, visibilityWhitelist: true } });
@@ -176,7 +258,7 @@ export default async function projectRoutes(app) {
    * platform turns a private detail public because a feature shipped.
    */
   app.get('/projects/:key/code-map', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     const cfg = await getConfig(p, req.params.key);
     if (!cfg) return reply.code(404).send({ error: 'not_configured' });
@@ -296,7 +378,7 @@ export default async function projectRoutes(app) {
   // Admin: per-project "show this blog's posts in the home page's Latest news"
   // toggle. Posts always show on /blog regardless — this only affects the home feed.
   app.put('/admin/projects/:key/home-news', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ show: z.boolean() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -307,7 +389,7 @@ export default async function projectRoutes(app) {
   // Admin: per-project "Blog" tab toggle on the project's own page — the tab shows
   // only THIS project's posts (via GET /blog?project=<key>). Off by default (opt-in).
   app.put('/admin/projects/:key/blog-tab', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ show: z.boolean() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -318,7 +400,7 @@ export default async function projectRoutes(app) {
   // Admin: visibility gate — every fixed project EXCEPT 'community' (see
   // VISIBILITY_KEYS above).
   app.put('/admin/projects/:key/visibility', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
-    if (!VISIBILITY_KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await VISIBILITY()).includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ visibility: pageVisibilitySchema, whitelist: z.array(pageAccountEntrySchema).max(2000).default([]) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -329,7 +411,7 @@ export default async function projectRoutes(app) {
   // Admin: stage a future config swap (task: scheduled Projects-config updates) —
   // applies to every fixed project, including 'community'. Passing at:null cancels.
   app.put('/admin/projects/:key/schedule', { preHandler: requireCap('manage_projects') }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const b = z.object({ at: z.string().datetime().nullable(), next: z.object({ config: z.record(z.any()) }).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     if (b.data.at && !b.data.next) return reply.code(400).send({ error: 'next_required' });
@@ -349,7 +431,7 @@ export default async function projectRoutes(app) {
   // page is already trusted to say which version that page is.
 
   app.get('/admin/projects/:key/versions', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const p = await db();
     const rows = await p.projectVersion.findMany({
@@ -373,7 +455,7 @@ export default async function projectRoutes(app) {
   // It stores today's config, not a reconstruction of what that release looked like —
   // nothing here can know that. The UI says so; this route will not pretend otherwise.
   app.post('/admin/projects/:key/versions', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const b = z.object({
       version: z.string().trim().min(1).max(40),
@@ -395,7 +477,7 @@ export default async function projectRoutes(app) {
   // back to the live config; this one answers only "what is actually filed under this
   // label", which is the question you have when you are about to edit or restore it.
   app.get('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const p = await db();
     const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
@@ -413,7 +495,7 @@ export default async function projectRoutes(app) {
   // whose config says 1.1.0 is confusing but recoverable, whereas silently moving the row
   // to a different key when somebody edits that field is not. The URL is the identity.
   app.put('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
@@ -428,7 +510,7 @@ export default async function projectRoutes(app) {
   });
 
   app.delete('/admin/projects/:key/versions/:version', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, req.params.key))) return reply.code(403).send({ error: 'forbidden' });
     const p = await db();
     const gone = await p.projectVersion.deleteMany({ where: { target: req.params.key, version: req.params.version } });
@@ -750,7 +832,7 @@ export default async function projectRoutes(app) {
   });
 
   app.put('/projects/:key', { preHandler: requireEditor() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     // Editing a fixed project's page config: managers (manage_projects / admin) for any,
     // or a grantee holding that specific project key. Content only — the reserved toggles
     // (visibility / home-news / blog-tab / schedule) live on their own cap-gated routes.
@@ -790,7 +872,7 @@ export default async function projectRoutes(app) {
   // two entries — a list of timestamps with no content answers nothing.
   app.get('/admin/projects/:key/history', { preHandler: requireEditor() }, async (req, reply) => {
     const target = String(req.params.key);
-    if (!KEYS.includes(target) && !target.startsWith('sc:')) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await KEYS()).includes(target) && !target.startsWith('sc:')) return reply.code(404).send({ error: 'unknown_project' });
     if (!(await canEditProject(req.user, target))) return reply.code(403).send({ error: 'forbidden' });
     const p = await db();
     const rows = await p.projectConfigRevision.findMany({ where: { target }, orderBy: { createdAt: 'desc' }, take: 50 });
@@ -810,7 +892,7 @@ export default async function projectRoutes(app) {
   // Public: list a project's versions (newest first). Includes the current live version even
   // if it hasn't been re-saved since the feature shipped, so the list is never empty.
   app.get('/projects/:key/versions', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const rows = await p.projectVersion.findMany({ where: { target: req.params.key }, orderBy: { createdAt: 'desc' }, select: { version: true, createdAt: true } });
@@ -824,7 +906,7 @@ export default async function projectRoutes(app) {
   // Public: the page config as it was at a given version (falls back to the live config
   // when the requested version IS the current one and no snapshot exists yet).
   app.get('/projects/:key/versions/:version', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const row = await p.projectVersion.findUnique({ where: { target_version: { target: req.params.key, version: req.params.version } } });
@@ -846,7 +928,7 @@ export default async function projectRoutes(app) {
   // Progress tracker data. Prefers a configured remote source (e.g. the repo's
   // progress.json), cached; falls back to inline config.progressData / legacy array.
   app.get('/projects/:key/progress', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const cfg = await getConfig(p, req.params.key);
@@ -865,7 +947,7 @@ export default async function projectRoutes(app) {
   // Detects sub-folders; returns each .md with a raw URL the client renders.
   app.get('/projects/:key/releases', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
-    if (KEYS.includes(req.params.key) && !(await assertVisible(p, req, reply))) return;
+    if ((await KEYS()).includes(req.params.key) && !(await assertVisible(p, req, reply))) return;
     const cfg = await getConfig(p, req.params.key);
     const rn = cfg?.releaseNotes;
     if (!rn?.owner || !rn?.repo) return reply.code(404).send({ error: 'no_release_notes' });
@@ -902,7 +984,7 @@ export default async function projectRoutes(app) {
   // this route existed the browser fetched contributorsUrl directly, which no
   // admin action could ever force to refresh.
   app.get('/projects/:key/community', { preHandler: optionalAuth() }, async (req, reply) => {
-    if (!KEYS.includes(req.params.key)) return reply.code(404).send({ error: 'unknown_project' });
+    if (!(await isProjectKey(req.params.key))) return reply.code(404).send({ error: 'unknown_project' });
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const cfg = await getConfig(p, req.params.key);

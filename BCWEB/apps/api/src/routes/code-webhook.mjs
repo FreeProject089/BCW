@@ -21,8 +21,10 @@ import { safeFetch } from '../lib/net.mjs';
 import { buildCodeGraph, sourcePathsToFetch, entryPoints } from '../lib/code-graph.mjs';
 import { buildEndpointGraph, endpointPathsToFetch } from '../lib/endpoint-graph.mjs';
 import { functionEdges, buildFlow, drawableFunctions } from '../lib/code-flow.mjs';
+import { isProjectKey } from '../lib/project-keys.mjs';
 
-const OFFICIAL = new Set(['community', 'bmm', 'bsm', 'installer', 'developers']);
+// The five the seed makes, plus any an admin has added since. A webhook naming a project
+// that exists must not be refused by a list that predates it.
 const GH_REPO_RE = /^https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i;
 
 /** Where a project's snapshot lives. One row per project, replaced on every rebuild. */
@@ -40,7 +42,7 @@ export async function secretFor(p, key) {
     const row = await p.adminSetting.findUnique({ where: { key: settingsKey(key) } }).catch(() => null);
     const own = row?.value?.secret;
     if (own) return { secret: own, from: 'page' };
-    if (OFFICIAL.has(key) && process.env.GITHUB_WEBHOOK_SECRET) {
+    if (await isProjectKey(key) && process.env.GITHUB_WEBHOOK_SECRET) {
         return { secret: process.env.GITHUB_WEBHOOK_SECRET, from: 'env' };
     }
     return { secret: null, from: null };

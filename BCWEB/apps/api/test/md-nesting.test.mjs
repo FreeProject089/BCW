@@ -4,7 +4,7 @@
 // block that escaped its parent.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDirectiveNesting as fix } from '../../web/src/lib/md-nesting.js';
+import { normalizeDirectiveNesting as fix } from '../../web/src/markdown/nesting.js';
 
 describe('normalizeDirectiveNesting', () => {
     test('THE ONE: two steps written at the same depth both stay inside the block', () => {

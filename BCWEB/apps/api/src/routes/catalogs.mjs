@@ -8,6 +8,7 @@ import { db, requireRole, requireCap, optionalAuth, slugify, notify, resolveClie
 import { presignGet, deleteObject, getObject } from '../lib/storage.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
 import { replyCachedJson } from '../lib/cache.mjs';
+import { KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Read an object-storage stream fully into a Buffer (bounded by the payload's stored size).
 async function readObject(key) {
@@ -768,7 +769,7 @@ export default async function communityCatalogRoutes(app) {
       // which has to stay reachable: a catalog set to the wrong app would otherwise be
       // permanently mislabelled, and mislabelled is worse than unlabelled — a client
       // filtering by app silently drops it.
-      app: z.union([z.enum(['bmm', 'bsm', 'installer', 'community', 'developers']), z.literal('')]).optional(),
+      app: z.union([z.string().regex(KEY_SHAPE), z.literal('')]).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });

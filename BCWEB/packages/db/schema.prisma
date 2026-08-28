@@ -23,18 +23,14 @@ enum Role {
   SUPERADMIN // implicitly satisfies every requireRole()/Protected role check — see lib.mjs
 }
 
-enum ProjectKey {
-  community
-  bmm
-  bsm
-  installer
-  // The developer blog. A ProjectKey rather than a new "category" concept: a blog space
-  // already carries everything this needs — its own page, a home-news toggle, per-space
-  // permissions, the visibility gate — and a parallel taxonomy would have to grow all of
-  // that again, differently.
-  developers
-}
-
+// `Project.key` used to be an enum, which meant adding an official project — one that can
+// carry a catalogue, take blog permissions and have its own page — required a schema
+// migration. A ShowcaseProject already covers a custom PAGE; what it cannot be is the target
+// of a CatalogItem or a projectKey grant, and that was the whole gap.
+//
+// A string, with the five built-ins created by the seed and protected against deletion in
+// projects.mjs. The validation that used to be the enum's job is now a lookup against the
+// rows that exist, which is the same question asked of the place that knows the answer.
 enum CatalogKind {
   APP
   PLUGIN
@@ -402,7 +398,7 @@ model HostingGroup {
 
 model Project {
   id             String             @id @default(cuid())
-  key            ProjectKey         @unique
+  key            String             @unique
   name           String
   // Per-blog toggle: do this project's posts also surface in the home page's
   // unified "Latest news"? They always show on /blog regardless of this flag.
@@ -625,7 +621,7 @@ model BlogPermission {
   id                String      @id @default(cuid())
   user              User        @relation(fields: [userId], references: [id])
   userId            String
-  projectKey        ProjectKey?
+  projectKey        String?
   showcaseProjectId String?
   grantedBy         String // admin userId — audit trail only, no relation needed
   createdAt         DateTime    @default(now())
@@ -664,7 +660,7 @@ model ProjectPermission {
   user              User        @relation(fields: [userId], references: [id])
   userId            String
   showcaseProjectId String?
-  projectKey        ProjectKey?
+  projectKey        String?
   allShowcase       Boolean     @default(false)
   grantedBy         String // admin userId — audit trail only
   createdAt         DateTime    @default(now())
