@@ -36,7 +36,14 @@ jobs:
       # The "last updated" date on the legal pages must not be older than the pages. A privacy
       # policy is quoted by its date, and a wrong one looks authoritative.
       - run: npm run legal:check
-      - run: npx vite build --logLevel error
+      # `npm run build`, not `npx vite build`. The two are not the same command: build runs
+      # check-undefined-jsx and check-lazy-named in front of vite, and those catch the two
+      # failures vite cannot see — a JSX identifier the file never imported (ReferenceError the
+      # moment the page draws) and a lazyNamed() pointing at an export that does not exist
+      # (React #306, whose minified text names nothing). Calling vite directly meant this job,
+      # whose stated purpose is catching a broken build at PR time, skipped both; they only
+      # fired later, inside the web image build, at deploy time.
+      - run: npm run build -- --logLevel error
       # Fail if the entry chunk (what every visitor downloads) regresses past its budget —
       # e.g. a route accidentally eager-imported instead of React.lazy'd.
       - run: npm run budget

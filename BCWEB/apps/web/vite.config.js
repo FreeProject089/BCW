@@ -6,15 +6,24 @@ export default defineConfig({
   plugins: [react()],
   // Dev server prefers :5176 (the site's base URL); if that's taken — e.g. the
   // Docker Caddy is already serving on 5176 — Vite falls back to the next free port
-  // instead of hard-failing. Proxies /api to the local API (run apps/api on :3000).
+  // instead of hard-failing. Proxies /api to the local API.
   // NOTE the `rewrite` STRIPS the /api prefix: the API registers routes WITHOUT it
   // (e.g. `/health`, `/auth/login`) and in production Caddy's `handle_path /api/*`
   // strips the prefix before proxying. Without this rewrite every dev API call 404s.
+  //
+  // The target was hard-coded to :3000, which is right only when the API happens to have got
+  // that port. Compose publishes it as a RANGE — `ports: ["3000-3009:3000"]`, so `--scale
+  // api=3` does not collide — and Docker hands out the next free one, so an already-busy 3000
+  // puts the API on 3007 and every dev-server API call is ECONNREFUSED. The page still
+  // renders: each request is caught and falls back, so what you get is the site with no data
+  // and a console full of 500s, which reads as a broken app rather than a wrong port.
+  //
+  // BCWEB_API_URL overrides it. Same default, so nothing changes for the common case.
   server: {
     port: 5176,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: process.env.BCWEB_API_URL || 'http://localhost:3000',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
       },
