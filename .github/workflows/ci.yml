@@ -81,6 +81,13 @@ jobs:
       - name: guides describe the real stack
         working-directory: BCWEB
         run: node guides/check-claims.mjs
+      # The seeded content is SHIPPED: every install gets these blog posts, docs, site guide
+      # and FAQ, and their markdown is full of `:::card{href=/docs/…}` blocks. A renamed slug
+      # or a card pointing at a page nobody wrote is invisible here — the seed succeeds, the
+      # page renders, the card looks like a card. It fails for a reader, one click in, on
+      # somebody else's site.
+      - name: seeded content links resolve
+        run: node scripts/check-seed-links.mjs
       - run: npm ci
       - run: npx prisma generate --schema ../../packages/db/schema.prisma
       - run: npx prisma validate --schema ../../packages/db/schema.prisma

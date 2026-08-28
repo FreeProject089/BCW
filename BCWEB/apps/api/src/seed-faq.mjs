@@ -199,6 +199,38 @@ const FAQ = [
     answerFr: 'Ton compte redevient actif tout seul, et ton contenu revient **tel qu\'il était** — un dépôt qui était hors ligne avant la sanction revient hors ligne, pas en ligne. Tu reçois un e-mail et une notification citant la référence. Les abonnements sont la seule chose non restaurée : ceux qui ont été annulés l\'ont été chez le prestataire de paiement, et en reprendre un à ta place ne nous appartient pas — le mail les liste avec un lien vers la facturation, donc c\'est un clic. Idem pour un bannissement avec date de fin.',
   },
 
+  // ── The reader-facing half of a mechanism the docs already describe ──
+  //
+  // server-repos covers locking a repo to a key from the OWNER's side: how to add one, what
+  // the proof header carries, why the answer is 401 and not 403. Nobody had written the other
+  // side of it — the person BMM has just asked for a password, who does not know whether that
+  // is normal, whether they typed it wrong, or whether the thing is broken. That reader is the
+  // whole audience of a FAQ.
+  {
+    category: 'Using BMM', order: 160,
+    categoryFr: 'Utiliser BMM',
+    question: 'BMM is asking me for a password for a repo or a catalog.',
+    questionFr: 'BMM me demande un mot de passe pour un dépôt ou un catalogue.',
+    answer: 'Then its owner set one, and BMM is doing the right thing. A protected source answers **401**, which BMM reads as "there is a credential to supply" rather than as an error — so it asks, once, and remembers the answer **for as long as the app is running**. Nothing is written to disk, which is deliberate: settings end up in backups and crash reports. If you already know a source is protected you can give the password before the first fetch instead of after it fails — every screen that adds a source has a **This source is protected** fold for exactly that.\n\n:::note[A wrong password looks the same as no password]\nBoth answer 401, so you will simply be asked again. The source itself never says which of the two it was — telling a stranger that their guess was close is telling them something they should have to hold the password to learn.\n:::',
+    answerFr: 'C\'est que son propriétaire en a mis un, et BMM fait ce qu\'il faut. Une source protégée répond **401**, ce que BMM lit comme « il y a un identifiant à fournir » et non comme une erreur — donc il demande, une fois, et retient la réponse **tant que l\'application tourne**. Rien n\'est écrit sur le disque, et c\'est volontaire : les réglages finissent dans les sauvegardes et les rapports de plantage. Si tu sais déjà qu\'une source est protégée, tu peux donner le mot de passe avant la première requête plutôt qu\'après son échec — chaque écran qui ajoute une source a un volet **Cette source est protégée** pour ça.\n\n:::note[Un mauvais mot de passe ressemble à pas de mot de passe]\nLes deux répondent 401, donc on te redemandera simplement. La source ne dit jamais lequel des deux c\'était — dire à un inconnu que sa tentative était proche, c\'est lui apprendre quelque chose qu\'il devrait détenir le mot de passe pour savoir.\n:::',
+  },
+  {
+    category: 'Using BMM', order: 170,
+    categoryFr: 'Utiliser BMM',
+    question: 'A repo wants a key, not a password. What is the difference?',
+    questionFr: 'Un dépôt veut une clé, pas un mot de passe. Quelle différence ?',
+    answer: 'A password is a **shared secret**: whoever has it can sync, and whoever has it can pass it on. That is what you want for a group and exactly the wrong tool for admitting one machine.\n\nA key cannot be handed on. The owner holds your **public** half; your BMM holds the private half and *signs* a short-lived statement on every request. Nothing that crosses the wire can be replayed against another server, and revoking you is deleting one line.\n\nYou set your private half up once, under **Settings → Identity & API → Identity keys** — only the path is stored, and the file is read at the moment a proof is signed. It is not per-source: a proof is addressed to one server, so BMM attaches it to every request and a server that does not require one ignores it. That is why there is no "key for this catalog" box anywhere; being asked which of your sources are protected is a question you would answer wrong once and then not understand.',
+    answerFr: 'Un mot de passe est un **secret partagé** : qui l\'a peut synchroniser, et qui l\'a peut le transmettre. Parfait pour un groupe, et exactement le mauvais outil pour n\'admettre qu\'une machine.\n\nUne clé ne se transmet pas. Le propriétaire détient ta moitié **publique** ; ton BMM détient la privée et *signe* une attestation de courte durée à chaque requête. Rien de ce qui passe sur le réseau ne peut être rejoué contre un autre serveur, et te révoquer, c\'est supprimer une ligne.\n\nTu configures ta moitié privée une fois, dans **Réglages → Identité & API → Clés d\'identité** — seul le chemin est stocké, et le fichier n\'est lu qu\'au moment de signer. Ce n\'est pas par source : une preuve s\'adresse à un serveur, donc BMM la joint à toutes les requêtes et un serveur qui n\'en exige pas l\'ignore. D\'où l\'absence de case « clé pour ce catalogue » : demander lesquelles de tes sources sont protégées est une question à laquelle on répond mal une fois, puis qu\'on ne comprend plus.',
+  },
+  {
+    category: 'Using BMM', order: 180,
+    categoryFr: 'Utiliser BMM',
+    question: 'Can BMM do things on a schedule without me?',
+    questionFr: 'BMM peut-il faire des choses tout seul, à intervalle régulier ?',
+    answer: 'Yes — that is what **Scheduling & automation** is. A task is a trigger and a list of steps: sync a repo every night at three, check for mod updates when the app starts, run something when a file changes or when BMM itself reports a problem.\n\nTwo things worth knowing before you build one. A task is created **disabled**, so you can read what it does before it can do it. And it can only do what you grant it: running a program, running a script, firing a deeplink, stopping a program and deleting things are five separate permissions, each off until you turn it on, and a step that needs one it was not given fails with a message rather than running.\n\n:::card{title="Automations, and sharing them" href=/docs/bmmscript icon=book}\nThe same task written as text, so it can be read, reviewed and sent to somebody.\n:::',
+    answerFr: 'Oui — c\'est le rôle de **Planification & automatisation**. Une tâche, c\'est un déclencheur et une liste d\'étapes : synchroniser un dépôt chaque nuit à trois heures, chercher les mises à jour au démarrage, lancer quelque chose quand un fichier change ou quand BMM signale lui-même un problème.\n\nDeux choses à savoir avant d\'en écrire une. Une tâche est créée **désactivée**, pour que tu puisses lire ce qu\'elle fait avant qu\'elle puisse le faire. Et elle ne peut faire que ce que tu lui accordes : lancer un programme, exécuter un script, déclencher un deeplink, arrêter un programme et supprimer des choses sont cinq permissions distinctes, chacune désactivée tant que tu ne l\'actives pas — et une étape qui en réclame une qu\'elle n\'a pas échoue avec un message au lieu de s\'exécuter.\n\n:::card{title="Les automatisations, et comment les partager" href=/docs/bmmscript icon=book}\nLa même tâche écrite en texte, pour être lue, relue et envoyée à quelqu\'un.\n:::',
+  },
+
 ];
 
 // A stable slug from the question so re-runs upsert instead of duplicating. FaqItem has no
