@@ -1939,12 +1939,28 @@ function AdminServerPerf() {
           <div className="text-[11px] mt-2 px-3 py-2 rounded-lg alert-info flex items-center gap-2 flex-wrap">
             <span>
               {t('srvperf.multihost', '{n} hosts are recording metrics into this database.').replace('{n}', String(data.hosts.length))}{' '}
-              {t('srvperf.multihostHint', 'Replicas of this deployment, or something else pointed at the same database — a hostname cannot say which.')}
+              {t('srvperf.multihostHint', 'Replicas of this deployment, or something else pointed at the same database — a hostname cannot say which.')}{' '}
+              {/* The count on its own reads as thirteen machines. Most of them are usually
+                  containers that stopped existing at some past deploy and left their samples
+                  behind — which is worth knowing before anybody goes looking for a fleet. */}
+              {(() => {
+                const live = data.hosts.filter((h) => h.live).length;
+                const gone = data.hosts.length - live;
+                return gone
+                  ? <b>{t('srvperf.hostLive', '{n} still reporting; {g} stopped and left their history behind.')
+                      .replace('{n}', String(live)).replace('{g}', String(gone))}</b>
+                  : <b>{t('srvperf.hostAllLive', 'All of them are still reporting.')}</b>;
+              })()}
             </span>
             <div className="flex-1" />
             <Select className="!w-auto !py-1 !text-[11px]" value={pickHost} onChange={(e) => setPickHost(e.target.value)}>
               <option value="">{t('srvperf.hostAnswering', 'This container ({h})').replace('{h}', data.host || '?')}</option>
-              {data.hosts.map((h) => <option key={h.host} value={h.host}>{h.host} ({h.samples})</option>)}
+              {data.hosts.map((h) => (
+                <option key={h.host} value={h.host}>
+                  {h.live ? '●' : '○'} {h.host} · {t('srvperf.hostSamples', '{n} samples').replace('{n}', String(h.samples))}
+                  {h.lastAt ? ` · ${t('srvperf.hostLast', 'last {a}').replace('{a}', agoShort(h.lastAt))}` : ''}
+                </option>
+              ))}
               {/* Averaging only makes sense when the hosts are comparable. Offered, never
                   the default: a 4-vCPU server averaged with a 24-core dev box is the
                   sawtooth this column was added to kill, wearing a different hat. */}
@@ -10151,6 +10167,16 @@ const DEP_WHAT = (t) => ({
   web: t('sp.dep.web', 'Fetches the website container over HTTP — a real request, because the API and the site fail separately.'),
   stripe: t('sp.dep.stripe', 'Calls Stripe\u2019s balance endpoint with the live key. Absent when no key is set.'),
 });
+
+/** "4m" / "3h" / "6d" — short enough to sit inside an <option>, which cannot hold markup. */
+function agoShort(d) {
+  const s = (Date.now() - new Date(d).getTime()) / 1000;
+  if (!Number.isFinite(s) || s < 0) return '?';
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}
 
 function RouteTest({ kind, label, t }) {
   const [state, setState] = useState(null);   // null | 'sending' | {ok, error}

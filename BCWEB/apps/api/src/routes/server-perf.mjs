@@ -151,7 +151,13 @@ export default async function serverPerfRoutes(app) {
       }),
       cachedProbes(p),
       p.serverMetricSample.groupBy({
-        by: ['host'], where: { createdAt: { gte: since } }, _count: { _all: true },
+        // `_max: createdAt` rides along on the grouping that was already happening — no
+        // extra query, and it is the one fact that separates a replica writing right now
+        // from a container that died three deploys ago and left its samples behind.
+        by: ['host'],
+        where: { createdAt: { gte: since } },
+        _count: { _all: true },
+        _max: { createdAt: true },
       }).catch(() => []),
     ]);
     const otherWriters = writers
@@ -160,10 +166,21 @@ export default async function serverPerfRoutes(app) {
     // Every host with samples in the window, for the selector. Sorted by volume so the one
     // doing most of the reporting is first — which on a rotating fleet is nobody in
     // particular, and that is itself worth seeing.
+    // Live means "wrote within the last 25 minutes" — the same threshold the downtime gap
+    // detector uses, because it is the same question: the tick is ~10 minutes, so one missed
+    // tick is noise and two is an absence.
+    const LIVE_MS = 25 * 60_000;
     const hosts = writers
       .filter((w) => w.host !== '')
-      .map((w) => ({ host: w.host, samples: w._count._all }))
-      .sort((a, b) => b.samples - a.samples);
+      .map((w) => ({
+        host: w.host,
+        samples: w._count._all,
+        lastAt: w._max?.createdAt || null,
+        live: !!w._max?.createdAt && (Date.now() - new Date(w._max.createdAt).getTime()) < LIVE_MS,
+      }))
+      // Live ones first, then by volume. A list sorted by volume alone puts the busiest
+      // GHOST above every container that is actually running.
+      .sort((a, b) => (Number(b.live) - Number(a.live)) || (b.samples - a.samples));
     const { deps, ssl } = probes;
     const latest = history[history.length - 1] || null;
     // Downtime gaps: consecutive samples more than 2x the ~10-min tick apart imply
