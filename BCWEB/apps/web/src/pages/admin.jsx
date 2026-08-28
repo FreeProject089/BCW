@@ -3,7 +3,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -2072,16 +2072,38 @@ function AdminServerPerf() {
           {configuring ? (
             <div className="space-y-1.5">
               {allKeys.map((k) => (
-                <label key={k} className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" disabled={depsBusy} checked={enabledCfg[k] !== false} onChange={(e) => toggleDep(k, e.target.checked)} /> {labels[k] || k}
+                <label key={k} className="flex items-start gap-2 text-sm">
+                  <input type="checkbox" className="mt-1" disabled={depsBusy} checked={enabledCfg[k] !== false} onChange={(e) => toggleDep(k, e.target.checked)} />
+                  <span className="min-w-0">
+                    {labels[k] || k}
+                    <span className="block text-[11px] text-[var(--muted)] leading-snug">{DEP_WHAT(t)[k]}</span>
+                  </span>
                 </label>
               ))}
+              {/* Turning one off is not cosmetic: it stops the probe, so that service can no
+                  longer open an outage. Worth saying next to the switches rather than in a
+                  place somebody would have to already suspect. */}
+              <p className="text-[11px] text-[var(--muted)] pt-1.5 border-t border-[var(--line)] leading-snug">
+                {t('sp.deps.cfg.h', 'Unticking one stops probing it. It disappears from here AND stops being able to record an outage — the status page will never show it as down.')}
+              </p>
             </div>
-          ) : (
+          ) : (<>
             <div className="flex flex-wrap gap-1.5">
-              {Object.keys(deps).length ? Object.entries(deps).map(([k, ok]) => depBadge(ok, labels[k] || k)) : <span className="text-xs text-[var(--faint)]">{t('sp.deps.off', 'All dependency checks are disabled.')}</span>}
+              {Object.keys(deps).length
+                ? Object.entries(deps).map(([k, ok]) => (
+                  <span key={k} title={DEP_WHAT(t)[k] || ''}>{depBadge(ok, labels[k] || k)}</span>
+                ))
+                : <span className="text-xs text-[var(--faint)]">{t('sp.deps.off', 'All dependency checks are disabled.')}</span>}
             </div>
-          )}
+            {/* Six pills with no sentence anywhere saying what green MEANT, how often it is
+                re-checked, or that this is what writes the outage records the public status
+                page reads. It looked like decoration and it is the input. */}
+            {!!Object.keys(deps).length && (
+              <p className="text-[11px] text-[var(--muted)] mt-2 leading-snug">
+                {t('sp.deps.h', 'Each one is really contacted — a query, or an HTTP request — not self-reported. Re-checked every few minutes. A red one opens an outage on the public status page and closes it when it comes back, so this is what uptime is measured from.')}
+              </p>
+            )}
+          </>)}
         </Card>
         <Card className="p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> {t('sp.ssl', 'SSL certificate')}</div>
@@ -9912,6 +9934,9 @@ function AnnounceComposer({ guildList = [] }) {
   // kind", '' means "mention nobody". They are different instructions and the API tells
   // them apart, so the form has to as well.
   const [f, setF] = useState({ kind: 'custom', title: '', body: '', url: '', channelId: '', urgent: false, format: 'embed', color: '', image: '', roleId: undefined });
+  // The row that was clicked, or null. Opened as a modal rather than expanded in place:
+  // the list is eight rows in a narrow column and an expanding row pushes the rest around.
+  const [detail, setDetail] = useState(null);
   const [busy, setBusy] = useState(false);
   const hist = useAsync(() => api.get('/admin/bot/announcements'), []);
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }));
@@ -10023,19 +10048,109 @@ function AnnounceComposer({ guildList = [] }) {
           <span className="text-xs font-medium">{t('db.ac.recent', 'Recent announcements')}</span>
           <button type="button" onClick={hist.reload} className="text-[11px] text-[var(--muted)] hover:text-[var(--text)]"><RefreshCw size={11} className="inline" /> {t('common.refresh', 'Refresh')}</button>
         </div>
+        {/* The whole row opens the record. Two of the three interesting columns — the title
+            and the failure reason — were `truncate`, so the line that mattered read
+            `No channel is configured for "i…` and stopped exactly where the answer was. A
+            `title=` tooltip is not a fix: it is invisible on touch, it cannot be copied, and
+            it does not exist on the half of the row that is not hovered. */}
         {(hist.data?.announcements || []).slice(0, 8).map((a) => (
-          <div key={a.id} className="flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0">
+          <button
+            type="button"
+            key={a.id}
+            onClick={() => setDetail(a)}
+            className="w-full text-left flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] rounded px-1 -mx-1"
+          >
             <Badge tone={a.status === 'sent' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
             <span className="flex-1 min-w-0 truncate">{a.title}</span>
             <span className="text-[var(--faint)] shrink-0">{a.kind}{a.format && a.format !== 'embed' ? ` · ${a.format}` : ''}</span>
-            {a.error && <span className="text-error truncate max-w-[40%]" title={a.error}>{a.error}</span>}
-          </div>
+            {a.error && <span className="text-error truncate max-w-[40%]">{a.error}</span>}
+            <ChevronRight size={12} className="shrink-0 text-[var(--faint)]" />
+          </button>
         ))}
         {!(hist.data?.announcements || []).length && <div className="text-[11px] text-[var(--muted)]">{t('db.ac.norecent', 'Nothing sent yet.')}</div>}
       </div>
+      {detail && <AnnouncementDetail a={detail} onClose={() => setDetail(null)} t={t} />}
     </>
   );
 }
+
+/**
+ * One announcement, in full.
+ *
+ * Everything the row had to cut, and the three things it never had room for at all: the body
+ * that was sent, where it was aimed, and when. The failure reason is the reason this exists —
+ * "No channel is configured for \u2026" is only useful if you can read WHICH kind, and that is
+ * the part the ellipsis ate.
+ */
+function AnnouncementDetail({ a, onClose, t }) {
+  const toast = useToast();
+  const copy = (v) => { navigator.clipboard?.writeText(String(v)).then(
+    () => toast.success(t('common.copied', 'Copied.')), () => {}); };
+  const when = (d) => (d ? new Date(d).toLocaleString() : '\u2014');
+  const Row = ({ label, children }) => (
+    <div className="grid grid-cols-[110px_1fr] gap-2 py-1.5 border-b border-[var(--line)] last:border-0">
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] pt-0.5">{label}</div>
+      <div className="text-[12px] min-w-0 break-words">{children}</div>
+    </div>
+  );
+  return (
+    <Modal open onClose={onClose} title={t('db.ac.detail', 'Announcement')} size="md">
+      <div className="space-y-1">
+        <Row label={t('db.ac.f.status', 'Status')}>
+          <Badge tone={a.status === 'sent' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
+        </Row>
+        {a.error && (
+          <Row label={t('db.ac.f.error', 'Reason')}>
+            {/* Selectable and wrapped, not truncated: this is the sentence somebody has to
+                act on, and acting on it usually means pasting it somewhere. */}
+            <span className="text-error whitespace-pre-wrap select-text">{a.error}</span>
+          </Row>
+        )}
+        <Row label={t('db.ac.f.title', 'Title')}><span className="select-text">{a.title}</span></Row>
+        {a.body && (
+          <Row label={t('db.ac.f.body', 'Body')}>
+            <span className="whitespace-pre-wrap select-text">{a.body}</span>
+          </Row>
+        )}
+        <Row label={t('db.ac.f.kind', 'Kind')}>{a.kind}{a.urgent ? ` · ${t('db.ac.f.urgent', 'urgent')}` : ''}</Row>
+        <Row label={t('db.ac.f.format', 'Format')}>{a.format || 'embed'}</Row>
+        <Row label={t('db.ac.f.channel', 'Channel')}>
+          {a.channelId
+            ? (<button type="button" className="font-mono underline decoration-dotted underline-offset-2"
+                onClick={() => copy(a.channelId)} title={t('common.copy', 'Copy')}>{a.channelId}</button>)
+            : <span className="text-[var(--muted)]">{t('db.ac.f.chdefault', 'The routing default for this kind')}</span>}
+        </Row>
+        {a.url && <Row label={t('db.ac.f.url', 'Link')}><span className="break-all select-text">{a.url}</span></Row>}
+        {a.image && <Row label={t('db.ac.f.image', 'Image')}><span className="break-all select-text">{a.image}</span></Row>}
+        <Row label={t('db.ac.f.created', 'Queued')}>{when(a.createdAt)}</Row>
+        <Row label={t('db.ac.f.sent', 'Sent')}>{when(a.sentAt)}</Row>
+        <Row label="ID">
+          <button type="button" className="font-mono text-[11px] underline decoration-dotted underline-offset-2"
+            onClick={() => copy(a.id)} title={t('common.copy', 'Copy')}>{a.id}</button>
+        </Row>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * What each dependency check actually DOES.
+ *
+ * Kept beside the card rather than on the server: these describe a probe, and a probe that
+ * changes should change this line in the same commit. The words are the only place the
+ * difference between "we asked it" and "it told us" is visible — the website row is a real
+ * HTTP request to the web container precisely because the API cannot vouch for it, and there
+ * is deliberately no API row at all, since an answer that comes FROM the API could only ever
+ * say "up".
+ */
+const DEP_WHAT = (t) => ({
+  db: t('sp.dep.db', 'Runs SELECT 1 against Postgres.'),
+  storage: t('sp.dep.storage', 'Asks the object store (MinIO / S3) for its health.'),
+  bot: t('sp.dep.bot', 'Checks the Discord bot\u2019s heartbeat is under two minutes old.'),
+  telemetry: t('sp.dep.telemetry', 'Fetches the telemetry container over HTTP.'),
+  web: t('sp.dep.web', 'Fetches the website container over HTTP — a real request, because the API and the site fail separately.'),
+  stripe: t('sp.dep.stripe', 'Calls Stripe\u2019s balance endpoint with the live key. Absent when no key is set.'),
+});
 
 function RouteTest({ kind, label, t }) {
   const [state, setState] = useState(null);   // null | 'sending' | {ok, error}
