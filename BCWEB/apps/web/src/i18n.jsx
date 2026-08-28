@@ -3315,6 +3315,7 @@ const DICT = {
     'bmi.p.script': 'Exécute des scripts (PowerShell / CMD / Bash / Python)',
     'bmi.p.deeplink': 'Déclenche des liens bmm://',
     'bmi.p.stop': 'Arrête des programmes en cours',
+    'bmi.p.delete': 'Supprime des profils, des modpacks ou des dossiers de mods',
     'bmi.r.command': 'Exécute un programme externe',
     'bmi.r.script': 'Exécute un script',
     'bmi.r.stop': 'Arrête un programme',

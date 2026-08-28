@@ -17,8 +17,8 @@
 // an unfamiliar name is a typo, because the list it is guessing from may simply be older
 // than the app.
 
-/** The four capabilities a task can grant itself, when the vocabulary is unavailable. */
-const FALLBACK_PERMISSIONS = ['command', 'script', 'deeplink', 'stopProcess'];
+/** The capabilities a task can grant itself, when the vocabulary is unavailable. */
+const FALLBACK_PERMISSIONS = ['command', 'script', 'deeplink', 'stopProcess', 'delete'];
 
 /**
  * Walk the source, skipping what is not BMMScript.

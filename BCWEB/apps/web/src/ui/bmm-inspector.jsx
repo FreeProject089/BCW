@@ -138,6 +138,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     script: t('bmi.p.script', 'Runs scripts (PowerShell / CMD / Bash / Python)'),
     deeplink: t('bmi.p.deeplink', 'Fires bmm:// deeplinks'),
     stopProcess: t('bmi.p.stop', 'Stops running programs'),
+    delete: t('bmi.p.delete', 'Deletes profiles, modpacks or mod folders'),
   };
   const REACH = {
     'custom.command': t('bmi.r.command', 'Runs an external program'),

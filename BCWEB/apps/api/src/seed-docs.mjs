@@ -620,11 +620,13 @@ summarised as "runs a script".
 | The file | What opening it offers |
 |---|---|
 | grants itself nothing | one click to run — everything it does, you could do with the app’s own buttons |
-| grants \`command\`, \`script\`, \`deeplink\` or \`stopProcess\` | Run stays disabled until you tick that you have read what it does |
+| grants \`command\`, \`script\`, \`deeplink\`, \`stopProcess\` or \`delete\` | Run stays disabled until you tick that you have read what it does |
 
-Those four are the only things a task can do that the app’s own buttons cannot. **Run it now**
-and **Add to my tasks** are separate buttons, because running a file once and keeping it forever
-are different intentions.
+The first four are the only things a task can do that the app’s own buttons cannot. \`delete\` is
+in the list for the opposite reason: the app’s buttons do it too, but they do it while somebody
+is watching, and a file that removes a profile at 3am does not. **Run it now** and **Add to my
+tasks** are separate buttons, because running a file once and keeping it forever are different
+intentions.
 
 ## Publishing a catalogue of automations
 
