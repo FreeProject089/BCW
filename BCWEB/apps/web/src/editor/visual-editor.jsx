@@ -3,11 +3,13 @@ import {
   GripVertical, Trash2, Plus, Heading as HeadingIcon, Type, TagIcon, LayoutGrid, ImagePlus,
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
+  Eye,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import IconPicker from './icon-picker.jsx';
-import { IconGlyph } from '../ui/md.jsx';
+import Markdown, { IconGlyph } from '../ui/md.jsx';
+import SelectionToolbar from './selection-toolbar.jsx';
 
 // Small "pick an icon" field: shows the chosen glyph + name, opens the picker.
 function IconField({ value, onChange, placeholder = 'Pick icon' }) {
@@ -295,6 +297,9 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   const [blocks, setBlocks] = useState(() => parse(value));
   const lastOut = useRef(serialize(blocks));
   const [addOpen, setAddOpen] = useState(false);
+  // Which blocks are showing their preview, by id. Per block rather than one switch for
+  // the page: you check the callout you are writing, not all twenty at once.
+  const [peek, setPeek] = useState({});
   const dragId = useRef(null);
 
   // Re-parse only when the incoming value was changed *externally* (not by us).
@@ -320,8 +325,24 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
             <button type="button" className="hover:text-[var(--text)] disabled:opacity-30" disabled={idx === 0} onClick={() => move(idx, idx - 1)}><ChevronUp size={13} /></button>
             <button type="button" className="hover:text-[var(--text)] disabled:opacity-30" disabled={idx === blocks.length - 1} onClick={() => move(idx, idx + 1)}><ChevronDown size={13} /></button>
           </div>
-          <div className="flex-1 min-w-0"><BlockFields block={b} onChange={(patch) => update(b.id, patch)} /></div>
+          <div className="flex-1 min-w-0">
+            <BlockFields block={b} onChange={(patch) => update(b.id, patch)} />
+            {/* What this block will look like, from the SAME serialiser that writes the
+                document. A preview built any other way is a second renderer, and the day the
+                two disagree the wrong one is the one on screen.
+
+                Off by default and remembered per block: a page of twenty blocks all rendering
+                live is a lot of work for a document somebody is halfway through typing. */}
+            {peek[b.id] && (
+              <div className="mt-2 rounded-lg border border-dashed border-[var(--line)] p-2 bg-[var(--surface)]">
+                <Markdown>{blockMd(b) || ''}</Markdown>
+              </div>
+            )}
+          </div>
           <div className="flex flex-col items-center gap-1 self-start pt-1">
+            <button type="button" className={`hover:text-[var(--text)] ${peek[b.id] ? 'text-[var(--primary)]' : 'text-[var(--faint)]'}`}
+              title={t('ve.peek', 'Show what this block looks like')}
+              onClick={() => setPeek((p) => ({ ...p, [b.id]: !p[b.id] }))}><Eye size={15} /></button>
             <button type="button" className="text-[var(--faint)] hover:text-error" title={t('ve.delete', "Delete")} onClick={() => remove(b.id)}><Trash2 size={15} /></button>
             <div className="flex flex-col gap-0.5 mt-1">
               {[['left', AlignLeft], ['center', AlignCenter], ['right', AlignRight]].map(([a, Ico]) => (
@@ -353,6 +374,29 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   );
 }
 
+/**
+ * A markdown field with the select-to-format toolbar on it.
+ *
+ * The toolbar has existed the whole time — bold, italic, strike, code, a colour span, a link,
+ * an anchor, an inline comment — and was mounted on ONE textarea: the raw Markdown tab. So the
+ * tab called "Visual" was the one where you had to type `**bold**` and `[text](url)` by hand,
+ * which is the wrong way round and is why it reads as half-finished.
+ *
+ * A ref per field, because the toolbar positions itself against a specific textarea's caret.
+ * One component so every markdown-bearing block gets it by construction rather than by
+ * somebody remembering to add it to the next one.
+ */
+function MdField({ value, onChange, rows = 3, placeholder, className }) {
+  const ref = useRef(null);
+  return (
+    <div className="relative">
+      <textarea ref={ref} className={className} rows={rows} value={value || ''}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+      <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} />
+    </div>
+  );
+}
+
 function BlockFields({ block: b, onChange }) {
   const { t } = useI18n();
   const ta = 'w-full bg-transparent border border-[var(--line)] rounded-lg p-2 text-sm outline-none focus:border-[var(--line-strong)] resize-y';
@@ -366,8 +410,8 @@ function BlockFields({ block: b, onChange }) {
         <Input value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.heading', "Heading")} className="!py-1.5 !text-base !font-semibold" />
       </div>
     );
-    case 'text': return <textarea className={ta} rows={3} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.md', "Write in markdown \u2014 **bold**, [links](url), `code`\u2026")} />;
-    case 'quote': return <><textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.quote', "Quote\u2026")} /></>;
+    case 'text': return <MdField className={ta} rows={3} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.md', "Select any words to format them \u2014 or write markdown")} />;
+    case 'quote': return <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.quote', "Quote\u2026")} />;
     case 'callout': return (
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
@@ -376,7 +420,7 @@ function BlockFields({ block: b, onChange }) {
           <IconField value={b.icon} onChange={(v) => onChange({ icon: v })} />
           <input type="color" value={b.color || '#7c3aed'} onChange={(e) => onChange({ color: e.target.value })} title={t('ve.customcolour', "Custom colour")} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
         </div>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.callout', "Callout body (markdown)\u2026")} />
+        <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.callout', "Callout body \u2014 select to format")} />
       </div>
     );
     case 'card': return (
@@ -389,7 +433,7 @@ function BlockFields({ block: b, onChange }) {
           <Input value={b.href} onChange={(e) => onChange({ href: e.target.value })} placeholder={t('ve.ph.linkurl', "Link URL (optional)")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
           <Input value={b.image} onChange={(e) => onChange({ image: e.target.value })} placeholder={t('ve.ph.imgurlopt', "Image URL (optional)")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
         </div>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.carddesc', "Card description\u2026")} />
+        <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.carddesc', "Card description \u2014 select to format")} />
       </div>
     );
     case 'image': return (
@@ -407,7 +451,7 @@ function BlockFields({ block: b, onChange }) {
     case 'collapsible': return (
       <div className="space-y-2">
         <Input value={b.summary} onChange={(e) => onChange({ summary: e.target.value })} placeholder={t('ve.ph.summary', "Summary (click-to-expand label)")} className="!py-1.5 !text-sm" />
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.hidden', "Hidden content (markdown)\u2026")} />
+        <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.hidden', "Hidden content (markdown)\u2026")} />
       </div>
     );
     case 'steps': {
@@ -431,7 +475,7 @@ function BlockFields({ block: b, onChange }) {
                 <Input value={st.title} onChange={(e) => setStep(i, { title: e.target.value })} placeholder={`Step ${i + 1} title`} className="!py-1.5 !text-sm" />
                 <button type="button" className="btn btn-sm" title={t('ve.remove', "Remove")} onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
               </div>
-              <textarea className={ta} rows={2} value={st.text} onChange={(e) => setStep(i, { text: e.target.value })} placeholder={t('ve.ph.stepbody', "Step body (markdown, callouts, code\u2026)")} />
+              <MdField className={ta} rows={2} value={st.text} onChange={(v) => setStep(i, { text: v })} placeholder={t('ve.ph.stepbody', "Step body (markdown, callouts, code\u2026)")} />
             </div>
           ))}
           <button type="button" className="btn btn-sm" onClick={() => onChange({ steps: [...steps, { title: '', text: '' }] })}>+ Step</button>
@@ -452,8 +496,8 @@ function BlockFields({ block: b, onChange }) {
     );
     case 'columns': return (
       <div className="grid sm:grid-cols-2 gap-2">
-        <textarea className={ta} rows={3} value={b.left} onChange={(e) => onChange({ left: e.target.value })} placeholder={t('ve.ph.left', "Left column (markdown)\u2026")} />
-        <textarea className={ta} rows={3} value={b.right} onChange={(e) => onChange({ right: e.target.value })} placeholder={t('ve.ph.right', "Right column (markdown)\u2026")} />
+        <MdField className={ta} rows={3} value={b.left} onChange={(v) => onChange({ left: v })} placeholder={t('ve.ph.left', "Left column (markdown)\u2026")} />
+        <MdField className={ta} rows={3} value={b.right} onChange={(v) => onChange({ right: v })} placeholder={t('ve.ph.right', "Right column (markdown)\u2026")} />
       </div>
     );
     case 'align': return (
@@ -461,7 +505,7 @@ function BlockFields({ block: b, onChange }) {
         <select value={b.align || 'center'} onChange={(e) => onChange({ align: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
           <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
         </select>
-        <textarea className={ta} rows={2} value={b.text} onChange={(e) => onChange({ text: e.target.value })} placeholder={t('ve.ph.content', "Content (markdown)\u2026")} />
+        <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.content', "Content (markdown)\u2026")} />
       </div>
     );
     case 'table': {
