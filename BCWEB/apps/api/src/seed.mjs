@@ -384,78 +384,312 @@ That is the whole vocabulary. Combine callouts, cards and short bullets for page
 // Catalog guides — one per catalog type, hosted in the blog.
 if (adminUser && communityProject) {
   const GUIDES = [
-    { slug: 'guide-app-catalog', title: 'App Catalog format', excerpt: 'How to publish an app to the BMM App Catalog.', body:
+    { slug: 'guide-app-catalog', title: 'Publishing an app: what BMM reads before it downloads anything', excerpt: 'Three labels decide what a user sees before your file exists on their disk — and the ones you leave out are filled in with opinions.', body:
 `:badge[Catalog]{color="#2563eb"} :badge[Apps]{color="#16a34a"}
 
-The **App Catalog** is a hosted \`catalog.json\` with an \`apps\` array.
+An app catalog entry looks like a link with labels around it. It is not. BMM reads several of
+those labels **before** the download starts and acts on them — and the ones you leave out are
+not left blank. They are filled in with a default that looks exactly as deliberate as a choice.
 
-:::tip[Publishing]
-Create official apps via **Admin → Catalogs**; community apps via **Dashboard → Submit content**. Both build a \`bmm://\` deeplink so an "Install in BMM" button just works.
+::toc[On this page]
+
+## The URL is read, not only followed
+
+Before installing, BMM decides whether to ask *where* to put the app. It asks when the download
+is a plain archive; it does not ask when the download is a setup program, because a setup
+program picks its own destination and a second question would be a lie.
+
+It works that out from two things: the declared \`file_type\`, **and the address itself**. A URL
+containing \`setup\` or \`install\` is treated as an installer.
+
+:::warning[An ordinary URL can change the install flow]
+\`https://cdn.example.com/install/mytool-1.4.zip\` is a zip. BMM reads \`/install/\` in the path,
+skips the folder picker, and tells the user to click through a wizard that does not exist.
+
+Nothing errors. The app simply lands somewhere they did not choose. Serve the file from a path
+without those two words and the archive flow comes back.
 :::
 
-## App entry — required fields
-| Field | Values |
-|---|---|
-| \`id\` | unique slug (dashes) |
-| \`title\` | display name |
-| \`description\` | 1–3 sentences |
-| \`category\` | \`game\` · \`utility\` · \`other\` |
-| \`price\` | \`free\` · \`freemium\` · \`paid\` |
-| \`tags\` | up to 3 |
-| \`download.url\` | direct link |
-| \`download.file_type\` | \`zip\` · \`exe\` · \`msi\` · \`script\` |
+## Omitted is not empty
 
-## Optional fields
-:::note[Integrity]
-\`download.sha256\` is optional but **recommended** — BMM checks it on install. Also: \`version\`, \`requirements\`, \`md_link\`, \`images.thumb\` (16:9 ≥400×225), \`images.extra\`, \`download.size\`.
+The feed fills the gaps as it is built. No \`file_type\` and your zip is announced as an **EXE**
+— on the card and in the install dialog. No \`category\` and it is filed under *other*. No
+\`price\` and it is advertised as *free*.
+
+None of that fails. It publishes an entry that states things you never said.
+
+## The checksum is the optional field worth the trouble
+
+\`download.sha256\` is optional, and it is genuinely verified: BMM recomputes the hash *while*
+the file downloads and refuses to finish when it does not match — the \`.part\` file is never
+renamed into place.
+
+It is also visible before the click, as a small chip on the card:
+
+:::columns
+:::column
+:badge[checksum]{color="#16a34a"}
+The catalogue published a hash. What arrives is checked against it.
+:::
+:::column
+:badge[unverified]{color="#64748b"}
+No hash published. Common, and proof of nothing — but it is the difference between two entries
+offering the same app.
+:::
 :::
 
-:::card{title="Full reference in the docs" href=/docs/app-catalog icon=book}
-The canonical, always-updated App Catalog format lives in the documentation.
+:::tip[You do not have to compute it by hand]
+The **Create app** form has a probe: give it the URL (or pick the local file) and it fills in
+the size and the SHA-256 for you. Over plain \`http\` it says so out loud, because what it read
+is the checksum of *whatever arrived* — and over http that is not only up to you.
+:::
+
+## An entry with no download URL is not an error
+
+It is a silent omission. The item saves, its page renders, and the feed simply does not list it:
+entries without a resolvable download are dropped when the feed is built. If your app is
+published and does not show up in BMM, check this before anything else.
+
+## One entry, filled in on purpose
+
+\`\`\`json
+{
+  "id": "tag-cleaner",
+  "title": "Tag Cleaner",
+  "description": "Finds and merges duplicate tags across a mod library.",
+  "category": "utility",
+  "price": "free",
+  "tags": ["tags", "cleanup"],
+  "version": "1.4.0",
+  "images": { "thumb": "https://example.com/tag-cleaner/thumb.png" },
+  "download": {
+    "url": "https://example.com/dl/tag-cleaner-1.4.0.zip",
+    "file_type": "zip",
+    "size": 4194304,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}
+\`\`\`
+
+Every field there is one you said. That is the whole point of the exercise.
+
+:::card{title="Every field, always current" href=/docs/app-catalog icon=book}
+The reference — required, optional, and the exact accepted values — lives in the documentation.
+This article is about what happens once you have filled it in.
 :::` },
-    { slug: 'guide-plugin-catalog', title: 'Plugin Catalog & .bmmplug format', excerpt: 'Plugin catalog fields + the .bmmplug package and its checksums.', body:
+    { slug: 'guide-plugin-catalog', title: 'Two checksums, three verdicts: how a .bmmplug is judged', excerpt: 'Most packages that come back invalid were not tampered with. Here is what the two hashes actually answer, and the verdict nobody expects.', body:
 `:badge[Catalog]{color="#2563eb"} :badge[Plugins]{color="#7c3aed"}
 
-A plugin catalog entry (**required**): \`id\`, \`name\`, \`version\`, \`author\`, \`download_url\`. Optional: \`game\`, \`description\`, \`official\`, \`tags\`, \`icon_url\`, and a \`sha256\` of the \`.bmmplug\`.
+A \`.bmmplug\` carries two checksums, and they answer two different questions. Most packages
+that come back **invalid** violated neither of them.
 
-## .bmmplug package (a ZIP)
-- \`plugin.json\` — the manifest (**required**)
-- \`icon.png\` — 40×40 (optional)
-- \`checksums.json\` — **sha256 of every file** in the package (integrity)
+::toc[On this page]
 
-## Integrity
-The catalog entry's \`sha256\` covers the whole \`.bmmplug\`; \`checksums.json\` covers each file inside. BMM validates both.
+## Two questions, two hashes
 
-:::danger[Trust]
-If either checksum fails, the plugin is flagged **invalid** and a modal recommends **not installing**. Only install plugins that pass validation — catalog plugins are always validated.
+The catalog entry's \`sha256\` covers the **whole package**: *are these the bytes we expected?*
+Inside the ZIP, \`checksums.json\` covers **each file**: *is every file the file it claims to be?*
+
+Tampering with one file changes that file's hash and the package's hash at the same time, so a
+modified package cannot be valid while its inner list still is. That is the entire integrity
+model, and it is small on purpose.
+
+## The verdict nobody expects: \`unlisted_files\`
+
+Validity is not "everything listed matches". It is **"everything listed matches *and* everything
+present is listed"**. A file in the ZIP that \`checksums.json\` never mentions makes the package
+invalid on its own, with no mismatch anywhere.
+
+:::danger[The usual cause is a README]
+Generate \`checksums.json\`, then drop a \`README.md\` or a \`LICENSE\` next to it, then zip. The
+package is now invalid — and the failure reads like tampering when it is really housekeeping.
+
+Regenerate the list **last**, after every file is in place.
 :::
 
-:::card{title="Full reference in the docs" href=/docs/plugin-catalog icon=book}
-Read the complete .bmmplug format in the documentation.
-:::` },
-    { slug: 'guide-preset-catalog', title: 'Preset Catalog (BSM)', excerpt: 'The BSM preset JSON format and how to share presets.', body:
-`:badge[Catalog]{color="#2563eb"} :badge[BSM]{color="#db2777"}
+\`checksums.json\` is the one exception: it cannot list its own hash and is skipped.
 
-A BSM preset is a single JSON: \`name\`, \`version\`, \`assetPaths\` (**required**); \`color\`, \`UpdateNumber\`, \`date\` (optional). Its metadata lives inside the file.
+## Invalid and unverified are not the same badge
 
-:::tip[Publishing]
-Publish via **Dashboard → Submit content** (Project **BSM**, Type **Preset**). On the catalog you can **download**, **multi-select download**, and sort by *popular (all-time / month)*, *newest* or *most viewed* — every download counts toward the uploader's stats.
+There is a third state, and it exists because the first two were being used for something they
+do not mean.
+
+:::columns
+:::column
+**Invalid** — the package was fetched and it did not check out. A real integrity failure. BMM
+recommends not installing it.
+:::
+:::column
+**Unverified** — the package could not be fetched at all: no host yet, a dead link, an address
+the fetcher refuses. Nothing is known about its contents.
+:::
 :::
 
-:::card{title="Full reference in the docs" href=/docs/preset-catalog icon=book}
-The BSM preset format, in the documentation.
+A healthy plugin that simply has not been uploaded yet is not a tampered one, so it is not
+badged red. The reason is recorded either way, and moderators see it.
+
+## What checksums cannot tell you
+
+They cannot tell you who made the package. Anybody who repacks a plugin recomputes them
+honestly, and the result is a perfectly valid archive containing somebody else's work.
+
+That is a different question, and it needs a different answer: a package **BMM itself wrote**
+carries \`bmm_signature.json\` — an ed25519 signature over the entries. Integrity says the box
+was not opened in transit. A signature says who packed it.
+
+## Ask for the permissions you use
+
+A plugin requests capabilities from the API's real permission set — \`mods.write\`,
+\`profiles.write\`, \`catalog.read\`, \`app.write\` and the rest — not free-form words like
+"network" or "files". **The user is shown the list and grants each one.**
+
+A request for everything is not a safe default; it is the sentence a user reads just before
+deciding whether to trust you.
+
+:::card{title="The full package layout" href=/docs/plugin-catalog icon=book}
+Manifest fields, the entry's fields, and the exact ZIP layout — in the documentation.
+:::
+
+:::card{title="The permission list" href=/docs/api-reference icon=code}
+Every capability a plugin can ask for, and what it unlocks.
 :::` },
-    { slug: 'guide-theme-catalog', title: 'Theme Catalog (.bmmtheme)', excerpt: 'The .bmmtheme package format and how to publish a theme.', body:
+    { slug: 'guide-preset-catalog', title: 'The word "preset" means two different things', excerpt: 'For BSM the preset is the file. For BMM it points at one. They share a name, a catalog kind and a feed — and nothing else.', body:
+`:badge[Catalog]{color="#2563eb"} :badge[BSM]{color="#db2777"} :badge[BMM]{color="#2563eb"}
+
+**"Preset" means two different things here**, and knowing which one you are publishing is most
+of the job. They share a name, a catalog kind and a feed — and they are not the same document.
+
+::toc[On this page]
+
+## BSM: the preset *is* the file
+
+A BSM preset is a **single JSON document whose metadata is the item**. There is no ZIP, no
+manifest beside it, no folder: \`name\`, \`version\` and \`assetPaths\` live inside the file that
+is being published.
+
+That is why a BSM preset can be shared by pasting it into a chat window, and why the platform
+validates its contents on submit — it *has* the contents.
+
+## BMM: the preset points at a file
+
+A BMM preset is a **scheduled-task automation**, a \`.bmmpa\`. The catalog entry does not carry
+it; the entry *points* at it with a download URL, exactly like every other BMM catalog kind.
+
+Nothing is validated beyond "there is an address to fetch". BMM signs and inspects the
+automation itself, and a second opinion from a server that cannot open the file would be a guess
+dressed up as a check.
+
+:::warning[This is not a detail — it decided whether you could publish at all]
+For a long time the feed already emitted the BMM shape, while every *write* path ran the BSM
+schema over the submission regardless of project. So a BMM automation could not be submitted:
+it was rejected as an invalid preset for lacking \`assetPaths\`, a field it is not supposed to
+have.
+
+Each half was self-consistent, which is exactly why nothing failed loudly. Pick the right
+**project** on the submit form and the right rules follow it.
+:::
+
+## \`assetPaths\` is the preset; everything else is labelling
+
+An array of strings, each one an asset path as BSM knows it. It names what the preset touches —
+the values themselves live in BSM. This file names the targets.
+
+:::danger[An empty array publishes fine]
+\`"assetPaths": []\` is a valid preset. It uploads, it appears in the catalog, somebody installs
+it, and it drives nothing.
+
+That is the one failure nobody reports, because from the outside it looks like it worked.
+:::
+
+## Extra keys survive
+
+The validator passes anything it does not recognise straight through, so a field BSM adds later
+will not retroactively invalidate your presets. Do not read meaning into that: only the
+documented fields are interpreted here.
+
+## Publishing either one
+
+**Dashboard → Submit content**, then the project decides the rest — **BSM** asks for the JSON,
+**BMM** asks for a link to the \`.bmmpa\`.
+
+On the catalog page, presets can be downloaded one at a time or several at once, and sorted by
+*popular* (all-time or this month), *newest* or *most viewed*. Every download counts toward the
+uploader's stats.
+
+:::card{title="The BSM preset format, field by field" href=/docs/preset-catalog icon=book}
+Required and optional fields, limits, and a complete working file.
+:::` },
+    { slug: 'guide-theme-catalog', title: 'Your theme id is an address, not a label', excerpt: 'What survives the ZIP, why two themes can quietly become one, and the manifest field everyone spells wrong.', body:
 `:badge[Catalog]{color="#2563eb"} :badge[Themes]{color="#d97706"}
 
-A \`.bmmtheme\` is a ZIP with \`theme.json\` (**required**) + optional \`assets/\`. The manifest carries \`id\`, \`name\`, \`author\`, \`version\`, a \`tokens\` map of \`--bmm-*\` CSS variables, and optional per-selector \`overrides\`.
+A \`.bmmtheme\` is a ZIP with a \`theme.json\` in it. The interesting part is what happens on the
+other side: **the \`id\` in that manifest is not a label, it is an address.**
 
-:::tip[Fastest path]
-Export one from the in-app **Theme Editor** — it writes a valid \`theme.json\`. Then publish via **Dashboard → Submit content** (Project **BMM**, Type **Theme**). Installing applies instantly and is reversible.
+::toc[On this page]
+
+## \`id\` is where the theme lives
+
+On import, BMM reads \`theme.json\`, takes its \`id\`, and installs the theme into a folder of
+that name under the user's themes directory.
+
+:::danger[Two themes with the same id are one theme]
+There is no collision check and no warning. The second import overwrites the first, on a
+stranger's machine, and the only symptom is that somebody's theme changed by itself.
+
+\`dark\` and \`blue\` are not ids. \`yourname-midnight\` is. Pick something nobody else will pick.
 :::
 
-:::card{title="Full reference in the docs" href=/docs/theme-catalog icon=book}
-The .bmmtheme package format, in the documentation.
+A manifest with no \`id\` is the one hard error: the import stops and says \`missing id\`.
+
+## Three paths survive the ZIP
+
+The importer copies \`theme.json\`, anything under \`assets/\`, and anything under \`fonts/\`.
+
+**Everything else in the archive is silently dropped.** A \`LICENSE\` or a screenshot sitting at
+the root of the ZIP does not reach the user's disk — no error, it simply is not there
+afterwards. Put what must survive under \`assets/\`.
+
+Entries that try to escape the archive root are skipped outright, so a path like
+\`assets/../../evil\` never gets written.
+
+## The manifest field is \`vars\`
+
+This is worth stating plainly, because it is easy to get wrong from memory: the map of
+\`--bmm-*\` custom properties is called **\`vars\`**. A theme that spells it \`tokens\` loads
+without complaint and changes nothing.
+
+The rest of the manifest is optional and additive: \`mode\` (\`dark\` or \`light\`), \`fonts\`,
+\`assets\`, \`global_css\`, \`pages\` for per-view CSS, \`element_overrides\` for per-selector
+properties, and \`html_swaps\`.
+
+## Export it, do not write it
+
+The in-app **Theme Editor** exports a valid package in one step, and it does three things you
+would otherwise have to remember:
+
+:::steps
+:::step[It walks the whole theme folder]
+Assets and fonts come along, at the right paths. Hand-zipping is where files go missing.
+:::
+:::step[It writes \`bmm_signature.json\`]
+A signature over every entry in the archive — collected before the ZIP is written, from the same
+list the writer uses, so what was signed and what was written cannot drift apart.
+:::
+:::step[It names the file after the theme]
+\`your-theme-id.bmmtheme\`, which is also the folder it will land in.
+:::
+:::
+
+Then publish it: **Dashboard → Submit content**, project **BMM**, type **Theme**. Installing a
+theme only writes style blocks — it never touches source files, and it is reversible from the
+same screen.
+
+:::card{title="The package and the catalog entry" href=/docs/theme-catalog icon=book}
+The \`themes\` feed entry and the \`.bmmtheme\` layout, in the documentation.
+:::
+
+:::card{title="Theming from inside BMM" href=/docs/themes icon=palette}
+The token surface, the editor, and what the runtime does for a theme that is incomplete.
 :::` },
   ];
   for (const g of GUIDES) {
