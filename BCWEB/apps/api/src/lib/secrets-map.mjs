@@ -13,6 +13,8 @@
 // Pure text in, structure out: no environment is read, so this reports what the code WOULD
 // do rather than what this machine happens to have set.
 
+import { PRODUCTION_SECRETS } from './boot-guard.mjs';
+
 /** `||` and `??` both provide a fallback; `?.` and `?:` do not. Matched separately so the
  *  operator can be reported — they behave differently for an empty string, and "set but
  *  blank" is a real deploy mistake. */
@@ -78,23 +80,35 @@ export function parseEnvExample(text) {
 /**
  * Variables a production boot guard refuses to start without.
  *
- * The pattern is a `NODE_ENV === 'production'` test that names the variable and calls
- * process.exit. server.mjs has exactly one, for JWT_SECRET, and it is the difference
- * between a fallback that can be reached in production and one that cannot.
+ * READ FROM THE GUARD, not inferred from the shape of the code around it.
  *
- * Without this the report listed eighteen hardcoded secrets, thirteen of which were the
- * same already-guarded variable — and a report that is right about the words and wrong
- * about the risk gets read once.
+ * This used to scan for a `NODE_ENV === 'production'` block containing a `process.exit` and
+ * take the variable names out of that same window. That worked while the check was written
+ * inline in server.mjs. It has since moved into boot-guard.mjs, where the names live in a
+ * data structure and the `NODE_ENV` test is behind `isProduction()` — so the scan matched
+ * ZERO windows in the two files that matter, and picked up DEMO_ALLOW_PROD and
+ * SEED_ADMIN_PASSWORD from an unrelated guard elsewhere.
+ *
+ * The report then said: sixteen secrets fall back to a hard-coded value with nothing
+ * stopping the app from starting that way. Every one of those sixteen is guarded. A security
+ * report that cries wolf about the things it protects is worse than no report — it is read
+ * once, disbelieved, and then it is not read on the day it is right.
+ *
+ * The inline scan is KEPT as well, because other files still guard that way (the seed script
+ * refuses to run with the default admin password), and a guard is a guard wherever it lives.
  */
-export function guardedAtBoot(files) {
-  const guarded = new Set();
-  for (const { src } of files) {
-    const text = String(src);
-    for (const m of text.matchAll(/NODE_ENV\s*===\s*'production'[\s\S]{0,400}?process\.exit/g)) {
-      for (const v of m[0].matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)) guarded.add(v[1]);
+export function guardedAtBoot(files, declared = PRODUCTION_SECRETS) {
+    const guarded = new Set();
+    // Every name the boot guard would refuse to start without. Chains included: bot auth
+    // reads BOT_SHARED_SECRET || LINK_LOOKUP_SECRET, and either one satisfies it.
+    for (const s of declared || []) for (const v of s.vars || []) guarded.add(v);
+    // And anything guarded the old way, in a file this list does not know about.
+    for (const { src } of files) {
+        for (const m of String(src).matchAll(/NODE_ENV\s*===\s*'production'[\s\S]{0,400}?process\.exit/g)) {
+            for (const v of m[0].matchAll(/process\.env\.([A-Z][A-Z0-9_]*)/g)) guarded.add(v[1]);
+        }
     }
-  }
-  return guarded;
+    return guarded;
 }
 
 export function buildSecretsMap(files, envExample) {

@@ -7,6 +7,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { isSecretName, findReads, parseEnvExample, guardedAtBoot, buildSecretsMap } from '../src/lib/secrets-map.mjs';
+import { PRODUCTION_SECRETS } from '../src/lib/boot-guard.mjs';
 
 describe('isSecretName', () => {
   test('the words that mean "must not be guessable"', () => {
@@ -76,20 +77,46 @@ describe('guardedAtBoot', () => {
       process.exit(1);
     }
   `;
+  // The inline scanner on its own, with nothing declared. Passing `[]` is what makes these
+  // tests about the SCANNER instead of about the declared list.
+  const scanned = (src) => guardedAtBoot([{ src }], []);
 
   test('a variable a production boot refuses to start without', () => {
-    assert.equal(guardedAtBoot([{ src: SERVER }]).has('JWT_SECRET'), true);
+    assert.equal(scanned(SERVER).has('JWT_SECRET'), true);
   });
 
   test('a production branch that does NOT exit guards nothing', () => {
     // Logging a warning and carrying on is the failure mode this whole analyser exists to
     // find. Counting it as a guard would hide the finding behind the finding.
     const warnOnly = "if (process.env.NODE_ENV === 'production' && !process.env.LINK_SECRET) console.warn('unset');";
-    assert.equal(guardedAtBoot([{ src: warnOnly }]).size, 0);
+    assert.equal(scanned(warnOnly).size, 0);
   });
 
   test('an unrelated variable is not swept in by proximity', () => {
-    assert.equal(guardedAtBoot([{ src: SERVER }]).has('LINK_LOOKUP_SECRET'), false);
+    assert.equal(scanned(SERVER).has('LINK_LOOKUP_SECRET'), false);
+  });
+
+  // ── and the half that had no test at all ──────────────────────────────────
+  //
+  // Every test above uses a STRING that looks like the old server.mjs. That is why this
+  // drifted without a red run: the guard moved into boot-guard.mjs, where the names live in
+  // a data structure and the NODE_ENV test is behind isProduction(), so the scanner matched
+  // nothing in the real files — and the report announced sixteen unguarded secrets, all of
+  // which are guarded. The fixture stayed green throughout, because it is a copy of the code
+  // as it was.
+  test('what the boot guard declares is reported as guarded, whatever shape it is written in', () => {
+    for (const s of PRODUCTION_SECRETS) {
+      for (const v of s.vars) {
+        assert.equal(guardedAtBoot([]).has(v), true,
+          `${v} is refused at boot and would be reported as unguarded`);
+      }
+    }
+  });
+
+  test('a name nothing guards is still not guarded', () => {
+    // The opposite failure: a list broad enough to mark everything safe is a report that
+    // never fires, which is the same uselessness from the other side.
+    assert.equal(guardedAtBoot([]).has('STRIPE_SECRET_KEY'), false);
   });
 });
 
@@ -97,7 +124,11 @@ describe('buildSecretsMap', () => {
   const FILES = [
     { name: 'server.mjs', src: "if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) { process.exit(1); }" },
     { name: 'lib.mjs', src: "const j = process.env.JWT_SECRET || 'dev-only-insecure-secret';" },
-    { name: 'bot.mjs', src: "const l = process.env.LINK_LOOKUP_SECRET || 'dev-bot-secret';" },
+    // Deliberately a secret the boot guard does NOT declare. LINK_LOOKUP_SECRET used to
+    // stand here and is now guarded for real, which turned this fixture's "unguarded"
+    // example into a guarded one — so the test that exists to prove the two are told apart
+    // was asserting that a protected secret is unprotected.
+    { name: 'bot.mjs', src: "const l = process.env.STRIPE_SECRET_KEY || 'sk_test_placeholder';" },
     { name: 'mail.mjs', src: "const from = process.env.MAIL_FROM || '';\nconst h = process.env.MAIL_HOST;" },
     // Secret-ish AND empty: the case that reaches the fallback test at all. MAIL_FROM does
     // not — it is filtered out one line earlier for not being a secret, so a suite built on
@@ -109,7 +140,7 @@ describe('buildSecretsMap', () => {
   test('a guarded fallback and a live one are both listed, and told apart', () => {
     const m = buildSecretsMap(FILES, ENV);
     const by = Object.fromEntries(m.hardcodedSecrets.map((h) => [h.name, h.guardedInProduction]));
-    assert.deepEqual(by, { JWT_SECRET: true, LINK_LOOKUP_SECRET: false });
+    assert.deepEqual(by, { JWT_SECRET: true, STRIPE_SECRET_KEY: false });
   });
 
   test('an empty fallback is not a hardcoded secret', () => {
@@ -122,7 +153,7 @@ describe('buildSecretsMap', () => {
 
   test('read but never documented — the deploy that comes up and then fails', () => {
     const m = buildSecretsMap(FILES, ENV);
-    assert.deepEqual(m.undocumented.map((u) => u.name), ['LINK_LOOKUP_SECRET']);
+    assert.deepEqual(m.undocumented.map((u) => u.name), ['STRIPE_SECRET_KEY']);
     assert.equal(m.undocumented[0].secret, true);
     assert.equal(m.undocumented[0].first, 'bot.mjs:1');
   });
@@ -139,6 +170,15 @@ describe('buildSecretsMap', () => {
   test('counts describe the source rather than judging it', () => {
     const m = buildSecretsMap(FILES, ENV);
     // `read` counts distinct NAMES, not reads: JWT_SECRET appears in two files and once.
-    assert.deepEqual(m.counts, { read: 6, documented: 6, secretish: 3, guardedAtBoot: 1 });
+    //
+    // guardedAtBoot is no longer a count of what the FIXTURE guards — it is what the real
+    // boot guard declares plus anything the fixture guards inline, which is the number a
+    // person reading the report needs. Asserted against the declaration so it moves when
+    // the guard does, rather than being a magic number that pins today's list.
+    const declared = new Set(PRODUCTION_SECRETS.flatMap((x) => x.vars));
+    assert.deepEqual(m.counts, {
+      read: 6, documented: 6, secretish: 3,
+      guardedAtBoot: new Set([...declared, 'JWT_SECRET']).size,
+    });
   });
 });
