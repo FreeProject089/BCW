@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
-import { ICON_NAMES, IconGlyph, APP_ICON_KEYS } from '../ui/md.jsx';
+import { ICON_NAMES, IconGlyph, appIconKeys } from '../ui/md.jsx';
 
 const PROJECT_LABEL = { bmm: 'BetterModsManager', bsm: 'BetterSoundMaker', bi: 'BetterInstaller', bc: 'BetterCommunity' };
 
@@ -89,7 +89,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
         </div>
         <div className="p-3 overflow-auto">
           {/* Our own project logos — usable in the topbar, blog, docs, faq. */}
-          {(() => { const pj = APP_ICON_KEYS.filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)); return pj.length > 0 && <>
+          {(() => { const pj = appIconKeys().filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)); return pj.length > 0 && <>
             <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('ip.ourprojects', "Better* projects")}</div>
             <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5 mb-4">
               {pj.map((k) => (

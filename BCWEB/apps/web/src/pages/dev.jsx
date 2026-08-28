@@ -345,6 +345,12 @@ export const DEFAULT_DEV_CARDS = [
     body: 'Standard OpenID Connect. Point your library at the discovery document — no in-house SDK.',
   },
   {
+    id: 'markdown', icon: 'puzzle', to: '/dev/markdown', ctaKey: 'dev.hub.open',
+    titleKey: 'dev.hub.md', title: 'The markdown kit',
+    bodyKey: 'dev.hub.md.s',
+    body: 'The block system this site renders with — callouts, cards, tabs, steps, brand buttons — as four files you copy into your own project. With a live editor.',
+  },
+  {
     id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open',
     titleKey: 'dev.hub.docs', title: 'Docs',
     bodyKey: 'dev.hub.docs.s',

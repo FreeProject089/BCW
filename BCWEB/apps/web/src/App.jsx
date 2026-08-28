@@ -70,6 +70,7 @@ const DevConfig = lazyChunk(() => import('./pages/dev-config.jsx'));
 const NotificationCentre = lazyChunk(() => import('./pages/notifications.jsx'));
 const SanctionPage = lazyChunk(() => import('./pages/sanction.jsx'));
 const DevTools = lazyChunk(() => import('./pages/dev-tools.jsx'));
+const DevMarkdown = lazyChunk(() => import('./pages/dev-markdown.jsx'));
 // The 404 page carries the Orb Fall canvas game — a whole game, in the entry chunk, for a
 // route almost nobody reaches. Split out it is worth 9 KB gzip, which is what the bundle
 // budget was over by, and it costs a Suspense flash on a page that is already a surprise.
@@ -1301,6 +1302,7 @@ export default function App() {
               went out with a "read it and contest" button that landed on the 404 page. */}
           <Route path="/sanctions/:code" element={<SanctionPage />} />
           <Route path="/dev/tools" element={<DevTools />} />
+          <Route path="/dev/markdown" element={<DevMarkdown />} />
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />

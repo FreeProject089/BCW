@@ -18,7 +18,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const MD = join(ROOT, '../web/src/ui/md.jsx');
+const MD = join(ROOT, '../web/src/markdown/index.jsx');
 const SEED = join(ROOT, 'src/seed.mjs');
 // The French page. It was NOT checked, and the gap this file exists to prevent reappeared in
 // it the day the English page was rewritten: 32 directives on one side, ten on the other, and

@@ -20,9 +20,13 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MD = join(dirname(fileURLToPath(import.meta.url)), '../src/ui/md.jsx');
-if (!existsSync(MD)) { console.error(`✗ ${MD} is missing — refusing to report success`); process.exit(2); }
+const MD = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/index.jsx');
+const BRANDS = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/brands.jsx');
+for (const f of [MD, BRANDS]) {
+  if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }
+}
 const src = readFileSync(MD, 'utf8');
+const brandSrc = readFileSync(BRANDS, 'utf8');
 
 const slice = (name) => {
   const at = src.indexOf(`const ${name} = {`);
@@ -49,6 +53,28 @@ if (wanted.length < 3 || known.size < 20) {
 const problems = [];
 for (const w of wanted) {
   if (!known.has(w)) problems.push(`BUTTON_BRANDS offers "${w}" and ICONS has no entry for it — the button draws a hole where the logo goes`);
+}
+
+// A mark that is fetched is a mark that can fail to arrive.
+//
+// Ko-fi's was a CSS mask over cdn.simpleicons.org — a reasonable-looking fix for an outdated
+// inline path, and it put a third-party request on every page with a Ko-fi button. When that
+// request does not arrive (offline, an ad-blocker, the CDN having a day) the button is a
+// coloured rectangle with a hole in it: no error, no fallback, and it looks like the button is
+// broken rather than like a network fetch failed.
+//
+// The whole point of these being local components is that they cannot do that. One URL in this
+// file undoes it for one brand, invisibly, on the machines least able to tell you.
+//
+// Comments are stripped first: this check's own explanation names the CDN. Whole comment
+// LINES, not a `//`-to-end-of-line rule — `//` appears inside `https://`, so that rule
+// deletes the rest of any line containing a URL, which is every line this check exists to
+// find. The first plant passed against broken code because of exactly that.
+const brandCode = brandSrc
+  .replace(/\/\*[\s\S]*?\*\//g, '')
+  .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+for (const m of brandCode.matchAll(/https?:\/\/[^\s'"()]+/g)) {
+  problems.push(`a brand mark is fetched from ${m[0]} — marks are inline so they cannot fail to load`);
 }
 
 // The anchor className tuple must be filtered out of the schema, not merged in.
