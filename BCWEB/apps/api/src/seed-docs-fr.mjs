@@ -561,8 +561,27 @@ Comme pour les plugins, il y a une **entrée de catalogue** et le **paquet \`.bm
 
 - \`theme.json\` — le manifeste (**obligatoire**).
 - \`assets/\` — optionnel (images embarquées : logo, fond d'écran, mascotte).
+- \`fonts/\` — optionnel (les fichiers de police que le manifeste référence).
 
-Le manifeste porte \`id\`, \`name\`, \`author\`, \`version\`, une table \`tokens\` de variables CSS \`--bmm-*\`, et des \`overrides\` optionnels par sélecteur.
+À l'import, BMM copie **ces trois chemins et rien d'autre**. Un \`LICENSE\` ou une capture
+d'écran à la racine de l'archive est abandonné sans erreur : ce qui doit survivre à
+l'installation se met sous \`assets/\`.
+
+## Le manifeste
+
+\`id\`, \`name\`, \`author\`, \`version\`, \`mode\` (\`dark\` ou \`light\`), et une table
+**\`vars\`** de propriétés personnalisées \`--bmm-*\`. Optionnels : \`fonts\`, \`assets\`,
+\`global_css\`, \`pages\` (CSS par vue), \`element_overrides\` (propriétés par sélecteur) et
+\`html_swaps\`.
+
+:::warning[La table s'appelle \`vars\`, et \`id\` est un nom de dossier]
+Un manifeste qui l'écrit \`tokens\` se charge sans se plaindre et ne change rien — elle est lue
+par son nom.
+
+Et \`id\` est l'endroit où le thème est installé sur le disque. Deux thèmes qui partagent le
+même s'écrasent l'un l'autre sur la machine d'un inconnu, sans détection de collision ni
+avertissement. Préfixez-le : \`votrenom-minuit\`, pas \`dark\`.
+:::
 
 :::tip[Ne l'écris pas à la main]
 Exporte un thème depuis l'**[éditeur de thèmes](/docs/themes)** de l'app — il écrit un \`theme.json\` valide. Publie ensuite via **Tableau de bord → Proposer du contenu** (Projet **BMM**, Type **Thème**). L'installation s'applique instantanément et se défait.

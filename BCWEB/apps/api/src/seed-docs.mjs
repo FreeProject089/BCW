@@ -341,8 +341,26 @@ Emitted into a \`themes\` array: \`id\`, \`name\`, \`description\`, \`author\`, 
 
 - \`theme.json\` — the manifest (**required**).
 - \`assets/\` — optional (embedded images: logo, wallpaper, mascot).
+- \`fonts/\` — optional (the font files the manifest references).
 
-The manifest carries \`id\`, \`name\`, \`author\`, \`version\`, a \`tokens\` map of \`--bmm-*\` CSS variables, and optional per-selector \`overrides\`.
+On import BMM copies **those three paths and nothing else**. A \`LICENSE\` or a screenshot at
+the root of the archive is dropped without an error, so anything that must survive the install
+goes under \`assets/\`.
+
+## The manifest
+
+\`id\`, \`name\`, \`author\`, \`version\`, \`mode\` (\`dark\` or \`light\`), and a **\`vars\`** map
+of \`--bmm-*\` custom properties. Optional: \`fonts\`, \`assets\`, \`global_css\`, \`pages\`
+(per-view CSS), \`element_overrides\` (per-selector properties) and \`html_swaps\`.
+
+:::warning[The map is \`vars\`, and \`id\` is a directory name]
+A manifest that spells the map \`tokens\` loads without complaining and changes nothing — it is
+read by name.
+
+And \`id\` is where the theme is installed on disk. Two themes sharing one overwrite each other
+on a stranger's machine, with no collision check and no warning. Namespace it:
+\`yourname-midnight\`, not \`dark\`.
+:::
 
 :::tip[Don't hand-write it]
 Export a theme from the in-app **[Theme Editor](/docs/themes)** — it writes a valid \`theme.json\`. Then publish via **Dashboard → Submit content** (Project **BMM**, Type **Theme**). Installing applies instantly and is reversible.
