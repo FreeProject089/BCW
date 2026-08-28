@@ -3,13 +3,14 @@ import {
   GripVertical, Trash2, Plus, Heading as HeadingIcon, Type, TagIcon, LayoutGrid, ImagePlus,
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
-  Eye,
+  Eye, MousePointerClick, Sigma, PlayCircle,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import IconPicker from './icon-picker.jsx';
 import Markdown, { IconGlyph } from '../ui/md.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
+import { uid, blank, parse, serialize, blockMd, CALLOUT_KINDS } from './md-blocks.js';
 
 // Small "pick an icon" field: shows the chosen glyph + name, opens the picker.
 function IconField({ value, onChange, placeholder = 'Pick icon' }) {
@@ -33,14 +34,14 @@ function IconField({ value, onChange, placeholder = 'Pick icon' }) {
 // markdown + doc-directive syntax the renderer understands — so the two modes are
 // interchangeable at any time.
 
-let _uid = 0;
-const uid = () => `b${Date.now().toString(36)}${_uid++}`;
-
 const BLOCK_TYPES = [
   { type: 'text', label: 'Text', icon: Type },
   { type: 'heading', label: 'Heading', icon: HeadingIcon },
   { type: 'callout', label: 'Callout', icon: TagIcon },
   { type: 'card', label: 'Card', icon: LayoutGrid },
+  { type: 'cards', label: 'Card grid', icon: LayoutGrid },
+  { type: 'tabs', label: 'Tabs', icon: Columns2 },
+  { type: 'buttons', label: 'Buttons', icon: MousePointerClick },
   { type: 'image', label: 'Image', icon: ImagePlus },
   { type: 'code', label: 'Code', icon: Code2 },
   { type: 'quote', label: 'Quote', icon: Quote },
@@ -52,245 +53,10 @@ const BLOCK_TYPES = [
   { type: 'roadmap', label: 'Roadmap', icon: Milestone },
   { type: 'columns', label: 'Columns', icon: Columns2 },
   { type: 'align', label: 'Align', icon: AlignCenter },
+  { type: 'math', label: 'Maths', icon: Sigma },
+  { type: 'replay', label: 'Session replay', icon: PlayCircle },
   { type: 'divider', label: 'Divider', icon: Minus },
 ];
-const CALLOUT_KINDS = ['note', 'tip', 'success', 'warning', 'danger', 'callout'];
-
-function blank(type) {
-  switch (type) {
-    case 'heading': return { id: uid(), type, level: 2, text: 'Heading' };
-    case 'callout': return { id: uid(), type, kind: 'tip', icon: '', color: '', title: 'Good to know', text: 'Something worth highlighting.' };
-    case 'card': return { id: uid(), type, title: 'Card', icon: '', href: '', image: '', text: 'Card description.' };
-    case 'image': return { id: uid(), type, url: '', alt: '' };
-    case 'code': return { id: uid(), type, lang: 'js', code: 'console.log("hello");' };
-    case 'quote': return { id: uid(), type, text: 'Quote' };
-    case 'collapsible': return { id: uid(), type, summary: 'Click to expand', text: 'Hidden content.' };
-    case 'table': return { id: uid(), type, rows: [['Column 1', 'Column 2'], ['', '']] };
-    case 'tags': return { id: uid(), type, tags: [{ text: 'New', color: '#16a34a' }, { text: 'Beta', color: '#2563eb' }] };
-    case 'file': return { id: uid(), type, name: 'example.zip', href: '', size: '' };
-    case 'steps': return { id: uid(), type, title: 'How it works', marker: '1', color: '', orientation: 'vertical', steps: [{ title: 'First', text: 'What to do.' }, { title: 'Second', text: 'And then this.' }] };
-    case 'roadmap': return { id: uid(), type, title: 'Roadmap', orientation: 'vertical', json: '{\n  "categories": [\n    { "name": "v1.0", "items": [\n      { "label": "Core", "status": "done" },\n      { "label": "Docs", "status": "progress", "percent": 40 }\n    ] }\n  ]\n}' };
-    case 'columns': return { id: uid(), type, left: 'Left column.', right: 'Right column.' };
-    case 'align': return { id: uid(), type, align: 'center', text: 'Centered content.' };
-    case 'divider': return { id: uid(), type };
-    default: return { id: uid(), type: 'text', text: '' };
-  }
-}
-
-// ── markdown → blocks (line-based, best-effort) ───────────────────────────────
-function parse(md) {
-  const lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
-  const blocks = [];
-  let i = 0;
-  const flushText = (buf) => { const t = buf.join('\n').trim(); if (t) blocks.push({ id: uid(), type: 'text', text: t }); };
-  let textBuf = [];
-  while (i < lines.length) {
-    const line = lines[i];
-    // fenced code
-    const fence = line.match(/^```(\w*)\s*$/);
-    if (fence) {
-      flushText(textBuf); textBuf = [];
-      const code = []; i++;
-      while (i < lines.length && !/^```\s*$/.test(lines[i])) { code.push(lines[i]); i++; }
-      i++; blocks.push({ id: uid(), type: 'code', lang: fence[1] || '', code: code.join('\n') });
-      continue;
-    }
-    // container directive (callout / card / details) — capture to its closing fence.
-    // Canonical order is `:::name[label]{attrs}`.
-    const dir = line.match(/^(:{3,})([\w-]+)(\[[^\]]*\])?(\{[^}]*\})?\s*$/);
-    if (dir) {
-      const colons = dir[1]; const name = dir[2].toLowerCase();
-      const label = dir[3] ? dir[3].slice(1, -1) : ''; const attrs = parseAttrs(dir[4]);
-      const inner = []; i++;
-      const close = new RegExp(`^:{${colons.length},}\\s*$`);
-      let depth = 1;
-      while (i < lines.length) {
-        if (new RegExp(`^:{3,}[\\w-]`).test(lines[i])) depth++;
-        else if (close.test(lines[i]) || /^:{3,}\s*$/.test(lines[i])) { depth--; if (depth === 0) { i++; break; } }
-        inner.push(lines[i]); i++;
-      }
-      const innerText = inner.join('\n').trim();
-      flushText(textBuf); textBuf = [];
-      if (name === 'card' || name === 'ref') {
-        blocks.push({ id: uid(), type: 'card', title: label || attrs.title || '', icon: attrs.icon || '', href: attrs.href || attrs.link || '', image: attrs.image || '', text: innerText });
-      } else if (name === 'details' || name === 'collapse') {
-        blocks.push({ id: uid(), type: 'collapsible', summary: label || attrs.title || 'Details', text: innerText });
-      } else if (name === 'file') {
-        blocks.push({ id: uid(), type: 'file', name: label || attrs.name || 'file', href: attrs.href || attrs.url || '', size: attrs.size || '' });
-      } else if (name === 'steps') {
-        // The inner `:::step[Title]` children, back into the rows the editor edits.
-        blocks.push({
-          id: uid(), type: 'steps', title: label || attrs.title || '',
-          // serialize() writes the marker as `type=`; '1' is the default and is omitted.
-          marker: attrs.type || '1',
-          color: attrs.color || '',
-          orientation: attrs.orientation === 'horizontal' ? 'horizontal' : 'vertical',
-          steps: parseChildren(innerText, 'step').map((c) => ({ title: c.label, text: c.body })),
-        });
-      } else if (name === 'roadmap') {
-        // The body is a ```json fence. Unwrap it: the editor edits the JSON itself, and
-        // handing it back the fence made the fence part of the value — which is how a
-        // second save produced a fence inside a fence.
-        const fence = innerText.match(/^```[\w]*\n([\s\S]*?)\n?```$/);
-        blocks.push({
-          id: uid(), type: 'roadmap', title: label || attrs.title || '',
-          orientation: attrs.orientation === 'horizontal' ? 'horizontal' : 'vertical',
-          json: (fence ? fence[1] : innerText).trim() || '{}',
-        });
-      } else if (name === 'columns') {
-        const cols = parseChildren(innerText, 'column');
-        blocks.push({ id: uid(), type: 'columns', left: cols[0]?.body || '', right: cols[1]?.body || '' });
-      } else if (name === 'center' || name === 'left' || name === 'right') {
-        // alignment wrapper — apply to the inner block(s)
-        const inner = parse(innerText); inner.forEach((bl) => { bl.align = name; blocks.push(bl); });
-      } else if (CALLOUT_KINDS.includes(name) || name === 'callout' || ['info', 'hint', 'caution', 'important', 'error', 'check'].includes(name)) {
-        blocks.push({ id: uid(), type: 'callout', kind: name, icon: attrs.icon || '', color: attrs.color || '', title: label || attrs.title || '', text: innerText });
-      } else {
-        // unknown container — keep as raw text so nothing is lost
-        blocks.push({ id: uid(), type: 'text', text: innerText });
-      }
-      continue;
-    }
-    // GFM table: a `| … |` row followed by a `|---|---|` separator.
-    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1]) && lines[i + 1].includes('-')) {
-      flushText(textBuf); textBuf = [];
-      const cells = (l) => l.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim().replace(/\\\|/g, '|'));
-      const rows = [cells(line)]; i += 2; // skip header + separator
-      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(cells(lines[i])); i++; }
-      blocks.push({ id: uid(), type: 'table', rows });
-      continue;
-    }
-    const h = line.match(/^(#{2,3})\s+(.*)$/);
-    if (h) { flushText(textBuf); textBuf = []; blocks.push({ id: uid(), type: 'heading', level: h[1].length, text: h[2].trim() }); i++; continue; }
-    if (/^(---|\*\*\*|___)\s*$/.test(line)) { flushText(textBuf); textBuf = []; blocks.push({ id: uid(), type: 'divider' }); i++; continue; }
-    const img = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
-    if (img) { flushText(textBuf); textBuf = []; blocks.push({ id: uid(), type: 'image', alt: img[1], url: img[2] }); i++; continue; }
-    // A line made only of :badge[...] chips → a Tags block.
-    if (line.trim() && /^(?::badge\[[^\]]*\](?:\{[^}]*\})?\s*)+$/.test(line.trim())) {
-      flushText(textBuf); textBuf = [];
-      const tags = []; const re = /:badge\[([^\]]*)\](?:\{([^}]*)\})?/g; let mm;
-      while ((mm = re.exec(line))) tags.push({ text: mm[1], color: parseAttrs(mm[2] ? `{${mm[2]}}` : '').color || '' });
-      blocks.push({ id: uid(), type: 'tags', tags }); i++; continue;
-    }
-    if (/^>\s?/.test(line)) {
-      flushText(textBuf); textBuf = [];
-      const quote = []; while (i < lines.length && /^>\s?/.test(lines[i])) { quote.push(lines[i].replace(/^>\s?/, '')); i++; }
-      blocks.push({ id: uid(), type: 'quote', text: quote.join('\n').trim() }); continue;
-    }
-    if (line.trim() === '') { flushText(textBuf); textBuf = []; i++; continue; }
-    textBuf.push(line); i++;
-  }
-  flushText(textBuf);
-  return blocks.length ? blocks : [{ id: uid(), type: 'text', text: '' }];
-}
-
-/** The `:::name[label] … :::` children directly inside a container's body.
- *
- *  Kept separate from parse() because these are not blocks in their own right — a
- *  `:::step` outside a `:::steps` means nothing, and the editor never offers one. It
- *  counts colons the same way parse() does, so a child that itself contains a nested
- *  directive does not end its parent early.
- */
-function parseChildren(inner, wanted) {
-  const lines = String(inner || '').split('\n');
-  const out = [];
-  let i = 0;
-  while (i < lines.length) {
-    const m = lines[i].match(/^(:{3,})([\w-]+)(\[[^\]]*\])?(\{[^}]*\})?\s*$/);
-    if (!m || m[2].toLowerCase() !== wanted) { i++; continue; }
-    const colons = m[1].length;
-    const label = m[3] ? m[3].slice(1, -1) : '';
-    const body = []; i++;
-    let depth = 1;
-    while (i < lines.length) {
-      if (/^:{3,}[\w-]/.test(lines[i])) depth++;
-      else if (new RegExp(`^:{${colons},}\\s*$`).test(lines[i]) || /^:{3,}\s*$/.test(lines[i])) {
-        depth--; if (depth === 0) { i++; break; }
-      }
-      body.push(lines[i]); i++;
-    }
-    out.push({ label, body: body.join('\n').trim() });
-  }
-  return out;
-}
-
-function parseAttrs(s) {
-  const out = {};
-  if (!s) return out;
-  const body = s.slice(1, -1);
-  const re = /([\w-]+)=("[^"]*"|'[^']*'|[^\s]+)/g; let m;
-  while ((m = re.exec(body))) out[m[1]] = m[2].replace(/^["']|["']$/g, '');
-  return out;
-}
-
-// ── blocks → markdown ─────────────────────────────────────────────────────────
-function serialize(blocks) {
-  return blocks.map((b) => {
-    const md = blockMd(b);
-    return (b.align === 'center' || b.align === 'left' || b.align === 'right') ? `:::${b.align}\n${md}\n:::` : md;
-  }).join('\n\n');
-}
-function blockMd(b) {
-    switch (b.type) {
-      case 'heading': return `${'#'.repeat(b.level || 2)} ${b.text || ''}`;
-      case 'callout': {
-        const a = [];
-        if (b.icon) a.push(`icon=${b.icon}`);
-        if (b.color) a.push(`color="${b.color}"`);
-        const attr = a.length ? `{${a.join(' ')}}` : '';
-        const label = b.title ? `[${b.title}]` : '';
-        return `:::${b.kind || 'tip'}${label}${attr}\n${b.text || ''}\n:::`;
-      }
-      case 'card': {
-        const a = [];
-        if (b.title) a.push(`title="${b.title}"`);
-        if (b.icon) a.push(`icon=${b.icon}`);
-        if (b.href) a.push(`href="${b.href}"`);
-        if (b.image) a.push(`image="${b.image}"`);
-        return `:::card${a.length ? `{${a.join(' ')}}` : ''}\n${b.text || ''}\n:::`;
-      }
-      case 'image': return `![${b.alt || ''}](${b.url || ''})`;
-      case 'code': return `\`\`\`${b.lang || ''}\n${b.code || ''}\n\`\`\``;
-      case 'quote': return (b.text || '').split('\n').map((l) => `> ${l}`).join('\n');
-      case 'collapsible': return `:::details[${b.summary || 'Details'}]\n${b.text || ''}\n:::`;
-      case 'steps': {
-        // Four colons outside, three inside — remark-directive matches by colon count, so a
-        // `:::` within a `:::` closes the parent. Writing it correctly here is what stops the
-        // visual editor producing markdown its own preview cannot render.
-        const a = [];
-        if (b.marker && b.marker !== '1') a.push(`type=${b.marker}`);
-        if (b.color) a.push(`color="${b.color}"`);
-        if (b.orientation === 'horizontal') a.push('orientation=horizontal');
-        const inner = (b.steps || []).map((st) => `:::step[${st.title || ''}]\n${st.text || ''}\n:::`).join('\n');
-        return `::::steps${b.title ? `[${b.title}]` : ''}${a.length ? `{${a.join(' ')}}` : ''}\n${inner}\n::::`;
-      }
-      case 'roadmap': {
-        const a = b.orientation === 'horizontal' ? '{orientation=horizontal}' : '';
-        return `:::roadmap${b.title ? `[${b.title}]` : ''}${a}\n\`\`\`json\n${b.json || '{}'}\n\`\`\`\n:::`;
-      }
-      case 'columns': return `::::columns\n:::column\n${b.left || ''}\n:::\n:::column\n${b.right || ''}\n:::\n::::`;
-      case 'align': return `:::${b.align || 'center'}\n${b.text || ''}\n:::`;
-      case 'file': {
-        const a = [];
-        if (b.href) a.push(`href="${b.href}"`);
-        if (b.size) a.push(`size="${b.size}"`);
-        return `:::file[${b.name || 'file'}]${a.length ? `{${a.join(' ')}}` : ''}\n:::`;
-      }
-      case 'table': {
-        const rows = (b.rows && b.rows.length ? b.rows : [['', '']]).map((r) => r.map((c) => String(c || '').replace(/\|/g, '\\|')));
-        const cols = Math.max(1, ...rows.map((r) => r.length));
-        const pad = (r) => { const c = [...r]; while (c.length < cols) c.push(''); return c; };
-        const head = pad(rows[0]);
-        const sep = new Array(cols).fill('---');
-        const bodyRows = rows.slice(1).map(pad);
-        return [head, sep, ...bodyRows].map((r) => `| ${r.join(' | ')} |`).join('\n');
-      }
-      case 'tags': return (b.tags && b.tags.length ? b.tags : [{ text: 'Tag', color: '' }])
-        .map((tg) => `:badge[${(tg.text || 'Tag').replace(/[[\]]/g, '')}]${tg.color ? `{color="${tg.color}"}` : ''}`).join(' ');
-      case 'divider': return '---';
-      default: return b.text || '';
-    }
-}
 
 export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   const { t } = useI18n();
@@ -454,6 +220,92 @@ function BlockFields({ block: b, onChange }) {
         <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.hidden', "Hidden content (markdown)\u2026")} />
       </div>
     );
+    case 'tabs': {
+      const tabs = b.tabs?.length ? b.tabs : [{ title: '', text: '' }];
+      const setTab = (i, patch) => onChange({ tabs: tabs.map((tb, j) => (i === j ? { ...tb, ...patch } : tb)) });
+      return (
+        <div className="space-y-2">
+          {tabs.map((tb, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
+              <div className="flex gap-2">
+                <Input value={tb.title} onChange={(e) => setTab(i, { title: e.target.value })} placeholder={`${t('ve.tabtitle', 'Tab title')} ${i + 1}`} className="!py-1.5 !text-sm" />
+                <button type="button" className="btn btn-sm" title={t('ve.remove', 'Remove')} onClick={() => onChange({ tabs: tabs.filter((_, j) => j !== i) })}><Minus size={13} /></button>
+              </div>
+              {/* A tab panel holds whatever a document holds \u2014 that is the point of tabs. */}
+              <MdField className={ta} rows={3} value={tb.text} onChange={(v) => setTab(i, { text: v })} placeholder={t('ve.ph.tabbody', 'Panel content \u2014 markdown, code, callouts\u2026')} />
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={() => onChange({ tabs: [...tabs, { title: '', text: '' }] })}>+ {t('ve.tab', 'Tab')}</button>
+        </div>
+      );
+    }
+    case 'cards': {
+      const cards = b.cards?.length ? b.cards : [{ title: '', text: '' }];
+      const setCard = (i, patch) => onChange({ cards: cards.map((cd, j) => (i === j ? { ...cd, ...patch } : cd)) });
+      return (
+        <div className="space-y-2">
+          {cards.map((cd, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
+              <div className="flex flex-wrap gap-2">
+                <Input value={cd.title} onChange={(e) => setCard(i, { title: e.target.value })} placeholder={t('ve.cardtitle', 'Card title')} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+                <IconField value={cd.icon} onChange={(v) => setCard(i, { icon: v })} />
+                <input type="color" value={cd.color || '#f97316'} onChange={(e) => setCard(i, { color: e.target.value })} title={t('ve.cardaccent', 'Accent')} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0" />
+                <button type="button" className="btn btn-sm" title={t('ve.remove', 'Remove')} onClick={() => onChange({ cards: cards.filter((_, j) => j !== i) })}><Minus size={13} /></button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Input value={cd.href} onChange={(e) => setCard(i, { href: e.target.value })} placeholder={t('ve.cardhref', 'Link (optional)')} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+                <Input value={cd.image} onChange={(e) => setCard(i, { image: e.target.value })} placeholder={t('ve.cardimage', 'Image URL (optional)')} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+              </div>
+              <MdField className={ta} rows={2} value={cd.text} onChange={(v) => setCard(i, { text: v })} placeholder={t('ve.ph.carddesc', 'Card description \u2014 select to format')} />
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={() => onChange({ cards: [...cards, { title: '', text: '' }] })}>+ {t('ve.card', 'Card')}</button>
+        </div>
+      );
+    }
+    case 'buttons': {
+      const items = b.items?.length ? b.items : [{ label: '', href: '' }];
+      const setItem = (i, patch) => onChange({ items: items.map((it, j) => (i === j ? { ...it, ...patch } : it)) });
+      return (
+        <div className="space-y-2">
+          {items.map((it, i) => (
+            <div key={i} className="flex flex-wrap gap-2 items-center">
+              <Input value={it.label} onChange={(e) => setItem(i, { label: e.target.value })} placeholder={t('ve.btnlabel', 'Label')} className="!py-1.5 !text-sm flex-1 min-w-[110px]" />
+              <Input value={it.href} onChange={(e) => setItem(i, { href: e.target.value })} placeholder={t('ve.btnhref', 'Link')} className="!py-1.5 !text-sm flex-1 min-w-[110px]" />
+              {/* A brand sets the colour AND the logo together \u2014 a YouTube-red button with a
+                  Discord glyph is a mistake nobody makes on purpose. Picking one greys out the
+                  colour field for the same reason. */}
+              <select value={it.brand || ''} onChange={(e) => setItem(i, { brand: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+                <option value="">{t('ve.btnnobrand', 'No brand')}</option>
+                {['youtube', 'discord', 'kofi', 'github', 'twitch', 'x', 'reddit', 'telegram'].map((br) => <option key={br} value={br}>{br}</option>)}
+              </select>
+              <input type="color" value={it.color || '#f97316'} disabled={!!it.brand} onChange={(e) => setItem(i, { color: e.target.value })} title={t('ve.btncolour', 'Colour')} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0 disabled:opacity-40" />
+              <select value={it.size || 'md'} onChange={(e) => setItem(i, { size: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
+                <option value="sm">S</option><option value="md">M</option><option value="lg">L</option>
+              </select>
+              <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={!!it.outline} onChange={(e) => setItem(i, { outline: e.target.checked })} />{t('ve.btnoutline', 'Outline')}</label>
+              <button type="button" className="btn btn-sm" title={t('ve.remove', 'Remove')} onClick={() => onChange({ items: items.filter((_, j) => j !== i) })}><Minus size={13} /></button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={() => onChange({ items: [...items, { label: '', href: '', size: 'md' }] })}>+ {t('ve.button', 'Button')}</button>
+        </div>
+      );
+    }
+    case 'math': return (
+      <Input value={b.tex} onChange={(e) => onChange({ tex: e.target.value })} placeholder="E = mc^2" className="!py-1.5 !text-sm !font-mono" />
+    );
+    case 'replay': return (
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <Input value={b.src} onChange={(e) => onChange({ src: e.target.value })} placeholder="/api/assets/demo.bmmreplay" className="!py-1.5 !text-sm flex-1 min-w-[160px]" />
+          <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.replaytitle', 'Title (optional)')} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
+        </div>
+        <div className="flex gap-3 text-xs">
+          <label className="flex items-center gap-1.5"><input type="checkbox" checked={!!b.autoplay} onChange={(e) => onChange({ autoplay: e.target.checked })} />{t('ve.autoplay', 'Autoplay')}</label>
+          <label className="flex items-center gap-1.5"><input type="checkbox" checked={!!b.loop} onChange={(e) => onChange({ loop: e.target.checked })} />{t('ve.loop', 'Loop')}</label>
+        </div>
+      </div>
+    );
     case 'steps': {
       const steps = b.steps?.length ? b.steps : [{ title: '', text: '' }];
       const setStep = (i, patch) => onChange({ steps: steps.map((st, j) => (i === j ? { ...st, ...patch } : st)) });
@@ -473,6 +325,23 @@ function BlockFields({ block: b, onChange }) {
             <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
               <div className="flex gap-2">
                 <Input value={st.title} onChange={(e) => setStep(i, { title: e.target.value })} placeholder={`Step ${i + 1} title`} className="!py-1.5 !text-sm" />
+                {/* Per step, not just per list. The renderer has read `status`, `icon` and
+                    `color` off a single step all along; a procedure where one step is the
+                    destructive one wants to say so on that step. */}
+                <select
+                  value={st.status || ''} onChange={(e) => setStep(i, { status: e.target.value })}
+                  title={t('ve.stepstatus', 'Status')}
+                  className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2"
+                >
+                  <option value="">{t('ve.status.none', '\u2014')}</option>
+                  <option value="done">{t('ve.status.done', 'Done')}</option>
+                </select>
+                <input
+                  type="color" value={st.color || b.color || '#f97316'}
+                  onChange={(e) => setStep(i, { color: e.target.value })}
+                  title={t('ve.stepcolour', 'This step\u2019s colour')}
+                  className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0"
+                />
                 <button type="button" className="btn btn-sm" title={t('ve.remove', "Remove")} onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
               </div>
               <MdField className={ta} rows={2} value={st.text} onChange={(v) => setStep(i, { text: v })} placeholder={t('ve.ph.stepbody', "Step body (markdown, callouts, code\u2026)")} />
