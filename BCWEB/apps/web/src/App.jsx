@@ -13,8 +13,25 @@ import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
   MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, APP_LOGO } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
-import { trackPageview, initVitals, initInteractions, initErrors } from './lib/analytics.js';
-import { loadGtmIfConsented } from './lib/gtm.js';
+/**
+ * Telemetry, imported so that losing it costs telemetry and not the site.
+ *
+ * These two were static imports, and both filenames — `analytics.js`, `gtm.js` — are on
+ * every content-blocker filter list; Firefox's built-in protection is enough. A blocked
+ * request to either one aborted the module graph before React mounted, so the whole app
+ * rendered a WHITE PAGE, with two "Loading failed for the module" lines and no stack.
+ *
+ * It does not reproduce for whoever is investigating: the dev server answers 200 with correct
+ * `text/javascript` to anything that asks without a blocker in the way, so the code looks
+ * innocent from every angle except the browser that reported it.
+ *
+ * Nothing here returns a value anybody waits on — they are fire-and-forget side effects — so
+ * a rejected import can simply be swallowed. The consent state moved to lib/consent.js, which
+ * has a name no filter matches, so the cookie banner keeps working either way.
+ */
+const telemetry = () => import('./lib/analytics.js').catch(() => null);
+const trackPageview = (p) => { void telemetry().then((m) => m?.trackPageview(p)); };
+const loadGtmIfConsented = () => { void import('./lib/gtm.js').then((m) => m.loadGtmIfConsented()).catch(() => {}); };
 import { applySeoHead, setCanonical } from './lib/seo.js';
 import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
@@ -1125,7 +1142,8 @@ export default function App() {
   // rrweb, and a visitor who declined analytics or an install with the switch off must never
   // download it. initReplay() checks consent before the dynamic import resolves anything heavy.
   useEffect(() => {
-    loadGtmIfConsented(); initVitals(); initInteractions(); initErrors();
+    loadGtmIfConsented();
+    void telemetry().then((m) => { m?.initVitals(); m?.initInteractions(); m?.initErrors(); });
     import('./lib/replay.js').then((m) => m.initReplay()).catch(() => {});
   }, []);
   // Search-engine head tags. Separate from the block above because it is NOT analytics and

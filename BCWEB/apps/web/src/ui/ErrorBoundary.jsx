@@ -1,5 +1,5 @@
 import React from 'react';
-import { getConsent } from '../lib/analytics.js';
+import { getConsent } from '../lib/consent.js';
 
 // Root error boundary. Without it, a render-time throw in any page unmounts the whole
 // React tree — the user gets a blank white screen with no way out. This catches the

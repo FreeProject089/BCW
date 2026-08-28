@@ -18,7 +18,7 @@
 // forced rather than chosen: sendBeacon and keepalive fetch are both capped near 64 KB and a
 // few seconds of an ordinary page is already past it, so a single send at the end is refused
 // by the browser with no error anywhere. See `flush` below.
-import { getConsent } from './analytics.js';
+import { getConsent } from './consent.js';
 
 // Belt and braces around rrweb's own cap: a long visit on a busy page can produce a very large
 // stream, and the server refuses over 2 MB. Stopping at a limit the server accepts means the

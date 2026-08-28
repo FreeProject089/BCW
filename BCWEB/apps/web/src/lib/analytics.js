@@ -1,9 +1,9 @@
 // Consent-gated, first-party analytics. Nothing is sent unless the user accepted
 // analytics cookies. No third-party scripts, no tracking cookies.
-const KEY = 'bcw_consent'; // 'all' | 'essential' | null
-
-export const getConsent = () => { try { return localStorage.getItem(KEY); } catch { return null; } };
-export const setConsent = (v) => { try { localStorage.setItem(KEY, v); } catch {} };
+// The consent state lives in its own file now — see lib/consent.js for why. Imported
+// rather than re-exported: a re-export would leave the trap in place for the next person
+// who reaches for `getConsent` from here.
+import { getConsent } from './consent.js';
 
 function beacon(url, payload) {
   const body = JSON.stringify(payload);

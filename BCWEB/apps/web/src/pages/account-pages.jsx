@@ -8,7 +8,7 @@ import { useTheme } from '../ui/theme.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled } from '../lib/prefs.js';
-import { getConsent, setConsent } from '../lib/analytics.js';
+import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
 
 /* ─────────────────────────  Settings  ───────────────────────── */

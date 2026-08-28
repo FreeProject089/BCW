@@ -21,7 +21,7 @@ import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
-import { getConsent, setConsent } from '../lib/analytics.js';
+import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY, useIntro } from '../ui/IntroContext.jsx';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref } from '../lib/prefs.js';
 import { TotpQuickFill } from './twofa-fill.jsx';

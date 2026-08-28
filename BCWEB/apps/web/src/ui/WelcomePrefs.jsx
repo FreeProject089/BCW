@@ -16,7 +16,7 @@ import { Cookie, Orbit, Sparkles, Palette, Globe, Layers, Undo2, Rocket, Check }
 import { Button, Card } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from './theme.jsx';
-import { getConsent, setConsent } from '../lib/analytics.js';
+import { getConsent, setConsent } from '../lib/consent.js';
 import {
     getGlassPrefs, setGlassPrefs, getUndoDisabled, setUndoDisabled,
     getHero3dDisabled, setHero3dDisabled,

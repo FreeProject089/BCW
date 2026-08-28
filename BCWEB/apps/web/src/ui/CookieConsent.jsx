@@ -3,8 +3,18 @@ import { Cookie, ShieldCheck, BarChart3, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Button } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
-import { getConsent, setConsent } from '../lib/analytics.js';
-import { loadGtmIfConsented } from '../lib/gtm.js';
+import { getConsent, setConsent } from '../lib/consent.js';
+
+/**
+ * Load the tag manager, if the visitor said yes and if the file can be fetched at all.
+ *
+ * Dynamic and swallowed, because `gtm.js` is a filename on every tracker blocklist: a static
+ * import of it made a blocked request take the whole banner down with it, and the banner is
+ * the one thing a privacy-minded visitor must always get. Blocked now costs the tag manager
+ * and nothing else — which is the outcome that visitor was asking for anyway.
+ */
+const loadGtmIfConsented = () =>
+  import('../lib/gtm.js').then((m) => m.loadGtmIfConsented()).catch(() => {});
 
 // GDPR cookie consent manager. Essential cookies (the session) are always on and can't
 // be refused; analytics is opt-in. Compliance points baked in here:

@@ -11,7 +11,7 @@
 //
 // The env var still wins when it is set, so an existing deployment keeps behaving exactly as
 // it did until somebody chooses otherwise in the dashboard.
-import { getConsent } from './analytics.js';
+import { getConsent } from './consent.js';
 import { getSeoConfig } from './seo.js';
 
 const ENV_GTM_ID = import.meta.env.VITE_GTM_ID;
