@@ -17,6 +17,7 @@ import { AuthorsRow } from './blog.jsx';
 import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
+import { HomeV2, HomeV3 } from './home-variants.jsx';
 
 /* ─────────────────────────  Home  ───────────────────────── */
 function useScrollReveal() {
@@ -284,6 +285,20 @@ export function Home() {
     { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer' },
     { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
   ];
+  // Which landing page this site opens with.
+  //
+  // Every hook above runs first and unconditionally, so the branch below cannot break the
+  // rules of hooks — and the three variants share one set of requests rather than each
+  // fetching its own, which is what keeps "try v2 for a week" from costing a round of
+  // performance work.
+  //
+  // v1 is the fallthrough and its markup is untouched: a variant mechanism whose first act
+  // is to rewrite the page that already works has a much worse failure mode than one that
+  // only adds.
+  const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products };
+  if (homeCfg?.variant === 'v2') return <HomeV2 {...ctx} />;
+  if (homeCfg?.variant === 'v3') return <HomeV3 {...ctx} />;
+
   return (
     // Generous vertical rhythm on purpose: the scroll is long, so sections (and
     // their staggered children) surface one at a time while the orb spirals

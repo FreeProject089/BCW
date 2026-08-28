@@ -186,12 +186,41 @@ const HOME_KEY = 'site.home';
 // works. Anything absent from a stored value defaults to ON, so adding a section here never
 // silently hides it on a site that saved its config before the section existed.
 export const HOME_SECTIONS = ['poll', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
-const HOME_DEFAULTS = { text: {}, sections: {} };
+
+/**
+ * Which landing page the site opens with, and what each one is made of.
+ *
+ * The sections list is the honest part. Three layouts that all rendered the same eight
+ * blocks in a different order would be one layout with three stylesheets — so each variant
+ * declares what it actually HAS, and the admin's toggles follow the choice instead of
+ * offering switches for blocks the current page does not draw. A toggle for a section that
+ * is not on the page is worse than no toggle: it looks like it works.
+ *
+ * Adding a fourth is adding a row here and a component on the web side. Nothing else in
+ * this file needs to know how many there are.
+ */
+export const HOME_VARIANTS = {
+  // What the site has always shown. Named rather than left implicit, so choosing another and
+  // coming back is a choice and not a restore-from-memory.
+  v1: { sections: HOME_SECTIONS },
+  // The opposite reading of a landing page: no scroll-through story, one screen that answers
+  // "what is this and can I have it" and gets out of the way.
+  v2: { sections: ['products', 'news'] },
+  // For a site whose visitors already know what it is: what is happening, right now.
+  v3: { sections: ['news', 'poll', 'reviews', 'myo'] },
+};
+export const HOME_VARIANT_KEYS = Object.keys(HOME_VARIANTS);
+
+const HOME_DEFAULTS = { text: {}, sections: {}, variant: 'v1' };
 const homeConfig = (row) => {
   const v = { ...HOME_DEFAULTS, ...(row?.value || {}) };
   const sections = {};
   for (const k of HOME_SECTIONS) sections[k] = v.sections?.[k] !== false;
-  return { text: v.text || {}, sections };
+  // An unknown variant falls back to v1 rather than rendering nothing. A value can only get
+  // here by being written before a variant was removed, and a blank home page is a worse
+  // answer to that than the original one.
+  const variant = HOME_VARIANT_KEYS.includes(v.variant) ? v.variant : 'v1';
+  return { text: v.text || {}, sections, variant };
 };
 
 
@@ -326,7 +355,12 @@ export default async function miscRoutes(app) {
 
   app.get('/admin/site/home', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
-    return homeConfig(await p.adminSetting.findUnique({ where: { key: HOME_KEY } }));
+    // The catalogue of variants travels WITH the config, so the admin screen does not keep
+    // its own copy of which sections each page has. Two lists of that would disagree the
+    // first time one gains a block, and the screen would offer a toggle for something the
+    // page does not draw — which is the exact failure the per-variant section list exists
+    // to prevent.
+    return { ...homeConfig(await p.adminSetting.findUnique({ where: { key: HOME_KEY } })), variants: HOME_VARIANTS };
   });
 
   app.put('/admin/site/home', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -339,6 +373,7 @@ export default async function miscRoutes(app) {
         z.object({ en: z.string().max(600).optional(), fr: z.string().max(600).optional() }),
       ).optional(),
       sections: z.record(z.enum(HOME_SECTIONS), z.boolean()).optional(),
+      variant: z.enum(HOME_VARIANT_KEYS).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -352,9 +387,15 @@ export default async function miscRoutes(app) {
       if (!en && !fr) delete text[k];
       else text[k] = { ...(en ? { en } : {}), ...(fr ? { fr } : {}) };
     }
-    const value = { text, sections: { ...current.sections, ...(b.data.sections || {}) } };
+    const value = {
+      text,
+      sections: { ...current.sections, ...(b.data.sections || {}) },
+      variant: b.data.variant || current.variant,
+    };
     await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
-    await logAudit(p, req.user.uid, 'site.home', `text=${Object.keys(text).length} hidden=${Object.entries(value.sections).filter(([, on]) => !on).map(([k]) => k).join(',') || '-'}`);
+    // The variant is in the audit line because it is the largest change this endpoint can
+    // make: everything else edits a page, this one replaces it.
+    await logAudit(p, req.user.uid, 'site.home', `variant=${value.variant} text=${Object.keys(text).length} hidden=${Object.entries(value.sections).filter(([, on]) => !on).map(([k]) => k).join(',') || '-'}`);
     return { ok: true, ...value };
   });
 

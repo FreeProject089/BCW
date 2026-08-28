@@ -10472,7 +10472,8 @@ function HomePageEditor() {
   const [filter, setFilter] = useState('all');   // all | changed | off
   const [openGroups, setOpenGroups] = useState({});
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); } }, [data]);
+  const [variant, setVariant] = useState('v1');
+  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); } }, [data]);
   // ABOVE the early return below. Placed after it this was a conditional hook: React counted
   // three hooks on the loading render and four once the data arrived, which is error #310 and
   // a blank page. The same mistake this file already warns about in AdminBot, made anyway.
@@ -10540,19 +10541,46 @@ function HomePageEditor() {
   const orphans = allKeys.filter((k) => !claimed.has(k));
   if (orphans.length) grouped[0].keys = [...grouped[0].keys, ...orphans];
 
+  // Only the sections the CHOSEN page actually draws.
+  //
+  // Three layouts that all rendered the same eight blocks would be one layout with three
+  // stylesheets, so each variant declares what it has — and a toggle for a block the current
+  // page does not draw is worse than no toggle, because it looks like it works. A group the
+  // variant does not use is not hidden silently either; it is listed under the picker, so
+  // "where did the reviews switch go" has an answer on the same screen.
+  // Served with the config rather than duplicated here — see /admin/site/home. Until it
+  // arrives, every group shows: an editor that hides half its rows while loading looks
+  // like an editor that lost them.
+  const variantMap = data?.variants || null;
+  // Until the catalogue arrives, every group shows: an editor that hides half its rows
+  // while loading looks like one that lost them.
+  const inVariant = (id) => !variantMap
+    || !!(variantMap[variant] || variantMap.v1)?.sections?.includes(id);
+  const dropped = grouped.filter((g) => !g.always && !inVariant(g.id));
+
   const visible = grouped
     .map((g) => ({ ...g, keys: g.keys.filter(matches) }))
-    .filter((g) => g.keys.length && (filter !== 'off' || (!g.always && sections[g.id] === false)));
+    .filter((g) => g.keys.length && (g.always || inVariant(g.id))
+      && (filter !== 'off' || (!g.always && sections[g.id] === false)));
 
   const save = async () => {
     setBusy(true);
     try {
-      await api.put('/admin/site/home', { text: form, sections });
+      await api.put('/admin/site/home', { text: form, sections, variant });
       toast.success(t('hp.saved', 'Home page saved. Visitors see it within a minute (the page is cached).'));
       reload();
     } catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
+
+  // Which landing page the site opens with. Three genuinely different pages, not three
+  // themes: each drops most of what the others do, which is why the section list below
+  // changes with the choice.
+  const VARIANTS = [
+    { v: 'v1', name: t('hp.v1', 'The long one'), sub: t('hp.v1.s', 'Hero, why, how it works, the dev hub, commissions, reviews, news. For somebody who has never heard of this.') },
+    { v: 'v2', name: t('hp.v2', 'One screen'), sub: t('hp.v2.s', 'No story and no scroll before the answer: the products as a list, the media beside them, news at the end. For somebody who came to get something.') },
+    { v: 'v3', name: t('hp.v3', 'What\u2019s happening'), sub: t('hp.v3.s', 'A feed \u2014 posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.') },
+  ];
 
   const FILTERS = [
     ['all', t('hp.f.all', 'Everything'), Object.keys(shipped).length],
@@ -10574,6 +10602,42 @@ function HomePageEditor() {
           <ExternalLink size={13} /> {t('hp.view', 'View the page')}
         </a>
       </div>
+
+      {/* Which page the site opens with.
+          Three cards rather than a dropdown: the difference between them is a paragraph
+          each, and choosing a landing page from a list of three words is choosing by name
+          something you would only recognise by description. */}
+      <div className="grid sm:grid-cols-3 gap-3">
+        {VARIANTS.map((v) => (
+          <button
+            key={v.v}
+            type="button"
+            onClick={() => setVariant(v.v)}
+            aria-pressed={variant === v.v}
+            className={`text-left rounded-xl border p-3 transition-colors ${
+              variant === v.v
+                ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
+                : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">{v.name}</span>
+              <span className="ml-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-snug text-[var(--muted)]">{v.sub}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Not hidden silently. A section that this page does not draw disappears from the
+          list below, and somebody who went looking for it deserves to be told where it
+          went rather than concluding the editor lost it. */}
+      {!!dropped.length && (
+        <p className="text-[11px] text-[var(--muted)] leading-snug">
+          {t('hp.dropped', 'This page does not draw: {x} \u2014 their switches are hidden while it is selected, and their wording is kept.')
+            .replace('{x}', dropped.map((g) => g.label).join(', '))}
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
