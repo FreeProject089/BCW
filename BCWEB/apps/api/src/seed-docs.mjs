@@ -881,7 +881,7 @@ That renders a coloured callout like this one.
 :::
 
 \`:::callout{icon=rocket color=#c2410c}[Title]\` picks its own icon (any [lucide](https://lucide.dev)
-name) and colour.
+name) and colour — \`:::custom\` is the same block under the name the editor's Blocks menu uses.
 
 ## Steps
 
@@ -955,6 +955,9 @@ Body text.
 
 Attributes: \`title\`, \`href\`, \`image\`, \`video\`, \`icon\`, \`color\`.
 
+\`:ref[label]{href=…}\` is a card used as a cross-reference: same block, sized for a line
+of prose rather than a grid.
+
 ## Columns
 
 \`\`\`
@@ -969,6 +972,7 @@ Right.
 \`\`\`
 
 They stack on narrow screens, so never write "the table on the left" in the prose.
+\`:::row\` and \`:::col\` are the same two blocks under shorter names.
 \`:::center\`, \`:::left\` and \`:::right\` align a block.
 
 ## Collapsible
@@ -978,6 +982,8 @@ They stack on narrow screens, so never write "the table on the left" in the pros
 Hidden until clicked.
 :::
 \`\`\`
+
+\`:::collapse[…]\` is the same block.
 
 :::details[Show the full output]
 Hidden until clicked.
@@ -1000,14 +1006,86 @@ file extension.
 :::
 \`\`\`
 
-Plays a \`.bmmreplay\` recording inline; \`autoplay\` and \`loop\` are bare flags. Prefer an asset
+Plays a \`.bmmreplay\` recording inline (\`:::bmmreplay\` is the same block); \`autoplay\` and \`loop\` are bare flags. Prefer an asset
 served by this site — a replay that 404s leaves a dead frame mid-page.
+
+## Buttons
+
+\`\`\`
+:button[Watch the video]{brand=youtube href=https://youtube.com/…}
+:button[Read the guide]{color=#0a7 size=lg href=/docs}
+\`\`\`
+
+:button[Watch]{brand=youtube href=https://youtube.com} :button[Join]{brand=discord href=https://discord.gg} :button[Read the guide]{color=#0a7 href=/docs}
+
+One shape, three sizes (\`sm\` \`md\` \`lg\`), any colour. \`brand\` sets the colour **and** the
+logo together — \`youtube\` \`discord\` \`kofi\` \`github\` \`twitch\` \`x\` \`reddit\`
+\`telegram\` — because a YouTube-red button wearing a Discord glyph is a mistake nobody makes
+on purpose. \`outline\` is the quiet version, and \`:btn[…]\` is the short name.
+
+A button with no \`href\` renders as a plain span rather than a dead link.
+
+## Coloured links
+
+\`\`\`
+:link[read this first]{color=#e11 href=/docs/quick-start}
+\`\`\`
+
+:link[read this first]{color=#e11 href=/docs/quick-start} — still underlined, like every other
+link on the site. Colour alone is not a signal everybody can see.
+
+## Tabs
+
+\`\`\`
+:::tabs
+:::tab{title="Windows"}
+Run \`install.exe\`.
+:::
+:::tab{title="Linux"}
+Run \`./install.sh\`.
+:::
+:::
+\`\`\`
+
+:::tabs
+:::tab{title="Windows"}
+Run \`install.exe\`.
+:::
+:::tab{title="Linux"}
+Run \`./install.sh\`.
+:::
+:::
+
+A panel holds whatever markdown you like, including other blocks. The strip reads its labels
+off the panels, so a tab's name and its content cannot drift apart.
+
+## Progress
+
+\`:::progress\` is the roadmap block above under a second name — identical in every
+way, so write whichever reads better in the document.
+
+There is deliberately no inline percentage block. A bar on its own is a percentage of
+nothing; a stage inside a roadmap is a percentage of something named.
+
+## Maths
+
+Written \`$$…$$\`, inline or as its own block:
+
+\`\`\`
+$$E = mc^2$$
+\`\`\`
+
+$$E = mc^2$$
+
+Single-dollar \`$x$\` is deliberately off. This site quotes prices, and the alternative is
+that "\$5 and \$10" is typeset as a formula — silently, because a price does not error, it
+becomes italic nonsense.
 
 ## Inline bits
 
 - Keyboard: \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
 - Icon: \`:icon[rocket]\` → :icon[rocket]
-- Badge: \`:badge[New]{color="#16a34a"}\` → :badge[New]{color="#16a34a"}
+- Badge: \`:badge[New]{color="#16a34a"}\` → :badge[New]{color="#16a34a"} — \`:tag[…]\` is the same chip under another name
 
 ## Table of contents
 
@@ -1563,6 +1641,92 @@ account, so unlinking and relinking does not hand out a second one.
 
 A pool belongs to an account. Transferring a repo to somebody else moves it out of your pool
 and into theirs — the space follows the content, and both pools are recomputed.
+`,
+  },
+  {
+    slug: 'landing-pages', category: 'Authoring', title: 'Building a landing page', icon: 'layers', order: 502,
+    body: `::toc[On this page]
+
+# Building a landing page
+
+\`/\` and \`/dev\` can be arranged block by block instead of chosen from three built-in layouts.
+**Admin → Navigation & footer → Page builder.**
+
+A built page replaces the built-in one entirely. Until you switch it on, nothing changes —
+and the switch is refused while the page has no blocks in it, so a half-built layout cannot
+become the front page by accident.
+
+## What a page is made of
+
+:::columns
+:::column
+**Layout** — \`section\`, \`row\`, \`col\`. Rows are a wrapping flex line by default; give one a
+number of columns and it becomes a real grid.
+:::
+:::column
+**Content** — headings, text, buttons, images, dividers, spacers and live numbers.
+:::
+:::column
+**Live sections** — the blocks the landing pages already draw: the showcase, the products,
+the news, the open poll, reviews, commissions, and the developer tiles.
+:::
+:::
+
+:::tip[One block does most of the work]
+A **text** block holds ordinary BetterCommunity markdown, so callouts, cards, tabs, columns,
+buttons, code and maths are all available inside it without the builder needing to know what
+any of them are. If you are reaching for a block and cannot find it, write it in a text block.
+:::
+
+## Numbers that are real
+
+Type \`{{members}}\` in any heading or text block and it renders the live count. The panel on
+the right lists every name with its current value beside it, so you can see what you are
+about to publish.
+
+\`members\` · \`items\` · \`downloads\` · \`repos\` · \`catalogs\` · \`posts\` · \`projects\` · \`apps\` ·
+\`plugins\` · \`themes\` · \`presets\`
+
+A **stat** block is the same numbers drawn as a tile with a label and an icon. A name that is
+not on that list renders as nothing rather than as \`{{typo}}\` — a visitor never sees the
+template that failed.
+
+## Desktop and phone
+
+Two layouts, and the phone one **inherits** by default: it draws the desktop tree, reflowed.
+That is not the same as being empty, and it is why the phone tab says so rather than quietly
+copying your desktop blocks.
+
+:::warning[Give it its own layout only when you mean it]
+The moment you press **Give it its own layout**, the two stop tracking each other. An edit to
+the desktop page will not reach the phone, and nothing will tell you which edit that was.
+
+Most pages want inheritance plus a couple of blocks hidden. Select a block and use **Shown
+on** — a block hidden on one layout is dimmed and hatched in the editor rather than removed,
+so it is still there to select.
+:::
+
+## The orb
+
+Each page decides whether the backdrop orb is drawn on it: **as the visitor prefers**, or
+**hidden on this page**. There is deliberately no option that turns it on for somebody who
+switched it off — they did that for a reason, and a landing page is not a good enough one to
+overrule it.
+
+## Components, export and import
+
+Select a block and **Save selection** to keep it as a named component. It appears in the
+palette and can be dropped into any page, with fresh ids each time, so two copies of a header
+are two headers rather than one that moves twice.
+
+**Export page** writes the current page as JSON; **Import page** reads one back. Ids are
+regenerated on the way in, so importing a page exported from this same site cannot collide
+with what is already there.
+
+:::note[Nothing is live until you save]
+The canvas is the real renderer with the real data, so what you are looking at is what
+visitors will get. It is still only in your browser until **Save**.
+:::
 `,
   },
   {

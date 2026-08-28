@@ -95,11 +95,23 @@ Numérotées, dans l'ordre.
 Caché jusqu'à ce qu'on le demande. \`:::collapse[Résumé]\` — \`:::details\` est identique.
 :::
 
-## Progression et jalons
-:progress[70]{label="Bêta"} — \`:progress[70]{label="…"}\`. \`:stage[…]\` marque une phase dans une feuille de route.
+## Progression
+\`:::progress\` est le bloc feuille de route sous un second nom — écris celui qui se lit le mieux. Il n'y a pas de pourcentage en ligne : un nombre seul est un pourcentage de rien, et c'est la feuille de route ci-dessous qui dit de quoi.
 
 ## Feuille de route
-\`:::roadmap{title="Feuille de route"}\` avec un bloc de code \`json\` à l'intérieur, ou \`:::roadmap{src="https://…/progress.json"}\`. Forme : \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Cœur", "status": "done" }] }] }\`. Statuts : \`done\` · \`progress\` · \`planned\`.
+La méthode courte — des jalons, pas de JSON. Chaque puce sous un jalon devient un élément suivi :
+
+:::roadmap[Où on en est]
+:::stage[Livré]{state=done}
+- Le système de blocs
+:::
+:::stage[En cours]{state=doing percent=40}
+- Le constructeur de pages
+:::
+:::
+
+\`:::stage[Titre]{state=done|doing|planned}\`, plus \`percent=\` et \`eta=\`. \`:::phase\` est le même bloc.
+Pour un pourcentage par élément, mets plutôt un bloc \`json\` à l'intérieur — \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Cœur", "status": "done" }] }] }\` — ou pointe vers un fichier avec \`:::roadmap{src="https://…/progress.json"}\`. \`orientation=horizontal\` aligne les jalons sur une piste.
 
 ## Médias
 Images et YouTube s'insèrent depuis la barre d'outils de l'éditeur. Un enregistrement \`.bmmreplay\` s'intègre avec \`:::replay{src="…"}\` — \`:::bmmreplay\` est identique.

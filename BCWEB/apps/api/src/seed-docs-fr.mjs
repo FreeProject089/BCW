@@ -737,6 +737,96 @@ Une requête sans preuve face à un dépôt verrouillé répond **401**, pas 403
   },
 
   // ── Rédaction ───────────────────────────────────────────────────────────────
+  'landing-pages': {
+    category: 'Rédaction',
+    title: 'Construire une page d\u2019accueil',
+    body: `::toc[Sur cette page]
+
+# Construire une page d'accueil
+
+\`/\` et \`/dev\` peuvent être arrangées bloc par bloc au lieu d'être choisies parmi trois mises
+en page intégrées. **Admin → Navigation & pied de page → Constructeur de pages.**
+
+Une page construite remplace entièrement la page intégrée. Tant que tu ne l'actives pas, rien
+ne change — et l'activation est refusée si la page ne contient aucun bloc : une mise en page à
+moitié faite ne peut pas devenir la page d'accueil par accident.
+
+## De quoi une page est faite
+
+:::columns
+:::column
+**Mise en page** — \`section\`, \`row\`, \`col\`. Une ligne est une flex-box qui passe à la ligne ;
+donne-lui un nombre de colonnes et elle devient une vraie grille.
+:::
+:::column
+**Contenu** — titres, textes, boutons, images, séparateurs, espaces et chiffres en direct.
+:::
+:::column
+**Sections dynamiques** — les blocs que les pages d'accueil dessinent déjà : la vitrine, les
+produits, les news, le sondage ouvert, les avis, les commandes et les tuiles développeur.
+:::
+:::
+
+:::tip[Un seul bloc fait l'essentiel du travail]
+Un bloc **texte** contient du markdown BetterCommunity ordinaire : encadrés, cartes, onglets,
+colonnes, boutons, code et mathématiques y sont donc disponibles sans que le constructeur
+sache ce qu'ils sont. Si tu cherches un bloc et ne le trouves pas, écris-le dans un bloc texte.
+:::
+
+## Des chiffres réels
+
+Écris \`{{members}}\` dans n'importe quel bloc titre ou texte et le compte réel s'affiche. Le
+panneau de droite liste chaque nom avec sa valeur actuelle à côté : tu vois ce que tu
+t'apprêtes à publier.
+
+\`members\` · \`items\` · \`downloads\` · \`repos\` · \`catalogs\` · \`posts\` · \`projects\` · \`apps\` ·
+\`plugins\` · \`themes\` · \`presets\`
+
+Un bloc **stat** est le même chiffre dessiné en tuile avec un libellé et une icône. Un nom
+absent de cette liste ne rend rien plutôt que \`{{typo}}\` — un visiteur ne voit jamais le
+gabarit qui a échoué.
+
+## Ordinateur et téléphone
+
+Deux mises en page, et celle du téléphone **hérite** par défaut : elle dessine l'arbre
+ordinateur, reflué. Ce n'est pas la même chose qu'être vide, et c'est pourquoi l'onglet
+téléphone le dit au lieu de recopier tes blocs en silence.
+
+:::warning[Ne lui donne sa propre mise en page que si tu le veux vraiment]
+Dès que tu appuies sur **Lui donner sa propre mise en page**, les deux cessent de se suivre.
+Une modification de la page ordinateur n'atteindra plus le téléphone, et rien ne te dira
+laquelle.
+
+La plupart des pages veulent l'héritage plus deux ou trois blocs masqués. Sélectionne un bloc
+et utilise **Affiché sur** — un bloc masqué sur une mise en page est grisé et hachuré dans
+l'éditeur plutôt que retiré : il reste sélectionnable.
+:::
+
+## L'orbe
+
+Chaque page décide si l'orbe de fond y est dessinée : **selon la préférence du visiteur**, ou
+**masquée sur cette page**. Il n'existe volontairement aucune option qui la rallume pour
+quelqu'un qui l'a coupée — il l'a fait pour une raison, et une page d'accueil n'en est pas une
+assez bonne pour passer outre.
+
+## Composants, export et import
+
+Sélectionne un bloc puis **Enregistrer la sélection** pour le garder en composant nommé. Il
+apparaît dans la palette et se dépose dans n'importe quelle page, avec de nouveaux
+identifiants à chaque fois : deux copies d'un en-tête sont deux en-têtes, pas un seul qui
+bouge deux fois.
+
+**Exporter la page** écrit la page courante en JSON ; **Importer une page** la relit. Les
+identifiants sont régénérés à l'entrée : importer une page exportée depuis ce même site ne
+peut pas entrer en collision avec ce qui s'y trouve déjà.
+
+:::note[Rien n'est en ligne avant d'enregistrer]
+Le canevas est le vrai moteur de rendu avec les vraies données : ce que tu regardes est ce que
+les visiteurs auront. Cela reste néanmoins dans ton navigateur jusqu'à **Enregistrer**.
+:::
+`,
+  },
+
   'documentation-blocks': {
     category: 'Rédaction',
     title: 'Blocs de documentation',
@@ -771,7 +861,8 @@ pour que tu écrives le mot que tu penses — \`info\` = note, \`hint\` = tip, \
 :::
 
 \`:::callout{icon=rocket color=#c2410c}[Titre]\` choisit son icône (un nom
-[lucide](https://lucide.dev)) et sa couleur.
+[lucide](https://lucide.dev)) et sa couleur — \`:::custom\` est le même bloc, sous le nom
+qu'emploie le menu Blocs de l'éditeur.
 
 ## Les étapes
 
@@ -847,6 +938,9 @@ Le texte.
 
 Attributs : \`title\`, \`href\`, \`image\`, \`video\`, \`icon\`, \`color\`.
 
+\`:ref[libellé]{href=…}\` est une carte servant de renvoi : le même bloc, dimensionné pour
+une ligne de texte plutôt que pour une grille.
+
 ## Les colonnes
 
 \`\`\`
@@ -861,6 +955,7 @@ Attributs : \`title\`, \`href\`, \`image\`, \`video\`, \`icon\`, \`color\`.
 \`\`\`
 
 Elles s'empilent sur un écran étroit : n'écris donc jamais « le tableau à gauche » dans le texte.
+\`:::row\` et \`:::col\` sont les deux mêmes blocs sous des noms plus courts.
 \`:::center\`, \`:::left\` et \`:::right\` alignent un bloc.
 
 ## Le bloc repliable
@@ -874,6 +969,8 @@ Caché jusqu'au clic.
 :::details[Voir la sortie complète]
 Caché jusqu'au clic.
 :::
+
+\`:::collapse[…]\` est le même bloc.
 
 ## Le lien de téléchargement
 
@@ -892,14 +989,88 @@ de l'extension.
 :::
 \`\`\`
 
-Joue un enregistrement \`.bmmreplay\` dans la page ; \`autoplay\` et \`loop\` sont des drapeaux nus.
+Joue un enregistrement \`.bmmreplay\` dans la page (\`:::bmmreplay\` est le même bloc) ; \`autoplay\` et \`loop\` sont des drapeaux nus.
 Préfère un fichier hébergé ici — un replay en 404 laisse un cadre mort au milieu de la page.
+
+## Les boutons
+
+\`\`\`
+:button[Voir la vidéo]{brand=youtube href=https://youtube.com/…}
+:button[Lire le guide]{color=#0a7 size=lg href=/docs}
+\`\`\`
+
+:button[Regarder]{brand=youtube href=https://youtube.com} :button[Rejoindre]{brand=discord href=https://discord.gg} :button[Lire le guide]{color=#0a7 href=/docs}
+
+Une seule forme, trois tailles (\`sm\` \`md\` \`lg\`), n'importe quelle couleur. \`brand\`
+fixe la couleur **et** le logo ensemble — \`youtube\` \`discord\` \`kofi\` \`github\`
+\`twitch\` \`x\` \`reddit\` \`telegram\` — parce qu'un bouton rouge YouTube portant un logo
+Discord est une erreur que personne ne commet exprès. \`outline\` est la version discrète, et
+\`:btn[…]\` est le nom court.
+
+Un bouton sans \`href\` s'affiche en simple span plutôt qu'en lien mort.
+
+## Les liens colorés
+
+\`\`\`
+:link[à lire d'abord]{color=#e11 href=/docs/quick-start}
+\`\`\`
+
+:link[à lire d'abord]{color=#e11 href=/docs/quick-start} — toujours souligné, comme tous les
+autres liens du site. La couleur seule n'est pas un signal que tout le monde perçoit.
+
+## Les onglets
+
+\`\`\`
+:::tabs
+:::tab{title="Windows"}
+Lance \`install.exe\`.
+:::
+:::tab{title="Linux"}
+Lance \`./install.sh\`.
+:::
+:::
+\`\`\`
+
+:::tabs
+:::tab{title="Windows"}
+Lance \`install.exe\`.
+:::
+:::tab{title="Linux"}
+Lance \`./install.sh\`.
+:::
+:::
+
+Un panneau contient le markdown que tu veux, y compris d'autres blocs. La barre lit ses
+libellés sur les panneaux : le nom d'un onglet et son contenu ne peuvent pas diverger.
+
+## La progression
+
+\`:::progress\` est le bloc feuille de route ci-dessus sous un second nom — identique
+en tout point : écris celui qui se lit le mieux dans le document.
+
+Il n'existe volontairement pas de bloc de pourcentage en ligne. Une barre seule est un
+pourcentage de rien ; un jalon dans une feuille de route est un pourcentage de quelque chose
+qui porte un nom.
+
+## Les mathématiques
+
+Écrites \`$$…$$\`, en ligne ou en bloc :
+
+\`\`\`
+$$E = mc^2$$
+\`\`\`
+
+$$E = mc^2$$
+
+Le dollar simple \`$x$\` est volontairement désactivé. Ce site affiche des prix, et
+l'alternative est que « \$5 et \$10 » soit composé comme une formule — en silence, parce
+qu'un prix ne produit pas d'erreur : il devient du charabia en italique.
 
 ## Les éléments en ligne
 
 - Touche clavier : \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
 - Icône : \`:icon[rocket]\` → :icon[rocket]
-- Badge : \`:badge[Nouveau]{color="#16a34a"}\` → :badge[Nouveau]{color="#16a34a"}
+- Badge : \`:badge[Nouveau]{color="#16a34a"}\` → :badge[Nouveau]{color="#16a34a"} — \`:tag[…]\` est la même pastille sous un autre nom
 
 ## Le sommaire
 

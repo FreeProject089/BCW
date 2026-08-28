@@ -1,4 +1,4 @@
-// Every directive the renderer handles is named in the markdown guide — in BOTH languages.
+// Every directive the renderer handles is named on every page that claims to list them.
 //
 // The guide is the only page that says what this vocabulary can do — it is seeded into every
 // install as a blog post, and both the blog editor and the docs editor link to it from a
@@ -24,12 +24,29 @@ const SEED = join(ROOT, 'src/seed.mjs');
 // it the day the English page was rewritten: 32 directives on one side, ten on the other, and
 // a French reader told the block system has ten blocks. One page checked is half a check.
 const SEED_FR = join(ROOT, 'src/seed-blog-fr.mjs');
-for (const f of [MD, SEED, SEED_FR]) {
+// And the DOCS page, in both languages. It is the third and fourth place that promises to
+// list this vocabulary, and it had 21 of 32 while the blog guide had all of them — buttons,
+// coloured links, tabs, progress and maths shipped and only one page was told.
+const DOCS = join(ROOT, 'src/seed-docs.mjs');
+const DOCS_FR = join(ROOT, 'src/seed-docs-fr.mjs');
+for (const f of [MD, SEED, SEED_FR, DOCS, DOCS_FR]) {
   if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }
 }
 const md = readFileSync(MD, 'utf8');
 const seed = readFileSync(SEED, 'utf8');
 const seedFr = readFileSync(SEED_FR, 'utf8');
+
+/** One entry's body, from the start of its slug to the start of the next one. */
+function pageAt(src, marker, label) {
+  const a = src.indexOf(marker);
+  if (a < 0) { console.error(`✗ ${label} is not where this check looks — it cannot be trusted`); process.exit(2); }
+  const b = src.indexOf("slug: '", a + marker.length);
+  const c = src.indexOf("':", a + marker.length);
+  // Whichever delimiter this file uses: seed-docs.mjs is an array of objects with `slug:`,
+  // seed-docs-fr.mjs is a map keyed by slug.
+  const end = b > 0 && (c < 0 || b < c) ? b : (c > 0 ? c : src.length);
+  return src.slice(a, end);
+}
 
 const at = md.indexOf("if (CALLOUTS[name]");
 if (at < 0) { console.error('✗ the directive chain is not where this check looks — it cannot be trusted'); process.exit(2); }
@@ -40,14 +57,16 @@ const supported = new Set([...chain.matchAll(/name === '([a-z][a-z0-9-]*)'/g)].m
 
 const gStart = seed.indexOf('const guideBody');
 if (gStart < 0) { console.error('✗ guideBody is not where this check looks — it cannot be trusted'); process.exit(2); }
-const pages = [['English', seed.slice(gStart, seed.indexOf('const guideFr', gStart))]];
+const pages = [['English guide', seed.slice(gStart, seed.indexOf('const guideFr', gStart))]];
 
 // The French guide is one value in the BLOG_FR map, not a standalone constant, so its slice
 // ends at the next entry rather than at a named marker.
 const frStart = seedFr.indexOf("'markdown-guide':");
 if (frStart < 0) { console.error("✗ BLOG_FR['markdown-guide'] is not where this check looks — it cannot be trusted"); process.exit(2); }
 const nextKey = seedFr.indexOf("':", frStart + 20);
-pages.push(['French', seedFr.slice(frStart, nextKey > 0 ? seedFr.lastIndexOf('\n', nextKey) : seedFr.length)]);
+pages.push(['French guide', seedFr.slice(frStart, nextKey > 0 ? seedFr.lastIndexOf('\n', nextKey) : seedFr.length)]);
+pages.push(['English docs', pageAt(readFileSync(DOCS, 'utf8'), "slug: 'documentation-blocks'", 'the docs blocks page')]);
+pages.push(['French docs', pageAt(readFileSync(DOCS_FR, 'utf8'), "'documentation-blocks'", 'the French docs blocks page')]);
 
 if (supported.size < 20) {
   console.error(`✗ read ${supported.size} directive(s) — too few to be right`);

@@ -339,11 +339,23 @@ Numbered, in order.
 Hidden until asked for. \`:::collapse[Summary]\` — \`:::details\` is the same.
 :::
 
-## Progress and stages
-:progress[70]{label="Beta"} — \`:progress[70]{label="…"}\`. \`:stage[…]\` marks a phase inside a roadmap.
+## Progress
+\`:::progress\` is the roadmap block under a second name — write whichever reads better. There is no inline percentage: a number on its own is a percentage of nothing, and the roadmap below is what says of what.
 
 ## Roadmap
-\`:::roadmap{title="Roadmap"}\` with a \`json\` code block inside, or \`:::roadmap{src="https://…/progress.json"}\`. Shape: \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Core", "status": "done" }] }] }\`. Statuses: \`done\` · \`progress\` · \`planned\`.
+The short way — stages, no JSON. Every bullet under a stage becomes a tracked item:
+
+:::roadmap[Where we are]
+:::stage[Shipped]{state=done}
+- The block system
+:::
+:::stage[Under way]{state=doing percent=40}
+- The page builder
+:::
+:::
+
+\`:::stage[Title]{state=done|doing|planned}\`, plus \`percent=\` and \`eta=\`. \`:::phase\` is the same block.
+For per-item percentages, put a \`json\` block inside instead — \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Core", "status": "done" }] }] }\` — or point at one with \`:::roadmap{src="https://…/progress.json"}\`. \`orientation=horizontal\` lays the stages along a track.
 
 ## Media
 Images and YouTube go in from the editor toolbar. A \`.bmmreplay\` recording embeds with \`:::replay{src="…"}\` — \`:::bmmreplay\` is the same block.
