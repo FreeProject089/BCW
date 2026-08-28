@@ -10178,6 +10178,47 @@ function agoShort(d) {
   return `${Math.floor(s / 86400)}d`;
 }
 
+/**
+ * One showcase row, as the strip will actually draw it.
+ *
+ * Small on purpose: this answers "is the URL right, and is the crop right", which are the
+ * two questions the form could not answer at all. It is not a preview of the landing page.
+ *
+ * A video shows its POSTER rather than playing. Six autoplaying videos in an admin list is
+ * a fan spinning up to configure a text field, and the poster is what most visitors see
+ * first anyway — a browser that refuses autoplay never shows anything else.
+ */
+function ShowcaseThumb({ item, t }) {
+  const [bad, setBad] = useState(false);
+  // A replay is a recording BMM plays back; there is no still to show for one, so the kind
+  // is named instead of faked with a placeholder image.
+  const src = item.kind === 'video' ? (item.poster || '') : (item.kind === 'replay' ? '' : (item.url || ''));
+  const box = 'w-14 h-10 rounded-md border border-[var(--line)] shrink-0 overflow-hidden grid place-items-center bg-[var(--surface-2)]';
+
+  if (!src || bad) {
+    return (
+      <div className={box} title={bad
+        ? t('shsc.thumb.bad', 'That URL did not load.')
+        : t('shsc.thumb.none', 'Nothing to preview yet.')}>
+        <span className="text-[9px] uppercase tracking-wider text-[var(--faint)]">
+          {bad ? t('shsc.thumb.badShort', 'x') : (item.kind || 'image').slice(0, 3)}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={box}>
+      <img
+        src={src}
+        alt=""
+        onError={() => setBad(true)}
+        className="w-full h-full"
+        style={{ objectFit: item.fit || 'cover', transform: `scale(${item.scale ?? 1})` }}
+      />
+    </div>
+  );
+}
+
 function RouteTest({ kind, label, t }) {
   const [state, setState] = useState(null);   // null | 'sending' | {ok, error}
   const toast = useToast();
@@ -10355,6 +10396,13 @@ function ShowcaseEditor() {
         {cfg.items.map((it, i) => (
           <div key={it.id || i} className="rounded-xl border border-[var(--line)] p-3" style={{ background: 'var(--surface)' }}>
             <div className="flex flex-wrap items-center gap-2 mb-2">
+              {/* The thing being configured, shown.
+                  This is an editor for a strip of media and it had nothing visual in it: you
+                  typed a URL, chose Fill or Fit and a zoom, saved, and went to the home page
+                  to find out whether any of it was right. The thumbnail uses the SAME fit and
+                  scale as the real strip, so "is this cropping the logo off" is answered
+                  here rather than two screens away. */}
+              <ShowcaseThumb item={it} t={t} />
               <span className="text-xs font-mono text-[var(--faint)]">#{i + 1}</span>
               <Input className="!w-40" value={it.id || ''} onChange={(e) => set(i, { id: e.target.value })}
                 placeholder={t('shsc.f.id', 'id')} />
