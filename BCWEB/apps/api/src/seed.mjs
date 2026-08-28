@@ -246,79 +246,127 @@ if (!anyPoll) {
 const adminUser = await p.user.findUnique({ where: { email: ADMIN_EMAIL } });
 const communityProject = await p.project.findUnique({ where: { key: 'community' } });
 if (adminUser && communityProject) {
-  const guideBody = `The BetterCommunity blog uses the **same Markdown** as the BMM update notes, plus a **GitBook-style block system**. Write in **Markdown** or switch to **Visual** mode (drag-and-drop blocks) — both save the same content.
+  // The complete vocabulary, in one page.
+  //
+  // It documented ten directives out of thirty-two: no file cards, no columns, no steps, no
+  // tabs, no buttons, no progress, no collapse, no alignment, not even badges by name. A
+  // reference that covers a third of what exists is worse than none, because the third it
+  // covers is the part people already knew.
+  //
+  // check-md-guide.mjs now fails the build when the renderer learns a directive this page does
+  // not name, so the gap cannot come back quietly.
+  const guideBody = `The BetterCommunity blog, docs and FAQ all use the **same Markdown**, plus a **GitBook-style block system**. Write in **Markdown** or switch to **Visual** mode — both save the same content, and Visual now carries the same select-to-format toolbar.
 
 ::toc[Contents]
 
 :::tip[Two ways to write]
-Use the **Blocks** button (Markdown mode) to insert rich blocks, or toggle **Visual** to build the post by dragging blocks around. The **⌘K**-style content is identical either way.
+Use the **Blocks** button in Markdown mode, or toggle **Visual** and build the post by dragging blocks. Select any words in either mode to format them.
 :::
 
 ## Text basics
-\`**bold**\` · \`*italic*\` · \`~~strikethrough~~\` · \`\\\`inline code\\\`\` · \`[a link](https://example.com)\`
+\`**bold**\` · \`*italic*\` · \`~~strikethrough~~\` · \`inline code\` · \`[a link](https://example.com)\`
 
-## Change badges
-Wrap a keyword in square brackets to get a coloured chip:
+A rule between sections is three dashes on their own line. A quote is a \`>\` at the start of the line.
 
-- [NEW] Added a dark theme
-- [IMPROVED] Faster catalog loading
-- [FIXED] Crash when opening an empty repo
-- [REFINE] Tighter spacing · [VISUAL] New animation · [MAJOR] Big rewrite
+## Buttons
+One shape, three sizes, any colour — and a logo when it is a brand.
 
-French spellings work too: \`[NOUVEAU]\`, \`[AMÉLIORÉ]\`, \`[FIXÉ]\`, \`[RAFFINEMENT]\`, \`[VISUEL]\`, \`[MAJEUR]\`.
+:button[Watch]{brand=youtube href=https://youtube.com} :button[Join]{brand=discord href=https://discord.gg} :button[Tip]{brand=kofi href=https://ko-fi.com}
+
+\`:button[Label]{brand=youtube href=…}\` — brands: \`youtube\` \`discord\` \`kofi\` \`github\` \`twitch\` \`x\` \`reddit\` \`telegram\`
+\`:button[Label]{color=#0a7 size=lg href=…}\` — sizes \`sm\` \`md\` \`lg\`, add \`outline\` for the quiet version.
+
+Short form: \`:btn[…]\` does the same thing.
+
+## Coloured links
+:link[a red link]{color=#e11 href=/docs} — \`:link[text]{color=#e11 href=/docs}\`. Underlined like every other link, because colour alone is not a signal everybody can see.
+
+## Badges and tags
+:badge[NEW] :badge[Custom]{color="#0a7"} — \`:badge[NEW]\` or \`:badge[Any text]{color="#0a7"}\`. \`:tag[…]\` is the same chip under another name.
+
+## Icons and keys
+:icon[rocket] :kbd[Ctrl+K] — \`:icon[rocket]\` takes any lucide name or a brand; \`:kbd[Ctrl+Shift+S]\` draws real keycaps.
 
 ## Callouts
-Callouts use lucide icons (no emoji). Pick a type or make a custom one:
-
-:::warning[Careful]
-Only install content from sources you trust.
-:::
-:::callout[Custom]{icon=rocket color="#7c3aed"}
-Custom callouts let you choose the icon and colour.
+:::note[Note]
+\`:::note\` \`:::tip\` \`:::success\` \`:::warning\` \`:::danger\` — and \`:::callout{icon=rocket color="#7c3aed"}\` for one of your own — \`:::custom\` is the same block under the name the editor's Blocks menu uses.
 :::
 
-Types: \`note\`, \`tip\`, \`success\`, \`warning\`, \`danger\`, or \`callout\` for a custom one. The classic \`> [!TIP]\` blockquote form still works too.
-
-## Rich blocks
-Insert these from the **Blocks** menu (or build them in **Visual** mode):
-
-:::details[Collapsible section]
-Hidden content that expands on click — supports **markdown** inside.
+## Tabs
+:::tabs
+:::tab{title="Windows"}
+Run \`install.exe\`.
+:::
+:::tab{title="Linux"}
+Run \`./install.sh\`.
+:::
 :::
 
-::::cards
-:::card{title="Cards" icon=star}
-Group links or highlights into a responsive grid.
-:::
-:::card{title="Docs" href=/docs icon=book}
-Cards can link anywhere.
-:::
-::::
+\`:::tabs\` wrapping \`:::tab{title="…"}\` blocks. Each tab holds whatever markdown you like — code, images, callouts.
 
-Add a keyboard shortcut like :kbd[Ctrl+S], an inline icon :icon[sparkles], columns, code blocks and a \`::toc\` sommaire — all from the same menu.
+## Cards
+:::cards
+:::card{title="A card" href=/docs icon=book}
+Cards sit side by side inside \`:::cards\`. One on its own works too.
+:::
+:::
+
+## File downloads
+:file[setup.exe]{href=/api/assets/setup.exe size="42 MB"} — the icon follows the extension: PDF, zip, image, video, audio, code. \`:file[name.ext]{href=… size="…"}\`
+
+## Columns and alignment
+:::columns
+:::column
+\`:::columns\` with \`:::column\` inside. \`:::row\` and \`:::col\` are the same.
+:::
+:::column
+\`:::center\`, \`:::left\` and \`:::right\` align a block.
+:::
+:::
+
+## Steps
+:::steps
+:::step[First]
+Numbered, in order.
+:::
+:::step[Then]
+\`:::steps\` wrapping \`:::step[Title]\`.
+:::
+:::
+
+## Collapse and details
+:::collapse[Click to open]
+Hidden until asked for. \`:::collapse[Summary]\` — \`:::details\` is the same.
+:::
+
+## Progress and stages
+:progress[70]{label="Beta"} — \`:progress[70]{label="…"}\`. \`:stage[…]\` marks a phase inside a roadmap.
+
+## Roadmap
+\`:::roadmap{title="Roadmap"}\` with a \`json\` code block inside, or \`:::roadmap{src="https://…/progress.json"}\`. Shape: \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Core", "status": "done" }] }] }\`. Statuses: \`done\` · \`progress\` · \`planned\`.
 
 ## Media
-Use the editor toolbar buttons for images, YouTube, video and links — they insert the right snippet for you.
+Images and YouTube go in from the editor toolbar. A \`.bmmreplay\` recording embeds with \`:::replay{src="…"}\` — \`:::bmmreplay\` is the same block.
 
-## Tables & code
+## Maths
+Written \`$$…$$\`, inline or as its own block:
+
+$$E = mc^2$$
+
+Single-dollar \`$x$\` is deliberately off: this site quotes prices, and "\$5 and \$10" would be typeset as a formula.
+
+## Tables and code
 | Feature | Status |
 |---|---|
 | Dark theme | Shipped |
 | Repo sync | Faster |
 
-\`\`\`json
-{ "name": "example", "version": "1.0.0" }
-\`\`\`
+Fenced code blocks are highlighted by language.
 
-## Roadmap / progress tracker
-Embed the same customisable progress tracker used on the project pages — right inside a post or doc.
+## Cross-references
+\`:ref[label]{href=…}\` links with the target's own name. Internal doc links show a preview card on hover, with the page's icon and first line.
 
-:::note[Two sources]
-**Remote** — point it at a hosted JSON file: \`:::roadmap{src="https://example.com/progress.json" title="Roadmap"}:::\`
-**Static** — put a \`json\` code block inside the \`:::roadmap{title="Roadmap"} … :::\` block. Shape: \`{ "categories": [{ "name": "v1.0", "items": [{ "label": "Core", "status": "done" }, { "label": "Docs", "status": "progress", "percent": 40 }] }] }\`. Statuses: \`done\` · \`progress\` · \`planned\`; optional \`percent\`, \`eta\`, and \`code\`/\`art\`/\`lastUpdate\` meters. Labels can be \`{ "en": …, "fr": … }\` for bilingual roadmaps.
-:::
-
-That's everything — combine badges + callouts + short bullets for clean, readable posts.`;
+That is the whole vocabulary. Combine callouts, cards and short bullets for pages people actually read.`;
   const guideFr = BLOG_FR['markdown-guide'] || {};
   const guide = {
     title: 'Markdown guide — writing notes & blog posts',

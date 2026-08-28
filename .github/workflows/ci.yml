@@ -95,6 +95,12 @@ jobs:
       # somebody else's site.
       - name: seeded content links resolve
         run: node scripts/check-seed-links.mjs
+      # The markdown guide is seeded into every install and both editors link to it from a
+      # "Guide" button. It documented ten directives out of thirty-two — no file cards, no
+      # columns, no steps, no tabs, no buttons — because the renderer is a chain of branches in
+      # apps/web and the guide is a template literal in apps/api, and nothing compared them.
+      - name: the markdown guide covers the renderer
+        run: node scripts/check-md-guide.mjs
       - run: npm ci
       - run: npx prisma generate --schema ../../packages/db/schema.prisma
       - run: npx prisma validate --schema ../../packages/db/schema.prisma
