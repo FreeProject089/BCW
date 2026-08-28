@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
+import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
@@ -54,12 +55,15 @@ function NotificationsPanel() {
   // reload is now the FAILURE path: if the write did not land, the server's answer wins.
   const [items, setItems] = useState(null);
   useEffect(() => { if (data) setItems(data.notifications || []); }, [data]);
+  // What the bell or the notification centre did, applied here without a request. Three
+  // lists of the same notifications, and until now none of them could tell the others.
+  useEffect(() => onNotifsChanged((d) => setItems((s) => applyNotifChange(s, d))), []);
   const list = items || [];
   const unread = list.filter((n) => !n.readAt).length;
   const stamp = () => new Date().toISOString();
   const markAll = async () => {
     setItems((s) => (s || []).map((x) => ({ ...x, readAt: x.readAt || stamp() })));
-    try { await api.post('/me/notifications/read-all'); } catch { reload(); }
+    try { await markAllNotifsRead(); } catch { reload(); }
   };
   // Marking read AND going where it points. Read-only rows made every notification a dead end:
   // the one telling you an ownership transfer is waiting could not take you to it.
@@ -71,16 +75,16 @@ function NotificationsPanel() {
   const markOne = async (n) => {
     if (n.readAt) return;
     setItems((s) => (s || []).map((x) => (x.id === n.id ? { ...x, readAt: stamp() } : x)));
-    try { await api.post(`/me/notifications/${n.id}/read`); } catch { reload(); }
+    try { await markNotifRead(n.id); } catch { reload(); }
   };
   const del = async (n) => {
     setItems((s) => (s || []).filter((x) => x.id !== n.id));
-    try { await api.del(`/me/notifications/${n.id}`); } catch { reload(); }
+    try { await deleteNotif(n.id); } catch { reload(); }
   };
   const clearAll = async () => {
     if (!(await dialog.confirm({ title: 'Clear all notifications', message: 'This permanently deletes all of your notifications. Continue?', okLabel: 'Clear all', danger: true }))) return;
     setItems([]);
-    try { await api.del('/me/notifications'); } catch { reload(); }
+    try { await deleteAllNotifs(); } catch { reload(); }
   };
   const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; return `${Math.floor(s / 86400)}d`; };
   return (
@@ -572,12 +576,20 @@ function MyData() {
     } finally { setBusy(''); }
   };
 
-  const Check = ({ k, label, hint }) => (
-    <label className="flex items-start gap-2 cursor-pointer">
-      <input type="checkbox" className="mt-0.5" checked={want[k]} onChange={(e) => setWant((w) => ({ ...w, [k]: e.target.checked }))} />
+  // A tile, not a bare checkbox on a line. Three of these ARE the choice being made, and a
+  // row of unadorned ticks reads as fine print rather than as the thing to answer. The whole
+  // tile is the hit target, and the selected ones are visibly the selected ones.
+  const Check = ({ k, label, hint, icon }) => (
+    <label className={`flex items-start gap-2.5 cursor-pointer rounded-lg border p-3 transition-colors ${
+      want[k]
+        ? 'border-[var(--primary)]/45 bg-[var(--primary)]/[0.06]'
+        : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]'
+    }`}>
+      <input type="checkbox" className="mt-0.5 shrink-0" checked={want[k]}
+        onChange={(e) => setWant((w) => ({ ...w, [k]: e.target.checked }))} />
       <span className="min-w-0">
-        <span className="text-sm">{label}</span>
-        <span className="block text-[11px] text-[var(--muted)]">{hint}</span>
+        <span className="text-sm font-medium flex items-center gap-1.5">{icon}{label}</span>
+        <span className="block text-[11px] text-[var(--muted)] mt-0.5 leading-snug">{hint}</span>
       </span>
     </label>
   );
@@ -592,25 +604,41 @@ function MyData() {
 
         {loading ? <Loading /> : (<>
           <div className="grid sm:grid-cols-3 gap-3 mb-4">
-            <Check k="account" label={t('data.account', 'Account record')}
+            <Check k="account" icon={<FileJson size={13} className="text-[var(--muted)]" />}
+              label={t('data.account', 'Account record')}
               hint={t('data.account.h', 'What the site holds about you, as JSON. Passwords and tokens are left out.')} />
-            <Check k="repos" label={t('data.repos', 'Repo files')}
+            <Check k="repos" icon={<HardDriveDownload size={13} className="text-[var(--muted)]" />}
+              label={t('data.repos', 'Repo files')}
               hint={t('data.repos.h', '{n} repo(s), {b}').replace('{n}', String(data?.repos?.length || 0)).replace('{b}', fmtBytes(data?.repoBytes || 0))} />
-            <Check k="catalog" label={t('data.catalog', 'Catalog items')}
+            <Check k="catalog" icon={<Package size={13} className="text-[var(--muted)]" />}
+              label={t('data.catalog', 'Catalog items')}
               hint={t('data.catalog.h', '{n} item(s), {b}').replace('{n}', String(data?.items?.length || 0)).replace('{b}', fmtBytes(data?.itemBytes || 0))} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {/* One action, with its size beside it. The JSON download used to sit next to the
+              archive as an equal-looking button, so the screen offered two downloads and no
+              hint that one is a subset of the other — it is a shortcut for people who want
+              the record without waiting for gigabytes of files, and it reads as one now. */}
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
             <Button variant="primary" disabled={!picked.length || !!busy}
               onClick={() => download(`/api/me/backup?what=${picked.join(',')}&lang=${lang}`, `bettercommunity-backup-${new Date().toISOString().slice(0, 10)}.zip`, 'zip')}>
               {busy === 'zip' ? <Spinner /> : <HardDriveDownload size={15} />} {t('data.take', 'Download the archive')}
             </Button>
-            <Button disabled={!!busy} onClick={() => download('/api/me/export', 'bettercommunity-data.json', 'json')}>
-              {busy === 'json' ? <Spinner /> : <FileJson size={15} />} {t('data.json', 'Account record only (JSON)')}
-            </Button>
-            <span className="text-xs text-[var(--faint)] ml-auto">
-              {picked.length ? t('data.size', 'About {b}').replace('{b}', fmtBytes(bytes)) : t('data.nothing', 'Nothing selected')}
-            </span>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tabular-nums">
+                {picked.length ? fmtBytes(bytes) : t('data.nothing', 'Nothing selected')}
+              </div>
+              <div className="text-[11px] text-[var(--muted)]">
+                {picked.length
+                  ? t('data.size.h', '{n} of 3 parts selected').replace('{n}', String(picked.length))
+                  : t('data.nothing.h', 'Tick at least one part above.')}
+              </div>
+            </div>
+            <button type="button" disabled={!!busy}
+              className="ml-auto text-xs underline decoration-dotted underline-offset-4 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-50 flex items-center gap-1.5"
+              onClick={() => download('/api/me/export', 'bettercommunity-data.json', 'json')}>
+              {busy === 'json' ? <Spinner /> : <FileJson size={13} />} {t('data.json', 'Account record only (JSON)')}
+            </button>
           </div>
 
           {/* Said before the download, not discovered inside it: an item with no uploaded

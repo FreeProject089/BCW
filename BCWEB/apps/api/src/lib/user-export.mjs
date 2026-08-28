@@ -19,16 +19,62 @@
 //    them in a file that travels by e-mail creates a risk that did not exist before.
 
 /** Fields that never leave, whatever model they sit on. Matched by NAME because the same
- *  name means the same thing across this schema, and a per-model list would go stale. */
+ *  name means the same thing across this schema, and a per-model list would go stale.
+ *
+ *  Three of these were ANCHORED and should not have been. `/^password$/` does not match
+ *  `dashPassword`, `/^secret$/` does not match `secretHash`, and `/^token$/` does not match
+ *  `tokenHash` — so a repo owner's export carried the argon2 hash of their dashboard
+ *  password, and an OAuth client owner's carried its client secret hash. Nothing failed and
+ *  nothing looked wrong: the export succeeded and the hash was in the file.
+ *
+ *  Checked against the real schema by a test that walks every field name, rather than by
+ *  reading this list and believing it. */
 const NEVER_EXPORT = [
-  /passwordhash/i, /^password$/i,
+  /password/i,
   /twofactorsecret/i, /totpsecret/i, /recoverycodes/i,
-  /sharekey/i, /^secret$/i, /apitoken/i, /accesstoken/i, /refreshtoken/i,
-  /webhooksecret/i, /^token$/i,
+  /sharekey/i, /secret/i, /apitoken/i, /accesstoken/i, /refreshtoken/i,
+  /webhooksecret/i, /token/i,
+  // A bare `hash` is a credential digest — ApiKey.hash, and the audit chain's. A COMPOUND
+  // one (contentHash, fileHash) describes the person's own file and stays.
+  /^hash$/i, /^prevhash$/i,
+  /apikeys/i,
+];
+
+/**
+ * Fields that hold OTHER PEOPLE, on a row that is otherwise theirs.
+ *
+ * The subject/actor split handles a row that is about somebody else. It does not handle a row
+ * that is genuinely theirs and has a column full of third parties: `ServerRepo.accessEmails`
+ * is the e-mail address of every collaborator the owner whitelisted, and it sat in their
+ * export in full.
+ *
+ * Replaced by a COUNT rather than by `[redacted]`, because the two facts are different. That
+ * they configured three collaborators is information about them and they are entitled to it;
+ * who those three people are is not theirs to receive.
+ */
+const THIRD_PARTY = [
+  /accessemails/i, /accesscreatorids/i,
+  /whitelist/i, /banned/i, /^members$/i, /^voters$/i,
 ];
 
 export function isRedactedField(name) {
   return NEVER_EXPORT.some((re) => re.test(String(name)));
+}
+
+export function isThirdPartyField(name) {
+  return THIRD_PARTY.some((re) => re.test(String(name)));
+}
+
+/**
+ * What to put where a third party was.
+ *
+ * A list becomes its length; anything else becomes a flat note. Never the values.
+ */
+export function summariseThirdParty(v) {
+  if (Array.isArray(v)) return `[${v.length} other account(s) — withheld: not your personal data]`;
+  if (v && typeof v === 'object') return `[${Object.keys(v).length} entr(y/ies) — withheld: not your personal data]`;
+  if (typeof v === 'boolean' || v === null || v === undefined) return v ?? null;
+  return '[withheld: not your personal data]';
 }
 
 /**
@@ -70,12 +116,33 @@ export function buildExportPlan(dmmf) {
   return plan.sort((a, b) => a.model.localeCompare(b.model) || a.fk.localeCompare(b.fk));
 }
 
-/** Strip credentials, and anything a caller names, from one row. */
+/** Strip credentials and third parties, and anything a caller names, from one row. */
 export function redactRow(row, extra = []) {
   const out = {};
   for (const [k, v] of Object.entries(row || {})) {
     if (isRedactedField(k) || extra.includes(k)) { out[k] = '[redacted]'; continue; }
+    if (isThirdPartyField(k)) { out[k] = summariseThirdParty(v); continue; }
+    // The one JSON column that carries other people inside it. A repo's sandbox settings
+    // hold the IP addresses and public keys the owner allowed or banned — an IP is personal
+    // data, and these are not the owner's. The rest of the object (their own requested
+    // upload limit, their own flags) is theirs and stays.
+    if (k === 'settings' && v && typeof v === 'object') { out[k] = scrubSettings(v); continue; }
     out[k] = typeof v === 'bigint' ? String(v) : v;
+  }
+  return out;
+}
+
+/** Replace the who-may-reach-this lists inside a settings blob with their sizes. */
+export function scrubSettings(settings) {
+  const out = { ...settings };
+  for (const group of ['access', 'bans']) {
+    const g = out[group];
+    if (!g || typeof g !== 'object') continue;
+    const copy = { ...g };
+    for (const k of Object.keys(copy)) {
+      if (Array.isArray(copy[k])) copy[k] = summariseThirdParty(copy[k]);
+    }
+    out[group] = copy;
   }
   return out;
 }
@@ -133,6 +200,7 @@ export async function exportUser(client, userId, dmmf, now) {
     notes: [
       'Rows where you acted on somebody else’s record are reduced to a reference: exporting them whole would disclose another person’s data.',
       'Credentials (password hash, two-factor secret, tokens) are redacted. They are not what an access request is for, and mailing them would create a risk that did not exist.',
+      'Where a record of yours lists other people — collaborators you gave access to, addresses you allowed or banned — you get the COUNT and not the addresses. That you configured them is yours; who they are is theirs.',
     ],
   };
 }

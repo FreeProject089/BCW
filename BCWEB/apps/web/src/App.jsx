@@ -4,6 +4,7 @@ import { Routes, Route, Link, NavLink, Navigate, useLocation, useNavigate } from
 import { Code2, Boxes, Music2, Newspaper, Server, Rocket, LayoutDashboard, Shield, LogOut, Download, Menu, X, Sparkles, Bell, Trash2, CheckCheck, Mail, Home as HomeIcon, ChevronDown, MoreHorizontal, LayoutGrid, ShieldCheck, ArrowUpRight, Info, AlertTriangle, CheckCircle2, Settings as SettingsIcon, BookOpen } from 'lucide-react';
 import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
+import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
 import { getHero3dDisabled } from './lib/prefs.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
@@ -433,6 +434,17 @@ function NavNotifications() {
     setItems(list.map((n) => (readIds.current.has(n.id) && !n.readAt ? { ...n, readAt: new Date().toISOString() } : n)));
   }).catch(() => {});
   useEffect(() => { load(); const id = setInterval(load, 60000); return () => clearInterval(id); }, []);
+  // The badge is the thing people watch, and it was the slowest to hear anything: marking
+  // everything read on the notifications PAGE left this number sitting there for up to a
+  // minute, which reads as "I have to refresh". Applied locally first so the badge drops on
+  // the click, then reloaded to reconcile — the ids marked read locally are remembered, so
+  // a poll that overtakes the write cannot push the number back up.
+  useEffect(() => onNotifsChanged((d) => {
+    if (d.readAll) items.forEach((x) => readIds.current.add(x.id));
+    (d.read || []).forEach((id) => readIds.current.add(id));
+    setItems((s) => applyNotifChange(s, d));
+    void load();
+  }), [items]);
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
@@ -451,7 +463,7 @@ function NavNotifications() {
     return () => { live = false; clearInterval(id); };
   }, []);
   const badge = unread + pending;
-  const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await api.post(`/me/notifications/${n.id}/read`); } catch {} };
+  const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await markNotifRead(n.id); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
   // The notification's OWN destination first, the per-kind default second.
   //
@@ -465,8 +477,8 @@ function NavNotifications() {
     const to = n.href || NOTIF_LINK[n.kind];
     if (to) { setOpen(false); nav(to); }
   };
-  const markAll = async () => { items.forEach((x) => readIds.current.add(x.id)); setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await api.post('/me/notifications/read-all'); } catch {} };
-  const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await api.del(`/me/notifications/${n.id}`); } catch {} };
+  const markAll = async () => { items.forEach((x) => readIds.current.add(x.id)); setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() }))); try { await markAllNotifsRead(); } catch {} };
+  const del = async (n) => { setItems((s) => s.filter((x) => x.id !== n.id)); try { await deleteNotif(n.id); } catch {} };
   // Durable menu dismiss: remember "everything up to now is cleared" so the poll/reload
   // won't bring them back (only genuinely newer notifications will). The dashboard's
   // "delete everything" action.

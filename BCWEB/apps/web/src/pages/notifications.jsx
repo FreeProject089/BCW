@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Bell, CheckCheck, Trash2, Sliders, Lock, Inbox, ShieldCheck, ArrowRight } from 'lucide-react';
 import { api } from '../lib/api.js';
+import { onNotifsChanged, applyNotifChange, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
@@ -104,6 +105,7 @@ export default function NotificationCentre() {
 
   const load = () => api.get('/me/notifications').then((r) => setItems(r.notifications || [])).catch(() => setItems([]));
   useEffect(() => { if (user) load(); }, [user]);
+  useEffect(() => onNotifsChanged((d) => setItems((s) => applyNotifChange(s, d))), []);
 
   if (loading) return null;
   if (!user) {
@@ -123,7 +125,7 @@ export default function NotificationCentre() {
 
   const markAll = async () => {
     setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() })));
-    try { await api.post('/me/notifications/read-all'); } catch { load(); }
+    try { await markAllNotifsRead(); } catch { load(); }
   };
   const remove = (n) => {
     // Optimistic hide, deferred delete. The row vanished immediately before this change too;
@@ -132,7 +134,7 @@ export default function NotificationCentre() {
     toast.action({
       tone: 'success', cancelLabel: t('common.undo', 'Undo'),
       msg: t('notif.removed', 'Notification deleted.'),
-      onCommit: async () => { try { await api.del(`/me/notifications/${n.id}`); } catch { load(); } },
+      onCommit: async () => { try { await deleteNotif(n.id); } catch { load(); } },
       // Nothing was sent, so putting it back is a reload rather than a re-create.
       onCancel: () => load(),
     });
@@ -144,7 +146,7 @@ export default function NotificationCentre() {
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
     setItems([]);
-    try { await api.del('/me/notifications'); toast.success(t('common.deleted', 'Deleted.')); } catch { load(); }
+    try { await deleteAllNotifs(); toast.success(t('common.deleted', 'Deleted.')); } catch { load(); }
   };
 
   return (

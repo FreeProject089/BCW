@@ -2917,6 +2917,8 @@ const DICT = {
     'data.manifest': 'L’archive contient un manifest.json listant ce qui y est entré — et ce qui n’a pas pu être lu. Lisez-le avant de supposer que la copie est complète.',
     'data.nofile': 'aucun fichier téléversé',
     'data.nothing': 'Rien de sélectionné',
+    'data.nothing.h': 'Cochez au moins une partie ci-dessus.',
+    'data.size.h': '{n} partie(s) sur 3 sélectionnée(s)',
     'data.one': 'Récupérer une entrée',
     'data.one.s': 'Le fichier que vous avez téléversé, quel que soit le statut de l’entrée — y compris pendant l’attente de validation, ou après une suspension.',
     'data.rate': 'Une sauvegarde a été prise récemment — réessayez dans un moment.',
