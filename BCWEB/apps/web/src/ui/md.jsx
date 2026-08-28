@@ -1,9 +1,15 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { Children, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkDirective from 'remark-directive';
 import { normalizeDirectiveNesting } from '../lib/md-nesting.js';
+// The brand marks, from the file that already draws them in the footer and on the home
+// page. They were reachable here only as a lucide name, which means `youtube` came off a
+// CDN as a monochrome mask and `discord`, `kofi`, `patreon` and `steam` rendered NOTHING —
+// lucide has no icon by those names, so the mask resolved to a 404 and drew empty space.
+import { GithubIcon, GoogleIcon, KofiIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon,
+  TwitchIcon, MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon } from './brand.jsx';
 import rehypeRaw from 'rehype-raw';
 // NOT a static import. rehype-highlight drags in highlight.js and a grammar per language
 // — 180kB raw, 55kB gzipped — and a static import put all of it in the ENTRY chunk, so
@@ -42,14 +48,30 @@ const SANITIZE_SCHEMA = {
   ...defaultSchema,
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
-    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap', 'doc-replay'])],
+    'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap', 'doc-replay',
+    'doc-tabs'])],
   attributes: {
     ...defaultSchema.attributes,
     // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
     // so `data-comment` in the source must be allowed as `dataComment` (the DocComment
     // component reads both forms). Without this the whole <doc-comment> was stripped.
     '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo', 'dataSrc', 'dataJson', 'dataTitle'])],
-    a: [...new Set([...(((defaultSchema.attributes || {}).a) || []), 'href', 'target', 'rel', 'download'])],
+    // `a` needs its className tuple REMOVED, not merely extended.
+    //
+    // The GitHub default schema lists it as ['className', 'data-footnote-backref'] — an
+    // allowlist of VALUES, not a permission — and a per-tag entry for an attribute overrides
+    // the blanket one in '*'. So every class on every anchor was filtered down to nothing:
+    // React then rendered `class=""`, which is why a :button rendered with its href, its
+    // colour and its logo, and no styling at all. A `<span>` two characters away kept its
+    // class, because `span` has no per-tag entry.
+    //
+    // Found by comparing a :badge (span, kept) with a :button (anchor, emptied) on the same
+    // line. The tuple is dropped and className allowed plainly; the footnote value is still
+    // covered, because plainly means every value.
+    a: [...new Set([
+      ...(((defaultSchema.attributes || {}).a) || []).filter((x) => !(Array.isArray(x) && x[0] === 'className')),
+      'className', 'href', 'target', 'rel', 'download',
+    ])],
     img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className'])],
     video: ['src', 'controls', 'poster', 'className', 'style', 'loading'],
     audio: ['src', 'controls', 'className'],
@@ -60,6 +82,7 @@ const SANITIZE_SCHEMA = {
     'doc-comment': ['className', 'dataComment', 'dataLink', 'dataImg', 'dataVideo'],
     'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle', 'dataOrientation'],
     'doc-replay': ['className', 'dataSrc', 'dataTitle', 'dataAutoplay', 'dataLoop'],
+    'doc-tabs': ['className'],
   },
 };
 
@@ -106,6 +129,12 @@ const ICONS = {
   'thumbs-up': ThumbsUp, 'thumbs-down': ThumbsDown,
   'file-archive': FileArchive, 'file-text': FileText, 'file-image': FileImage, 'file-video': FileVideo,
   'file-audio': FileAudio, 'file-code': FileCode, 'file-download': FileDown,
+  // Brands, drawn locally. Above the lucide fallback on purpose: these are the names people
+  // write, and the fallback either fetched a mask from a CDN or drew nothing at all.
+  github: GithubIcon, google: GoogleIcon, kofi: KofiIcon, 'ko-fi': KofiIcon, discord: DiscordIcon,
+  reddit: RedditIcon, x: XIcon, twitter: XIcon, youtube: YoutubeIcon, twitch: TwitchIcon,
+  mastodon: MastodonIcon, bluesky: BlueskyIcon, instagram: InstagramIcon, telegram: TelegramIcon,
+  tiktok: TiktokIcon,
 };
 
 // Map a filename/URL to the most fitting lucide file icon (falls back to download).
@@ -121,6 +150,30 @@ function fileIcon(nameOrUrl) {
   const ext = String(nameOrUrl || '').split(/[?#]/)[0].split('.').pop().toLowerCase();
   return FILE_ICON[ext] || 'file-download';
 }
+
+// A button's brand: its colour and its icon, together.
+//
+// `:button[Watch]{brand=youtube href=…}` rather than a colour and an icon named separately,
+// because those two are one decision — a YouTube-red button with a Discord glyph on it is a
+// mistake nobody makes on purpose, and asking for both invites it. A `color` still overrides,
+// for the button that is not any of these.
+//
+// The hexes are each service's own published brand colour, so a button reads as the thing it
+// leads to at a glance rather than as a link that happens to be coloured.
+const BUTTON_BRANDS = {
+  youtube: { color: '#ff0033', icon: 'youtube' },
+  discord: { color: '#5865f2', icon: 'discord' },
+  kofi: { color: '#ff5e5b', icon: 'kofi' },
+  github: { color: '#24292f', icon: 'github' },
+  twitch: { color: '#9146ff', icon: 'twitch' },
+  x: { color: '#000000', icon: 'x' },
+  reddit: { color: '#ff4500', icon: 'reddit' },
+  telegram: { color: '#26a5e4', icon: 'telegram' },
+  // Patreon and Steam are deliberately absent: there is no local mark for either and neither
+  // is a lucide name, so they would have drawn a coloured button with a hole where the logo
+  // goes. `:button[Support]{color=#f96854 href=…}` still gets the colour without the lie.
+};
+const BUTTON_SIZES = new Set(['sm', 'md', 'lg']);
 
 const CALLOUTS = {
   note: 'info', info: 'info', hint: 'tip', tip: 'tip', success: 'success', check: 'success',
@@ -343,6 +396,19 @@ function remarkDocBlocks() {
           ...node.children,
         ];
         node.children = [...head, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-body'] } }, children: body }];
+      } else if (name === 'tabs') {
+        // `:::tabs` wrapping `:::tab{title="…"}` blocks.
+        //
+        // The one shape this vocabulary could not express. People wrote the same content three
+        // times — Windows, macOS, Linux — stacked down the page, because three headings were
+        // the only way to say "pick the one that is yours".
+        //
+        // A plain element with the panels inside it: no state in the markdown, and the panel
+        // that is open lives in one small component below. Content is whatever markdown the
+        // block holds, so a tab can carry a code block, an image or a callout like any other.
+        setEl('doc-tabs', ['doc-tabs']);
+      } else if (name === 'tab') {
+        setEl('div', ['doc-tab'], { 'data-title': String(attrs.title || attrs.name || labelText || '').trim() });
       } else if (name === 'columns' || name === 'row') {
         setEl('div', ['doc-columns']);
       } else if (name === 'column' || name === 'col') {
@@ -362,6 +428,42 @@ function remarkDocBlocks() {
           { type: 'paragraph', data: { hName: 'a', hProperties: { href, download: true, className: ['doc-file-btn'] } }, children: [{ type: 'text', value: 'Download' }] },
           { type: 'paragraph', data: { hName: 'a', hProperties: { href, target: '_blank', rel: 'noreferrer', className: ['doc-file-btn', 'doc-file-btn-ghost'] } }, children: [{ type: 'text', value: 'Open' }] },
         ];
+      } else if (name === 'button' || name === 'btn') {
+        // One shape, three sizes, any colour — and optionally a logo.
+        //
+        //   :button[Watch the video]{brand=youtube href=https://…}
+        //   :button[Buy]{color=#0a7 size=lg href=/hosting}
+        //
+        // A button with nowhere to go is a shape that looks pressable and is not, so an
+        // absent href makes it a plain span rather than a dead link.
+        const brand = BUTTON_BRANDS[String(attrs.brand || '').toLowerCase()];
+        const color = attrs.color || brand?.color || '';
+        const size = BUTTON_SIZES.has(String(attrs.size)) ? attrs.size : 'md';
+        const href = attrs.href || attrs.url || '';
+        const cls = ['doc-btn', `doc-btn-${size}`];
+        if (attrs.outline != null) cls.push('doc-btn-outline');
+        const props = {};
+        if (color) props.style = `--btn:${color}`;
+        if (href) {
+          Object.assign(props, { href });
+          // External links open away and carry the usual protection; an in-site path stays
+          // in the tab, which is what a link to /hosting is for.
+          if (/^https?:\/\//i.test(href)) Object.assign(props, { target: '_blank', rel: 'noreferrer' });
+        }
+        setEl(href ? 'a' : 'span', cls, props);
+        const icon = attrs.icon || brand?.icon;
+        if (icon) node.children = [iconNode(String(icon).toLowerCase()), ...node.children];
+      } else if (name === 'link') {
+        // A link that is a colour rather than the link colour: `:link[read this]{color=#0a7
+        // href=/docs/x}`. The href rules are the button's, because they are the same rules.
+        const href = attrs.href || attrs.url || '';
+        const props = {};
+        if (attrs.color) props.style = `--lnk:${attrs.color}`;
+        if (href) {
+          Object.assign(props, { href });
+          if (/^https?:\/\//i.test(href)) Object.assign(props, { target: '_blank', rel: 'noreferrer' });
+        }
+        setEl(href ? 'a' : 'span', ['doc-link-c'], props);
       } else if (name === 'badge' || name === 'tag') {
         // Inline coloured chip/tag: `:badge[Label]{color=#hex}`.
         const props = {};
@@ -579,7 +681,42 @@ function DocReplay({ node }) {
   );
 }
 
-const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay };
+/**
+ * Tabs, with the open one in this component and nothing in the markdown.
+ *
+ * Titles are read off the panels rather than declared twice, so a tab's label and its content
+ * cannot drift apart. A panel with no title gets a number: better than an empty tab strip, and
+ * it says which one to go and name.
+ */
+function DocTabs({ children }) {
+  const panels = Children.toArray(children)
+    .filter((c) => c?.props?.className?.includes?.('doc-tab'));
+  const [open, setOpen] = useState(0);
+  if (!panels.length) return null;
+  const titleOf = (p, i) => {
+    const t = p.props?.['data-title'] || p.props?.dataTitle;
+    return (t && String(t).trim()) || `${i + 1}`;
+  };
+  return (
+    <div className="doc-tabs">
+      <div className="doc-tabs-bar" role="tablist">
+        {panels.map((p, i) => (
+          <button key={i} type="button" role="tab" aria-selected={i === open}
+            className={`doc-tabs-btn${i === open ? ' is-on' : ''}`} onClick={() => setOpen(i)}>
+            {titleOf(p, i)}
+          </button>
+        ))}
+      </div>
+      {panels.map((p, i) => (
+        // Rendered and hidden rather than unmounted: a code block's highlighting and an
+        // image's download are paid once, and switching back is instant.
+        <div key={i} role="tabpanel" hidden={i !== open}>{p}</div>
+      ))}
+    </div>
+  );
+}
+
+const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay, 'doc-tabs': DocTabs };
 
 // Internal link with a GitBook-style hover-preview card (title + category), shown
 // only when the href is a known page in `pageMap`.

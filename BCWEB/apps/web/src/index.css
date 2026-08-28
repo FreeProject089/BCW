@@ -716,6 +716,75 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 .md-body .doc-badge { --badge: var(--primary); display: inline-block; font-size: 11px; font-weight: 700; line-height: 1.6;
   padding: 1px 9px; margin: 0 2px; border-radius: 999px; vertical-align: middle; white-space: nowrap;
   color: var(--badge); background: color-mix(in srgb, var(--badge) 14%, transparent); border: 1px solid color-mix(in srgb, var(--badge) 40%, transparent); }
+/* A button in a document.
+   One shape, three sizes, and a colour that comes in as --btn. Coloured by the SURFACE rather
+   than by a border, because a button that reads as a button is the whole point of it not being
+   a link — and the text picks itself so a red button and a dark-blue one are both legible. */
+.md-body .doc-btn {
+  --btn: var(--primary);
+  display: inline-flex; align-items: center; gap: 7px; vertical-align: middle;
+  margin: 2px 4px 2px 0; border-radius: 9px; text-decoration: none; white-space: nowrap;
+  font-weight: 650; line-height: 1.2;
+  background: var(--btn); border: 1px solid var(--btn);
+  /* Against the button's own colour, so a pale brand keeps dark text and a dark one light.
+     `color-mix` to white and to black, chosen by luminance, would need a second variable; the
+     contrast function does it with what is already here. */
+  color: color-contrast(var(--btn) vs #fff, #111);
+  transition: filter .14s ease, transform .14s ease;
+}
+/* color-contrast() is not in every engine yet. White wins on the brand colours offered, and
+   the outline variant below is the escape hatch for a pale custom one. */
+@supports not (color: color-contrast(#000 vs #fff, #111)) {
+  .md-body .doc-btn { color: #fff; }
+}
+.md-body .doc-btn:hover { filter: brightness(1.08); }
+.md-body .doc-btn:active { transform: translateY(1px); }
+.md-body .doc-btn-sm { font-size: 12px; padding: 5px 11px; }
+.md-body .doc-btn-md { font-size: 13.5px; padding: 8px 15px; }
+.md-body .doc-btn-lg { font-size: 15px; padding: 11px 20px; border-radius: 11px; }
+/* The quiet one: same shape, the colour on the text and the edge. */
+.md-body .doc-btn-outline {
+  background: transparent; color: var(--btn);
+  border-color: color-mix(in srgb, var(--btn) 45%, transparent);
+}
+.md-body .doc-btn-outline:hover { background: color-mix(in srgb, var(--btn) 12%, transparent); filter: none; }
+.md-body .doc-btn .doc-icon { vertical-align: 0; }
+.md-body .doc-btn .doc-icon-svg { width: 1em; height: 1em; }
+
+/* A link that is a colour rather than the link colour. Underlined like every other link:
+   colour alone is not a signal everybody can see, and a coloured word that is not underlined
+   reads as emphasis. */
+.md-body .doc-link-c {
+  --lnk: var(--primary);
+  color: var(--lnk);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--lnk) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.md-body .doc-link-c:hover { text-decoration-color: var(--lnk); }
+
+/* Tabs.
+   The strip scrolls rather than wraps: a wrapped tab strip changes height as you click along
+   it, and the content underneath jumps every time. */
+.md-body .doc-tabs { margin: 14px 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.md-body .doc-tabs-bar {
+  display: flex; gap: 2px; padding: 6px 6px 0; overflow-x: auto;
+  border-bottom: 1px solid var(--line); background: var(--surface-2);
+  scrollbar-width: none;
+}
+.md-body .doc-tabs-bar::-webkit-scrollbar { display: none; }
+.md-body .doc-tabs-btn {
+  flex: 0 0 auto; padding: 7px 14px; border: none; background: transparent; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  border-radius: 8px 8px 0 0; border-bottom: 2px solid transparent;
+  transition: color .14s ease, border-color .14s ease;
+}
+.md-body .doc-tabs-btn:hover { color: var(--text); }
+.md-body .doc-tabs-btn.is-on { color: var(--text); border-bottom-color: var(--primary); background: var(--surface); }
+.md-body .doc-tabs > [role="tabpanel"] { padding: 4px 16px 12px; }
+/* The panel's own top margin would double the padding above the first paragraph. */
+.md-body .doc-tabs > [role="tabpanel"] > .doc-tab > :first-child { margin-top: 10px; }
+
 /* Inline icon + keyboard shortcut */
 .md-body .doc-icon { display: inline-flex; vertical-align: -3px; margin: 0 1px; }
 .md-body .doc-icon-svg { display: inline-block; }
