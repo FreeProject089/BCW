@@ -3318,6 +3318,16 @@ const DICT = {
     'adm.proj.deleted': 'Supprimé.',
     'adm.proj.inuse': 'Encore utilisé : {p} billet(s), {i} élément(s) de catalogue, {c} catalogue(s).',
     'adm.proj.builtin': 'Les cinq projets intégrés ne peuvent pas être supprimés.',
+    // ── Content export (Advanced server management) ──
+    'asa.t.content': 'Export du contenu',
+    'cb.title': 'Export du contenu',
+    'cb.lede': 'La documentation, le blog, la FAQ, les versions légales, les réglages et les fiches de compte, en JSON dans un zip que tu peux ouvrir. À prendre avant une modification risquée, ou pour déménager vers une autre installation.',
+    'cb.unknown': 'inconnu',
+    'cb.note.users': 'Les comptes sont des fiches seulement — aucun hash de mot de passe, aucun secret 2FA, aucun jeton. Les restaurer veut dire réinviter les gens.',
+    'cb.note.files': 'Les sections catalogue et dépôts sont des métadonnées ; les fichiers téléversés qu’elles désignent ne sont pas dans l’archive. C’est pour ça qu’elles sont décochées par défaut.',
+    'cb.note.restore': 'Ce n’est pas un point de restauration. Pour ça, utilise la sauvegarde de base de données sous Sauvegardes.',
+    'cb.download': 'Télécharger le zip',
+    'cb.none': 'Choisis au moins une section.',
     // ── Page builder ──
     'pb.vars.how2': "Clique pour copier son marqueur, puis colle-le dans n’importe quel titre ou bloc texte. Un bloc stat affiche le même chiffre en tuile.",
     'pb.vars.copied': 'Copié {x}',

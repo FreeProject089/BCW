@@ -2856,6 +2856,10 @@ const ADV_TOOLS = [
   { id: 'files', k: 'asa.t.files', label: 'File manager', icon: Files },
   { id: 'db', k: 'asa.t.db', label: 'Database', icon: Database },
   { id: 'backups', k: 'asa.t.backups', label: 'Backups', icon: Archive },
+  // Separate from 'backups' on purpose: that one restores the machine, this one exports
+  // what people wrote. Naming both "backup" and putting them on one screen is how somebody
+  // downloads a zip of JSON and believes they can restore from it.
+  { id: 'content', k: 'asa.t.content', label: 'Content export', icon: FileJson },
 ];
 
 function AdminServerAdvanced() {
@@ -2934,12 +2938,89 @@ function AdminServerAdvanced() {
           {advTool === 'files' && <FileManager />}
           {advTool === 'db' && <DbViewer />}
           {advTool === 'backups' && <BackupManager />}
+          {advTool === 'content' && <ContentBackup />}
         </>
       )}
     </div>
   );
 }
 
+
+/**
+ * Export the written content as a zip of JSON.
+ *
+ * The counts come first and the download second, because the choice on this screen is which
+ * sections to take and that is not a choice without a number beside each one.
+ */
+function ContentBackup() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, err } = useAsync(() => api.get('/admin/content-backup/preview'), []);
+  const [on, setOn] = useState(null);
+  const [busy, setBusy] = useState(false);
+  // The defaults come from the server, not from a copy here: which sections are on by default
+  // is a decision about what a backup MEANS, and two answers to that is one too many.
+  useEffect(() => { if (data && !on) setOn(new Set(data.defaults || [])); }, [data]);
+  if (loading) return <Loading />;
+  if (err) return <Card className="p-6 text-sm text-[var(--muted)]">{String(err)}</Card>;
+  const sections = data?.sections || {};
+  const picked = on || new Set();
+  const toggle = (k) => setOn((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      // Fetched rather than linked, so an expired session shows a message instead of putting
+      // a JSON error page on disk with a .zip on the end of its name.
+      const res = await fetch(`/api/admin/content-backup?include=${[...picked].join(',')}`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `bettercommunity-content-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) { toast.error(String(e?.message || e)); } finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div>
+        <h3 className="font-semibold text-sm flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('cb.title', 'Content export')}</h3>
+        <p className="text-xs text-[var(--muted)] mt-1 max-w-2xl">
+          {t('cb.lede', 'The docs, blog, FAQ, legal versions, settings and account records, as JSON in a zip you can open. Take one before a risky edit, or when moving to another install.')}
+        </p>
+      </div>
+
+      <div className="space-y-1.5">
+        {Object.entries(sections).map(([k, sec]) => (
+          <label key={k} className="flex items-center gap-2.5 text-sm cursor-pointer py-0.5">
+            <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} className="shrink-0" />
+            <span>{sec.label}</span>
+            {/* null is "could not count", which is not the same as zero and must not read as it. */}
+            <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
+              {sec.count === null ? t('cb.unknown', 'unknown') : sec.count}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {/* Both caveats, on the screen, before the download \u2014 not in the manifest inside the zip
+          where they are read after the fact. */}
+      <div className="text-[11px] text-[var(--muted)] leading-relaxed border-l-2 border-[var(--line)] pl-2.5 space-y-1">
+        <p>{t('cb.note.users', 'Accounts are records only \u2014 no password hashes, no 2FA secrets, no tokens. Restoring them means re-inviting people.')}</p>
+        <p>{t('cb.note.files', 'Catalogue and repository sections are metadata; the uploaded files they point at are not in the archive. That is why they are off by default.')}</p>
+        <p>{t('cb.note.restore', 'This is not a restore point. For that, use the database backup under Backups.')}</p>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
+        <Button variant="primary" onClick={download} loading={busy} disabled={!picked.size}>
+          <Download size={15} /> {t('cb.download', 'Download the zip')}
+        </Button>
+        {!picked.size && <span className="text-[11px] text-[var(--muted)]">{t('cb.none', 'Pick at least one section.')}</span>}
+      </div>
+    </Card>
+  );
+}
 
 // What is actually inside a backup, and the only place a rollback can be started.
 //
