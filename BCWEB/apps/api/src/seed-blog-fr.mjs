@@ -40,6 +40,9 @@ Forme courte : \`:btn[…]\` fait la même chose.
 ## Badges et étiquettes
 :badge[NOUVEAU] :badge[Sur mesure]{color="#0a7"} — \`:badge[NOUVEAU]\` ou \`:badge[N'importe quel texte]{color="#0a7"}\`. \`:tag[…]\` est la même pastille sous un autre nom.
 
+## Emoji
+:rocket: :tada: :white_check_mark: — écrits \`:rocket:\` \`:tada:\` \`:white_check_mark:\`. 384 noms, les mêmes que sur GitHub. Un nom inconnu reste tel que tu l'as tapé plutôt que de disparaître, et rien dans du code n'est touché — \`10:30:45\` et un bloc clôturé sont à l’abri.
+
 ## Icônes et touches
 :icon[rocket] :kbd[Ctrl+K] — \`:icon[rocket]\` accepte n'importe quel nom lucide ou une marque ; \`:kbd[Ctrl+Shift+S]\` dessine de vraies touches.
 

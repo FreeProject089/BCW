@@ -15,6 +15,7 @@ renderer, not a copy: `apps/web/src/ui/md.jsx` is a thirty-line adapter around t
 |---|---|
 | `index.jsx` | the renderer, `<Markdown>` and the pieces it exports |
 | `nesting.js` | the pre-pass that makes `:::` blocks nest the way people write them |
+| `emoji.js` | 384 `:shortcode:` names — replace this file to bring your own set |
 | `brands.jsx` | brand marks (Discord, Ko-fi, YouTube…) — lucide has none of these |
 | `markdown.css` | every style, scoped to `.md-body` and `.doc-*` |
 
@@ -138,9 +139,10 @@ short version:
 :badge[NEW]{color="#0a7"}  :tag[…]                  chips
 :icon[rocket]  :kbd[Ctrl+K]                         inline icon, keycaps
 :file[report.pdf]{href=… size="1.2 MB"}             a download, icon by extension
-:progress[70]{label="Beta"}  :stage[…]              progress
+:::roadmap[Where we are] / :::stage[Done]{state=done}  a progress tracker (:::progress is the same block)
 ::toc[On this page]                                 table of contents
 $$E = mc^2$$                                        maths
+:rocket: :tada: :+1:                                emoji, by GitHub's names
 ```
 
 ## What it is not

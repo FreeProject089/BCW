@@ -1071,6 +1071,11 @@ qu'un prix ne produit pas d'erreur : il devient du charabia en italique.
 - Touche clavier : \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
 - Icône : \`:icon[rocket]\` → :icon[rocket]
 - Badge : \`:badge[Nouveau]{color="#16a34a"}\` → :badge[Nouveau]{color="#16a34a"} — \`:tag[…]\` est la même pastille sous un autre nom
+- Emoji : \`:rocket:\` → :rocket: · \`:tada:\` → :tada: · \`:white_check_mark:\` → :white_check_mark:
+
+:::note[Ce que les raccourcis ne peuvent pas casser]
+Seuls les 384 noms de la liste sont remplacés : \`10:30:45\` reste un horodatage, \`3:4\` un rapport, et une phrase française finissant par deux-points reste une phrase. Le code n'est jamais touché — ni en ligne, ni clôturé — parce que la substitution s'applique aux nœuds de texte, et un bloc de code n'en est pas un. Un raccourci inconnu reste tel quel : une faute de frappe se voit au lieu de disparaître.
+:::
 
 ## Le sommaire
 

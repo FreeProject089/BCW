@@ -284,6 +284,9 @@ Short form: \`:btn[…]\` does the same thing.
 ## Badges and tags
 :badge[NEW] :badge[Custom]{color="#0a7"} — \`:badge[NEW]\` or \`:badge[Any text]{color="#0a7"}\`. \`:tag[…]\` is the same chip under another name.
 
+## Emoji
+:rocket: :tada: :white_check_mark: — written \`:rocket:\` \`:tada:\` \`:white_check_mark:\`. 384 names, the same ones GitHub uses. An unknown one stays as you typed it rather than vanishing, and nothing inside code is touched — \`10:30:45\` and a fenced block are safe.
+
 ## Icons and keys
 :icon[rocket] :kbd[Ctrl+K] — \`:icon[rocket]\` takes any lucide name or a brand; \`:kbd[Ctrl+Shift+S]\` draws real keycaps.
 

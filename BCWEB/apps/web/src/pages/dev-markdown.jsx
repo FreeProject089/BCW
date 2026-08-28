@@ -62,6 +62,7 @@ Including \`code\`, lists and images.
 |---|---|
 | Steps | \`:::steps\` + \`:::step[Title]\` |
 | Tabs | \`:::tabs\` + \`:::tab{title="…"}\` |
+| Emoji | \`:rocket:\` → :rocket: |
 
 :file[report.pdf]{href=/api/assets/setup.exe size="1.2 MB"}
 `;
@@ -134,7 +135,7 @@ export default function DevMarkdown() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Package size={16} /> {t('devmd.install', 'Put it in your project')}</h2>
         <p className="text-sm text-[var(--muted)] max-w-2xl">
-          {t('devmd.install.1', 'Copy the four files of the kit — the renderer, its nesting pre-pass, the brand marks and one stylesheet. There is no package to publish and nothing to configure to get the first document on screen.')}
+          {t('devmd.install.1', 'Copy the five files of the kit — the renderer, its nesting pre-pass, the emoji table, the brand marks and one stylesheet. There is no package to publish and nothing to configure to get the first document on screen.')}
         </p>
         <Snippet code={INSTALL} />
         <p className="text-sm text-[var(--muted)] max-w-2xl">

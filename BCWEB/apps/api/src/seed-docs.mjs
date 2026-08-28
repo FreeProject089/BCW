@@ -1086,6 +1086,11 @@ becomes italic nonsense.
 - Keyboard: \`:kbd[Ctrl+S]\` → :kbd[Ctrl+S]
 - Icon: \`:icon[rocket]\` → :icon[rocket]
 - Badge: \`:badge[New]{color="#16a34a"}\` → :badge[New]{color="#16a34a"} — \`:tag[…]\` is the same chip under another name
+- Emoji: \`:rocket:\` → :rocket: · \`:tada:\` → :tada: · \`:white_check_mark:\` → :white_check_mark:
+
+:::note[What the shortcodes cannot break]
+Only the 384 names in the list are replaced, so \`10:30:45\` is a timestamp, \`3:4\` is a ratio, and a French sentence ending in a colon is a sentence. Code is never touched — not inline, not fenced — because the substitution runs on text nodes, and code is not one. An unknown shortcode stays exactly as typed, so a typo is visible rather than invisible.
+:::
 
 ## Table of contents
 

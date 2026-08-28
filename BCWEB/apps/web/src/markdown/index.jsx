@@ -8,6 +8,7 @@ import remarkDirective from 'remark-directive';
 // in the next project.
 import './markdown.css';
 import { normalizeDirectiveNesting } from './nesting.js';
+import { replaceEmoji } from './emoji.js';
 // The brand marks, from the file that already draws them in the footer and on the home
 // page. They were reachable here only as a lucide name, which means `youtube` came off a
 // CDN as a monochrome mask and `discord`, `kofi`, `patreon` and `steam` rendered NOTHING —
@@ -379,6 +380,17 @@ function stagesToJson(node) {
 
 function remarkDocBlocks() {
   return (tree) => {
+    // Pass 0 — `:rocket:` becomes 🚀.
+    //
+    // On the mdast TEXT nodes, not on the source string. A string-level replacement would
+    // reach inside fenced code blocks, and a document explaining shortcodes is exactly the
+    // document that has `:rocket:` inside a code fence. `code` and `inlineCode` are their own
+    // node types holding their content in `.value`, so visiting `text` cannot touch them.
+    //
+    // Before the directive pass reads anything, and after remark-directive has already
+    // parsed the real directives out into nodes of their own — so there is no syntax left in
+    // a text node for this to damage.
+    visit(tree, 'text', (node) => { node.value = replaceEmoji(node.value); });
     const headings = [];
     // Pass 1 — headings get slug ids (for anchors + toc).
     visit(tree, 'heading', (node) => {
