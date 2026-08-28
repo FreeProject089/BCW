@@ -20,9 +20,47 @@ docker compose up -d      # api + web + postgres + redis + minio + caddy + telem
 ```
 
 Then:
-- Site (placeholder for now): `http://localhost`
-- API health: `http://localhost/api/health`
-- BMM telemetry: `http://localhost/telemetry/`
+- Site: `http://localhost:5176`
+- API health: `http://localhost:5176/api/health`
+- BMM telemetry: `http://telemetry.localhost/`
+
+### When everything says "Up" and nothing answers
+
+`docker ps` shows every container running, the Caddy log says `server running`, and the
+browser still cannot reach the site. Check the **ports column** and the **network**:
+
+```bash
+docker ps --format "{{.Names}}\t{{.Ports}}"
+docker inspect bcweb-caddy-1 --format '{{json .NetworkSettings.Networks}}'
+```
+
+A container that lists `80/tcp, 443/tcp, 5176/tcp` with no `0.0.0.0:80->80/tcp`, and whose
+networks print as `{}`, is running with **no network attached** — it can reach nothing and
+nothing can reach it, including the host. Docker Desktop leaves containers in that state
+after a restart or a WSL resume: they come back up without being re-attached, and every
+symptom points at the app instead.
+
+```bash
+docker compose up -d --force-recreate caddy
+```
+
+Caddy is stateless, so recreating it is free — the database and MinIO volumes are untouched.
+
+## Run it (dev, no Docker)
+
+Two servers, and **run them from `apps/`, never from this folder**:
+
+```bash
+npm --prefix apps/api run dev    # :3000 — needs Postgres (docker compose up -d db)
+npm --prefix apps/web run dev    # :5176 — proxies /api to :3000
+```
+
+There is a `package.json` here now whose only job is to make `npm run dev` work from this
+directory. Before it existed, npm found no `package.json` in BCWEB, **walked up out of the
+repo**, landed on the parent `BetterModsManager/package.json`, and ran *its* `dev` script —
+which builds the BMM desktop app. No error mentioning BCWEB, and the site never starts.
+
+Same trap for every other script name the two repos share: `npm run build`, `npm test`.
 
 ## Layout
 

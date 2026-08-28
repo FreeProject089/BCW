@@ -1,0 +1,20 @@
+{
+  "name": "bcweb",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Root scripts for BCWEB. Exists so npm stops walking up out of this repo — see the comment in README under \"Run it\". Declares NO dependencies and NO workspaces on purpose: it is a signpost, not an install root.",
+  "scripts": {
+    "dev": "npm --prefix apps/web run dev",
+    "dev:web": "npm --prefix apps/web run dev",
+    "dev:api": "npm --prefix apps/api run dev",
+    "build": "npm --prefix apps/web run build",
+    "lint": "npm --prefix apps/web run lint",
+    "i18n:check": "npm --prefix apps/web run i18n:check",
+    "css:check": "npm --prefix apps/web run css:check",
+    "legal:check": "npm --prefix apps/web run legal:check",
+    "budget": "npm --prefix apps/web run budget",
+    "test": "npm --prefix apps/api test",
+    "seed": "npm --prefix apps/api run seed",
+    "migrate": "npm --prefix apps/api run migrate"
+  }
+}
