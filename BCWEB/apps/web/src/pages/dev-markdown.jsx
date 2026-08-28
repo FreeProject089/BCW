@@ -10,10 +10,11 @@
 // see here is what a post looks like.
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen } from 'lucide-react';
+import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen, Download, FileCode } from 'lucide-react';
 import { Card, Button, Textarea, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
+import { KIT_PARTS, buildKit, zipKit } from './kit-pack.js';
 
 const INSTALL = 'npm i react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex';
@@ -86,6 +87,77 @@ function Snippet({ code, lang = 'bash' }) {
   );
 }
 
+/** The part picker, the file list, and the button. */
+function KitPacker() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [on, setOn] = useState(() => new Set(KIT_PARTS.map((p) => p.id)));
+  const [busy, setBusy] = useState(false);
+
+  // Built on every change rather than on download: the file list and the size ARE the answer
+  // to "what am I about to get", and showing them after the fact is showing them too late.
+  let files = [];
+  let err = null;
+  try { files = buildKit(on); } catch (e) { err = String(e?.message || e); }
+  const bytes = files.reduce((n, f) => n + f.text.length, 0);
+
+  const toggle = (id) => setOn((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      const blob = await zipKit(on);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'bcweb-markdown.zip';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      toast.error(String(e?.message || e));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="space-y-2">
+        {KIT_PARTS.map((p) => (
+          <label key={p.id} className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={on.has(p.id)} onChange={() => toggle(p.id)} className="mt-0.5 shrink-0" />
+            <span className="min-w-0">
+              <span className="text-sm font-medium">{p.label}</span>
+              {p.bytes > 0 && <span className="ml-1.5 text-[11px] text-[var(--faint)] tabular-nums">{Math.round(p.bytes / 1024)} KB</span>}
+              <span className="block text-[12px] text-[var(--muted)] leading-snug"><Markdown className="!text-[12px]">{p.detail}</Markdown></span>
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="pt-2 border-t border-[var(--line)] flex flex-wrap items-center gap-2">
+        {/* The file list, because "what is in the zip" is the question a checkbox raises. */}
+        <div className="flex flex-wrap gap-1.5 min-w-0">
+          {files.map((f) => (
+            <span key={f.name} className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)]">
+              <FileCode size={10} />{f.name}
+            </span>
+          ))}
+        </div>
+        <span className="text-[11px] text-[var(--faint)] tabular-nums ml-auto">{Math.round(bytes / 1024)} KB</span>
+        <Button variant="primary" onClick={download} loading={busy} disabled={!!err}>
+          <Download size={15} /> {t('devmd.dl.btn', 'Download the folder')}
+        </Button>
+      </div>
+
+      {/* A marker that has moved is a file with a dangling import. It says so here rather
+          than shipping one. */}
+      {err && <p className="text-[11px] text-error">{t('devmd.dl.err', 'The kit could not be packed: {x}').replace('{x}', err)}</p>}
+    </Card>
+  );
+}
+
 export default function DevMarkdown() {
   const { t } = useI18n();
   const [src, setSrc] = useState(SAMPLE);
@@ -143,6 +215,21 @@ export default function DevMarkdown() {
         </p>
         <Snippet code={INSTALL_OPT} />
         <Snippet code={USAGE} lang="jsx" />
+      </section>
+
+      {/* ── Download it ──
+          Packed in the browser from the real sources (Vite `?raw`), so what lands on disk is
+          the code this page renders with. A button whose payload is a hand-kept copy is worse
+          than a link to a repository. */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Download size={16} /> {t('devmd.dl', 'Take it')}</h2>
+        <p className="text-sm text-[var(--muted)] max-w-2xl">
+          {t('devmd.dl.1', 'Switch off what you do not want and the code goes with it \u2014 the imports and the lines that used them are removed when the folder is packed, not commented out.')}
+        </p>
+        <KitPacker />
+        <p className="text-[11px] text-[var(--muted)] max-w-2xl">
+          {t('devmd.dl.note', 'Maths and syntax highlighting have no switch on purpose: both load only when a document actually contains a formula or a code block, so leaving them in costs a line in package.json and nothing at runtime.')}
+        </p>
       </section>
 
       {/* ── The two injected components ── */}

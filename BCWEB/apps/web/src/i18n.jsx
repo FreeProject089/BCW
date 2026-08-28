@@ -3252,6 +3252,11 @@ const DICT = {
     'pce.whsecret': 'Secret du webhook',
     'adm.tab.homepage': 'Page d’accueil',
     // ── The markdown kit (/dev/markdown) ──
+    'devmd.dl': 'Prends-le',
+    'devmd.dl.1': 'Décoche ce que tu ne veux pas et le code part avec — les imports et les lignes qui s’en servaient sont retirés à l’empaquetage, pas mis en commentaire.',
+    'devmd.dl.btn': 'Télécharger le dossier',
+    'devmd.dl.err': 'Le kit n’a pas pu être empaqueté : {x}',
+    'devmd.dl.note': 'Les mathématiques et la coloration syntaxique n’ont volontairement pas d’interrupteur : les deux ne se chargent que si un document contient vraiment une formule ou un bloc de code, donc les garder coûte une ligne dans package.json et rien à l’exécution.',
     'dev.hub.md': 'Le kit markdown',
     'dev.hub.md.s': 'Le système de blocs avec lequel ce site s’affiche — encadrés, cartes, onglets, étapes, boutons de marque — en quatre fichiers à copier dans ton projet. Avec un éditeur en direct.',
     'devmd.title': 'Le kit markdown',

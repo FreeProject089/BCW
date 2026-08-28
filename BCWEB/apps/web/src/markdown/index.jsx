@@ -8,7 +8,13 @@ import remarkDirective from 'remark-directive';
 // in the next project.
 import './markdown.css';
 import { normalizeDirectiveNesting } from './nesting.js';
+// `kit:NAME:start` … `kit:NAME:end` marks a part a project can leave out. /dev/markdown
+// packs the kit from these files and strips the regions you switch off, so the download is
+// the code you asked for rather than the code with instructions for deleting some of it.
+// check-kit-markers.mjs fails the build on an unpaired marker.
+/* kit:emoji:start */
 import { replaceEmoji } from './emoji.js';
+/* kit:emoji:end */
 import { preprocessMd } from './shorthand.js';
 // Re-exported: ~20 files import it from here, and the move is an implementation detail.
 export { preprocessMd } from './shorthand.js';
@@ -16,8 +22,10 @@ export { preprocessMd } from './shorthand.js';
 // page. They were reachable here only as a lucide name, which means `youtube` came off a
 // CDN as a monochrome mask and `discord`, `kofi`, `patreon` and `steam` rendered NOTHING —
 // lucide has no icon by those names, so the mask resolved to a 404 and drew empty space.
+/* kit:brands:start */
 import { GithubIcon, GoogleIcon, KofiIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon,
   TwitchIcon, MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon } from './brands.jsx';
+/* kit:brands:end */
 import rehypeRaw from 'rehype-raw';
 // NOT a static import. rehype-highlight drags in highlight.js and a grammar per language
 // — 180kB raw, 55kB gzipped — and a static import put all of it in the ENTRY chunk, so
@@ -110,6 +118,7 @@ export const MarkdownConfig = createContext({
   appIcons: {},
 });
 
+/* kit:injected:start */
 /** A block whose component was not supplied. Says which, rather than rendering nothing. */
 function MissingBlock({ name }) {
   return (
@@ -118,6 +127,7 @@ function MissingBlock({ name }) {
     </div>
   );
 }
+/* kit:injected:end */
 
 // Sanitisation schema (CWE-79): author-written raw HTML in blog/doc bodies is stripped
 // of anything executable (scripts, on* handlers, javascript: URLs) by extending the
@@ -213,10 +223,12 @@ const ICONS = {
   'file-audio': FileAudio, 'file-code': FileCode, 'file-download': FileDown,
   // Brands, drawn locally. Above the lucide fallback on purpose: these are the names people
   // write, and the fallback either fetched a mask from a CDN or drew nothing at all.
+/* kit:brands:start */
   github: GithubIcon, google: GoogleIcon, kofi: KofiIcon, 'ko-fi': KofiIcon, discord: DiscordIcon,
   reddit: RedditIcon, x: XIcon, twitter: XIcon, youtube: YoutubeIcon, twitch: TwitchIcon,
   mastodon: MastodonIcon, bluesky: BlueskyIcon, instagram: InstagramIcon, telegram: TelegramIcon,
   tiktok: TiktokIcon,
+/* kit:brands:end */
 };
 
 // Map a filename/URL to the most fitting lucide file icon (falls back to download).
@@ -330,6 +342,7 @@ function stepMarker(kind, n) {
 // invented here: a bullet list is the thing authors already know how to write, and a
 // micro-syntax hidden inside list text would be one more rule nobody can see. An author who
 // needs per-item percentages still has the JSON block, which is why that path stays.
+/* kit:injected:start */
 const STAGE_STATE = { done: 'done', complete: 'done', shipped: 'done', progress: 'progress',
   'in-progress': 'progress', doing: 'progress', active: 'progress', planned: 'planned', todo: 'planned', next: 'planned' };
 function stagesToJson(node) {
@@ -351,6 +364,7 @@ function stagesToJson(node) {
   }).filter((c) => c.items.length);
   return categories.length ? JSON.stringify({ categories }) : '';
 }
+/* kit:injected:end */
 
 function remarkDocBlocks() {
   return (tree) => {
@@ -364,7 +378,9 @@ function remarkDocBlocks() {
     // Before the directive pass reads anything, and after remark-directive has already
     // parsed the real directives out into nodes of their own — so there is no syntax left in
     // a text node for this to damage.
+/* kit:emoji:start */
     visit(tree, 'text', (node) => { node.value = replaceEmoji(node.value); });
+/* kit:emoji:end */
     const headings = [];
     // Pass 1 — headings get slug ids (for anchors + toc).
     visit(tree, 'heading', (node) => {
@@ -539,6 +555,7 @@ function remarkDocBlocks() {
       } else if (name === 'kbd') {
         setEl('doc-kbd', ['doc-kbd'], { 'data-keys': (nodeText(node) || '').trim() });
         node.children = [];
+/* kit:injected:start */
       } else if (name === 'roadmap' || name === 'progress') {
         // Progress / roadmap tracker. Two sources:
         //   remote → :::roadmap{src="https://site/progress.json" title="Roadmap"}
@@ -578,6 +595,7 @@ function remarkDocBlocks() {
           'data-loop': (attrs.loop === '' || attrs.loop === 'true' || attrs.loop === true) ? 'true' : '',
         });
         node.children = [];
+/* kit:injected:end */
       } else if (name === 'toc') {
         data.hName = 'nav'; data.hProperties = { className: ['doc-toc'] };
         node.children = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-toc-title'] } }, children: [{ type: 'text', value: labelText || 'On this page' }] },
@@ -717,6 +735,7 @@ export function matchesLang(name, lang) {
   return true;
 }
 
+/* kit:injected:start */
 // Roadmap / progress tracker embedded in blog & docs. Data comes from a remote
 // `.json` (data-src, fetched client-side) or an inline JSON block (data-json) —
 // both render the same customisable ProgressTracker used on the project pages.
@@ -769,6 +788,7 @@ function DocReplay({ node }) {
     />
   );
 }
+/* kit:injected:end */
 
 /**
  * Tabs, with the open one in this component and nothing in the markdown.
@@ -805,7 +825,12 @@ function DocTabs({ children }) {
   );
 }
 
-const COMPONENTS = { 'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay, 'doc-tabs': DocTabs };
+const COMPONENTS = {
+  'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-tabs': DocTabs,
+/* kit:injected:start */
+  'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay,
+/* kit:injected:end */
+};
 
 // Internal link with a GitBook-style hover-preview card (title + category), shown
 // only when the href is a known page in `pageMap`.
