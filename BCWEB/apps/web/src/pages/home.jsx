@@ -18,6 +18,10 @@ import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
 import { HomeV2, HomeV3 } from './home-variants.jsx';
+import PageRender, { useLayoutMode } from './page-render.jsx';
+// Resolved before React mounted, so asking here is a synchronous read and not a request the
+// page renders around. That is what keeps a built page from arriving after the default one.
+import { hasCustomPage, sitePage } from '../lib/site-pages.js';
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
 
 /* ─────────────────────────  Home  ───────────────────────── */
@@ -280,6 +284,10 @@ export function Home() {
   const { user } = useAuth();
   const { t, lang } = useI18n();
   const root = useScrollReveal();
+  // Unconditionally, with the other hooks: it is only READ by the custom-page branch, but a
+  // hook called inside a branch is a hook whose order changes the day an admin switches the
+  // page on, which React reports as a wrong-hook error on an unrelated line.
+  const layoutMode = useLayoutMode();
   const products = [
     { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm' },
     { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm' },
@@ -296,7 +304,13 @@ export function Home() {
   // v1 is the fallthrough and its markup is untouched: a variant mechanism whose first act
   // is to rewrite the page that already works has a much worse failure mode than one that
   // only adds.
-  const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products };
+  const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products, posts: data?.posts || [] };
+  // A page an admin BUILT wins over a variant they picked. It is the more specific answer,
+  // and a site that has one has said so explicitly — `enabled` plus at least one block, both
+  // required by the API before it will store the flag.
+  if (hasCustomPage('home')) {
+    return <PageRender page={sitePage('home')} ctx={ctx} vars={stats || {}} which={layoutMode} />;
+  }
   if (homeCfg?.variant === 'v2') return <HomeV2 {...ctx} />;
   if (homeCfg?.variant === 'v3') return <HomeV3 {...ctx} />;
 

@@ -6,6 +6,7 @@ import { useAuth } from './pages/auth.jsx';
 import { api } from './lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif } from './lib/notifs.js';
 import { getHero3dDisabled } from './lib/prefs.js';
+import { sitePage } from './lib/site-pages.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
@@ -1208,6 +1209,10 @@ export default function App() {
     void el.offsetWidth;
     el.classList.add('anim-fade');
   }, [loc.pathname]);
+  // Does the page at this address ask for no orb? Only the two buildable pages can, and only
+  // by having been built — a config row nobody touched leaves this false everywhere.
+  const orbOffHere = (loc.pathname === '/' && sitePage('home').orb === 'off')
+    || (loc.pathname === '/dev' && sitePage('dev').orb === 'off');
   // Per-route document title (helps SEO + shows in tabs/history).
   useEffect(() => {
     const p = loc.pathname;
@@ -1229,7 +1234,14 @@ export default function App() {
             Settings row already tells you to do. Not rendering it means no GPU context and
             no render loop, which is the cost that is felt; the three.js chunk is still
             fetched, since index.html preloads it and event-effect.jsx imports it too. */}
-        {!getHero3dDisabled() && <Suspense fallback={null}><Hero3D /></Suspense>}
+        {/* Two votes, and only one of them can turn it ON.
+            The visitor's preference is absolute: somebody who switched the orb off did so for
+            motion, for a weak GPU, or because they did not want it, and no page setting
+            overrides that. A built page can only take it AWAY — which is what a custom
+            landing page with its own full-bleed hero needs, and why there is no `orb: 'on'`.
+            Read at mount like the preference itself: tearing down a live WebGL context on a
+            route change is worse than the backdrop being constant. */}
+        {!getHero3dDisabled() && !orbOffHere && <Suspense fallback={null}><Hero3D /></Suspense>}
         <AppReveal>
           <PromoBadge />
           <EventEffect />

@@ -720,7 +720,11 @@ html.js-anim .reveal-stagger.reveal-instant > * {
    One shape, three sizes, and a colour that comes in as --btn. Coloured by the SURFACE rather
    than by a border, because a button that reads as a button is the whole point of it not being
    a link — and the text picks itself so a red button and a dark-blue one are both legible. */
-.md-body .doc-btn {
+/* `.pb-page` as well as `.md-body`: the page builder places these buttons OUTSIDE a
+   markdown document, and a rule scoped to .md-body made them unstyled anchors there —
+   a class no stylesheet defines, which looks like a broken button and not like a
+   missing selector. Same rule, two homes, rather than a second button. */
+:is(.md-body, .pb-page) .doc-btn {
   --btn: var(--primary);
   display: inline-flex; align-items: center; gap: 7px; vertical-align: middle;
   margin: 2px 4px 2px 0; border-radius: 9px; text-decoration: none; white-space: nowrap;
@@ -735,21 +739,21 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 /* color-contrast() is not in every engine yet. White wins on the brand colours offered, and
    the outline variant below is the escape hatch for a pale custom one. */
 @supports not (color: color-contrast(#000 vs #fff, #111)) {
-  .md-body .doc-btn { color: #fff; }
+  :is(.md-body, .pb-page) .doc-btn { color: #fff; }
 }
-.md-body .doc-btn:hover { filter: brightness(1.08); }
-.md-body .doc-btn:active { transform: translateY(1px); }
-.md-body .doc-btn-sm { font-size: 12px; padding: 5px 11px; }
-.md-body .doc-btn-md { font-size: 13.5px; padding: 8px 15px; }
-.md-body .doc-btn-lg { font-size: 15px; padding: 11px 20px; border-radius: 11px; }
+:is(.md-body, .pb-page) .doc-btn:hover { filter: brightness(1.08); }
+:is(.md-body, .pb-page) .doc-btn:active { transform: translateY(1px); }
+:is(.md-body, .pb-page) .doc-btn-sm { font-size: 12px; padding: 5px 11px; }
+:is(.md-body, .pb-page) .doc-btn-md { font-size: 13.5px; padding: 8px 15px; }
+:is(.md-body, .pb-page) .doc-btn-lg { font-size: 15px; padding: 11px 20px; border-radius: 11px; }
 /* The quiet one: same shape, the colour on the text and the edge. */
-.md-body .doc-btn-outline {
+:is(.md-body, .pb-page) .doc-btn-outline {
   background: transparent; color: var(--btn);
   border-color: color-mix(in srgb, var(--btn) 45%, transparent);
 }
-.md-body .doc-btn-outline:hover { background: color-mix(in srgb, var(--btn) 12%, transparent); filter: none; }
-.md-body .doc-btn .doc-icon { vertical-align: 0; }
-.md-body .doc-btn .doc-icon-svg { width: 1em; height: 1em; }
+:is(.md-body, .pb-page) .doc-btn-outline:hover { background: color-mix(in srgb, var(--btn) 12%, transparent); filter: none; }
+:is(.md-body, .pb-page) .doc-btn .doc-icon { vertical-align: 0; }
+:is(.md-body, .pb-page) .doc-btn .doc-icon-svg { width: 1em; height: 1em; }
 
 /* A link that is a colour rather than the link colour. Underlined like every other link:
    colour alone is not a signal everybody can see, and a coloured word that is not underlined
@@ -1064,3 +1068,44 @@ label:has(> input[type="radio"]) {
  * description must not make the whole page scroll sideways. */
 .poll-rich .md-body pre,
 .poll-rich .md-body table { max-width: 100%; overflow-x: auto; display: block; }
+
+/* ── Page builder ────────────────────────────────────────────────────────────
+   The chrome the EDITOR adds around a block. None of it exists on the live site: the
+   renderer draws the same markup either way and the editing affordances are a wrapper, so
+   "it looked right in the builder" cannot be a sentence anybody says about this. */
+.pb-editing { min-height: 240px; }
+.pb-editing .pb-node {
+  position: relative; outline: 1px dashed transparent; outline-offset: 2px;
+  border-radius: 6px; transition: outline-color .12s ease, background-color .12s ease;
+}
+.pb-editing .pb-node:hover { outline-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+.pb-editing .pb-node.is-selected {
+  outline: 2px solid var(--primary); outline-offset: 2px;
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+}
+/* The block's type, as a tab on its outline. Only while it is hovered or selected: a canvas
+   wearing a label on every block is a diagram, not a preview. */
+.pb-editing .pb-node::before {
+  content: attr(data-label);
+  position: absolute; top: -9px; left: 4px; z-index: 2;
+  font: 600 9.5px/1.6 ui-monospace, monospace; letter-spacing: .04em; text-transform: uppercase;
+  padding: 0 5px; border-radius: 4px; pointer-events: none;
+  background: var(--primary); color: #fff; opacity: 0;
+  transition: opacity .12s ease;
+}
+.pb-editing .pb-node:hover::before, .pb-editing .pb-node.is-selected::before { opacity: 1; }
+/* A block that this layout does not show. Dimmed, not removed — a block that vanishes when
+   you switch to the phone view looks like the editor lost it. */
+.pb-editing .pb-node.is-off { opacity: .38; }
+.pb-editing .pb-node.is-off::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(45deg, transparent 0 6px, color-mix(in srgb, var(--faint) 22%, transparent) 6px 7px);
+}
+.pb-empty {
+  display: grid; place-items: center; min-height: 200px; border-radius: 12px;
+  border: 1px dashed var(--line-strong); color: var(--faint); font-size: 13px; text-align: center; padding: 24px;
+}
+/* The phone preview, on a desktop screen. A real width, so what the admin is looking at is
+   what a phone gets — not a narrow column with desktop breakpoints still applied. */
+.pb-frame { width: 100%; }
+.pb-frame.is-mobile { max-width: 390px; margin-inline: auto; border: 1px solid var(--line); border-radius: 18px; padding: 12px; background: var(--bg-solid); }

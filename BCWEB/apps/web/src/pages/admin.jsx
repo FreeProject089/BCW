@@ -1,4 +1,7 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
+// The page builder pulls in the markdown renderer and the selection toolbar. An admin who
+// opened this screen to approve a submission must not download a page builder to do it.
+const PageBuilder = lazy(() => import('../editor/page-builder.jsx'));
 import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -270,6 +273,7 @@ export function Admin() {
         { id: 'navui', label: t('adm.tab.navui2', 'Topbar'), icon: Navigation },
         { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
         { id: 'homepage', label: t('adm.tab.homepage', 'Home page'), icon: LayoutGrid },
+        { id: 'pagebuilder', label: t('adm.tab.pagebuilder', 'Page builder'), icon: Layers },
       ] },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
@@ -282,6 +286,9 @@ export function Admin() {
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
         {s === 'homepage' && <><ShowcaseEditor /><HomePageEditor /></>}
+        {/* Lazy: the builder carries the whole markdown renderer and the selection toolbar,
+            and an admin who came to moderate a queue must not download a page builder. */}
+        {s === 'pagebuilder' && <Suspense fallback={<Loading />}><PageBuilder /></Suspense>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />

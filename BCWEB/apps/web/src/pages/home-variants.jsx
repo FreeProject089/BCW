@@ -18,21 +18,17 @@
 // admin's toggles follow the choice instead of offering switches for blocks the page does
 // not draw.
 
-import { lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Download, Sparkles, MessageSquareQuote } from 'lucide-react';
-import { Button, Card, Badge } from '../ui/ui.jsx';
-import { thumb } from '../lib/img.js';
-import { AppLogo } from '../ui/brand.jsx';
-import { PollTeaser } from './polls.jsx';
+import { ArrowRight } from 'lucide-react';
+import { Button } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
+// The sections themselves. They used to be inline here, which was fine until the page
+// builder needed to draw the same news strip somewhere an admin chose — two copies of a
+// section is one copy that goes stale.
+import { ProductRows, ShowcasePanel, NewsGrid, NewsFeed, PollCard, ReviewsCard, OffersCard } from './home-sections.jsx';
 // One rule for all three landing pages. Written three times it would be right once:
 // v1 could learn about the signed-in visitor and these two not, and both would render.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
-
-// Same lazy boundary as v1's: a visitor to a site with no showcase configured must not pay
-// for rrweb, whichever landing page they land on.
-const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 
 /** The posts a landing page shows, oldest concern first: is there anything at all. */
 const postsOf = (ctx) => (ctx.data?.posts || []).slice(0, 6);
@@ -75,65 +71,18 @@ export function HomeV2(ctx) {
           {heroNote(user, t) && <p className="mt-3 text-[12px] text-[var(--faint)]">{heroNote(user, t)}</p>}
 
           {show('products') && (
-            <ul className="mt-8 space-y-2">
-              {products.map((p) => (
-                <li key={p.name}>
-                  {/* A row, not a card. Four cards of prose is the v1 answer; somebody who
-                      already knows which one they want should be one click from it. */}
-                  <Link
-                    to={p.to}
-                    className="group flex items-center gap-3 rounded-xl border border-[var(--line)] px-4 py-3 hover:border-[var(--primary)] transition-colors"
-                    style={{ background: 'var(--surface)' }}
-                  >
-                    {p.logo ? <AppLogo name={p.logo} size={22} /> : <p.icon size={20} className="text-[var(--primary-2)]" />}
-                    <span className="min-w-0">
-                      <span className="block font-semibold text-sm">{p.name}</span>
-                      <span className="block text-[12px] text-[var(--muted)] truncate">{p.desc}</span>
-                    </span>
-                    <ArrowRight size={16} className="ml-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--primary)] transition-colors" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <div className="mt-8"><ProductRows products={products} /></div>
           )}
         </div>
 
         {/* The media, big, beside the choice rather than under it. On one screen the
             showcase is the argument; in v1 it is an illustration you scroll to. */}
         <div className="min-w-0">
-          {showcase?.enabled
-            ? <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
-            : (
-              <div className="rounded-2xl border border-[var(--line)] aspect-video grid place-items-center"
-                style={{ background: 'var(--surface)' }}>
-                <Sparkles size={28} className="text-[var(--faint)]" />
-              </div>
-            )}
+          <ShowcasePanel showcase={showcase} />
         </div>
       </section>
 
-      {show('news') && !!posts.length && (
-        <section>
-          <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-lg font-semibold">{t('home.news', 'Latest news')}</h2>
-            <Link to="/blog" className="text-xs text-[var(--muted)] hover:text-[var(--text)]">
-              {t('common.seeAll', 'See all')}
-            </Link>
-          </div>
-          {/* A strip, not a grid of hero images. This is the last thing on the page and it is
-              there to say the project is alive, which a headline does. */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {posts.slice(0, 3).map((p) => (
-              <Link key={p.id} to={`/blog/${p.slug || p.id}`}>
-                <Card className="p-4 h-full hover:border-[var(--primary)] transition-colors">
-                  <div className="text-sm font-semibold leading-snug">{p.title}</div>
-                  {p.excerpt && <p className="mt-1 text-[12px] text-[var(--muted)] line-clamp-2">{p.excerpt}</p>}
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      {show('news') && <NewsGrid posts={posts} limit={3} />}
     </div>
   );
 }
@@ -146,8 +95,6 @@ export function HomeV3(ctx) {
   const { t } = useI18n();
   const { show, pollData, reviewsData, myo, user } = ctx;
   const posts = postsOf(ctx);
-  const reviews = (reviewsData?.reviews || []).slice(0, 3);
-  const offers = (myo?.products || []).slice(0, 3);
 
   return (
     <div className="space-y-10 pt-8">
@@ -173,78 +120,15 @@ export function HomeV3(ctx) {
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         {/* The feed takes two thirds. Everything else on this page is context for it. */}
         <div className="lg:col-span-2 space-y-3">
-          {show('news') && posts.map((p) => (
-            <Link key={p.id} to={`/blog/${p.slug || p.id}`} className="block">
-              <Card className="p-4 flex gap-4 hover:border-[var(--primary)] transition-colors">
-                {p.cover && (
-                  <img src={thumb(p.cover, 160)} alt="" loading="lazy"
-                    className="w-24 h-16 rounded-lg object-cover shrink-0 border border-[var(--line)]" />
-                )}
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold leading-snug">{p.title}</div>
-                  {p.excerpt && <p className="mt-1 text-[12px] text-[var(--muted)] line-clamp-2">{p.excerpt}</p>}
-                  {p.publishedAt && (
-                    <div className="mt-1.5 text-[11px] text-[var(--faint)]">
-                      {new Date(p.publishedAt).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </Link>
-          ))}
-          {show('news') && !posts.length && (
-            <Card className="p-6 text-sm text-[var(--muted)]">{t('home.v3.quiet', 'Nothing new yet.')}</Card>
-          )}
+          {show('news') && <NewsFeed posts={posts} limit={6} />}
         </div>
 
         <aside className="space-y-4">
           {/* The poll is IN the column rather than being its own full-width band. A decision
               being taken is a sidebar fact on a page about what is happening. */}
-          {show('poll') && !!pollData?.polls?.length && (
-            <Card className="p-4">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
-                {t('home.v3.poll', 'Being decided')}
-              </div>
-              <PollTeaser poll={pollData.polls[0]} />
-            </Card>
-          )}
-
-          {show('reviews') && !!reviews.length && (
-            <Card className="p-4">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5">
-                <MessageSquareQuote size={12} /> {t('home.v3.said', 'What people said')}
-              </div>
-              <div className="space-y-3">
-                {reviews.map((r) => (
-                  <blockquote key={r.id} className="text-[12px] leading-relaxed text-[var(--muted)]">
-                    “{r.body}”
-                    <span className="block mt-1 text-[11px] text-[var(--faint)]">— {r.authorName || t('common.anon', 'Anonymous')}</span>
-                  </blockquote>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {show('myo') && !!offers.length && (
-            <Card className="p-4">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
-                {t('home.v3.offers', 'On offer')}
-              </div>
-              <ul className="space-y-2">
-                {offers.map((o) => (
-                  <li key={o.id} className="flex items-center gap-2 text-[12px]">
-                    <span className="min-w-0 truncate">{o.name}</span>
-                    {o.priceCents != null && (
-                      <Badge className="ml-auto shrink-0">{(o.priceCents / 100).toFixed(0)} €</Badge>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <Button as={Link} to="/myo" size="sm" className="mt-3 w-full justify-center">
-                <Download size={13} /> {t('home.v3.myoCta', 'Commission something')}
-              </Button>
-            </Card>
-          )}
+          {show('poll') && <PollCard pollData={pollData} />}
+          {show('reviews') && <ReviewsCard reviewsData={reviewsData} />}
+          {show('myo') && <OffersCard myo={myo} />}
         </aside>
       </div>
     </div>

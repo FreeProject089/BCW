@@ -522,13 +522,25 @@ export default async function miscRoutes(app) {
   app.get('/stats', async () => {
     if (_stats && Date.now() - _stats.at < 60_000) return _stats.data;
     const p = await db();
-    const [items, dl, members, repos] = await Promise.all([
+    // The four the landing pages have always shown, plus the ones the page builder can put
+    // in a `stat` block. All of them are counts of PUBLIC things — a number an admin drops on
+    // the front page must not be a number only staff can see, and the cheapest way to
+    // guarantee that is to never compute one here.
+    const kind = (k) => p.catalogItem.count({ where: { status: 'PUBLISHED', kind: k } });
+    const [items, dl, members, repos, catalogs, posts, projects, apps, plugins, themes, presets] = await Promise.all([
       p.catalogItem.count({ where: { status: 'PUBLISHED' } }),
       p.catalogItem.aggregate({ where: { status: 'PUBLISHED' }, _sum: { downloads: true } }),
       p.user.count(),
       p.serverRepo.count({ where: { published: true } }),
+      // CommunityCatalog has no `published` column: it has `status` and `visibility`. A
+      // count on a field that does not exist throws at query-BUILD time, which a .catch()
+      // would have turned into a permanent, silent zero.
+      p.communityCatalog.count({ where: { status: 'ACTIVE', visibility: 'public' } }),
+      p.blogPost.count({ where: { status: 'PUBLISHED' } }),
+      p.project.count(),
+      kind('APP'), kind('PLUGIN'), kind('THEME'), kind('PRESET'),
     ]);
-    const data = { items, downloads: dl._sum.downloads || 0, members, repos };
+    const data = { items, downloads: dl._sum.downloads || 0, members, repos, catalogs, posts, projects, apps, plugins, themes, presets };
     _stats = { at: Date.now(), data };
     return data;
   });
