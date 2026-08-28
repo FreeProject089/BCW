@@ -12,14 +12,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Save, Trash2, Copy, ChevronUp, ChevronDown, Monitor, Smartphone, Eye, EyeOff,
-  Package, Download, Upload, ExternalLink, RotateCcw, Layers,
+  Package, Download, Upload, ExternalLink, RotateCcw, Layers, LayoutTemplate, X,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { Card, Button, Input, Textarea, Field, Dropdown, Spinner, useToast, useDialog } from '../ui/ui.jsx';
+import { Card, Button, Input, Textarea, Field, Dropdown, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
+import { fmtNum } from '../lib/format.js';
 import { useI18n } from '../i18n.jsx';
 import PageRender from '../pages/page-render.jsx';
 import { setSitePages } from '../lib/site-pages.js';
 import SelectionToolbar from './selection-toolbar.jsx';
+import IconPicker from './icon-picker.jsx';
+import { IconGlyph } from '../ui/md.jsx';
 
 /* ── Tree operations ─────────────────────────────────────────────────────────
    All pure, all returning a new tree. The editor holds one piece of state — the page — and
@@ -117,6 +120,7 @@ const SELECT = (options) => ({ kind: 'select', options });
  * exact failure the gate exists to catch.
  */
 const LABELS = (t) => ({
+    accent: t('pb.f.accent', 'Accent colour'),
     align: t('pb.f.align', 'Align'),
     alttext: t('pb.f.alttext', 'Alt text'),
     background: t('pb.f.background', 'Background'),
@@ -133,13 +137,19 @@ const LABELS = (t) => ({
     icon: t('pb.f.icon', 'Icon'),
     imageurl: t('pb.f.imageurl', 'Image URL'),
     label: t('pb.f.label', 'Label'),
+    mediacolour: t('pb.f.mediacolour', 'Strip colour'),
+    mediastrip: t('pb.f.mediastrip', 'Media strip'),
+    mincardwidth: t('pb.f.mincardwidth', 'Narrowest card'),
     level: t('pb.f.level', 'Level'),
     link: t('pb.f.link', 'Link'),
     number: t('pb.f.number', 'Number'),
     padding: t('pb.f.padding', 'Padding'),
+    showheading: t('pb.f.showheading', 'Show the heading'),
     size: t('pb.f.size', 'Size'),
+    spacing: t('pb.f.spacing', 'Spacing'),
     style: t('pb.f.style', 'Style'),
     text: t('pb.f.text', 'Text'),
+    title: t('pb.f.title', 'Title'),
     width: t('pb.f.width', 'Width'),
     widthshare: t('pb.f.widthshare', 'Width share'),
     wrap: t('pb.f.wrap', 'Wrap'),
@@ -148,7 +158,9 @@ const LABELS = (t) => ({
 const FIELDS = {
   section: [
     ['pad', 'padding', SELECT(['none', 'sm', 'md', 'lg'])],
+    ['maxw', 'width', SELECT(['wide', 'narrow', 'prose'])],
     ['bg', 'background', SELECT(['none', 'surface', 'surface2'])],
+    ['radius', 'cornerradius', { kind: 'number', min: 0, max: 40 }],
     ['full', 'fullwidth', { kind: 'bool' }],
   ],
   row: [
@@ -160,6 +172,21 @@ const FIELDS = {
   col: [
     ['span', 'widthshare', { kind: 'number', min: 1, max: 6 }],
     ['align', 'align', SELECT(['start', 'center', 'end', 'stretch'])],
+  ],
+  cards: [
+    ['cols', 'columns', SELECT(['auto', '1', '2', '3', '4', '5', '6'])],
+    ['min', 'mincardwidth', { kind: 'number', min: 140, max: 480 }],
+    ['gap', 'gap', SELECT(['none', 'sm', 'md', 'lg'])],
+  ],
+  card: [
+    ['title', 'title', { kind: 'text' }],
+    ['href', 'link', { kind: 'text' }],
+    ['icon', 'icon', { kind: 'icon' }],
+    ['media', 'mediastrip', SELECT(['none', 'short', 'tall'])],
+    ['image', 'imageurl', { kind: 'text' }],
+    ['bg', 'mediacolour', { kind: 'colour' }],
+    ['accent', 'accent', { kind: 'colour' }],
+    ['align', 'align', SELECT(['left', 'center', 'right'])],
   ],
   heading: [
     ['text', 'text', { kind: 'text' }],
@@ -177,7 +204,7 @@ const FIELDS = {
     ['href', 'link', { kind: 'text' }],
     ['style', 'style', SELECT(['primary', 'outline'])],
     ['size', 'size', SELECT(['sm', 'md', 'lg'])],
-    ['icon', 'icon', { kind: 'text' }],
+    ['icon', 'icon', { kind: 'icon' }],
   ],
   image: [
     ['src', 'imageurl', { kind: 'text' }],
@@ -187,13 +214,113 @@ const FIELDS = {
     ['height', 'fixedheight', { kind: 'number', min: 0, max: 900 }],
   ],
   spacer: [['size', 'height', { kind: 'number', min: 0, max: 400 }]],
-  divider: [['width', 'width', SELECT(['full', 'short'])]],
+  divider: [
+    ['style', 'style', SELECT(['line', 'dashed', 'dots', 'gradient', 'space'])],
+    ['label', 'label', { kind: 'text' }],
+    ['width', 'width', SELECT(['full', 'short'])],
+    ['space', 'spacing', SELECT(['none', 'sm', 'md', 'lg'])],
+  ],
   stat: [
     ['variable', 'number', { kind: 'variable' }],
     ['label', 'label', { kind: 'text' }],
-    ['icon', 'icon', { kind: 'text' }],
+    ['style', 'style', SELECT(['tile', 'big', 'inline'])],
+    ['icon', 'icon', { kind: 'icon' }],
   ],
-  news: [['limit', 'howmany', { kind: 'number', min: 1, max: 12 }]],
+  news: [
+    ['style', 'style', SELECT(['grid', 'feed', 'list'])],
+    ['limit', 'howmany', { kind: 'number', min: 1, max: 12 }],
+    ['heading', 'showheading', { kind: 'bool' }],
+  ],
+  products: [['style', 'style', SELECT(['rows', 'cards'])]],
+  reviews: [
+    ['style', 'style', SELECT(['cards', 'quotes'])],
+    ['limit', 'howmany', { kind: 'number', min: 1, max: 9 }],
+  ],
+  myo: [['limit', 'howmany', { kind: 'number', min: 1, max: 9 }]],
+};
+
+/* ── Starting points ─────────────────────────────────────────────────────────
+   "Show me the home page and let me edit it."
+
+   The three landing pages are JSX, so there is nothing to import from them: a page built out
+   of blocks and a page written as a component are different objects, and pretending otherwise
+   would mean a builder that shows you something it cannot actually change.
+
+   What it CAN do is rebuild each one out of the palette. Every band of the live page is
+   either a dynamic block (the showcase, the products, the news — the same components the real
+   page calls) or a heading and a paragraph you can now rewrite. Press the button and the
+   canvas shows the page you already have; from that point every part of it is yours.
+
+   `{{…}}` in the copy is deliberate: the first thing most people want from a landing page is
+   a real number in the first sentence, and this puts one there to be edited rather than
+   discovered in a panel. */
+const nid = () => `b${Math.random().toString(36).slice(2, 9)}`;
+const B = (type, props = {}, children) => ({ id: nid(), type, props, ...(children ? { children } : {}) });
+
+export const STARTERS = {
+  v1: (t) => [
+    B('section', { pad: 'lg', maxw: 'wide' }, [
+      B('heading', { text: t('pb.start.h1', 'The home for every Better* project'), level: 1, align: 'center', gradient: true }),
+      B('text', {
+        md: t('pb.start.lede', 'Catalogs, presets, hosting and accounts — {{members}} members and {{items}} published items so far.'),
+        align: 'center', width: 'prose',
+      }),
+      B('row', { cols: 'auto', gap: 'md', align: 'center' }, [
+        B('button', { label: t('pb.start.cta', 'Browse the catalog'), href: '/catalog', style: 'primary', size: 'lg', icon: 'box' }),
+        B('button', { label: t('pb.start.cta2', 'Host a repo'), href: '/hosting', style: 'outline', size: 'lg' }),
+      ]),
+    ]),
+    B('section', { pad: 'md' }, [B('showcase', {})]),
+    B('section', { pad: 'md' }, [
+      B('heading', { text: t('pb.start.products', 'The apps'), level: 2 }),
+      B('products', { style: 'cards' }),
+    ]),
+    B('divider', { style: 'gradient', space: 'lg' }),
+    B('section', { pad: 'md' }, [
+      B('row', { cols: '4', gap: 'md', align: 'center' }, [
+        B('stat', { variable: 'members', label: t('pb.start.s1', 'members'), icon: 'users', style: 'tile' }),
+        B('stat', { variable: 'items', label: t('pb.start.s2', 'published'), icon: 'package', style: 'tile' }),
+        B('stat', { variable: 'downloads', label: t('pb.start.s3', 'downloads'), icon: 'download', style: 'tile' }),
+        B('stat', { variable: 'repos', label: t('pb.start.s4', 'repositories'), icon: 'server', style: 'tile' }),
+      ]),
+    ]),
+    B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
+    B('section', { pad: 'md' }, [B('reviews', { style: 'quotes', limit: 3 })]),
+    B('section', { pad: 'md' }, [B('myo', { limit: 3 })]),
+  ],
+  v2: (t) => [
+    B('section', { pad: 'md' }, [
+      B('row', { cols: '2', gap: 'lg', align: 'center' }, [
+        B('col', { span: 1 }, [
+          B('heading', { text: t('pb.start.h1', 'The home for every Better* project'), level: 1, gradient: true }),
+          B('text', { md: t('pb.start.lede2', 'Pick the one you came for.'), width: 'prose' }),
+          B('products', { style: 'rows' }),
+        ]),
+        B('col', { span: 1 }, [B('showcase', {})]),
+      ]),
+    ]),
+    B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
+  ],
+  v3: (t) => [
+    B('section', { pad: 'sm' }, [
+      B('heading', { text: t('pb.start.h3', 'What\u2019s happening'), level: 1 }),
+    ]),
+    B('section', { pad: 'sm' }, [
+      B('row', { cols: '3', gap: 'md', align: 'start' }, [
+        B('col', { span: 2 }, [B('news', { style: 'feed', limit: 6, heading: false })]),
+        B('col', { span: 1 }, [B('poll', {}), B('reviews', { style: 'cards', limit: 3 }), B('myo', { limit: 3 })]),
+      ]),
+    ]),
+  ],
+  dev: (t) => [
+    B('section', { pad: 'lg', maxw: 'narrow' }, [
+      B('heading', { text: t('pb.start.dev', 'Build on BetterCommunity'), level: 1, align: 'center', gradient: true }),
+      B('text', { md: t('pb.start.devlede', 'An API, webhooks, deeplinks and an OpenID provider.'), align: 'center', width: 'prose' }),
+    ]),
+    B('section', { pad: 'md' }, [B('devtools', {})]),
+    B('divider', { style: 'dots', space: 'lg' }),
+    B('section', { pad: 'md' }, [B('news', { style: 'list', limit: 5 })]),
+  ],
 };
 
 /* ── The editor ──────────────────────────────────────────────────────────── */
@@ -254,6 +381,27 @@ export default function PageBuilder() {
   const setTree = (next) => {
     if (which === 'mobile') setPage({ mobile: next });
     else setPage({ desktop: next });
+  };
+
+  /**
+   * Fill the canvas with a rebuild of one of the live landing pages.
+   *
+   * Refuses over a page that already has blocks in it, because "start from" and "replace
+   * everything I have built" are the same click otherwise, and one of them is unrecoverable
+   * once the undo stack is 30 deep.
+   */
+  const startFrom = async (key) => {
+    if (tree.length) {
+      const ok = await dialog.confirm({
+        title: t('pb.start.replaceT', 'Replace what is on this page?'),
+        body: t('pb.start.replaceB', 'This page already has blocks. Starting from a layout replaces all of them.'),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const make = STARTERS[key];
+    if (make) setTree(make(t));
+    setSel(null);
   };
 
   const undo = () => {
@@ -401,8 +549,25 @@ export default function PageBuilder() {
       {/* A page that is switched on and has nothing in it is refused on save. Saying so here
           is cheaper than saying so after somebody has arranged the rest of the screen. */}
       {page.enabled && !page.desktop?.length && (
-        <p className="text-[11px] text-warning">{t('pb.warnEmpty', 'This page is switched on but has no blocks — add one before saving.')}</p>
+        <p className="text-[11px] text-warning">{t('pb.warnEmpty', 'This page is switched on but has no blocks \u2014 add one before saving.')}</p>
       )}
+
+      {/* Start from the page that is live.
+          A blank canvas is the wrong first screen for this: nobody wants to rebuild their own
+          home page from an empty box, and the fastest way to understand the palette is to see
+          a page you recognise made out of it. */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-[var(--muted)]">{t('pb.start.label', 'Start from:')}</span>
+        {(pageKey === 'home'
+          ? [['v1', t('pb.start.v1', 'The long landing page')], ['v2', t('pb.start.v2', 'One screen')], ['v3', t('pb.start.v3', 'What\u2019s happening')]]
+          : [['dev', t('pb.start.devp', 'The developer hub')]]
+        ).map(([k, label]) => (
+          <Button key={k} size="sm" variant="ghost" onClick={() => startFrom(k)}>
+            <LayoutTemplate size={13} /> {label}
+          </Button>
+        ))}
+        <span className="text-[var(--faint)]">{t('pb.start.note', '\u2014 rebuilt out of blocks, then yours to change')}</span>
+      </div>
 
       <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_280px] gap-4 items-start">
         {/* ── Palette ── */}
@@ -575,14 +740,25 @@ export default function PageBuilder() {
             </>
           )}
 
+          {/* The numbers, with the number.
+              A list of names is a list of things to go and look up; a name beside its live
+              value is a decision you can make here. Click one and the placeholder is on the
+              clipboard, ready to paste into whichever field you are in — the editor cannot
+              know that, and guessing wrong would overwrite a caption. */}
           <div className="pt-2 border-t border-[var(--line)]">
             <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('pb.vars', 'Numbers you can use')}</div>
-            <p className="text-[11px] text-[var(--muted)] mb-1.5">{t('pb.vars.how', 'Type {{name}} in any heading or text block.')}</p>
-            <div className="flex flex-wrap gap-1">
+            <p className="text-[11px] text-[var(--muted)] mb-2">{t('pb.vars.how2', 'Click one to copy its placeholder, then paste it into any title or text block. A stat block draws the same number as a tile.')}</p>
+            <div className="space-y-0.5">
               {(cfg.variables || []).map((v) => (
-                <code key={v} className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--line)]">
-                  {'{{'}{v}{'}}'} <span className="text-[var(--faint)]">{live.stats?.[v] ?? 0}</span>
-                </code>
+                <button
+                  key={v} type="button"
+                  onClick={() => { copyText(`{{${v}}}`); toast.success(t('pb.vars.copied', 'Copied {x}').replace('{x}', `{{${v}}}`)); }}
+                  className="w-full flex items-baseline gap-2 px-1.5 py-1 rounded-lg text-left hover:bg-[var(--surface-2)] transition-colors group"
+                >
+                  <code className="text-[10.5px] text-[var(--muted)] group-hover:text-[var(--text)]">{'{{'}{v}{'}}'}</code>
+                  <span className="ml-auto text-[12px] font-semibold tabular-nums">{fmtNum(live.stats?.[v] ?? 0)}</span>
+                  <Copy size={11} className="shrink-0 text-[var(--faint)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
               ))}
             </div>
           </div>
@@ -605,6 +781,7 @@ export default function PageBuilder() {
 function PropField({ label, spec, value, onChange, variables }) {
   const { t } = useI18n();
   const ref = useRef(null);
+  const [pick, setPick] = useState(false);
   if (spec.kind === 'bool') {
     return (
       <label className="flex items-center gap-2 text-xs">
@@ -626,6 +803,50 @@ function PropField({ label, spec, value, onChange, variables }) {
       <Field label={label}>
         <Dropdown value={String(value ?? variables[0] ?? '')} onChange={onChange}
           options={variables.map((o) => ({ value: o, label: o }))} />
+      </Field>
+    );
+  }
+  if (spec.kind === 'icon') {
+    return (
+      <Field label={label}>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button" onClick={() => setPick(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-sm text-[var(--muted)] hover:text-[var(--text)] min-w-0"
+          >
+            {value ? <IconGlyph name={value} size={15} /> : null}
+            <span className="truncate">{value || t('pb.f.pickicon', 'Pick\u2026')}</span>
+          </button>
+          {value && (
+            <button type="button" onClick={() => onChange('')} className="p-1 text-[var(--faint)] hover:text-error" aria-label={t('common.clear', 'Clear')}>
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        {pick && <IconPicker title={t('pb.f.pickicon', 'Pick\u2026')} onPick={(n) => { onChange(n); setPick(false); }} onClose={() => setPick(false)} />}
+      </Field>
+    );
+  }
+  if (spec.kind === 'colour') {
+    // A swatch AND the text, because a colour here can be a CSS variable or a gradient, which
+    // a native colour input cannot express \u2014 and losing that would make the field narrower
+    // than the renderer it feeds.
+    const hex = /^#[0-9a-f]{3,8}$/i.test(String(value || '')) ? value : '#888888';
+    return (
+      <Field label={label}>
+        <div className="flex items-center gap-1.5">
+          <input
+            type="color" value={hex} onChange={(e) => onChange(e.target.value)}
+            className="w-8 h-8 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0 cursor-pointer"
+            aria-label={label}
+          />
+          <Input value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder="#0a7 \u00b7 var(\u2013\u2013primary)" />
+          {value && (
+            <button type="button" onClick={() => onChange('')} className="p-1 text-[var(--faint)] hover:text-error" aria-label={t('common.clear', 'Clear')}>
+              <X size={13} />
+            </button>
+          )}
+        </div>
       </Field>
     );
   }

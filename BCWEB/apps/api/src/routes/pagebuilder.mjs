@@ -36,27 +36,51 @@ export const BUILDABLE = ['home', 'dev'];
  */
 export const BLOCKS = {
   // ── Layout ──
-  section: { kind: 'layout', props: { pad: 'md', bg: 'none', full: false } },
+  section: { kind: 'layout', props: { pad: 'md', bg: 'none', full: false, radius: 0, maxw: 'wide' } },
   row:     { kind: 'layout', props: { gap: 'md', align: 'stretch', wrap: true, cols: 'auto' } },
   col:     { kind: 'layout', props: { span: 1, align: 'start' } },
+  /**
+   * A card, and a grid of them.
+   *
+   * Layout blocks rather than a title-and-blurb pair, because the moment a card can only hold
+   * two strings somebody needs a third and the answer is a second card type. Children mean a
+   * card holds whatever the palette holds — including a `text` block, which is markdown, which
+   * is everything.
+   *
+   * The props are the frame: what the card looks like and where it goes. `image` and `bg` are
+   * the two ways to fill the top; `icon` sits on either.
+   */
+  cards:   { kind: 'layout', props: { cols: 'auto', gap: 'md', min: 240 } },
+  card:    { kind: 'layout', props: { title: '', href: '', icon: '', image: '', bg: '', accent: '', media: 'none', align: 'left' } },
   // ── Content ──
   heading: { kind: 'content', props: { text: '', level: 2, align: 'left', gradient: false } },
   text:    { kind: 'content', props: { md: '', align: 'left', width: 'prose' } },
   button:  { kind: 'content', props: { label: '', href: '/', style: 'primary', icon: '', size: 'md' } },
   image:   { kind: 'content', props: { src: '', alt: '', radius: 12, fit: 'cover', height: 0 } },
   spacer:  { kind: 'content', props: { size: 32 } },
-  divider: { kind: 'content', props: { width: 'full' } },
-  stat:    { kind: 'content', props: { variable: 'members', label: '', icon: '' } },
+  /**
+   * A rule between two things.
+   *
+   * `style` because a divider is the one element on a page whose whole job is tone: a hairline
+   * says "next section", a row of dots says "pause", a gradient says "the page ends here". One
+   * of them drawn three ways is one block; three blocks would be three names to learn.
+   */
+  divider: { kind: 'content', props: { width: 'full', style: 'line', space: 'md', label: '' } },
+  stat:    { kind: 'content', props: { variable: 'members', label: '', icon: '', style: 'tile' } },
   // ── Dynamic: the sections the landing pages already draw ──
   // No `orb` here on purpose. The orb is a site-wide backdrop mounted once in App.jsx, not a
   // section inside a page — a block that "contains" it would be a second one behind the first.
   // Whether a page has it is a page-level setting, below.
+  //
+  // Each one takes a `style`, because "the news" is a different section on a page that opens
+  // with it and on a page that ends with it. Same data, same component, different shape — and
+  // a second block type per shape would be a second thing to keep in step.
   showcase:  { kind: 'dynamic', props: {} },
-  products:  { kind: 'dynamic', props: {} },
-  news:      { kind: 'dynamic', props: { limit: 6 } },
+  products:  { kind: 'dynamic', props: { style: 'rows' } },
+  news:      { kind: 'dynamic', props: { limit: 6, style: 'grid', heading: true } },
   poll:      { kind: 'dynamic', props: {} },
-  reviews:   { kind: 'dynamic', props: {} },
-  myo:       { kind: 'dynamic', props: {} },
+  reviews:   { kind: 'dynamic', props: { style: 'cards', limit: 3 } },
+  myo:       { kind: 'dynamic', props: { limit: 3 } },
   devtools:  { kind: 'dynamic', props: {} },
 };
 export const BLOCK_TYPES = Object.keys(BLOCKS);

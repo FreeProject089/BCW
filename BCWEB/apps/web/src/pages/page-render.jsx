@@ -69,16 +69,119 @@ const BG = {
   surface: 'var(--surface)',
   surface2: 'var(--surface-2)',
 };
+// How wide a section's content is allowed to get. A landing page is a column of different
+// widths — a hero is wide, a paragraph is not — and "full" here means the section's own
+// container, not the viewport.
+const MAXW = { wide: '', narrow: 'max-w-3xl mx-auto', prose: 'max-w-prose mx-auto', full: '' };
+const SPACE = { none: 'my-0', sm: 'my-3', md: 'my-8', lg: 'my-16' };
 
-/** A number-and-label tile, for a `stat` block. */
-function Stat({ value, label, icon }) {
+/**
+ * A number and what it counts.
+ *
+ * Three shapes, because the same figure is a different thing in a row of four and in the
+ * middle of a sentence. `big` is the one a hero uses; `inline` is the one prose uses.
+ */
+function Stat({ value, label, icon, style = 'tile' }) {
+  if (style === 'inline') {
+    return (
+      <span className="inline-flex items-baseline gap-1.5">
+        {icon && <IconGlyph name={icon} size={14} className="text-[var(--primary-2)] self-center" />}
+        <b className="tabular-nums">{value}</b>
+        {label && <span className="text-[var(--muted)]">{label}</span>}
+      </span>
+    );
+  }
+  const big = style === 'big';
   return (
     <div className="text-center">
-      {icon && <IconGlyph name={icon} size={20} className="mx-auto mb-1.5 text-[var(--primary-2)]" />}
-      <div className="text-3xl font-extrabold tracking-tight tabular-nums">{value}</div>
-      {label && <div className="mt-1 text-[12px] uppercase tracking-wider text-[var(--faint)]">{label}</div>}
+      {icon && <IconGlyph name={icon} size={big ? 26 : 20} className="mx-auto mb-1.5 text-[var(--primary-2)]" />}
+      <div className={`${big ? 'text-5xl md:text-6xl' : 'text-3xl'} font-extrabold tracking-tight tabular-nums`}>{value}</div>
+      {label && <div className={`mt-1 ${big ? 'text-[13px]' : 'text-[12px]'} uppercase tracking-wider text-[var(--faint)]`}>{label}</div>}
     </div>
   );
+}
+
+/**
+ * A rule, in the four tones a page needs.
+ *
+ * A `label` turns it into a section marker — a line, a word, a line — which is the one thing
+ * a divider is asked to do that a bare rule cannot.
+ */
+function Divider({ width, style = 'line', space = 'md', label = '' }) {
+  const short = width === 'short';
+  const cls = `${SPACE[space] ?? SPACE.md} ${short ? 'w-24 mx-auto' : ''}`;
+  if (label) {
+    return (
+      <div className={`flex items-center gap-3 ${SPACE[space] ?? SPACE.md}`}>
+        <span className="flex-1 h-px bg-[var(--line)]" />
+        <span className="text-[11px] uppercase tracking-wider text-[var(--faint)] shrink-0">{label}</span>
+        <span className="flex-1 h-px bg-[var(--line)]" />
+      </div>
+    );
+  }
+  if (style === 'dots') {
+    return <div className={`${cls} text-center text-[var(--faint)] tracking-[0.6em] select-none`} aria-hidden>···</div>;
+  }
+  if (style === 'gradient') {
+    return (
+      <div className={cls} aria-hidden
+        style={{ height: 1, background: 'linear-gradient(90deg, transparent, var(--line-strong), transparent)' }} />
+    );
+  }
+  if (style === 'space') return <div className={cls} aria-hidden style={{ height: 1 }} />;
+  return <hr className={`border-[var(--line)] ${cls}`} style={style === 'dashed' ? { borderTopStyle: 'dashed' } : undefined} />;
+}
+
+/**
+ * A card.
+ *
+ * Holds children, so it holds anything the palette holds — including a markdown block. The
+ * props are the frame: a media strip on top (an image, or a colour when there is no art yet),
+ * an icon, a title, and optionally the whole thing being a link.
+ *
+ * `accent` colours the border and the icon rather than the background, because a card whose
+ * background is the accent is a button, and a grid of them is unreadable.
+ */
+function PbCard({ p, vars, children }) {
+  const accent = String(p.accent || '').trim();
+  const media = p.media && p.media !== 'none';
+  const inner = (
+    <>
+      {media && (
+        <div
+          className="rounded-t-[13px] overflow-hidden"
+          style={{
+            height: p.media === 'tall' ? 160 : 96,
+            background: p.image ? undefined : (p.bg || 'linear-gradient(120deg, var(--surface-2), var(--surface))'),
+          }}
+        >
+          {p.image && <img src={p.image} alt="" loading="lazy" className="w-full h-full object-cover" />}
+        </div>
+      )}
+      <div className={`p-4 ${ALIGN[p.align] ?? ''}`}>
+        {p.icon && (
+          <span
+            className="inline-grid place-items-center w-9 h-9 rounded-xl mb-2 border border-[var(--line)]"
+            style={{ background: 'var(--surface-2)', color: accent || 'var(--primary-2)' }}
+          >
+            <IconGlyph name={p.icon} size={18} />
+          </span>
+        )}
+        {p.title && <div className="font-semibold text-[15px] leading-snug">{fillVars(p.title, vars)}</div>}
+        {children}
+      </div>
+    </>
+  );
+  const cls = 'pb-card block rounded-[14px] border overflow-hidden transition-colors h-full';
+  const st = {
+    background: 'var(--surface)',
+    borderColor: accent ? `color-mix(in srgb, ${accent} 45%, var(--line))` : 'var(--line)',
+  };
+  return String(p.href || '').startsWith('/')
+    ? <Link to={p.href} className={cls} style={st}>{inner}</Link>
+    : p.href
+      ? <a href={p.href} className={cls} style={st} target="_blank" rel="noreferrer noopener">{inner}</a>
+      : <div className={cls} style={st}>{inner}</div>;
 }
 
 /** The four places a developer actually goes, for a `devtools` block on /dev. */
@@ -148,9 +251,12 @@ function Node({ node, ctx, vars, which, edit }) {
       return (
         <section
           className={`${PAD[p.pad] ?? PAD.md} ${p.full ? '-mx-4 px-4 sm:-mx-6 sm:px-6' : ''}`}
-          style={bg ? { background: bg } : undefined}
+          style={{ ...(bg ? { background: bg } : {}), ...(Number(p.radius) ? { borderRadius: Number(p.radius) } : {}) }}
         >
-          {kids}
+          {/* The width lives on an inner wrapper, not the section: a full-bleed band with a
+              narrow column inside it is the commonest landing-page shape, and putting the
+              max-width on the section itself makes the two mutually exclusive. */}
+          <div className={MAXW[p.maxw] ?? ''}>{kids}</div>
         </section>
       );
     }
@@ -174,6 +280,26 @@ function Node({ node, ctx, vars, which, edit }) {
       // `min-w-0` is not decoration: without it an unbreakable string in a child blows the
       // column past its track and takes the page's horizontal scroll with it.
       return <div className={`min-w-0 ${ITEMS[p.align] ?? ''}`} style={{ flex: Number(p.span) > 1 ? `${p.span} 1 0%` : undefined }}>{kids}</div>;
+    case 'cards': {
+      // `auto` fills the row with as many as fit at `min` px. A number is that many across,
+      // which is what somebody means by "three cards".
+      const n = Number(p.cols);
+      const fixed = Number.isFinite(n) && n >= 1 && n <= 6;
+      return (
+        <div
+          className={`grid ${GAP[p.gap] ?? GAP.md}`}
+          style={{
+            gridTemplateColumns: fixed
+              ? `repeat(${n}, minmax(0, 1fr))`
+              : `repeat(auto-fit, minmax(min(${Math.max(140, Math.min(480, Number(p.min) || 240))}px, 100%), 1fr))`,
+          }}
+        >
+          {kids}
+        </div>
+      );
+    }
+    case 'card':
+      return <PbCard p={p} vars={vars}>{kids}</PbCard>;
 
     /* ── Content ── */
     case 'heading': {
@@ -215,20 +341,27 @@ function Node({ node, ctx, vars, which, edit }) {
     case 'spacer':
       return <div style={{ height: Math.max(0, Math.min(400, Number(p.size) || 0)) }} />;
     case 'divider':
-      return <hr className={`border-[var(--line)] ${p.width === 'short' ? 'w-24 mx-auto' : ''}`} />;
+      return <Divider {...p} label={fillVars(p.label, vars)} />;
     case 'stat':
-      return <Stat value={fmtNum(vars?.[p.variable] ?? 0)} label={fillVars(p.label, vars)} icon={p.icon} />;
+      return (
+        <Stat
+          value={fmtNum(vars?.[p.variable] ?? 0)} label={fillVars(p.label, vars)}
+          icon={p.icon} style={p.style}
+        />
+      );
 
     /* ── Dynamic: the sections the landing pages draw, wherever they were dropped ── */
     case 'showcase': return <ShowcasePanel showcase={ctx.showcase} />;
-    case 'products': return <ProductRows products={ctx.products || []} />;
+    case 'products': return <ProductRows products={ctx.products || []} style={p.style} />;
     case 'news':
-      return Number(p.limit) > 3
-        ? <NewsFeed posts={ctx.posts || []} limit={Number(p.limit)} />
-        : <NewsGrid posts={ctx.posts || []} limit={Number(p.limit) || 3} />;
+      // The style is the choice now, not a threshold on the count. `limit > 3 ? feed : grid`
+      // meant asking for four headlines silently changed the section's shape.
+      return p.style === 'feed'
+        ? <NewsFeed posts={ctx.posts || []} limit={Number(p.limit) || 6} />
+        : <NewsGrid posts={ctx.posts || []} limit={Number(p.limit) || 3} heading={p.heading !== false} compact={p.style === 'list'} />;
     case 'poll': return <PollCard pollData={ctx.pollData} />;
-    case 'reviews': return <ReviewsCard reviewsData={ctx.reviewsData} />;
-    case 'myo': return <OffersCard myo={ctx.myo} />;
+    case 'reviews': return <ReviewsCard reviewsData={ctx.reviewsData} limit={Number(p.limit) || 3} style={p.style} />;
+    case 'myo': return <OffersCard myo={ctx.myo} limit={Number(p.limit) || 3} />;
     case 'devtools': return <DevTools />;
 
     default:
