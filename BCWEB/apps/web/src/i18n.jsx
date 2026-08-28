@@ -3264,7 +3264,7 @@ const DICT = {
     'devmd.tryNote': 'Rien n’est enregistré ici. Le vocabulaire complet, bloc par bloc, est dans le guide Markdown.',
     'devmd.guide': 'Ouvrir le guide',
     'devmd.install': 'Mets-le dans ton projet',
-    'devmd.install.1': 'Copie les cinq fichiers du kit — le moteur de rendu, sa passe de nesting, la table des emoji, les logos de marque et une feuille de style. Il n’y a aucun paquet à publier et rien à configurer pour afficher le premier document.',
+    'devmd.install.1': 'Copie les six fichiers du kit — le moteur de rendu, ses passes de nesting et de raccourcis, la table des emoji, les logos de marque et une feuille de style. Il n’y a aucun paquet à publier et rien à configurer pour afficher le premier document.',
     'devmd.install.2': 'Trois autres sont optionnels et ne se chargent que si un document en a besoin : un projet qui n’écrit jamais de mathématiques ne télécharge jamais de moteur de composition. Sans eux, un bloc de code reste un bloc de code stylé et une formule reste son texte source — rien ne casse.',
     'devmd.inject': 'Les deux blocs qu’il ne fournit pas',
     'devmd.inject.1': '« :::roadmap » est un suivi d’avancement et « :::replay » un lecteur de session. Embarquer l’un ou l’autre coûterait une dépendance à chaque projet pour un bloc que la plupart des documents n’utilisent jamais : tu passes donc les tiens — et un projet qui n’en a aucun obtient un encadré disant quel composant manque, plutôt qu’un plantage.',

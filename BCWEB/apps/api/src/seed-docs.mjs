@@ -880,7 +880,7 @@ you can write the word you mean — \`info\` = note, \`hint\` = tip, \`check\` =
 That renders a coloured callout like this one.
 :::
 
-\`:::callout{icon=rocket color=#c2410c}[Title]\` picks its own icon (any [lucide](https://lucide.dev)
+\`:::callout[Title]{icon=rocket color=#c2410c}\` picks its own icon (any [lucide](https://lucide.dev)
 name) and colour — \`:::custom\` is the same block under the name the editor's Blocks menu uses.
 
 ## Steps

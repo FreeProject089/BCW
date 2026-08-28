@@ -16,6 +16,7 @@ renderer, not a copy: `apps/web/src/ui/md.jsx` is a thirty-line adapter around t
 | `index.jsx` | the renderer, `<Markdown>` and the pieces it exports |
 | `nesting.js` | the pre-pass that makes `:::` blocks nest the way people write them |
 | `emoji.js` | 384 `:shortcode:` names — replace this file to bring your own set |
+| `shorthand.js` | the pre-parser rewrites: `> [!NOTE]` alerts and bare `[NEW]` chips |
 | `brands.jsx` | brand marks (Discord, Ko-fi, YouTube…) — lucide has none of these |
 | `markdown.css` | every style, scoped to `.md-body` and `.doc-*` |
 

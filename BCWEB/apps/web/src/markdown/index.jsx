@@ -9,6 +9,9 @@ import remarkDirective from 'remark-directive';
 import './markdown.css';
 import { normalizeDirectiveNesting } from './nesting.js';
 import { replaceEmoji } from './emoji.js';
+import { preprocessMd } from './shorthand.js';
+// Re-exported: ~20 files import it from here, and the move is an implementation detail.
+export { preprocessMd } from './shorthand.js';
 // The brand marks, from the file that already draws them in the footer and on the home
 // page. They were reachable here only as a lucide name, which means `youtube` came off a
 // CDN as a monochrome mask and `discord`, `kofi`, `patreon` and `steam` rendered NOTHING —
@@ -259,24 +262,14 @@ const CALLOUTS = {
   warning: 'warning', caution: 'warning', important: 'warning', danger: 'danger', error: 'danger',
 };
 // Default lucide icon + fallback title per callout kind. Custom callouts
-// (`:::callout{icon=… color=…}[Title]`) pick their own icon/colour.
+// (`:::callout[Title]{icon=… color=…}`) pick their own icon/colour. The label comes FIRST:
+// remark-directive reads `[label]` only immediately after the name, so `{attrs}[Label]` is
+// not a directive at all — the whole line renders as literal text.
 const CALLOUT_ICON = { info: 'info', tip: 'tip', success: 'success', warning: 'warning', danger: 'danger', custom: 'info' };
 const CALLOUT_LABEL = { info: 'Note', tip: 'Tip', success: 'Success', warning: 'Warning', danger: 'Danger', custom: 'Note' };
 // Build an inline lucide-icon element node (rendered by the DocIcon component).
 const iconNode = (nm) => ({ type: 'emphasis', data: { hName: 'doc-icon', hProperties: { className: ['doc-icon'], 'data-name': nm } }, children: [] });
 
-// [NEW] [FIXED] … → coloured chips (EN + FR spellings) — kept for update-note parity.
-const BADGES = {
-  NEW: 'new', NOUVEAU: 'new', FIXED: 'fixed', 'FIXÉ': 'fixed', IMPROVED: 'improved', 'AMÉLIORÉ': 'improved',
-  REFINE: 'refine', RAFFINEMENT: 'refine', VISUAL: 'visual', VISUEL: 'visual', MAJOR: 'major', MAJEUR: 'major',
-};
-const ALERTS = {
-  NOTE: 'note', REMARQUE: 'note', TIP: 'tip', ASTUCE: 'tip', IMPORTANT: 'important',
-  WARNING: 'warning', AVERTISSEMENT: 'warning', CAUTION: 'caution', ATTENTION: 'caution',
-};
-const ALERT_TITLE = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution' };
-
-function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') return n.value; return (n.children || []).map(nodeText).join(''); }
 /**
  * Where every in-page anchor in the docs and the blog goes.
@@ -317,25 +310,6 @@ function rehypeAnchorPrefix() {
 
 function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
 
-export function preprocessMd(md) {
-  // Re-count `:::` fences first, so a block written the obvious way keeps its children.
-  // Everything below works on lines and must not see a document mid-rewrite.
-  let s = normalizeDirectiveNesting(md || '');
-  // GitHub-style alerts: a run of blockquote lines whose first line is [!TYPE].
-  s = s.replace(/(^|\n)((?:[ \t]*>[^\n]*(?:\n|$))+)/g, (block, lead, quote) => {
-    const lines = quote.replace(/\n$/, '').split('\n').map((l) => l.replace(/^[ \t]*>[ \t]?/, ''));
-    const m = lines[0].match(/^\[!(\w+)\]\s*$/i);
-    if (!m) return block;
-    const type = ALERTS[m[1].toUpperCase()] || 'note';
-    const body = lines.slice(1).join('<br>');
-    return `${lead}<div class="md-alert md-alert-${type}"><div class="md-alert-title">${ALERT_TITLE[type]}</div><div class="md-alert-body">${body}</div></div>\n`;
-  });
-  // Change badges. Skip fenced/inline code so `[NEW]` inside code stays literal.
-  const parts = s.split(/(```[\s\S]*?```|`[^`]*`)/g);
-  s = parts.map((part, i) => (i % 2 === 1 ? part : part.replace(/\[([A-ZÀ-Ÿ]+)\]/g, (mm, w) =>
-    BADGES[w] ? `<span class="md-badge md-badge-${BADGES[w]}">${esc(w)}</span>` : mm))).join('');
-  return s;
-}
 
 // remark transform: directives → styled hast elements, heading anchors, ::toc.
 // Step markers. Four alphabets, because a procedure, a set of options and a list of phases

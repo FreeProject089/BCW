@@ -860,7 +860,7 @@ pour que tu écrives le mot que tu penses — \`info\` = note, \`hint\` = tip, \
 Ça produit un encadré coloré comme celui-ci.
 :::
 
-\`:::callout{icon=rocket color=#c2410c}[Titre]\` choisit son icône (un nom
+\`:::callout[Titre]{icon=rocket color=#c2410c}\` choisit son icône (un nom
 [lucide](https://lucide.dev)) et sa couleur — \`:::custom\` est le même bloc, sous le nom
 qu'emploie le menu Blocs de l'éditeur.
 
