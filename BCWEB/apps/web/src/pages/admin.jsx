@@ -3408,22 +3408,67 @@ function BackupManager() {
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2 text-sm"><History size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('bkp.title', 'Backup storage')}</span></div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('bkp.sub', "Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).")}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.filehist', 'File history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.filesBytes || 0)}</div></div>
-        <div><div className="text-xs text-[var(--faint)] mb-0.5">{t('bkp.dbhist', 'DB row history')}</div><div className="text-lg font-bold tabular-nums">{fmtBytes(d.dbBytes || 0)}</div></div>
-      </div>
-      {d.maxBytes != null && (
-        <div className="mb-3">
-          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
-          <div className="text-[11px] text-[var(--faint)] mt-1">{fmtBytes(d.totalBytes)} / {fmtBytes(d.maxBytes)} ({Math.round(pct)}%)</div>
-        </div>
-      )}
-      <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2">
+      {/* One bar, three segments — because there are three things on that disk.
+
+          It was two figures above a bar that measured something else: the panel showed
+          `filesBytes` and `dbBytes`, and the bar showed `totalBytes`, which the API defines as
+          files + db + SNAPSHOTS. `snapshotBytes` and `snapshotCount` came back in the same
+          payload and appeared nowhere in the app. So the parts read 1.5 GB, the whole read
+          4.1 GB, and nothing on the panel whose job is "where is the disk going" said where
+          the rest went — on a number the API takes care to compute, with a comment saying a
+          usage figure that ignores half of what it wrote is why a box runs out of space.
+
+          Segments add up to the total by construction now: the same three numbers draw the
+          bar and fill the legend, so they cannot disagree again. */}
+      {(() => {
+        const parts = [
+          { k: 'files', bytes: d.filesBytes || 0, cls: 'bg-brand', label: t('bkp.filehist', 'File history') },
+          { k: 'db', bytes: d.dbBytes || 0, cls: 'bg-brand-2', label: t('bkp.dbhist', 'DB row history') },
+          { k: 'snap', bytes: d.snapshotBytes || 0, cls: 'bg-[var(--muted)]', label: t('bkp.snaps', 'Daily snapshots') },
+        ];
+        const total = d.totalBytes ?? parts.reduce((n, p) => n + p.bytes, 0);
+        // Against the limit when there is one, against the total when there is not — an
+        // unlimited store still has a composition worth seeing.
+        const scale = d.maxBytes || total || 1;
+        const over = d.maxBytes && pct >= 90;
+        return (
+          <div className="mb-3">
+            <div className="flex h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              {parts.map((p) => (
+                <div key={p.k} className={over ? 'bg-error' : p.cls} style={{ width: `${(p.bytes / scale) * 100}%` }} title={`${p.label} — ${fmtBytes(p.bytes)}`} />
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+              {parts.map((p) => (
+                <span key={p.k} className="flex items-center gap-1.5 text-[11px]">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${p.cls}`} />
+                  <span className="text-[var(--muted)]">{p.label}</span>
+                  <b className="tabular-nums">{fmtBytes(p.bytes)}</b>
+                  {p.k === 'snap' && d.snapshotCount != null && (
+                    <span className="text-[var(--faint)]">({d.snapshotCount})</span>
+                  )}
+                </span>
+              ))}
+              <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
+                {d.maxBytes != null
+                  ? `${fmtBytes(total)} / ${fmtBytes(d.maxBytes)} (${Math.round(pct)}%)`
+                  : `${fmtBytes(total)} · ${t('bkp.nolimit', 'no limit set')}`}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+      {/* The limit, and only the limit. "Compact backups" was the third cell of this row and
+          is not part of setting one — it is an action on the store, and it belongs beside the
+          paragraph that explains it rather than next to Save, where the two read as a pair. */}
+      <div className="grid sm:grid-cols-[1fr_auto] gap-2">
         <Input type="number" value={limitGB} onChange={(e) => setLimitGB(e.target.value)} placeholder={d.maxBytes ? t('bkp.currently', 'Currently {n} GB — blank = unlimited').replace('{n}', (d.maxBytes / 1024 ** 3).toFixed(1)) : t('bkp.limitph', 'Size limit in GB (blank = unlimited)')} />
         <Button variant="primary" disabled={busy} onClick={saveLimit}>{busy ? <Spinner /> : t('bkp.savelimit', 'Save limit')}</Button>
-        <Button disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mt-2" dangerouslySetInnerHTML={{ __html: t('bkp.note', '<b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.') }} />
+      <div className="flex flex-wrap items-start gap-3 mt-3 pt-3 border-t border-[var(--line)]">
+        <Button size="sm" disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
+        <p className="flex-1 min-w-[220px] text-[11px] text-[var(--faint)] leading-snug" dangerouslySetInnerHTML={{ __html: t('bkp.note', '<b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.') }} />
+      </div>
 
       {/* Getting the backups OFF the box. A backup that only exists on the machine it
           protects is not a backup of that machine. */}

@@ -1583,6 +1583,7 @@ const DICT = {
     'asa.restartserversub': 'Redémarre le conteneur api (la politique `restart: unless-stopped` de Docker le relance aussitôt — aucun accès au socket Docker requis pour ceci).',
     'asa.restartnow': 'Redémarrer maintenant',
     'bkp.compacted': 'Compacté.', 'bkp.title': 'Stockage des sauvegardes',
+    'bkp.snaps': 'Instantanés quotidiens', 'bkp.nolimit': 'aucune limite définie',
     'bkp.sub': 'Chaque édition/suppression de fichier et édition de ligne DB est d’abord commitée dans git, pour toujours pouvoir revenir en arrière — plus un instantané quotidien complet de l’arborescence. C’est distinct du stockage propre de l’app (voir l’onglet Stockage).',
     'bkp.filehist': 'Historique fichiers', 'bkp.dbhist': 'Historique lignes DB', 'bkp.currently': 'Actuellement {n} Go — vide = illimité',
     'bkp.limitph': 'Limite de taille en Go (vide = illimité)', 'bkp.savelimit': 'Enregistrer la limite',
