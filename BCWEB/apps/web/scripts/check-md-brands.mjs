@@ -60,6 +60,24 @@ if (!/'className'/.test(aEntry)) {
   problems.push("the sanitiser's `a` entry does not allow className plainly — anchor-based directives will render unstyled");
 }
 
+// Math must not eat money.
+//
+// remark-math's single-dollar inline rule reads `$5 and $10` as a formula and prints
+// `5and10`. Measured on a live page, not guessed. This is a blog and documentation platform
+// that sells hosting in dollars, so that sentence is not hypothetical — and the failure is
+// silent: the price does not error, it becomes italic nonsense.
+//
+// So math is written `$$…$$`, inline or display, and `singleDollarTextMath: false` is what
+// enforces it. Turning it back on would look like an improvement and would corrupt prose.
+if (!/singleDollarTextMath:\s*false/.test(src)) {
+  problems.push('remark-math is not configured with singleDollarTextMath: false — `$5 and $10` in any post will be typeset as a formula');
+}
+// And KaTeX must stay untrusting: `trust` is what gates \href, \url and the \html* commands,
+// the only ones that can put author-controlled markup past the sanitiser this runs after.
+if (/trust:\s*true/.test(src)) {
+  problems.push('rehype-katex is configured with trust: true — that lets a formula emit markup, and it runs after the sanitiser');
+}
+
 if (problems.length) {
   console.error('✗ markdown brands / anchors:');
   for (const p of problems) console.error(`  ${p}`);

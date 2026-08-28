@@ -22,6 +22,46 @@ import rehypeRaw from 'rehype-raw';
 // either way, so the change is colour appearing, not layout moving.
 let _rehypeHighlight = null;
 let _highlightPromise = null;
+// ── Math, and why it is not simply imported ──────────────────────────────────
+//
+// KaTeX is ~150 KB gzipped plus a stylesheet, and md.jsx is reached from App.jsx, so a plain
+// import would land the whole of it in the ENTRY chunk — paid by every visitor to the home
+// page, for a feature a handful of documents use. That is the exact shape bundle-budget.mjs
+// exists to catch, and the exact shape it caught once before with a lazy page.
+//
+// So it loads when a document actually contains math, and never otherwise. Same pattern as
+// the highlighter above, plus the stylesheet, which KaTeX cannot render without: no CSS means
+// raw markup where the formula should be, which looks like a broken formula rather than a
+// missing file.
+let _math = null;          // [remarkMath, rehypeKatex] once loaded
+let _mathPromise = null;
+
+/**
+ * Does this document have any math in it?
+ *
+ * `$$…$$` on its own, or `$…$` inline. Deliberately narrow: a dollar sign that is money must
+ * not pull in a typesetting engine, so inline math has to have a non-space next to each
+ * delimiter and no dollar in between — which "$5 and $10" fails and "$x^2$" passes.
+ */
+const HAS_MATH = /\$\$[\s\S]+?\$\$|(?<![\w$])\$(?![\s$])[^$\n]*[^\s$]\$(?![\w$])/;
+
+function useMath(source) {
+  const wanted = typeof source === 'string' && HAS_MATH.test(source);
+  const [, force] = useState(0);
+  useEffect(() => {
+    if (!wanted || _math) return;
+    _mathPromise ??= Promise.all([
+      import('remark-math'), import('rehype-katex'), import('katex/dist/katex.min.css'),
+    ])
+      .then(([rm, rk]) => { _math = [rm.default, rk.default]; })
+      .catch(() => { _math = false; });   // offline / blocked: the source text, not a crash
+    let alive = true;
+    _mathPromise.then(() => { if (alive) force((n) => n + 1); });
+    return () => { alive = false; };
+  }, [wanted]);
+  return wanted && Array.isArray(_math) ? _math : null;
+}
+
 function useRehypeHighlight() {
   const [, force] = useState(0);
   useEffect(() => {
@@ -741,6 +781,7 @@ function MdLink({ pageMap, href, children, ...rest }) {
 export default function Markdown({ children, className = '', pageMap }) {
   const [zoom, setZoom] = useState(null);
   const rehypeHighlight = useRehypeHighlight();
+  const math = useMath(children);
   // Click any non-card image to open it full-screen (lightbox).
   const components = {
     ...COMPONENTS,
@@ -753,8 +794,31 @@ export default function Markdown({ children, className = '', pageMap }) {
   return (
     <div className={`md-body ${className}`}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkDirective, remarkDocBlocks]}
+        // remark-math BEFORE the directive plugins: `$x$` has to become a math node before
+        // anything else looks at the text, or a formula containing a colon is read as a
+        // directive and typeset as nothing.
+        // `singleDollarTextMath: false` — math is written `$$…$$`, inline or display.
+        //
+        // Single-dollar inline math is what TeX users expect, and it cannot be had on this
+        // site: remark-math reads `$5 and $10` as a formula and prints `5and10`. Measured on
+        // a live page before choosing. That is a blog and documentation platform that sells
+        // hosting in dollars, so the sentence is not hypothetical, and the failure is silent —
+        // the price does not error, it becomes italic nonsense.
+        //
+        // The existing seeded content has zero such spans today, so nothing breaks now; this
+        // is about the post somebody writes next month.
+        remarkPlugins={[...(math ? [[math[0], { singleDollarTextMath: false }]] : []), remarkGfm, remarkDirective, remarkDocBlocks]}
+        // rehype-katex AFTER the sanitiser: it emits a deep span tree with dozens of KaTeX
+        // classes, and running it first would have all of it stripped as unknown markup.
+        //
+        // Which puts its output past the sanitiser, so it is worth saying why that is safe:
+        // KaTeX renders from the TEXT of a math node, never from HTML, and `trust` defaults to
+        // false — which is what disables \href, \url and the \html* commands, the only ones
+        // that can emit author-controlled markup. `throwOnError: false` prints the offending
+        // source in an error span rather than throwing, and that source is escaped text too.
+        // Turning `trust` on would undo this paragraph.
         rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], rehypeAnchorPrefix, rehypeIframeAllowlist,
+          ...(math ? [[math[1], { output: 'html', throwOnError: false, errorColor: 'var(--error)' }]] : []),
           ...(rehypeHighlight ? [[rehypeHighlight, { detect: true, ignoreMissing: true }]] : [])]}
         components={components}
       >{preprocessMd(children || '')}</ReactMarkdown>
