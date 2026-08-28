@@ -713,39 +713,103 @@ if (adminUser && communityProject) {
     {
       slug: 'welcome-to-bettercommunity', daysAgo: 0,
       title: 'Welcome to BetterCommunity',
-      excerpt: 'The home for every Better* project — catalogs, presets, hosting and accounts, all in one place.',
+      excerpt: 'One account, from "I just want this mod" to "here is the catalog I maintain."',
       titleFr: 'Bienvenue sur BetterCommunity',
-      excerptFr: 'La maison de tous les projets Better* — catalogues, presets, hébergement et comptes, au même endroit.',
+      excerptFr: 'Un seul compte, de « je veux juste ce mod » à « voici le catalogue que je maintiens ».',
       body:
-`:badge[Announcement]{color="#f59e0b"} :badge[Welcome]{color="#16a34a"}
+`:badge[Welcome]{color="#16a34a"}
 
-Modding used to mean a dozen browser tabs: one site for the mod, another for its dependencies, a Discord for the update you missed. **BetterCommunity** is the attempt to put all of that in one place — and behind one account.
+Modding used to mean a dozen browser tabs: one site for the mod, another for its dependencies,
+a Discord for the update you missed. **BetterCommunity** is the attempt to put all of that
+behind one account.
 
-It's the hub for the whole Better* ecosystem. Everything BMM installs from lives here: **moderated** catalogs of apps, plugins, themes and BSM presets, where "moderated" isn't a slogan — every submission is reviewed by a human before it reaches you. Find something you like and it's one click into BMM; nothing to unzip, no folder to guess at.
+## What is actually here
 
-:::tip[A minute to your first install]
-Create a free account, open the **Catalog**, and install straight into BMM. That's the whole loop.
+Everything BMM installs from. Apps, plugins, themes, BSM presets and scheduled-task
+automations — each one submitted by somebody and **read by a human before it reaches you**. A
+submission sits in a queue until a moderator publishes it; nothing appears in the catalog on
+upload alone.
+
+Find something you like and it is one click into BMM. The install button hands the app a
+\`bmm://\` link and BMM takes it from there — nothing to unzip, no folder to guess at.
+
+:::steps
+:::step[Make an account]
+Free, and the only thing it needs is an address you can read mail at.
+:::
+:::step[Open the catalog]
+Filter by project and kind, or search. Sort by *popular*, *this month*, *newest* or *most
+viewed*.
+:::
+:::step[Install]
+The button opens BMM on the entry. If the publisher included a checksum, BMM verifies the
+download against it before anything runs.
+:::
 :::
 
-When you're ready to give back, the same account lets you **publish** your own work and **host** it: a Server-Repo gives your content a stable URL and real update detection, on a free tier to start and pay-for-what-you-use above it. Link your **Discord** and **BMM creator id** and the platform knows who you are across all of it — roles, credit on your uploads, access to gated channels.
+## When you want to give something back
 
-One account, from "I just want this mod" to "here's the catalog I maintain."
+The same account publishes. **Dashboard → Submit content** takes your file, your description
+and your tags, and puts it in the same queue as everybody else's.
+
+If you want it to live at a stable address with real update detection, host it: **one free
+repository per account**, and paid space above that — priced on what you actually store, not
+on a tier you grew out of.
+
+:::tip[Link your accounts]
+Discord, your BMM creator id, GitHub, Ko-fi. The platform then knows who you are across all of
+it: roles, credit on your uploads, and access to gated channels.
+:::
+
+One account, from "I just want this mod" to "here is the catalog I maintain."
 
 :::card{title="Open the catalog" href=/catalog icon=box}
 See what the community has already built.
 :::`,
       bodyFr:
-`:badge[Annonce]{color="#f59e0b"} :badge[Bienvenue]{color="#16a34a"}
+`:badge[Bienvenue]{color="#16a34a"}
 
-Modder, c'était une douzaine d'onglets : un site pour le mod, un autre pour ses dépendances, un Discord pour la mise à jour qu'on a ratée. **BetterCommunity**, c'est la tentative de tout réunir au même endroit — et derrière un seul compte.
+Modder, c'était une douzaine d'onglets : un site pour le mod, un autre pour ses dépendances, un
+Discord pour la mise à jour qu'on a ratée. **BetterCommunity**, c'est la tentative de tout
+mettre derrière un seul compte.
 
-C'est le hub de tout l'écosystème Better*. Tout ce que BMM installe vit ici : des catalogues **modérés** d'apps, plugins, thèmes et presets BSM — et « modéré » n'est pas un slogan : chaque soumission est relue par un humain avant de t'arriver. Tu trouves ce qui te plaît, et c'est un clic dans BMM ; rien à dézipper, aucun dossier à deviner.
+## Ce qu'on trouve vraiment ici
 
-:::tip[Une minute avant ta première install]
-Crée un compte gratuit, ouvre le **Catalogue**, et installe directement dans BMM. Toute la boucle est là.
+Tout ce que BMM installe. Apps, plugins, thèmes, presets BSM et automatisations de tâches
+planifiées — chaque élément soumis par quelqu'un et **relu par un humain avant de t'arriver**.
+Une soumission attend en file jusqu'à ce qu'un modérateur la publie ; rien n'apparaît au
+catalogue par le seul fait d'avoir été téléversé.
+
+Tu trouves ce qui te plaît, et c'est un clic dans BMM. Le bouton d'installation passe un lien
+\`bmm://\` à l'app, et BMM prend le relais — rien à dézipper, aucun dossier à deviner.
+
+:::steps
+:::step[Crée un compte]
+Gratuit, et la seule chose qu'il demande est une adresse où tu lis ton courrier.
+:::
+:::step[Ouvre le catalogue]
+Filtre par projet et par type, ou cherche. Trie par *populaire*, *ce mois-ci*, *récent* ou *le
+plus vu*.
+:::
+:::step[Installe]
+Le bouton ouvre BMM sur l'entrée. Si l'auteur a publié une somme de contrôle, BMM vérifie le
+téléchargement avant que quoi que ce soit ne s'exécute.
+:::
 :::
 
-Quand tu veux rendre la pareille, le même compte te laisse **publier** ton travail et l'**héberger** : un Server-Repo donne à ton contenu une URL stable et une vraie détection des mises à jour, sur un palier gratuit pour commencer et à l'usage au-delà. Lie ton **Discord** et ton **creator id BMM**, et la plateforme sait qui tu es partout — rôles, crédit sur tes envois, accès aux salons réservés.
+## Quand tu veux rendre la pareille
+
+Le même compte publie. **Tableau de bord → Proposer du contenu** prend ton fichier, ta
+description et tes tags, et les met dans la même file que ceux de tout le monde.
+
+Si tu veux que ça vive à une adresse stable avec une vraie détection des mises à jour,
+héberge-le : **un dépôt gratuit par compte**, puis de l'espace payant au-delà — facturé sur ce
+que tu stockes réellement, pas sur un palier que tu as dépassé.
+
+:::tip[Lie tes comptes]
+Discord, ton creator id BMM, GitHub, Ko-fi. La plateforme sait alors qui tu es partout : rôles,
+crédit sur tes envois, et accès aux salons réservés.
+:::
 
 Un seul compte, de « je veux juste ce mod » à « voici le catalogue que je maintiens ».
 
@@ -755,133 +819,386 @@ Découvre ce que la communauté a déjà créé.
     },
     {
       slug: 'whats-new-platform', daysAgo: 3,
-      title: 'What’s new — catalogs, hosting & Discord',
-      excerpt: 'A quick roundup of what shipped recently across BetterCommunity.',
-      titleFr: 'Nouveautés — catalogues, hébergement & Discord',
-      excerptFr: 'Un tour d’horizon rapide des dernières nouveautés sur BetterCommunity.',
+      title: 'Six things the platform does that are easy to miss',
+      excerpt: 'Private links for unlisted content, a free tier on every submission, and why nothing is deleted the day a payment fails.',
+      titleFr: 'Six choses que la plateforme fait et qu\'on rate facilement',
+      excerptFr: 'Des liens privés pour le contenu non listé, un palier gratuit sur chaque soumission, et pourquoi rien n\'est supprimé le jour où un paiement échoue.',
       body:
-`:badge[Changelog]{color="#2563eb"}
+`:badge[Platform]{color="#2563eb"}
 
-Here's a snapshot of what's new on the platform.
+Some of the most useful things here are one menu deep and nobody goes looking for them. Six of
+them, with what they actually do.
 
-| Area | What changed |
-|---|---|
-| Catalogs | Community catalogs — public or private, one-click install via \`bmm://\`, and \`?k=\` share links for unlisted ones |
-| Hosting | Buy a **storage pool** and fill it with repos *and* catalogs; merge/split pools, consolidate billing, colour + collapse them |
-| Repos | Every repo has a public page at \`/r/<id>\`; unlisted repos share via a private link |
-| Topbar | Admins can show/hide + reorder every topbar button and design the nav |
-| Discord | Multi-server bot: per-server config + blog news routing |
-| Accounts | Link Discord, BMM creator id, GitHub, Ko-fi and more from your profile |
+::toc[On this page]
 
-:::note[Privacy-first]
-Analytics are anonymous and first-party — no third-party trackers, and only with your consent.
+## 1. Unlisted does not mean unshareable
+
+Every repository has a public page at \`/r/<id>\`. Content that is deliberately *not* in the
+browse list still has one — it just needs the key: a \`?k=…\` link opens it for whoever holds
+the link and nobody else.
+
+That is what to hand a tester, and it is why "unlisted" is a useful state rather than a
+half-deleted one.
+
+## 2. A storage pool is not a repository
+
+You buy **space**, not a repo. The purchase gives you an empty pool with a byte quota, and what
+goes in it is up to you: repositories, catalog items, or both, sharing the same bytes.
+
+Pools can be **merged** into one, **split** apart again, and **consolidated** — several small
+plans traded for one larger one, when that is cheaper. Subscriptions follow the pool.
+
+## 3. The first 25 MB of any submission are free
+
+Not the first submission — *every* submission. Hosting cost is computed on the bytes **above**
+the free threshold, so a 3 MB theme costs nothing at all and a 30 MB plugin is billed for five
+megabytes.
+
+:::note[It was not always like this]
+Every byte used to be billed, and the rounding took a 1 KB file up to a full paid megabyte.
+Small, ordinary uploads had no free tier at all.
 :::
 
-:::card{title="See the hosting plans" href=/hosting icon=server}
-Host a repo and pay only for what you use.
+## 4. The free tier is a shared pool, and it can run out
+
+One free repository per **account** — a claim that is recorded and survives unlinking and
+relinking, so it cannot be re-taken by disconnecting Discord.
+
+Behind it there is a site-wide capacity for free hosting. When it is exhausted the answer is an
+honest *the free tier is full* rather than a checkout that quietly charges you.
+
+## 5. Nothing is deleted the day a payment fails
+
+A lapsed subscription **suspends**: repositories stop serving and catalog items are hidden. It
+opens a grace window — 72 hours by default — and only after that does anything get removed.
+Renew inside it and everything in the pool comes back, in the state it was in.
+
+## 6. Undo is real, and it is six seconds long
+
+Destructive actions here do not ask "are you sure?" — they do the thing, show a toast, and
+give you six seconds to take it back. Nothing is written until the window closes, so cancelling
+is not a second operation that could itself fail.
+
+:::tip[And the analytics are first-party]
+No third-party trackers anywhere on the site, and nothing is collected without consent. The
+numbers are ours, computed here.
+:::
+
+:::card{title="See how hosting is priced" href=/hosting icon=server}
+The free tier, the per-megabyte cost above it, and what a pool holds.
 :::`,
       bodyFr:
-`:badge[Journal]{color="#2563eb"}
+`:badge[Plateforme]{color="#2563eb"}
 
-Voici un aperçu des nouveautés sur la plateforme.
+Certaines des choses les plus utiles ici sont à un menu de distance et personne ne va les
+chercher. En voici six, avec ce qu'elles font vraiment.
 
-| Domaine | Ce qui a changé |
-|---|---|
-| Catalogues | Catalogues communautaires — publics ou privés, install en un clic via \`bmm://\`, et liens \`?k=\` pour les non listés |
-| Hébergement | Achète un **pool de stockage** et remplis-le de dépôts *et* catalogues ; fusionne/défusionne, consolide la facturation, couleur + repli |
-| Dépôts | Chaque dépôt a une page publique \`/r/<id>\` ; les non listés se partagent via un lien privé |
-| Topbar | Les admins peuvent afficher/masquer + réordonner chaque bouton et concevoir la nav |
-| Discord | Bot multi-serveur : config par serveur + routage des news blog |
-| Comptes | Lie Discord, creator id BMM, GitHub, Ko-fi et plus depuis ton profil |
+::toc[Sur cette page]
 
-:::note[Vie privée d'abord]
-Les statistiques sont anonymes et internes — aucun traqueur tiers, et uniquement avec ton consentement.
+## 1. Non listé ne veut pas dire impartageable
+
+Chaque dépôt a une page publique à \`/r/<id>\`. Le contenu volontairement absent de la liste en
+a une aussi — il lui faut juste la clé : un lien \`?k=…\` l'ouvre pour qui détient le lien, et
+pour personne d'autre.
+
+C'est ce qu'on donne à un testeur, et c'est pour cela que « non listé » est un état utile
+plutôt qu'un demi-effacement.
+
+## 2. Un pool de stockage n'est pas un dépôt
+
+Tu achètes de l'**espace**, pas un dépôt. L'achat te donne un pool vide avec un quota, et ce
+qu'on y met te regarde : des dépôts, des éléments de catalogue, ou les deux, sur les mêmes
+octets.
+
+Les pools se **fusionnent**, se **séparent** à nouveau, et se **consolident** — plusieurs
+petits plans échangés contre un plus grand, quand c'est moins cher. Les abonnements suivent le
+pool.
+
+## 3. Les 25 premiers Mo de toute soumission sont gratuits
+
+Pas de la première soumission — de *chaque* soumission. Le coût d'hébergement est calculé sur
+les octets **au-dessus** du seuil gratuit : un thème de 3 Mo ne coûte rien du tout, et un
+plugin de 30 Mo est facturé cinq mégaoctets.
+
+:::note[Ça n'a pas toujours été le cas]
+Chaque octet était facturé, et l'arrondi montait un fichier de 1 Ko à un mégaoctet payant
+entier. Les petits envois ordinaires n'avaient aucun palier gratuit.
 :::
 
-:::card{title="Voir les offres d'hébergement" href=/hosting icon=server}
-Héberge un dépôt et ne paie que ce que tu utilises.
+## 4. Le palier gratuit est une réserve commune, et elle peut s'épuiser
+
+Un dépôt gratuit par **compte** — un droit enregistré qui survit à une déliaison suivie d'une
+reliaison, donc impossible à reprendre en déconnectant Discord.
+
+Derrière, il y a une capacité gratuite à l'échelle du site. Quand elle est épuisée, la réponse
+est un franc *le palier gratuit est plein* plutôt qu'un paiement qui te débite en silence.
+
+## 5. Rien n'est supprimé le jour où un paiement échoue
+
+Un abonnement en défaut **suspend** : les dépôts cessent de servir et les éléments de catalogue
+sont masqués. Cela ouvre une fenêtre de grâce — 72 heures par défaut — et ce n'est qu'ensuite
+que quelque chose est retiré. Renouvelle pendant la fenêtre et tout le pool revient, dans
+l'état où il était.
+
+## 6. L'annulation existe, et elle dure six secondes
+
+Les actions destructrices ici ne demandent pas « tu es sûr ? » : elles font la chose, affichent
+un toast, et te laissent six secondes pour revenir en arrière. Rien n'est écrit tant que la
+fenêtre n'est pas fermée, donc annuler n'est pas une seconde opération qui pourrait elle-même
+échouer.
+
+:::tip[Et les statistiques sont internes]
+Aucun traqueur tiers nulle part sur le site, et rien n'est collecté sans consentement. Les
+chiffres sont les nôtres, calculés ici.
+:::
+
+:::card{title="Voir comment l'hébergement est facturé" href=/hosting icon=server}
+Le palier gratuit, le coût au mégaoctet au-dessus, et ce que contient un pool.
 :::`,
     },
     {
       slug: 'roadmap-whats-next', daysAgo: 7,
-      title: 'Roadmap — what’s coming next',
-      excerpt: 'Where BetterCommunity is headed, and how to help shape it.',
-      titleFr: 'Roadmap — la suite',
-      excerptFr: 'Où va BetterCommunity, et comment aider à le façonner.',
+      title: 'How we decide what to build next',
+      excerpt: 'Polls that take sentences as well as votes, three small things that changed because somebody complained, and what is coming.',
+      titleFr: 'Comment on décide de la suite',
+      excerptFr: 'Des sondages qui prennent des phrases autant que des votes, trois petites choses changées parce que quelqu\'un s\'est plaint, et ce qui arrive.',
       body:
 `:badge[Roadmap]{color="#7c3aed"}
 
-We're building in the open. A few things on the horizon:
+We build in the open, which is easy to say and mostly means one thing in practice: **the
+decisions are visible before they are made, and there is somewhere to argue with them.**
 
-- **BetterInstaller** — now here: a fast, modern installer for the whole suite
-- **Richer creator dashboards** — deeper stats on your uploads, repos and storage pools
-- **More community tooling** — around presets, themes and plugins
+## Where the arguing happens
 
-:::tip[Have an idea?]
-The **Contact** page and our **Discord** are the fastest ways to reach us — feature requests welcome.
+:::columns
+:::column
+**Polls** — real ones. A poll can take a vote *and* a written answer, and the written answers
+are the part that changes plans. A tally tells you which option won; a sentence tells you why
+somebody wanted it.
+:::
+:::column
+**Contact and Discord** — for the things a poll cannot ask, because nobody knew to ask them.
+Feature requests, bug reports, and "this is confusing" — the last one being the most useful
+message we get.
+:::
 :::
 
-:::card{title="Join the Discord" href=/contact icon=message-circle}
-Tell us what you'd like to see next.
+## What that has already changed
+
+Small things, mostly, and small things are the point. The free tier for catalog submissions
+exists because billing every byte made a 1 KB upload cost a full megabyte. Unlisted content got
+a private share link because "not in the list" and "not shareable" were the same state and
+should not have been. Destructive actions got an undo window instead of a confirmation dialog
+because a confirmation asks you to be sure in advance, which is not when people know.
+
+## What is next
+
+**BetterInstaller** is here — a fast, modern installer for the whole suite, replacing the old
+one.
+
+Beyond that: deeper creator dashboards (what your uploads, repos and pools are actually doing),
+and more tooling around presets, themes and plugins. The order those land in is not fixed, and
+that is deliberate.
+
+:::tip[The most useful thing you can send us]
+Not "add feature X". *"I tried to do Y and stopped at Z."* The second one names a problem; the
+first one names one solution to a problem we may not have understood yet.
+:::
+
+:::card{title="Tell us what to build" href=/contact icon=message-circle}
+Contact, Discord, and the current polls.
 :::`,
       bodyFr:
 `:badge[Roadmap]{color="#7c3aed"}
 
-On construit à ciel ouvert. Quelques éléments à l'horizon :
+On construit à ciel ouvert, ce qui est facile à dire et veut surtout dire une chose en
+pratique : **les décisions sont visibles avant d'être prises, et il y a un endroit pour les
+contester.**
 
-- **BetterInstaller** — désormais là : un installeur moderne et rapide pour toute la suite
-- **Tableaux de bord créateurs enrichis** — des stats plus poussées sur tes envois, dépôts et pools
-- **Plus d'outils communautaires** — autour des presets, thèmes et plugins
+## Où ça se discute
 
-:::tip[Une idée ?]
-La page **Contact** et notre **Discord** sont les moyens les plus rapides de nous joindre — les demandes de fonctionnalités sont les bienvenues.
+:::columns
+:::column
+**Les sondages** — de vrais sondages. Un sondage peut prendre un vote *et* une réponse écrite,
+et ce sont les réponses écrites qui changent les plans. Un décompte dit quelle option a gagné ;
+une phrase dit pourquoi quelqu'un la voulait.
+:::
+:::column
+**Contact et Discord** — pour ce qu'un sondage ne peut pas demander, faute d'avoir su qu'il
+fallait le demander. Demandes de fonctionnalités, bugs, et « je ne comprends pas » — ce dernier
+étant le message le plus utile qu'on reçoive.
+:::
 :::
 
-:::card{title="Rejoindre le Discord" href=/contact icon=message-circle}
-Dis-nous ce que tu aimerais voir ensuite.
+## Ce que ça a déjà changé
+
+De petites choses, surtout, et les petites choses sont le sujet. Le palier gratuit sur les
+soumissions de catalogue existe parce que facturer chaque octet faisait coûter un mégaoctet
+entier à un envoi de 1 Ko. Le contenu non listé a gagné un lien de partage privé parce que
+« absent de la liste » et « impartageable » étaient le même état, et n'auraient pas dû l'être.
+Les actions destructrices ont gagné une fenêtre d'annulation au lieu d'une boîte de
+confirmation, parce qu'une confirmation demande d'être sûr à l'avance, et ce n'est pas à ce
+moment-là qu'on sait.
+
+## La suite
+
+**BetterInstaller** est là — un installeur moderne et rapide pour toute la suite, en
+remplacement de l'ancien.
+
+Ensuite : des tableaux de bord créateurs plus profonds (ce que font réellement tes envois, tes
+dépôts et tes pools), et plus d'outillage autour des presets, thèmes et plugins. L'ordre dans
+lequel tout cela arrive n'est pas figé, et c'est volontaire.
+
+:::tip[Le message le plus utile que tu puisses nous envoyer]
+Pas « ajoutez la fonctionnalité X ». *« J'ai essayé de faire Y et je me suis arrêté à Z. »* Le
+second nomme un problème ; le premier nomme une solution à un problème qu'on n'a peut-être pas
+encore compris.
+:::
+
+:::card{title="Dis-nous quoi construire" href=/contact icon=message-circle}
+Contact, Discord, et les sondages en cours.
 :::`,
     },
     {
       slug: 'hosting-storage-pools', daysAgo: 1,
-      title: 'Hosting, made simple: storage pools & sharing',
-      excerpt: 'Buy space once, fill it with repos and catalogs, and share even unlisted content with a private link.',
-      titleFr: 'L’hébergement simplifié : pools de stockage & partage',
-      excerptFr: 'Achète de l’espace une fois, remplis-le de dépôts et catalogues, et partage même le contenu non listé via un lien privé.',
+      title: 'Hosting: you buy space, not a thing to put in it',
+      excerpt: 'Pools that merge and split, 25 free megabytes on every submission, and a 72-hour grace window instead of a deletion.',
+      titleFr: 'L\'hébergement : tu achètes de l\'espace, pas une chose à mettre dedans',
+      excerptFr: 'Des pools qui fusionnent et se séparent, 25 mégaoctets gratuits sur chaque soumission, et une fenêtre de grâce de 72 heures au lieu d\'une suppression.',
       body:
-`:badge[Hosting]{color="#0ea5e9"} :badge[Guide]{color="#16a34a"}
+`:badge[Hosting]{color="#0ea5e9"}
 
-Hosting on BetterCommunity is built around one idea: **you buy a storage pool, then use it however you like.**
+Hosting here is built on one idea, and everything else follows from it: **you buy space, not a
+thing to put in it.**
 
-## Storage pools
-A purchase gives you an **empty pool** with a byte quota. Fill it with **repos, catalogs, or both** — they share the same space. You can **colour** and **collapse** pools, **merge** several into one (subscriptions move with them, with a 6-second undo), and even **consolidate** several plans into one bigger one to save.
+::toc[On this page]
 
-## Share what isn't listed
-Every repo has a public page at \`/r/<id>\`. Content that isn't in the browse list can still be shared with a private **\`?k=\` link** — perfect for betas.
+## The pool is the unit
 
-:::tip[Read the full guide]
-The **"Good little host"** guide walks through pools, billing, sharing and the do's & don'ts.
+A purchase gives you an **empty storage pool** with a byte quota. What goes in is your
+decision: repositories, catalog items, or both, sharing the same bytes.
+
+That sounds like a detail until you have three of them. Pools can be:
+
+:::steps
+:::step[Merged]
+Several pools become one, and the subscriptions come with them. Useful when you bought space
+twice and now want one number to look at.
 :::
+:::step[Split]
+The reverse, when a project should stop sharing a quota with another.
+:::
+:::step[Consolidated]
+Several small plans traded for a single larger one — offered when it costs less than what you
+are paying now.
+:::
+:::
+
+## What it costs, honestly
+
+**One free repository per account.** The claim is recorded against the account, so unlinking
+and relinking Discord does not hand you a second one.
+
+Above that, you pay for bytes. For catalog submissions the **first 25 MB of each item are
+free** and only the excess is billed — a 3 MB theme costs nothing, a 30 MB plugin is billed for
+five megabytes.
+
+:::warning[The free tier is shared, and it can be full]
+There is a site-wide capacity for free hosting. When it is exhausted you are told so, plainly,
+instead of being moved onto a paid plan without noticing.
+:::
+
+## Sharing what is not listed
+
+Every repository has a public page at \`/r/<id>\`. A repository that is deliberately out of the
+browse list still has that page — reached with a \`?k=…\` key in the URL, which is the whole
+access check. Hand it to a tester; do not put it in a public message.
+
+The same mechanism covers unlisted catalog items.
+
+## If a payment fails
+
+Nothing is deleted that day. The subscription lapses, repositories stop serving, catalog items
+are hidden — and a grace window opens, **72 hours by default**. Renew inside it and every repo
+and item in the pool comes back exactly as it was.
+
+That is the difference between a service that suspends you and one that punishes you for a
+declined card.
 
 :::card{title="Open hosting" href=/hosting icon=server}
-Start with the free tier — no card required.
-:::`,
-      bodyFr:
-`:badge[Hébergement]{color="#0ea5e9"} :badge[Guide]{color="#16a34a"}
-
-L’hébergement sur BetterCommunity repose sur une idée : **tu achètes un pool de stockage, puis tu l’utilises comme tu veux.**
-
-## Les pools de stockage
-Un achat te donne un **pool vide** avec un quota. Remplis-le de **dépôts, catalogues, ou les deux** — ils partagent le même espace. Tu peux **colorer** et **replier** les pools, **fusionner** plusieurs pools en un (les abonnements suivent, avec un undo de 6 s), et même **consolider** plusieurs plans en un seul plus grand pour économiser.
-
-## Partager le non listé
-Chaque dépôt a une page publique \`/r/<id>\`. Le contenu absent de la liste peut quand même se partager via un **lien privé \`?k=\`** — parfait pour les bêtas.
-
-:::tip[Lis le guide complet]
-Le guide **« Le bon petit hébergeur »** couvre les pools, la facturation, le partage et les bonnes pratiques.
+Start on the free tier — no card required.
 :::
 
-:::card{title="Ouvrir l’hébergement" href=/hosting icon=server}
-Commence avec le palier gratuit — aucune carte requise.
+:::card{title="Storage pools, in the docs" href=/docs/storage-pools icon=book}
+Quotas, merging, and how billing attaches to a pool.
+:::`,
+      bodyFr:
+`:badge[Hébergement]{color="#0ea5e9"}
+
+L'hébergement ici repose sur une seule idée, et tout le reste en découle : **tu achètes de
+l'espace, pas une chose à mettre dedans.**
+
+::toc[Sur cette page]
+
+## Le pool est l'unité
+
+Un achat te donne un **pool de stockage vide** avec un quota d'octets. Ce que tu y mets te
+regarde : des dépôts, des éléments de catalogue, ou les deux, sur les mêmes octets.
+
+Ça ressemble à un détail jusqu'au jour où tu en as trois. Les pools peuvent être :
+
+:::steps
+:::step[Fusionnés]
+Plusieurs pools n'en font plus qu'un, et les abonnements suivent. Utile quand tu as acheté de
+l'espace deux fois et que tu veux un seul chiffre à regarder.
+:::
+:::step[Séparés]
+L'inverse, quand un projet ne devrait plus partager son quota avec un autre.
+:::
+:::step[Consolidés]
+Plusieurs petits plans échangés contre un seul plus grand — proposé quand cela coûte moins que
+ce que tu paies aujourd'hui.
+:::
+:::
+
+## Ce que ça coûte, franchement
+
+**Un dépôt gratuit par compte.** Le droit est enregistré sur le compte : délier puis relier
+Discord ne t'en donne pas un second.
+
+Au-delà, tu paies des octets. Pour les soumissions de catalogue, **les 25 premiers Mo de chaque
+élément sont gratuits** et seul le surplus est facturé — un thème de 3 Mo ne coûte rien, un
+plugin de 30 Mo est facturé cinq mégaoctets.
+
+:::warning[Le palier gratuit est commun, et il peut être plein]
+Il existe une capacité gratuite à l'échelle du site. Quand elle est épuisée, on te le dit
+franchement, au lieu de te basculer sur un plan payant sans que tu le remarques.
+:::
+
+## Partager ce qui n'est pas listé
+
+Chaque dépôt a une page publique à \`/r/<id>\`. Un dépôt volontairement hors de la liste garde
+cette page — on l'atteint avec une clé \`?k=…\` dans l'URL, et c'est tout le contrôle d'accès.
+Donne-la à un testeur ; ne la mets pas dans un message public.
+
+Le même mécanisme couvre les éléments de catalogue non listés.
+
+## Si un paiement échoue
+
+Rien n'est supprimé ce jour-là. L'abonnement tombe en défaut, les dépôts cessent de servir, les
+éléments de catalogue sont masqués — et une fenêtre de grâce s'ouvre, **72 heures par défaut**.
+Renouvelle pendant cette fenêtre et chaque dépôt et chaque élément du pool revient exactement
+comme il était.
+
+C'est la différence entre un service qui te suspend et un service qui te punit pour une carte
+refusée.
+
+:::card{title="Ouvrir l'hébergement" href=/hosting icon=server}
+Commence sur le palier gratuit — aucune carte requise.
+:::
+
+:::card{title="Les pools de stockage, dans la doc" href=/docs/storage-pools icon=book}
+Quotas, fusion, et comment la facturation s'attache à un pool.
 :::`,
     },
   ];
