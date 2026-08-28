@@ -64,12 +64,31 @@ for (const f of walk(SRC, ['.jsx', '.js'])) {
 
 // A key ending in '.' is a static prefix of a dynamic `t(prefix + x)` — not a real key.
 const isDynamicPrefix = (k) => k.endsWith('.');
+
+// `t('key')` with NO fallback needs the key in DICT.en, or English readers see the KEY.
+//
+// `t(k, 'Fallback')` is the house convention and the fallback is the English, so those are
+// fine. A call without one has nothing to fall back to: `t` returns the key itself. That is
+// how `nav.dev` shipped in the navbar — it existed in French only, and every English visitor
+// read the literal string "nav.dev" next to Blog and Docs.
+//
+// Only checked for calls that pass no second argument; everything else is covered by the
+// fallback it carries.
+const noFallback = new Set();
+for (const f of walk(SRC, ['.jsx', '.js'])) {
+  if (f.endsWith('i18n.jsx')) continue;
+  const txt = readFileSync(f, 'utf8');
+  for (const m of txt.matchAll(/t\(\s*'([A-Za-z0-9_.]+)'\s*\)/g)) noFallback.add(m[1]);
+  for (const m of txt.matchAll(/t\(\s*"([A-Za-z0-9_.]+)"\s*\)/g)) noFallback.add(m[1]);
+}
+const missingEn = [...noFallback].filter((k) => !isDynamicPrefix(k) && !en.keys.has(k)).sort();
 const missingFr = [...used].filter((k) => !isDynamicPrefix(k) && !fr.keys.has(k) && !en.keys.has(k)).sort();
 const deadFr = [...fr.keys].filter((k) => !used.has(k) && !en.keys.has(k)).sort();
 const allDups = [...new Set([...en.dups].map((k) => `en:${k}`).concat([...fr.dups].map((k) => `fr:${k}`)))].sort();
 
 console.log(`i18n: ${used.size} keys used · DICT.en ${en.keys.size} · DICT.fr ${fr.keys.size}`);
 console.log(`      ${missingFr.length} used-but-missing-FR · ${deadFr.length} dead-FR · ${allDups.length} duplicate keys`);
+console.log(`      ${missingEn.length} no-fallback-missing-EN`);
 
 let fail = false;
 if (allDups.length) {

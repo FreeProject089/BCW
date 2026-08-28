@@ -8,6 +8,7 @@ const DICT = {
     'promo.badge.default': 'Limited-time offer', 'promo.badge.dismiss': 'Dismiss', 'promo.badge.d': 'd', 'promo.badge.h': 'h', 'promo.badge.m': 'm',
     'nav.home': 'Home', 'nav.apps': 'Apps', 'nav.bmm': 'BMM', 'nav.bsm': 'BSM', 'nav.installer': 'BI', 'nav.blog': 'Blog',
     'nav.repos': 'Repos', 'nav.hosting': 'Hosting', 'nav.projects': 'Projects', 'nav.dashboard': 'Dashboard', 'nav.admin': 'Admin',
+    'nav.dev': 'Developers',
     'nav.settings': 'Settings', 'nav.docs': 'Docs',
     'docs.title': 'Documentation', 'docs.search': 'Search…', 'docs.filter': 'Filter pages…', 'docs.newpage': 'New page',
     'docs.edit': 'Edit', 'docs.updated': 'Updated', 'docs.contributors': '{n} contributors', 'docs.empty': '*This page is empty.*', 'docs.onthispage': 'On this page',
