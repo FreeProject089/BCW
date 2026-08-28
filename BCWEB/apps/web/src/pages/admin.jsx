@@ -1688,6 +1688,7 @@ function AdminServerPerf() {
   const [busy, setBusy] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [depsBusy, setDepsBusy] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
@@ -1747,6 +1748,19 @@ function AdminServerPerf() {
       reload(); alerts.reload(); outages.reload();
     } catch { toast.error(t('sp.failed', 'Failed.')); }
     finally { setClearing(false); }
+  };
+  // Probe them again now, rather than waiting out the 2-minute cache.
+  //
+  // The endpoint clears the cache and kicks off the probe without awaiting it — so this waits
+  // a beat before reloading, or it would read back the same stale answers it just invalidated
+  // and look like the button did nothing.
+  const recheckDeps = async () => {
+    setRechecking(true);
+    try {
+      await api.post('/admin/server/deps-recheck', {});
+      await new Promise((r) => setTimeout(r, 1200));
+      reload();
+    } catch { toast.error(t('sp.failed', 'Failed.')); } finally { setRechecking(false); }
   };
   const toggleDep = async (key, on) => {
     setDepsBusy(true);
@@ -1824,6 +1838,15 @@ function AdminServerPerf() {
   if (loading && !data) return <Loading />;
   const latest = data?.latest;
   const deps = data?.deps || {};
+  const depsDetail = data?.depsDetail || null;
+  const depsAt = data?.depsAt || null;
+  // Stable order, from the config rather than from Object.keys(deps): the probe result is
+  // built by Promise.all and a card whose rows reorder between refreshes is unreadable.
+  const depKeys = (depsCfg.data?.keys || Object.keys(deps)).filter((k) => k in deps);
+  // "not applicable" is not a failure and must not be counted as one — Stripe with no key
+  // set would otherwise read as "5 of 6" for ever on an installation that never uses it.
+  const depsRan = depKeys.filter((k) => deps[k] !== null).length;
+  const depsUp = depsRan ? depKeys.filter((k) => deps[k] === true).length : null;
   const ssl = data?.ssl;
   const history = data?.history || [];
   const downtime = data?.downtime || [];
@@ -1832,7 +1855,6 @@ function AdminServerPerf() {
   const labels = depsCfg.data?.labels || {};
   const allKeys = depsCfg.data?.keys || Object.keys(deps);
   const enabledCfg = depsCfg.data?.enabled || {};
-  const depBadge = (ok, label) => <Badge key={label} tone={ok === null ? '' : ok ? 'green' : 'red'}>{ok === null ? <Clock size={10} /> : ok ? <CheckCircle2 size={10} /> : <XCircle size={10} />} {label}</Badge>;
   const gb = (b) => b == null ? null : b / 1024 ** 3;
   const memUsedGB = totals.memTotalBytes != null && totals.memFreeBytes != null ? gb(totals.memTotalBytes - totals.memFreeBytes) : null;
   const diskUsedGB = totals.diskTotalBytes != null && totals.diskFreeBytes != null ? gb(totals.diskTotalBytes - totals.diskFreeBytes) : null;
@@ -2081,9 +2103,17 @@ function AdminServerPerf() {
 
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between gap-2 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sp.deps', 'Dependencies')}</span>
-            <button className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] hover:underline" onClick={() => setConfiguring((c) => !c)}>{configuring ? t('sp.done', 'Done') : t('sp.configure', 'Configure')}</button>
+            <div className="flex items-center gap-3">
+              {!configuring && !!depKeys.length && (
+                <button
+                  className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] hover:underline disabled:opacity-50"
+                  disabled={rechecking} onClick={recheckDeps}
+                >{rechecking ? t('sp.deps.checking', 'Checking…') : t('sp.deps.recheck', 'Check now')}</button>
+              )}
+              <button className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] hover:underline" onClick={() => setConfiguring((c) => !c)}>{configuring ? t('sp.done', 'Done') : t('sp.configure', 'Configure')}</button>
+            </div>
           </div>
           {configuring ? (
             <div className="space-y-1.5">
@@ -2104,21 +2134,59 @@ function AdminServerPerf() {
               </p>
             </div>
           ) : (<>
-            <div className="flex flex-wrap gap-1.5">
-              {Object.keys(deps).length
-                ? Object.entries(deps).map(([k, ok]) => (
-                  <span key={k} title={DEP_WHAT(t)[k] || ''}>{depBadge(ok, labels[k] || k)}</span>
-                ))
-                : <span className="text-xs text-[var(--faint)]">{t('sp.deps.off', 'All dependency checks are disabled.')}</span>}
-            </div>
+            {/* One line per dependency, not a row of pills.
+                Pills answered exactly one question — "is anything red" — and to answer it you
+                read six labels in a wrapped row where the order changed with the width. A list
+                holds still, has room for the response time beside each name, and can tint the
+                one that is failing so it is found rather than searched for. */}
+            {depKeys.length ? (
+              <div className="divide-y divide-[var(--line)] -mx-1">
+                {depKeys.map((k) => {
+                  const ok = deps[k];
+                  const ms = depsDetail?.[k]?.ms ?? null;
+                  return (
+                    <div
+                      key={k}
+                      title={DEP_WHAT(t)[k] || ''}
+                      className={`flex items-center gap-2 px-1 py-1.5 ${ok === false ? 'bg-error-bg rounded' : ''}`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok === null ? 'bg-[var(--faint)]' : ok ? 'bg-success' : 'bg-error'}`} />
+                      <span className={`text-sm min-w-0 truncate ${ok === false ? 'text-error font-medium' : ''}`}>{labels[k] || k}</span>
+                      <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)] shrink-0">
+                        {/* The number, when there is one. A check that answered "not applicable"
+                            never ran, so timing it would be a figure about nothing. */}
+                        {ok === null
+                          ? t('sp.deps.na', 'not configured')
+                          : ok === false
+                            ? t('sp.deps.down', 'no answer')
+                            : ms == null ? '' : `${ms} ms`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <span className="text-xs text-[var(--faint)]">{t('sp.deps.off', 'All dependency checks are disabled.')}</span>}
+
             {/* Six pills with no sentence anywhere saying what green MEANT, how often it is
                 re-checked, or that this is what writes the outage records the public status
                 page reads. It looked like decoration and it is the input. */}
-            {!!Object.keys(deps).length && (
-              <p className="text-[11px] text-[var(--muted)] mt-2 leading-snug">
+            {!!depKeys.length && (<>
+              {/* WHEN, which the panel could not say at all. These answers are served
+                  stale-while-revalidate, so a green dot may be two minutes old — or, just
+                  after a restart, from a probe that has not come back yet. Without the
+                  timestamp there is no way to tell either of those from a live reading. */}
+              <p className="text-[11px] text-[var(--muted)] mt-2">
+                {depsUp != null && (
+                  <span className={depsUp < depsRan ? 'text-error font-medium' : ''}>
+                    {t('sp.deps.upN', '{n} of {m} responding').replace('{n}', String(depsUp)).replace('{m}', String(depsRan))}
+                  </span>
+                )}
+                {depsAt && <> · {t('sp.deps.at', 'checked {ago} ago').replace('{ago}', agoShort(depsAt))}</>}
+              </p>
+              <p className="text-[11px] text-[var(--muted)] mt-1.5 leading-snug">
                 {t('sp.deps.h', 'Each one is really contacted — a query, or an HTTP request — not self-reported. Re-checked every few minutes. A red one opens an outage on the public status page and closes it when it comes back, so this is what uptime is measured from.')}
               </p>
-            )}
+            </>)}
           </>)}
         </Card>
         <Card className="p-4">

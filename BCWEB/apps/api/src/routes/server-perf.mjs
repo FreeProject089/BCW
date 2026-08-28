@@ -2,7 +2,7 @@ import os from 'node:os';
 import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS } from '../lib/thresholds.mjs';
 import { z } from 'zod';
 import { db, requireRole, botAuth } from '../lib/lib.mjs';
-import { checkSslExpiry, checkDependencies, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
+import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
 
@@ -20,7 +20,7 @@ function refreshProbes(p) {
   const isHttps = /^https:\/\//i.test(siteUrl);
   const host = siteUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || null;
   Promise.all([
-    checkDependencies(p),
+    checkDependenciesTimed(p),
     // Only probe a cert when SITE_URL is actually https — in dev it's http://localhost
     // and Caddy provisions TLS in prod, so there's simply nothing to probe.
     isHttps ? checkSslExpiry(host) : Promise.resolve({ notHttps: true, url: siteUrl || null }),
@@ -31,7 +31,19 @@ function refreshProbes(p) {
 function cachedProbes(p) {
   // Kick off a background refresh when stale/empty; never await it.
   if (!_probeCache.deps || Date.now() - _probeCache.at > PROBE_TTL) refreshProbes(p);
-  return { deps: _probeCache.deps, ssl: _probeCache.ssl };
+  // `deps` stays booleans, because that is what the panel branched on and what every other
+  // reader of this endpoint expects. `depsDetail` carries the timings beside it, and `depsAt`
+  // is WHEN — the first question about a health panel, and the one it could not answer. It is
+  // served stale-while-revalidate, so "green" on screen could be two minutes old or, right
+  // after a boot, from a probe that has not finished; without a timestamp there is no way to
+  // tell those apart from a live reading.
+  const detail = _probeCache.deps || null;
+  return {
+    deps: detail ? Object.fromEntries(Object.entries(detail).map(([k, v]) => [k, v.ok])) : null,
+    depsDetail: detail,
+    depsAt: _probeCache.at ? new Date(_probeCache.at).toISOString() : null,
+    ssl: _probeCache.ssl,
+  };
 }
 
 // Read-only monitoring — no dangerous action lives here, so plain ADMIN is enough
@@ -181,7 +193,7 @@ export default async function serverPerfRoutes(app) {
       // Live ones first, then by volume. A list sorted by volume alone puts the busiest
       // GHOST above every container that is actually running.
       .sort((a, b) => (Number(b.live) - Number(a.live)) || (b.samples - a.samples));
-    const { deps, ssl } = probes;
+    const { deps, depsDetail, depsAt, ssl } = probes;
     const latest = history[history.length - 1] || null;
     // Downtime gaps: consecutive samples more than 2x the ~10-min tick apart imply
     // the sweeper (and so the API process) wasn't running in between.
@@ -240,7 +252,20 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: await getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
+    return { history, latest, deps, depsDetail, depsAt, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: await getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
+  });
+
+  // Check them again, now.
+  //
+  // The cache is 2 minutes and refreshes in the background, which is right for a page load and
+  // wrong for the moment somebody has just restarted a service and wants to know. Clearing
+  // `at` makes the next read treat the cache as stale; the probe itself is not awaited, for
+  // the same reason it never is — a slow dependency must not hold the request open.
+  app.post('/admin/server/deps-recheck', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    _probeCache = { ..._probeCache, at: 0 };
+    refreshProbes(p);
+    return { ok: true };
   });
 
   // Which dependencies to check at all — an admin can turn off ones that aren't

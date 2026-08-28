@@ -138,11 +138,38 @@ export async function getDepsConfig(p) {
   return { db: true, storage: true, bot: true, telemetry: true, web: true, stripe: true, ...(row?.value || {}) };
 }
 
-export async function checkDependencies(p) {
+/**
+ * Every enabled check, with how long it took.
+ *
+ * The duration is free — the probe is awaited either way — and it is the difference between
+ * "the database is up" and "the database took four seconds to answer SELECT 1". A panel that
+ * can only say up/down cannot show the second one, which is the state a service is usually in
+ * before it goes down.
+ *
+ * `ms` is null for a check that answered `null` (not applicable): timing a probe that never
+ * ran would be a number about nothing.
+ */
+export async function checkDependenciesTimed(p) {
   const enabled = await getDepsConfig(p);
   const keys = DEP_KEYS.filter((k) => enabled[k] !== false);
-  const results = await Promise.all(keys.map(async (k) => [k, await DEP_CHECKS[k](p).catch(() => false)]));
+  const results = await Promise.all(keys.map(async (k) => {
+    const t0 = Date.now();
+    const ok = await DEP_CHECKS[k](p).catch(() => false);
+    return [k, { ok, ms: ok === null ? null : Date.now() - t0 }];
+  }));
   return Object.fromEntries(results);
+}
+
+/**
+ * The same checks as plain booleans.
+ *
+ * Kept as its own shape rather than making every caller reach for `.ok`: the status page and
+ * the sampler read this to decide whether to open an outage, and widening the value they
+ * branch on is how a truthy `{ ok: false }` ends up counting as "up".
+ */
+export async function checkDependencies(p) {
+  const timed = await checkDependenciesTimed(p);
+  return Object.fromEntries(Object.entries(timed).map(([k, v]) => [k, v.ok]));
 }
 
 // ── In-process request stats (response times + status codes) — reset every
