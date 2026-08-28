@@ -423,13 +423,31 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           <Field label={t('pce.intro', "Intro")}><Textarea rows={2} value={hero.body || ''} onChange={(e) => setIn('hero', { body: e.target.value })} placeholder={t('pce.ph.intro', "What somebody can build here, in a sentence or two.")} /></Field>
           <Field label={t('pce.smallprint', "Small print under the buttons")}><Input value={hero.note || ''} onChange={(e) => setIn('hero', { note: e.target.value })} placeholder="A key takes about a minute…" /></Field>
           <Field label={t('pce.cardhead', "Heading above the cards")}><Input value={hero.toolsTitle || ''} onChange={(e) => setIn('hero', { toolsTitle: e.target.value })} placeholder={t('pce.ph.everything', "Everything here")} /></Field>
+          {/* The second hero button. It pointed at a fixed docs path, and a docs page is
+              content — rename it and the developer landing page has a dead "API reference"
+              on it that only a deploy could fix. */}
+          <Field label={t('pce.reflabel', "Second button")}><Input value={hero.refLabel || ''} onChange={(e) => setIn('hero', { refLabel: e.target.value })} placeholder={t('pce.ph.ref', "API reference")} /></Field>
+          <Field label={t('pce.refurl', "…and where it goes")}><Input value={hero.refUrl || ''} onChange={(e) => setIn('hero', { refUrl: e.target.value })} placeholder="/docs/bcweb-api" /></Field>
         </Section>
 
+        {/* One switch under a heading that says "a whole block" was a promise the page did
+            not keep: it renders four blocks and offered a switch for one of them. */}
         <Section icon={ListTodo} title={t('pce.blocks', "Blocks")} desc="Turn a whole block of the page off.">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" checked={sections.jobs !== false} onChange={(e) => setIn('sections', { jobs: e.target.checked })} />
-            Show the “which of the two jobs is yours” pair
-          </label>
+          {[
+            ['jobs', 'Show the “which of the two jobs is yours” pair'],
+            // The projects showcase. It is the home page's, embedded here, and it pulls in
+            // rrweb the moment a replay panel is shown — on a page somebody opened to read
+            // about REST endpoints.
+            ['showcase', 'Show the projects showcase'],
+            // The OIDC discovery URL and the scope table. A site not running OIDC was
+            // publishing a /.well-known address on its developer landing page anyway.
+            ['discovery', 'Show the discovery URL and scopes'],
+          ].map(([k, label]) => (
+            <label key={k} className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={sections[k] !== false} onChange={(e) => setIn('sections', { [k]: e.target.checked })} />
+              {label}
+            </label>
+          ))}
         </Section>
 
         <Section icon={Boxes} title={t('pce.cards', "Cards")} badge={cards.length} defaultOpen

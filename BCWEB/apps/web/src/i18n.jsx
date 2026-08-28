@@ -3173,6 +3173,7 @@ const DICT = {
     'pce.branch': 'Branche',
     'pce.buildfromrepo': 'Construire depuis un dépôt',
     'pce.cardhead': 'Titre au-dessus des cartes',
+    'pce.reflabel': 'Second bouton', 'pce.refurl': '…et où il mène', 'pce.ph.ref': 'Référence de l’API',
     'pce.cards': 'Cartes',
     'pce.codegraph': 'Graphe du code',
     'pce.community': 'Communauté',

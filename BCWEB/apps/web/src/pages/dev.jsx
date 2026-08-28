@@ -467,7 +467,13 @@ export default function DevHub() {
                 : t('dev.hub.start', 'Get a key')}
             </Button>
           </Link>
-          <Link to="/docs/bcweb-api"><Button><BookOpen size={15} /> {t('dev.hub.ref', 'API reference')}</Button></Link>
+          {/* Editable, because it is the one button on this page that can rot without
+              anybody noticing: the docs page it points at is content, and content gets
+              renamed. A dead "API reference" on the developer landing page is the worst
+              possible dead link, and there was no way to change it without a deploy. */}
+          <Link to={hero.refUrl || '/docs/bcweb-api'}>
+            <Button><BookOpen size={15} /> {hero.refLabel || t('dev.hub.ref', 'API reference')}</Button>
+          </Link>
         </div>
         {/* Said once, at the top, because it is the number that decides whether somebody
             starts today or bookmarks the page. Pointless once they have started. */}
@@ -480,7 +486,7 @@ export default function DevHub() {
 
       {/* The same projects the home page opens with, and deliberately the same list: two
           lists would drift the first week and this page would quietly be a month behind. */}
-      {showcase?.enabled && (
+      {show.showcase !== false && showcase?.enabled && (
         <div className="mb-12">
           <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
         </div>
@@ -541,6 +547,7 @@ export default function DevHub() {
       {/* The machine-readable corner, kept but demoted.
           A discovery URL and a scope table are reference material, not a destination — as a
           full Card at the same weight as the tiles above, they read as a ninth door. */}
+      {show.discovery !== false && (
       <div className="mt-8 rounded-xl border border-[var(--line)] p-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('dev.hub.discovery', 'Discovery')}</span>
@@ -563,7 +570,7 @@ export default function DevHub() {
           </div>
         )}
       </div>
-
+      )}
 
       {!user && (
         <p className="text-[11px] text-[var(--muted)] mt-4">
