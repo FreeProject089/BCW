@@ -770,7 +770,13 @@ function MdLink({ pageMap, href, children, ...rest }) {
       {open && (
         <span className="md-linkprev-card">
           {info.category && <span className="md-linkprev-cat">{info.category}</span>}
-          <span className="md-linkprev-title">{info.title}</span>
+          <span className="md-linkprev-title">
+            {/* The page's own icon, the one its sidebar entry already wears. It was stored,
+                listed and never shown here — so two links to two different pages produced two
+                cards that differed by a line of text. */}
+            {info.icon && <IconGlyph name={info.icon} size={13} className="md-linkprev-icon" />}
+            {info.title}
+          </span>
           {info.desc && <span className="md-linkprev-desc">{info.desc}</span>}
         </span>
       )}

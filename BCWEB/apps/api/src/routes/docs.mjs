@@ -6,6 +6,28 @@ import { z } from 'zod';
 import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
 
 const LIST_SELECT = { id: true, slug: true, title: true, titleFr: true, category: true, categoryFr: true, icon: true, order: true, published: true, updatedAt: true };
+
+/**
+ * Markdown down to readable prose — directives, pipes, backticks, rules and all.
+ *
+ * Hoisted out of the search handler so the hover cards and the search snippets strip the same
+ * way. Two strippers would have shown `:::tip[Watch out]` as a summary on one screen and not
+ * the other, and the one that is wrong is whichever you did not test.
+ */
+export const stripMd = (s) => String(s || '')
+  .replace(/:{2,}[\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, ' ')
+  .replace(/[|`{}#>*_[\]]+/g, ' ')
+  .replace(/-{3,}/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/** The first sentence or so of a page, for the link-preview card. */
+export const summarise = (body, max = 140) => {
+  const flat = stripMd(body);
+  if (flat.length <= max) return flat;
+  // Cut on a word, not mid-syllable, and say it was cut.
+  return `${flat.slice(0, flat.lastIndexOf(' ', max) > 40 ? flat.lastIndexOf(' ', max) : max)}\u2026`;
+};
 // Must match the heading-anchor slug produced by the renderer (md.jsx slugify).
 const headingSlug = (s) => String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section';
 
@@ -84,8 +106,15 @@ export default async function docRoutes(app) {
   app.get('/docs', { preHandler: optionalAuth() }, async (req) => {
     const p = await db();
     const where = isEditor(req) ? {} : { published: true };
-    const pages = await p.docPage.findMany({ where, select: LIST_SELECT });
-    return { tree: toTree(pages), canEdit: isEditor(req) };
+    // The bodies are read and thrown away: what travels is ~140 characters per page, not 82
+    // documents. A `desc` field on the model would be a second thing to keep in step with the
+    // page it describes, and it would be wrong the first time somebody rewrote an opening
+    // paragraph without remembering it existed.
+    const pages = await p.docPage.findMany({ where, select: { ...LIST_SELECT, body: true, bodyFr: true } });
+    const withSummary = pages.map(({ body, bodyFr, ...rest }) => ({
+      ...rest, summary: summarise(body), summaryFr: bodyFr ? summarise(bodyFr) : null,
+    }));
+    return { tree: toTree(withSummary), canEdit: isEditor(req) };
   });
 
   // Full-text-ish search over titles + bodies (for the Ctrl/⌘-K palette). Ranks
@@ -103,7 +132,7 @@ export default async function docRoutes(app) {
     // terms are returned so the client highlights each one, not just the raw query string.
     const terms = [...new Set(nq.split(/\s+/).filter((w) => w.length >= 2))];
     if (!terms.length) return { results: [] };
-    const clean = (s) => s.replace(/:{2,}[\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, ' ').replace(/[|`{}#>*_[\]]+/g, ' ').replace(/-{3,}/g, ' ').replace(/\s+/g, ' ').trim();
+    const clean = stripMd;
     const results = [];
     for (const pg of pages) {
       const hay = `${pg.body || ''}\n${pg.bodyFr || ''}`;

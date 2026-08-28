@@ -118,7 +118,18 @@ export default function Docs() {
   const sectionComments = useSectionComments(page ? `/docs/${page.id}` : '', !!page);
   useSectionCommentPills(articleRef, sectionComments, () => setReaderComments(true), [sectionComments, page?.body, lang]);
   // Map of /docs/<slug> → { title, category } for link hover-previews.
-  const pageMap = useMemo(() => { const m = {}; tree.forEach((c) => c.pages.forEach((p) => { m[`/docs/${p.slug}`] = { title: titleOf(p), category: catOf(c) }; })); return m; }, [tree, lang]);
+  // Title, category, icon and a summary — the card has had a slot for the last one since it
+  // was written and nothing ever filled it, so every preview was a title over a category.
+  const pageMap = useMemo(() => {
+    const m = {};
+    tree.forEach((c) => c.pages.forEach((p) => {
+      m[`/docs/${p.slug}`] = {
+        title: titleOf(p), category: catOf(c), icon: p.icon || null,
+        desc: (lang === 'fr' && p.summaryFr) || p.summary || null,
+      };
+    }));
+    return m;
+  }, [tree, lang]);
   const onSaved = async (savedSlug) => { setEditing(null); await loadTree(); if (savedSlug) nav(`/docs/${savedSlug}`); else if (slug) { const r = await api.get(`/docs/${slug}`).catch(() => null); if (r) { setPage(r.page); setContributors(r.contributors || []); } } };
   const activeSlug = slug || firstSlug;
   const goTo = (r) => {
