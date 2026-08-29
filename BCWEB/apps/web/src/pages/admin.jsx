@@ -10864,6 +10864,11 @@ function HomePageEditor() {
     { v: 'v3', name: t('hp.v3', 'What\u2019s happening'), sub: t('hp.v3.s', 'A feed \u2014 posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.') },
   ];
 
+  // The wireframe's labels, taken from GROUPS rather than written again. A second list of
+  // section names is a second list to keep in step, and the one that drifts is the one
+  // nobody is looking at.
+  const SECTION_LABEL = Object.fromEntries(GROUPS.filter((g) => !g.always).map((g) => [g.id, g.label]));
+
   const FILTERS = [
     ['all', t('hp.f.all', 'Everything'), Object.keys(shipped).length],
     ['changed', t('hp.f.changed', 'Rewritten'), changed],
@@ -10886,29 +10891,74 @@ function HomePageEditor() {
       </div>
 
       {/* Which page the site opens with.
-          Three cards rather than a dropdown: the difference between them is a paragraph
-          each, and choosing a landing page from a list of three words is choosing by name
-          something you would only recognise by description. */}
+          Three cards rather than a dropdown, and each one DRAWS what it is made of. The
+          card used to argue that a dropdown makes you choose by name something you would
+          only recognise by description — then offered a name and a sentence, which is the
+          same problem one step up. The section stack is what actually differs, it was on
+          the wire already, and it was shown nowhere.
+
+          A wireframe, not a screenshot: a screenshot goes stale the first time somebody
+          rewrites a line, and this is derived from the same declaration the real page
+          renders from. */}
       <div className="grid sm:grid-cols-3 gap-3">
-        {VARIANTS.map((v) => (
-          <button
-            key={v.v}
-            type="button"
-            onClick={() => setVariant(v.v)}
-            aria-pressed={variant === v.v}
-            className={`text-left rounded-xl border p-3 transition-colors ${
-              variant === v.v
-                ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
-                : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold">{v.name}</span>
-              <span className="ml-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
-            </div>
-            <p className="mt-1 text-[11px] leading-snug text-[var(--muted)]">{v.sub}</p>
-          </button>
-        ))}
+        {VARIANTS.map((v) => {
+          // The hero is not in the sections list because it is not switchable; it is on
+          // every page but v3, whose whole point is not having one. Said here rather than
+          // inferred, and read from the same map the toggles use.
+          const list = variantMap?.[v.v]?.sections || [];
+          const hasHero = v.v !== 'v3';
+          return (
+            <button
+              key={v.v}
+              type="button"
+              onClick={() => setVariant(v.v)}
+              aria-pressed={variant === v.v}
+              className={`text-left rounded-xl border p-3 transition-colors ${
+                variant === v.v
+                  ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
+                  : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{v.name}</span>
+                <span className="ml-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
+              </div>
+
+              {/* The page, small. aria-hidden because the list under it says the same thing
+                  in words — a screen reader hearing eight unlabelled boxes learns nothing. */}
+              <div aria-hidden="true"
+                className="mt-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-1.5 space-y-1">
+                {hasHero && (
+                  <div className="rounded bg-[var(--primary)]/25 h-6 flex items-center justify-center">
+                    <span className="text-[8px] font-semibold text-[var(--muted)] tracking-wide">
+                      {t('hp.wire.hero', 'HERO')}
+                    </span>
+                  </div>
+                )}
+                {list.map((id) => (
+                  <div key={id}
+                    className="rounded bg-[var(--surface-3,var(--line))] h-3.5 flex items-center px-1.5">
+                    <span className="text-[7.5px] uppercase tracking-wide text-[var(--faint)] truncate">
+                      {SECTION_LABEL[id] || id}
+                    </span>
+                  </div>
+                ))}
+                {!list.length && (
+                  <div className="text-[8px] text-[var(--faint)] text-center py-2">
+                    {t('hp.wire.none', 'no sections')}
+                  </div>
+                )}
+              </div>
+
+              <p className="mt-2 text-[11px] leading-snug text-[var(--muted)]">{v.sub}</p>
+              {/* The count is the fact somebody compares on, and counting boxes by eye is
+                  what the number is for. */}
+              <p className="mt-1 text-[10px] text-[var(--faint)]">
+                {t('hp.wire.count', '{n} section(s)').replace('{n}', String(list.length + (hasHero ? 1 : 0)))}
+              </p>
+            </button>
+          );
+        })}
       </div>
 
       {/* Not hidden silently. A section that this page does not draw disappears from the

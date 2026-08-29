@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Save, Trash2, Copy, ChevronUp, ChevronDown, Monitor, Smartphone, Eye, EyeOff,
   Package, Download, Upload, ExternalLink, RotateCcw, Layers, LayoutTemplate, X,
+  Maximize2, Minimize2,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { Card, Button, Input, Textarea, Field, Dropdown, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
@@ -335,6 +336,17 @@ export default function PageBuilder() {
   const [sel, setSel] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // Whether the side panels are folded away. Remembered per browser: arranging a page is
+  // minutes of work in one mode, and re-choosing on every visit is the small tax that makes
+  // a tool feel unfinished. Wrapped because localStorage THROWS outright in some private
+  // windows — not returns null — and an editor that fails to mount over a layout preference
+  // would be a poor trade.
+  const [wide, setWide] = useState(() => {
+    try { return localStorage.getItem('bcw.pb.wide') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('bcw.pb.wide', wide ? '1' : '0'); } catch { /* not remembered */ }
+  }, [wide]);
   // Live data for the dynamic blocks, so the preview shows the real news and the real
   // numbers. A builder that previews `{{members}}` as `{{members}}` is asking you to imagine
   // the page you are building.
@@ -567,11 +579,26 @@ export default function PageBuilder() {
           </Button>
         ))}
         <span className="text-[var(--faint)]">{t('pb.start.note', '\u2014 rebuilt out of blocks, then yours to change')}</span>
+
+        {/* The canvas is the narrowest column on this screen, and it is the one being judged.
+            Inside a dashboard that already spends 220px on its own sidebar, a 220 palette and
+            a 280 properties panel leave the preview about half the width the real page gets \u2014
+            so a home page rebuilt out of blocks rendered in a thin column and looked nothing
+            like the page it is a copy of, which is the one job a preview has.
+
+            A toggle rather than new fixed numbers: both panels fold away and the canvas takes
+            the whole row. */}
+        <Button size="sm" variant={wide ? 'primary' : 'ghost'} className="ml-auto"
+          onClick={() => setWide((w) => !w)}
+          title={t('pb.wide.h', 'Fold the palette and the properties away, so the page is seen at full width')}>
+          {wide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+          {wide ? t('pb.wide.off', 'Show the panels') : t('pb.wide.on', 'Full width')}
+        </Button>
       </div>
 
-      <div className="grid lg:grid-cols-[220px_minmax(0,1fr)_280px] gap-4 items-start">
+      <div className={`grid gap-4 items-start ${wide ? '' : 'lg:grid-cols-[210px_minmax(0,1fr)_270px]'}`}>
         {/* ── Palette ── */}
-        <Card className="p-3 space-y-3 lg:sticky lg:top-4">
+        <Card className={`p-3 space-y-3 lg:sticky lg:top-4 ${wide ? 'hidden' : ''}`}>
           {paletteGroups.map(([kind, label]) => (
             <div key={kind}>
               <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
@@ -687,7 +714,7 @@ export default function PageBuilder() {
         </div>
 
         {/* ── Properties ── */}
-        <Card className="p-3 lg:sticky lg:top-4 space-y-3">
+        <Card className={`p-3 lg:sticky lg:top-4 space-y-3 ${wide ? 'hidden' : ''}`}>
           {!selected && <p className="text-xs text-[var(--muted)]">{t('pb.pick', 'Select a block on the page to change it.')}</p>}
           {selected && (
             <>
