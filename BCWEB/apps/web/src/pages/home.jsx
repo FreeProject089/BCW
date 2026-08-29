@@ -128,6 +128,22 @@ function CountUp({ value }) {
  * It renders the SAME PollCard the polls page renders, in `compact` mode. A second, smaller poll
  * card would be a second place where voting is implemented.
  */
+/**
+ * How wide one slide is, by how many slides there are.
+ *
+ * Written out rather than computed, because Tailwind scans the source for class names: a
+ * template-built `w-[calc(${100 / n}%...)]` produces no CSS at all and every card collapses.
+ * The same reason the rest of this file spells its breakpoints out.
+ *
+ * Four is the cap. Past that the rail scrolls, which is what a rail is for.
+ */
+const SLIDE_W = {
+  1: 'sm:w-full',
+  2: 'sm:w-[calc(50%-0.5rem)]',
+  3: 'sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)]',
+  4: 'sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)] xl:w-[calc(25%-0.75rem)]',
+};
+
 function PollSlider({ polls }) {
   const { t } = useI18n();
   const railRef = useRef(null);
@@ -209,15 +225,18 @@ function PollSlider({ polls }) {
         aria-label={polls.length > 1 ? t('home.poll.slider', 'Polls') : undefined}
       >
         {polls.map((poll) => (
-          // Half a page past `md`, one page below it. Two cards side by side on a phone is two
-          // cards nobody can read.
-          // One across on a phone, two from sm, three from lg, four from xl — a teaser is a
-          // title and a line, so it stays readable narrow, and a wide screen stops showing two
-          // cards beside a screen of nothing.
+          // One across on a phone, and from `sm` up as many across as there ARE — capped at
+          // four, past which the rail scrolls.
+          //
+          // The widths used to be fixed at 1/2/3/4 regardless of the count, and the case that
+          // broke is the common one: a single open poll rendered a quarter-width card on a
+          // wide screen with three quarters of empty row beside it. Two polls got two
+          // quarters and half a row of nothing. The number of cards is known here, so the
+          // layout should follow it rather than assume the rail is always full.
           //
           // `items-stretch` on the rail plus `h-full` on the teaser keeps every card in a page
           // the same height, so the rail never takes the height of its tallest slide.
-          <div key={poll.id} className="snap-start shrink-0 w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.667rem)] xl:w-[calc(25%-0.75rem)]">
+          <div key={poll.id} className={`snap-start shrink-0 w-full ${SLIDE_W[Math.min(polls.length, 4)]}`}>
             <PollTeaser poll={poll} />
           </div>
         ))}

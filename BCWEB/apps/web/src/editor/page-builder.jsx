@@ -259,6 +259,9 @@ const nid = () => `b${Math.random().toString(36).slice(2, 9)}`;
 const B = (type, props = {}, children) => ({ id: nid(), type, props, ...(children ? { children } : {}) });
 
 export const STARTERS = {
+  // v1 — the long landing page, in the order the real one draws it: hero, poll, products,
+  // why, steps, dev, myo, reviews, news. `HOME_VARIANTS.v1` on the API side is the list, and
+  // scripts/check-home-starters.mjs holds this to it.
   v1: (t) => [
     B('section', { pad: 'lg', maxw: 'wide' }, [
       B('heading', { text: t('pb.start.h1', 'The home for every Better* project'), level: 1, align: 'center', gradient: true }),
@@ -271,12 +274,6 @@ export const STARTERS = {
         B('button', { label: t('pb.start.cta2', 'Host a repo'), href: '/hosting', style: 'outline', size: 'lg' }),
       ]),
     ]),
-    B('section', { pad: 'md' }, [B('showcase', {})]),
-    B('section', { pad: 'md' }, [
-      B('heading', { text: t('pb.start.products', 'The apps'), level: 2 }),
-      B('products', { style: 'cards' }),
-    ]),
-    B('divider', { style: 'gradient', space: 'lg' }),
     B('section', { pad: 'md' }, [
       B('row', { cols: '4', gap: 'md', align: 'center' }, [
         B('stat', { variable: 'members', label: t('pb.start.s1', 'members'), icon: 'users', style: 'tile' }),
@@ -285,9 +282,49 @@ export const STARTERS = {
         B('stat', { variable: 'repos', label: t('pb.start.s4', 'repositories'), icon: 'server', style: 'tile' }),
       ]),
     ]),
-    B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
-    B('section', { pad: 'md' }, [B('reviews', { style: 'quotes', limit: 3 })]),
+    B('section', { pad: 'md' }, [B('poll', {})]),
+    B('section', { pad: 'md' }, [
+      B('heading', { text: t('pb.start.products', 'The apps'), level: 2 }),
+      B('products', { style: 'cards' }),
+    ]),
+    B('divider', { style: 'gradient', space: 'lg' }),
+    // "Why" — four cards, with the wording the real section uses. Written out as blocks
+    // because that is what it is on the real page too: content, not a component.
+    B('section', { pad: 'md' }, [
+      B('heading', { text: t('home.k.why', 'Why BetterCommunity'), level: 2 }),
+      B('cards', { cols: 'auto', gap: 'md', min: 240 }, [
+        B('card', { title: t('home.feat.accounts'), icon: 'layout-dashboard' }, [
+          B('text', { md: t('home.feat.accounts.d') }),
+        ]),
+        B('card', { title: t('home.feat.hosting'), icon: 'zap' }, [
+          B('text', { md: t('home.feat.hosting.d') }),
+        ]),
+        B('card', { title: t('home.feat.install', 'One-click install'), icon: 'link' }, [
+          B('text', { md: t('home.feat.install.d', 'Catalog entries install straight into BMM through bmm:// deeplinks — no manual downloads.') }),
+        ]),
+        B('card', { title: t('home.feat.privacy', 'Privacy-first'), icon: 'lock' }, [
+          B('text', { md: t('home.feat.privacy.d', 'No third-party trackers — anonymous first-party analytics, and only with your consent.') }),
+        ]),
+      ]),
+    ]),
+    // "How it works" — the three steps, each a card with its own link, as on the real page.
+    B('section', { pad: 'md' }, [
+      B('heading', { text: t('home.steps.title'), level: 2 }),
+      B('text', { md: t('home.steps.sub'), width: 'prose' }),
+      B('cards', { cols: '3', gap: 'md', min: 220 }, [
+        B('card', { title: t('home.step1'), icon: 'users', href: '/auth' }, [B('text', { md: t('home.step1.d') })]),
+        B('card', { title: t('home.step2'), icon: 'box', href: '/catalog' }, [B('text', { md: t('home.step2.d') })]),
+        B('card', { title: t('home.step3'), icon: 'server', href: '/hosting' }, [B('text', { md: t('home.step3.d') })]),
+      ]),
+    ]),
+    B('section', { pad: 'md' }, [
+      B('heading', { text: t('home.dev.t', 'Build on BetterCommunity'), level: 2 }),
+      B('text', { md: t('home.dev.d'), width: 'prose' }),
+      B('devtools', {}),
+    ]),
     B('section', { pad: 'md' }, [B('myo', { limit: 3 })]),
+    B('section', { pad: 'md' }, [B('reviews', { style: 'quotes', limit: 3 })]),
+    B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
   ],
   v2: (t) => [
     B('section', { pad: 'md' }, [
