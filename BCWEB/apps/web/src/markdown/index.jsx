@@ -137,7 +137,7 @@ const SANITIZE_SCHEMA = {
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
     'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap', 'doc-replay',
-    'doc-tabs'])],
+    'doc-tabs', 'doc-schedule', 'doc-time'])],
   attributes: {
     ...defaultSchema.attributes,
     // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
@@ -171,6 +171,8 @@ const SANITIZE_SCHEMA = {
     'doc-roadmap': ['className', 'dataSrc', 'dataJson', 'dataTitle', 'dataOrientation'],
     'doc-replay': ['className', 'dataSrc', 'dataTitle', 'dataAutoplay', 'dataLoop'],
     'doc-tabs': ['className'],
+    'doc-schedule': ['className', 'dataTz', 'dataTitle'],
+    'doc-time': ['className', 'dataAt', 'dataTz', 'dataFormat'],
   },
 };
 
@@ -489,6 +491,23 @@ function remarkDocBlocks() {
         setEl('doc-tabs', ['doc-tabs']);
       } else if (name === 'tab') {
         setEl('div', ['doc-tab'], { 'data-title': String(attrs.title || attrs.name || labelText || '').trim() });
+      } else if (name === 'schedule' || name === 'hours') {
+        // Opening hours, a stream week, a support rota — a set of rows that repeat, stated in
+        // ONE timezone.
+        //
+        // The rows are NOT converted, and that is the correct answer rather than a missing
+        // feature. “Monday 09:00 Europe/Paris” is 09:00 in Paris every week of the year; what
+        // moves across a DST boundary is how far that is from the reader. Converting each row
+        // would produce a number that is right today and wrong in March, with nothing on the
+        // page admitting it. So the zone is named and the difference is stated for NOW, said
+        // out loud as being for now.
+        //
+        // `<doc-schedule>` rather than a div: the offset has to be computed in the reader's
+        // browser, and a component below owns that.
+        setEl('doc-schedule', ['doc-schedule'], {
+          'data-tz': String(attrs.tz || attrs.timezone || '').trim(),
+          'data-title': String(labelText || attrs.title || '').trim(),
+        });
       } else if (name === 'columns' || name === 'row') {
         setEl('div', ['doc-columns']);
       } else if (name === 'column' || name === 'col') {
@@ -544,6 +563,19 @@ function remarkDocBlocks() {
           if (/^https?:\/\//i.test(href)) Object.assign(props, { target: '_blank', rel: 'noreferrer' });
         }
         setEl(href ? 'a' : 'span', ['doc-link-c'], props);
+      } else if (name === 'time' || name === 'at') {
+        // A single INSTANT, converted exactly.
+        //
+        //   :time[2026-09-01T20:00]{tz=Europe/Paris}
+        //
+        // Exact because the date settles which side of a daylight-saving change it falls on
+        // — which is the whole reason a weekly `:::schedule` row is NOT converted.
+        setEl('doc-time', ['doc-time'], {
+          'data-at': String(labelText || attrs.at || '').trim(),
+          'data-tz': String(attrs.tz || attrs.timezone || '').trim(),
+          'data-format': String(attrs.format || '').trim(),
+        });
+        node.children = [];
       } else if (name === 'badge' || name === 'tag') {
         // Inline coloured chip/tag: `:badge[Label]{color=#hex}`.
         const props = {};
@@ -790,6 +822,121 @@ function DocReplay({ node }) {
 }
 /* kit:injected:end */
 
+/* ── Times and timezones ──────────────────────────────────────────────────────
+   Two shapes, because two questions get asked and only one has an exact answer. */
+
+/** The reader's own zone, or a sensible answer when the browser will not say. */
+function readerZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
+/**
+ * What a wall-clock time in `tz` is in UTC, on a given date.
+ *
+ * There is no built-in for this. The trick is the standard one: format the instant IN the
+ * zone, read back what the clock there said, and the difference between that and the input is
+ * the offset. Done for a SPECIFIC date, which is what makes daylight saving come out right —
+ * the same wall-clock time has two different offsets in a year.
+ */
+function zoneOffsetMs(dateUtcMs, tz) {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    });
+    const p = Object.fromEntries(dtf.formatToParts(new Date(dateUtcMs)).map((x) => [x.type, x.value]));
+    // `hour` comes back as 24 at midnight in some engines, which Date.UTC reads as the next
+    // day — correct arithmetic, wrong day, and a silent one-day error.
+    const h = p.hour === '24' ? 0 : Number(p.hour);
+    const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), h, Number(p.minute), Number(p.second));
+    return asUtc - dateUtcMs;
+  } catch { return 0; }
+}
+
+/**
+ * One instant, in the reader's own zone.
+ *
+ *   :time[2026-09-01T20:00]{tz=Europe/Paris}
+ *
+ * The date is what makes this exact: it settles which side of a daylight-saving change the
+ * time falls on. That is precisely why a weekly `:::schedule` row is NOT converted.
+ *
+ * A time that cannot be parsed is shown as written rather than as "Invalid Date". Somebody
+ * reading a page should see what the author typed, not the failure of a parser.
+ */
+function DocTime(props) {
+  const raw = String(props['data-at'] || props.dataAt || '').trim();
+  const tz = String(props['data-tz'] || props.dataTz || '').trim();
+  if (!raw) return null;
+
+  // Parsed as a wall-clock time in `tz`, not as whatever the browser's zone happens to be:
+  // `new Date('2026-09-01T20:00')` is LOCAL time, so without this the answer would be right
+  // only for readers who already live in the author's zone.
+  const naive = Date.parse(raw.includes('T') ? `${raw}Z` : `${raw.replace(' ', 'T')}Z`);
+  if (Number.isNaN(naive)) return <span className="doc-time">{raw}</span>;
+  const instant = tz ? naive - zoneOffsetMs(naive, tz) : naive;
+
+  const here = readerZone();
+  let shown;
+  try {
+    shown = new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium', timeStyle: 'short', timeZone: here,
+    }).format(new Date(instant));
+  } catch { return <span className="doc-time">{raw}</span>; }
+
+  return (
+    <time className="doc-time" dateTime={new Date(instant).toISOString()}
+      title={tz ? `${raw} ${tz}` : raw}>
+      {shown}
+      <span className="doc-time-zone">{here}</span>
+    </time>
+  );
+}
+
+/**
+ * A repeating schedule, stated in one zone.
+ *
+ * The rows are shown AS WRITTEN. Converting them would be a lie: "Monday 09:00 Europe/Paris"
+ * is 09:00 in Paris every week of the year, and what moves across a daylight-saving boundary
+ * is how far that is from the reader — so a converted row would be right today and wrong in
+ * March, with nothing on the page admitting it.
+ *
+ * What IS computed is the difference, right now, said out loud as being for right now.
+ */
+function DocSchedule({ children, ...props }) {
+  const tz = String(props['data-tz'] || props.dataTz || '').trim();
+  const title = String(props['data-title'] || props.dataTitle || '').trim();
+  const here = readerZone();
+
+  let note = null;
+  if (tz && tz !== here) {
+    const now = Date.now();
+    const diffMin = Math.round((zoneOffsetMs(now, here) - zoneOffsetMs(now, tz)) / 60000);
+    if (diffMin !== 0) {
+      const h = Math.floor(Math.abs(diffMin) / 60);
+      const m = Math.abs(diffMin) % 60;
+      const span = m ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+      note = `${here} is ${span} ${diffMin > 0 ? 'ahead of' : 'behind'} ${tz} right now`;
+    } else {
+      note = `${here} is on the same clock as ${tz} right now`;
+    }
+  }
+
+  return (
+    <div className="doc-schedule">
+      <div className="doc-schedule-head">
+        <span className="doc-schedule-title">{title || 'Hours'}</span>
+        {tz && <span className="doc-schedule-tz">{tz}</span>}
+      </div>
+      <div className="doc-schedule-body">{children}</div>
+      {/* "right now" is not hedging — it is the only true form of this sentence, because the
+          difference changes twice a year and this page does not re-render when it does. */}
+      {note && <p className="doc-schedule-note">{note}</p>}
+    </div>
+  );
+}
+
 /**
  * Tabs, with the open one in this component and nothing in the markdown.
  *
@@ -827,6 +974,7 @@ function DocTabs({ children }) {
 
 const COMPONENTS = {
   'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-tabs': DocTabs,
+  'doc-schedule': DocSchedule, 'doc-time': DocTime,
 /* kit:injected:start */
   'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay,
 /* kit:injected:end */

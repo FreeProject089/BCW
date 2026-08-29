@@ -40,6 +40,13 @@ export function blank(type) {
     ] };
     case 'math': return { id: uid(), type, tex: 'E = mc^2' };
     case 'replay': return { id: uid(), type, src: '', title: '', autoplay: false, loop: false };
+    // The timezone is REQUIRED in practice, so the blank carries a real one rather than an
+    // empty box: a schedule with no zone renders rows nobody can place, and the commonest
+    // mistake is not noticing the field.
+    case 'schedule': return {
+      id: uid(), type, title: 'Hours', tz: 'Europe/Paris',
+      text: '| Day | Open |\n|---|---|\n| Mon-Fri | 09:00-18:00 |',
+    };
     case 'divider': return { id: uid(), type };
     default: return { id: uid(), type: 'text', text: '' };
   }
@@ -107,6 +114,13 @@ export function parse(md) {
           id: uid(), type: 'roadmap', title: label || attrs.title || '',
           orientation: attrs.orientation === 'horizontal' ? 'horizontal' : 'vertical',
           json: (fence ? fence[1] : innerText).trim() || '{}',
+        });
+      } else if (name === 'schedule' || name === 'hours') {
+        blocks.push({
+          id: uid(), type: 'schedule',
+          title: label || attrs.title || '',
+          tz: attrs.tz || attrs.timezone || '',
+          text: innerText,
         });
       } else if (name === 'tabs') {
         blocks.push({
@@ -283,6 +297,13 @@ export function blockMd(b) {
       case 'roadmap': {
         const a = b.orientation === 'horizontal' ? '{orientation=horizontal}' : '';
         return `:::roadmap${b.title ? `[${b.title}]` : ''}${a}\n\`\`\`json\n${b.json || '{}'}\n\`\`\`\n:::`;
+      }
+      case 'schedule': {
+        // The zone is written even when the title is blank, so a round trip cannot
+        // silently drop the one attribute this block is entirely about.
+        const tz = b.tz ? '{tz=' + b.tz + '}' : '';
+        const head = b.title ? '[' + b.title + ']' : '';
+        return ':::schedule' + head + tz + '\n' + (b.text || '') + '\n:::';
       }
       case 'columns': return `::::columns\n:::column\n${b.left || ''}\n:::\n:::column\n${b.right || ''}\n:::\n::::`;
       case 'align': return `:::${b.align || 'center'}\n${b.text || ''}\n:::`;

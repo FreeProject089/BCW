@@ -250,6 +250,39 @@ A button with no `href` renders as a plain span rather than a dead link.
 
 ---
 
+## Hours and times
+
+```
+:::schedule[Support]{tz=Europe/Paris}
+| Day | Open |
+|---|---|
+| Mon-Fri | 09:00-18:00 |
+:::
+```
+
+`:::schedule` — alias `:::hours` — states a repeating schedule in ONE timezone. Attributes:
+`tz` (an IANA name such as `Europe/Paris`), and the label is the card's title.
+
+**The rows are not converted, and that is the correct answer rather than a missing feature.**
+`Monday 09:00 Europe/Paris` is 09:00 in Paris every week of the year; what moves across a
+daylight-saving boundary is how far that is from the reader. A converted row would be right
+today and wrong in March, with nothing on the page admitting it. So the zone is named on the
+card and the block computes the difference **right now**, labelled as being for right now.
+
+A single moment has no such ambiguity, so it IS converted:
+
+```
+The stream starts at :time[2026-09-01T20:00]{tz=Europe/Paris}.
+```
+
+`:time` — alias `:at` — renders that instant in each reader's own timezone, keeping what you
+typed in the tooltip. The date is what makes it exact: it settles which side of a
+daylight-saving change the time falls on. A value that cannot be parsed is shown as written
+rather than as `Invalid Date` — a reader should see what the author typed, not the failure of
+a parser.
+
+Both use `Intl.DateTimeFormat`, so there is no dependency and nothing to configure.
+
 ## Tabs
 
 ```

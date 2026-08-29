@@ -295,6 +295,18 @@ Short form: \`:btn[…]\` does the same thing.
 \`:::note\` \`:::tip\` \`:::success\` \`:::warning\` \`:::danger\` — and \`:::callout{icon=rocket color="#7c3aed"}\` for one of your own — \`:::custom\` is the same block under the name the editor's Blocks menu uses.
 :::
 
+## Hours and times
+:::schedule[Support]{tz=Europe/Paris}
+| Day | Open |
+|---|---|
+| Mon-Fri | 09:00-18:00 |
+| Sat | 10:00-14:00 |
+:::
+
+\`:::schedule{tz=...}\` (or \`:::hours\`) states a repeating schedule in ONE timezone. The rows are shown exactly as you wrote them and the zone is named on the card, because converting them would be wrong: \`Monday 09:00 Europe/Paris\` is 09:00 in Paris every week of the year, and what moves across a daylight-saving boundary is how far that is from the reader. A converted row would be right today and wrong in March. What the block computes instead is the difference **right now**, and says so.
+
+For a single moment there is no such ambiguity, so it IS converted: \`:time[2026-09-01T20:00]{tz=Europe/Paris}\` (or \`:at\`) shows that instant in each reader's own timezone, with what you typed kept in the tooltip. The date is what makes it exact - it settles which side of a daylight-saving change the time falls on.
+
 ## Tabs
 :::tabs
 :::tab{title="Windows"}

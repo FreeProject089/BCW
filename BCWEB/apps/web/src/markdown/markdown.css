@@ -279,3 +279,54 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .md-body .hljs-tag, .md-body .hljs-name { color: #e06c75; }
 .md-body .hljs-meta { color: #56b6c2; }
 .md-body .hljs-emphasis { font-style: italic; } .md-body .hljs-strong { font-weight: 700; }
+
+/* ── Hours and instants ──────────────────────────────────────────────────────
+   A schedule is a small card rather than a bare list: the timezone it is stated in belongs
+   ON it, next to the rows, and a list with a sentence above it separates the two the moment
+   somebody scrolls. */
+:is(.md-body, .pb-page) .doc-schedule {
+    border: 1px solid var(--line, rgba(255, 255, 255, .12));
+    border-radius: 12px;
+    overflow: hidden;
+    margin: 1rem 0;
+}
+:is(.md-body, .pb-page) .doc-schedule-head {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    background: var(--surface-2, rgba(255, 255, 255, .04));
+    border-bottom: 1px solid var(--line, rgba(255, 255, 255, .12));
+}
+:is(.md-body, .pb-page) .doc-schedule-title { font-weight: 600; font-size: .9em; }
+/* Monospace and dimmed: it is an identifier (Europe/Paris), not prose, and reading it wrong
+   is the whole failure this block exists to prevent. */
+:is(.md-body, .pb-page) .doc-schedule-tz {
+    margin-left: auto;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: .75em;
+    color: var(--muted, #9aa);
+}
+:is(.md-body, .pb-page) .doc-schedule-body { padding: .25rem .75rem; }
+:is(.md-body, .pb-page) .doc-schedule-body > ul { margin: .5rem 0; }
+:is(.md-body, .pb-page) .doc-schedule-body table { margin: .5rem 0; width: 100%; }
+:is(.md-body, .pb-page) .doc-schedule-note {
+    margin: 0;
+    padding: .45rem .75rem;
+    font-size: .78em;
+    color: var(--muted, #9aa);
+    border-top: 1px dashed var(--line, rgba(255, 255, 255, .12));
+}
+
+/* An instant, inline. Underlined on hover only — the title carries what the author wrote,
+   and a permanently decorated span in a paragraph reads as a link that does nothing. */
+:is(.md-body, .pb-page) .doc-time {
+    font-variant-numeric: tabular-nums;
+    border-bottom: 1px dotted transparent;
+}
+:is(.md-body, .pb-page) .doc-time:hover { border-bottom-color: var(--muted, #9aa); }
+:is(.md-body, .pb-page) .doc-time-zone {
+    margin-left: .35em;
+    font-size: .8em;
+    color: var(--muted, #9aa);
+}

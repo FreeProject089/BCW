@@ -1018,6 +1018,18 @@ Un bouton sans \`href\` s'affiche en simple span plutôt qu'en lien mort.
 :link[à lire d'abord]{color=#e11 href=/docs/quick-start} — toujours souligné, comme tous les
 autres liens du site. La couleur seule n'est pas un signal que tout le monde perçoit.
 
+## Horaires et instants
+:::schedule[Support]{tz=Europe/Paris}
+| Jour | Ouvert |
+|---|---|
+| Lun-Ven | 09:00-18:00 |
+| Sam | 10:00-14:00 |
+:::
+
+\`:::schedule{tz=...}\` (ou \`:::hours\`) enonce un horaire recurrent dans UN fuseau. Les lignes sont affichees exactement comme tu les as ecrites et le fuseau est nomme sur la carte, parce que les convertir serait faux : \`lundi 09:00 Europe/Paris\`, c'est 09:00 a Paris toute l'annee, et ce qui bouge au passage a l'heure d'ete, c'est l'ecart avec le lecteur. Une ligne convertie serait juste aujourd'hui et fausse en mars. Ce que le bloc calcule, c'est l'ecart **maintenant**, et il le dit.
+
+Un instant unique n'a pas cette ambiguite, donc il EST converti : \`:time[2026-09-01T20:00]{tz=Europe/Paris}\` (ou \`:at\`) affiche ce moment dans le fuseau de chaque lecteur, en gardant ce que tu as tape dans l'infobulle. C'est la date qui rend le calcul exact - elle decide de quel cote d'un changement d'heure le moment tombe.
+
 ## Les onglets
 
 \`\`\`

@@ -1034,6 +1034,18 @@ A button with no \`href\` renders as a plain span rather than a dead link.
 :link[read this first]{color=#e11 href=/docs/quick-start} — still underlined, like every other
 link on the site. Colour alone is not a signal everybody can see.
 
+## Hours and times
+:::schedule[Support]{tz=Europe/Paris}
+| Day | Open |
+|---|---|
+| Mon-Fri | 09:00-18:00 |
+| Sat | 10:00-14:00 |
+:::
+
+\`:::schedule{tz=...}\` (or \`:::hours\`) states a repeating schedule in ONE timezone. The rows are shown exactly as you wrote them and the zone is named on the card, because converting them would be wrong: \`Monday 09:00 Europe/Paris\` is 09:00 in Paris every week of the year, and what moves across a daylight-saving boundary is how far that is from the reader. A converted row would be right today and wrong in March. What the block computes instead is the difference **right now**, and says so.
+
+A single moment has no such ambiguity, so it IS converted: \`:time[2026-09-01T20:00]{tz=Europe/Paris}\` (or \`:at\`) shows that instant in each reader's own timezone, keeping what you typed in the tooltip. The date is what makes it exact - it settles which side of a daylight-saving change the time falls on.
+
 ## Tabs
 
 \`\`\`
