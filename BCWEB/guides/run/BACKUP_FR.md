@@ -147,7 +147,7 @@ clairement :
 | Objets MinIO (fichiers envoyés, octets des dépôts hébergés) | **Oui** | Non | Non |
 | Historique d’édition des fichiers touchés via le gestionnaire | Non | **Oui** | Non |
 | Historique d’édition des lignes touchées via le visualiseur BDD | Non | **Oui** | Non |
-| Peut être restauré dans BCWEB | **Oui** | **Oui** | **Non** — c’est un export, pas un point de restauration |
+| Peut être restauré dans BCWEB | **Oui** | **Oui** | **Six sections sur neuf** — voir plus bas |
 | Lisible sans BCWEB | Non | Non | **Oui** — du JSON brut dans un zip |
 | Survit à la perte de la machine | Oui, une fois copié hors site | Seulement si téléchargé | Seulement si téléchargé |
 
@@ -164,8 +164,21 @@ dedans sans base de données*.
 
 Trois choses à son sujet sont délibérées et à connaître avant de compter dessus :
 
-- **Ce n’est pas un point de restauration.** Rien ne relît un export de contenu. Pour « le
-  serveur a disparu », utilise le script en haut de cette page.
+- **Ça se relît — en partie.** Six sections s’importent : docs, blog, FAQ, versions légales,
+  réglages du site, et avis/sondages. Les trois autres s’exportent et ne se réimportent pas,
+  chacune pour sa raison. Les comptes ne portent aucune donnée d’identification : les
+  restaurer créerait des coquilles où personne ne peut se connecter et écraserait le rôle et
+  le statut de gens qui existent. Les lignes de catalogues et de dépôts pointent vers des
+  fichiers MinIO que le zip ne transporte pas. L’écran marque ces trois-là « export seul »
+  avant que tu choisisses, plutôt que de les sauter en cours de route.
+
+  Un import remplace les entrées de même id et laisse tranquille tout ce dont le zip n’a
+  jamais entendu parler — « remets ça », pas « rends le site identique à ce zip », qui
+  détruirait tout ce qui a été écrit depuis l’export. Ce que disait le site avant est d’abord
+  commité dans un historique git : l’Annuler du toast et la liste de rollback sont le même acte.
+
+  Ce n’est toujours pas un point de reprise après sinistre. Pour « le serveur a disparu »,
+  utilise le script en haut de cette page.
 - **Les comptes ne sont que des fiches** — id, e-mail, nom affiché, rôle, statut, bio,
   avatar. Aucun hash de mot de passe, aucun secret 2FA, aucun token. C’est ce qui rend le zip
   sûr à garder sur un portable, et c’est pourquoi restaurer les gens veut dire les réinviter.

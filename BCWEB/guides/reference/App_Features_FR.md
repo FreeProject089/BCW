@@ -182,6 +182,12 @@
     La liste est une liste blanche, pas un chemin dans la base. Un nom inconnu ne rend rien
     dans du texte et affiche — dans une tuile de chiffre : jamais `0`, qui serait une mesure
     plutôt qu'une absence.
+  - **Pleine largeur** replie la palette et les propriétés : la page est jugée à la largeur
+    qu'elle aura vraiment, pas dans la colonne qui reste à l'intérieur d'un tableau de bord.
+  - Les presets **Partir de** reconstruisent les vraies pages d'accueil en blocs — mêmes
+    sections, même ordre, mêmes formulations. Une vérification les tient à la liste de
+    variantes dont la page publique est rendue : un preset ne peut donc pas devenir en
+    silence une autre page.
   - L'orbe du site est un **réglage de page**, pas un bloc — il est monté une seule fois
     derrière tout, et un bloc qui le « contiendrait » ferait un second orbe devant le premier.
 - **Projets officiels** — ajouter et modifier depuis le dashboard les projets dont le site
@@ -192,7 +198,12 @@
   un zip, avec le nombre de lignes de chacune affiché avant de choisir. Les comptes ne sont
   que des fiches — aucun hash de mot de passe, aucun secret 2FA, aucun token. Catalogues et
   dépôts sont désactivés par défaut, leurs lignes pointant vers des fichiers que le zip ne
-  transporte pas. C'est un export, pas un point de restauration ; voir
+  transporte pas. Six des neuf sections **s’importent** aussi — docs, blog, FAQ, versions légales, réglages et
+  avis/sondages ; comptes, catalogues et dépôts sont en export seul et marqués ainsi sur la
+  ligne. Un import remplace les entrées de même id et laisse tranquille ce dont le zip n’a
+  jamais entendu parler, et ce que disait le site avant est d’abord commité dans un historique
+  git — l’Annuler du toast et la liste de rollback sont donc le même acte. Toujours pas un
+  point de reprise après sinistre ; voir
   **[BACKUP_FR.md](../run/BACKUP_FR.md)** pour savoir laquelle des trois « sauvegardes »
   répond à quelle question.
 - **Téléchargement du kit markdown** (`/dev/markdown`) — prendre le moteur de rendu

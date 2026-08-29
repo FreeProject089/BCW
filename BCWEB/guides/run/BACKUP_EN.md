@@ -149,7 +149,7 @@ plainly:
 | MinIO objects (uploaded files, hosted repo bytes) | **Yes** | No | No |
 | Edit history of files touched through the file manager | No | **Yes** | No |
 | Edit history of DB rows touched through the DB viewer | No | **Yes** | No |
-| Can be restored back into BCWEB | **Yes** | **Yes** | **No** — it is an export, not a restore point |
+| Can be restored back into BCWEB | **Yes** | **Yes** | **Six sections of nine** — see below |
 | Readable without BCWEB | No | No | **Yes** — plain JSON in a zip |
 | Survives losing the machine | Yes, once copied off-site | Only if downloaded | Only if downloaded |
 
@@ -165,8 +165,20 @@ It exists for the questions the other two answer badly: *what did that page say 
 
 Three things about it are deliberate and worth knowing before you rely on it:
 
-- **It is not a restore point.** Nothing reads a content export back in. For "the server is
-  gone", use the script at the top of this page.
+- **It reads back in — partly.** Six sections import: docs, blog, FAQ, legal versions, site
+  settings, and reviews/polls. The other three export and do not, each for its own reason.
+  Accounts carry no credentials, so restoring them would create shells nobody can sign in to
+  and overwrite the role and status of people who exist. Catalogue and repository rows point
+  at files in MinIO the zip does not carry. The screen marks those three "export only" before
+  you choose, rather than skipping them halfway through.
+
+  An import replaces entries with the same id and leaves alone anything the zip has never
+  heard of — "put these back", not "make the site look exactly like this zip", which would
+  destroy everything written since the export. What the site said beforehand is committed to
+  a git history first, so the toast's Undo and the rollback list are the same act.
+
+  It is still not a disaster-recovery point. For "the server is gone", use the script at the
+  top of this page.
 - **Accounts are records only** — id, email, display name, role, status, bio, avatar. No
   password hashes, no 2FA secrets, no tokens. That is what makes the zip safe to keep on a
   laptop, and it is why restoring people means re-inviting them.

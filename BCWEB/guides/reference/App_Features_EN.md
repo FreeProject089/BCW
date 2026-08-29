@@ -164,6 +164,12 @@
   - `{{members}}`, `{{downloads}}` and the rest are substituted in any text. The list is an
     allowlist, not a path into the database. An unknown name renders as nothing in text and
     as — in a stat tile: never as `0`, which would be a measurement rather than an absence.
+  - **Full width** folds the palette and the properties away, so the page is judged at the
+    width it will really have rather than in the column left over inside a dashboard.
+  - The **Start from** presets rebuild the real landing pages out of blocks — the same
+    sections, in the same order, carrying the same wording. A check holds them to the
+    variant list the public page renders from, so a preset cannot quietly become a
+    different page.
   - The site-wide orb is a **page setting**, not a block — it is mounted once behind
     everything, and a block that "contained" it would be a second orb in front of the first.
 - **Official projects** — add and edit the projects the site is about from the dashboard.
@@ -173,7 +179,11 @@
   settings, reviews and account records, as one JSON file per section in a zip, with the row
   count of each shown before you choose. Accounts are records only — no password hashes, no
   2FA secrets, no tokens. Catalogues and repositories are off by default because their rows
-  point at files the zip does not carry. It is an export, not a restore point; see
+  point at files the zip does not carry. Six of the nine sections **import** as well — docs, blog, FAQ, legal versions, settings and
+  reviews/polls; accounts, catalogues and repositories are export-only and marked so on the
+  row. An import replaces entries with the same id and leaves alone anything the zip has never
+  heard of, and what the site said beforehand is committed to a git history first — so the
+  toast’s Undo and the rollback list are the same act. Still not a disaster-recovery point; see
   **[BACKUP_EN.md](../run/BACKUP_EN.md)** for which of the three "backups" answers which
   question.
 - **Markdown kit download** (`/dev/markdown`) — take the renderer itself. Tick the parts you
