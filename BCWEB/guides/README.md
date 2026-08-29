@@ -67,6 +67,7 @@ the reasoning, not as a to-do list. Don't follow them as setup instructions.
 | Technical audit (strengths, risks, action plan) | [EN](audits/TECH_AUDIT_EN.md) | [FR](audits/TECH_AUDIT_FR.md) |
 | Performance audit (bottlenecks + fix plan) | [EN](audits/PERF_AUDIT_EN.md) | [FR](audits/PERF_AUDIT_FR.md) |
 | Rust workers plan (moving CPU work off the event loop) | [EN](audits/RUST_WORKERS_PLAN_EN.md) | [FR](audits/RUST_WORKERS_PLAN_FR.md) |
+| CVE/CWE audit — 2026-08-29 (all three repos, with why four findings are not reachable) | [EN](audits/SECURITY_AUDIT_2026-08-29_EN.md) | — |
 
 ## Elsewhere in the repo
 
