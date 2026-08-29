@@ -21,6 +21,7 @@ import { fmtNum } from '../lib/format.js';
 import { useI18n } from '../i18n.jsx';
 import PageRender from '../pages/page-render.jsx';
 import { setSitePages } from '../lib/site-pages.js';
+import { productCards } from '../lib/home-products.js';
 import { homeVariantList } from '../lib/home-variants-meta.js';
 import SelectionToolbar from './selection-toolbar.jsx';
 import IconPicker from './icon-picker.jsx';
@@ -434,7 +435,7 @@ export default function PageBuilder() {
   // Live data for the dynamic blocks, so the preview shows the real news and the real
   // numbers. A builder that previews `{{members}}` as `{{members}}` is asking you to imagine
   // the page you are building.
-  const [live, setLive] = useState({ stats: {}, posts: [], showcase: null, pollData: null, reviewsData: null, myo: null });
+  const [live, setLive] = useState({ stats: {}, posts: [], showcase: null, pollData: null, reviewsData: null, myo: null, projects: null });
   // Which landing page the site currently opens with. Three presets and no indication of
   // which one you are actually looking at when you visit the site is a choice made blind:
   // the reason to start from a layout is almost always "the one that is live".
@@ -455,8 +456,9 @@ export default function PageBuilder() {
       api.get('/polls?home=1').catch(() => null),
       api.get('/reviews').catch(() => null),
       api.get('/myo/products').catch(() => null),
-    ]).then(([stats, blog, showcase, pollData, reviewsData, myo]) => {
-      if (on) setLive({ stats: stats || {}, posts: blog?.posts || [], showcase, pollData, reviewsData, myo });
+      api.get('/projects').catch(() => null),
+    ]).then(([stats, blog, showcase, pollData, reviewsData, myo, projects]) => {
+      if (on) setLive({ stats: stats || {}, posts: blog?.posts || [], showcase, pollData, reviewsData, myo, projects });
     });
     // The public read, not the admin one: it is cached, it is small, and the variant is all
     // that is wanted here.
@@ -896,7 +898,10 @@ export default function PageBuilder() {
             >
               <PageRender
                 page={which === 'mobile' && !inherits ? { desktop: tree } : { desktop: tree }}
-                ctx={{ ...live, products: [] }}
+                // The suite row, for real. It used to be handed an empty array, so a
+                // `products` block previewed as nothing and the only way to see what you had
+                // built was to publish it — which is the one job a preview has.
+                ctx={{ ...live, products: productCards(live.projects, t) }}
                 vars={live.stats}
                 which={which}
                 edit={{

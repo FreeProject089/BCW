@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+import { productCards } from '../lib/home-products.js';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
 import { thumb } from '../lib/img.js';
@@ -305,8 +306,6 @@ export function Home() {
   // others: a request that fails leaves the row on its written-in fallback rather than
   // emptying the section this page exists for.
   const { data: projData } = useAsync(() => api.get('/projects').catch(() => null), []);
-  const projects = projData?.projects || null;
-  const projVisible = projData?.visible || null;
   const show = (k) => homeCfg?.sections?.[k] !== false;
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -315,40 +314,9 @@ export function Home() {
   // hook called inside a branch is a hook whose order changes the day an admin switches the
   // page on, which React reports as a wrong-hook error on an unrelated line.
   const layoutMode = useLayoutMode();
-  // One icon per known key, for the fallback when a project has no logo of its own. A key
-  // nobody mapped gets the generic one rather than nothing — an empty square in a row of
-  // logos reads as a broken image, not as a project without art.
-  const PROD_ICON = { bmm: Boxes, bsm: Music2, installer: Download };
-  // The suite, from the projects an admin actually manages.
-  //
-  // This was four entries written into this file: adding a fifth product, renaming one or
-  // hiding one meant editing the landing page, which is not a thing an admin can do — and the
-  // names and taglines here drifted from the ones on each project's own page, because nothing
-  // connected them.
-  //
-  // `community` is skipped: it is this site, and a card pointing at the page you are on is a
-  // card nobody clicks. Hosting stays hand-written because it is not a project — it is a
-  // service, it has no project page, and the row would be poorer without it.
-  const projectCards = Object.entries(projects || {})
-    .filter(([k]) => k !== 'community' && projVisible?.[k] !== false)
-    .map(([k, cfg]) => ({
-      icon: PROD_ICON[k] || Boxes,
-      logo: k,
-      name: cfg?.name || k,
-      desc: cfg?.tagline || '',
-      to: `/p/${k}`,
-    }));
-  const products = [
-    // Only when the API gave nothing at all — a fresh install, or a request that failed. The
-    // row is what the page is FOR; an empty one would read as a broken site rather than an
-    // unconfigured one.
-    ...(projectCards.length ? projectCards : [
-      { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm' },
-      { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm' },
-      { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer' },
-    ]),
-    { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
-  ];
+  // The suite, from the projects an admin actually manages — built by the shared helper,
+  // because the page builder's preview draws this same row and drew it from somewhere else.
+  const products = productCards(projData, t);
   // Which landing page this site opens with.
   //
   // Every hook above runs first and unconditionally, so the branch below cannot break the
