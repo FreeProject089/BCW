@@ -342,13 +342,21 @@ function Node({ node, ctx, vars, which, edit }) {
       return <div style={{ height: Math.max(0, Math.min(400, Number(p.size) || 0)) }} />;
     case 'divider':
       return <Divider {...p} label={fillVars(p.label, vars)} />;
-    case 'stat':
+    case 'stat': {
+      // A name the site does not publish reads as —, never as 0. The editor offers a fixed
+      // list, so a stat gets an unknown name two ways: written through the API, or built
+      // against a variable that was retired afterwards. Both used to put a confident zero on
+      // a public page, which is indistinguishable from a measurement.
+      //
+      // A real zero still shows 0. It is the ABSENCE that must not read as a number.
+      const raw = vars?.[p.variable];
       return (
         <Stat
-          value={fmtNum(vars?.[p.variable] ?? 0)} label={fillVars(p.label, vars)}
+          value={raw == null ? '—' : fmtNum(raw)} label={fillVars(p.label, vars)}
           icon={p.icon} style={p.style}
         />
       );
+    }
 
     /* ── Dynamic: the sections the landing pages draw, wherever they were dropped ── */
     case 'showcase': return <ShowcasePanel showcase={ctx.showcase} />;

@@ -179,8 +179,9 @@
     actualités, sondage, avis, Make-Your-Own, outils dev — chacune avec des **styles**,
     parce que les mêmes actualités ne sont pas la même section en haut d'une page et en bas.
   - `{{members}}`, `{{downloads}}` et les autres sont remplacés dans n'importe quel texte.
-    La liste est une liste blanche, pas un chemin dans la base, et un nom inconnu ne rend
-    rien plutôt que `undefined`.
+    La liste est une liste blanche, pas un chemin dans la base. Un nom inconnu ne rend rien
+    dans du texte et affiche — dans une tuile de chiffre : jamais `0`, qui serait une mesure
+    plutôt qu'une absence.
   - L'orbe du site est un **réglage de page**, pas un bloc — il est monté une seule fois
     derrière tout, et un bloc qui le « contiendrait » ferait un second orbe devant le premier.
 - **Projets officiels** — ajouter et modifier depuis le dashboard les projets dont le site

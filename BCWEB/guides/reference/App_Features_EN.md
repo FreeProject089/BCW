@@ -162,8 +162,8 @@
     Make-Your-Own, dev tools — each with **styles**, because the same news is a different
     section at the top of a page and at the bottom of one.
   - `{{members}}`, `{{downloads}}` and the rest are substituted in any text. The list is an
-    allowlist, not a path into the database, and an unknown name renders as nothing rather
-    than as `undefined`.
+    allowlist, not a path into the database. An unknown name renders as nothing in text and
+    as — in a stat tile: never as `0`, which would be a measurement rather than an absence.
   - The site-wide orb is a **page setting**, not a block — it is mounted once behind
     everything, and a block that "contained" it would be a second orb in front of the first.
 - **Official projects** — add and edit the projects the site is about from the dashboard.
