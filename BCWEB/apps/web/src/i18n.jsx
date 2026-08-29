@@ -3273,7 +3273,7 @@ const DICT = {
     'dev.hub.md': 'Le kit markdown',
     'dev.hub.md.s': 'Le système de blocs avec lequel ce site s’affiche — encadrés, cartes, onglets, étapes, boutons de marque — en quatre fichiers à copier dans ton projet. Avec un éditeur en direct.',
     'devmd.title': 'Le kit markdown',
-    'devmd.lede': 'Un système de blocs à la GitBook posé sur le Markdown GitHub — encadrés, cartes, onglets, étapes, colonnes, boutons de marque, fichiers à télécharger, mathématiques. C’est un composant React que tu copies dans ton projet, et c’est celui avec lequel chaque page de ce site s’affiche.',
+    'devmd.lede': 'Un système de blocs à la GitBook posé sur le Markdown GitHub — encadrés, cartes, onglets, étapes, colonnes, boutons de marque, fichiers à télécharger, horaires, mathématiques. C’est un composant React que tu copies dans ton projet, et c’est celui avec lequel chaque page de ce site s’affiche.',
     'devmd.b1': '32 types de blocs',
     'devmd.b2': 'Aucune étape de build',
     'devmd.b3': 'Assaini par défaut',

@@ -570,8 +570,16 @@ function remarkDocBlocks() {
         //
         // Exact because the date settles which side of a daylight-saving change it falls on
         // — which is the whole reason a weekly `:::schedule` row is NOT converted.
+        // `nodeText(node)`, NOT `labelText`. `directiveLabel` is set by remark-directive only
+        // on the `[label]` of a LEAF or CONTAINER directive; in `:time[…]` — a TEXT directive
+        // — the brackets ARE the children and nothing is marked as a label. Reading labelText
+        // gave an empty string, and the line below then wiped the children that held the
+        // answer: an empty <doc-time>, which the component renders as null. The directive
+        // produced NOTHING — no error, no fallback, a sentence with a gap in it.
+        //
+        // `:icon` and `:kbd` two branches below have always read it this way.
         setEl('doc-time', ['doc-time'], {
-          'data-at': String(labelText || attrs.at || '').trim(),
+          'data-at': String(nodeText(node) || attrs.at || '').trim(),
           'data-tz': String(attrs.tz || attrs.timezone || '').trim(),
           'data-format': String(attrs.format || '').trim(),
         });
@@ -620,9 +628,13 @@ function remarkDocBlocks() {
         //   :::replay{src="/api/assets/demo.bmmreplay" title="Installing a plugin"}
         //   :::replay{src="…" autoplay loop}
         // Rendered by DocReplay with play/pause/seek/speed/fullscreen controls.
+        // `labelText` OR the node's text: the container form `:::replay[Title]` marks a
+        // label, the inline form `:replay[Title]` does not — the brackets are simply its
+        // children. Reading only the first silently dropped the title in the second, and
+        // the player then showed its default as though none had been given.
         setEl('doc-replay', ['doc-replay'], {
           'data-src': attrs.src || attrs.href || '',
-          'data-title': labelText || attrs.title || '',
+          'data-title': labelText || nodeText(node) || attrs.title || '',
           'data-autoplay': (attrs.autoplay === '' || attrs.autoplay === 'true' || attrs.autoplay === true) ? 'true' : '',
           'data-loop': (attrs.loop === '' || attrs.loop === 'true' || attrs.loop === true) ? 'true' : '',
         });

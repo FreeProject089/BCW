@@ -66,6 +66,15 @@ Including \`code\`, lists and images.
 | Emoji | \`:rocket:\` → :rocket: |
 
 :file[report.pdf]{href=/api/assets/setup.exe size="1.2 MB"}
+
+:::schedule[Support]{tz=Europe/Paris}
+| Day | Open |
+|---|---|
+| Mon-Fri | 09:00-18:00 |
+:::
+
+The rows above are not converted — the card tells you how far you are from that zone right
+now. A single moment is: the stream starts at :time[2026-09-01T20:00]{tz=Europe/Paris}.
 `;
 
 function Snippet({ code, lang = 'bash' }) {
@@ -197,7 +206,7 @@ export default function DevMarkdown() {
           {t('devmd.title', 'The markdown kit')}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          {t('devmd.lede', 'A GitBook-style block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, maths. It is a React component you copy into your project, and it is the same one every page on this site renders with.')}
+          {t('devmd.lede', 'A GitBook-style block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, opening hours, maths. It is a React component you copy into your project, and it is the same one every page on this site renders with.')}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge>{t('devmd.b1', '32 block types')}</Badge>
