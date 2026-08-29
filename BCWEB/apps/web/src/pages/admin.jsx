@@ -2954,9 +2954,12 @@ function AdminServerAdvanced() {
  */
 function ContentBackup() {
   const { t } = useI18n(); const toast = useToast();
-  const { data, loading, err } = useAsync(() => api.get('/admin/content-backup/preview'), []);
+  const dialog = useDialog();
+  const { data, loading, err, reload } = useAsync(() => api.get('/admin/content-backup/preview'), []);
   const [on, setOn] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef(null);
   // The defaults come from the server, not from a copy here: which sections are on by default
   // is a decision about what a backup MEANS, and two answers to that is one too many.
   useEffect(() => { if (data && !on) setOn(new Set(data.defaults || [])); }, [data]);
@@ -2982,6 +2985,63 @@ function ContentBackup() {
     } catch (e) { toast.error(String(e?.message || e)); } finally { setBusy(false); }
   };
 
+  /**
+   * Read the zip, send it, and offer the way back.
+   *
+   * Confirmed first, naming the sections. This overwrites live content — an import that
+   * happened because a file dialog was open is the one thing a snapshot cannot make pleasant.
+   */
+  const doImport = async (file) => {
+    const names = [...picked].map((k) => sections[k]?.label || k).join(', ');
+    const ok = await dialog.confirm({
+      title: t('cb.imp.t', 'Import this content?'),
+      message: t('cb.imp.m', 'Sections that will be restored: {x}. Existing pages with the same id are replaced; anything the zip has not heard of is left alone. What the site says now is saved first, so this can be undone.').replace('{x}', names || t('cb.imp.none', 'none selected')),
+      okLabel: t('cb.imp.ok', 'Import'),
+    });
+    if (!ok) return;
+    setImporting(true);
+    try {
+      const bytes = await file.arrayBuffer();
+      const res = await fetch(`/api/admin/content-backup/import?include=${[...picked].join(',')}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/zip' },
+        body: bytes,
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.detail || out.error || `HTTP ${res.status}`);
+
+      const applied = Object.entries(out.applied || {});
+      const total = applied.reduce((n, [, v]) => n + v, 0);
+      // Sections the zip carried that this route will not write. Said out loud: "accounts
+      // did not come back" is a thing somebody has to be told, not left to notice.
+      if (out.skipped?.length) {
+        toast.info(t('cb.imp.skipped', 'Not imported (export only): {x}')
+          .replace('{x}', out.skipped.map((k) => sections[k]?.label || k).join(', ')));
+      }
+      // No onCommit: the work is done and the server holds the snapshot, so the window
+      // offers the reversal and expiring does nothing. Same shape as the API-key revoke.
+      toast.action({
+        tone: 'success',
+        msg: t('cb.imp.done', 'Imported {n} record(s) across {s} section(s).')
+          .replace('{n}', String(total)).replace('{s}', String(applied.length)),
+        duration: 12000,
+        cancelLabel: t('cb.imp.undo', 'Undo'),
+        onCancel: async () => {
+          try {
+            for (const [section] of applied) {
+              await api.post('/admin/content-backup/rollback', { section, hash: out.undo });
+            }
+            toast.success(t('cb.imp.undone', 'Put back the way it was.'));
+            reload();
+          } catch (e) { toast.error(String(e?.message || e)); }
+        },
+      });
+      reload();
+    } catch (e) {
+      toast.error(String(e?.message || e));
+    } finally { setImporting(false); }
+  };
+
   return (
     <Card className="p-4 space-y-3">
       <div>
@@ -2996,6 +3056,14 @@ function ContentBackup() {
           <label key={k} className="flex items-center gap-2.5 text-sm cursor-pointer py-0.5">
             <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} className="shrink-0" />
             <span>{sec.label}</span>
+            {/* Export-only, said HERE rather than discovered when an import skips it. Three
+                sections cannot come back and each has its own reason — the note under the
+                list gives them. */}
+            {sec.restorable === false && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">
+                {t('cb.exportonly', 'export only')}
+              </span>
+            )}
             {/* null is "could not count", which is not the same as zero and must not read as it. */}
             <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
               {sec.count === null ? t('cb.unknown', 'unknown') : sec.count}
@@ -3012,12 +3080,24 @@ function ContentBackup() {
         <p>{t('cb.note.restore', 'This is not a restore point. For that, use the database backup under Backups.')}</p>
       </div>
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1 flex-wrap">
         <Button variant="primary" onClick={download} loading={busy} disabled={!picked.size}>
           <Download size={15} /> {t('cb.download', 'Download the zip')}
         </Button>
+        <Button onClick={() => fileRef.current?.click()} loading={importing}>
+          <Upload size={15} /> {t('cb.import', 'Import a zip…')}
+        </Button>
+        {/* Hidden input rather than a drop zone: this replaces live content, and a page you
+            can trigger by dragging a file onto the wrong part of it is the wrong shape for
+            that. */}
+        <input ref={fileRef} type="file" accept=".zip,application/zip" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void doImport(f); }} />
         {!picked.size && <span className="text-[11px] text-[var(--muted)]">{t('cb.none', 'Pick at least one section.')}</span>}
       </div>
+
+      <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+        {t('cb.import.note', 'An import restores what the zip holds, section by section. It never deletes a page the zip has not heard of — anything written since the export stays. What the site said beforehand is committed to a git history first, so it can be put back from the toast or from the list below.')}
+      </p>
     </Card>
   );
 }

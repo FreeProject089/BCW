@@ -94,3 +94,51 @@ test('it is guarded like the screen it sits on, not more weakly', () => {
     assert.equal(guard, 'GUARD', `${path} does not use the shared GUARD chain`);
   }
 });
+
+test('the three sections that must never be imported have no restore', () => {
+  // Each refusal is a different reason, and each is why offering an import is safe:
+  //
+  //  users     — exported as records with NO credentials, so restoring them would create
+  //              shells nobody can sign in to and overwrite the role and status of people
+  //              who exist.
+  //  catalogs  — rows pointing at files in MinIO the zip does not carry, so restoring them
+  //  repos       would publish entries whose payloads are gone.
+  //
+  // A `restore` appearing on any of these is not a feature, it is the safety argument
+  // quietly ending.
+  for (const key of ['users', 'catalogs', 'repos']) {
+    assert.equal(typeof SECTIONS[key].restore, 'undefined', `${key} must not be importable`);
+  }
+});
+
+test('everything that is written content CAN come back', () => {
+  // The other half. An export you cannot restore is a file, not a backup — and a section
+  // silently losing its restore would look exactly like one that never had one.
+  for (const key of ['docs', 'blog', 'faq', 'legal', 'settings', 'reviews']) {
+    assert.equal(typeof SECTIONS[key].restore, 'function', `${key} should be importable`);
+  }
+});
+
+test('a restore returns operations, and never runs them itself', () => {
+  // The route wraps them in one transaction per section, so a section lands whole or not at
+  // all. A restore that awaited its own writes would defeat that silently: the transaction
+  // would wrap an already-finished list and roll back nothing.
+  const calls = [];
+  const fake = new Proxy({}, {
+    get: () => new Proxy({}, { get: () => (arg) => { calls.push(arg); return { op: true }; } }),
+  });
+  const ops = SECTIONS.docs.restore(fake, [{ id: 'a' }, { id: 'b' }]);
+  assert.ok(Array.isArray(ops), 'restore must return an array of operations');
+  assert.equal(ops.length, 2);
+  assert.equal(calls.length, 2, 'one operation built per row');
+});
+
+test('an upsert is used, so an import never deletes what the zip has not heard of', () => {
+  // "Put these back", not "make the site look exactly like this zip". The second would
+  // destroy every page written since the export, which is the opposite of what somebody
+  // importing a backup expects.
+  const src = SRC.slice(SRC.indexOf('export const SECTIONS'), SRC.indexOf('export const SECTION_KEYS'));
+  assert.ok(!/deleteMany\(/.test(src), 'no section may clear its table before restoring');
+  const upserts = [...src.matchAll(/\.upsert\(/g)].length;
+  assert.ok(upserts >= 6, `expected an upsert per restorable model, found ${upserts}`);
+});
