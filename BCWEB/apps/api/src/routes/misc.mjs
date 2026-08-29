@@ -214,7 +214,26 @@ export const HOME_VARIANTS = {
 };
 export const HOME_VARIANT_KEYS = Object.keys(HOME_VARIANTS);
 
-const HOME_DEFAULTS = { text: {}, sections: {}, variant: 'v1' };
+/**
+ * How the suite row is presented, and what else is in it.
+ *
+ * `grid` is what the page has always drawn — and what it fell back to at five products was a
+ * snap scroller, chosen in the markup by counting the list. That is a reasonable default and
+ * a bad rule: whether a row scrolls is a decision about the page, not about how many projects
+ * happen to exist this month. So it is a setting, and the count no longer decides anything.
+ *
+ * `marquee` moves on its own, like the reviews strip. It is offered and it is NOT the default,
+ * for the reason written beside the row: every card here is a link somebody is aiming at, and
+ * a target that moves under the cursor is the one pattern guaranteed to be missed. A site that
+ * wants the motion can have it; a site that does nothing gets the row that works.
+ */
+export const SUITE_STYLES = ['grid', 'scroll', 'marquee'];
+// Hand-written entries, beside the ones built from the projects an admin manages. The suite
+// already had one — Hosting, a service with no project page — written into the web bundle
+// where nobody could edit it. This is that same idea, made editable.
+const SUITE_MAX = 12;
+
+const HOME_DEFAULTS = { text: {}, sections: {}, variant: 'v1', suite: {} };
 const homeConfig = (row) => {
   const v = { ...HOME_DEFAULTS, ...(row?.value || {}) };
   const sections = {};
@@ -223,7 +242,18 @@ const homeConfig = (row) => {
   // here by being written before a variant was removed, and a blank home page is a worse
   // answer to that than the original one.
   const variant = HOME_VARIANT_KEYS.includes(v.variant) ? v.variant : 'v1';
-  return { text: v.text || {}, sections, variant };
+  const su = v.suite || {};
+  const suite = {
+    style: SUITE_STYLES.includes(su.style) ? su.style : 'grid',
+    extra: (Array.isArray(su.extra) ? su.extra : []).slice(0, SUITE_MAX).map((e) => ({
+      id: String(e?.id || '').slice(0, 40),
+      name: String(e?.name || '').slice(0, 60),
+      desc: String(e?.desc || '').slice(0, 160),
+      to: String(e?.to || '').slice(0, 300),
+      icon: String(e?.icon || '').slice(0, 40),
+    })).filter((e) => e.id && e.name),
+  };
+  return { text: v.text || {}, sections, variant, suite };
 };
 
 
@@ -439,6 +469,20 @@ export default async function miscRoutes(app) {
       ).optional(),
       sections: z.record(z.enum(HOME_SECTIONS), z.boolean()).optional(),
       variant: z.enum(HOME_VARIANT_KEYS).optional(),
+      suite: z.object({
+        style: z.enum(SUITE_STYLES).optional(),
+        extra: z.array(z.object({
+          id: z.string().min(1).max(40),
+          name: z.string().min(1).max(60),
+          desc: z.string().max(160).default(''),
+          // Same-origin paths and http(s) only. This ends up in an `href` on the front page,
+          // so `javascript:` and `data:` are refused here rather than in the component that
+          // renders it — the component is not the thing an attacker would be talking to.
+          to: z.string().max(300).refine((u) => /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
+            { message: 'must be a site path (/x) or an http(s) URL' }),
+          icon: z.string().max(40).default(''),
+        })).max(SUITE_MAX).optional(),
+      }).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -456,6 +500,7 @@ export default async function miscRoutes(app) {
       text,
       sections: { ...current.sections, ...(b.data.sections || {}) },
       variant: b.data.variant || current.variant,
+      suite: { ...current.suite, ...(b.data.suite || {}) },
     };
     await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
     // The variant is in the audit line because it is the largest change this endpoint can

@@ -7,7 +7,17 @@
 //
 // One function, two callers. A second copy of this is a second list to keep in step with the
 // projects an admin actually manages, which is the thing this replaced in the first place.
-import { Boxes, Music2, Download, Rocket } from 'lucide-react';
+import { Boxes, Music2, Download, Rocket, Sparkles, Globe, Bot, Wand2, Server, Package } from 'lucide-react';
+
+/**
+ * The icons an admin can pick for a hand-added row.
+ *
+ * A short list, not the whole lucide set: a dropdown of two thousand names is a worse
+ * affordance than eight, and every one of these is already used somewhere on this site, so
+ * an added row looks like it belongs rather than like it was pasted in.
+ */
+export const EXTRA_ICON = { box: Boxes, music: Music2, download: Download, rocket: Rocket, sparkles: Sparkles, globe: Globe, bot: Bot, wand: Wand2, server: Server, package: Package };
+export const EXTRA_ICON_KEYS = Object.keys(EXTRA_ICON);
 
 /**
  * One icon per known key, for a project with no logo of its own. A key nobody mapped gets the
@@ -19,8 +29,9 @@ const PROD_ICON = { bmm: Boxes, bsm: Music2, installer: Download };
 /**
  * @param {object|null} projData  the `/projects` response — `{ projects, visible }`
  * @param {(k: string, fallback?: string) => string} t
+ * @param {Array<{id,name,desc,to,icon}>} [extra]  rows an admin added by hand
  */
-export function productCards(projData, t) {
+export function productCards(projData, t, extra = []) {
   const projects = projData?.projects || null;
   const visible = projData?.visible || null;
 
@@ -48,5 +59,15 @@ export function productCards(projData, t) {
     // Hosting is hand-written because it is a service, not a project: it has no project page
     // and no row in the admin's list, and the suite would be poorer without it.
     { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
+    // …and everything else somebody added on the same grounds. This row existed as a single
+    // hard-coded exception; the exception is now the feature. The icon falls back to the
+    // generic one rather than to nothing: an empty square in a row of logos reads as a broken
+    // image, not as an entry without art.
+    ...(Array.isArray(extra) ? extra : []).map((e) => ({
+      icon: EXTRA_ICON[e.icon] || Boxes,
+      name: e.name,
+      desc: e.desc || '',
+      to: e.to || '/',
+    })),
   ];
 }

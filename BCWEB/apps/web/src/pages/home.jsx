@@ -326,7 +326,11 @@ export function Home({ draft = null }) {
   const layoutMode = useLayoutMode();
   // The suite, from the projects an admin actually manages — built by the shared helper,
   // because the page builder's preview draws this same row and drew it from somewhere else.
-  const products = productCards(projData, t);
+  // The suite: the projects an admin manages, plus whatever they added by hand, drawn the way
+  // they chose. `homeCfg` is read below the fetch, so the first paint uses the default and the
+  // row does not flash a different shape once the config lands.
+  const suite = homeCfg?.suite || {};
+  const products = productCards(projData, t, suite.extra || []);
   // Which landing page this site opens with.
   //
   // Every hook above runs first and unconditionally, so the branch below cannot break the
@@ -401,32 +405,64 @@ export function Home({ draft = null }) {
       {show('products') && (
       <section>
         <SectionKicker n="01" label={t('home.k.products', 'The suite')} />
-        {/* Four or fewer: a grid, exactly as before. More: a scroller with snap points, so a
-            fifth product is a swipe rather than one card alone on a second row.
+        {/* Three presentations, and the choice is the admin's rather than a count.
+            It used to switch to a scroller at five products — a reasonable default and a bad
+            rule, because whether a row scrolls is a decision about the page, not about how
+            many projects happen to exist this month.
 
-            NOT a marquee. Every card here is a link somebody is aiming at, and a row that
-            moves under the cursor is the one pattern guaranteed to be missed — the reviews
-            marquee is right for reviews precisely because nobody aims at a review. */}
-        <div className={products.length > 4
-          ? 'reveal-stagger flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 [scrollbar-width:thin]'
-          : 'reveal-stagger grid md:grid-cols-4 gap-4'}
-          {...(products.length > 4 ? { role: 'region', 'aria-label': t('home.k.products', 'The suite') } : {})}>
-          {products.map((p) => (
-            <Link key={p.name} to={p.to}
-              className={products.length > 4 ? 'group snap-start shrink-0 w-[240px]' : 'group'}>
+            `marquee` is offered and is not the default. Every card here is a link somebody is
+            aiming at, and a target that moves under the cursor is the one pattern guaranteed
+            to be missed — which is exactly why it is right for the reviews strip, where
+            nobody aims at anything. A site that wants the motion can have it. */}
+        {(() => {
+          const card = (p, extraClass = '') => (
+            <Link key={p.name} to={p.to} className={`group ${extraClass}`}>
               <Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
-              <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
-              <div className="relative">
-                <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
-                  {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} /> : <p.icon size={22} className="text-[var(--primary-2)]" />}
-                </span>
-                <div className="font-semibold mt-3">{p.name}</div>
-                <div className="text-sm text-[var(--muted)] mt-1">{p.desc}</div>
-                <div className="text-xs text-[var(--primary-2)] mt-3 flex items-center gap-1">{t('prod.open')} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
+                <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
+                <div className="relative">
+                  <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
+                    {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} /> : <p.icon size={22} className="text-[var(--primary-2)]" />}
+                  </span>
+                  <div className="font-semibold mt-3">{p.name}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1">{p.desc}</div>
+                  <div className="text-xs text-[var(--primary-2)] mt-3 flex items-center gap-1">{t('prod.open')} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
+                </div>
+              </Card>
+            </Link>
+          );
+          if (suite.style === 'marquee') {
+            return (
+              // The same two-copies trick the reviews strip uses: each card carries its own
+              // right margin rather than a flex `gap`, so the duplicated list is exactly two
+              // equal halves and translateX(-50%) lands on a seamless seam.
+              <div className="reveal-on-scroll reviews-marquee relative overflow-hidden"
+                role="region" aria-label={t('home.k.products', 'The suite')}>
+                <div className="reviews-track flex py-1" style={{ animationDuration: `${Math.max(24, products.length * 9)}s` }}>
+                  {[...products, ...products].map((p, i) => (
+                    <div key={`${p.name}-${i}`} className="w-[260px] shrink-0 mr-5" aria-hidden={i >= products.length}>
+                      {card(p)}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </Card></Link>
-          ))}
-        </div>
+            );
+          }
+          if (suite.style === 'scroll') {
+            return (
+              <div className="reveal-stagger flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 [scrollbar-width:thin]"
+                role="region" aria-label={t('home.k.products', 'The suite')}>
+                {products.map((p) => card(p, 'snap-start shrink-0 w-[240px]'))}
+              </div>
+            );
+          }
+          // grid. `auto-fit` rather than a fixed four columns: a fifth hand-added row used to
+          // sit alone on a second line of four.
+          return (
+            <div className="reveal-stagger grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(220px,1fr))]">
+              {products.map((p) => card(p))}
+            </div>
+          );
+        })()}
       </section>
       )}
 

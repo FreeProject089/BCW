@@ -30,6 +30,7 @@ const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { I18nDraft } from '../i18n.jsx';
+import { EXTRA_ICON_KEYS } from '../lib/home-products.js';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -11404,7 +11405,9 @@ function HomePageEditor() {
   const [busy, setBusy] = useState(false);
   const [variant, setVariant] = useState('v1');
   const [preview, setPreview] = useState(false);
-  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); } }, [data]);
+  // The suite row: how it is drawn, and the rows an admin added by hand.
+  const [suite, setSuite] = useState({ style: 'grid', extra: [] });
+  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); setSuite({ style: data.suite?.style || 'grid', extra: data.suite?.extra || [] }); } }, [data]);
   // ABOVE the early return below. Placed after it this was a conditional hook: React counted
   // three hooks on the loading render and four once the data arrived, which is error #310 and
   // a blank page. The same mistake this file already warns about in AdminBot, made anyway.
@@ -11501,7 +11504,7 @@ function HomePageEditor() {
   const save = async () => {
     setBusy(true);
     try {
-      await api.put('/admin/site/home', { text: form, sections, variant });
+      await api.put('/admin/site/home', { text: form, sections, variant, suite });
       toast.success(t('hp.saved', 'Home page saved. Visitors see it within a minute (the page is cached).'));
       reload();
     } catch { toast.error(t('common.failed', 'Failed.')); }
@@ -11637,6 +11640,77 @@ function HomePageEditor() {
             </Suspense>
           </div>
         </Modal>
+      )}
+
+      {/* The suite row.
+          Two things were decided in the web bundle where nobody could reach them: whether the
+          row scrolls (it switched at five products, by counting) and what is in it (the
+          projects, plus one hand-written "Hosting" card). Both are decisions about the page,
+          so both are here. */}
+      {sections.products !== false && (
+        <Card className="p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <LayoutGrid size={15} className="text-[var(--primary-2)]" />
+            <span className="font-medium text-sm">{t('hp.suite', 'The suite row')}</span>
+          </div>
+          <p className="text-[11px] text-[var(--muted)] mb-3">
+            {t('hp.suite.d', 'The projects you manage appear here automatically. This is how the row is drawn, and anything else you want in it.')}
+          </p>
+
+          <div className="grid sm:grid-cols-3 gap-2">
+            {[['grid', t('hp.suite.grid', 'Grid'), t('hp.suite.grid.d', 'All of them at once, wrapping onto a second line. Nothing moves.')],
+              ['scroll', t('hp.suite.scroll', 'Swipe'), t('hp.suite.scroll.d', 'One row that scrolls sideways with snap points — the same feel as the polls strip.')],
+              ['marquee', t('hp.suite.marquee', 'Marquee'), t('hp.suite.marquee.d', 'Scrolls by itself, like the reviews. It looks alive, and a card that moves is harder to click — it pauses on hover for that reason.')]]
+              .map(([k, label, desc]) => (
+              <button key={k} type="button" onClick={() => setSuite((v) => ({ ...v, style: k }))}
+                aria-pressed={suite.style === k}
+                className={`text-left rounded-xl border p-3 transition-colors ${
+                  suite.style === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                }`}>
+                {/* Each option draws what it does. Three words in a radio list would ask an
+                    admin to imagine the difference between "swipe" and "marquee". */}
+                <div aria-hidden className="flex gap-1 h-7 items-stretch overflow-hidden rounded bg-[var(--surface-2)] p-1">
+                  {(k === 'grid' ? [1, 1, 1, 1] : [1, 1, 1, 1, 1, 1]).map((_, i) => (
+                    <span key={i} className={`rounded-sm bg-[var(--line-strong)] ${k === 'grid' ? 'flex-1' : 'w-5 shrink-0'} ${k === 'marquee' && i > 3 ? 'opacity-40' : ''}`} />
+                  ))}
+                </div>
+                <div className="text-[13px] font-semibold mt-2">{label}</div>
+                <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{desc}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('hp.suite.extra', 'Also in the row')}</div>
+            {!suite.extra.length && <p className="text-[12px] text-[var(--muted)] mb-2">{t('hp.suite.none', 'Nothing added. The row shows your projects and the hosting card.')}</p>}
+            <div className="space-y-2">
+              {suite.extra.map((e, i) => (
+                <div key={e.id} className="grid sm:grid-cols-[1fr_1.4fr_1fr_auto] gap-2 items-start">
+                  <Input value={e.name} placeholder={t('hp.suite.name', 'Name')}
+                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, name: ev.target.value } : x) }))} />
+                  <Input value={e.desc} placeholder={t('hp.suite.desc', 'One line about it')}
+                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, desc: ev.target.value } : x) }))} />
+                  <Input value={e.to} placeholder="/hosting"
+                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, to: ev.target.value } : x) }))} />
+                  <div className="flex gap-2">
+                    <Select className="!w-[110px]" value={e.icon || 'box'}
+                      onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, icon: ev.target.value } : x) }))}>
+                      {EXTRA_ICON_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
+                    </Select>
+                    <Button size="sm" variant="ghost" onClick={() => setSuite((v) => ({ ...v, extra: v.extra.filter((_, n) => n !== i) }))}><Trash2 size={13} /></Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button size="sm" className="mt-2" disabled={suite.extra.length >= 12}
+              onClick={() => setSuite((v) => ({ ...v, extra: [...v.extra, { id: `x${Math.random().toString(36).slice(2, 9)}`, name: '', desc: '', to: '/', icon: 'box' }] }))}>
+              <Plus size={13} /> {t('hp.suite.add', 'Add a row')}
+            </Button>
+            {/* The API refuses anything that is not a site path or an http(s) URL, and says so
+                by name. Repeated here because being told at save time is late. */}
+            <p className="text-[11px] text-[var(--muted)] mt-2">{t('hp.suite.url', 'A link is either a path on this site (/hosting) or a full https:// address.')}</p>
+          </div>
+        </Card>
       )}
 
       {/* Not hidden silently. A section that this page does not draw disappears from the
@@ -15572,6 +15646,10 @@ function AdminNav() {
   const [layout, setLayout] = useState({ align: 'start', density: 'comfortable', labels: 'both', projectsMax: 6 }); // desktop topbar layout
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop'); // preview device
+  // Which panel. The screen was six cards deep and every one of them was open: the items you
+  // came to edit sat below a preview, a preset row, a projects panel, a layout panel and a
+  // button list, so "add a link" meant scrolling past five things that were not it.
+  const [panel, setPanel] = useState('menu'); // menu | buttons | layout
   // Pinned showcase projects, so the preview shows them exactly as the live topbar will
   // (inline or grouped, per projectsMode) instead of pretending they don't exist.
   const [pinnedProjects, setPinnedProjects] = useState([]);
@@ -15700,13 +15778,35 @@ function AdminNav() {
         <p className="text-sm text-[var(--muted)]">{t('nav.desc', 'Design the public topbar: an ordered list of links and hover-dropdown groups, each with an icon and a name in both languages. While this is off (or empty) the site uses its built-in navigation.')}</p>
       </div>
 
-      <Card className="p-4 flex items-center justify-between gap-3">
-        <div className="min-w-0">
+      {/* On/off and the two file actions, on one line. The switch had a whole card to itself
+          and the import/export buttons were three loose buttons floating between cards, which
+          is how a screen ends up reading as a list of unrelated things. */}
+      <Card className="p-3 flex items-center gap-3 flex-wrap">
+        <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
+        <div className="min-w-0 flex-1">
           <div className="font-medium text-sm">{t('nav.enable', 'Use this custom navigation')}</div>
           <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-warning"> · {t('nav.enable.empty', 'no valid items yet — the built-in nav still shows')}</span>}</div>
         </div>
-        <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importPreset} />
+          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={14} /> {t('nav.import', 'Import')}</Button>
+          <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export')}</Button>
+        </div>
       </Card>
+
+      {/* Three panels. The preview stays above them, because it is what every panel changes. */}
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+        {[['menu', Navigation, t('nav.p.menu', 'Menu items')],
+          ['buttons', LayoutGrid, t('nav.p.buttons', 'Topbar buttons')],
+          ['layout', Sliders, t('nav.p.layout', 'Layout & mobile')]].map(([k, I, label]) => (
+          <button key={k} type="button" onClick={() => setPanel(k)} aria-current={panel === k ? 'true' : undefined}
+            className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition press ${
+              panel === k ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+            }`}>
+            <I size={15} className={panel === k ? 'text-[var(--primary-2)]' : ''} /> {label}
+          </button>
+        ))}
+      </div>
 
       {/* Live preview of the real topbar built from the items below. */}
       <Card className="p-4">
@@ -15721,15 +15821,8 @@ function AdminNav() {
         {device === 'desktop' && items.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><MousePointerClick size={11} /> {t('nav.pv.edithint', 'Click any item in the preview to jump to its settings below.')}</div>}
       </Card>
 
-      {/* Preset tools: import / export a JSON preset, or reset to the built-in default. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importPreset} />
-        <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()}><UploadIcon size={14} /> {t('nav.import', 'Import preset')}</Button>
-        <Button size="sm" variant="ghost" onClick={exportPreset}><Download size={14} /> {t('nav.export', 'Export preset')}</Button>
-        <Button size="sm" variant="ghost" onClick={resetDefault}><RotateCcw size={14} /> {t('nav.reset', 'Reset to default')}</Button>
-      </div>
-
       {/* Pinned projects display + mobile bottom bar. */}
+      {panel === 'layout' && (
       <Card className="p-4 space-y-4">
         <h3 className="font-semibold text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--primary-2)]" /> {t('nav.extra.title', 'Projects & mobile')}</h3>
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -15772,12 +15865,14 @@ function AdminNav() {
           </>;
         })()}
       </Card>
+      )}
 
       {/* Built-in topbar buttons: show/hide + reorder (within each responsive cluster). */}
+      {panel === 'buttons' && (
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
           <h3 className="font-semibold text-sm flex items-center gap-2"><LayoutGrid size={15} className="text-[var(--primary-2)]" /> {t('nav.util.title', 'Topbar buttons')}</h3>
-          <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Reset')}</Button>
+          <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Show all, original order')}</Button>
         </div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.desc', 'Show/hide and reorder the built-in buttons. Each still respects its own rule (e.g. Admin only shows for staff, Sign in only when logged out). Order changes stay within a group.')}</p>
         {[['a', t('nav.util.always', 'Always visible'), UTIL_A_KEYS], ['b', t('nav.util.account', 'Account (desktop)'), UTIL_B_KEYS]].map(([grp, label, keys]) => (
@@ -15797,8 +15892,9 @@ function AdminNav() {
           </div>
         ))}
       </Card>
+      )}
 
-      {items.length === 0 ? (
+      {panel === 'menu' && (items.length === 0 ? (
         <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
       ) : <div className="space-y-3">
         {items.map((it, i) => (
@@ -15854,13 +15950,25 @@ function AdminNav() {
             </div>}
           </Card>
         ))}
-      </div>}
+      </div>)}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="default" onClick={() => addItem('link')}><Plus size={14} /> {t('nav.addlink', 'Add link')}</Button>
-        <Button size="sm" variant="default" onClick={() => addItem('group')}><Plus size={14} /> {t('nav.addgroup', 'Add dropdown')}</Button>
-        <Button size="sm" variant="ghost" onClick={() => setItems(DEFAULT_NAV_SEED.map((x) => ({ ...x, children: (x.children || []).map((c) => ({ ...c })) })))}><Layers size={14} /> {t('nav.seed', 'Start from built-in')}</Button>
-        <div className="flex-1" />
+      {panel === 'menu' && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="default" onClick={() => addItem('link')}><Plus size={14} /> {t('nav.addlink', 'Add link')}</Button>
+          <Button size="sm" variant="default" onClick={() => addItem('group')}><Plus size={14} /> {t('nav.addgroup', 'Add dropdown')}</Button>
+          {/* The ONE button that loads the built-in navigation. There were two — this one and
+              "Reset to default" in the preset row — running the same expression under
+              different names, on the same screen. */}
+          <Button size="sm" variant="ghost" onClick={resetDefault}><Layers size={14} /> {t('nav.seed', 'Start from the built-in nav')}</Button>
+        </div>
+      )}
+
+      {/* Save follows you down the page. It used to be the last thing after six cards, so
+          editing an item near the top meant scrolling to the bottom to keep the change. */}
+      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)]">
+        <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
+          {validCount} {t('nav.valid', 'item(s) will be saved')}
+        </span>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> {t('nav.save', 'Save navigation')}</>}</Button>
       </div>
       {iconPick && <IconPicker title={t('nav.pickicon', 'Pick a nav icon')} onPick={(v) => iconPick.onChange(v)} onClose={() => setIconPick(null)} />}
@@ -16842,6 +16950,10 @@ function AdminFooter() {
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
   const [device, setDevice] = useState('desktop');
+  // Which panel. This screen was five always-open cards and a column list, with the preview
+  // at the very bottom — so the thing every one of those cards changes was the one thing you
+  // could not see while changing it.
+  const [panel, setPanel] = useState('columns'); // columns | brand | bottom
   useEffect(() => { if (data?.footer) setF({ columns: [], brand: {}, mobile: {}, bottom: {}, ...data.footer }); }, [data]);
   if (loading || !f) return <Loading />;
 
@@ -16929,9 +17041,11 @@ function AdminFooter() {
           <input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
           {t('afoot.enabled', 'Use this footer')}
         </label>
-        <Button variant="ghost" disabled={busy} onClick={loadBuiltIn}><LayoutGrid size={14} /> {t('afoot.loadbuiltin', 'Start from the built-in footer')}</Button>
-        <Button variant="ghost" disabled={busy} onClick={resetToBuiltIn}><RotateCcw size={14} /> {t('afoot.resetbuiltin', 'Reset to default')}</Button>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
+        {/* These two are not the same button and their labels used to suggest they were.
+            One copies the built-in footer into this editor so you can edit it; the other
+            throws this footer away so the site goes back to using the built-in one, live. */}
+        <Button variant="ghost" disabled={busy} onClick={loadBuiltIn}><LayoutGrid size={14} /> {t('afoot.loadbuiltin', 'Copy the built-in one in')}</Button>
+        <Button variant="ghost" disabled={busy} onClick={resetToBuiltIn}><RotateCcw size={14} /> {t('afoot.resetbuiltin', 'Discard mine, use the built-in one')}</Button>
       </div>
       {/* The two states in which this whole page is decorative. Both are legitimate and
           neither was visible: `enabled` off means the site ignores the config entirely, and
@@ -16953,7 +17067,41 @@ function AdminFooter() {
         </Card>
       )}
       <p className="text-sm text-[var(--muted)] mb-4">{t('afoot.sub', 'Columns, links, and what appears on phone versus desktop. Turned off, or with no columns, the site keeps its built-in footer — so this can never leave the page without one. Start from the built-in one and edit it, or build your own from scratch.')}</p>
+      <Card className="p-4 mb-4">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('afoot.preview', 'Preview')} — {device === 'mobile' ? t('afoot.on.mobile', 'Mobile') : t('afoot.on.desktop', 'Desktop')}</div>
+        {!f.enabled || !f.columns.some((c) => shows(c) && (c.links || []).some(shows))
+          ? <div className="text-sm text-[var(--muted)]">{t('afoot.fallback', 'The built-in footer is used.')}</div>
+          : <div className={`grid gap-6 ${device === 'mobile' ? 'grid-cols-1 max-w-[22rem]' : 'sm:grid-cols-3'}`}>
+              {f.columns.filter((c) => shows(c)).map((c, i) => {
+                const links = (c.links || []).filter(shows);
+                if (!links.length) return null;
+                return (
+                  <div key={i}>
+                    <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2">{frOr(c.titleFr, c.title) || '—'}</div>
+                    <div className="flex flex-col gap-1.5">
+                      {links.map((l, n) => <span key={n} className="text-sm text-[var(--muted)]">{frOr(l.labelFr, l.label) || '—'}</span>)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>}
+      </Card>
 
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar mb-4">
+        {[['columns', LayoutGrid, t('afoot.p.columns', 'Columns & links')],
+          ['brand', Sparkles, t('afoot.p.brand', 'Brand & socials')],
+          ['bottom', PanelTop, t('afoot.p.bottom', 'Newsletter & bottom bar')]].map(([k, I, label]) => (
+          <button key={k} type="button" onClick={() => setPanel(k)} aria-current={panel === k ? 'true' : undefined}
+            className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition press ${
+              panel === k ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
+            }`}>
+            <I size={15} className={panel === k ? 'text-[var(--primary-2)]' : ''} /> {label}
+          </button>
+        ))}
+      </div>
+
+
+      {panel === 'brand' && (
       <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
         <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
           {[['desktop', t('afoot.on.desktop', 'Desktop')], ['mobile', t('afoot.on.mobile', 'Mobile')]].map(([k, label]) => (
@@ -16973,8 +17121,10 @@ function AdminFooter() {
           </Select>
         </Field>
       </Card>
+      )}
 
       {/* Social buttons. Stored three ways for back-compat (see the normaliser above). */}
+      {panel === 'brand' && (
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <div className="font-semibold text-sm flex-1">{t('afoot.socials', 'Social icons')}</div>
@@ -17023,8 +17173,10 @@ function AdminFooter() {
           </div>)}
         <p className="text-[11px] text-[var(--faint)] mt-2">{t('afoot.iconhint2', 'Pick a bundled brand mark, or Custom for a lucide icon name. lucide has no brand icons, so a custom name for a well-known network draws an empty circle — the preview shows it failing while you type.')}</p>
       </Card>
+      )}
 
       {/* Newsletter copy. Empty field = keep following the translated built-in string. */}
+      {panel === 'bottom' && (
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 flex-wrap mb-2">
           <div className="font-semibold text-sm flex-1">{t('afoot.newsletter', 'Newsletter box')}</div>
@@ -17041,8 +17193,10 @@ function AdminFooter() {
           ))}
         </div>}
       </Card>
+      )}
 
       {/* Bottom bar. */}
+      {panel === 'bottom' && (
       <Card className="p-4 mb-4 flex flex-wrap items-end gap-4">
         <div className="font-semibold text-sm w-full">{t('afoot.bottom', 'Bottom bar')}</div>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.copyright !== false} onChange={(e) => setBottom({ copyright: e.target.checked })} /> {t('afoot.copyright', 'Copyright line')}</label>
@@ -17052,7 +17206,9 @@ function AdminFooter() {
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.egg !== false} onChange={(e) => setBottom({ egg: e.target.checked })} /> {t('afoot.egg', 'Easter egg')}</label>
         <p className="text-[11px] text-[var(--faint)] w-full">{t('afoot.yeartoken', 'Write {year} in the text and it becomes the current year, so the line stays right on 1 January.')}</p>
       </Card>
+      )}
 
+      {panel === 'columns' && (
       <div className="space-y-3">
         {f.columns.map((c, ci) => (
           <Card key={ci} className={`p-3.5 ${shows(c) ? '' : 'opacity-50'}`}>
@@ -17083,26 +17239,14 @@ function AdminFooter() {
         ))}
         <Button variant="default" onClick={() => setF({ ...f, columns: [...f.columns, { title: '', links: [], on: 'both' }] })}><Plus size={14} /> {t('afoot.addcol', 'Add column')}</Button>
       </div>
+      )}
 
-      <Card className="p-4 mt-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('afoot.preview', 'Preview')} — {device === 'mobile' ? t('afoot.on.mobile', 'Mobile') : t('afoot.on.desktop', 'Desktop')}</div>
-        {!f.enabled || !f.columns.some((c) => shows(c) && (c.links || []).some(shows))
-          ? <div className="text-sm text-[var(--muted)]">{t('afoot.fallback', 'The built-in footer is used.')}</div>
-          : <div className={`grid gap-6 ${device === 'mobile' ? 'grid-cols-1 max-w-[22rem]' : 'sm:grid-cols-3'}`}>
-              {f.columns.filter((c) => shows(c)).map((c, i) => {
-                const links = (c.links || []).filter(shows);
-                if (!links.length) return null;
-                return (
-                  <div key={i}>
-                    <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-2">{frOr(c.titleFr, c.title) || '—'}</div>
-                    <div className="flex flex-col gap-1.5">
-                      {links.map((l, n) => <span key={n} className="text-sm text-[var(--muted)]">{frOr(l.labelFr, l.label) || '—'}</span>)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>}
-      </Card>
+      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)]">
+        <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
+          {(f.columns || []).length} {t('afoot.ncols', 'column(s)')}
+        </span>
+        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
+      </div>
     </div>
   );
 }
