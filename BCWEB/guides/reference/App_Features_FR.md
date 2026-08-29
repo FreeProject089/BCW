@@ -184,10 +184,19 @@
     plutôt qu'une absence.
   - **Pleine largeur** replie la palette et les propriétés : la page est jugée à la largeur
     qu'elle aura vraiment, pas dans la colonne qui reste à l'intérieur d'un tableau de bord.
+  - **À** rend la page à une vraie largeur d'écran — 1440, 1280, 1024, 768 ou 390 — et
+    met le cadre à l'échelle pour qu'il tienne, en affichant le pourcentage. Mis à l'échelle,
+    pas rétréci : l'élément garde sa vraie largeur, donc chaque media query répond comme
+    elle répondra sur cet écran. Rétrécir l'élément aurait continué de répondre pour la
+    fenêtre — la seule chose qu'un aperçu responsive ne doit pas faire.
   - Les presets **Partir de** reconstruisent les vraies pages d'accueil en blocs — mêmes
-    sections, même ordre, mêmes formulations. Une vérification les tient à la liste de
-    variantes dont la page publique est rendue : un preset ne peut donc pas devenir en
-    silence une autre page.
+    sections, même ordre, mêmes formulations. Ils portent exactement les noms et les
+    descriptions de l'éditeur de page d'accueil, depuis une liste partagée, et celui avec
+    lequel le site ouvre est marqué **en ligne** : une page d'accueil se choisit sur sa
+    description, et deux écrans qui décrivent les trois mêmes pages différemment, c'est
+    l'un des deux qui a tort. Deux vérifications tiennent tout ça — l'une à la liste de
+    variantes dont la page publique est rendue, l'autre aux noms — donc un preset ne peut
+    ni devenir une autre page ni gagner un second nom.
   - L'orbe du site est un **réglage de page**, pas un bloc — il est monté une seule fois
     derrière tout, et un bloc qui le « contiendrait » ferait un second orbe devant le premier.
 - **Projets officiels** — ajouter et modifier depuis le dashboard les projets dont le site
@@ -212,6 +221,10 @@
   le zip est fabriqué avec le reste découpé à des régions marquées, la liste des fichiers et
   la taille annoncées d'abord. Une partie qui ne se découpe pas proprement refuse de
   s'emballer plutôt que de livrer un fichier avec un import dans le vide.
+  **JavaScript ou TypeScript**, au choix avant le téléchargement : la version TS embarque
+  les déclarations de types et un `tsconfig.json`, la version JS retire la section types de
+  son README plutôt que de laisser des instructions pour des fichiers qu'elle n'a pas
+  envoyés.
 - **Serveur** — dashboard perf en direct (totaux CPU/RAM/disque/uptime + valeurs au
   survol + alertes Discord) ; Advanced server management (DB viewer avec journal
   d'audit, gestionnaire de fichiers, Docker, redémarrage/power) derrière un droit

@@ -166,10 +166,18 @@
     as — in a stat tile: never as `0`, which would be a measurement rather than an absence.
   - **Full width** folds the palette and the properties away, so the page is judged at the
     width it will really have rather than in the column left over inside a dashboard.
+  - **At** renders the page at a real screen width — 1440, 1280, 1024, 768 or 390 — and
+    scales the frame down to fit, showing the percentage. Scaled, not narrowed: the element
+    keeps its real width, so every media query answers the way it will on that screen.
+    Shrinking the element instead would have gone on answering for the window, which is the
+    one thing a responsive preview must not do.
   - The **Start from** presets rebuild the real landing pages out of blocks — the same
-    sections, in the same order, carrying the same wording. A check holds them to the
-    variant list the public page renders from, so a preset cannot quietly become a
-    different page.
+    sections, in the same order, carrying the same wording. They are named and described
+    exactly as the home-page editor names them, from one shared list, and the one the site
+    currently opens with is marked **live**: a landing page is chosen by its description,
+    and two screens describing the same three pages differently is one of them being wrong.
+    Two checks hold this — one to the variant list the public page renders from, one to the
+    names — so a preset can neither become a different page nor acquire a second name.
   - The site-wide orb is a **page setting**, not a block — it is mounted once behind
     everything, and a block that "contained" it would be a second orb in front of the first.
 - **Official projects** — add and edit the projects the site is about from the dashboard.
@@ -191,6 +199,9 @@
   component of yours (`:::roadmap`, `:::replay`) — and the zip is packed with the rest cut
   out at marked regions, file list and size shown first. A part that fails to cut cleanly
   refuses to pack rather than shipping a file with a dangling import.
+  **JavaScript or TypeScript**, chosen before the download: the TS build ships the type
+  declarations and a `tsconfig.json`, the JS one cuts the type section out of its README
+  rather than leaving instructions for files it did not send.
 - **Server** — live perf dashboard (CPU/RAM/disk/uptime totals + hover values +
   Discord alerts); Advanced server management (DB viewer with audit log, file manager,
   Docker, restart/power) behind a server-control grant + step-up 2FA.
