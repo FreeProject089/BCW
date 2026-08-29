@@ -620,4 +620,40 @@ itself never leaves the reviewer's machine — the signature covers exactly that
 Nothing here writes. An inspector for untrusted content that stores what it read is a way to get
 content stored.
 
-*Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*
+## 35. Page builder (`pagebuilder.mjs`)
+The block trees behind the site's own pages, and the palette the editor draws from.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/site/pages` | — | The built pages, and nothing else. Read before the first paint, cached 30s. A site that never opened the builder gets `enabled: false` rows and renders what it always did. |
+| GET | `/admin/site/pages` | ADMIN | The same, plus the block palette, the variable allowlist and the list of buildable pages. |
+| PUT | `/admin/site/pages` | ADMIN | Save the trees. Validated to a depth of six, with duplicate ids, misplaced children and unsafe URLs refused by name. |
+
+The palette and the variable list travel **with** the config rather than being held by the
+editor, for one reason: an editor with its own copy offers a block the renderer does not
+know, and that failure reads as a bug in the page instead of a bug in the list.
+
+## 36. Content export (`content-backup.mjs`)
+The written content, as JSON, for reading elsewhere — **not** a restore point.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/admin/content-backup/preview` | ADMIN + server-control + step-up | Every section with its row count and whether it is on by default. The counts come first because "which sections" is not a choice without a number beside each one. |
+| GET | `/admin/content-backup?include=a,b` | ADMIN + server-control + step-up | A zip, one JSON file per selected section. |
+
+Accounts are exported through an **explicit `select`** — never a whole row with fields
+deleted afterwards, because a spread hands over whatever column is added next and the day
+that column is a secret nobody is reading this file. `content-backup.test.mjs` asserts it
+against the source and runs without a database, so it fails on a laptop with nothing
+running.
+
+The chain is the one every other tool on that screen uses — the DB viewer, the file
+manager, Docker and power all run `[ADMIN, canControlServer, elevated]`. It hands over every
+account record and every word on the site in one file, so being the one button on that screen
+any admin could press was not a difference worth defending.
+
+Catalogues and repositories default **off**: their rows are metadata pointing at objects in
+MinIO that the zip does not carry. See [BACKUP_EN.md](../run/BACKUP_EN.md) for which of the
+three things called "backup" answers which question.
+
+*Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

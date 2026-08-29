@@ -19,7 +19,7 @@
 // Restoring accounts from this therefore means re-inviting them. That is stated on the screen
 // rather than discovered, because "backup" implies "restore" and here it only half does.
 import archiver from 'archiver';
-import { db, requireCap, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, requireCanControlServer, requireElevated, logAudit, clientIp } from '../lib/lib.mjs';
 
 /**
  * The sections, what each one reads, and whether it is on by default.
@@ -132,13 +132,30 @@ function chosen(q) {
 
 export default async function contentBackupRoutes(app) {
   /**
+   * The same chain the other tools on this screen use.
+   *
+   * It sits under Advanced server management, beside the DB viewer, the file manager and the
+   * power controls, and every one of those runs [ADMIN, canControlServer, elevated]. This
+   * route hands over every account record and every word on the site in one file, so being
+   * the one button on that screen that any admin could press was not a defensible difference
+   * — and the screen itself tells people the whole area is behind the grant and the step-up.
+   *
+   * It used `requireCap('manage_server')`, which is a real idiom here — a capability kept out
+   * of CAPABILITIES on purpose so no bundle can grant it and `hasCap` falls through to the
+   * admin check. It is the right gate for a status page. It is not the gate for this screen:
+   * "any admin" and "an admin holding the server-control grant, elevated in the last fifteen
+   * minutes" are different answers, and the panel only ever mounts behind the second.
+   */
+  const GUARD = [requireRole('ADMIN'), requireCanControlServer(), requireElevated()];
+
+  /**
    * What is in there, before downloading it.
    *
    * Counts only — no row is read. The screen needs a number beside each checkbox to be a
    * choice rather than a guess, and asking for a 200 MB zip to find out how big it is is not
    * a way to find out how big it is.
    */
-  app.get('/admin/content-backup/preview', { preHandler: requireCap('manage_server') }, async () => {
+  app.get('/admin/content-backup/preview', { preHandler: GUARD }, async () => {
     const p = await db();
     const out = {};
     for (const [key, s] of Object.entries(SECTIONS)) {
@@ -157,7 +174,7 @@ export default async function contentBackupRoutes(app) {
    * hold a page builder's whole tree, and a backup that a big install cannot produce is not a
    * backup.
    */
-  app.get('/admin/content-backup', { preHandler: requireCap('manage_server') }, async (req, reply) => {
+  app.get('/admin/content-backup', { preHandler: GUARD }, async (req, reply) => {
     const include = chosen(req.query);
     const p = await db();
     const at = new Date().toISOString();

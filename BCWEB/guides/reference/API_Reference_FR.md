@@ -631,4 +631,42 @@ ne quitte jamais la machine du relecteur — la signature couvre exactement cett
 Rien ici n'écrit. Un inspecteur de contenu non fiable qui stocke ce qu'il a lu est un moyen de
 faire stocker du contenu.
 
-*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*
+## 35. Constructeur de pages (`pagebuilder.mjs`)
+Les arbres de blocs derrière les pages du site, et la palette dans laquelle puise l'éditeur.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/site/pages` | — | Les pages construites, et rien d'autre. Lu avant le premier rendu, caché 30 s. Un site qui n'a jamais ouvert le constructeur reçoit des lignes `enabled: false` et rend ce qu'il a toujours rendu. |
+| GET | `/admin/site/pages` | ADMIN | La même chose, plus la palette de blocs, la liste blanche de variables et les pages constructibles. |
+| PUT | `/admin/site/pages` | ADMIN | Enregistre les arbres. Validés jusqu'à six niveaux ; ids en double, enfants mal placés et URLs douteuses sont refusés nommément. |
+
+La palette et la liste de variables voyagent **avec** la config au lieu d'être détenues par
+l'éditeur, pour une raison : un éditeur avec sa propre copie propose un bloc que le moteur
+de rendu ne connaît pas, et cette panne se lit comme un bug de la page plutôt que de la liste.
+
+## 36. Export du contenu (`content-backup.mjs`)
+Le contenu écrit, en JSON, pour être lu ailleurs — **pas** un point de restauration.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/admin/content-backup/preview` | ADMIN + server-control + step-up | Chaque section avec son nombre de lignes et si elle est active par défaut. Les comptes viennent d'abord parce que « quelles sections » n'est pas un choix sans un nombre à côté de chacune. |
+| GET | `/admin/content-backup?include=a,b` | ADMIN + server-control + step-up | Un zip, un fichier JSON par section choisie. |
+
+Les comptes sont exportés via un **`select` explicite** — jamais une ligne entière dont on
+retire des champs ensuite, parce qu'un spread livre la colonne suivante quelle qu'elle soit,
+et le jour où cette colonne est un secret personne ne relit ce fichier.
+`content-backup.test.mjs` le vérifie contre le source et tourne sans base de données : il
+échoue donc sur un portable où rien ne tourne.
+
+La chaîne est celle qu'utilisent tous les autres outils de cet écran — visualiseur BDD,
+gestionnaire de fichiers, Docker et power tournent tous en `[ADMIN, canControlServer,
+elevated]`. Cette route livre chaque fiche de compte et chaque mot du site en un fichier :
+être le seul bouton de l'écran que n'importe quel admin pouvait presser n'était pas une
+différence défendable.
+
+Catalogues et dépôts sont **désactivés** par défaut : leurs lignes sont des métadonnées
+pointant vers des objets MinIO que le zip ne transporte pas. Voir
+[BACKUP_FR.md](../run/BACKUP_FR.md) pour savoir laquelle des trois choses appelées
+« sauvegarde » répond à quelle question.
+
+*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

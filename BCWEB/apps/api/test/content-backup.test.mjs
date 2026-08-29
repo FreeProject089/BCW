@@ -66,3 +66,31 @@ test('every section can name itself and count itself', () => {
     assert.equal(typeof s.read, 'function', k);
   }
 });
+
+test('it is guarded like the screen it sits on, not more weakly', () => {
+  // The panel lives under Advanced server management, beside the DB viewer, the file
+  // manager and the power controls. Those run [ADMIN, canControlServer, elevated], and the
+  // web only mounts any of that area after a step-up. This route shipped behind
+  // `requireCap('manage_server')` — a real idiom here, meaning "admin, ungrantable" — which
+  // is a weaker answer than the one the screen gives, on the route that hands over every
+  // account record and every word on the site in one download.
+  //
+  // Nothing compared a route's guard to its neighbours', which is why it survived review.
+  // Read off the GUARD line itself, not out of the file. Planted the removal to check:
+  // dropping requireCanControlServer() from the chain still left the name in the import and
+  // in the comment above it, so a file-wide includes() went green on a route that had just
+  // become admin-only. A check its own explanation satisfies is not a check.
+  const line = SRC.match(/const GUARD = [^;]+;/)?.[0] || '';
+  assert.ok(line, 'the GUARD chain is gone — this test cannot be trusted');
+  for (const need of ['requireRole(', 'requireCanControlServer(', 'requireElevated(']) {
+    assert.ok(line.includes(need), `the guard chain no longer calls ${need})`);
+  }
+
+  // And every route in the file uses the shared chain, so a route added later cannot quietly
+  // pick its own — which is the exact shape of what went wrong the first time.
+  const guards = [...SRC.matchAll(/app[.](?:get|post|put|patch|delete)[(]\s*'([^']+)'\s*,\s*[{]\s*preHandler:\s*([A-Za-z_$][\w$]*)/g)];
+  assert.ok(guards.length >= 2, `read ${guards.length} guarded route(s) — the shape changed, so this test cannot be trusted`);
+  for (const [, path, guard] of guards) {
+    assert.equal(guard, 'GUARD', `${path} does not use the shared GUARD chain`);
+  }
+});
