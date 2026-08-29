@@ -12,6 +12,9 @@ import shorthandSrc from '../markdown/shorthand.js?raw';
 import emojiSrc from '../markdown/emoji.js?raw';
 import brandsSrc from '../markdown/brands.jsx?raw';
 import cssSrc from '../markdown/markdown.css?raw';
+// The TypeScript half. Not an optional part: types cost nothing at runtime, and a kit packed
+// without them is a kit that silently stops type-checking on the receiving end.
+import dtsSrc from '../markdown/markdown.d.ts?raw';
 import readmeSrc from '../markdown/README.md?raw';
 
 /**
@@ -49,7 +52,7 @@ export const KIT_PARTS = [
   },
 ];
 
-const CORE = 'index.jsx nesting.js shorthand.js markdown.css'.split(' ');
+const CORE = 'index.jsx nesting.js shorthand.js markdown.css markdown.d.ts'.split(' ');
 
 /**
  * Remove every `kit:NAME:start … kit:NAME:end` region for the parts that are off.
@@ -97,6 +100,7 @@ export function buildKit(on) {
     'emoji.js': emojiSrc,
     'brands.jsx': brandsSrc,
     'markdown.css': cssSrc,
+    'markdown.d.ts': dtsSrc,
   };
   const dropped = new Set(off.map((p) => p.file).filter(Boolean));
   const files = [];

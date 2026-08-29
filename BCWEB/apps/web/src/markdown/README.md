@@ -19,6 +19,7 @@ renderer, not a copy: `apps/web/src/ui/md.jsx` is a thirty-line adapter around t
 | `shorthand.js` | the pre-parser rewrites: `> [!NOTE]` alerts and bare `[NEW]` chips |
 | `brands.jsx` | brand marks (Discord, Ko-fi, YouTube…) — lucide has none of these |
 | `markdown.css` | every style, scoped to `.md-body` and `.doc-*` |
+| `markdown.d.ts` | the types — see **TypeScript** below |
 
 Copy the folder. That is the install.
 
@@ -51,6 +52,31 @@ export default function Post({ body }) {
 
 That is the whole API for the common case. `className` is added to the wrapper, and `pageMap`
 turns internal links into hover-preview cards (see below).
+
+### TypeScript
+
+The kit stays JSX — one renderer, not two. A hand-ported `.tsx` copy would be a second
+renderer, and the one that is wrong is whichever nobody looked at last. The types come as
+declarations instead, which check the boundary without changing what the code does:
+
+```jsonc
+// tsconfig.json
+{
+  "compilerOptions": {
+    "allowJs": true,        // the kit is .js / .jsx
+    "jsx": "react-jsx"
+  }
+}
+```
+
+`markdown.d.ts` sits beside the sources, so `import Markdown from './markdown/index.jsx'` is
+typed with no path mapping and no `@types` package: props are checked, return types are
+known, and `configureMarkdown` autocompletes.
+
+It covers every export of every file in the folder — including `EMOJI`, `replaceEmoji`,
+`normalizeDirectiveNesting` and the thirteen brand marks. In this repo a check holds the two
+in step, because a declaration file rots quietly: a function added to the kit and missing
+from the types is not an error anywhere, it just becomes `any` and stops being checked.
 
 ## The three things it cannot know
 
