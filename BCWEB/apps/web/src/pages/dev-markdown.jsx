@@ -14,7 +14,7 @@ import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, B
 import { Card, Button, Textarea, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
-import { KIT_PARTS, buildKit, zipKit } from './kit-pack.js';
+import { KIT_PARTS, KIT_FLAVOURS, buildKit, zipKit } from './kit-pack.js';
 
 const INSTALL = 'npm i react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex';
@@ -92,13 +92,16 @@ function KitPacker() {
   const { t } = useI18n();
   const toast = useToast();
   const [on, setOn] = useState(() => new Set(KIT_PARTS.map((p) => p.id)));
+  // TypeScript by default: it is the same files plus two, and somebody who does not want them
+  // loses nothing by deleting them. The reverse is a download that silently stops type-checking.
+  const [flavour, setFlavour] = useState('ts');
   const [busy, setBusy] = useState(false);
 
   // Built on every change rather than on download: the file list and the size ARE the answer
   // to "what am I about to get", and showing them after the fact is showing them too late.
   let files = [];
   let err = null;
-  try { files = buildKit(on); } catch (e) { err = String(e?.message || e); }
+  try { files = buildKit(on, flavour); } catch (e) { err = String(e?.message || e); }
   const bytes = files.reduce((n, f) => n + f.text.length, 0);
 
   const toggle = (id) => setOn((prev) => {
@@ -110,7 +113,7 @@ function KitPacker() {
   const download = async () => {
     setBusy(true);
     try {
-      const blob = await zipKit(on);
+      const blob = await zipKit(on, flavour);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'bcweb-markdown.zip';
@@ -123,6 +126,29 @@ function KitPacker() {
 
   return (
     <Card className="p-4 space-y-3">
+      {/* Above the parts, because it changes what the parts list MEANS: on JavaScript the
+          declarations are not in the zip at all, and the README loses the section describing
+          them. */}
+      <div className="flex flex-wrap gap-2">
+        {KIT_FLAVOURS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFlavour(f.id)}
+            aria-pressed={flavour === f.id}
+            className={`text-left rounded-xl border p-2.5 flex-1 min-w-[220px] transition-colors ${
+              flavour === f.id
+                ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
+                : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+            }`}>
+            <span className="text-sm font-semibold">{f.label}</span>
+            <span className="block text-[12px] text-[var(--muted)] leading-snug mt-0.5">
+              <Markdown className="!text-[12px]">{f.detail}</Markdown>
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-2">
         {KIT_PARTS.map((p) => (
           <label key={p.id} className="flex items-start gap-2.5 cursor-pointer">

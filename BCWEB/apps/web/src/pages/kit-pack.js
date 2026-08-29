@@ -52,7 +52,39 @@ export const KIT_PARTS = [
   },
 ];
 
-const CORE = 'index.jsx nesting.js shorthand.js markdown.css markdown.d.ts'.split(' ');
+// Always in the zip, whichever flavour.
+const CORE = 'index.jsx nesting.js shorthand.js markdown.css'.split(' ');
+
+/**
+ * The two flavours, and what actually differs.
+ *
+ * NOT a ported `.tsx` copy of the renderer. That would be a second renderer, and the one that
+ * is wrong is whichever nobody looked at last — the argument index.jsx already makes about
+ * the preview canvas. It is also unverifiable here: `apps/web` has no TypeScript and no
+ * `@types/react`, so a port would ship having never been compiled.
+ *
+ * What differs is what the CONSUMER needs. One renderer either way.
+ */
+export const KIT_FLAVOURS = [
+  { id: 'js', label: 'JavaScript', detail: 'The sources and the README. Nothing to configure.' },
+  {
+    id: 'ts',
+    label: 'TypeScript',
+    detail: 'The same sources, plus `markdown.d.ts` and a `tsconfig.kit.json` fragment \u2014 every export typed at the boundary, no `@types` package, no path mapping.',
+  },
+];
+
+/** The tsconfig fragment the TypeScript flavour carries. */
+const TSCONFIG = JSON.stringify({
+  compilerOptions: {
+    // The kit is .js / .jsx and stays that way \u2014 see markdown.d.ts for why.
+    allowJs: true,
+    jsx: 'react-jsx',
+    moduleResolution: 'bundler',
+    // The declarations sit beside the sources, so nothing needs mapping.
+    strict: true,
+  },
+}, null, 2);
 
 /**
  * Remove every `kit:NAME:start … kit:NAME:end` region for the parts that are off.
@@ -90,7 +122,7 @@ const clean = (src) => src.replace(/^\/\* kit:[a-z]+:(start|end) \*\/\n/gm, '').
  * `on` is the set of part ids to KEEP. Exported separately from the zipping so the page can
  * show the file list and the size before anybody downloads anything.
  */
-export function buildKit(on) {
+export function buildKit(on, flavour = 'ts') {
   const off = KIT_PARTS.filter((p) => !on.has(p.id));
   const offRegions = off.map((p) => p.region);
   const sources = {
@@ -100,7 +132,6 @@ export function buildKit(on) {
     'emoji.js': emojiSrc,
     'brands.jsx': brandsSrc,
     'markdown.css': cssSrc,
-    'markdown.d.ts': dtsSrc,
   };
   const dropped = new Set(off.map((p) => p.file).filter(Boolean));
   const files = [];
@@ -109,14 +140,30 @@ export function buildKit(on) {
     if (!CORE.includes(name) && !on.has(KIT_PARTS.find((p) => p.file === name)?.id)) continue;
     files.push({ name, text: clean(strip(src, offRegions)) });
   }
-  files.push({ name: 'README.md', text: kitReadme(on) });
+  // The TypeScript half. Appended rather than filtered out of `sources`, because it is not
+  // an optional PART — it is the whole difference between the flavours, and treating it as a
+  // checkbox would let somebody pick TypeScript and then switch its types off.
+  if (flavour === 'ts') {
+    files.push({ name: 'markdown.d.ts', text: dtsSrc });
+    files.push({ name: 'tsconfig.kit.json', text: TSCONFIG });
+  }
+  files.push({ name: 'README.md', text: kitReadme(on, flavour) });
   return files;
 }
 
 /** The README, with a line saying what this particular download is. */
-function kitReadme(on) {
+function kitReadme(on, flavour = 'ts') {
   const off = KIT_PARTS.filter((p) => !on.has(p.id));
-  if (!off.length) return readmeSrc;
+  // The JavaScript flavour carries no types, so the README's TypeScript section describes
+  // files that are not in the folder. Cut rather than left to confuse.
+  let base = readmeSrc;
+  if (flavour !== 'ts') {
+    const at = base.indexOf('### TypeScript');
+    const next = at < 0 ? -1 : base.indexOf('\n## ', at);
+    if (at >= 0) base = base.slice(0, at) + (next < 0 ? '' : base.slice(next + 1));
+    base = base.replace(/^\| `markdown\.d\.ts` \|.*\n/m, '');
+  }
+  if (!off.length) return base;
   const note = [
     '',
     '## What this copy leaves out',
@@ -130,15 +177,21 @@ function kitReadme(on) {
     '',
   ].join('\n');
   // After the file table, so the first thing read is still what the kit IS.
-  const at = readmeSrc.indexOf('\n## Dependencies');
-  return at < 0 ? readmeSrc + note : readmeSrc.slice(0, at) + '\n' + note + readmeSrc.slice(at);
+  //
+  // `base`, not `readmeSrc`: the JavaScript flavour has already had its TypeScript section
+  // cut, and splicing into the original would hand back the copy that still describes files
+  // the zip does not contain.
+  const at = base.indexOf('\n## Dependencies');
+  return at < 0 ? base + note : base.slice(0, at) + '\n' + note + base.slice(at);
 }
 
 /** The zip, as a Blob. jszip is already a dependency of this app. */
-export async function zipKit(on) {
+export async function zipKit(on, flavour = 'ts') {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   const folder = zip.folder('markdown');
-  for (const f of buildKit(on)) folder.file(f.name, f.text);
+  // The SAME call the file list above is built from. A zip assembled by a second path is a
+  // zip that can differ from what the screen promised.
+  for (const f of buildKit(on, flavour)) folder.file(f.name, f.text);
   return zip.generateAsync({ type: 'blob' });
 }
