@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import {
-  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
+  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -12,6 +12,8 @@ import { productCards } from '../lib/home-products.js';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
 import StatusWidget from './status-widget.jsx';
+import DealRail from './myo-deal.jsx';
+import DevTryIt from './dev-try.jsx';
 import { thumb } from '../lib/img.js';
 import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
@@ -646,21 +648,12 @@ export function Home({ draft = null }) {
                   <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
                 </div>
               </div>
-              {/* The four things you get, named — and each one goes where it is. They looked
-                  like buttons and did nothing: the reader scanning for the single word that
-                  matches what they came to do would click it and stay exactly where they were. */}
-              <div className="grid grid-cols-2 gap-3">
-                {[[KeyRound, t('home.dev.f1', 'API keys'), '/dev/config'],
-                  [Shield, t('home.dev.f2', 'Sign-in (OIDC)'), '/docs/sso'],
-                  [Webhook, t('home.dev.f3', 'Webhooks'), '/dev/tools#signature'],
-                  [FlaskConical, t('home.dev.f4', 'Sandbox'), '/dev/tools#try']].map(([I, label, to]) => (
-                  <Link key={label} to={to}
-                    className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-3.5 py-3 transition hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">
-                    <I size={16} className="text-[var(--primary-2)] shrink-0" />
-                    <span className="text-[13px] font-medium min-w-0 truncate">{label}</span>
-                  </Link>
-                ))}
-              </div>
+              {/* A request, running, instead of four links to places where it is described.
+                  The four tiles were fine and they were a brochure: every one of them said
+                  "go and read about this". A developer deciding whether to build on a
+                  platform is asking whether it works and what it hands back, and both are
+                  answerable here in about 200ms because these endpoints are public. */}
+              <DevTryIt />
             </div>
           </Card>
         </div>
@@ -725,23 +718,13 @@ export function Home({ draft = null }) {
                     turns "interesting" into "I understand the deal".
                     Numbered markers, not icons: this is a sequence, and a row of glyphs would
                     say category where the meaning is order. */}
-                <ol className="relative space-y-4 lg:pl-6 lg:border-l border-[var(--line)]">
-                  {[
-                    [t('home.myo.s1', 'You describe it'), t('home.myo.s1d', 'What you want built, who it is for. A paid consultation opens the conversation.')],
-                    [t('home.myo.s2', 'You get advice and a quote'), t('home.myo.s2d', 'An itemised price with a date it is valid until. That is what the consultation buys.')],
-                    [t('home.myo.s3', 'You decide, then it gets built'), t('home.myo.s3d', 'Nothing is charged for the work until you approve the quote. Say no and it stops there.')],
-                  ].map(([title, desc], i) => (
-                    <li key={title} className="flex gap-3">
-                      <span className="shrink-0 w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold tabular-nums bg-[var(--surface-2)] text-[var(--primary-2)] border border-[var(--line)]">
-                        {i + 1}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-[13px] font-semibold">{title}</span>
-                        <span className="block text-[12px] text-[var(--muted)] leading-relaxed mt-0.5">{desc}</span>
-                      </span>
-                    </li>
-                  ))}
-                </ol>
+                {/* The same rail the commission page draws, from the same config. It was
+                    three hand-written sentences here and three more over there, which is two
+                    places for the price to be wrong in. */}
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-5">
+                  <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-3">{t('home.myo.deal', 'When money moves')}</div>
+                  <DealRail cfg={myo || {}} compact />
+                </div>
               </div>
             </Card>
           </div>

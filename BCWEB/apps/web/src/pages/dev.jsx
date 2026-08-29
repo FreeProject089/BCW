@@ -8,6 +8,7 @@ import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { highlightCode, useAsync } from './pages.jsx';
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
+import DevTryIt from './dev-try.jsx';
 import { useAuth } from './auth.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import PageRender, { useLayoutMode } from './page-render.jsx';
@@ -513,6 +514,17 @@ export default function DevHub() {
           <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
         </div>
       )}
+
+      {/* Before the fork, before the tiles: proof.
+          This page opened with a promise and then offered nine doors to documentation. The
+          fastest way to answer "is this real" is to answer it — one public GET, timed on the
+          reader's own machine, with the response printed underneath. */}
+      <div className="mb-10">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
+          {t('dev.hub.tryh', 'Try it, right now')}
+        </h2>
+        <DevTryIt />
+      </div>
 
       {/* ONE fork, first: which of the two things are you building?
           Getting this wrong is the mistake that costs a day, and the names do not give it

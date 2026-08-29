@@ -11,12 +11,16 @@ import { Card, Button, Input, Textarea, Select, Badge, Modal, EmptyState, Spinne
 import Avatar from '../ui/Avatar.jsx';
 import { useAsync, useThreadStream } from './pages.jsx';
 import { ReportComposer } from '../ui/report.jsx';
+// The deal, drawn once and shared with the landing band — two copies of "when do I pay"
+// is how the page and the front page end up quoting different prices.
+import DealRail from './myo-deal.jsx';
 
 // ── shared helpers ──────────────────────────────────────────────────────────────
-export const fmtMoney = (cents, cur = 'usd') => {
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format((cents || 0) / 100); }
-  catch { return `$${((cents || 0) / 100).toFixed(2)}`; }
-};
+// Moved to lib/money.js and re-exported: the home page renders a component that needs it, and
+// importing it from here would have dragged this whole page into the entry chunk. Re-exported
+// rather than relocated at every call site — admin-myo.jsx imports it from here.
+export { fmtMoney } from '../lib/money.js';
+import { fmtMoney } from '../lib/money.js';
 const KIND_META = {
   discord_bot: { icon: Bot, en: 'Discord bot', fr: 'Bot Discord' },
   app: { icon: AppWindow, en: 'Application', fr: 'Application' },
@@ -91,16 +95,10 @@ export function MyoPage() {
 
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}
       <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
-        <div className="grid sm:grid-cols-3 gap-4 sm:gap-5">
-          {[[MessageSquare, t('myo.hiw1.t', '1 · Pay for advice'), t('myo.hiw1.s', '{n} ({u} if urgent) opens a private conversation with a consultant.').replace('{n}', fmtMoney(cfg.consultationCents, cfg.currency)).replace('{u}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))],
-            [FileText, t('myo.hiw2.t', '2 · Get a quote'), t('myo.hiw2.s', 'We agree what you need, and you get an itemised price.')],
-            [Package, t('myo.hiw3.t', '3 · We build it'), t('myo.hiw3.s', 'You approve the quote, we build and deliver in the same conversation.')]].map(([Icon, tt, ss], i) => (
-            <div key={i} className="flex gap-3">
-              <span className="w-9 h-9 rounded-xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 grid place-items-center shrink-0 text-[var(--primary-2)]"><Icon size={17} /></span>
-              <div className="min-w-0"><div className="font-semibold text-[13px]">{tt}</div><div className="text-xs text-[var(--muted)] leading-relaxed mt-0.5">{ss}</div></div>
-            </div>
-          ))}
-        </div>
+        {/* The sequence, with the two points where money moves marked as such.
+            Three icons and three sentences said what happens; they did not say when you are
+            charged, which is the question this page answers four separate times in prose. */}
+        <DealRail cfg={cfg} />
         {/* FOLDED, not deleted.
             "The fee is not the product price" was said four times on one screen: in the
             hero, across these three steps, in this paragraph, and again on the custom card.
