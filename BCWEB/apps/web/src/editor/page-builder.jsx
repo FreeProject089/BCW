@@ -21,6 +21,7 @@ import { fmtNum } from '../lib/format.js';
 import { useI18n } from '../i18n.jsx';
 import PageRender from '../pages/page-render.jsx';
 import { setSitePages } from '../lib/site-pages.js';
+import { homeVariantList } from '../lib/home-variants-meta.js';
 import SelectionToolbar from './selection-toolbar.jsx';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
@@ -410,6 +411,10 @@ export default function PageBuilder() {
   // numbers. A builder that previews `{{members}}` as `{{members}}` is asking you to imagine
   // the page you are building.
   const [live, setLive] = useState({ stats: {}, posts: [], showcase: null, pollData: null, reviewsData: null, myo: null });
+  // Which landing page the site currently opens with. Three presets and no indication of
+  // which one you are actually looking at when you visit the site is a choice made blind:
+  // the reason to start from a layout is almost always "the one that is live".
+  const [liveVariant, setLiveVariant] = useState(null);
   const drag = useRef(null);
   // Undo, as a stack of whole trees. They are small and they are already immutable, so a
   // history is a list of the states we happened to be in — no diffs, no reverse operations,
@@ -429,6 +434,9 @@ export default function PageBuilder() {
     ]).then(([stats, blog, showcase, pollData, reviewsData, myo]) => {
       if (on) setLive({ stats: stats || {}, posts: blog?.posts || [], showcase, pollData, reviewsData, myo });
     });
+    // The public read, not the admin one: it is cached, it is small, and the variant is all
+    // that is wanted here.
+    api.get('/site/home').then((d) => { if (on) setLiveVariant(d?.variant || null); }).catch(() => {});
     return () => { on = false; };
   }, []);
 
@@ -482,6 +490,21 @@ export default function PageBuilder() {
     if (make) setTree(make(t));
     setSel(null);
   };
+
+  /**
+   * What "Start from:" offers on the page being edited.
+   *
+   * Filtered by what STARTERS can actually build, so the offer and the outcome are the same
+   * list — see the comment on the cards.
+   */
+  const starters = (pageKey === 'home'
+    ? homeVariantList(t).map((v) => ({ key: v.v, name: v.name, sub: v.sub, live: liveVariant === v.v }))
+    : [{
+      key: 'dev',
+      name: t('pb.start.devp', 'The developer hub'),
+      sub: t('pb.start.devp.s', 'The API, webhooks, deeplinks and the OpenID provider, then the latest posts.'),
+    }]
+  ).filter((o) => STARTERS[o.key]);
 
   const undo = () => {
     const prev = history.current.pop();
@@ -637,14 +660,6 @@ export default function PageBuilder() {
           a page you recognise made out of it. */}
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-[var(--muted)]">{t('pb.start.label', 'Start from:')}</span>
-        {(pageKey === 'home'
-          ? [['v1', t('pb.start.v1', 'The long landing page')], ['v2', t('pb.start.v2', 'One screen')], ['v3', t('pb.start.v3', 'What\u2019s happening')]]
-          : [['dev', t('pb.start.devp', 'The developer hub')]]
-        ).map(([k, label]) => (
-          <Button key={k} size="sm" variant="ghost" onClick={() => startFrom(k)}>
-            <LayoutTemplate size={13} /> {label}
-          </Button>
-        ))}
         <span className="text-[var(--faint)]">{t('pb.start.note', '\u2014 rebuilt out of blocks, then yours to change')}</span>
 
         {/* The canvas is the narrowest column on this screen, and it is the one being judged.
@@ -661,6 +676,38 @@ export default function PageBuilder() {
           {wide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           {wide ? t('pb.wide.off', 'Show the panels') : t('pb.wide.on', 'Full width')}
         </Button>
+      </div>
+
+      {/* The same three pages the home editor offers, under the same names and the same
+          sentences, read from one module.
+
+          They were named differently in the two places — "The long one" there and "The long
+          landing page" here, with no sentence at all — so the list you choose from when you
+          decide what the site opens with and the list you choose from when you rebuild that
+          page described the same three pages in two vocabularies, and neither said which one
+          was live. A name is not enough to choose by; that is why the other screen has
+          always carried the sentence.
+
+          Only variants that HAVE a preset are offered. A fourth landing page added without
+          one would otherwise appear here as a button that quietly does nothing. */}
+      <div className="grid sm:grid-cols-3 gap-2">
+        {starters.map((o) => (
+          <button
+            key={o.key} type="button" onClick={() => startFrom(o.key)}
+            className="text-left rounded-xl border border-[var(--line)] hover:border-[var(--primary)] p-2.5 transition-colors"
+          >
+            <div className="flex items-center gap-1.5">
+              <LayoutTemplate size={13} className="text-[var(--muted)] shrink-0" />
+              <span className="text-xs font-semibold">{o.name}</span>
+              {o.live && (
+                <span className="ml-auto text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-[var(--primary)]/[0.12] text-[var(--primary)]">
+                  {t('pb.start.live', 'live')}
+                </span>
+              )}
+            </div>
+            {o.sub && <p className="mt-1 text-[11px] leading-snug text-[var(--muted)]">{o.sub}</p>}
+          </button>
+        ))}
       </div>
 
       <div className={`grid gap-4 items-start ${wide ? '' : 'lg:grid-cols-[210px_minmax(0,1fr)_270px]'}`}>

@@ -28,6 +28,7 @@ import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx'
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
+import { homeVariantList } from '../lib/home-variants-meta.js';
 import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import BmmInspector from '../ui/bmm-inspector.jsx';
@@ -10938,11 +10939,10 @@ function HomePageEditor() {
   // Which landing page the site opens with. Three genuinely different pages, not three
   // themes: each drops most of what the others do, which is why the section list below
   // changes with the choice.
-  const VARIANTS = [
-    { v: 'v1', name: t('hp.v1', 'The long one'), sub: t('hp.v1.s', 'Hero, why, how it works, the dev hub, commissions, reviews, news. For somebody who has never heard of this.') },
-    { v: 'v2', name: t('hp.v2', 'One screen'), sub: t('hp.v2.s', 'No story and no scroll before the answer: the products as a list, the media beside them, news at the end. For somebody who came to get something.') },
-    { v: 'v3', name: t('hp.v3', 'What\u2019s happening'), sub: t('hp.v3.s', 'A feed \u2014 posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.') },
-  ];
+  //
+  // The names and the sentences come from one module, because the page builder offers the
+  // same three pages under "Start from:" and used to name them differently.
+  const VARIANTS = homeVariantList(t);
 
   // The wireframe's labels, taken from GROUPS rather than written again. A second list of
   // section names is a second list to keep in step, and the one that drifts is the one

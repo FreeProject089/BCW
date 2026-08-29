@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "node scripts/check-undefined-jsx.mjs && node scripts/check-lazy-named.mjs && vite build",
     "preview": "vite preview",
-    "lint": "eslint src && node scripts/check-home-ctas.mjs && node scripts/check-home-starters.mjs && node scripts/check-dev-sections.mjs && node scripts/check-usage-parts.mjs && node scripts/check-md-brands.mjs && node scripts/check-visual-editor.mjs && node scripts/check-md-kit.mjs && node scripts/check-md-types.mjs && node scripts/check-emoji.mjs && node scripts/check-md-shorthand.mjs && node scripts/check-md-roundtrip.mjs && node scripts/check-kit-markers.mjs",
+    "lint": "eslint src && node scripts/check-home-ctas.mjs && node scripts/check-home-starters.mjs && node scripts/check-home-variant-labels.mjs && node scripts/check-dev-sections.mjs && node scripts/check-usage-parts.mjs && node scripts/check-md-brands.mjs && node scripts/check-visual-editor.mjs && node scripts/check-md-kit.mjs && node scripts/check-md-types.mjs && node scripts/check-emoji.mjs && node scripts/check-md-shorthand.mjs && node scripts/check-md-roundtrip.mjs && node scripts/check-kit-markers.mjs",
     "i18n:check": "node scripts/i18n-check.mjs --strict && node scripts/check-dynamic-i18n.mjs",
     "budget": "node scripts/bundle-budget.mjs",
     "legal:check": "node scripts/check-legal-fresh.mjs",
