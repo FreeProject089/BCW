@@ -3371,6 +3371,8 @@ const DICT = {
     've.ph.schedTitle': 'Titre de la carte — Support, Horaires…',
     've.ph.schedRows': 'Un tableau, une liste, ou une ligne par jour — en markdown.',
     've.schedNote': 'Les lignes sont affichées telles quelles, dans ce fuseau — le lecteur est informé de son écart. Seul :time[…] convertit.',
+    'pb.fold.palette': 'Replier la palette de blocs', 'pb.fold.paletteL': 'Blocs',
+    'pb.fold.props': 'Replier le panneau de propriétés', 'pb.fold.propsL': 'Réglages',
     'pb.start.devp': 'L’espace développeur',
     'pb.start.devp.s': 'L’API, les webhooks, les deeplinks et le fournisseur OpenID, puis les derniers articles.',
     'pb.start.live': 'en ligne',

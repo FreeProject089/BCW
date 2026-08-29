@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Save, Trash2, Copy, ChevronUp, ChevronDown, Monitor, Smartphone, Eye, EyeOff,
   Package, Download, Upload, ExternalLink, RotateCcw, Layers, LayoutTemplate, X,
-  Maximize2, Minimize2,
+  Maximize2, PanelLeft, PanelRight, Minimize2,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { Card, Button, Input, Textarea, Field, Dropdown, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
@@ -401,12 +401,31 @@ export default function PageBuilder() {
   const frameRef = useRef(null);
   const [frameH, setFrameH] = useState(0);
   const scale = previewW && canvasW ? Math.min(1, (canvasW - 32) / previewW) : 1;
-  const [wide, setWide] = useState(() => {
-    try { return localStorage.getItem('bcw.pb.wide') === '1'; } catch { return false; }
+  // Two panels, folded independently.
+  //
+  // One flag used to fold BOTH, so the choice was a canvas 480px narrower than the page it is
+  // a copy of, or no palette and no properties at all. What somebody wants is the palette away
+  // while adjusting one block's settings, and the properties away while dragging blocks in.
+  const [showPalette, setShowPalette] = useState(() => {
+    try { return localStorage.getItem('bcw.pb.palette') !== '0'; } catch { return true; }
+  });
+  const [showProps, setShowProps] = useState(() => {
+    try { return localStorage.getItem('bcw.pb.props') !== '0'; } catch { return true; }
   });
   useEffect(() => {
-    try { localStorage.setItem('bcw.pb.wide', wide ? '1' : '0'); } catch { /* not remembered */ }
-  }, [wide]);
+    try {
+      localStorage.setItem('bcw.pb.palette', showPalette ? '1' : '0');
+      localStorage.setItem('bcw.pb.props', showProps ? '1' : '0');
+    } catch { /* not remembered */ }
+  }, [showPalette, showProps]);
+  // "Full width" still means what it said: both away. It is now a shortcut for the two
+  // switches rather than a third state that overrides them.
+  const wide = !showPalette && !showProps;
+  const setWide = (fn) => {
+    const next = typeof fn === 'function' ? fn(wide) : fn;
+    setShowPalette(!next);
+    setShowProps(!next);
+  };
   // Live data for the dynamic blocks, so the preview shows the real news and the real
   // numbers. A builder that previews `{{members}}` as `{{members}}` is asking you to imagine
   // the page you are building.
@@ -670,12 +689,29 @@ export default function PageBuilder() {
 
             A toggle rather than new fixed numbers: both panels fold away and the canvas takes
             the whole row. */}
-        <Button size="sm" variant={wide ? 'primary' : 'ghost'} className="ml-auto"
-          onClick={() => setWide((w) => !w)}
-          title={t('pb.wide.h', 'Fold the palette and the properties away, so the page is seen at full width')}>
-          {wide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-          {wide ? t('pb.wide.off', 'Show the panels') : t('pb.wide.on', 'Full width')}
-        </Button>
+        {/* ONE PER PANEL. A single "full width" folded both, so the choice was a canvas
+            500px too narrow or no tools at all — and the useful states are in between: the
+            palette away while adjusting one block's settings, the properties away while
+            dragging blocks in. Both away is still one click on the third button, and each
+            switch is remembered. */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button size="sm" variant={showPalette ? 'ghost' : 'primary'}
+            onClick={() => setShowPalette((v) => !v)}
+            title={t('pb.fold.palette', 'Fold the block palette away')}>
+            <PanelLeft size={13} /> {t('pb.fold.paletteL', 'Blocks')}
+          </Button>
+          <Button size="sm" variant={showProps ? 'ghost' : 'primary'}
+            onClick={() => setShowProps((v) => !v)}
+            title={t('pb.fold.props', 'Fold the properties panel away')}>
+            <PanelRight size={13} /> {t('pb.fold.propsL', 'Settings')}
+          </Button>
+          <Button size="sm" variant={wide ? 'primary' : 'ghost'}
+            onClick={() => setWide((w) => !w)}
+            title={t('pb.wide.h', 'Fold the palette and the properties away, so the page is seen at full width')}>
+            {wide ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+            {wide ? t('pb.wide.off', 'Show the panels') : t('pb.wide.on', 'Full width')}
+          </Button>
+        </div>
       </div>
 
       {/* The same three pages the home editor offers, under the same names and the same
@@ -710,9 +746,15 @@ export default function PageBuilder() {
         ))}
       </div>
 
-      <div className={`grid gap-4 items-start ${wide ? '' : 'lg:grid-cols-[210px_minmax(0,1fr)_270px]'}`}>
+      {/* Columns follow what is OPEN. A folded panel gives its width back to the canvas
+          instead of leaving a gap where it used to be. */}
+      <div className={`grid gap-4 items-start ${
+        showPalette && showProps ? 'lg:grid-cols-[210px_minmax(0,1fr)_290px]'
+          : showPalette ? 'lg:grid-cols-[210px_minmax(0,1fr)]'
+            : showProps ? 'lg:grid-cols-[minmax(0,1fr)_290px]'
+              : ''}`}>
         {/* ── Palette ── */}
-        <Card className={`p-3 space-y-3 lg:sticky lg:top-4 ${wide ? 'hidden' : ''}`}>
+        <Card className={`p-3 space-y-3 lg:sticky lg:top-4 ${showPalette ? '' : 'hidden'}`}>
           {paletteGroups.map(([kind, label]) => (
             <div key={kind}>
               <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
@@ -866,7 +908,7 @@ export default function PageBuilder() {
         </div>
 
         {/* ── Properties ── */}
-        <Card className={`p-3 lg:sticky lg:top-4 space-y-3 ${wide ? 'hidden' : ''}`}>
+        <Card className={`p-3 lg:sticky lg:top-4 space-y-3 ${showProps ? '' : 'hidden'}`}>
           {!selected && <p className="text-xs text-[var(--muted)]">{t('pb.pick', 'Select a block on the page to change it.')}</p>}
           {selected && (
             <>
@@ -924,8 +966,13 @@ export default function PageBuilder() {
               value is a decision you can make here. Click one and the placeholder is on the
               clipboard, ready to paste into whichever field you are in — the editor cannot
               know that, and guessing wrong would overwrite a caption. */}
-          <div className="pt-2 border-t border-[var(--line)]">
-            <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('pb.vars', 'Numbers you can use')}</div>
+          {/* FOLDED by default when a block is selected: eleven numbers under the fields you
+              came to change pushed those fields off the top of the panel. Open by default when
+              nothing is selected, because then this list is the only thing here worth reading. */}
+          <details className="pt-2 border-t border-[var(--line)]" open={!selected}>
+            <summary className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5 cursor-pointer select-none">
+              {t('pb.vars', 'Numbers you can use')}
+            </summary>
             <p className="text-[11px] text-[var(--muted)] mb-2">{t('pb.vars.how2', 'Click one to copy its placeholder, then paste it into any title or text block. A stat block draws the same number as a tile.')}</p>
             <div className="space-y-0.5">
               {(cfg.variables || []).map((v) => (
@@ -940,7 +987,7 @@ export default function PageBuilder() {
                 </button>
               ))}
             </div>
-          </div>
+          </details>
         </Card>
       </div>
     </div>
