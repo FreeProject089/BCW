@@ -10904,6 +10904,9 @@ function HomePageEditor() {
   // the editor made you know it.
   const GROUPS = [
     { id: '__always', label: t('hp.g.always', 'Always shown'), always: true, prefixes: ['badge', 'brand', 'hero1', 'hero2', 'sub', 'cta', 'cta2', 'stat', 'pipe', 'k'] },
+    // No `prefixes`: this section has no wording to rewrite. It draws what the status page
+    // holds, or nothing at all — so the only thing to decide about it is whether it appears.
+    { id: 'status', label: t('hp.s.status', 'Incident banner'), prefixes: [] },
     { id: 'poll', label: t('hp.s.poll', 'Pinned poll'), prefixes: ['poll'] },
     { id: 'products', label: t('hp.s.products', 'Products grid'), prefixes: ['feat'] },
     { id: 'why', label: t('hp.s.why', 'Why BetterCommunity'), prefixes: ['why'] },

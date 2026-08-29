@@ -78,6 +78,10 @@ export const BLOCKS = {
   showcase:  { kind: 'dynamic', props: {} },
   products:  { kind: 'dynamic', props: { style: 'rows' } },
   news:      { kind: 'dynamic', props: { limit: 6, style: 'grid', heading: true } },
+  // Draws NOTHING when no service is down, which is what makes it safe to put on a page
+  // somebody built by hand: it costs a blank line on every ordinary day rather than a
+  // permanent green strip nobody reads.
+  status:    { kind: 'dynamic', props: {} },
   poll:      { kind: 'dynamic', props: {} },
   reviews:   { kind: 'dynamic', props: { style: 'cards', limit: 3 } },
   myo:       { kind: 'dynamic', props: { limit: 3 } },

@@ -185,7 +185,10 @@ const HOME_KEY = 'site.home';
 // a toggle for a section that no longer exists is worse than no toggle: it looks like it
 // works. Anything absent from a stored value defaults to ON, so adding a section here never
 // silently hides it on a site that saved its config before the section existed.
-export const HOME_SECTIONS = ['poll', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
+// `status` is first on purpose: it is the only section that answers a question the reader
+// already has when they arrive during an incident, and it draws NOTHING when there is no
+// incident — so its place in the order costs nothing on an ordinary day.
+export const HOME_SECTIONS = ['status', 'poll', 'products', 'why', 'steps', 'dev', 'myo', 'reviews', 'news'];
 
 /**
  * Which landing page the site opens with, and what each one is made of.
@@ -205,9 +208,9 @@ export const HOME_VARIANTS = {
   v1: { sections: HOME_SECTIONS },
   // The opposite reading of a landing page: no scroll-through story, one screen that answers
   // "what is this and can I have it" and gets out of the way.
-  v2: { sections: ['products', 'news'] },
+  v2: { sections: ['status', 'products', 'news'] },
   // For a site whose visitors already know what it is: what is happening, right now.
-  v3: { sections: ['news', 'poll', 'reviews', 'myo'] },
+  v3: { sections: ['status', 'news', 'poll', 'reviews', 'myo'] },
 };
 export const HOME_VARIANT_KEYS = Object.keys(HOME_VARIANTS);
 

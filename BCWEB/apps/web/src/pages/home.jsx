@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
+// Drawn only during an incident — see status-banner.jsx.
+import StatusBanner from './status-banner.jsx';
 import { thumb } from '../lib/img.js';
 import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
@@ -377,6 +379,11 @@ export function Home() {
               a switch for something that no longer exists is worse than no switch. */}
         </div>
       </section>
+
+      {/* Only when something is actually wrong. A permanent "all systems operational"
+          strip is the fastest way to teach a reader to stop reading a strip: it is green
+          every day they visit, so on the one day it is not, it is furniture. */}
+      {show('status') && <section className="-mt-32 md:-mt-48"><StatusBanner /></section>}
 
       {/* products */}
       {show('products') && (

@@ -26,6 +26,8 @@ import { useI18n } from '../i18n.jsx';
 // builder needed to draw the same news strip somewhere an admin chose — two copies of a
 // section is one copy that goes stale.
 import { ProductRows, ShowcasePanel, NewsGrid, NewsFeed, PollCard, ReviewsCard, OffersCard } from './home-sections.jsx';
+// Drawn only during an incident, so it costs these two layouts nothing the rest of the time.
+import StatusBanner from './status-banner.jsx';
 // One rule for all three landing pages. Written three times it would be right once:
 // v1 could learn about the signed-in visitor and these two not, and both would render.
 import { heroCtas, heroNote, closingCta } from '../lib/home-ctas.js';
@@ -70,6 +72,7 @@ export function HomeV2(ctx) {
           </div>
           {heroNote(user, t) && <p className="mt-3 text-[12px] text-[var(--faint)]">{heroNote(user, t)}</p>}
 
+          {show('status') && <StatusBanner />}
           {show('products') && (
             <div className="mt-8"><ProductRows products={products} /></div>
           )}
@@ -120,6 +123,7 @@ export function HomeV3(ctx) {
       <div className="grid lg:grid-cols-3 gap-6 items-start">
         {/* The feed takes two thirds. Everything else on this page is context for it. */}
         <div className="lg:col-span-2 space-y-3">
+          {show('status') && <StatusBanner />}
           {show('news') && <NewsFeed posts={posts} limit={6} />}
         </div>
 

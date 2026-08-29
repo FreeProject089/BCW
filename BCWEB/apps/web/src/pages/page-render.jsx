@@ -18,6 +18,7 @@ import Markdown, { IconGlyph } from '../ui/md.jsx';
 import { fmtNum } from '../lib/format.js';
 import { useI18n } from '../i18n.jsx';
 import { ProductRows, ShowcasePanel, NewsGrid, NewsFeed, PollCard, ReviewsCard, OffersCard } from './home-sections.jsx';
+import StatusBanner from './status-banner.jsx';
 
 /**
  * Which layout to draw, from the viewport.
@@ -367,6 +368,7 @@ function Node({ node, ctx, vars, which, edit }) {
       return p.style === 'feed'
         ? <NewsFeed posts={ctx.posts || []} limit={Number(p.limit) || 6} />
         : <NewsGrid posts={ctx.posts || []} limit={Number(p.limit) || 3} heading={p.heading !== false} compact={p.style === 'list'} />;
+    case 'status': return <StatusBanner />;
     case 'poll': return <PollCard pollData={ctx.pollData} />;
     case 'reviews': return <ReviewsCard reviewsData={ctx.reviewsData} limit={Number(p.limit) || 3} style={p.style} />;
     case 'myo': return <OffersCard myo={ctx.myo} limit={Number(p.limit) || 3} />;

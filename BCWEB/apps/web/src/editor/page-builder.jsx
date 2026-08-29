@@ -283,6 +283,9 @@ export const STARTERS = {
         B('stat', { variable: 'repos', label: t('pb.start.s4', 'repositories'), icon: 'server', style: 'tile' }),
       ]),
     ]),
+    // First, as on the real page: it is the one block that answers a question the reader
+    // already has when they arrive during an incident, and it draws nothing otherwise.
+    B('section', { pad: 'sm' }, [B('status', {})]),
     B('section', { pad: 'md' }, [B('poll', {})]),
     B('section', { pad: 'md' }, [
       B('heading', { text: t('pb.start.products', 'The apps'), level: 2 }),
@@ -328,6 +331,7 @@ export const STARTERS = {
     B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
   ],
   v2: (t) => [
+    B('section', { pad: 'sm' }, [B('status', {})]),
     B('section', { pad: 'md' }, [
       B('row', { cols: '2', gap: 'lg', align: 'center' }, [
         B('col', { span: 1 }, [
@@ -341,6 +345,7 @@ export const STARTERS = {
     B('section', { pad: 'md' }, [B('news', { style: 'grid', limit: 3 })]),
   ],
   v3: (t) => [
+    B('section', { pad: 'sm' }, [B('status', {})]),
     B('section', { pad: 'sm' }, [
       B('heading', { text: t('pb.start.h3', 'What\u2019s happening'), level: 1 }),
     ]),
