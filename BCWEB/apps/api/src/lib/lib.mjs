@@ -135,9 +135,16 @@ const SESSION_TOUCH_MS = 5 * 60 * 1000;
 /// Is the session behind this token dead? Called by every auth guard, so revoking a device
 /// takes effect on its next request instead of whenever the 7-day token expires.
 ///
-/// Tokens issued before this feature carry no `sid`. They stay valid: forcing every
-/// existing user to sign in again is a bigger side effect than the panel is worth. They
-/// simply do not appear in the list until the next sign-in.
+/// A token with no `sid` short-circuits here to false — but it is NOT accepted: it is
+/// refused two lines later by `tokenAcceptable`, and this function simply has nothing to
+/// look up. Do not read the `return false` as a grace period.
+///
+/// There WAS one. It was retired by 0feed3f, after a SUPERADMIN cookie carrying no `sid`
+/// turned up in a browser: nothing could revoke it — not this panel, not closing the
+/// account, not a password change — and it opened every route its baked-in role allowed.
+/// The grace had expired by construction anyway (tokens live seven days; the panel is far
+/// older), so what was left were tokens minted when the session row silently failed to
+/// write. `issueSession` now fails the login instead.
 export async function sessionRevoked(claims) {
   if (!claims?.sid) return false;
   try {
