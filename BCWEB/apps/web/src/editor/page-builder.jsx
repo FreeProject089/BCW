@@ -378,6 +378,28 @@ export default function PageBuilder() {
   // a tool feel unfinished. Wrapped because localStorage THROWS outright in some private
   // windows — not returns null — and an editor that fails to mount over a layout preference
   // would be a poor trade.
+  // The width the preview is rendered AT, in real pixels. `0` means "fill the column", which
+  // is the old behaviour and is right while arranging blocks; a number is a screen size being
+  // judged.
+  const [previewW, setPreviewW] = useState(0);
+  const canvasRef = useRef(null);
+  const [canvasW, setCanvasW] = useState(0);
+  // Measured, because the scale is a ratio of two widths and one of them changes with the
+  // window, the panels folding, and the dashboard's own sidebar.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(([e]) => setCanvasW(e.contentRect.width));
+    ro.observe(el);
+    setCanvasW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  // How much the frame is shrunk to fit. Never above 1: a 390-wide phone frame blown up to
+  // fill a desktop column would be a lie in the other direction.
+  const frameRef = useRef(null);
+  const [frameH, setFrameH] = useState(0);
+  const scale = previewW && canvasW ? Math.min(1, (canvasW - 32) / previewW) : 1;
   const [wide, setWide] = useState(() => {
     try { return localStorage.getItem('bcw.pb.wide') === '1'; } catch { return false; }
   });
@@ -418,6 +440,14 @@ export default function PageBuilder() {
   // nobody is told which edit stopped applying to phones.
   const inherits = which === 'mobile' && page?.mobile == null;
   const tree = (which === 'mobile' ? (page?.mobile ?? page?.desktop) : page?.desktop) || [];
+
+  // The unscaled height, so the negative margin below can reclaim exactly what the transform
+  // stops drawing. Read after paint and after anything that changes the layout.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    setFrameH(el.offsetHeight);
+  }, [previewW, canvasW, which, tree]);
 
   const setPage = (patch, remember = true) => {
     setCfg((c) => {
@@ -717,6 +747,30 @@ export default function PageBuilder() {
                   </Button>
                 )
             )}
+            {/* The width the page is JUDGED at.
+                "Fill the column" is right while arranging blocks. A number is a screen being
+                looked at: the frame is rendered at that many real pixels and scaled to fit,
+                so every media query answers the way it will on that screen. Fitting by
+                shrinking the element instead would keep answering for the window. */}
+            <div className="flex items-center gap-1.5 text-xs">
+              <span className="text-[var(--muted)]">{t('pb.at', 'At')}</span>
+              <Dropdown
+                value={String(previewW)}
+                onChange={(v) => setPreviewW(Number(v))}
+                options={[
+                  { value: '0', label: t('pb.w.fit', 'the column') },
+                  { value: '1440', label: t('pb.w.1440', '1440 — large desktop') },
+                  { value: '1280', label: t('pb.w.1280', '1280 — desktop') },
+                  { value: '1024', label: t('pb.w.1024', '1024 — small laptop') },
+                  { value: '768', label: t('pb.w.768', '768 — tablet') },
+                  { value: '390', label: t('pb.w.390', '390 — phone') },
+                ]}
+              />
+              {scale < 1 && (
+                <span className="text-[var(--faint)] tabular-nums">{Math.round(scale * 100)}%</span>
+              )}
+            </div>
+
             <label className="ml-auto flex items-center gap-1.5 text-xs">
               {page.orb === 'off' ? <EyeOff size={13} /> : <Eye size={13} />}
               <Dropdown
@@ -730,8 +784,22 @@ export default function PageBuilder() {
             </label>
           </div>
 
-          <Card className={`p-4 overflow-x-auto ${which === 'mobile' ? '' : ''}`}>
-            <div className={`pb-frame ${which === 'mobile' ? 'is-mobile' : ''}`}>
+          {/* `overflow-hidden`, not `auto`: the frame is scaled to fit by construction, so a
+              scrollbar here would mean the maths is wrong rather than that the page is wide. */}
+          <Card ref={canvasRef} className="p-4 overflow-hidden">
+            <div
+              className={`pb-frame ${which === 'mobile' && !previewW ? 'is-mobile' : ''}`}
+              style={previewW ? {
+                width: `${previewW}px`,
+                transform: `scale(${scale})`,
+                transformOrigin: 'top left',
+                // The scaled element still occupies its UNSCALED height in the layout, so the
+                // card would keep a tall empty gap under a shrunk page. Pulled back by the
+                // part that is no longer drawn.
+                marginBottom: frameH ? `${-(frameH * (1 - scale))}px` : undefined,
+              } : undefined}
+              ref={frameRef}
+            >
               <PageRender
                 page={which === 'mobile' && !inherits ? { desktop: tree } : { desktop: tree }}
                 ctx={{ ...live, products: [] }}
