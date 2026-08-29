@@ -3,7 +3,7 @@ import {
   GripVertical, Trash2, Plus, Heading as HeadingIcon, Type, TagIcon, LayoutGrid, ImagePlus,
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
-  Eye, MousePointerClick, Sigma, PlayCircle,
+  Eye, MousePointerClick, Sigma, PlayCircle, Clock,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -54,6 +54,7 @@ const BLOCK_TYPES = [
   { type: 'columns', label: 'Columns', icon: Columns2 },
   { type: 'align', label: 'Align', icon: AlignCenter },
   { type: 'math', label: 'Maths', icon: Sigma },
+  { type: 'schedule', label: 'Opening hours', icon: Clock },
   { type: 'replay', label: 'Session replay', icon: PlayCircle },
   { type: 'divider', label: 'Divider', icon: Minus },
 ];
@@ -436,6 +437,37 @@ function BlockFields({ block: b, onChange }) {
             ))}
             <button type="button" onClick={addTag} className="inline-flex items-center gap-1 text-xs text-[var(--muted)] hover:text-[var(--text)] rounded-full border border-dashed border-[var(--line)] px-2 py-0.5"><Plus size={12} /> Tag</button>
           </div>
+        </div>
+      );
+    }
+    case 'schedule': {
+      // The timezone is the whole point of this block, so it is a real chooser rather than a
+      // free-text box that silently accepts "Paris" — a zone the renderer cannot resolve
+      // means an offset of zero, which is a wrong number rather than a visible error.
+      //
+      // A datalist, not a <select>: there are ~420 zones, the list comes from the platform
+      // (no bundled table to go stale when a country changes its rules), and typing "Par"
+      // gets you there faster than scrolling ever could. Free text still works for anything
+      // the browser does not enumerate.
+      let zones = [];
+      try { zones = Intl.supportedValuesOf('timeZone'); } catch { zones = []; }
+      const here = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ''; } })();
+      return (
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Input value={b.title || ''} onChange={(e) => onChange({ title: e.target.value })}
+              placeholder={t('ve.ph.schedTitle', 'Card title — Support, Opening hours…')} className="!py-1.5 !text-sm" />
+            <Input list="ve-tz-list" value={b.tz || ''} onChange={(e) => onChange({ tz: e.target.value })}
+              placeholder={here || 'Europe/Paris'} className="!py-1.5 !text-sm" />
+            <datalist id="ve-tz-list">{zones.map((z) => <option key={z} value={z} />)}</datalist>
+          </div>
+          {/* Said here because it is the one thing about this block that surprises people, and
+              the alternative is finding out in March. */}
+          <p className="text-[11px] text-[var(--faint)]">
+            {t('ve.schedNote', 'Rows are shown exactly as written, in this zone — readers are told how far they are from it. Only :time[…] converts.')}
+          </p>
+          <MdField className={ta} rows={4} value={b.text} onChange={(v) => onChange({ text: v })}
+            placeholder={t('ve.ph.schedRows', 'A table, a list, or a line per day — markdown.')} />
         </div>
       );
     }
