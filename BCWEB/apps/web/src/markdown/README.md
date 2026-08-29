@@ -153,23 +153,41 @@ short version:
 
 ```
 :::note :::tip :::success :::warning :::danger      callouts, each takes [A title]
+  aliases  :::info :::hint = tip · :::check = success · :::caution :::important = warning
+           :::error = danger · :::custom = a callout of your own
 :::callout{icon=rocket color="#7c3aed"}             one of your own
-:::cards / :::card{title= href= icon= image=}       card and card grid
+:::cards / :::card{title= href= icon= image=}       card and card grid (:::ref = :::card)
 :::tabs / :::tab{title="…"}                         tabs
 :::steps / :::step[Title]                           numbered steps
-:::columns / :::column                              responsive columns
-:::collapse[Summary]                                a disclosure
+:::columns / :::column                              responsive columns (:::row / :::col)
+:::collapse[Summary]                                a disclosure (:::details is the same)
 :::center :::left :::right                          alignment
 :::roadmap{src=…} / :::replay{src=…}                the two injected components
-:button[Label]{brand=discord href=…}                a button, eight brands, three sizes
+                                                    (:::bmmreplay = :::replay)
+:button[Label]{brand=discord href=…}                a button, eight brands, three sizes (:btn)
 :link[text]{color=#e11 href=…}                      a coloured link
 :badge[NEW]{color="#0a7"}  :tag[…]                  chips
 :icon[rocket]  :kbd[Ctrl+K]                         inline icon, keycaps
 :file[report.pdf]{href=… size="1.2 MB"}             a download, icon by extension
-:::roadmap[Where we are] / :::stage[Done]{state=done}  a progress tracker (:::progress is the same block)
+:::roadmap[Where we are] / :::stage[Done]{state=done}  a progress tracker (:::progress is the
+                                                    same block; :::phase = :::stage)
+:::schedule[Support]{tz=Europe/Paris}               a repeating schedule, in ONE zone (:::hours)
+:time[2026-09-01T20:00]{tz=Europe/Paris}            one instant, in the reader's zone (:at)
 ::toc[On this page]                                 table of contents
 $$E = mc^2$$                                        maths
 :rocket: :tada: :+1:                                emoji, by GitHub's names
+```
+
+**The two timezone blocks are not two spellings of one idea.** `:::schedule` states hours that
+repeat, and its rows are NOT converted: "Monday 09:00 Europe/Paris" is 09:00 in Paris every
+week of the year, and what moves across a daylight-saving boundary is how far that is from the
+reader. A converted row would be right today and wrong in March, with nothing on the page
+admitting it — so the zone is named on the card and the block computes the reader's distance
+from it **right now**, labelled as being for right now. `:time` is a single instant, which has
+no such ambiguity, so it IS converted; the date is what makes it exact, because it settles
+which side of a daylight-saving change the moment falls on.
+
+```
 ```
 
 ## What it is not

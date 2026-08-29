@@ -71,5 +71,37 @@ if (undocumented.length) {
   console.error('error on the first document they render.');
 }
 
+// The same rule for the VOCABULARY, which fails more quietly than a missing package does.
+//
+// The kit ships the real renderer — `?raw`, so what you download is the code this site runs —
+// and this README is its only documentation. A directive it does not name is one the
+// downloader never uses: no resolve error, no console line, nothing. They simply ship a
+// renderer with capabilities they were never told about.
+//
+// Aliases count. Somebody reading a document that uses `:::hours` looks it up here, finds
+// nothing, and concludes their copy is out of date.
+const index = readFileSync(join(KIT, 'index.jsx'), 'utf8');
+const directives = new Set();
+for (const m of index.matchAll(/name === '([a-z0-9-]+)'/g)) directives.add(m[1]);
+const callouts = index.match(/^const CALLOUTS = \{([\s\S]*?)^\};/m);
+if (callouts) for (const m of callouts[1].matchAll(/([a-z0-9-]+):/g)) directives.add(m[1]);
+
+if (directives.size < 30) {
+  // Without this, a rename of the branch style empties the left-hand side and the comparison
+  // below passes by comparing nothing.
+  console.error(`\u2717 read ${directives.size} directive(s) from index.jsx — the extractor is stale`);
+  process.exit(2);
+}
+const named = new Set();
+for (const m of readme.matchAll(/:{1,3}([a-z][a-z0-9-]*)/g)) named.add(m[1]);
+const unnamed = [...directives].filter((d) => !named.has(d)).sort();
+if (unnamed.length) {
+  bad = true;
+  console.error('\u2717 the kit renders directive(s) its README never names:');
+  for (const d of unnamed) console.error(`    :::${d}`);
+  console.error('\nThe README is the kit\'s only documentation. A block nobody is told about is');
+  console.error('a block nobody uses \u2014 and unlike a missing package, nothing errors to say so.');
+}
+
 if (bad) process.exit(1);
-console.log(`✓ markdown kit OK — ${files.length} file(s), self-contained, ${packages.size} documented dependenc(ies)`);
+console.log(`✓ markdown kit OK — ${files.length} file(s), self-contained, ${packages.size} documented dependenc(ies), ${directives.size} directive(s) named`);
