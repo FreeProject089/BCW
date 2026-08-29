@@ -301,6 +301,12 @@ export function Home() {
   // site that has never configured this must not gain an empty black rectangle the day it
   // ships.
   const { data: showcase } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
+  // The official projects, which the suite row is built from. Same failure rule as the
+  // others: a request that fails leaves the row on its written-in fallback rather than
+  // emptying the section this page exists for.
+  const { data: projData } = useAsync(() => api.get('/projects').catch(() => null), []);
+  const projects = projData?.projects || null;
+  const projVisible = projData?.visible || null;
   const show = (k) => homeCfg?.sections?.[k] !== false;
   const { user } = useAuth();
   const { t, lang } = useI18n();
@@ -309,10 +315,38 @@ export function Home() {
   // hook called inside a branch is a hook whose order changes the day an admin switches the
   // page on, which React reports as a wrong-hook error on an unrelated line.
   const layoutMode = useLayoutMode();
+  // One icon per known key, for the fallback when a project has no logo of its own. A key
+  // nobody mapped gets the generic one rather than nothing — an empty square in a row of
+  // logos reads as a broken image, not as a project without art.
+  const PROD_ICON = { bmm: Boxes, bsm: Music2, installer: Download };
+  // The suite, from the projects an admin actually manages.
+  //
+  // This was four entries written into this file: adding a fifth product, renaming one or
+  // hiding one meant editing the landing page, which is not a thing an admin can do — and the
+  // names and taglines here drifted from the ones on each project's own page, because nothing
+  // connected them.
+  //
+  // `community` is skipped: it is this site, and a card pointing at the page you are on is a
+  // card nobody clicks. Hosting stays hand-written because it is not a project — it is a
+  // service, it has no project page, and the row would be poorer without it.
+  const projectCards = Object.entries(projects || {})
+    .filter(([k]) => k !== 'community' && projVisible?.[k] !== false)
+    .map(([k, cfg]) => ({
+      icon: PROD_ICON[k] || Boxes,
+      logo: k,
+      name: cfg?.name || k,
+      desc: cfg?.tagline || '',
+      to: `/p/${k}`,
+    }));
   const products = [
-    { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm' },
-    { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm' },
-    { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer' },
+    // Only when the API gave nothing at all — a fresh install, or a request that failed. The
+    // row is what the page is FOR; an empty one would read as a broken site rather than an
+    // unconfigured one.
+    ...(projectCards.length ? projectCards : [
+      { icon: Boxes, logo: 'bmm', name: 'BMM', desc: t('prod.bmm.d'), to: '/p/bmm' },
+      { icon: Music2, logo: 'bsm', name: 'BSM', desc: t('prod.bsm.d'), to: '/p/bsm' },
+      { icon: Download, logo: 'installer', name: 'BetterInstaller', desc: t('prod.installer.d'), to: '/p/installer' },
+    ]),
     { icon: Rocket, name: 'Hosting', desc: t('prod.hosting.d'), to: '/hosting' },
   ];
   // Which landing page this site opens with.
@@ -389,9 +423,20 @@ export function Home() {
       {show('products') && (
       <section>
         <SectionKicker n="01" label={t('home.k.products', 'The suite')} />
-        <div className="reveal-stagger grid md:grid-cols-4 gap-4">
+        {/* Four or fewer: a grid, exactly as before. More: a scroller with snap points, so a
+            fifth product is a swipe rather than one card alone on a second row.
+
+            NOT a marquee. Every card here is a link somebody is aiming at, and a row that
+            moves under the cursor is the one pattern guaranteed to be missed — the reviews
+            marquee is right for reviews precisely because nobody aims at a review. */}
+        <div className={products.length > 4
+          ? 'reveal-stagger flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-1 px-1 [scrollbar-width:thin]'
+          : 'reveal-stagger grid md:grid-cols-4 gap-4'}
+          {...(products.length > 4 ? { role: 'region', 'aria-label': t('home.k.products', 'The suite') } : {})}>
           {products.map((p) => (
-            <Link key={p.name} to={p.to} className="group"><Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
+            <Link key={p.name} to={p.to}
+              className={products.length > 4 ? 'group snap-start shrink-0 w-[240px]' : 'group'}>
+              <Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
               <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
               <div className="relative">
                 <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
@@ -411,9 +456,13 @@ export function Home() {
       {show('why') && (
       <section>
         <SectionKicker n="02" label={t('home.k.why', 'Why BetterCommunity')} />
-        <div className="reveal-stagger grid md:grid-cols-3 gap-4">
+        {/* The featured tile spans the full width and the four promises sit UNDER it as a
+            list, not beside it as four more cards. The pipeline is the argument this section
+            exists to make; giving it the same chrome as a one-line blurb made it read as a
+            fifth blurb that happened to be wider. */}
+        <div className="reveal-stagger grid gap-4">
           {/* featured tile: the moderation promise, illustrated by the real review pipeline */}
-          <Card hover className="p-6 md:col-span-2 group relative overflow-hidden">
+          <Card hover className="p-6 group relative overflow-hidden">
             {/* A blurred disc INSIDE the card, not a gradient clipped by its corner.
                 The old one sat 64px past the card on both edges with its centre only 32px
                 inside, so `overflow-hidden` cut it while the orange was still at full
@@ -438,12 +487,21 @@ export function Home() {
               </div>
             </div>
           </Card>
-          {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
-            [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
-            [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into BMM through bmm:// deeplinks — no manual downloads.')],
-            [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers — anonymous first-party analytics, and only with your consent.')]].map(([I, title, d]) => (
-            <Card key={title} hover className="p-6 group"><span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40"><I size={20} className="text-[var(--primary-2)]" /></span><div className="font-semibold mt-4">{title}</div><div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{d}</div></Card>
-          ))}
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
+            {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
+              [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
+              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into BMM through bmm:// deeplinks — no manual downloads.')],
+              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers — anonymous first-party analytics, and only with your consent.')]].map(([I, title, d]) => (
+              // A rule instead of a border. Four bordered boxes under a bordered card is five
+              // rectangles competing for the same attention; a 2px accent reads as "four of
+              // these" without asking for any.
+              <div key={title} className="group pl-4 border-l-2 border-[var(--line)] hover:border-[var(--primary)] transition-colors">
+                <I size={18} className="text-[var(--primary-2)]" />
+                <div className="font-semibold mt-2.5 text-[15px]">{title}</div>
+                <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{d}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
       )}
@@ -456,7 +514,11 @@ export function Home() {
         {/* Clean self-contained step cards — no roadmap rail, no "Step N" label. The icon
             chip and a big ghost number share the top row (balanced, fully inside the
             padding), then title · description · CTA. */}
-        <div className="reveal-stagger grid md:grid-cols-3 gap-5">
+        {/* A rail behind the three, so they read as one sequence rather than three offers.
+            The line stops at the first and last chip rather than running off both edges —
+            a path that continues past the end promises a fourth step. */}
+        <div className="reveal-stagger grid md:grid-cols-3 gap-5 relative">
+          <div aria-hidden className="hidden md:block absolute top-[46px] left-[16%] right-[16%] h-px bg-[var(--line)]" />
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
             [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
