@@ -3399,7 +3399,7 @@ function SnapshotsPanel({ onChanged }) {
   };
 
   return (
-    <div className="mt-4 pt-3 border-t border-[var(--line)]">
+    <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
         <Archive size={12} /> {t('snap.title', 'Point-in-time backups')}
       </div>
@@ -3419,25 +3419,31 @@ function SnapshotsPanel({ onChanged }) {
             {busy === 'import' ? <Spinner /> : <UploadIcon size={13} />} {t('snap.import', 'Import a backup')}
           </span>
         </label>
-        <div className="flex items-center gap-1.5 ml-auto">
-          <label className="inline-flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer mr-1" title={t('snap.auto.hint', 'Take a backup automatically on a schedule')}>
+      </div>
+
+      {/* The SCHEDULE, in a box of its own.
+          It used to share one wrapping line with the three "do it now" buttons and the
+          import, so the Save at the end of that line looked as though it might save any of
+          them. Everything in here answers one question — what happens when nobody is
+          watching — and the whole block dims when the answer is "nothing". */}
+      <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-2.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer" title={t('snap.auto.hint', 'Take a backup automatically on a schedule')}>
             <input type="checkbox" checked={autoOn} disabled={!!busy} onChange={(e) => saveAuto(e.target.checked)} />
             {t('snap.auto.label', 'Automatic')}
           </label>
-          {/* The cadence, next to the switch that governs it. Disabled when automatic
-              backups are off, because a schedule for something that never runs is a control
-              that lies about what it does. */}
-          <span className="text-[11px] text-[var(--muted)]">{t('snap.every', 'every')}</span>
-          <Input className="w-16" type="number" min="1" max="720" value={every} disabled={!autoOn || !!busy}
-            onChange={(e) => setEvery(e.target.value)} placeholder={String(everyNow)} />
-          <span className="text-[11px] text-[var(--muted)]">{t('snap.hours', 'h')}</span>
-          <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
-          <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
-          <Button size="sm" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
+          <div className={`flex items-center gap-1.5 ${autoOn ? '' : 'opacity-50'}`}>
+            <span className="text-[11px] text-[var(--muted)]">{t('snap.every', 'every')}</span>
+            <Input className="w-16" type="number" min="1" max="720" value={every} disabled={!autoOn || !!busy}
+              onChange={(e) => setEvery(e.target.value)} placeholder={String(everyNow)} />
+            <span className="text-[11px] text-[var(--muted)]">{t('snap.hours', 'h')}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
+            <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
+          </div>
+          <Button size="sm" className="ml-auto" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
         </div>
-      </div>
-      {/* WHAT and WHERE. Under the switch that governs them, and dimmed with it: a
-          selection for something that never runs is a control that lies about what it does. */}
       <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 ${autoOn ? '' : 'opacity-50'}`}>
         <span className="text-[11px] text-[var(--muted)]">{t('snap.what', 'Back up')}</span>
         <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer">
@@ -3455,6 +3461,7 @@ function SnapshotsPanel({ onChanged }) {
             onChange={(e) => setDir(e.target.value)}
             placeholder={data?.defaultDir || t('snap.where.ph', 'leave empty for the usual place')} />
         </div>
+      </div>
       </div>
       {kindsShown.length === 0 && autoOn && (
         <p className="text-[11px] text-warning mt-1">
@@ -3575,8 +3582,24 @@ function BackupManager() {
   const pct = d.maxBytes ? Math.min(100, (d.totalBytes / d.maxBytes) * 100) : 0;
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-sm"><History size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('bkp.title', 'Backup storage')}</span></div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('bkp.sub', "Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).")}</p>
+      {/* The headline figure sits WITH the title. The one question this panel answers is
+          "how much disk, and how close to the limit"; that used to be a 10px line at the end
+          of a wrapping legend, four blocks down. */}
+      <div className="flex items-start gap-3 flex-wrap mb-1">
+        <div className="flex items-center gap-2 text-sm">
+          <History size={14} className="text-[var(--primary-2)]" />
+          <span className="font-semibold">{t('bkp.title', 'Backup storage')}</span>
+        </div>
+        <div className="ml-auto text-right leading-tight">
+          <div className="text-lg font-semibold tabular-nums">{fmtBytes(d.totalBytes || 0)}</div>
+          <div className="text-[11px] text-[var(--faint)] tabular-nums">
+            {d.maxBytes != null
+              ? `${t('bkp.of', 'of')} ${fmtBytes(d.maxBytes)} · ${Math.round(pct)}%`
+              : t('bkp.nolimit', 'no limit set')}
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3 max-w-2xl">{t('bkp.sub', "Every file edit/delete and DB row edit is git-committed first, so it can always be rolled back — plus a full daily snapshot of the file tree. This is separate from the app's own storage (see the Storage tab).")}</p>
       {/* One bar, three segments — because there are three things on that disk.
 
           It was two figures above a bar that measured something else: the panel showed
@@ -3601,28 +3624,32 @@ function BackupManager() {
         const scale = d.maxBytes || total || 1;
         const over = d.maxBytes && pct >= 90;
         return (
-          <div className="mb-3">
-            <div className="flex h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
+          <div className="mb-4">
+            {/* Thicker, because it is the picture: 2px read as a divider rather than a
+                measurement, and the segments were too thin to hover. */}
+            <div className="flex h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
               {parts.map((p) => (
                 <div key={p.k} className={over ? 'bg-error' : p.cls} style={{ width: `${(p.bytes / scale) * 100}%` }} title={`${p.label} — ${fmtBytes(p.bytes)}`} />
               ))}
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            {/* A GRID, not a wrapping row. Three parts of one number line up in three columns
+                and stay lined up; the flex row re-flowed at every width and pushed the total
+                onto its own line, where it read as a fourth part. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2.5">
               {parts.map((p) => (
-                <span key={p.k} className="flex items-center gap-1.5 text-[11px]">
-                  <span className={`w-2 h-2 rounded-full shrink-0 ${p.cls}`} />
-                  <span className="text-[var(--muted)]">{p.label}</span>
-                  <b className="tabular-nums">{fmtBytes(p.bytes)}</b>
-                  {p.k === 'snap' && d.snapshotCount != null && (
-                    <span className="text-[var(--faint)]">({d.snapshotCount})</span>
-                  )}
-                </span>
+                <div key={p.k} className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${p.cls}`} />
+                    <span className="truncate">{p.label}</span>
+                  </div>
+                  <div className="text-sm tabular-nums pl-3.5">
+                    {fmtBytes(p.bytes)}
+                    {p.k === 'snap' && d.snapshotCount != null && (
+                      <span className="text-[11px] text-[var(--faint)]"> · {d.snapshotCount}</span>
+                    )}
+                  </div>
+                </div>
               ))}
-              <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
-                {d.maxBytes != null
-                  ? `${fmtBytes(total)} / ${fmtBytes(d.maxBytes)} (${Math.round(pct)}%)`
-                  : `${fmtBytes(total)} · ${t('bkp.nolimit', 'no limit set')}`}
-              </span>
             </div>
           </div>
         );
@@ -3630,18 +3657,32 @@ function BackupManager() {
       {/* The limit, and only the limit. "Compact backups" was the third cell of this row and
           is not part of setting one — it is an action on the store, and it belongs beside the
           paragraph that explains it rather than next to Save, where the two read as a pair. */}
-      <div className="grid sm:grid-cols-[1fr_auto] gap-2">
-        <Input type="number" value={limitGB} onChange={(e) => setLimitGB(e.target.value)} placeholder={d.maxBytes ? t('bkp.currently', 'Currently {n} GB — blank = unlimited').replace('{n}', (d.maxBytes / 1024 ** 3).toFixed(1)) : t('bkp.limitph', 'Size limit in GB (blank = unlimited)')} />
-        <Button variant="primary" disabled={busy} onClick={saveLimit}>{busy ? <Spinner /> : t('bkp.savelimit', 'Save limit')}</Button>
-      </div>
-      <div className="flex flex-wrap items-start gap-3 mt-3 pt-3 border-t border-[var(--line)]">
-        <Button size="sm" disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
-        <p className="flex-1 min-w-[220px] text-[11px] text-[var(--faint)] leading-snug" dangerouslySetInnerHTML={{ __html: t('bkp.note', '<b>Compact backups</b> reclaims disk space by garbage-collecting the backup git repos (loose/duplicate objects). It never deletes history — every past version stays restorable.') }} />
+      {/* The two things you DO to the store, side by side and no wider than they need to be.
+          The limit input used to span the card, which made a number you type once look like
+          the main event; the Compact button sat below a paragraph twice its size. */}
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('bkp.limit.h', 'Size limit')}</div>
+          <div className="flex gap-2">
+            <Input type="number" className="max-w-[180px]" value={limitGB} onChange={(e) => setLimitGB(e.target.value)}
+              placeholder={d.maxBytes ? (d.maxBytes / 1024 ** 3).toFixed(1) : t('bkp.limitph.short', 'GB')} />
+            <Button variant="primary" disabled={busy} onClick={saveLimit}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+          </div>
+          <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('bkp.limit.s', 'In GB. Leave it empty for no limit.')}</p>
+        </div>
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('bkp.compact.h', 'Reclaim space')}</div>
+          <Button size="sm" disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
+          <p className="text-[11px] text-[var(--faint)] mt-1.5 leading-snug">{t('bkp.note.s', 'Garbage-collects the backup git repos. It never deletes history — every past version stays restorable.')}</p>
+        </div>
       </div>
 
       {/* Getting the backups OFF the box. A backup that only exists on the machine it
-          protects is not a backup of that machine. */}
-      <div className="mt-4 pt-3 border-t border-[var(--line)]">
+          protects is not a backup of that machine.
+          A bordered sub-card rather than a hairline: this panel had six blocks separated
+          by rules of the same weight, so nothing said which of them were sections and
+          which were paragraphs inside one. */}
+      <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5">
           <Download size={12} /> {t('bkp.export', 'Take a copy off the server')}
         </div>
