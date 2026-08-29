@@ -235,6 +235,7 @@ const FIELDS = {
     ['heading', 'showheading', { kind: 'bool' }],
   ],
   products: [['style', 'style', SELECT(['rows', 'cards'])]],
+  status: [['style', 'style', SELECT(['banner', 'services', 'both'])]],
   reviews: [
     ['style', 'style', SELECT(['cards', 'quotes'])],
     ['limit', 'howmany', { kind: 'number', min: 1, max: 9 }],
@@ -253,10 +254,7 @@ const FIELDS = {
    either a dynamic block (the showcase, the products, the news — the same components the real
    page calls) or a heading and a paragraph you can now rewrite. Press the button and the
    canvas shows the page you already have; from that point every part of it is yours.
-
-   `{{…}}` in the copy is deliberate: the first thing most people want from a landing page is
-   a real number in the first sentence, and this puts one there to be edited rather than
-   discovered in a panel. */
+ */
 const nid = () => `b${Math.random().toString(36).slice(2, 9)}`;
 const B = (type, props = {}, children) => ({ id: nid(), type, props, ...(children ? { children } : {}) });
 
@@ -268,7 +266,7 @@ export const STARTERS = {
     B('section', { pad: 'lg', maxw: 'wide' }, [
       B('heading', { text: t('pb.start.h1', 'The home for every Better* project'), level: 1, align: 'center', gradient: true }),
       B('text', {
-        md: t('pb.start.lede', 'Catalogs, presets, hosting and accounts — {{members}} members and {{items}} published items so far.'),
+        md: t('pb.start.lede', 'Catalogs, presets, hosting and accounts, in one place.'),
         align: 'center', width: 'prose',
       }),
       B('row', { cols: 'auto', gap: 'md', align: 'center' }, [
@@ -433,8 +431,8 @@ export default function PageBuilder() {
     setShowProps(!next);
   };
   // Live data for the dynamic blocks, so the preview shows the real news and the real
-  // numbers. A builder that previews `{{members}}` as `{{members}}` is asking you to imagine
-  // the page you are building.
+  // numbers rather than placeholders — a builder that previews something other than the page
+  // is asking you to imagine it.
   const [live, setLive] = useState({ stats: {}, posts: [], showcase: null, pollData: null, reviewsData: null, myo: null, projects: null });
   // Which landing page the site currently opens with. Three presets and no indication of
   // which one you are actually looking at when you visit the site is a choice made blind:
@@ -971,33 +969,6 @@ export default function PageBuilder() {
             </>
           )}
 
-          {/* The numbers, with the number.
-              A list of names is a list of things to go and look up; a name beside its live
-              value is a decision you can make here. Click one and the placeholder is on the
-              clipboard, ready to paste into whichever field you are in — the editor cannot
-              know that, and guessing wrong would overwrite a caption. */}
-          {/* FOLDED by default when a block is selected: eleven numbers under the fields you
-              came to change pushed those fields off the top of the panel. Open by default when
-              nothing is selected, because then this list is the only thing here worth reading. */}
-          <details className="pt-2 border-t border-[var(--line)]" open={!selected}>
-            <summary className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5 cursor-pointer select-none">
-              {t('pb.vars', 'Numbers you can use')}
-            </summary>
-            <p className="text-[11px] text-[var(--muted)] mb-2">{t('pb.vars.how2', 'Click one to copy its placeholder, then paste it into any title or text block. A stat block draws the same number as a tile.')}</p>
-            <div className="space-y-0.5">
-              {(cfg.variables || []).map((v) => (
-                <button
-                  key={v} type="button"
-                  onClick={() => { copyText(`{{${v}}}`); toast.success(t('pb.vars.copied', 'Copied {x}').replace('{x}', `{{${v}}}`)); }}
-                  className="w-full flex items-baseline gap-2 px-1.5 py-1 rounded-lg text-left hover:bg-[var(--surface-2)] transition-colors group"
-                >
-                  <code className="text-[10.5px] text-[var(--muted)] group-hover:text-[var(--text)]">{'{{'}{v}{'}}'}</code>
-                  <span className="ml-auto text-[12px] font-semibold tabular-nums">{fmtNum(live.stats?.[v] ?? 0)}</span>
-                  <Copy size={11} className="shrink-0 text-[var(--faint)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                </button>
-              ))}
-            </div>
-          </details>
         </Card>
       </div>
     </div>

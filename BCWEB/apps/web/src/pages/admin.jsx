@@ -2,6 +2,10 @@ import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
 // The page builder pulls in the markdown renderer and the selection toolbar. An admin who
 // opened this screen to approve a submission must not download a page builder to do it.
 const PageBuilder = lazy(() => import('../editor/page-builder.jsx'));
+// The real landing page, for the home-page editor's preview. Lazy for the same reason the
+// page builder is: an admin who came here to approve a submission must not download the
+// front page's showcase, poll and review components to do it.
+const HomeLive = lazy(() => import('./home.jsx').then((m) => ({ default: m.Home })));
 import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -25,6 +29,7 @@ import { SOCIAL_ICONS } from '../App.jsx';
 const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
+import { I18nDraft } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -286,7 +291,7 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
-        {s === 'homepage' && <><ShowcaseEditor /><HomePageEditor /></>}
+        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
         {/* Lazy: the builder carries the whole markdown renderer and the selection toolbar,
             and an admin who came to moderate a queue must not download a page builder. */}
         {s === 'pagebuilder' && <Suspense fallback={<Loading />}><PageBuilder /></Suspense>}
@@ -1238,18 +1243,101 @@ const SECURITY_RANGES = [['24', '24h'], ['168', '7d'], ['720', '30d'], ['8760', 
 // activity without needing a real rate-limiting/ban system here.
 const BRUTE_FORCE_THRESHOLD = 5;
 
+// One audit entry, opened.
+//
+// The list is a summary by necessity — 300 characters of detail truncated to a line, no
+// hash, no neighbours. Every question that starts "but what exactly…" needed the database
+// until this existed. The chain state is shown per row here, because "the log verifies" is a
+// statement about the whole log and an investigator is looking at ONE row.
+function AuditDetail({ id, onClose, onPickActor }) {
+  const { t } = useI18n();
+  const d = useAsync(() => (id ? api.get(`/admin/security/audit/entry/${id}`) : Promise.resolve(null)), [id]);
+  const e = d.data?.entry;
+  const row = (label, value, mono) => (
+    <div className="grid grid-cols-[130px_1fr] gap-3 py-1.5 border-b border-[var(--line)] last:border-0">
+      <div className="text-xs text-[var(--faint)] pt-0.5">{label}</div>
+      <div className={`text-sm min-w-0 break-words ${mono ? 'font-mono text-[11.5px]' : ''}`}>{value}</div>
+    </div>
+  );
+  // Three separate claims, each shown only when it MEANS something. A legacy row has no
+  // signature, and reporting "not verified" for it would read as tampering.
+  const flag = (ok, yes, no, nul) => ok === null || ok === undefined
+    ? <Badge>{nul}</Badge>
+    : ok ? <Badge tone="green" className="inline-flex items-center gap-1"><CheckCircle2 size={11} /> {yes}</Badge>
+         : <Badge tone="red" className="inline-flex items-center gap-1"><AlertTriangle size={11} /> {no}</Badge>;
+  return (
+    <Modal open={!!id} onClose={onClose} title={t('sec.detail.title', 'Audit entry')} icon={Shield} width="max-w-2xl">
+      {d.loading ? <Loading /> : !e ? <EmptyState icon={Shield} title={t('sec.detail.gone', 'Entry not found')} /> : (
+        <div>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Badge tone="blue" className="font-mono">{e.action}</Badge>
+            {d.data.anchored && <Badge tone={d.data.anchorMatches ? 'green' : 'red'} className="inline-flex items-center gap-1"><Fingerprint size={11} /> {t('sec.detail.anchored', 'Anchored off-DB')}</Badge>}
+            {!d.data.signed && <Badge>{t('sec.detail.legacy', 'Unsigned (pre-chain)')}</Badge>}
+          </div>
+          {row(t('sec.detail.when', 'When'), new Date(e.createdAt).toLocaleString())}
+          {row(t('sec.detail.actor', 'Actor'), e.actor
+            ? <button onClick={() => { onPickActor?.(e.actor.id); onClose(); }} className="hover:text-[var(--primary-2)] text-left">
+                {e.actor.displayName} <span className="text-xs text-[var(--faint)]">({e.actor.role})</span>
+              </button>
+            : '—')}
+          {row(t('sec.detail.detail', 'Detail'), e.detail || <span className="text-[var(--faint)]">—</span>)}
+          {row('IP', e.ip || <span className="text-[var(--faint)]">—</span>, true)}
+          {row(t('sec.detail.id', 'Entry id'), <span className="inline-flex items-center gap-2">{e.id}<button onClick={() => copyText(e.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={12} /></button></span>, true)}
+          {d.data.signed && <>
+            {row(t('sec.detail.sig', 'Signature'), flag(d.data.hmacOk, t('sec.detail.sigok', 'Matches its contents'), t('sec.detail.signo', 'Contents altered'), t('sec.detail.legacy', 'Unsigned (pre-chain)')))}
+            {row(t('sec.detail.link', 'Link to previous'), flag(d.data.linkOk, t('sec.detail.linkok', 'Continuous'), t('sec.detail.linkno', 'Broken'), t('sec.detail.linkfirst', 'First retained entry')))}
+            {row(t('sec.detail.linkn', 'Link from next'), flag(d.data.nextLinkOk, t('sec.detail.linkok', 'Continuous'), t('sec.detail.linkno', 'Broken'), t('sec.detail.linklast', 'Newest entry')))}
+            {row(t('sec.detail.hash', 'Hash'), e.hash, true)}
+            {row(t('sec.detail.prev', 'Previous hash'), e.prevHash || 'GENESIS', true)}
+          </>}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// The quick ranges, and the two that are not ranges: a custom window, and the whole log.
+const AUDIT_QUICK = [['24', '24h'], ['168', '7d'], ['720', '30d'], ['8760', '1y']];
+
 function AdminSecurity() {
   const { t } = useI18n();
   const [tab, setTab] = useState('logins');
   const [q, setQ] = useState('');
   const [loginFilter, setLoginFilter] = useState('all'); // all | success | failed | suspicious
   const [hours, setHours] = useState('168');
+  // The audit tab's own filters. Held apart from `hours` because a date range and a rolling
+  // window are different questions and one must not silently override the other.
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [action, setAction] = useState('');
+  const [actorId, setActorId] = useState('');
+  const [page, setPage] = useState(0);
+  const [openId, setOpenId] = useState(null);
+  const PAGE = 200;
+  // Typing in the box must not fire a query per keystroke now that the search runs on the
+  // server. 300ms is the pause that reads as "I have finished typing".
+  const [qDebounced, setQDebounced] = useState('');
+  useEffect(() => { const h = setTimeout(() => setQDebounced(q), 300); return () => clearTimeout(h); }, [q]);
+  useEffect(() => { setPage(0); }, [qDebounced, from, to, action, actorId, hours, tab]);
+
   const logins = useAsync(() => api.get(`/admin/security/logins?hours=${hours}`), [hours]);
-  const audit = useAsync(() => api.get(`/admin/security/audit?hours=${hours}`), [hours]);
-  const [verify, setVerify] = useState(null); // null | 'checking' | { ok, total, checked, legacy, firstBreak }
+  const auditQs = new URLSearchParams();
+  if (from) auditQs.set('from', new Date(from).toISOString());
+  if (to) auditQs.set('to', new Date(to).toISOString());
+  if (!from && !to) auditQs.set('hours', hours);
+  if (action) auditQs.set('action', action);
+  if (actorId) auditQs.set('actorId', actorId);
+  if (qDebounced) auditQs.set('q', qDebounced);
+  auditQs.set('take', String(PAGE));
+  auditQs.set('skip', String(page * PAGE));
+  const auditKey = auditQs.toString();
+  const audit = useAsync(() => api.get(`/admin/security/audit?${auditKey}`), [auditKey]);
+  const facets = useAsync(() => api.get('/admin/security/audit/facets'), []);
+  const [verify, setVerify] = useState(null); // null | 'checking' | { ok, …, sinceBreak }
   const runVerify = async () => { setVerify('checking'); try { setVerify(await api.get('/admin/security/audit/verify')); } catch { setVerify({ error: true }); } };
   const attempts = logins.data?.attempts || [];
   const entries = audit.data?.entries || [];
+  const total = audit.data?.total || 0;
 
   const failsByIp = {};
   for (const a of attempts) if (!a.success) failsByIp[a.ip] = (failsByIp[a.ip] || 0) + 1;
@@ -1263,13 +1351,11 @@ function AdminSecurity() {
     if (!qLower) return true;
     return a.email.toLowerCase().includes(qLower) || a.ip.includes(qLower) || a.user?.displayName?.toLowerCase().includes(qLower);
   });
-  const filteredEntries = entries.filter((e) => {
-    if (!qLower) return true;
-    return e.actor?.displayName?.toLowerCase().includes(qLower) || e.action.toLowerCase().includes(qLower) || e.detail?.toLowerCase().includes(qLower) || e.ip.includes(qLower);
-  });
 
   const failedCount = attempts.filter((a) => !a.success).length;
   const uniqueIps = new Set(attempts.map((a) => a.ip)).size;
+  const filtersOn = !!(from || to || action || actorId || qDebounced);
+  const clearFilters = () => { setFrom(''); setTo(''); setAction(''); setActorId(''); setQ(''); };
 
   const exportCsv = (rowsArr, cols, name) => {
     if (!rowsArr.length) return;
@@ -1293,9 +1379,12 @@ function AdminSecurity() {
           <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'logins' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
           <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'audit' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
         </div>
-        <div className="seg-rail p-0.5 gap-0.5">
-          {SECURITY_RANGES.map(([h, label]) => (
-            <button key={h} onClick={() => setHours(h)} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${hours === h ? 'bg-[var(--bg-solid)] text-[var(--primary-2)] shadow-sm font-medium' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
+        {/* The quick ranges are what the DATE fields are a refinement of, so they go dim
+            rather than disappear once a range is typed — a control that vanishes when you
+            use its neighbour reads as a bug. */}
+        <div className={`seg-rail p-0.5 gap-0.5 ${tab === 'audit' && (from || to) ? 'opacity-40' : ''}`}>
+          {(tab === 'audit' ? AUDIT_QUICK : SECURITY_RANGES).map(([h, label]) => (
+            <button key={h} onClick={() => { setHours(h); if (tab === 'audit') { setFrom(''); setTo(''); } }} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${hours === h ? 'bg-[var(--bg-solid)] text-[var(--primary-2)] shadow-sm font-medium' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
           ))}
         </div>
       </div>
@@ -1310,10 +1399,53 @@ function AdminSecurity() {
         )}
         <Button size="sm" onClick={() => tab === 'logins'
           ? exportCsv(filteredAttempts, [['email', (a) => a.email], ['success', (a) => a.success], ['ip', (a) => a.ip], ['reason', (a) => a.reason], ['createdAt', (a) => a.createdAt]], 'login_attempts')
-          : exportCsv(filteredEntries, [['actor', (e) => e.actor?.displayName], ['action', (e) => e.action], ['detail', (e) => e.detail], ['ip', (e) => e.ip], ['createdAt', (e) => e.createdAt]], 'audit_trail')}>
+          : exportCsv(entries, [['actor', (e) => e.actor?.displayName], ['action', (e) => e.action], ['detail', (e) => e.detail], ['ip', (e) => e.ip], ['createdAt', (e) => e.createdAt], ['id', (e) => e.id], ['hash', (e) => e.hash]], 'audit_trail')}>
           <Download size={13} /> CSV
         </Button>
       </div>
+
+      {/* The audit filter row. Dates first, because an investigation starts from one. */}
+      {tab === 'audit' && (
+        <Card className="p-3 mb-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[170px]">
+              <div className="text-[11px] text-[var(--faint)] mb-1">{t('sec.f.from', 'From')}</div>
+              <Input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
+            </div>
+            <div className="min-w-[170px]">
+              <div className="text-[11px] text-[var(--faint)] mb-1">{t('sec.f.to', 'To')}</div>
+              <Input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+            </div>
+            <div className="min-w-[190px] flex-1">
+              <div className="text-[11px] text-[var(--faint)] mb-1">{t('sec.f.action', 'Action')}</div>
+              <Select value={action} onChange={(e) => setAction(e.target.value)}>
+                <option value="">{t('sec.f.anyaction', 'Any action')}</option>
+                {(facets.data?.families || []).map((f) => <option key={f.family} value={f.family}>{f.family}* ({f.count})</option>)}
+                <option disabled>──────────</option>
+                {(facets.data?.actions || []).map((a) => <option key={a.action} value={a.action}>{a.action} ({a.count})</option>)}
+              </Select>
+            </div>
+            <div className="min-w-[190px] flex-1">
+              <div className="text-[11px] text-[var(--faint)] mb-1">{t('sec.f.actor', 'Actor')}</div>
+              <Select value={actorId} onChange={(e) => setActorId(e.target.value)}>
+                <option value="">{t('sec.f.anyactor', 'Anyone')}</option>
+                {(facets.data?.actors || []).map((a) => <option key={a.id} value={a.id}>{a.displayName || a.id} ({a.count})</option>)}
+              </Select>
+            </div>
+            {filtersOn && <Button size="sm" variant="ghost" onClick={clearFilters}><X size={13} /> {t('sec.f.clear', 'Clear')}</Button>}
+          </div>
+          {/* What the numbers on screen are actually counting. Without this line a filtered
+              view and an unfiltered one look identical, and the reader takes the second for
+              the first. */}
+          <div className="text-[11px] text-[var(--faint)] mt-2">
+            {/* `t(key, fallback)` takes no values — there is no interpolation in this
+                dictionary, so a "{n}" inside a string reaches the reader as "{n}". Numbers
+                are composed around the phrase instead. */}
+            {total} {t('sec.f.count', 'matching entries')}
+            {facets.data?.oldest ? ` · ${t('sec.f.oldest', 'log starts')} ${new Date(facets.data.oldest).toLocaleDateString()}` : ''}
+          </div>
+        </Card>
+      )}
 
       {tab === 'logins' && (logins.loading ? <Loading /> : filteredAttempts.length ? <Card className="p-0 overflow-hidden">
         <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
@@ -1329,38 +1461,78 @@ function AdminSecurity() {
           ))}
         </div>
       </Card> : <EmptyState icon={Lock} title={attempts.length ? t('sec.nomatch', 'No matches') : t('sec.none.logins', 'No login attempts in this range')} />)}
+
       {tab === 'audit' && (
-        <Card className="p-3 mb-3 flex items-center gap-3 flex-wrap">
-          <ShieldCheck size={16} className="text-success shrink-0" />
-          <div className="flex-1 min-w-[180px] text-sm">
-            <div className="font-medium">{t('sec.tamper.title', 'Tamper-evident log')}</div>
-            <div className="text-[11px] text-[var(--faint)]">{t('sec.tamper.desc', 'Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.')}</div>
+        <Card className="p-3 mb-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <ShieldCheck size={16} className={verify && verify !== 'checking' && !verify.error && !verify.ok ? 'text-error shrink-0' : 'text-success shrink-0'} />
+            <div className="flex-1 min-w-[180px] text-sm">
+              <div className="font-medium">{t('sec.tamper.title', 'Tamper-evident log')}</div>
+              <div className="text-[11px] text-[var(--faint)]">{t('sec.tamper.desc', 'Every staff action is HMAC-chained — edits or deletions are detectable. Sensitive actions (file downloads, DB writes, power) are anchored off-DB (catches truncation) and alert SUPERADMINs.')}</div>
+            </div>
+            {verify && verify !== 'checking' && !verify.error && verify.ok && (
+              <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> {t('sec.intact', 'Intact')} · {verify.checked} {t('sec.chained', 'chained')}{verify.anchorsChecked ? ` · ${verify.anchorsChecked} ${t('sec.anchored', 'anchored')}` : ''}{verify.legacy ? ` (+${verify.legacy} ${t('sec.legacy', 'legacy')})` : ''}</Badge>
+            )}
+            {verify?.error && <Badge tone="red">{t('sec.verify.failed', 'Verify failed')}</Badge>}
+            <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> {t('sec.verify', 'Verify integrity')}</>}</Button>
           </div>
-          {verify && verify !== 'checking' && !verify.error && (() => {
+          {/* Since when. A break's timestamp on a badge told an admin where the chain stopped
+              and nothing about what that costs them: every entry from that moment on proves
+              nothing any more, and how many that is decides whether this is a curiosity or an
+              incident. */}
+          {verify && verify !== 'checking' && !verify.error && !verify.ok && (() => {
             const brk = verify.firstBreak || verify.anchorBreak;
             const reasonLabel = { content_altered: t('sec.r.content', 'Content altered'), chain_broken: t('sec.r.chain', 'Chain broken'), anchored_entry_deleted: t('sec.r.truncated', 'Log truncated'), anchored_entry_altered: t('sec.r.anchored', 'Anchored entry altered') }[brk?.reason] || t('sec.r.tampered', 'Tampered');
-            return verify.ok
-              ? <Badge tone="green" className="flex items-center gap-1"><CheckCircle2 size={12} /> {t('sec.intact', 'Intact')} · {verify.checked} {t('sec.chained', 'chained')}{verify.anchorsChecked ? ` · ${verify.anchorsChecked} ${t('sec.anchored', 'anchored')}` : ''}{verify.legacy ? ` (+${verify.legacy} ${t('sec.legacy', 'legacy')})` : ''}</Badge>
-              : <Badge tone="red" className="flex items-center gap-1"><AlertTriangle size={12} /> {reasonLabel}{brk?.at ? ` @ ${new Date(brk.at).toLocaleString()}` : ''}</Badge>;
+            const sb = verify.sinceBreak;
+            return (
+              <div className="mt-3 rounded-[12px] border border-error/40 bg-error/10 p-3">
+                <div className="flex items-center gap-2 font-medium text-sm text-error"><AlertTriangle size={14} /> {reasonLabel}</div>
+                {sb && <>
+                  <div className="text-sm mt-1">{t('sec.brk.since', 'Untrustworthy since')} {new Date(sb.at).toLocaleString()} <span className="text-[var(--faint)]">({sb.hoursSince}{t('sec.brk.hours', 'h ago')})</span></div>
+                  <div className="text-[12px] text-[var(--muted)] mt-1">
+                    {sb.entriesAfter} {t('sec.brk.after', 'entries were written at or after that point — the chain says nothing about them, in either direction.')}
+                  </div>
+                  {sb.trustedUntil && <div className="text-[12px] text-[var(--muted)]">{t('sec.brk.until', 'Everything up to')} {new Date(sb.trustedUntil).toLocaleString()} {t('sec.brk.until2', 'still verifies.')}</div>}
+                </>}
+                {brk?.id && <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => setOpenId(brk.id)}><Eye size={13} /> {t('sec.brk.open', 'Open the first broken entry')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setFrom(''); setTo(''); setAction(''); setActorId(''); setQ(''); setFrom(new Date(new Date(brk.at).getTime() - 3600e3).toISOString().slice(0, 16)); }}>
+                    <Clock size={13} /> {t('sec.brk.window', 'Show the hour around it')}
+                  </Button>
+                </div>}
+              </div>
+            );
           })()}
-          {verify?.error && <Badge tone="red">{t('sec.verify.failed', 'Verify failed')}</Badge>}
-          <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> {t('sec.verify', 'Verify integrity')}</>}</Button>
         </Card>
       )}
-      {tab === 'audit' && (audit.loading ? <Loading /> : filteredEntries.length ? <Card className="p-0 overflow-hidden">
-        <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
-          {filteredEntries.map((e) => (
-            <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <Shield size={15} className="text-[var(--primary-2)] shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="truncate"><span className="font-medium">{e.actor?.displayName || '—'}</span> <span className="text-[var(--muted)]">{e.action}</span>{e.detail && <span className="text-[var(--faint)]"> · {e.detail}</span>}</div>
-                <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(e.ip)} className="hover:text-[var(--primary-2)]">{e.ip}</button></div>
+
+      {tab === 'audit' && (audit.loading ? <Loading /> : entries.length ? <>
+        <Card className="p-0 overflow-hidden">
+          <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
+            {entries.map((e) => (
+              <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--surface-2)] transition">
+                <Shield size={15} className="text-[var(--primary-2)] shrink-0" />
+                <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-left">
+                  <div className="truncate"><span className="font-medium">{e.actor?.displayName || '—'}</span> <span className="text-[var(--muted)] font-mono text-[12px]">{e.action}</span>{e.detail && <span className="text-[var(--faint)]"> · {e.detail}</span>}</div>
+                  <div className="text-[11px] text-[var(--faint)] font-mono">{e.ip || '—'}</div>
+                </button>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(e.createdAt).toLocaleString()}</span>
               </div>
-              <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(e.createdAt).toLocaleString()}</span>
+            ))}
+          </div>
+        </Card>
+        {total > PAGE && (
+          <div className="flex items-center justify-between gap-2 mt-2 text-xs text-[var(--faint)]">
+            <span>{t('sec.page.showing', 'Showing')} {page * PAGE + 1}–{Math.min(total, (page + 1) * PAGE)} / {total}</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage((n) => Math.max(0, n - 1))}>{t('sec.page.prev', 'Newer')}</Button>
+              <Button size="sm" variant="ghost" disabled={(page + 1) * PAGE >= total} onClick={() => setPage((n) => n + 1)}>{t('sec.page.next', 'Older')}</Button>
             </div>
-          ))}
-        </div>
-      </Card> : <EmptyState icon={Shield} title={entries.length ? t('sec.nomatch', 'No matches') : t('sec.none.audit', 'No audit entries in this range')} />)}
+          </div>
+        )}
+      </> : <EmptyState icon={Shield} title={filtersOn ? t('sec.nomatch', 'No matches') : t('sec.none.audit', 'No audit entries in this range')} />)}
+
+      <AuditDetail id={openId} onClose={() => setOpenId(null)} onPickActor={(id) => { setTab('audit'); setActorId(id); }} />
     </div>
   );
 }
@@ -2948,6 +3120,96 @@ function AdminServerAdvanced() {
 
 
 /**
+ * What a content zip would do, before it does it.
+ *
+ * The import already takes a snapshot and offers an undo, and that is still the wrong shape
+ * for the question being asked: "will this replace the twelve pages I wrote this morning" is
+ * answerable from the file, without touching the site and reaching for the reversal.
+ *
+ * The numbers that matter are `adds` and `replaces`. `records` alone reads as harmless — a
+ * zip of forty pages sounds like forty pages arriving, and it can just as easily be forty
+ * pages overwritten.
+ */
+function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
+  const { t } = useI18n();
+  const [state, setState] = useState({ loading: true });
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/content-backup/inspect', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/zip' }, body: bytes,
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!live) return;
+        if (!res.ok) setState({ error: out.detail || out.error || `HTTP ${res.status}` });
+        else setState({ data: out });
+      } catch (e) { if (live) setState({ error: String(e?.message || e) }); }
+    })();
+    return () => { live = false; };
+  }, [bytes]);
+  const d = state.data || {};
+  const rows = Object.entries(d.sections || {});
+  const willReplace = rows.reduce((n, [, v]) => n + (v.replaces || 0), 0);
+  return (
+    <Modal open onClose={onClose} title={t('cb.pre.title', 'Before importing')} icon={Eye} width="max-w-2xl"
+      footer={<div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
+        <Button size="sm" disabled={state.loading || !!state.error} onClick={onConfirm}>
+          <Upload size={13} /> {t('cb.pre.ok', 'Import it')}
+        </Button>
+      </div>}>
+      {state.loading ? <Loading />
+        : state.error ? <div className="text-sm text-error">{state.error === 'not_a_zip' ? t('cb.pre.notzip', 'That file is not a zip this screen can read.') : state.error}</div>
+        : (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-[var(--line)] p-3 text-[12px] text-[var(--muted)]">
+            <div className="text-[13px] font-semibold text-[var(--text)] mb-1">{file?.name}</div>
+            {d.manifest?.generatedAt
+              ? t('cb.pre.made', 'Exported on') + ' ' + new Date(d.manifest.generatedAt).toLocaleString()
+              : t('cb.pre.nomanifest', 'No manifest in this zip — it may not have come from this screen.')}
+            {' · '}{fmtBytes(d.bytes || 0)}
+          </div>
+          {/* One sentence with the number that decides it, before the table. */}
+          <div className={`rounded-xl border p-3 text-[13px] ${willReplace ? 'border-warning/40 bg-warning/5' : 'border-success/40 bg-success/5'}`}>
+            {willReplace
+              ? <span>{t('cb.pre.replace', 'This would overwrite')} <b>{willReplace}</b> {t('cb.pre.replace2', 'existing record(s). What the site says now is saved first, so it can be undone.')}</span>
+              : t('cb.pre.add', 'Nothing already on the site is overwritten by this file.')}
+          </div>
+          <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)]">
+            <div className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)]">
+              <span>{t('cb.pre.section', 'Section')}</span><span className="text-right">{t('cb.pre.records', 'In zip')}</span>
+              <span className="text-right">{t('cb.pre.new', 'New')}</span><span className="text-right">{t('cb.pre.over', 'Replaced')}</span>
+            </div>
+            {rows.map(([key, v]) => (
+              <div key={key} className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[12px] items-center">
+                <span className="truncate flex items-center gap-1.5">
+                  {v.label || key}
+                  {!v.restorable && <span className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">{t('cb.exportonly', 'export only')}</span>}
+                </span>
+                <span className="text-right tabular-nums">{v.error ? '—' : v.records}</span>
+                {/* null is "we could not tell", which must not be drawn as zero. */}
+                <span className="text-right tabular-nums text-success">{v.adds == null ? '?' : v.adds}</span>
+                <span className="text-right tabular-nums text-warning">{v.replaces == null ? '?' : v.replaces}</span>
+              </div>
+            ))}
+          </div>
+          {!!(d.unknown || []).length && (
+            <p className="text-[11px] text-[var(--muted)]">
+              {t('cb.pre.unknown', 'Files this build does not know and will ignore:')} <code className="font-mono">{d.unknown.join(', ')}</code>
+            </p>
+          )}
+          <p className="text-[11px] text-[var(--muted)]">
+            {t('cb.pre.scope', 'Only the sections ticked on the panel behind this one are imported, whatever else the zip holds.')}
+          </p>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/**
  * Export the written content as a zip of JSON.
  *
  * The counts come first and the download second, because the choice on this screen is which
@@ -2960,6 +3222,7 @@ function ContentBackup() {
   const [on, setOn] = useState(null);
   const [busy, setBusy] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [preview, setPreview] = useState(null); // { file, bytes } — read, not yet applied
   const fileRef = useRef(null);
   // The defaults come from the server, not from a copy here: which sections are on by default
   // is a decision about what a backup MEANS, and two answers to that is one too many.
@@ -2992,7 +3255,7 @@ function ContentBackup() {
    * Confirmed first, naming the sections. This overwrites live content — an import that
    * happened because a file dialog was open is the one thing a snapshot cannot make pleasant.
    */
-  const doImport = async (file) => {
+  const doImport = async (file, bytes) => {
     const names = [...picked].map((k) => sections[k]?.label || k).join(', ');
     const ok = await dialog.confirm({
       title: t('cb.imp.t', 'Import this content?'),
@@ -3002,11 +3265,13 @@ function ContentBackup() {
     if (!ok) return;
     setImporting(true);
     try {
-      const bytes = await file.arrayBuffer();
+      // Already read for the preview; reading it twice would ask the browser for a file the
+      // user may have moved since.
+      const body = bytes || await file.arrayBuffer();
       const res = await fetch(`/api/admin/content-backup/import?include=${[...picked].join(',')}`, {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/zip' },
-        body: bytes,
+        body,
       });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out.detail || out.error || `HTTP ${res.status}`);
@@ -3092,14 +3357,168 @@ function ContentBackup() {
             can trigger by dragging a file onto the wrong part of it is the wrong shape for
             that. */}
         <input ref={fileRef} type="file" accept=".zip,application/zip" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void doImport(f); }} />
+          onChange={async (e) => {
+            const f = e.target.files?.[0]; e.target.value = '';
+            // Inspected first, always. The confirmation dialog after it lists the sections;
+            // this lists what is actually in the file, which is the half the dialog cannot know.
+            if (f) setPreview({ file: f, bytes: await f.arrayBuffer() });
+          }} />
         {!picked.size && <span className="text-[11px] text-[var(--muted)]">{t('cb.none', 'Pick at least one section.')}</span>}
       </div>
+
+      {preview && <ContentImportPreview file={preview.file} bytes={preview.bytes} sections={sections}
+        onClose={() => setPreview(null)}
+        onConfirm={() => { const p = preview; setPreview(null); void doImport(p.file, p.bytes); }} />}
 
       <p className="text-[11px] text-[var(--muted)] leading-relaxed">
         {t('cb.import.note', 'An import restores what the zip holds, section by section. It never deletes a page the zip has not heard of — anything written since the export stays. What the site said beforehand is committed to a git history first, so it can be put back from the toast or from the list below.')}
       </p>
     </Card>
+  );
+}
+
+/**
+ * The files inside a backup.
+ *
+ * A backup you cannot open is a promise rather than a record: the panel showed a size, a
+ * date and "git accepts it", none of which answer the question somebody actually arrives
+ * with — is the file I lost in THIS one. The only way to find out was to restore it, which
+ * is what you do once you already know.
+ *
+ * `readDir` and `readFile` are passed in because the same browser serves a stored snapshot
+ * (fetched by id) and one that is only in the admin's hand (posted as bytes). The second
+ * cannot read a file without re-uploading the whole archive, so it passes no `readFile` and
+ * the rows are simply not clickable — an affordance that would fail is worse than none.
+ */
+function BundleBrowser({ readDir, readFile }) {
+  const { t } = useI18n();
+  const [path, setPath] = useState('');
+  const [state, setState] = useState({ loading: true });
+  const [file, setFile] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setState({ loading: true });
+    readDir(path).then((d) => live && setState({ data: d })).catch((e) => live && setState({ error: String(e?.data?.error || e?.message || e) }));
+    return () => { live = false; };
+  }, [path]);
+  const crumbs = path ? path.split('/') : [];
+  const open = async (entry) => {
+    const next = path ? `${path}/${entry.name}` : entry.name;
+    if (entry.isDir) { setPath(next); return; }
+    if (!readFile) return;
+    setFile({ loading: true, path: next });
+    try { setFile({ ...(await readFile(next)) }); }
+    catch (e) { setFile({ path: next, error: String(e?.data?.error || e?.message || e) }); }
+  };
+  return (
+    <div>
+      <div className="flex items-center flex-wrap gap-1 text-[12px] mb-1.5">
+        <button onClick={() => setPath('')} className={`hover:text-[var(--primary-2)] ${path ? 'text-[var(--muted)]' : 'font-medium'}`}>{t('snap.br.root', 'Backup root')}</button>
+        {crumbs.map((c, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <ChevronRight size={11} className="text-[var(--faint)]" />
+            <button onClick={() => setPath(crumbs.slice(0, i + 1).join('/'))} className={`hover:text-[var(--primary-2)] ${i === crumbs.length - 1 ? 'font-medium' : 'text-[var(--muted)]'}`}>{c}</button>
+          </span>
+        ))}
+      </div>
+      <div className="max-h-64 overflow-y-auto divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+        {state.loading ? <div className="px-2.5 py-3"><Spinner /></div>
+          : state.error ? <div className="px-2.5 py-2 text-[12px] text-error">{state.error}</div>
+          : !(state.data?.entries || []).length ? <div className="px-2.5 py-2 text-[12px] text-[var(--faint)]">{t('snap.br.empty', 'This folder is empty in the backup.')}</div>
+          : state.data.entries.map((e) => (
+            <button key={e.name} onClick={() => open(e)} disabled={!e.isDir && !readFile}
+              className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 text-[12px] hover:bg-[var(--surface-2)] disabled:hover:bg-transparent disabled:cursor-default">
+              {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />}
+              <span className="truncate flex-1">{e.name}</span>
+              {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtBytes(e.size)}</span>}
+            </button>
+          ))}
+      </div>
+      {!readFile && <p className="text-[11px] text-[var(--faint)] mt-1">{t('snap.br.nofile', 'Folders only until it is imported — reading a file out of an archive that is not stored yet would mean uploading it again for every click.')}</p>}
+      <Modal open={!!file} onClose={() => setFile(null)} title={file?.path || ''} icon={FileText} width="max-w-3xl">
+        {file?.loading ? <Loading />
+          : file?.error ? <div className="text-sm text-error">{file.error}</div>
+          : file?.binary ? <p className="text-sm text-[var(--muted)]">{t('snap.br.binary', 'Binary file — {n} in the backup. There is nothing useful to show as text.').replace('{n}', fmtBytes(file.bytes || 0))}</p>
+          : <>
+              {file?.truncated && <div className="text-[11px] text-warning mb-2">{t('snap.br.trunc', 'Showing the first part only — the file is {n}.').replace('{n}', fmtBytes(file.bytes || 0))}</div>}
+              <pre className="text-[11px] font-mono whitespace-pre-wrap bg-[var(--surface-2)] p-2 rounded-lg max-h-[60vh] overflow-auto">{file?.text}</pre>
+            </>}
+      </Modal>
+    </div>
+  );
+}
+
+/**
+ * An uploaded bundle, before it is stored.
+ *
+ * Import verified the file and then kept it, so the only way to see what was in a bundle was
+ * to add it to the snapshot list — and the wrong backup then has to be deleted again. This
+ * runs the same verification with nothing written anywhere, and the import button below it
+ * is the same call that used to happen straight from the file picker.
+ */
+function ImportPreview({ file, b64, kind, onClose, onImported }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading } = useAsync(() => api.post('/server/backups/snapshots/inspect-upload', { data: b64 }), [b64]);
+  const [busy, setBusy] = useState(false);
+  const d = data || {};
+  const doImport = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post('/server/backups/snapshots/import', { kind, note: file.name.slice(0, 120), data: b64 });
+      toast.success(t('snap.imported', 'Imported — it verified, and is in the list.'));
+      onImported(r.snapshot.id);
+    } catch (x) {
+      toast.error(x?.data?.error === 'invalid_bundle' ? t('snap.badimport', 'That file is not a backup git will open: {d}').replace('{d}', String(x.data.detail || '').split('\n')[0].slice(0, 120))
+        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} title={t('snap.pre.title', 'Before importing')} icon={Eye} width="max-w-xl"
+      footer={<div className="flex items-center justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
+        <Button size="sm" disabled={busy || loading || !d.valid} onClick={doImport}>{busy ? <Spinner /> : <><Upload size={13} /> {t('snap.pre.ok', 'Import it')}</>}</Button>
+      </div>}>
+      {loading ? <Loading /> : (
+        <div className="space-y-3">
+          <div className={`rounded-xl border p-3 ${d.valid ? 'border-success/40 bg-success/5' : 'border-error/40 bg-error/5'}`}>
+            <div className="flex items-center gap-2 text-[14px] font-semibold">
+              {d.valid ? <CheckCircle2 size={16} className="text-success" /> : <XCircle size={16} className="text-error" />}
+              {d.valid ? t('snap.pre.ok.t', 'Git reads this file as a backup.') : t('snap.pre.bad.t', 'This file will not open as a backup.')}
+            </div>
+            <p className="text-[12px] text-[var(--muted)] mt-1">
+              {d.valid ? t('snap.pre.ok.s', 'Nothing has been stored yet. What is listed below is what an import would add to the snapshot list.')
+                : t('snap.pre.bad.s', 'Nothing was stored. Git\u2019s own words are below — usually it means a different file was picked.')}
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-2 text-[12px]">
+            <div className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-[var(--faint)] text-[11px]">{t('snap.pre.file', 'File')}</div><div className="truncate">{file?.name}</div></div>
+            <div className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-[var(--faint)] text-[11px]">{t('snap.c.size', 'On disk')}</div><div>{fmtBytes(d.bytes || file?.size || 0)}</div></div>
+          </div>
+          {!!(d.commits || []).length && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('snap.contents', 'What it contains')}</div>
+              <div className="max-h-40 overflow-y-auto divide-y divide-[var(--line)] rounded-lg border border-[var(--line)]">
+                {d.commits.map((c) => (
+                  <div key={c.hash} className="px-2.5 py-1.5 flex items-baseline gap-2 text-[12px]">
+                    <code className="font-mono text-[10px] text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
+                    <span className="truncate flex-1">{c.message}</span>
+                    <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {d.tree && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('snap.br.title', 'Files in this backup')}</div>
+              <BundleBrowser readDir={(path) => api.post('/server/backups/snapshots/inspect-upload', { data: b64, path }).then((r) => r.tree || { entries: [] })} />
+            </div>
+          )}
+          {!d.valid && d.error && <pre className="text-[10px] font-mono whitespace-pre-wrap text-[var(--muted)] bg-[var(--surface-2)] p-2 rounded-lg max-h-40 overflow-auto">{d.error}</pre>}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -3200,6 +3619,16 @@ function SnapshotInspector({ id, onClose, onRestored }) {
             </div>
           </div>
 
+          {d.valid && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('snap.br.title', 'Files in this backup')}</div>
+              <BundleBrowser
+                readDir={(path) => api.get(`/server/backups/snapshots/${id}/tree?path=${encodeURIComponent(path)}`)}
+                readFile={(path) => api.get(`/server/backups/snapshots/${id}/file?path=${encodeURIComponent(path)}`)}
+              />
+            </div>
+          )}
+
           {/* The raw git output, folded away. It is what you want when a check failed and
               noise the rest of the time. */}
           {d.verify && (
@@ -3251,12 +3680,16 @@ function SnapshotsPanel({ onChanged }) {
   const [busy, setBusy] = useState('');
   const [keep, setKeep] = useState('');
   const [inspecting, setInspecting] = useState(null);
+  const [preview, setPreview] = useState(null); // { file, kind, b64 } — an upload, not yet stored
 
   const snaps = data?.snapshots || [];
 
   // Import reads the file in the browser and posts it base64. The bundles this produces are
   // megabytes; the endpoint verifies before storing, so a wrong file is refused with git's
   // own words rather than landing in the list as something that cannot be restored.
+  // The file is read here and INSPECTED before anything is stored. Importing straight from
+  // the picker meant the only way to see what a bundle held was to add it to the list and,
+  // if it was the wrong one, delete it again.
   const importFile = async (file, kind) => {
     if (!file) return;
     setBusy('import');
@@ -3264,14 +3697,9 @@ function SnapshotsPanel({ onChanged }) {
       const buf = new Uint8Array(await file.arrayBuffer());
       let bin = '';
       for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
-      const r = await api.post('/server/backups/snapshots/import', { kind, note: file.name.slice(0, 120), data: btoa(bin) });
-      toast.success(t('snap.imported', 'Imported — it verified, and is in the list.'));
-      reload(); onChanged?.();
-      setInspecting(r.snapshot.id);
+      setPreview({ file, kind, b64: btoa(bin) });
     } catch (x) {
-      toast.error(x?.data?.error === 'invalid_bundle' ? t('snap.badimport', 'That file is not a backup git will open: {d}').replace('{d}', String(x.data.detail || '').split('\n')[0].slice(0, 120))
-        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
-        : t('common.failed', 'Failed.'));
+      toast.error(t('common.failed', 'Failed.'));
     } finally { setBusy(''); }
   };
   const keepNow = data?.keep ?? 10;
@@ -3509,6 +3937,8 @@ function SnapshotsPanel({ onChanged }) {
       </div>
 
       {inspecting && <SnapshotInspector id={inspecting} onClose={() => setInspecting(null)} onRestored={() => { reload(); onChanged?.(); }} />}
+      {preview && <ImportPreview {...preview} onClose={() => setPreview(null)}
+        onImported={(id) => { setPreview(null); reload(); onChanged?.(); setInspecting(id); }} />}
     </div>
   );
 }
@@ -10711,6 +11141,102 @@ function MultiChannelInput({ value, onChange, placeholder }) {
  * comes back. Otherwise the only way to undo an edit would be remembering the original.
  */
 
+// ── The shape behind every page ───────────────────────────────────────────────
+//
+// It was an orb, written into the component, and the settings that mentioned it said "3D hero
+// orb" — so the one thing a site could not change about its own look was the largest thing on
+// the screen. Three silhouettes and a custom row; the wording everywhere else now says
+// "scene", because "orb" stopped being true the moment there was a choice.
+const SCENE_ART = {
+  // Drawn rather than screenshotted: a screenshot goes stale the first time the palette
+  // changes, and these are the same three primitives the renderer builds.
+  orb: <circle cx="24" cy="24" r="15" />,
+  prism: <path d="M24 8 41 38 7 38Z" />,
+  ring: <><circle cx="24" cy="24" r="15" /><circle cx="24" cy="24" r="6.5" /></>,
+  custom: <><circle cx="24" cy="24" r="15" strokeDasharray="4 4" /><path d="M24 15v18M15 24h18" /></>,
+};
+
+function SceneEditor() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/site/scene'), []);
+  const [cfg, setCfg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) setCfg({ shape: data.shape, detail: data.detail, noise: data.noise, speed: data.speed }); }, [data]);
+  if (loading || !cfg) return <Loading />;
+
+  const NAMES = {
+    orb: [t('scn.orb', 'Orb'), t('scn.orb.d', 'A displaced sphere. What the site has always drawn.')],
+    prism: [t('scn.prism', 'Prism'), t('scn.prism.d', 'Four flat faces. Angular where the orb is soft, and the cheapest of the three.')],
+    ring: [t('scn.ring', 'Ring'), t('scn.ring.d', 'A knotted torus. The most movement, and the most fill — turn the detail down on a slow machine.')],
+    custom: [t('scn.custom', 'Custom'), t('scn.custom.d', 'The same renderer with the numbers exposed. Start from a shape you like, then move the sliders.')],
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/site/scene', cfg); toast.success(t('common.saved', 'Saved.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  const slider = (key, label, hint, min, max, step) => (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-[13px] font-medium">{label}</span>
+        <span className="text-[11px] tabular-nums text-[var(--faint)]">{cfg[key]}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={cfg[key]}
+        onChange={(e) => setCfg({ ...cfg, [key]: Number(e.target.value) })}
+        className="w-full mt-1 accent-[var(--primary)]" />
+      <p className="text-[11px] text-[var(--muted)] leading-snug">{hint}</p>
+    </div>
+  );
+
+  return (
+    <Card className="p-5 mb-4">
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('scn.title', '3D scene')}</h2>
+      <p className="text-xs text-[var(--muted)] mb-4 max-w-2xl">
+        {t('scn.desc', 'The WebGL shape behind every page. A visitor can still switch it off for themselves, and it is never drawn at all on a machine without a working GPU — this decides what it draws when it does.')}
+      </p>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {['orb', 'prism', 'ring', 'custom'].map((k) => (
+          <button key={k} type="button" onClick={() => setCfg({ ...cfg, shape: k })}
+            aria-pressed={cfg.shape === k}
+            className={`text-left rounded-xl border p-3 transition-colors ${
+              cfg.shape === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+            }`}>
+            <div className="grid place-items-center h-16 rounded-lg bg-[var(--surface-2)]">
+              <svg viewBox="0 0 48 48" width="46" height="46" fill="none"
+                stroke={cfg.shape === k ? 'var(--primary)' : 'var(--muted)'} strokeWidth="2" strokeLinejoin="round">
+                {SCENE_ART[k]}
+              </svg>
+            </div>
+            <div className="text-sm font-semibold mt-2">{NAMES[k][0]}</div>
+            <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k][1]}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* The sliders apply to every shape, not only to "custom" — they are what the custom
+          option EXPOSES, not a separate mode. Hiding them behind it would mean picking
+          "custom" to make an orb slightly calmer, which is not a custom shape. */}
+      <div className="grid sm:grid-cols-3 gap-5 mt-5">
+        {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element — 4 is the shipped value.'), 0, 5, 1)}
+        {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'), 0, 1.5, 0.05)}
+        {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead — still drawn, no longer moving.'), 0, 3, 0.1)}
+      </div>
+
+      <div className="flex items-center gap-2 mt-5">
+        <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
+        {/* The scene is built once on load, so the admin looking at it is looking at the old
+            one. Said rather than left to be discovered by staring at an unchanged page. */}
+        <span className="text-[11px] text-[var(--muted)]">{t('scn.reload', 'Reload the page to see it — the scene is built once, when a page loads.')}</span>
+      </div>
+    </Card>
+  );
+}
+
 // ── The showcase both landing pages open with ────────────────────────────────
 //
 // One list, edited once. The home page and /dev show the same projects, because two lists
@@ -10877,6 +11403,7 @@ function HomePageEditor() {
   const [openGroups, setOpenGroups] = useState({});
   const [busy, setBusy] = useState(false);
   const [variant, setVariant] = useState('v1');
+  const [preview, setPreview] = useState(false);
   useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); } }, [data]);
   // ABOVE the early return below. Placed after it this was a conditional hook: React counted
   // three hooks on the loading render and four once the data arrived, which is error #310 and
@@ -10905,8 +11432,9 @@ function HomePageEditor() {
   const GROUPS = [
     { id: '__always', label: t('hp.g.always', 'Always shown'), always: true, prefixes: ['badge', 'brand', 'hero1', 'hero2', 'sub', 'cta', 'cta2', 'stat', 'pipe', 'k'] },
     // No `prefixes`: this section has no wording to rewrite. It draws what the status page
-    // holds, or nothing at all — so the only thing to decide about it is whether it appears.
-    { id: 'status', label: t('hp.s.status', 'Incident banner'), prefixes: [] },
+    // holds — the incident strip when something is wrong, and the uptime record underneath —
+    // so the only thing to decide about it is whether it appears.
+    { id: 'status', label: t('hp.s.status', 'Service status'), prefixes: [] },
     { id: 'poll', label: t('hp.s.poll', 'Pinned poll'), prefixes: ['poll'] },
     { id: 'products', label: t('hp.s.products', 'Products grid'), prefixes: ['feat'] },
     { id: 'why', label: t('hp.s.why', 'Why BetterCommunity'), prefixes: ['why'] },
@@ -11008,10 +11536,18 @@ function HomePageEditor() {
         </div>
         {/* An editor for a public page with no way to go and look at it asks you to keep
             the result in your head. */}
-        <a href="/" target="_blank" rel="noreferrer"
-          className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition shrink-0">
-          <ExternalLink size={13} /> {t('hp.view', 'View the page')}
-        </a>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Two different things, and the difference is the point: one shows what visitors
+              see right now, the other shows what they would see if this were saved. */}
+          <button type="button" onClick={() => setPreview(true)}
+            className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-[var(--text)] hover:bg-[var(--primary)]/10 transition">
+            <Eye size={13} /> {t('hp.preview', 'Preview my changes')}
+          </button>
+          <a href="/" target="_blank" rel="noreferrer"
+            className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] transition">
+            <ExternalLink size={13} /> {t('hp.view', 'View the live page')}
+          </a>
+        </div>
       </div>
 
       {/* Which page the site opens with.
@@ -11084,6 +11620,24 @@ function HomePageEditor() {
           );
         })}
       </div>
+
+      {/* The page itself, under a provider carrying the unsaved copy. Not a mock-up: the
+          section switches, the chosen variant and every rewritten line resolve exactly the
+          way they will once Save is pressed, because it is the same component doing it. */}
+      {preview && (
+        <Modal open onClose={() => setPreview(false)} title={t('hp.preview.t', 'Your home page, unsaved')} icon={Eye} width="max-w-[1200px]">
+          <p className="text-[11px] text-[var(--muted)] mb-2">
+            {t('hp.preview.s', 'The copy and the section switches are yours as they stand now. Posts, statistics, reviews and the showcase are live — a preview of wording should not invent the content around it.')}
+          </p>
+          <div className="rounded-xl border border-[var(--line)] overflow-auto max-h-[72vh] bg-[var(--bg-solid)]">
+            <Suspense fallback={<div className="p-10"><Loading /></div>}>
+              <I18nDraft over={form}>
+                <HomeLive draft={{ sections, variant }} />
+              </I18nDraft>
+            </Suspense>
+          </div>
+        </Modal>
+      )}
 
       {/* Not hidden silently. A section that this page does not draw disappears from the
           list below, and somebody who went looking for it deserves to be told where it

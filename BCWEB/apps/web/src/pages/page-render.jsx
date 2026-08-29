@@ -19,6 +19,7 @@ import { fmtNum } from '../lib/format.js';
 import { useI18n } from '../i18n.jsx';
 import { ProductRows, ShowcasePanel, NewsGrid, NewsFeed, PollCard, ReviewsCard, OffersCard } from './home-sections.jsx';
 import StatusBanner from './status-banner.jsx';
+import StatusWidget from './status-widget.jsx';
 
 /**
  * Which layout to draw, from the viewport.
@@ -42,20 +43,6 @@ export function useLayoutMode() {
     return () => mq.removeEventListener('change', on);
   }, []);
   return mode;
-}
-
-/* ── Variables ───────────────────────────────────────────────────────────────
-   `{{members}}` in a heading or in markdown, resolved against the numbers /stats
-   publishes. A name that is not a real statistic renders as NOTHING rather than as
-   `{{typo}}` — a visitor should never be shown the template that failed. */
-const VAR = /\{\{\s*([a-z][a-z0-9_]{0,30})\s*\}\}/gi;
-
-export function fillVars(str, vars) {
-  if (typeof str !== 'string' || !str.includes('{{')) return str || '';
-  return str.replace(VAR, (_, name) => {
-    const v = vars?.[name];
-    return typeof v === 'number' ? fmtNum(v) : (v == null ? '' : String(v));
-  });
 }
 
 /* ── Scales ──────────────────────────────────────────────────────────────────
@@ -168,7 +155,7 @@ function PbCard({ p, vars, children }) {
             <IconGlyph name={p.icon} size={18} />
           </span>
         )}
-        {p.title && <div className="font-semibold text-[15px] leading-snug">{fillVars(p.title, vars)}</div>}
+        {p.title && <div className="font-semibold text-[15px] leading-snug">{p.title}</div>}
         {children}
       </div>
     </>
@@ -308,19 +295,19 @@ function Node({ node, ctx, vars, which, edit }) {
       const size = { h1: 'text-4xl md:text-5xl', h2: 'text-2xl md:text-3xl', h3: 'text-xl', h4: 'text-lg' }[H];
       return (
         <H className={`${size} font-extrabold tracking-tight ${ALIGN[p.align] ?? ''}`}>
-          {p.gradient ? <span className="gradient-text">{fillVars(p.text, vars)}</span> : fillVars(p.text, vars)}
+          {p.gradient ? <span className="gradient-text">{p.text}</span> : p.text}
         </H>
       );
     }
     case 'text':
       return (
         <div className={`${ALIGN[p.align] ?? ''} ${p.width === 'prose' ? 'max-w-prose' : ''}`}>
-          <Markdown>{fillVars(p.md, vars)}</Markdown>
+          <Markdown>{p.md}</Markdown>
         </div>
       );
     case 'button': {
       const cls = `doc-btn ${p.style === 'outline' ? 'doc-btn-outline' : ''} doc-btn-${p.size || 'md'}`;
-      const inner = <>{p.icon ? <IconGlyph name={p.icon} size={15} /> : null}{fillVars(p.label, vars)}</>;
+      const inner = <>{p.icon ? <IconGlyph name={p.icon} size={15} /> : null}{p.label}</>;
       // An internal path stays inside the router; anything else is a real navigation and
       // gets the noopener that every external link on this site gets.
       return String(p.href || '').startsWith('/')
@@ -342,7 +329,7 @@ function Node({ node, ctx, vars, which, edit }) {
     case 'spacer':
       return <div style={{ height: Math.max(0, Math.min(400, Number(p.size) || 0)) }} />;
     case 'divider':
-      return <Divider {...p} label={fillVars(p.label, vars)} />;
+      return <Divider {...p} label={p.label} />;
     case 'stat': {
       // A name the site does not publish reads as —, never as 0. The editor offers a fixed
       // list, so a stat gets an unknown name two ways: written through the API, or built
@@ -353,7 +340,7 @@ function Node({ node, ctx, vars, which, edit }) {
       const raw = vars?.[p.variable];
       return (
         <Stat
-          value={raw == null ? '—' : fmtNum(raw)} label={fillVars(p.label, vars)}
+          value={raw == null ? '—' : fmtNum(raw)} label={p.label}
           icon={p.icon} style={p.style}
         />
       );
@@ -368,7 +355,13 @@ function Node({ node, ctx, vars, which, edit }) {
       return p.style === 'feed'
         ? <NewsFeed posts={ctx.posts || []} limit={Number(p.limit) || 6} />
         : <NewsGrid posts={ctx.posts || []} limit={Number(p.limit) || 3} heading={p.heading !== false} compact={p.style === 'list'} />;
-    case 'status': return <StatusBanner />;
+    case 'status':
+      // Default stays the banner: a page built before this prop existed carries no style, and
+      // gaining a permanent green strip on save would be the builder changing a page nobody
+      // asked it to change.
+      return p.style === 'services' ? <StatusWidget />
+        : p.style === 'both' ? <><StatusBanner /><div className="mt-3"><StatusWidget /></div></>
+        : <StatusBanner />;
     case 'poll': return <PollCard pollData={ctx.pollData} />;
     case 'reviews': return <ReviewsCard reviewsData={ctx.reviewsData} limit={Number(p.limit) || 3} style={p.style} />;
     case 'myo': return <OffersCard myo={ctx.myo} limit={Number(p.limit) || 3} />;

@@ -287,6 +287,39 @@ const showcaseConfig = (row) => {
   };
 };
 
+/**
+ * The shape behind the pages.
+ *
+ * It was one icosahedron with the detail level written into the component, so "the orb" was
+ * the site's look and there was nothing to decide about it. The three shapes below are three
+ * silhouettes rather than three settings — a sphere, an angular solid and a ring read as
+ * different sites from across the room, which is the only reason to offer a choice at all.
+ *
+ * `custom` is the same renderer with the numbers exposed. It is deliberately the LAST option
+ * and not the default: a slider that can produce something ugly is fine when somebody went
+ * looking for it.
+ */
+const SCENE_KEY = 'site.scene';
+export const SCENE_SHAPES = ['orb', 'prism', 'ring', 'custom'];
+
+/** What the browser is told, with every default applied here rather than in the component. */
+const sceneConfig = (row) => {
+  const v = row?.value || {};
+  const shape = SCENE_SHAPES.includes(v.shape) ? v.shape : 'orb';
+  const num = (x, lo, hi, dflt) => (Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : dflt);
+  return {
+    shape,
+    // Subdivisions. The cost is quadratic in this number and it is a BACKGROUND element, so
+    // the ceiling is 5 and not "whatever three.js accepts": detail 6 is 40k vertices redrawn
+    // every frame for something nobody is looking at directly.
+    detail: num(v.detail, 0, 5, shape === 'prism' ? 2 : 4),
+    // How far the noise pushes the surface. 0 is the bare solid, which is a legitimate look.
+    noise: num(v.noise, 0, 1.5, 1),
+    // Rotation speed, as a multiplier of what it has always been.
+    speed: num(v.speed, 0, 3, 1),
+  };
+};
+
 export default async function miscRoutes(app) {
   // Public: read on every page load, so it is cached and it is SMALL — only the keys an
   // admin actually overrode travel, not the whole dictionary.
@@ -303,6 +336,35 @@ export default async function miscRoutes(app) {
     const p = await db();
     reply.header('Cache-Control', 'public, max-age=60');
     return showcaseConfig(await p.adminSetting.findUnique({ where: { key: SHOWCASE_KEY } }));
+  });
+
+  // Public, read by every page that draws the scene. Small and cached, like its neighbours.
+  app.get('/site/scene', async (req, reply) => {
+    const p = await db();
+    reply.header('Cache-Control', 'public, max-age=60');
+    return sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } }));
+  });
+
+  app.get('/admin/site/scene', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    // The shape list travels with the value so the admin screen does not keep its own copy.
+    return { ...sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } })), shapes: SCENE_SHAPES };
+  });
+
+  app.put('/admin/site/scene', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      shape: z.enum(SCENE_SHAPES).optional(),
+      detail: z.number().int().min(0).max(5).optional(),
+      noise: z.number().min(0).max(1.5).optional(),
+      speed: z.number().min(0).max(3).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cur = sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } }));
+    const value = { ...cur, ...b.data };
+    await p.adminSetting.upsert({ where: { key: SCENE_KEY }, create: { key: SCENE_KEY, value }, update: { value } });
+    await logAudit(p, req.user.uid, 'site.scene', `shape=${value.shape} detail=${value.detail}`);
+    return sceneConfig({ value });
   });
 
   app.get('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async () => {

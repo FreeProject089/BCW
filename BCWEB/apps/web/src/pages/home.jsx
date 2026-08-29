@@ -4,13 +4,14 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import {
-  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight,
+  Boxes, Music2, Server, Rocket, Download, ArrowRight, Upload, CheckCircle2, Package, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, KeyRound, Shield, Webhook, FlaskConical, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { productCards } from '../lib/home-products.js';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
+import StatusWidget from './status-widget.jsx';
 import { thumb } from '../lib/img.js';
 import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
@@ -283,7 +284,15 @@ function PollSlider({ polls }) {
   );
 }
 
-export function Home() {
+/**
+ * `draft` is the admin preview, and nothing else passes it.
+ *
+ * It replaces the sections/variant this page would fetch — the copy comes from the i18n
+ * provider above it, because that is where copy comes from on the real page too. Everything
+ * else (posts, stats, reviews, the showcase) is live: a preview of unsaved WORDING should
+ * not also invent the content around it.
+ */
+export function Home({ draft = null }) {
   const { data } = useAsync(() => api.get('/blog?home=1'), []);
   const { data: stats } = useAsync(() => api.get('/stats').catch(() => null), []);
   // The same public endpoint /myo reads. `null` on failure so a landing page never fails to
@@ -297,7 +306,8 @@ export function Home() {
   // Which blocks an admin has switched off, and the copy overrides (those are applied by
   // t() itself — see I18nProvider). Anything missing counts as ON, so a section added after
   // a site saved its config is never silently hidden.
-  const { data: homeCfg } = useAsync(() => api.get('/site/home').catch(() => null), []);
+  const { data: savedCfg } = useAsync(() => api.get('/site/home').catch(() => null), []);
+  const homeCfg = draft || savedCfg;
   // The projects, as media. Absent or switched off leaves the hero exactly as it was — a
   // site that has never configured this must not gain an empty black rectangle the day it
   // ships.
@@ -429,29 +439,68 @@ export function Home() {
             exists to make; giving it the same chrome as a one-line blurb made it read as a
             fifth blurb that happened to be wider. */}
         <div className="reveal-stagger grid gap-4">
-          {/* featured tile: the moderation promise, illustrated by the real review pipeline */}
+          {/* The moderation promise, split the way the platform actually works.
+              It used to read "every submission is reviewed before it goes live" over a single
+              three-step pipeline. That is true of the official catalog and false of everything
+              somebody hosts themselves: a community catalog is created ACTIVE and listed by its
+              owner, and a hosted Server Repo is published by its owner's own button. Nothing was
+              stopping a reader concluding that a stranger's repo had been read by staff.
+
+              Two tracks, then, and the second one is not weaker for being honest — "anyone can
+              publish, everyone can report, we suspend" is a real answer, and it is the one the
+              code implements. */}
           <Card hover className="p-6 group relative overflow-hidden">
-            {/* A blurred disc INSIDE the card, not a gradient clipped by its corner.
-                The old one sat 64px past the card on both edges with its centre only 32px
-                inside, so `overflow-hidden` cut it while the orange was still at full
-                strength — a hard vertical edge and a squared-off notch at the rounded corner,
-                which is the artefact you can see against a bright backdrop.
-                It also faded to `transparent`, which is transparent BLACK: the fade ran
-                through grey instead of thinning the orange. A flat colour plus blur has
-                neither problem and needs no clipping to look right. */}
+            {/* A blurred disc INSIDE the card, not a gradient clipped by its corner — see the
+                note in git history: a gradient here left a hard edge at the rounded corner and
+                faded through grey, because `transparent` is transparent BLACK. */}
             <div aria-hidden className="absolute bottom-0 right-0 w-40 h-40 rounded-full pointer-events-none blur-3xl opacity-25 group-hover:opacity-45 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
-            <div className="relative flex items-start justify-between gap-6 flex-wrap">
-              <div className="max-w-sm">
-                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
-                <div className="font-semibold mt-4">{t('home.feat.moderated')}</div>
-                <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{t('home.feat.moderated.d')}</div>
+            <div className="relative">
+              <div className="flex items-start gap-4 flex-wrap">
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40 shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold">{t('home.feat.moderated', 'Moderated, and it says which kind')}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two routes onto this platform, and they are not moderated the same way. Saying so is the point: you can tell, before you install anything, which one you are looking at.')}</div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 mt-2 md:mt-9 flex-wrap">
-                <span className="badge !gap-1.5 text-[var(--muted)]"><Inbox size={12} /> {t('home.pipe.sub', 'Submitted')}</span>
-                <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                <span className="badge badge-amber !gap-1.5"><Eye size={12} /> {t('home.pipe.review', 'In review')}</span>
-                <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
-                <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.pipe.live', 'Published')}</span>
+
+              <div className="grid md:grid-cols-2 gap-4 mt-5">
+                {/* Reviewed BEFORE. The badges are the real statuses a submission passes
+                    through, not an illustration of a process. */}
+                <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+                    <BadgeCheck size={15} className="text-success shrink-0" />
+                    {t('home.mod.official', 'The official catalog')}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                    <span className="badge !gap-1.5 text-[var(--muted)]"><Inbox size={12} /> {t('home.pipe.sub', 'Submitted')}</span>
+                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
+                    <span className="badge badge-amber !gap-1.5"><Eye size={12} /> {t('home.pipe.review', 'In review')}</span>
+                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
+                    <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.pipe.live', 'Published')}</span>
+                  </div>
+                  <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
+                    {t('home.mod.official.d', 'Nothing here is public until a human has opened it. A submission sits in the queue until it is approved, and it can be sent back with a reason.')}
+                  </p>
+                </div>
+
+                {/* Published FIRST. The same three badges would be a lie here, so this track
+                    draws its own — and names the thing that actually holds it: reports. */}
+                <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+                    <Users size={15} className="text-[var(--primary-2)] shrink-0" />
+                    {t('home.mod.community', 'Community catalogs and repos')}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-3 flex-wrap">
+                    <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.mod.self', 'Published by its owner')}</span>
+                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
+                    <span className="badge !gap-1.5 text-[var(--muted)]"><AlertTriangle size={12} /> {t('home.mod.reported', 'Reportable')}</span>
+                    <ArrowRight size={12} className="text-[var(--faint)] shrink-0" />
+                    <span className="badge badge-amber !gap-1.5"><Ban size={12} /> {t('home.mod.suspended', 'Suspended')}</span>
+                  </div>
+                  <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
+                    {t('home.mod.community.d', 'These go live when their owner says so — no queue, no wait. Every one carries the account that published it, anyone can report it, and staff can suspend it. Moderated after the fact, and labelled as such wherever it appears.')}
+                  </p>
+                </div>
               </div>
             </div>
           </Card>
@@ -479,32 +528,64 @@ export function Home() {
       <section>
         <SectionKicker n="03" label={t('home.k.start', 'Get started')} />
         <div className="reveal-on-scroll text-center mb-9"><h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">{t('home.steps.title')}</h2><p className="text-[var(--muted)] mt-2.5">{t('home.steps.sub')}</p></div>
-        {/* Clean self-contained step cards — no roadmap rail, no "Step N" label. The icon
-            chip and a big ghost number share the top row (balanced, fully inside the
-            padding), then title · description · CTA. */}
-        {/* A rail behind the three, so they read as one sequence rather than three offers.
-            The line stops at the first and last chip rather than running off both edges —
-            a path that continues past the end promises a fourth step. */}
-        <div className="reveal-stagger grid md:grid-cols-3 gap-5 relative">
-          <div aria-hidden className="hidden md:block absolute top-[46px] left-[16%] right-[16%] h-px bg-[var(--line)]" />
-          {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth', user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free')],
-            [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog')],
-            [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans')]].map(([I, title, d, to, cta], i) => (
-            <Link key={title} to={to} className="group">
-              <Card hover className="p-7 h-full flex flex-col group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))] transition-colors">
-                <div className="flex items-center justify-between mb-6">
-                  <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-brand to-brand-2 shadow-lg shadow-orange-500/25 transition-transform duration-300 group-hover:scale-105">
-                    <I size={22} className="text-white" />
-                  </span>
-                  <span aria-hidden className="text-[52px] leading-none font-black text-[var(--line-strong)] select-none pointer-events-none transition-colors group-hover:text-[color-mix(in_srgb,var(--primary)_32%,var(--line-strong))]">{i + 1}</span>
+        {/* A path, and one that knows where the reader already is.
+
+            It was three cards side by side, numbered 1-2-3 with a hairline behind them. Three
+            equal cards in a row read as three offers to choose between, which is the opposite
+            of a sequence — and every visitor saw the same "1. Create an account" whether or not
+            they were signed in, which is the one fact this page actually knows about them.
+
+            So: a rail with a real state on the first stop. Signed in, it is ticked and the row
+            goes quiet; signed out, it is the only lit one. The other two are not claimed to be
+            done, because nothing on this page can tell. */}
+        <ol className="reveal-stagger relative max-w-3xl mx-auto pl-11 sm:pl-14">
+          {/* The spine. It starts and ends at the centre of the first and last marker rather
+              than running the height of the list — a line continuing past the last stop
+              promises a fourth one. */}
+          <div aria-hidden className="absolute left-[15px] sm:left-[19px] top-6 bottom-6 w-px bg-[var(--line)]" />
+          {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth',
+             user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free'), !!user],
+            [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog'), false],
+            [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans'), false],
+          ].map(([I, title, d, to, cta, done], i) => (
+            <li key={title} className="relative pb-9 last:pb-0">
+              {/* The marker sits ON the spine. A done step is filled and shows a tick; the rest
+                  keep their number, because a number is what makes it a step. */}
+              <span aria-hidden
+                className={`absolute -left-11 sm:-left-14 top-0 grid place-items-center w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 text-[13px] sm:text-sm font-bold transition-colors ${
+                  done
+                    ? 'bg-success border-success text-white'
+                    : 'bg-[var(--bg-solid)] border-[var(--line-strong)] text-[var(--muted)]'
+                }`}>
+                {done ? <CheckCircle2 size={17} /> : i + 1}
+              </span>
+              <Link to={to} className="group block">
+                <div className={`rounded-2xl border p-5 sm:p-6 transition-colors ${
+                  done
+                    ? 'border-[var(--line)] bg-transparent'
+                    : 'border-[var(--line)] bg-[var(--surface)] group-hover:border-[color-mix(in_srgb,var(--primary)_45%,var(--line))]'
+                }`}>
+                  <div className="flex items-start gap-4">
+                    <span className={`grid place-items-center w-10 h-10 rounded-xl shrink-0 transition-transform duration-300 ${
+                      done
+                        ? 'bg-[var(--surface-2)] border border-[var(--line)]'
+                        : 'bg-gradient-to-br from-brand to-brand-2 shadow-lg shadow-orange-500/25 group-hover:scale-105'
+                    }`}>
+                      <I size={19} className={done ? 'text-[var(--muted)]' : 'text-white'} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-[17px] leading-snug">{title}</div>
+                      <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{d}</div>
+                      <div className={`text-sm mt-4 inline-flex items-center gap-1.5 font-semibold ${done ? 'text-[var(--muted)]' : 'text-[var(--primary-2)]'}`}>
+                        {cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="font-bold text-lg leading-snug">{title}</div>
-                <div className="text-sm text-[var(--muted)] mt-2 leading-relaxed flex-1">{d}</div>
-                <div className="text-sm text-[var(--primary-2)] mt-6 flex items-center gap-1.5 font-semibold">{cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" /></div>
-              </Card>
-            </Link>
+              </Link>
+            </li>
           ))}
-        </div>
+        </ol>
       </section>
       )}
 
@@ -690,6 +771,12 @@ export function Home() {
           <PollSlider polls={pollData.polls} />
         </section>
       )}
+
+      {/* The record, as opposed to the alarm. The banner above appears only during an
+          incident, which means the site can only ever say "something is wrong" and never
+          "this stays up" — and the second is what somebody deciding where to host a repo is
+          asking. One switch drives both: they are two halves of "service status". */}
+      {show('status') && <section><StatusWidget /></section>}
 
       {/* latest posts */}
       {show('news') && (

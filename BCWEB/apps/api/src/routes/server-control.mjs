@@ -9,7 +9,7 @@ import pg from 'pg';
 import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
 import { sealForOwner, openBackup } from '../lib/shred.mjs';
-import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle } from '../lib/gitbackup.mjs';
+import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle, bundleTree, bundleFile } from '../lib/gitbackup.mjs';
 import { createSnapshot, listSnapshots, snapshotBytes, deleteSnapshot, pruneSnapshots, validSnapshotId, SNAPSHOT_KINDS, importSnapshot, snapshotPath, checkSnapshotDir, SNAPSHOT_ROOT } from '../lib/snapshots.mjs';
 
 // A lightweight "type to confirm" server-side check — the frontend already
@@ -150,13 +150,91 @@ export default async function serverControlRoutes(app) {
     return { attempts };
   });
 
+  // The audit trail, filtered where the rows are rather than where they land.
+  //
+  // `hours` alone could only ever answer "the last N hours". An investigation starts from a
+  // date — the day a key leaked, the window a customer complains about — and filtering 500
+  // fetched rows in the browser silently answers a DIFFERENT question: it searches the most
+  // recent 500 entries, not the log. On a busy week those 500 rows are two days.
   app.get('/admin/security/audit', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
-    const take = Math.min(Number(req.query?.take) || 500, 2000);
-    const hours = Math.min(Number(req.query?.hours) || 24 * 30, 24 * 365);
-    const since = new Date(Date.now() - hours * 3600e3);
-    const entries = await p.auditLogEntry.findMany({ where: { createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take, include: { actor: { select: { displayName: true } } } });
-    return { entries };
+    const take = Math.min(Number(req.query?.take) || 200, 1000);
+    const skip = Math.max(0, Number(req.query?.skip) || 0);
+    const where = { AND: [] };
+    // An explicit range wins over the rolling window; `hours` stays for the quick buttons.
+    const from = req.query?.from ? new Date(String(req.query.from)) : null;
+    const to = req.query?.to ? new Date(String(req.query.to)) : null;
+    if (from && !Number.isNaN(+from)) where.AND.push({ createdAt: { gte: from } });
+    if (to && !Number.isNaN(+to)) where.AND.push({ createdAt: { lte: to } });
+    if (!where.AND.length) {
+      const hours = Math.min(Number(req.query?.hours) || 24 * 30, 24 * 365);
+      where.AND.push({ createdAt: { gte: new Date(Date.now() - hours * 3600e3) } });
+    }
+    // `startsWith`, not equals: actions are namespaced (`server.file_download`), so
+    // "server." is the filter an admin means when they pick a family.
+    const action = String(req.query?.action || '').slice(0, 64);
+    if (action) where.AND.push({ action: { startsWith: action } });
+    const actorId = String(req.query?.actorId || '').slice(0, 64);
+    if (actorId) where.AND.push({ actorId });
+    const q = String(req.query?.q || '').trim().slice(0, 120);
+    if (q) {
+      where.AND.push({ OR: [
+        { action: { contains: q, mode: 'insensitive' } },
+        { detail: { contains: q, mode: 'insensitive' } },
+        { ip: { contains: q } },
+        { actor: { displayName: { contains: q, mode: 'insensitive' } } },
+      ] });
+    }
+    const [entries, total] = await Promise.all([
+      p.auditLogEntry.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip, include: { actor: { select: { id: true, displayName: true, role: true } } } }),
+      p.auditLogEntry.count({ where }),
+    ]);
+    return { entries, total, skip, take };
+  });
+
+  // What can be filtered ON, computed from the whole log rather than from the page in view.
+  // A dropdown built out of the 200 rows currently on screen offers the admin exactly the
+  // actions they can already see, which is the one list that is of no use.
+  app.get('/admin/security/audit/facets', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const rows = await p.auditLogEntry.groupBy({ by: ['action'], _count: { action: true }, orderBy: { _count: { action: 'desc' } }, take: 200 });
+    const actions = rows.map((r) => ({ action: r.action, count: r._count.action }));
+    // The namespace before the first dot, which is what the family filter matches on.
+    const families = new Map();
+    for (const a of actions) {
+      const fam = a.action.includes('.') ? a.action.split('.')[0] + '.' : a.action;
+      families.set(fam, (families.get(fam) || 0) + a.count);
+    }
+    const actorRows = await p.auditLogEntry.groupBy({ by: ['actorId'], _count: { actorId: true }, orderBy: { _count: { actorId: 'desc' } }, take: 50 });
+    const users = await p.user.findMany({ where: { id: { in: actorRows.map((r) => r.actorId) } }, select: { id: true, displayName: true, role: true } });
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const actors = actorRows.map((r) => ({ id: r.actorId, count: r._count.actorId, displayName: byId.get(r.actorId)?.displayName || null, role: byId.get(r.actorId)?.role || null }));
+    const oldest = await p.auditLogEntry.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } });
+    return { actions, families: [...families].map(([family, count]) => ({ family, count })), actors, oldest: oldest?.createdAt || null };
+  });
+
+  // One entry, in full, with its place in the chain.
+  //
+  // The list truncates and shows no hash, so "what exactly did this say, and is THIS row
+  // still the row that was written" had no answer short of reading the database. The
+  // neighbours come back with it because a chain link is a statement about two rows.
+  app.get('/admin/security/audit/entry/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const id = String(req.params?.id || '');
+    const e = await p.auditLogEntry.findUnique({ where: { id }, include: { actor: { select: { id: true, displayName: true, role: true, email: true } } } });
+    if (!e) return reply.code(404).send({ error: 'not_found' });
+    const [prev, next] = await Promise.all([
+      p.auditLogEntry.findFirst({ where: { createdAt: { lt: e.createdAt } }, orderBy: { createdAt: 'desc' }, select: { id: true, hash: true, action: true, createdAt: true } }),
+      p.auditLogEntry.findFirst({ where: { createdAt: { gt: e.createdAt } }, orderBy: { createdAt: 'asc' }, select: { id: true, prevHash: true, action: true, createdAt: true } }),
+    ]);
+    // Legacy rows carry no hash at all; saying "unsigned" is the truth, and calling them
+    // altered would cry wolf over entries written before the chain existed.
+    const signed = !!e.hash;
+    const hmacOk = signed ? safeEqual(auditHash(e.prevHash, e), e.hash) : null;
+    const linkOk = signed && prev?.hash ? e.prevHash === prev.hash : null;
+    const nextLinkOk = signed && next ? next.prevHash === e.hash : null;
+    const anchor = (await readAnchors()).find((a) => a.id === e.id) || null;
+    return { entry: e, prev, next, signed, hmacOk, linkOk, nextLinkOk, anchored: !!anchor, anchorMatches: anchor ? anchor.hash === e.hash : null };
   });
 
   // Verify the audit chain's integrity end-to-end: recompute each entry's HMAC (catches
@@ -190,7 +268,27 @@ export default async function serverControlRoutes(app) {
       if (h === undefined) { anchorBreak = { id: a.id, at: a.at, action: a.action, reason: 'anchored_entry_deleted' }; break; }
       if (h !== a.hash) { anchorBreak = { id: a.id, at: a.at, action: a.action, reason: 'anchored_entry_altered' }; break; }
     }
-    return { ok: !firstBreak && !anchorBreak, total: rows.length, checked, legacy, firstBreak, anchorsChecked, anchorBreak };
+    // "Since when" — the question an admin actually asks once a break is found. The break's
+    // timestamp alone does not answer it: what matters is how much of the log sits after that
+    // point, because none of it is evidence any more. `trustedUntil` is the last entry that
+    // still verified, which is the true edge of what this log can be used to prove.
+    const brk = firstBreak || anchorBreak;
+    let sinceBreak = null;
+    if (brk) {
+      const at = new Date(brk.at);
+      const idx = rows.findIndex((r) => r.id === brk.id);
+      const trusted = idx > 0 ? rows[idx - 1] : null;
+      sinceBreak = {
+        at: brk.at,
+        // Entries written from the break onwards. Not "suspect" — unverifiable, which is a
+        // weaker and more accurate word: the chain says nothing about them either way.
+        entriesAfter: rows.filter((r) => r.createdAt >= at).length,
+        trustedUntil: trusted?.createdAt || null,
+        // How long the log has been unverifiable, in whole hours, for the sentence on screen.
+        hoursSince: Math.max(0, Math.floor((Date.now() - at.getTime()) / 3600e3)),
+      };
+    }
+    return { ok: !firstBreak && !anchorBreak, total: rows.length, checked, legacy, firstBreak, anchorsChecked, anchorBreak, sinceBreak, verifiedAt: new Date().toISOString(), newest: rows.length ? rows[rows.length - 1].createdAt : null };
   });
 
   // ── File manager — confined to FILES_ROOT (this container's own filesystem) ──
@@ -899,6 +997,67 @@ export default async function serverControlRoutes(app) {
       digestMatches: sha256 === hit.meta.sha256,
       signature: hit.meta.signature ? { present: true, alg: hit.meta.signatureAlg || 'Ed25519' } : { present: false },
     };
+  });
+
+  /** Browse a stored snapshot: one directory of it at a time.
+   *
+   *  The list said how big a backup was and that git still accepted it. Neither answers the
+   *  question an admin has at the moment they reach for a backup — "is the file I lost in
+   *  THIS one" — and the only way to find out was to restore it, which is what you do once
+   *  you already know.
+   */
+  app.get('/server/backups/snapshots/:id/tree', { preHandler: DANGEROUS }, async (req, reply) => {
+    const hit = await snapshotBytes(req.params.id, searchDirs(await backupCfg(await db())));
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
+    try {
+      return { ...(await bundleTree(hit.bytes, String(req.query?.path || ''))), meta: hit.meta };
+    } catch (e) {
+      const why = String(e?.message || e);
+      return reply.code(why === 'bad_path' ? 400 : 404).send({ error: why === 'bad_path' ? 'bad_path' : 'not_found' });
+    }
+  });
+
+  /** One file out of a stored snapshot. Text comes back as text; binary says it is binary. */
+  app.get('/server/backups/snapshots/:id/file', { preHandler: DANGEROUS }, async (req, reply) => {
+    const p = await db();
+    const hit = await snapshotBytes(req.params.id, searchDirs(await backupCfg(p)));
+    if (!hit) return reply.code(404).send({ error: 'not_found' });
+    try {
+      const out = await bundleFile(hit.bytes, String(req.query?.path || ''));
+      // Reading one file out of a backup is a file read, and the file downloads beside it
+      // are audited. A privileged read that leaves no trace is the gap an audit log exists
+      // to close.
+      await logAudit(p, req.user.uid, 'server.backup_read', `${hit.meta.id}:${out.path} (${out.bytes} bytes)`, clientIp(req));
+      return out;
+    } catch (e) {
+      const why = String(e?.message || e);
+      return reply.code(why === 'bad_path' ? 400 : 404).send({ error: why === 'bad_path' ? 'bad_path' : 'not_found' });
+    }
+  });
+
+  /** Inspect an uploaded bundle WITHOUT storing it.
+   *
+   *  Import verified the file and then kept it, so the only way to find out what was in a
+   *  bundle was to add it to the snapshot list — and a file that turns out to be the wrong
+   *  backup then has to be deleted again. This is the same verification and the same tree
+   *  listing, with nothing written anywhere.
+   */
+  app.post('/server/backups/snapshots/inspect-upload', { preHandler: DANGEROUS, bodyLimit: 96 * 1024 * 1024 }, async (req, reply) => {
+    const b = z.object({ data: z.string().min(32), path: z.string().max(400).default('') }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    let bytes;
+    try { bytes = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'invalid_input' }); }
+    if (!bytes.length) return reply.code(400).send({ error: 'invalid_input' });
+    const MAX_IMPORT = 64 * 1024 * 1024;
+    if (bytes.length > MAX_IMPORT) return reply.code(413).send({ error: 'too_large', maxBytes: MAX_IMPORT });
+    const report = await inspectBundle(bytes);
+    // An unverifiable file has no tree to show, and saying so with git's own words is more
+    // use than a listing that would be empty for two different reasons.
+    let tree = null;
+    if (report.valid) {
+      try { tree = await bundleTree(bytes, b.data.path); } catch { tree = null; }
+    }
+    return { ...report, tree, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
   });
 
   /** Import a bundle from somewhere else — a copy taken off the box, or another server.

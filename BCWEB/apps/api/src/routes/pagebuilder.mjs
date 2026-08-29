@@ -78,10 +78,11 @@ export const BLOCKS = {
   showcase:  { kind: 'dynamic', props: {} },
   products:  { kind: 'dynamic', props: { style: 'rows' } },
   news:      { kind: 'dynamic', props: { limit: 6, style: 'grid', heading: true } },
-  // Draws NOTHING when no service is down, which is what makes it safe to put on a page
-  // somebody built by hand: it costs a blank line on every ordinary day rather than a
-  // permanent green strip nobody reads.
-  status:    { kind: 'dynamic', props: {} },
+  // `banner` draws NOTHING when no service is down, which is what makes it safe to put on a
+  // page somebody built by hand: it costs a blank line on every ordinary day rather than a
+  // permanent green strip nobody reads. `services` is the opposite promise — the uptime
+  // record, which is only worth anything when it IS green — so it is a choice, not a default.
+  status:    { kind: 'dynamic', props: { style: 'banner' } },
   poll:      { kind: 'dynamic', props: {} },
   reviews:   { kind: 'dynamic', props: { style: 'cards', limit: 3 } },
   myo:       { kind: 'dynamic', props: { limit: 3 } },
@@ -91,7 +92,8 @@ export const BLOCK_TYPES = Object.keys(BLOCKS);
 const LAYOUT_TYPES = BLOCK_TYPES.filter((t) => BLOCKS[t].kind === 'layout');
 
 /**
- * The variables a `stat` block — or a `{{…}}` in any text — may read.
+ * The variables a `stat` block may read. Text substitution used to read this list too and
+ * was removed; a number in a sentence is a block now, not a placeholder.
  *
  * An allowlist of names, not a path into the database. The editor shows this list, the
  * renderer resolves against the numbers `/stats` already publishes, and a name that is not

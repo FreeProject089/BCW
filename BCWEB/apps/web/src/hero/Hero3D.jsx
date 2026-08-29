@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import gsap from 'gsap';
 import { useIntro, SKIP_KEY } from '../ui/IntroContext.jsx';
 import { useI18n } from '../i18n.jsx';
+import { api } from '../lib/api.js';
 
 // v4 — the intro loader and the background are now literally the same canvas:
 // the orb starts big and centered (the "loading" moment), then GSAP animates it
@@ -199,6 +200,28 @@ const HERO_POS = { x: 0, y: 0.3, z: 2 };
 const BG_SCALE = 1;
 const HERO_SCALE = 1.5;
 
+/**
+ * The scene's shape, and the three silhouettes on offer.
+ *
+ * Three shapes rather than three settings: a sphere, an angular solid and a knotted ring read
+ * as different sites from across the room, which is the only reason to offer a choice. Every
+ * one of them goes through the SAME displacement shader and the same material, so a change of
+ * shape costs nothing at runtime and cannot make the page slower.
+ *
+ * The radii differ because the shapes do not enclose the same volume at the same radius: a
+ * tetrahedron at 2.9 reads as much smaller than a sphere at 2.9, so it is drawn larger to
+ * occupy the same corner of the screen.
+ */
+export const SCENE_DEFAULTS = { shape: 'orb', detail: 4, noise: 1, speed: 1 };
+
+function buildGeometry(shape, detail) {
+  if (shape === 'prism') return new THREE.TetrahedronGeometry(3.6, Math.min(3, detail));
+  // A torus knot has no `detail` in the same sense; its two segment counts are derived from
+  // it so the slider still means "smoother" rather than doing nothing.
+  if (shape === 'ring') return new THREE.TorusKnotGeometry(1.85, 0.62, 60 + detail * 30, 8 + detail * 4);
+  return new THREE.IcosahedronGeometry(2.9, detail);
+}
+
 export default function Hero3D() {
   const { t } = useI18n();
   const { active, finish } = useIntro();
@@ -213,9 +236,26 @@ export default function Hero3D() {
   useEffect(() => { dontShowRef.current = dontShow; }, [dontShow]);
   useEffect(() => { showOverlayRef.current = showOverlay; }, [showOverlay]);
 
+  // Which shape, from the site's own settings.
+  //
+  // Nothing here waits on the network. This component paints the whole backdrop and holds the
+  // intro overlay on top of the site until it is ready, so a slow or failed /site/scene would
+  // be a white page with a loader on it — the shape is a preference, and a preference must
+  // never be able to do that. Defaults on failure, and after 1.2s regardless.
+  const [scene, setScene] = useState(null);
+  useEffect(() => {
+    let on = true;
+    const fall = setTimeout(() => { if (on) setScene((v) => v || SCENE_DEFAULTS); }, 1200);
+    api.get('/site/scene')
+      .then((d) => { if (on) setScene({ ...SCENE_DEFAULTS, ...(d || {}) }); })
+      .catch(() => { if (on) setScene(SCENE_DEFAULTS); })
+      .finally(() => clearTimeout(fall));
+    return () => { on = false; clearTimeout(fall); };
+  }, []);
+
   useEffect(() => {
     const el = mount.current;
-    if (!el) return;
+    if (!el || !scene) return;
 
     // Static amber-glow backdrop used whenever the animated orb can't run well (no
     // WebGL2, or a software renderer that would lag). Reveals the page immediately so
@@ -272,14 +312,23 @@ export default function Hero3D() {
     } catch { /* detection unavailable — proceed with the orb */ }
 
     // ── the orb: one smooth icosahedron, displaced by noise in the vertex shader ──
-    const geo = new THREE.IcosahedronGeometry(2.9, 4); // detail 4 = 2562 verts — smooth enough for a blurred, displaced orb at a fraction of the per-frame vertex-shader cost of detail 5 (10242)
+    // detail 4 = 2562 verts on the icosahedron — smooth enough for a blurred, displaced shape
+    // at a fraction of the per-frame vertex-shader cost of detail 5 (10242). The admin can go
+    // higher; the API caps it at 5 for exactly that reason.
+    const geo = buildGeometry(scene.shape, scene.detail);
 
     // Fracture shards: a coarser icosahedron (detail 2 = 320 faces). Icosahedron
     // geometry is ALREADY non-indexed (every face owns its 3 vertices — calling
     // .toNonIndexed() was a no-op that logged a console warning), so each face
     // can fly apart as one rigid piece as-is. Each face gets its centroid + one
     // shared random vector.
-    const fractureGeo = new THREE.IcosahedronGeometry(2.9, 2);
+    // `toNonIndexed()` is conditional, and that condition is the whole reason this line reads
+    // oddly. The fracture works by giving every FACE its own three vertices so it can fly
+    // apart as one rigid piece — icosahedron and tetrahedron geometry is already built that
+    // way (calling it on those was a no-op that logged a warning), but a torus knot is
+    // indexed and shares vertices between faces, so without this the ring tore into ribbons.
+    const rawFracture = buildGeometry(scene.shape, Math.min(2, scene.detail));
+    const fractureGeo = rawFracture.index ? rawFracture.toNonIndexed() : rawFracture;
     const fPos = fractureGeo.attributes.position;
     const centroidArr = new Float32Array(fPos.count * 3);
     const randArr = new Float32Array(fPos.count * 3);
@@ -297,9 +346,13 @@ export default function Hero3D() {
     fractureGeo.setAttribute('aCentroid', new THREE.BufferAttribute(centroidArr, 3));
     fractureGeo.setAttribute('aRandom', new THREE.BufferAttribute(randArr, 3));
 
+    // One number, read in three places (the initial value, the intro tween and the skip
+    // path). Three literal 0.45s were three chances for the shape to settle at a different
+    // amplitude depending on whether the visitor watched the intro.
+    const AMP = 0.45 * scene.noise;
     const uniforms = {
       uTime: { value: 0 },
-      uAmp: { value: active ? 0 : 0.45 }, // starts flat during the intro, then "comes alive"
+      uAmp: { value: active ? 0 : AMP }, // starts flat during the intro, then "comes alive"
       uFreq: { value: 0.55 },
       uColorA: { value: new THREE.Color(0xffe0bf) },
       uColorB: { value: new THREE.Color(0xf3a869) },
@@ -515,7 +568,7 @@ export default function Hero3D() {
       const tl = gsap.timeline({ onComplete: finishIntro });
       tl.to(orb.scale, { x: HERO_SCALE, y: HERO_SCALE, z: HERO_SCALE, duration: 1.35, ease: 'back.out(1.4)' });
       tl.to(fractureState, { value: 0, duration: 1.5, ease: 'power3.inOut' }, '<'); // shards fly in + fuse into the orb
-      tl.to(uniforms.uAmp, { value: 0.45, duration: 1.3, ease: 'power2.out' }, '<0.35');
+      tl.to(uniforms.uAmp, { value: AMP, duration: 1.3, ease: 'power2.out' }, '<0.35');
       tl.to({}, { duration: 0.55 }); // hold beat — let it breathe before the move
       tl.to(orb.position, { x: BG_POS.x, y: BG_POS.y, z: BG_POS.z, duration: 1.3, ease: 'power3.inOut', onUpdate: () => { baseX = orb.position.x; baseY = orb.position.y; baseZ = orb.position.z; } }, '+=0');
       tl.to(orb.scale, { x: BG_SCALE, y: BG_SCALE, z: BG_SCALE, duration: 1.3, ease: 'power3.inOut' }, '<');
@@ -528,7 +581,7 @@ export default function Hero3D() {
         fractureState.value = 0; // whole orb when the build is skipped
         orb.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
         orb.scale.setScalar(BG_SCALE);
-        uniforms.uAmp.value = 0.45;
+        uniforms.uAmp.value = AMP;
         baseX = BG_POS.x; baseY = BG_POS.y; baseZ = BG_POS.z;
         finishIntro();
       };
@@ -591,13 +644,13 @@ export default function Hero3D() {
         } else if (fps < 30) { bailToStatic(); return; }
       }
       try {
-        t += 0.01;
+        t += 0.01 * scene.speed;
         uniforms.uTime.value = t;
         uniforms.uFracture.value = fractureState.value;
         scrollNow += (scrollTarget - scrollNow) * 0.04;
         // slow constant auto-rotation (noticeably livelier the deeper you scroll,
         // to sell the "spiraling down" read), plus a small cursor-driven tilt on top
-        rotTarget.y += 0.0016 * (1 + scrollNow * 1.6);
+        rotTarget.y += 0.0016 * scene.speed * (1 + scrollNow * 1.6);
         rotTarget.x += (mouse.y * 0.35 - rotTarget.x) * 0.02;
         orb.rotation.y = rotTarget.y;
         orb.rotation.x += (rotTarget.x - orb.rotation.x) * 0.06;
@@ -670,7 +723,7 @@ export default function Hero3D() {
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scene]);
 
   return (
     <>

@@ -257,6 +257,101 @@ export default async function contentBackupRoutes(app) {
   );
 
   /**
+   * What is in this zip, before it overwrites anything.
+   *
+   * Import read the file, validated it and wrote it in one movement, so the only way to find
+   * out whether a zip was the right backup was to apply it and reach for the undo. That undo
+   * exists and works, and it is still the wrong shape for the question: "will this replace
+   * the twelve pages I just wrote" is answerable from the file itself.
+   *
+   * Nothing is written here — no snapshot, no rows, and deliberately no audit entry either,
+   * because reading a file the admin already holds is not an action on the site.
+   */
+  app.post('/admin/content-backup/inspect', { preHandler: GUARD }, async (req, reply) => {
+    const bytes = req.body;
+    if (!Buffer.isBuffer(bytes) || !bytes.length) {
+      return reply.code(400).send({ error: 'no_file', detail: 'send the zip as the request body' });
+    }
+    let entries;
+    try {
+      const list = await zipReadAll(bytes);
+      entries = Object.fromEntries(list.map((e) => [e.name, e.data]));
+    } catch { return reply.code(400).send({ error: 'not_a_zip' }); }
+
+    const text = (v) => (Buffer.isBuffer(v) ? v.toString('utf8') : String(v));
+    let manifest = null;
+    if (entries['manifest.json']) {
+      try { manifest = JSON.parse(text(entries['manifest.json'])); } catch { manifest = null; }
+    }
+
+    const p = await db();
+    const sections = {};
+    // Files in the zip that are not a section this build knows. A backup taken from a newer
+    // version carries them, and silently ignoring them is how an admin concludes the import
+    // covered everything.
+    const unknown = Object.keys(entries).filter((n) => n.endsWith('.json') && n !== 'manifest.json'
+      && !SECTION_KEYS.includes(n.slice(0, -5)));
+
+    for (const key of SECTION_KEYS) {
+      const raw = entries[`${key}.json`];
+      if (raw == null) continue;
+      const sec = SECTIONS[key];
+      let data;
+      try { data = JSON.parse(text(raw)); }
+      catch { sections[key] = { label: sec.label, restorable: !!sec.restore, error: 'not valid JSON' }; continue; }
+
+      // An array of rows, or an object of named arrays — both shapes exist among the
+      // sections, so both are counted rather than one being assumed.
+      const lists = Array.isArray(data) ? { '': data } : Object.fromEntries(Object.entries(data).filter(([, v]) => Array.isArray(v)));
+      const records = Object.values(lists).reduce((n, v) => n + v.length, 0);
+
+      // New versus replaced, which is the number that decides whether to press the button.
+      // Only computable for rows that carry an id; anything else reports null rather than a
+      // guess, because "0 replaced" and "we could not tell" must not look the same.
+      let replaces = null, adds = null;
+      try {
+        const current = await sec.read(p);
+        const curLists = Array.isArray(current) ? { '': current } : current;
+        const have = new Set();
+        for (const [k, v] of Object.entries(curLists)) {
+          if (Array.isArray(v)) for (const r of v) if (r && r.id != null) have.add(`${k}:${r.id}`);
+        }
+        if (have.size || records === 0) {
+          let hit = 0, miss = 0, unknownId = false;
+          for (const [k, v] of Object.entries(lists)) {
+            for (const r of v) {
+              if (!r || r.id == null) { unknownId = true; continue; }
+              if (have.has(`${k}:${r.id}`)) hit++; else miss++;
+            }
+          }
+          if (!unknownId) { replaces = hit; adds = miss; }
+        }
+      } catch { /* a section this database cannot read reports counts only */ }
+
+      sections[key] = {
+        label: sec.label,
+        restorable: !!sec.restore,
+        records,
+        replaces,
+        adds,
+        // Enough of a row to recognise the backup — a title, a slug, a name. Never the whole
+        // record: this is a preview, and some of these tables hold account data.
+        sample: Object.values(lists).flat().slice(0, 3).map((r) => {
+          if (!r || typeof r !== 'object') return null;
+          const pick = {};
+          for (const f of ['id', 'slug', 'key', 'title', 'name', 'displayName', 'label', 'updatedAt']) {
+            if (r[f] != null) pick[f] = typeof r[f] === 'string' ? r[f].slice(0, 120) : r[f];
+          }
+          return pick;
+        }).filter(Boolean),
+      };
+    }
+
+    if (!Object.keys(sections).length) return reply.code(400).send({ error: 'nothing_to_import', unknown });
+    return { ok: true, manifest, sections, unknown, bytes: bytes.length };
+  });
+
+  /**
    * Put content back.
    *
    * Reads and VALIDATES the whole zip before writing anything. Half an import is worse than

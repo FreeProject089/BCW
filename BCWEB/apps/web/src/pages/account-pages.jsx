@@ -69,7 +69,7 @@ export function Settings() {
         <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
           <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
         </Row>
-        <Row icon={Orbit} title={t('set.orb3d', '3D hero orb')} desc={t('set.orb3d.d', 'The WebGL scene behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
+        <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
           <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
         </Row>
 

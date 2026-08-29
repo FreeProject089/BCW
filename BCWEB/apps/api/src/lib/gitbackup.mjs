@@ -316,3 +316,92 @@ export async function repoSizeBytes(repoRoot) {
 export async function gcRepo(repoRoot) {
   try { await git(repoRoot, ['gc', '--prune=now', '-q']); } catch { /* best effort */ }
 }
+
+/**
+ * Read what is INSIDE a bundle — the tree at its tip, and one file out of it.
+ *
+ * A backup you cannot open is a promise, not a record. The snapshot list showed a size, a
+ * date and a verification result, all of which say the file is intact and none of which say
+ * what is in it — so "is the thing I need actually in this backup" could only be answered by
+ * restoring it, which is the one action you take when you already know the answer.
+ *
+ * Extracted per call rather than cached. A cache here would be a directory of extracted
+ * backups living in the container's tmp for as long as someone keeps clicking, and the cost
+ * it saves is one `git fetch` from a local file.
+ */
+async function withBundle(bytes, fn) {
+  const tmp = path.join(os.tmpdir(), `bcw-read-${Date.now()}-${Math.random().toString(36).slice(2)}.bundle`);
+  const work = `${tmp}.d`;
+  try {
+    await fs.writeFile(tmp, bytes);
+    await fs.mkdir(work, { recursive: true });
+    await execFileP('git', ['init', '-q', work]);
+    await execFileP('git', ['fetch', '-q', tmp, '+refs/*:refs/bundle/*'], { cwd: work, maxBuffer: 64 * 1024 * 1024 });
+    // The tip the restore would land on, found the same way restoreFromBundle finds it, so
+    // what is browsed here is what would be restored.
+    const { stdout: refs } = await execFileP('git', ['for-each-ref', '--format=%(refname)', 'refs/bundle/'], { cwd: work });
+    const ref = refs.trim().split(String.fromCharCode(10)).filter(Boolean)[0];
+    if (!ref) throw new Error('bundle_has_no_branch');
+    return await fn(work, ref);
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    await fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** A path inside a bundle is untrusted input. Anything that leaves the tree is refused. */
+function safeTreePath(rel) {
+  const clean = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!clean) return '';
+  if (clean.split('/').some((seg) => seg === '..' || seg === '.git')) throw new Error('bad_path');
+  return clean;
+}
+
+/** One directory of a bundle's tip, as {name, isDir, size}. `rel` is '' for the root. */
+export async function bundleTree(bytes, rel = '') {
+  const dir = safeTreePath(rel);
+  return withBundle(bytes, async (work, ref) => {
+    const spec = dir ? `${ref}:${dir}` : `${ref}:`;
+    let out = '';
+    try {
+      // `-l` gives the blob size; a tree has '-' there, which is why the size is parsed
+      // rather than assumed.
+      const r = await execFileP('git', ['ls-tree', '-l', spec], { cwd: work, maxBuffer: 32 * 1024 * 1024 });
+      out = r.stdout;
+    } catch (e) {
+      throw new Error('not_found');
+    }
+    const entries = out.trim().split(String.fromCharCode(10)).filter(Boolean).map((line) => {
+      const [meta, name] = line.split(String.fromCharCode(9));
+      const [, type, , size] = meta.trim().split(/\s+/);
+      return { name, isDir: type === 'tree', size: size === '-' ? 0 : Number(size) || 0 };
+    });
+    entries.sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+    return { path: dir, entries };
+  });
+}
+
+/** One file out of a bundle's tip. Text is returned as text; anything else says so. */
+export async function bundleFile(bytes, rel, maxBytes = 512 * 1024) {
+  const file = safeTreePath(rel);
+  if (!file) throw new Error('bad_path');
+  return withBundle(bytes, async (work, ref) => {
+    let buf;
+    try {
+      const r = await execFileP('git', ['show', `${ref}:${file}`], { cwd: work, encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });
+      buf = r.stdout;
+    } catch { throw new Error('not_found'); }
+    // A NUL in the first block is the same heuristic git itself uses for "binary". Sending
+    // a JPEG back as a broken UTF-8 string would look like a corrupted backup.
+    const head = buf.subarray(0, 8000);
+    const binary = head.includes(0);
+    const truncated = buf.length > maxBytes;
+    return {
+      path: file,
+      bytes: buf.length,
+      binary,
+      truncated,
+      text: binary ? null : buf.subarray(0, maxBytes).toString('utf8'),
+    };
+  });
+}
