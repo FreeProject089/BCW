@@ -1317,6 +1317,11 @@ export default function App() {
               <Route path="/legal/terms" element={<Legal page="terms" />} />
               <Route path="/legal/cookies" element={<Legal page="cookies" />} />
               <Route path="/legal/refunds" element={<Legal page="refunds" />} />
+              {/* Anything an admin created. The five static paths above still win — the
+                  router ranks a literal segment over a dynamic one regardless of order — and
+                  /legal/archive/:id wins on segment count, so a document keyed "archive"
+                  cannot shadow the archive. Written last because that is how it reads. */}
+              <Route path="/legal/:key" element={<Legal />} />
               {/* Old flat URLs → new /legal/* (keep existing links & SEO working) */}
               <Route path="/about" element={<Navigate to="/legal/about" replace />} />
               <Route path="/privacy" element={<Navigate to="/legal/privacy" replace />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api.js';
-import Markdown from '../ui/md.jsx';
+import Markdown, { IconGlyph } from '../ui/md.jsx';
 import { Link, useParams } from 'react-router-dom';
 import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, Printer, History, ArrowLeft, ArrowRight } from 'lucide-react';
 import { PageHeader, Button, Card } from '../ui/ui.jsx';
@@ -81,7 +81,7 @@ export const LEGAL = {
       ['What BetterCommunity is', 'BetterCommunity is the shared home for the Better* ecosystem — a hub where the community discovers, shares, and hosts content for tools like Better Mods Manager (BMM), Better Sound Maker (BSM), and BetterInstaller. One account, one place: browse the catalogs, publish your own mods, plugins, themes and presets, and spin up a hosted Server-Repo.'],
       ['Our mission', 'To give creators a clean, honest, no-nonsense platform: no ads, no dark patterns, no selling your data. Every submission is human-reviewed before it goes live, integrity-checked on every change, and the whole thing is built to stay fast and lightweight.'],
       ['The projects', 'BMM manages mods for supported games with a full plugin/theme system. BSM is a sound-preset catalog. BetterInstaller is a fast, modern installer for the suite. Server-Repos let creators host their own repositories with us, billed only for what they use. Every catalog is filled by the community and curated by a small moderation team, and contributors are credited on each project page.'],
-      ['Open & transparent', 'Our moderation rules, pricing, and privacy practices are all documented in these legal pages — no surprises. Found a problem or have an idea? The Contact page and our Discord are the fastest ways to reach us.'],
+      ['Open & transparent', 'Our moderation rules, pricing, and privacy practices are all documented in these legal pages — no surprises. Every policy keeps its published versions, so you can read exactly the text you agreed to rather than the current one. Whether the site is up is a public page with its own probes, not a claim. Found a problem or have an idea? The Contact page and our Discord are the fastest ways to reach us.'],
       ['Support the project', 'BetterCommunity is community-funded. Hosting costs are covered by the paid Server-Repo plans and by donations on Ko-fi. Every tip goes straight to keeping the servers running — thank you.'],
     ] },
     refunds: { icon: Receipt, title: 'Payments & Refunds', body: [
@@ -169,9 +169,11 @@ export const LEGAL = {
     ] },
     about: { icon: Sparkles, title: 'À propos', body: [
       ['Ce qu’est BetterCommunity', 'BetterCommunity est la maison commune de l’écosystème Better* — un hub où la communauté découvre, partage et héberge du contenu pour des outils comme Better Mods Manager (BMM), Better Sound Maker (BSM) et BetterInstaller. Un seul compte, un seul endroit : parcours les catalogues, publie vos mods, plugins, thèmes et presets, et lance un Server-Repo hébergé.'],
-      ['Notre mission', 'Offrir aux créateurs une plateforme claire et honnête : pas de pub, pas de dark patterns, jamais de revente de vos données. Chaque soumission est vérifiée par un humain avant mise en ligne, re-contrôlée à chaque changement, et l’ensemble est conçu pour rester rapide et léger.'],
-      ['Les projets', 'BMM gère les mods des jeux pris en charge avec un vrai système de plugins/thèmes. BSM est un catalogue de presets sonores. BetterInstaller est un installeur moderne et rapide pour la suite. Les Server-Repos permettent aux créateurs d’héberger leurs propres dépôts chez nous, facturés uniquement selon l’usage. Chaque catalogue est rempli par la communauté et curé par une petite équipe de modération, et les contributeurs sont crédités sur chaque page de projet.'],
-      ['Ouvert & transparent', 'Nos règles de modération, nos tarifs et nos pratiques de confidentialité sont tous documentés dans ces pages légales — aucune surprise. Un problème ou une idée ? La page Contact et notre Discord sont les moyens les plus rapides de nous joindre.'],
+      ['Notre mission', 'Offrir aux créateurs une plateforme claire et honnête : pas de pub, pas de dark patterns, jamais de revente de vos données. Les fichiers sont recontrôlés à chaque changement, et l’ensemble est conçu pour rester rapide et léger.'],
+      ['Comment les choses sont publiées', 'Il y a deux voies ici et elles ne se valent pas, alors nous disons laquelle vous regardez plutôt que de laisser croire qu’elles sont identiques. Le catalogue OFFICIEL est vérifié avant d’apparaître : un envoi reste invisible tant qu’une personne de l’équipe ne l’a pas ouvert et approuvé, et un refus est motivé. Les catalogues COMMUNAUTAIRES et les Server-Repos hébergés partent en ligne quand leur propriétaire le décide — sans file et sans attente. Chacun affiche le compte qui l’a mis en ligne, n’importe qui peut signaler un problème, et nous suspendons ce qui enfreint les règles. Vérifié après publication, donc, et signalé comme tel partout où il apparaît.'],
+      ['Les projets', 'BMM gère les mods des jeux pris en charge avec un vrai système de plugins/thèmes. BSM est un catalogue de presets sonores. BetterInstaller est un installeur moderne et rapide pour la suite. Les Server-Repos permettent aux créateurs d’héberger leurs propres dépôts chez nous, facturés uniquement selon l’usage. Chaque catalogue est rempli par la communauté, et les contributeurs sont crédités sur chaque page de projet.'],
+      ['Construire dessus', 'La plateforme est ouverte aux autres logiciels : une API REST, OpenID Connect pour que les gens se connectent à votre projet avec leur compte d’ici, et des webhooks pour être prévenu quand leur contenu change. Aucun SDK, et une clé prend une minute. Si la chose que vous voulez n’existe pas et que vous préfèrez ne pas la construire, une commande commence par une consultation payante — conseil et devis — et le travail ne démarre qu’une fois ce devis approuvé.'],
+      ['Ouvert & transparent', 'Nos règles de modération, nos tarifs et nos pratiques de confidentialité sont tous documentés dans ces pages légales — aucune surprise. Chaque politique conserve ses versions publiées : vous pouvez relire exactement le texte que vous avez accepté, et non celui d’aujourd’hui. Et savoir si le site est en ligne est une page publique avec ses propres sondes, pas une affirmation. Un problème ou une idée ? La page Contact et notre Discord sont les moyens les plus rapides de nous joindre.'],
       ['Soutenir le projet', 'BetterCommunity est financé par la communauté. Les coûts d’hébergement sont couverts par les offres Server-Repo payantes et par les dons sur Ko-fi. Chaque don sert directement à faire tourner les serveurs — merci.'],
     ] },
     refunds: { icon: Receipt, title: 'Paiements & Remboursements', body: [
@@ -212,7 +214,7 @@ export const LEGAL_SUMMARY = {
 // used `new Date()`, so every one of these pages claimed to have been updated today, every
 // day, whatever it said. On a policy page that is the one line a reader uses to decide
 // whether the terms they agreed to are still the terms in front of them.
-const LEGAL_UPDATED = '2026-08-24';
+const LEGAL_UPDATED = '2026-08-30';
 
 // ── Rendering a policy ───────────────────────────────────────────────────────
 //
@@ -275,8 +277,52 @@ function LegalParagraph({ text }) {
   });
 }
 
-export function Legal({ page }) {
+/**
+ * The five documents that ship with the app, in the order they have always been listed.
+ *
+ * Used only when the API is unreachable. It is not the list of what exists — that comes from
+ * the server, because the whole point is that an admin can add to it — it is the list of what
+ * has a compiled-in fallback text, which is why it is also the list that keeps working when
+ * nothing loads.
+ */
+const BUILTIN_ORDER = ['about', 'privacy', 'terms', 'cookies', 'refunds'];
+
+/** The icon a built-in document has always had. */
+const BUILTIN_ICON = { about: Sparkles, privacy: Lock, terms: ShieldCheck, cookies: Cookie, refunds: Receipt };
+
+/**
+ * A built-in's label, from the dictionary rather than from the database.
+ *
+ * These five are translated by the app, and they were long before there was a table to store
+ * a French label in. Reading the stored one instead would show an English "Privacy Policy" to
+ * a French reader on a site that has always said "Politique de confidentialité" — a
+ * regression produced by adding a feature nobody used yet.
+ */
+function builtinLabel(key, t) {
+  switch (key) {
+    case 'about': return t('foot.about', 'About');
+    case 'privacy': return t('foot.privacy');
+    case 'terms': return t('foot.terms');
+    case 'cookies': return t('foot.cookies');
+    case 'refunds': return t('foot.refunds', 'Payments');
+    default: return '';
+  }
+}
+
+/** The glyph for a document: its built-in one, the name an admin chose, or the generic. */
+function docIcon(key, icon, size = 18) {
+  const I = BUILTIN_ICON[key];
+  if (I) return <I size={size} />;
+  if (icon) return <IconGlyph name={icon} size={size} />;
+  return <FileText size={size} />;
+}
+
+export function Legal({ page: fixed }) {
   const { lang, t } = useI18n();
+  // `/legal/:key` for anything an admin created; the five original routes still pass their
+  // key as a prop, so every old link keeps working without a redirect.
+  const params = useParams();
+  const page = fixed || params.key || '';
   const builtIn = (LEGAL[lang] || LEGAL.en)[page];
   const summary = (LEGAL_SUMMARY[lang] || LEGAL_SUMMARY.en)[page];
 
@@ -288,20 +334,30 @@ export function Legal({ page }) {
   // there"). Rendering the built-in text during the fetch and then swapping it would show a
   // reader one policy and then another, which on this page is worse than a blank moment.
   const [remote, setRemote] = useState(null);
+  const [menu, setMenu] = useState(null);
   useEffect(() => {
     let alive = true;
-    api.get('/legal').then((r) => { if (alive) setRemote(r?.docs || {}); })
+    api.get('/legal').then((r) => {
+      if (!alive) return;
+      setRemote(r?.docs || {});
+      setMenu({ pages: r?.pages || [], categories: r?.categories || [] });
+    })
       // A failed fetch falls back to the built-in text rather than to an error: the policy
       // in the bundle is a correct policy, just possibly an older one.
-      .catch(() => { if (alive) setRemote({}); });
+      .catch(() => { if (alive) { setRemote({}); setMenu({ pages: [], categories: [] }); } });
     return () => { alive = false; };
   }, []);
 
   const override = remote?.[page];
+  // The menu row for this document, when there is one. It carries the title and the icon for
+  // a page an admin created — a built-in has both in the bundle, a new one has neither.
+  const row = menu?.pages?.find((x) => x.key === page) || null;
+  const rowTitle = row && ((lang === 'fr' && row.labelFr) || row.label);
+  const rowIcon = row?.icon ? () => <IconGlyph name={row.icon} size={20} /> : null;
   const d = override
     ? {
-      icon: builtIn.icon,
-      title: builtIn.title,
+      icon: builtIn?.icon || rowIcon || FileText,
+      title: builtIn?.title || rowTitle || page,
       body: override.sections.map((sec) => [
         (lang === 'fr' && sec.titleFr) || sec.title,
         (lang === 'fr' && sec.bodyFr) || sec.body,
@@ -309,6 +365,18 @@ export function Legal({ page }) {
       markdown: true,
     }
     : builtIn;
+  // A key with neither stored sections nor a compiled-in fallback. It can be reached: an
+  // admin creates a page and links to it before writing anything in it, and a 404 there would
+  // read as "the site is broken" rather than "there is nothing here yet".
+  if (!d) {
+    return (
+      <div className="max-w-3xl mx-auto py-16 text-center">
+        <PageHeader icon={FileText} title={rowTitle || t('legal.empty.t', 'Nothing here yet')}
+          subtitle={t('legal.empty.s', 'This document has been created but not written.')} />
+        <Link to="/legal"><Button><ArrowLeft size={14} /> {t('legal.all', 'All')}</Button></Link>
+      </div>
+    );
+  }
   // Once a document is database-backed its own newest edit is the honest date; the constant
   // would freeze at whatever the source file last said while the text kept changing.
   const updated = override?.updatedAt ? String(override.updatedAt).slice(0, 10) : LEGAL_UPDATED;
@@ -328,20 +396,49 @@ export function Legal({ page }) {
     secs.forEach((s) => io.observe(s));
     return () => io.disconnect();
   }, [page, lang]);
-  const tabs = [['about', t('foot.about', 'About'), Sparkles], ['privacy', t('foot.privacy'), Lock], ['terms', t('foot.terms'), ShieldCheck], ['cookies', t('foot.cookies'), Cookie], ['refunds', t('foot.refunds', 'Payments'), Receipt]];
+  // The strip of other documents. From the live list, so a page an admin created appears in
+  // it — and so does a rename. The five built-in labels stay translated through the
+  // dictionary rather than through the stored English, because they always have been.
+  const tabs = (menu?.pages?.length ? menu.pages : BUILTIN_ORDER.map((k) => ({ key: k, builtIn: true })))
+    .map((x) => [x.key, builtinLabel(x.key, t) || (lang === 'fr' && x.labelFr) || x.label || x.key, x.icon || '']);
   return (
-    <div className="max-w-4xl mx-auto" id="legal-print">
+    <div className="max-w-5xl mx-auto" id="legal-print">
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${updated}T00:00:00`).toLocaleDateString()}`} />
-      <div className="flex flex-wrap gap-2 mb-5 print:hidden"><Link to="/legal"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>{tabs.map(([k, l, I]) => <Link key={k} to={`/legal/${k}`}><Button size="sm" variant={k === page ? 'primary' : 'default'}><I size={14} /> {l}</Button></Link>)}</div>
+      {/* One scrolling row rather than a wrapping block. With five documents it wrapped to
+          two lines; with a dozen — which is the point of letting an admin add them — it
+          became a paragraph of buttons above every policy on the site. */}
+      <div className="flex gap-2 mb-5 overflow-x-auto no-scrollbar print:hidden -mx-1 px-1">
+        <Link to="/legal" className="shrink-0"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>
+        {tabs.map(([k, l, icon]) => (
+          <Link key={k} to={`/legal/${k}`} className="shrink-0">
+            <Button size="sm" variant={k === page ? 'primary' : 'default'}>{docIcon(k, icon, 14)} {l}</Button>
+          </Link>
+        ))}
+      </div>
       {/* plain-language summary */}
       <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent print:border print:bg-none">
         <d.icon size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
         <div className="text-sm text-[var(--muted)]">{summary}</div>
       </Card>
-      <div className="grid md:grid-cols-[180px_1fr] gap-8">
+      {/* On a phone the contents were `hidden md:block` — which is to say, absent. A
+          thirty-two-section policy with no way to jump is a document you scroll past, so the
+          same list is a <details> above the text there. */}
+      <details className="md:hidden mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] print:hidden">
+        <summary className="px-4 py-3 text-sm font-medium cursor-pointer select-none">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</summary>
+        <div className="px-2 pb-2 max-h-[50vh] overflow-y-auto no-scrollbar">
+          {d.body.map(([h], i) => (
+            <a key={h} href={`#s${i}`} className="block text-sm py-1.5 px-2 rounded-lg text-[var(--muted)] hover:bg-[var(--surface-2)]">{h}</a>
+          ))}
+        </div>
+      </details>
+
+      <div className="grid md:grid-cols-[220px_1fr] gap-8 lg:gap-10">
         {/* Its own scroll region with a max height: a 32-entry contents list that is itself
-            taller than the window cannot be used to navigate, which is the one job it has. */}
-        <nav className="hidden md:block sticky top-20 self-start space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto pr-1 print:hidden">
+            taller than the window cannot be used to navigate, which is the one job it has.
+            `no-scrollbar` because the bar was the loudest thing in the column — a grey track
+            running the full height beside a list of quiet grey links. The region still
+            scrolls, by wheel, by drag, by keyboard and by focus; only the chrome is gone. */}
+        <nav className="hidden md:block sticky top-20 self-start space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto no-scrollbar pr-1 print:hidden">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</div>
           {d.body.map(([h], i) => (
             <a key={h} href={`#s${i}`}
@@ -473,22 +570,69 @@ export function LegalArchive() {
 }
 
 // The /legal hub — lists every legal/policy document.
+/**
+ * The index, grouped.
+ *
+ * Five cards in one grid was the right shape for one product's policies. It stops being right
+ * the moment a deployment carries several: "Terms of Service" and "Terms of Service" side by
+ * side, one for each application, with nothing on either card saying which. The grouping is
+ * the answer, and it is optional — a page with no category is listed on its own above the
+ * headings, which is exactly what every page is today.
+ */
 export function LegalIndex() {
   const { lang, t } = useI18n();
   const L = LEGAL[lang] || LEGAL.en;
   const S = LEGAL_SUMMARY[lang] || LEGAL_SUMMARY.en;
-  const pages = ['about', 'privacy', 'terms', 'cookies', 'refunds'];
-  return (
-    <div className="max-w-4xl mx-auto">
-      <PageHeader icon={FileText} title={t('legal.title', 'Legal & policies')} subtitle={t('legal.sub', 'Our policies and terms, in plain language.')} />
-      <div className="grid sm:grid-cols-2 gap-4">
-        {pages.map((k) => { const d = L[k]; const I = d.icon; return (
-          <Link key={k} to={`/legal/${k}`} className="card card-hover p-5 flex items-start gap-3">
-            <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={18} /></span>
-            <div className="min-w-0"><div className="font-semibold">{d.title}</div><div className="text-sm text-[var(--muted)] mt-0.5 line-clamp-2">{S[k]}</div></div>
-          </Link>
-        ); })}
+  const [menu, setMenu] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/legal')
+      .then((r) => { if (alive) setMenu({ pages: r?.pages || [], categories: r?.categories || [] }); })
+      // The compiled-in five, in their compiled-in order. A legal index that fails to load is
+      // a site with no visible policies, which is worse than an index that is a version old.
+      .catch(() => { if (alive) setMenu({ pages: BUILTIN_ORDER.map((k) => ({ key: k, builtIn: true })), categories: [] }); });
+    return () => { alive = false; };
+  }, []);
+
+  if (!menu) return <div className="max-w-4xl mx-auto"><Loading /></div>;
+
+  const pages = menu.pages.length ? menu.pages : BUILTIN_ORDER.map((k) => ({ key: k, builtIn: true }));
+  const label = (x) => builtinLabel(x.key, t) || (lang === 'fr' && x.labelFr) || x.label || x.key;
+  const blurb = (x) => S[x.key] || (lang === 'fr' && x.summaryFr) || x.summary || '';
+  const title = (x) => L[x.key]?.title || label(x);
+
+  const card = (x) => (
+    <Link key={x.key} to={`/legal/${x.key}`} className="card card-hover p-5 flex items-start gap-3">
+      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{docIcon(x.key, x.icon)}</span>
+      <div className="min-w-0">
+        <div className="font-semibold">{title(x)}</div>
+        {blurb(x) && <div className="text-sm text-[var(--muted)] mt-0.5 line-clamp-2">{blurb(x)}</div>}
       </div>
+    </Link>
+  );
+
+  const uncategorised = pages.filter((x) => !x.categoryId);
+  const groups = menu.categories
+    .map((c) => ({ c, items: pages.filter((x) => x.categoryId === c.id) }))
+    .filter((g) => g.items.length);
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      <PageHeader icon={FileText} title={t('legal.title', 'Legal & policies')} subtitle={t('legal.sub', 'Our policies and terms, in plain language.')} />
+      {!!uncategorised.length && (
+        <div className="grid sm:grid-cols-2 gap-4">{uncategorised.map(card)}</div>
+      )}
+      {groups.map(({ c, items }) => (
+        // The heading is an anchor target, so a project's own site can link straight to its
+        // block: /legal#bmm rather than "scroll down to the third heading".
+        <section key={c.id} id={c.key} className="mt-10 scroll-mt-24">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--faint)] mb-3">
+            {(lang === 'fr' && c.labelFr) || c.label}
+          </h2>
+          <div className="grid sm:grid-cols-2 gap-4">{items.map(card)}</div>
+        </section>
+      ))}
     </div>
   );
 }

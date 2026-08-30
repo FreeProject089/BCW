@@ -8844,6 +8844,181 @@ function BlockedUrls({ t }) {
 }
 
 
+/**
+ * Which legal documents exist, what they are called, and which heading they sit under.
+ *
+ * Separate from the editor above it, because they are two different jobs: that one edits the
+ * TEXT of a policy, this one edits the LIST. It was neither — the list was an array of five
+ * strings in the route file and another in the web bundle, so adding a sixth document meant
+ * editing two packages and shipping a release.
+ *
+ * A key is set once and never edited. It is in every stored section row, in every published
+ * version, and in every link anybody has ever sent — the field is absent from the edit form
+ * for the same reason the API refuses it.
+ */
+function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
+  const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [newPage, setNewPage] = useState(null);   // null | { key, label, labelFr, categoryId }
+  const [newCat, setNewCat] = useState(null);     // null | { key, label, labelFr }
+
+  const call = async (fn, ok) => {
+    setBusy(true);
+    try { await fn(); toast.success(ok); onChanged(); }
+    catch (e) {
+      const c = e?.body?.error;
+      toast.error(
+        c === 'key_taken' ? t('al.mng.taken', 'That key is already used.')
+          : c === 'builtin_page' ? t('al.mng.builtin', 'A built-in document cannot be deleted — hide it instead.')
+          : c === 'has_versions' ? t('al.mng.versions', 'This document has published versions. Somebody\u2019s acceptance points at them.')
+          : e?.body?.detail || t('common.failed', 'Failed.'),
+      );
+    }
+    finally { setBusy(false); }
+  };
+
+  const del = async (p) => {
+    const ok = await dialog.confirm({
+      title: t('al.mng.del.t', 'Delete this document?'),
+      body: t('al.mng.del.b', 'Its sections go with it. This cannot be undone, and a document with published versions cannot be deleted at all.'),
+      danger: true,
+    });
+    if (!ok) return;
+    await call(() => api.del(`/admin/legal/pages/${p.id}`), t('common.deleted', 'Deleted.'));
+  };
+
+  return (
+    <Card className="p-4 mb-4">
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* ── Documents ── */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-medium text-sm flex-1">{t('al.mng.docs', 'Documents')}</span>
+            <Button size="sm" variant="ghost" disabled={busy}
+              onClick={() => setNewPage({ key: '', label: '', labelFr: '', categoryId: '' })}>
+              <Plus size={13} /> {t('al.mng.add', 'New')}
+            </Button>
+          </div>
+
+          {newPage && (
+            <div className="rounded-xl border border-[var(--primary)]/40 p-3 mb-3 space-y-2">
+              <div className="grid sm:grid-cols-2 gap-2">
+                <Field label={t('al.mng.key', 'Key (the URL, set once)')}>
+                  <Input value={newPage.key} placeholder="bmm-terms"
+                    onChange={(e) => setNewPage({ ...newPage, key: e.target.value })} />
+                </Field>
+                <Field label={t('al.mng.label', 'Title')}>
+                  <Input value={newPage.label} placeholder="Terms of Service"
+                    onChange={(e) => setNewPage({ ...newPage, label: e.target.value })} />
+                </Field>
+                <Field label={t('al.mng.labelfr', 'Title (French)')}>
+                  <Input value={newPage.labelFr} onChange={(e) => setNewPage({ ...newPage, labelFr: e.target.value })} />
+                </Field>
+                <Field label={t('al.mng.cat', 'Heading')}>
+                  <Select value={newPage.categoryId} onChange={(e) => setNewPage({ ...newPage, categoryId: e.target.value })}>
+                    <option value="">{t('al.mng.nocat', 'None')}</option>
+                    {cats.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              {/* Said before the key is typed, not after it is refused: it is the one field
+                  on this form that cannot be corrected later. */}
+              <p className="text-[11px] text-[var(--muted)]">
+                {t('al.mng.key.d', 'Letters, digits and dashes. It becomes /legal/<key> and is stored on every section of the document, so it cannot be changed afterwards.')}
+              </p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" disabled={busy || !newPage.key || !newPage.label}
+                  onClick={() => call(async () => { await api.post('/admin/legal/pages', newPage); setNewPage(null); }, t('common.saved', 'Saved.'))}>
+                  {t('common.create', 'Create')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setNewPage(null)}>{t('common.cancel', 'Cancel')}</Button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            {pages.map((p) => {
+              const n = sections.filter((x) => x.doc === p.key).length;
+              return (
+                <div key={p.id} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-2">
+                  <span className="text-[13px] font-medium truncate flex-1 min-w-0">{p.label}</span>
+                  <span className="text-[11px] font-mono text-[var(--faint)] shrink-0">{p.key}</span>
+                  <Select className="!w-[130px] !text-xs shrink-0" value={p.categoryId || ''}
+                    onChange={(e) => call(() => api.put(`/admin/legal/pages/${p.id}`, { categoryId: e.target.value || null }), t('common.saved', 'Saved.'))}>
+                    <option value="">{t('al.mng.nocat', 'None')}</option>
+                    {cats.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                  </Select>
+                  <button type="button" title={p.published === false ? t('al.mng.show', 'Show') : t('al.mng.hidep', 'Hide')}
+                    className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"
+                    onClick={() => call(() => api.put(`/admin/legal/pages/${p.id}`, { published: p.published === false }), t('common.saved', 'Saved.'))}>
+                    {p.published === false ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  {/* A built-in has its text compiled into the web bundle. Deleting the row
+                      would leave the page reachable and rendering that text, listed nowhere. */}
+                  {!builtIn.includes(p.key) && n === 0 && (
+                    <button type="button" className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(p)}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── Headings ── */}
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="font-medium text-sm flex-1">{t('al.mng.cats', 'Headings')}</span>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setNewCat({ key: '', label: '', labelFr: '' })}>
+              <Plus size={13} /> {t('al.mng.add', 'New')}
+            </Button>
+          </div>
+          <p className="text-[11px] text-[var(--muted)] mb-2">
+            {t('al.mng.cats.d', 'What the index groups documents under \u2014 one per project, usually. A document with no heading is listed on its own above them. The key is an anchor: /legal#bmm.')}
+          </p>
+
+          {newCat && (
+            <div className="rounded-xl border border-[var(--primary)]/40 p-3 mb-3 space-y-2">
+              <div className="grid sm:grid-cols-3 gap-2">
+                <Field label={t('al.mng.key2', 'Key')}><Input value={newCat.key} placeholder="bmm" onChange={(e) => setNewCat({ ...newCat, key: e.target.value })} /></Field>
+                <Field label={t('al.mng.label', 'Title')}><Input value={newCat.label} placeholder="BetterModsManager" onChange={(e) => setNewCat({ ...newCat, label: e.target.value })} /></Field>
+                <Field label={t('al.mng.labelfr', 'Title (French)')}><Input value={newCat.labelFr} onChange={(e) => setNewCat({ ...newCat, labelFr: e.target.value })} /></Field>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="primary" disabled={busy || !newCat.key || !newCat.label}
+                  onClick={() => call(async () => { await api.post('/admin/legal/categories', newCat); setNewCat(null); }, t('common.saved', 'Saved.'))}>
+                  {t('common.create', 'Create')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setNewCat(null)}>{t('common.cancel', 'Cancel')}</Button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            {!cats.length && <p className="text-[12px] text-[var(--muted)]">{t('al.mng.nocats', 'No headings. Every document is listed together, which is right until there is more than one project.')}</p>}
+            {cats.map((c) => (
+              <div key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-2">
+                <span className="text-[13px] font-medium truncate flex-1 min-w-0">{c.label}</span>
+                <span className="text-[11px] font-mono text-[var(--faint)] shrink-0">#{c.key}</span>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{pages.filter((p) => p.categoryId === c.id).length}</span>
+                {/* Deleting a heading leaves its documents alone — they become uncategorised.
+                    Said here, because "delete" beside a list of policies reads worse than it
+                    is. */}
+                <button type="button" className="text-[var(--faint)] hover:text-error shrink-0"
+                  title={t('al.mng.delcat', 'Delete the heading (the documents in it are kept)')}
+                  onClick={() => call(() => api.del(`/admin/legal/categories/${c.id}`), t('common.deleted', 'Deleted.'))}>
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 // Admin: edit the legal pages.
 //
 // The built-in text in legal.jsx stays the source of truth until a document is IMPORTED,
@@ -8866,6 +9041,11 @@ function AdminLegal() {
   const [busy, setBusy] = useState(false);
 
   const DOCS = data?.docs || ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const PAGES = data?.pages || [];
+  const CATS = data?.categories || [];
+  const BUILTIN = data?.builtIn || ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const pageRow = PAGES.find((x) => x.key === doc) || null;
+  const [manage, setManage] = useState(false);
   const [versions, setVersions] = useState([]);
   const loadVersions = () => api.get('/legal/versions').then((r) => setVersions(r?.versions || [])).catch(() => {});
   useEffect(() => { loadVersions(); }, []);
@@ -8958,24 +9138,37 @@ function AdminLegal() {
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 mb-4">
+      <div className="flex flex-wrap items-center gap-1.5 mb-4">
         {DOCS.map((k) => {
           const n = all.filter((x) => x.doc === k).length;
+          const row = PAGES.find((x) => x.key === k);
+          const cat = row?.categoryId && CATS.find((c) => c.id === row.categoryId);
           return (
             <button key={k} type="button" onClick={() => { setDoc(k); setOpenId(null); }}
               aria-current={doc === k ? 'true' : undefined}
+              title={row?.label || k}
               className={`inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition ${
                 doc === k ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
                   : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
               }`}>
+              {/* The heading first, quietly, because with several projects' policies in one
+                  list "Terms of Service" appears more than once and the key alone does not
+                  say whose. */}
+              {cat && <span className="text-[10px] text-[var(--faint)]">{cat.label} ·</span>}
               {k}
+              {row?.published === false && <EyeOff size={11} className="text-[var(--faint)]" />}
               {/* Which documents are database-backed has to be visible at a glance, or you
                   edit one for ten minutes before noticing the page never changed. */}
               {n > 0 && <Badge tone="primary">{n}</Badge>}
             </button>
           );
         })}
+        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setManage((v) => !v)}>
+          <Sliders size={13} /> {manage ? t('al.mng.hide', 'Done') : t('al.mng', 'Documents & headings')}
+        </Button>
       </div>
+
+      {manage && <LegalPagesManager pages={PAGES} cats={CATS} builtIn={BUILTIN} sections={all} onChanged={reload} />}
 
       {!imported ? (
         <Card className="p-4">

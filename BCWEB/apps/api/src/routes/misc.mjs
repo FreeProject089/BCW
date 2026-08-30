@@ -1139,20 +1139,34 @@ export default async function miscRoutes(app) {
   // one line a reader uses to decide whether a policy is current.
   app.get('/legal', async (req, reply) => replyCachedJson(req, reply, 'legal:all', 60_000, async () => {
     const p = await db();
-    const rows = await p.legalSection.findMany({
-      orderBy: [{ doc: 'asc' }, { order: 'asc' }],
-      select: { id: true, doc: true, title: true, titleFr: true, body: true, bodyFr: true, order: true, updatedAt: true },
-    });
+    const [rows, pages, categories] = await Promise.all([
+      p.legalSection.findMany({
+        orderBy: [{ doc: 'asc' }, { order: 'asc' }],
+        select: { id: true, doc: true, title: true, titleFr: true, body: true, bodyFr: true, order: true, updatedAt: true },
+      }),
+      p.legalPage.findMany({
+        where: { published: true },
+        orderBy: [{ order: 'asc' }, { label: 'asc' }],
+        select: { key: true, label: true, labelFr: true, summary: true, summaryFr: true, icon: true, order: true, builtIn: true, categoryId: true },
+      }),
+      p.legalCategory.findMany({ orderBy: [{ order: 'asc' }, { label: 'asc' }], select: { id: true, key: true, label: true, labelFr: true, order: true } }),
+    ]);
     const docs = {};
     for (const r of rows) {
       (docs[r.doc] ||= { sections: [], updatedAt: null }).sections.push(r);
       const cur = docs[r.doc].updatedAt;
       if (!cur || r.updatedAt > cur) docs[r.doc].updatedAt = r.updatedAt;
     }
-    return { docs };
+    // `pages` is the MENU and `docs` is the TEXT. They are separate because a built-in page
+    // may have no rows at all — its text comes from the web bundle — and a page list built
+    // from `docs` would drop exactly those, which is every page on a fresh install.
+    return { docs, pages, categories };
   }));
 
-  const LEGAL_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  // The five that ship with the app. Not the list of what exists — the list of what has a
+  // compiled-in fallback in the web bundle, which is a different and much smaller claim. It
+  // is what `revert` may hand back to, and what may not be deleted.
+  const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds'];
   const DOC_LABEL = {
     privacy: 'Privacy Policy', terms: 'Terms of Service', cookies: 'Cookie Policy',
     about: 'About', refunds: 'Payments & Refunds',
@@ -1161,6 +1175,30 @@ export default async function miscRoutes(app) {
     privacy: 'Politique de confidentialité', terms: 'Conditions d’utilisation',
     cookies: 'Politique de cookies', about: 'À propos', refunds: 'Paiements & remboursements',
   };
+
+  /**
+   * Every document key this deployment has.
+   *
+   * Read rather than declared, because the whole point of the table is that an admin can add
+   * one. A zod `z.enum` over a constant would have refused every key created after the
+   * process started — which is the failure that reads as "the page saved and nothing
+   * happened".
+   *
+   * The built-ins are unioned in, so a database that has somehow lost its LegalPage rows
+   * still accepts edits to the five whose text is in the bundle.
+   */
+  async function legalKeys(p) {
+    const rows = await p.legalPage.findMany({ select: { key: true } });
+    return new Set([...BUILTIN_DOCS, ...rows.map((r) => r.key)]);
+  }
+
+  /** 400 unless `doc` names a real document. The message says which, because "invalid_input"
+   *  on a key that looks fine is the least useful thing this endpoint could say. */
+  async function knownDoc(p, doc, reply) {
+    if ((await legalKeys(p)).has(doc)) return true;
+    reply.code(400).send({ error: 'unknown_doc', doc });
+    return false;
+  }
 
   // One mail per address, in batches, best-effort. A policy change is not urgent enough to
   // justify blocking the publish on an SMTP round-trip per user, and a publish that fails
@@ -1221,7 +1259,11 @@ export default async function miscRoutes(app) {
       orderBy: [{ doc: 'asc' }, { order: 'asc' }],
       include: { updatedBy: { select: { id: true, displayName: true } } },
     });
-    return { sections, docs: LEGAL_DOCS };
+    const [pages, categories] = await Promise.all([
+      p.legalPage.findMany({ orderBy: [{ order: 'asc' }, { label: 'asc' }] }),
+      p.legalCategory.findMany({ orderBy: [{ order: 'asc' }, { label: 'asc' }] }),
+    ]);
+    return { sections, docs: pages.map((x) => x.key), pages, categories, builtIn: BUILTIN_DOCS };
   });
 
   // Import a document's built-in defaults. The client posts them, because the defaults live
@@ -1230,7 +1272,7 @@ export default async function miscRoutes(app) {
   // silently overwriting somebody's edited policy is not a recoverable mistake.
   app.post('/admin/legal/import', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
-      doc: z.enum(LEGAL_DOCS),
+      doc: z.string().min(1).max(60),
       sections: z.array(z.object({
         title: z.string().min(1).max(300),
         titleFr: z.string().max(300).optional(),
@@ -1240,6 +1282,7 @@ export default async function miscRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    if (!await knownDoc(p, b.data.doc, reply)) return undefined;
     const existing = await p.legalSection.count({ where: { doc: b.data.doc } });
     if (existing) return reply.code(409).send({ error: 'already_imported', count: existing });
     await p.legalSection.createMany({
@@ -1273,12 +1316,13 @@ export default async function miscRoutes(app) {
 
   app.post('/admin/legal', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
-      doc: z.enum(LEGAL_DOCS),
+      doc: z.string().min(1).max(60),
       title: z.string().min(1).max(300),
       body: z.string().max(60000).default(''),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    if (!await knownDoc(p, b.data.doc, reply)) return undefined;
     const last = await p.legalSection.findFirst({ where: { doc: b.data.doc }, orderBy: { order: 'desc' } });
     const row = await p.legalSection.create({
       data: { ...b.data, order: (last?.order ?? -1) + 1, updatedById: req.user.uid },
@@ -1298,14 +1342,133 @@ export default async function miscRoutes(app) {
   // rather than `delete` because that is what it does from where the reader stands: the page
   // keeps working and goes back to what the code says.
   app.post('/admin/legal/revert', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ doc: z.enum(LEGAL_DOCS) }).safeParse(req.body);
+    const b = z.object({ doc: z.enum(BUILTIN_DOCS) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    // Deliberately still the built-ins only. "Revert" means "go back to what the code says",
+    // and a page an admin created has nothing in the code to go back to — for those, emptying
+    // the sections is deleting the document, and there is an endpoint that says so.
     const n = await p.legalSection.deleteMany({ where: { doc: b.data.doc } });
     invalidate('legal:all');
     return { ok: true, removed: n.count };
   });
 
+
+  // ── The documents themselves, and the headings they sit under ─────────────
+  //
+  // Everything above edits the CONTENT of a document. These edit the LIST: which documents
+  // exist, what they are called, and which project they belong to. It was an array of five
+  // strings in this file and another in the web bundle.
+
+  /** A slug: what appears in /legal/<key> and what LegalSection.doc holds. */
+  const KEY = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/, 'letters, digits and dashes');
+
+  app.post('/admin/legal/pages', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      key: KEY,
+      label: z.string().trim().min(1).max(80),
+      labelFr: z.string().trim().max(80).optional().default(''),
+      summary: z.string().trim().max(400).optional().default(''),
+      summaryFr: z.string().trim().max(400).optional().default(''),
+      icon: z.string().trim().max(60).optional().default(''),
+      categoryId: z.string().max(40).nullable().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.message });
+    const p = await db();
+    if (await p.legalPage.findUnique({ where: { key: b.data.key }, select: { id: true } })) {
+      return reply.code(409).send({ error: 'key_taken' });
+    }
+    const last = await p.legalPage.findFirst({ orderBy: { order: 'desc' }, select: { order: true } });
+    const page = await p.legalPage.create({
+      data: { ...b.data, categoryId: b.data.categoryId || null, order: (last?.order ?? -1) + 1 },
+    });
+    await logAudit(p, req.user.uid, 'legal.page.create', page.key, clientIp(req));
+    invalidate('legal:all');
+    return reply.code(201).send({ page });
+  });
+
+  app.put('/admin/legal/pages/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      label: z.string().trim().min(1).max(80).optional(),
+      labelFr: z.string().trim().max(80).optional(),
+      summary: z.string().trim().max(400).optional(),
+      summaryFr: z.string().trim().max(400).optional(),
+      icon: z.string().trim().max(60).optional(),
+      order: z.number().int().min(0).max(999).optional(),
+      published: z.boolean().optional(),
+      categoryId: z.string().max(40).nullable().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    // `key` is absent from the schema above on purpose. It is in every stored section row,
+    // in every published version, and in every link anybody has ever shared — renaming it
+    // here would silently empty a document and break its archive.
+    const data = { ...b.data };
+    if ('categoryId' in data) data.categoryId = data.categoryId || null;
+    const n = await p.legalPage.updateMany({ where: { id: req.params.id }, data });
+    if (!n.count) return reply.code(404).send({ error: 'not_found' });
+    invalidate('legal:all');
+    return { ok: true };
+  });
+
+  app.delete('/admin/legal/pages/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const page = await p.legalPage.findUnique({ where: { id: req.params.id }, select: { id: true, key: true, builtIn: true } });
+    if (!page) return reply.code(404).send({ error: 'not_found' });
+    // A built-in has a fallback text compiled into the web bundle. Removing the row would
+    // leave /legal/terms rendering that fallback with nothing linking to it — a page that
+    // exists, is reachable, and appears in no menu. Hide it instead; the flag exists for this.
+    if (page.builtIn) return reply.code(409).send({ error: 'builtin_page', hint: 'set published:false instead' });
+    const versions = await p.legalVersion.count({ where: { doc: page.key } });
+    // A published version is what somebody's acceptance points at. Deleting the page that
+    // owns it would leave those acceptances referring to a document nobody can name.
+    if (versions) return reply.code(409).send({ error: 'has_versions', versions });
+    await p.legalSection.deleteMany({ where: { doc: page.key } });
+    await p.legalPage.delete({ where: { id: page.id } });
+    await logAudit(p, req.user.uid, 'legal.page.delete', page.key, clientIp(req));
+    invalidate('legal:all');
+    return { ok: true };
+  });
+
+  app.post('/admin/legal/categories', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      key: KEY,
+      label: z.string().trim().min(1).max(80),
+      labelFr: z.string().trim().max(80).optional().default(''),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0]?.message });
+    const p = await db();
+    if (await p.legalCategory.findUnique({ where: { key: b.data.key }, select: { id: true } })) {
+      return reply.code(409).send({ error: 'key_taken' });
+    }
+    const last = await p.legalCategory.findFirst({ orderBy: { order: 'desc' }, select: { order: true } });
+    const category = await p.legalCategory.create({ data: { ...b.data, order: (last?.order ?? -1) + 1 } });
+    invalidate('legal:all');
+    return reply.code(201).send({ category });
+  });
+
+  app.put('/admin/legal/categories/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      label: z.string().trim().min(1).max(80).optional(),
+      labelFr: z.string().trim().max(80).optional(),
+      order: z.number().int().min(0).max(999).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const n = await p.legalCategory.updateMany({ where: { id: req.params.id }, data: b.data });
+    if (!n.count) return reply.code(404).send({ error: 'not_found' });
+    invalidate('legal:all');
+    return { ok: true };
+  });
+
+  app.delete('/admin/legal/categories/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    // The pages survive and become uncategorised: the relation is SetNull. A policy vanishing
+    // because somebody tidied a heading is not a recoverable mistake.
+    await p.legalCategory.deleteMany({ where: { id: req.params.id } });
+    invalidate('legal:all');
+    return { ok: true };
+  });
 
   // Publish: freeze the document as it stands and give it a number.
   //
@@ -1315,7 +1478,7 @@ export default async function miscRoutes(app) {
   // no update or delete endpoint for a version.
   app.post('/admin/legal/publish', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
-      doc: z.enum(LEGAL_DOCS),
+      doc: z.string().min(1).max(60),
       note: z.string().max(500).default(''),
       // Two separate decisions, deliberately. Telling everyone is cheap and usually right;
       // demanding agreement again interrupts every single user and is only right when the
@@ -1325,6 +1488,7 @@ export default async function miscRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    if (!await knownDoc(p, b.data.doc, reply)) return undefined;
     const sections = await p.legalSection.findMany({
       where: { doc: b.data.doc }, orderBy: { order: 'asc' },
       select: { title: true, titleFr: true, body: true, bodyFr: true },

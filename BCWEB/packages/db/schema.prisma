@@ -1194,9 +1194,55 @@ model LegalVersion {
 //
 // `body` is markdown with the same block directives as the docs and blog (md.jsx), so a
 // legal page can use callouts and steps without a second renderer being written for it.
+/// A heading in the legal index. "BetterModsManager", "BetterSoundMaker", "The platform" —
+/// whatever this deployment needs. Optional: a page with no category is listed on its own.
+model LegalCategory {
+  id        String      @id @default(cuid())
+  /// A slug, so a category can be linked to: /legal#bmm
+  key       String      @unique
+  label     String
+  labelFr   String?
+  order     Int         @default(0)
+  createdAt DateTime    @default(now())
+  pages     LegalPage[]
+
+  @@index([order])
+}
+
+/// One legal document. Five ship with the app; the rest are created here.
+///
+/// `key` is the URL segment AND the value of `LegalSection.doc`. That join is by key and not
+/// by foreign key on purpose — every section written before this table existed already holds
+/// one, and a constraint would mean either rewriting live rows or refusing to migrate.
+model LegalPage {
+  id         String         @id @default(cuid())
+  key        String         @unique
+  label      String
+  labelFr    String?
+  summary    String         @default("")
+  summaryFr  String         @default("")
+  /// Any name IconGlyph resolves. Empty falls back to the built-in document icon.
+  icon       String         @default("")
+  order      Int            @default(0)
+  /// The five that ship in the web bundle. Renameable, recategorisable, reorderable — not
+  /// deletable: their text has a compiled-in fallback, so removing the row would leave the
+  /// page rendering that fallback with no menu entry pointing at it.
+  builtIn    Boolean        @default(false)
+  /// Hidden without being deleted. A policy that does not apply yet is not one that never
+  /// existed, and the archive still has to resolve its versions.
+  published  Boolean        @default(true)
+  categoryId String?
+  category   LegalCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([categoryId, order])
+}
+
 model LegalSection {
   id          String   @id @default(cuid())
-  /// privacy · terms · cookies · about · refunds
+  /// A LegalPage.key — privacy · terms · cookies · about · refunds, and whatever else has
+  /// been created since.
   doc         String
   title       String
   titleFr     String?
