@@ -330,7 +330,15 @@ const showcaseConfig = (row) => {
  * looking for it.
  */
 const SCENE_KEY = 'site.scene';
-export const SCENE_SHAPES = ['orb', 'prism', 'ring', 'custom'];
+// The shapes the site can be set to. `custom` was here and built an icosahedron — the same
+// thing `orb` builds — so choosing it changed nothing, which is the worst answer for the entry
+// somebody picks when they want the numbers to do something. The numbers apply to every shape
+// and always did; three real silhouettes replace it.
+//
+// A row still holding 'custom' falls through the `includes` check below to 'orb', which is
+// precisely what it has been drawing all along. Nothing to migrate.
+export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo'];
+export const SCENE_SURFACES = ['solid', 'wire', 'both'];
 
 /** What the browser is told, with every default applied here rather than in the component. */
 const sceneConfig = (row) => {
@@ -338,6 +346,10 @@ const sceneConfig = (row) => {
   const shape = SCENE_SHAPES.includes(v.shape) ? v.shape : 'orb';
   const num = (x, lo, hi, dflt) => (Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : dflt);
   return {
+    // Off is a real setting and not "set every slider to zero". A scene switched off costs no
+    // WebGL context at all — the page takes the same path it takes on a machine that cannot
+    // draw one, which is a path that has always had to work.
+    enabled: v.enabled !== false,
     shape,
     // Subdivisions. The cost is quadratic in this number and it is a BACKGROUND element, so
     // the ceiling is 5 and not "whatever three.js accepts": detail 6 is 40k vertices redrawn
@@ -347,6 +359,17 @@ const sceneConfig = (row) => {
     noise: num(v.noise, 0, 1.5, 1),
     // Rotation speed, as a multiplier of what it has always been.
     speed: num(v.speed, 0, 3, 1),
+    // How present the surface is. Not allowed to reach 0: that is "off", it has its own
+    // setting, and a scene at zero opacity is an invisible thing still being drawn 60 times
+    // a second.
+    opacity: num(v.opacity, 0.1, 1, 0.8),
+    // Multiplies the framing, so the intro keeps its proportion to the resting size.
+    scale: num(v.scale, 0.5, 1.8, 1),
+    surface: SCENE_SURFACES.includes(v.surface) ? v.surface : 'solid',
+    // The halo behind it, and the belt of specks orbiting it. Both reach 0, and at 0 neither
+    // is added to the scene rather than added invisibly.
+    glow: num(v.glow, 0, 1, 0.45),
+    twinkles: Math.round(num(v.twinkles, 0, 240, 110)),
   };
 };
 
@@ -378,22 +401,33 @@ export default async function miscRoutes(app) {
   app.get('/admin/site/scene', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     // The shape list travels with the value so the admin screen does not keep its own copy.
-    return { ...sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } })), shapes: SCENE_SHAPES };
+    return {
+      ...sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } })),
+      shapes: SCENE_SHAPES,
+      surfaces: SCENE_SURFACES,
+    };
   });
 
   app.put('/admin/site/scene', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
+      enabled: z.boolean().optional(),
       shape: z.enum(SCENE_SHAPES).optional(),
       detail: z.number().int().min(0).max(5).optional(),
       noise: z.number().min(0).max(1.5).optional(),
       speed: z.number().min(0).max(3).optional(),
+      opacity: z.number().min(0.1).max(1).optional(),
+      scale: z.number().min(0.5).max(1.8).optional(),
+      surface: z.enum(SCENE_SURFACES).optional(),
+      glow: z.number().min(0).max(1).optional(),
+      twinkles: z.number().int().min(0).max(240).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } }));
     const value = { ...cur, ...b.data };
     await p.adminSetting.upsert({ where: { key: SCENE_KEY }, create: { key: SCENE_KEY, value }, update: { value } });
-    await logAudit(p, req.user.uid, 'site.scene', `shape=${value.shape} detail=${value.detail}`);
+    await logAudit(p, req.user.uid, 'site.scene',
+      value.enabled === false ? 'off' : `shape=${value.shape} detail=${value.detail} surface=${value.surface}`);
     return sceneConfig({ value });
   });
 

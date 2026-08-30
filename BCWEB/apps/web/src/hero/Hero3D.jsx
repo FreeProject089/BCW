@@ -4,6 +4,11 @@ import gsap from 'gsap';
 import { useIntro, SKIP_KEY } from '../ui/IntroContext.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
+import {
+  isLight, palette, VERTEX_SHADER, FRAGMENT_SHADER,
+  FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
+  buildGeometry, SCENE_DEFAULTS,
+} from './scene-shapes.js';
 
 // v4 — the intro loader and the background are now literally the same canvas:
 // the orb starts big and centered (the "loading" moment), then GSAP animates it
@@ -24,203 +29,11 @@ function webglAvailable() {
   } catch { return false; }
 }
 
-function isLight() { return document.documentElement.getAttribute('data-theme') !== 'dark'; } // default theme is light
-// The orb's colours are DERIVED from the site accent rather than hardcoded, so a superadmin
-// who recolours the site recolours the hero with it. The shipped values were an orange-only
-// hand-tune — beautiful against orange, and jarring the moment the accent became, say, Classic
-// Blue, because the orb would have stayed amber while everything around it moved.
-//
-// Read from the live computed style, so this picks up whatever the theme layer resolved
-// (including color-mix) without needing to know how the value was produced.
-function cssHex(name, fallback) {
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    if (!v) return fallback;
-    const c = new THREE.Color(v);          // parses hex, rgb(), and named colours
-    return c.getHex();
-  } catch { return fallback; }
-}
-function palette() {
-  const light = isLight();
-  const a = cssHex('--primary', 0xf97316);
-  const b = cssHex('--primary-2', 0xf59e0b);
-  const A = new THREE.Color(a), B = new THREE.Color(b);
-  // Light: an airy tint of the accent, near-white rim — daylight glass.
-  // Dark:  a deep core with the accent glowing through, bright rim — molten metal at night.
-  // Same recipe, opposite direction, so any accent produces the same *character* of orb.
-  const mix = (c, target, amt) => c.clone().lerp(new THREE.Color(target), amt).getHex();
-  return light
-    ? { colorA: mix(A, 0xffffff, 0.62), colorB: mix(B, 0xffffff, 0.18), rim: mix(A, 0xffffff, 0.9),
-        opacity: 0.8, heroOp: 0.55, blending: THREE.NormalBlending }
-    : { colorA: mix(A, 0x000000, 0.72), colorB: mix(B, 0x000000, 0.12), rim: mix(B, 0xffffff, 0.55),
-        opacity: 0.8, heroOp: 0.55, blending: THREE.AdditiveBlending };
-}
-
-// Classic Ashima/Stefan Gustavson 3D simplex noise (public-domain-style, widely
-// reused in countless shader projects) — lets the vertex shader displace the
-// orb's surface organically without any texture lookup.
-const NOISE_GLSL = `
-vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
-vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
-vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
-vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-float snoise(vec3 v){
-  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-  vec3 i  = floor(v + dot(v, C.yyy));
-  vec3 x0 = v - i + dot(i, C.xxx);
-  vec3 g = step(x0.yzx, x0.xyz);
-  vec3 l = 1.0 - g;
-  vec3 i1 = min(g.xyz, l.zxy);
-  vec3 i2 = max(g.xyz, l.zxy);
-  vec3 x1 = x0 - i1 + C.xxx;
-  vec3 x2 = x0 - i2 + C.yyy;
-  vec3 x3 = x0 - D.yyy;
-  i = mod289(i);
-  vec4 p = permute(permute(permute(
-            i.z + vec4(0.0, i1.z, i2.z, 1.0))
-          + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-          + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-  float n_ = 0.142857142857;
-  vec3 ns = n_ * D.wyz - D.xzx;
-  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_);
-  vec4 x = x_ * ns.x + ns.yyyy;
-  vec4 y = y_ * ns.x + ns.yyyy;
-  vec4 h = 1.0 - abs(x) - abs(y);
-  vec4 b0 = vec4(x.xy, y.xy);
-  vec4 b1 = vec4(x.zw, y.zw);
-  vec4 s0 = floor(b0) * 2.0 + 1.0;
-  vec4 s1 = floor(b1) * 2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-  vec3 p0 = vec3(a0.xy, h.x);
-  vec3 p1 = vec3(a0.zw, h.y);
-  vec3 p2 = vec3(a1.xy, h.z);
-  vec3 p3 = vec3(a1.zw, h.w);
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot(m * m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-`;
-
-const VERTEX_SHADER = `
-uniform float uTime;
-uniform float uAmp;
-uniform float uFreq;
-varying float vNoise;
-varying vec3 vNormalW;
-varying vec3 vPosW;
-${NOISE_GLSL}
-void main() {
-  float n = snoise(position * uFreq + vec3(0.0, 0.0, uTime * 0.12));
-  vNoise = n;
-  vec3 displaced = position + normal * n * uAmp;
-  vec4 worldPos = modelMatrix * vec4(displaced, 1.0);
-  vNormalW = normalize(mat3(modelMatrix) * normal);
-  vPosW = worldPos.xyz;
-  gl_Position = projectionMatrix * viewMatrix * worldPos;
-}
-`;
-
-const FRAGMENT_SHADER = `
-uniform vec3 uColorA;
-uniform vec3 uColorB;
-uniform vec3 uColorRim;
-uniform float uOpacity;
-uniform float uFracture; // 0 = solid, 1 = fully dissolved into the particle cloud
-varying float vNoise;
-varying vec3 vNormalW;
-varying vec3 vPosW;
-void main() {
-  vec3 viewDir = normalize(cameraPosition - vPosW);
-  float fresnel = pow(1.0 - clamp(dot(viewDir, vNormalW), 0.0, 1.0), 2.1);
-  vec3 base = mix(uColorA, uColorB, smoothstep(-0.6, 0.6, vNoise));
-  vec3 color = mix(base, uColorRim, fresnel * 0.85);
-  gl_FragColor = vec4(color, uOpacity * (1.0 - uFracture));
-}
-`;
-
-// The "fracture" layer: actual triangular SHARDS of the orb's own surface —
-// a coarser non-indexed icosahedron whose faces fly apart along their centroid
-// direction as uFracture goes 0→1, shrinking slightly so gaps open between
-// pieces. Each shard is displaced by the SAME noise and colored by the SAME
-// noise+fresnel mix as the solid orb, so what explodes is unmistakably the
-// orb itself breaking into fragments, not a generic particle cloud.
-const FRACTURE_VERTEX_SHADER = `
-uniform float uTime;
-uniform float uAmp;
-uniform float uFreq;
-uniform float uFracture;
-attribute vec3 aCentroid;
-attribute vec3 aRandom;
-varying float vNoise;
-varying vec3 vNormalW;
-varying vec3 vPosW;
-${NOISE_GLSL}
-void main() {
-  float n = snoise(position * uFreq + vec3(0.0, 0.0, uTime * 0.12));
-  vNoise = n;
-  vec3 p = position + normal * n * uAmp;
-  // shrink each face toward its centroid, then scatter it outward
-  p = aCentroid + (p - aCentroid) * (1.0 - 0.35 * uFracture);
-  vec3 dir = normalize(aCentroid + aRandom * 1.2);
-  p += dir * uFracture * (1.6 + 2.6 * abs(aRandom.x));
-  vec4 worldPos = modelMatrix * vec4(p, 1.0);
-  vNormalW = normalize(mat3(modelMatrix) * normal);
-  vPosW = worldPos.xyz;
-  gl_Position = projectionMatrix * viewMatrix * worldPos;
-}
-`;
-const FRACTURE_FRAGMENT_SHADER = `
-uniform vec3 uColorA;
-uniform vec3 uColorB;
-uniform vec3 uColorRim;
-uniform float uOpacity;
-uniform float uFracture;
-varying float vNoise;
-varying vec3 vNormalW;
-varying vec3 vPosW;
-void main() {
-  vec3 viewDir = normalize(cameraPosition - vPosW);
-  float fresnel = pow(1.0 - clamp(dot(viewDir, vNormalW), 0.0, 1.0), 2.1);
-  vec3 base = mix(uColorA, uColorB, smoothstep(-0.6, 0.6, vNoise));
-  vec3 color = mix(base, uColorRim, fresnel * 0.85);
-  gl_FragColor = vec4(color, uOpacity * uFracture);
-}
-`;
-
 // Steady-state ("background") framing vs. the dramatic centered intro framing.
 const BG_POS = { x: 5.3, y: 3.0, z: -4 };
 const HERO_POS = { x: 0, y: 0.3, z: 2 };
 const BG_SCALE = 1;
 const HERO_SCALE = 1.5;
-
-/**
- * The scene's shape, and the three silhouettes on offer.
- *
- * Three shapes rather than three settings: a sphere, an angular solid and a knotted ring read
- * as different sites from across the room, which is the only reason to offer a choice. Every
- * one of them goes through the SAME displacement shader and the same material, so a change of
- * shape costs nothing at runtime and cannot make the page slower.
- *
- * The radii differ because the shapes do not enclose the same volume at the same radius: a
- * tetrahedron at 2.9 reads as much smaller than a sphere at 2.9, so it is drawn larger to
- * occupy the same corner of the screen.
- */
-export const SCENE_DEFAULTS = { shape: 'orb', detail: 4, noise: 1, speed: 1 };
-
-function buildGeometry(shape, detail) {
-  if (shape === 'prism') return new THREE.TetrahedronGeometry(3.6, Math.min(3, detail));
-  // A torus knot has no `detail` in the same sense; its two segment counts are derived from
-  // it so the slider still means "smoother" rather than doing nothing.
-  if (shape === 'ring') return new THREE.TorusKnotGeometry(1.85, 0.62, 60 + detail * 30, 8 + detail * 4);
-  return new THREE.IcosahedronGeometry(2.9, detail);
-}
 
 export default function Hero3D() {
   const { t } = useI18n();
@@ -272,6 +85,10 @@ export default function Hero3D() {
       setShowOverlay(false); finish();
     };
     if (!webglAvailable()) { paintStaticGlow(); return; }
+    // Switched off site-wide. The same exit as "this machine cannot draw it" — which is the
+    // point: the page behind has always had to work without the scene, so turning it off is
+    // not a new state to support, it is the one that was already there.
+    if (sceneCfg.enabled === false) { paintStaticGlow(); return; }
 
     const W = () => window.innerWidth, H = () => window.innerHeight;
 
@@ -354,6 +171,11 @@ export default function Hero3D() {
     // path). Three literal 0.45s were three chances for the shape to settle at a different
     // amplitude depending on whether the visitor watched the intro.
     const AMP = 0.45 * sceneCfg.noise;
+    // The framing constants are the composition — where the shape sits and how big it reads
+    // against the page. `scale` multiplies both rather than replacing either, so a scene made
+    // larger keeps the intro's proportion to its resting size instead of flattening it.
+    const bgScale = BG_SCALE * sceneCfg.scale;
+    const heroScale = HERO_SCALE * sceneCfg.scale;
     const uniforms = {
       uTime: { value: 0 },
       uAmp: { value: active ? 0 : AMP }, // starts flat during the intro, then "comes alive"
@@ -367,9 +189,27 @@ export default function Hero3D() {
     const mat = new THREE.ShaderMaterial({
       uniforms, vertexShader: VERTEX_SHADER, fragmentShader: FRAGMENT_SHADER,
       transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      // Wireframe is the same material with its faces drawn as lines: same displacement, same
+      // colours, same fresnel. A separate line material would be a second thing to keep in
+      // step with the palette, and the first recolour would have left it behind.
+      wireframe: sceneCfg.surface === 'wire',
     });
     const orb = new THREE.Mesh(geo, mat);
     scene.add(orb);
+
+    // "Both" is a second mesh over the first, not a mode: a solid needs a *slightly larger*
+    // wireframe or the lines z-fight with the faces they trace, and one mesh cannot be two
+    // sizes. It shares the uniform objects, so it moves, breathes and recolours with the
+    // solid for free.
+    let wireOverlay = null;
+    if (sceneCfg.surface === 'both') {
+      wireOverlay = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+        uniforms, vertexShader: VERTEX_SHADER, fragmentShader: FRAGMENT_SHADER,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide, wireframe: true,
+      }));
+      wireOverlay.scale.setScalar(1.012);
+      orb.add(wireOverlay);
+    }
 
     // The shard material shares the SAME uniform objects (by reference) as the
     // solid mesh — colors, time, amp, and uFracture all stay in lockstep with
@@ -396,15 +236,17 @@ export default function Hero3D() {
     grad.addColorStop(1, 'rgba(255,255,255,0)');
     gctx.fillStyle = grad; gctx.fillRect(0, 0, 256, 256);
     const glowTex = new THREE.CanvasTexture(glowCanvas);
-    const glowMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, opacity: 0.45 });
+    const glowMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, opacity: sceneCfg.glow });
     const glow = new THREE.Sprite(glowMat);
     glow.scale.setScalar(11);
     glow.position.z = -2; // behind the orb surface
-    orb.add(glow);
+    // At 0 the sprite is not added at all rather than added at zero opacity: an invisible
+    // transparent sprite is still a draw call and still sorts, every frame, forever.
+    if (sceneCfg.glow > 0) orb.add(glow);
 
     // The twinkles are a tilted BELT that genuinely orbits the orb (passing in
     // front and behind), not a static backdrop shell — a slow Saturn-ring drift.
-    const twinkleCount = 110;
+    const twinkleCount = Math.round(sceneCfg.twinkles);
     const tArr = new Float32Array(twinkleCount * 3);
     for (let i = 0; i < twinkleCount; i++) {
       const r = 3.5 + Math.random() * 2.4;                 // ring radius band
@@ -418,14 +260,18 @@ export default function Hero3D() {
     const twinkleMat = new THREE.PointsMaterial({ size: 0.07, transparent: true, opacity: 0.45, depthWrite: false, sizeAttenuation: true });
     const twinkles = new THREE.Points(twinkleGeo, twinkleMat);
     twinkles.rotation.z = 0.4; twinkles.rotation.x = 0.25; // tilt the ring plane
-    orb.add(twinkles);
+    if (twinkleCount > 0) orb.add(twinkles);
 
     const applyPalette = () => {
       const q = palette();
       uniforms.uColorA.value.setHex(q.colorA);
       uniforms.uColorB.value.setHex(q.colorB);
       uniforms.uColorRim.value.setHex(q.rim);
-      uniforms.uOpacity.value = q.opacity;
+      // The theme decides the CHARACTER of the surface (a tint by day, a glow by night);
+      // this decides how much of it there is. Multiplying keeps both: the admin's number is
+      // read against the shipped one, so 0.8 is unchanged and 0.4 is half as present in
+      // either theme rather than half as present in one and opaque in the other.
+      uniforms.uOpacity.value = q.opacity * (sceneCfg.opacity / SCENE_DEFAULTS.opacity);
       mat.blending = q.blending;
       mat.needsUpdate = true;
       fractureMat.blending = q.blending;
@@ -570,12 +416,12 @@ export default function Hero3D() {
       fractureState.value = 1;
       const finishIntro = () => { setShowOverlay(false); finish(); };
       const tl = gsap.timeline({ onComplete: finishIntro });
-      tl.to(orb.scale, { x: HERO_SCALE, y: HERO_SCALE, z: HERO_SCALE, duration: 1.35, ease: 'back.out(1.4)' });
+      tl.to(orb.scale, { x: heroScale, y: heroScale, z: heroScale, duration: 1.35, ease: 'back.out(1.4)' });
       tl.to(fractureState, { value: 0, duration: 1.5, ease: 'power3.inOut' }, '<'); // shards fly in + fuse into the orb
       tl.to(uniforms.uAmp, { value: AMP, duration: 1.3, ease: 'power2.out' }, '<0.35');
       tl.to({}, { duration: 0.55 }); // hold beat — let it breathe before the move
       tl.to(orb.position, { x: BG_POS.x, y: BG_POS.y, z: BG_POS.z, duration: 1.3, ease: 'power3.inOut', onUpdate: () => { baseX = orb.position.x; baseY = orb.position.y; baseZ = orb.position.z; } }, '+=0');
-      tl.to(orb.scale, { x: BG_SCALE, y: BG_SCALE, z: BG_SCALE, duration: 1.3, ease: 'power3.inOut' }, '<');
+      tl.to(orb.scale, { x: bgScale, y: bgScale, z: bgScale, duration: 1.3, ease: 'power3.inOut' }, '<');
       tl.to(logoRef.current, { autoAlpha: 0, y: -14, duration: 0.5, ease: 'power2.in' }, '<');
       if (barRef.current) tl.to(barRef.current, { opacity: 0, duration: 0.3 }, '<');
       skipRef.current = () => {
@@ -584,14 +430,14 @@ export default function Hero3D() {
         gsap.killTweensOf(fractureState);
         fractureState.value = 0; // whole orb when the build is skipped
         orb.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
-        orb.scale.setScalar(BG_SCALE);
+        orb.scale.setScalar(bgScale);
         uniforms.uAmp.value = AMP;
         baseX = BG_POS.x; baseY = BG_POS.y; baseZ = BG_POS.z;
         finishIntro();
       };
     } else {
       orb.position.set(BG_POS.x, BG_POS.y, BG_POS.z);
-      orb.scale.setScalar(BG_SCALE);
+      orb.scale.setScalar(bgScale);
     }
 
     let raf, t = 0, ctxLost = false;
@@ -722,6 +568,7 @@ export default function Hero3D() {
       renderer.domElement.removeEventListener('webglcontextlost', onLost);
       renderer.domElement.removeEventListener('webglcontextrestored', onRestore);
       geo.dispose(); mat.dispose(); fractureGeo.dispose(); fractureMat.dispose();
+      if (wireOverlay) wireOverlay.material.dispose();
       glowTex.dispose(); glowMat.dispose(); twinkleGeo.dispose(); twinkleMat.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);

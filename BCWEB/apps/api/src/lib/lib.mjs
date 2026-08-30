@@ -256,6 +256,22 @@ async function appendAnchor(rec) {
     }
   } catch { /* anchor is best-effort — never block the action */ }
 }
+/**
+ * Append one anchor from outside this module.
+ *
+ * `appendAnchor` is deliberately private and best-effort: it runs beside an action that must
+ * not fail because a volume is full. An admin ANCHORING ON PURPOSE is the opposite case — a
+ * silent failure there would tell them they are protected when they are not — so this one
+ * reports whether it wrote.
+ */
+export async function anchorEntry(rec) {
+  try {
+    await fs.mkdir(ANCHOR_DIR, { recursive: true });
+    await fs.appendFile(ANCHOR_FILE, JSON.stringify(rec) + '\n');
+    return true;
+  } catch { return false; }
+}
+
 /** Read the external sensitive-action anchors (most recent `limit`). */
 export async function readAnchors(limit = 2000) {
   try {

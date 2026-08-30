@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
 import pg from 'pg';
-import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors } from '../lib/lib.mjs';
+import { db, requireRole, requireCanControlServer, requireElevated, issueElevatedToken, logAudit, auditHash, safeEqual, readAnchors, anchorEntry } from '../lib/lib.mjs';
 import { verifyTotp } from '../lib/totp.mjs';
 import { sealForOwner, openBackup } from '../lib/shred.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, backupFile, fileHistory, fileAtCommit, repoSizeBytes, gcRepo, deletedFiles, bundleRepo, backupLog, snapshotTree, inspectBundle, restoreFromBundle, bundleTree, bundleFile } from '../lib/gitbackup.mjs';
@@ -289,6 +289,178 @@ export default async function serverControlRoutes(app) {
       };
     }
     return { ok: !firstBreak && !anchorBreak, total: rows.length, checked, legacy, firstBreak, anchorsChecked, anchorBreak, sinceBreak, verifiedAt: new Date().toISOString(), newest: rows.length ? rows[rows.length - 1].createdAt : null };
+  });
+
+  // ── What to do once it says the chain is broken ────────────────────────────
+  //
+  // Everything above this line detects. An admin who reads "Chain broken · 412 entries are
+  // unverifiable" then has three questions, and the screen answered none of them: what do I
+  // keep, how do I stop it getting worse, and how do I get a working log back.
+  //
+  // The order matters and is not obvious, so the endpoints are written in it. Take the
+  // evidence off the machine FIRST — every other action here writes to the very database
+  // under suspicion, and re-sealing before exporting destroys the only copy of what the
+  // break looked like.
+
+  /**
+   * The evidence bundle. Read-only, signed, and meant to leave.
+   *
+   * Contains the verification result, the rows on both sides of the break, the external
+   * anchors, and the server's clock at the moment of reading. Signed with the deployment's
+   * signing key so the file can be shown to have come from here and not been edited after —
+   * `publicVerifyInfo()` is what a reader checks it against.
+   *
+   * NOT keyed with AUDIT_SECRET: whoever forged the chain may hold that secret, and a bundle
+   * signed with the compromised key proves nothing about the compromise.
+   */
+  app.get('/admin/security/audit/evidence', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const rows = await p.auditLogEntry.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, actorId: true, action: true, detail: true, ip: true, createdAt: true, prevHash: true, hash: true },
+    });
+    // Recompute here rather than calling the verify route: an evidence file whose verdict was
+    // fetched over HTTP from itself is a verdict about a different read of the table.
+    let expectedPrev = null; let firstBreak = null; let checked = 0; let legacy = 0;
+    for (const e of rows) {
+      if (!e.hash) { legacy++; expectedPrev = null; continue; }
+      checked++;
+      const hmacOk = safeEqual(auditHash(e.prevHash, e), e.hash);
+      const linkOk = expectedPrev === null || e.prevHash === expectedPrev;
+      if (!hmacOk || !linkOk) { firstBreak = { id: e.id, at: e.createdAt, reason: !hmacOk ? 'content_altered' : 'chain_broken' }; break; }
+      expectedPrev = e.hash;
+    }
+    // The window around the break, in full. Fifty either side because the interesting row is
+    // rarely the broken one — it is what somebody did just before, and what they did next.
+    const idx = firstBreak ? rows.findIndex((r) => r.id === firstBreak.id) : -1;
+    const window = idx >= 0 ? rows.slice(Math.max(0, idx - 50), idx + 51) : rows.slice(-100);
+    const body = {
+      kind: 'bcweb.audit.evidence',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      exportedBy: req.user.uid,
+      serverClock: new Date().toISOString(),
+      total: rows.length,
+      checked,
+      legacy,
+      firstBreak,
+      // The whole anchor file, not the matching entries: which anchors are ABSENT from the
+      // window is itself the finding when rows have been deleted.
+      anchors: await readAnchors(5000),
+      window,
+      oldest: rows.length ? rows[0].createdAt : null,
+      newest: rows.length ? rows[rows.length - 1].createdAt : null,
+    };
+    // The signed thing travels as a STRING, and the reader parses that string.
+    //
+    // Signing `body` and shipping `{...body, signature}` would produce a file that never
+    // verifies: the reader re-serialises what they received, which now has two extra keys and
+    // whatever key order this runtime chose, and gets different bytes. The signature would
+    // fail on a perfectly authentic file — the worst possible outcome for a tool whose entire
+    // job is to be believed.
+    const json = JSON.stringify(body);
+    const sig = await signBytes(Buffer.from(json, 'utf8')).catch(() => null);
+    await logAudit(p, req.user.uid, 'security.audit.evidence', `entries=${rows.length} break=${firstBreak?.reason || 'none'}`, req.ip);
+    reply.header('content-type', 'application/json; charset=utf-8');
+    reply.header('content-disposition', `attachment; filename="audit-evidence-${Date.now()}.json"`);
+    return {
+      kind: 'bcweb.audit.evidence',
+      version: 1,
+      signature: sig,
+      verifyWith: await publicVerifyInfo().catch(() => null),
+      // `printf %s "$(jq -r .bundle file.json)" > bundle.json` is the whole extraction step.
+      bundle: json,
+    };
+  });
+
+  /**
+   * Anchor the current head, now.
+   *
+   * Anchors are written automatically for sensitive actions only, so a log full of ordinary
+   * moderation has nothing outside the database to compare against — and deleting the newest
+   * rows leaves no gap in a chain, by construction. This drops one {id,hash} onto the anchor
+   * volume so that from this moment on, truncation back past it is detectable.
+   *
+   * The cheapest useful thing to do while an incident is open, and the only one that improves
+   * the situation without writing to the table under suspicion.
+   */
+  app.post('/admin/security/audit/anchor', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const head = await p.auditLogEntry.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true, hash: true, action: true, createdAt: true } });
+    if (!head?.hash) return reply.code(409).send({ error: 'no_signed_head' });
+    const ok = await anchorEntry({ at: head.createdAt.toISOString(), id: head.id, hash: head.hash, action: `manual:${head.action}` });
+    if (!ok) return reply.code(500).send({ error: 'anchor_write_failed' });
+    await logAudit(p, req.user.uid, 'security.audit.anchor', `head=${head.id}`, req.ip);
+    return { ok: true, id: head.id, at: head.createdAt };
+  });
+
+  /**
+   * Re-seal the chain forward from the first break.
+   *
+   * What it does: recomputes `prevHash` and `hash` for every entry from the break onwards, so
+   * the chain verifies again and the NEXT alteration is detectable.
+   *
+   * What it does not do, and what the screen must say in these words: it does not make the
+   * re-signed entries trustworthy. Their content is whatever the database holds right now,
+   * including whatever an attacker put there. Re-sealing over a break destroys the evidence
+   * that the break existed — which is why this endpoint refuses to run unless an evidence
+   * bundle has been exported since the break was detected, and records in the log it is
+   * repairing exactly what it did.
+   *
+   * SUPERADMIN and elevated: it is the one operation here that rewrites the tamper-evidence
+   * itself, so it sits behind the same gate as writing to the database directly.
+   */
+  app.post('/admin/security/audit/reseal', { preHandler: [requireRole('SUPERADMIN'), requireElevated()] }, async (req, reply) => {
+    if (!requireConfirm(req.body)) return reply.code(400).send({ error: 'confirm_required' });
+    const p = await db();
+    const rows = await p.auditLogEntry.findMany({
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, actorId: true, action: true, detail: true, createdAt: true, prevHash: true, hash: true },
+    });
+    // Find the break the same way verify does.
+    let expectedPrev = null; let from = -1; let reason = null;
+    for (let i = 0; i < rows.length; i++) {
+      const e = rows[i];
+      if (!e.hash) { expectedPrev = null; continue; }
+      const hmacOk = safeEqual(auditHash(e.prevHash, e), e.hash);
+      const linkOk = expectedPrev === null || e.prevHash === expectedPrev;
+      if (!hmacOk || !linkOk) { from = i; reason = !hmacOk ? 'content_altered' : 'chain_broken'; break; }
+      expectedPrev = e.hash;
+    }
+    if (from < 0) return reply.code(409).send({ error: 'nothing_to_reseal' });
+
+    // The evidence must already be out. Checked against the log itself: an export writes
+    // `security.audit.evidence`, and it has to be NEWER than the break — an export from last
+    // month describes a chain that had not broken yet.
+    const brokenAt = rows[from].createdAt;
+    const exported = await p.auditLogEntry.findFirst({
+      where: { action: 'security.audit.evidence', createdAt: { gte: brokenAt } },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (!exported) return reply.code(409).send({ error: 'export_evidence_first', brokenAt });
+
+    const affected = rows.slice(from);
+    // One transaction: a partial re-seal leaves a chain that is broken in a NEW place, and
+    // the admin cannot tell the two breaks apart afterwards.
+    await p.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273645)`;
+      let prev = from > 0 ? rows[from - 1].hash : 'GENESIS';
+      for (const e of affected) {
+        const hash = auditHash(prev, e);
+        await tx.auditLogEntry.update({ where: { id: e.id }, data: { prevHash: prev, hash } });
+        prev = hash;
+      }
+    });
+
+    // Recorded in the log it just rewrote, which is the point: the re-seal is the last thing
+    // anybody can prove about this period, so it had better say what it covered.
+    await logAudit(p, req.user.uid, 'security.audit.reseal',
+      `from=${brokenAt.toISOString()} reason=${reason} entries=${affected.length}`, req.ip);
+    // And anchored, so this particular claim cannot be quietly removed either.
+    const head = await p.auditLogEntry.findFirst({ orderBy: { createdAt: 'desc' }, select: { id: true, hash: true, createdAt: true } });
+    if (head?.hash) await anchorEntry({ at: head.createdAt.toISOString(), id: head.id, hash: head.hash, action: 'manual:security.audit.reseal' });
+    return { ok: true, resealed: affected.length, from: brokenAt, reason };
   });
 
   // ── File manager — confined to FILES_ROOT (this container's own filesystem) ──

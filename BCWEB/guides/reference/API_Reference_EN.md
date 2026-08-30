@@ -271,6 +271,10 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET/PUT | `/admin/telemetry/config` | admin | Read/update the BMM telemetry service's live config (storage limit, retention, erase delay) — proxied to the service. |
 | GET | `/server/telemetry-db/tables` · `/table/:name` | server-control | Read-only viewer over the separate BMM telemetry Postgres. |
 | GET | `/admin/security/audit` · `/admin/security/logins` | admin | Security log (actions, login attempts, IPs). |
+| GET | `/admin/security/audit/verify` | admin | Recompute the whole HMAC chain and cross-check the external anchors. Reports the first break, why, and how much of the log sits after it. |
+| GET | `/admin/security/audit/evidence` | admin | The evidence bundle: the break, the hundred rows around it, every anchor, signed with the site key. Signature covers the `bundle` **string**, so a reader verifies exactly the bytes that were signed. |
+| POST | `/admin/security/audit/anchor` | admin | Write the newest entry's fingerprint to the anchor volume, outside the database — after which deleting the newest rows becomes detectable. |
+| POST | `/admin/security/audit/reseal` | superadmin + elevated | Re-sign the chain from the first break so the **next** alteration is detectable. Refuses unless an evidence bundle was exported after the break, records what it covered, and anchors that record. It does not make the re-signed entries trustworthy. |
 | GET/PUT | `/admin/server-control/users` · `/admin/server-control/:userId` | superadmin | Grant/revoke the server-control permission. |
 
 ---
@@ -619,19 +623,6 @@ itself never leaves the reviewer's machine — the signature covers exactly that
 
 Nothing here writes. An inspector for untrusted content that stores what it read is a way to get
 content stored.
-
-## 35. Page builder (`pagebuilder.mjs`)
-The block trees behind the site's own pages, and the palette the editor draws from.
-
-| Method | Path | Auth | Purpose |
-|---|---|---|---|
-| GET | `/site/pages` | — | The built pages, and nothing else. Read before the first paint, cached 30s. A site that never opened the builder gets `enabled: false` rows and renders what it always did. |
-| GET | `/admin/site/pages` | ADMIN | The same, plus the block palette, the variable allowlist and the list of buildable pages. |
-| PUT | `/admin/site/pages` | ADMIN | Save the trees. Validated to a depth of six, with duplicate ids, misplaced children and unsafe URLs refused by name. |
-
-The palette and the variable list travel **with** the config rather than being held by the
-editor, for one reason: an editor with its own copy offers a block the renderer does not
-know, and that failure reads as a bug in the page instead of a bug in the list.
 
 ## 36. Content export (`content-backup.mjs`)
 The written content, as JSON, for reading elsewhere — **not** a restore point.

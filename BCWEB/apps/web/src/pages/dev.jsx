@@ -11,8 +11,6 @@ import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast,
 import DevTryIt from './dev-try.jsx';
 import { useAuth } from './auth.jsx';
 import { IconGlyph } from '../ui/md.jsx';
-import PageRender, { useLayoutMode } from './page-render.jsx';
-import { hasCustomPage, sitePage } from '../lib/site-pages.js';
 
 // /dev — the front door for anybody building against BetterCommunity.
 //
@@ -413,7 +411,6 @@ export default function DevHub() {
   const myKeys = (mine.data?.keys || []).filter((k) => !k.revokedAt);
   const [scopes, setScopes] = useState(null);
   const base = typeof location !== 'undefined' ? location.origin : '';
-  const layoutMode = useLayoutMode();
   // Only read by a `stat` block on a built page, and fetched unconditionally so the hook
   // order never depends on whether one exists.
   const { data: stats } = useAsync(() => api.get('/stats').catch(() => null), []);
@@ -452,16 +449,6 @@ export default function DevHub() {
     try { setScopes((await api.get('/v1/scopes')).scopes); }
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
-
-  // A page an admin BUILT replaces this one. Below every hook, for the same reason home.jsx
-  // puts it there: the branch must not change how many hooks ran.
-  if (hasCustomPage('dev')) {
-    return (
-      <div className="max-w-5xl mx-auto py-8 sm:py-12">
-        <PageRender page={sitePage('dev')} ctx={{ showcase }} vars={stats || {}} which={layoutMode} />
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-5xl mx-auto py-8 sm:py-12">

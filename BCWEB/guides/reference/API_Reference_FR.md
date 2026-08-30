@@ -277,6 +277,10 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET/PUT | `/admin/telemetry/config` | admin | Lire/mettre à jour la config live du service télémétrie BMM (limite de stockage, rétention, délai d'effacement) — proxyfié vers le service. |
 | GET | `/server/telemetry-db/tables` · `/table/:name` | server-control | Viewer en lecture seule sur le Postgres télémétrie BMM séparé. |
 | GET | `/admin/security/audit` · `/admin/security/logins` | admin | Journal de sécurité (actions, tentatives de login, IPs). |
+| GET | `/admin/security/audit/verify` | admin | Recalcule toute la chaîne HMAC et recoupe les ancres externes. Indique la première cassure, sa raison, et ce qui a été écrit après. |
+| GET | `/admin/security/audit/evidence` | admin | Le dossier de preuve : la cassure, les cent lignes autour, chaque ancre, signé avec la clé du site. La signature porte sur la **chaîne** `bundle`, pour qu'un lecteur vérifie exactement les octets signés. |
+| POST | `/admin/security/audit/anchor` | admin | Écrit l'empreinte de l'entrée la plus récente sur le volume d'ancrage, hors base — après quoi supprimer les lignes récentes devient détectable. |
+| POST | `/admin/security/audit/reseal` | superadmin + élevé | Re-signe la chaîne à partir de la cassure pour que la **prochaine** altération soit détectable. Refuse tant qu'un dossier de preuve n'a pas été exporté après la cassure, consigne ce qu'il a couvert, et ancre cette consignation. Ne rend pas fiables les entrées re-signées. |
 | GET/PUT | `/admin/server-control/users` · `/admin/server-control/:userId` | superadmin | Accorder/révoquer la permission server-control. |
 
 ---
@@ -630,19 +634,6 @@ ne quitte jamais la machine du relecteur — la signature couvre exactement cett
 
 Rien ici n'écrit. Un inspecteur de contenu non fiable qui stocke ce qu'il a lu est un moyen de
 faire stocker du contenu.
-
-## 35. Constructeur de pages (`pagebuilder.mjs`)
-Les arbres de blocs derrière les pages du site, et la palette dans laquelle puise l'éditeur.
-
-| Méthode | Chemin | Auth | Rôle |
-|---|---|---|---|
-| GET | `/site/pages` | — | Les pages construites, et rien d'autre. Lu avant le premier rendu, caché 30 s. Un site qui n'a jamais ouvert le constructeur reçoit des lignes `enabled: false` et rend ce qu'il a toujours rendu. |
-| GET | `/admin/site/pages` | ADMIN | La même chose, plus la palette de blocs, la liste blanche de variables et les pages constructibles. |
-| PUT | `/admin/site/pages` | ADMIN | Enregistre les arbres. Validés jusqu'à six niveaux ; ids en double, enfants mal placés et URLs douteuses sont refusés nommément. |
-
-La palette et la liste de variables voyagent **avec** la config au lieu d'être détenues par
-l'éditeur, pour une raison : un éditeur avec sa propre copie propose un bloc que le moteur
-de rendu ne connaît pas, et cette panne se lit comme un bug de la page plutôt que de la liste.
 
 ## 36. Export du contenu (`content-backup.mjs`)
 Le contenu écrit, en JSON, pour être lu ailleurs — **pas** un point de restauration.

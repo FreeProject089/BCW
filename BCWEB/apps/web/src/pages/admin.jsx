@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
 // The page builder pulls in the markdown renderer and the selection toolbar. An admin who
 // opened this screen to approve a submission must not download a page builder to do it.
-const PageBuilder = lazy(() => import('../editor/page-builder.jsx'));
 // The real landing page, for the home-page editor's preview. Lazy for the same reason the
 // page builder is: an admin who came here to approve a submission must not download the
 // front page's showcase, poll and review components to do it.
@@ -10,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -280,7 +279,6 @@ export function Admin() {
         { id: 'navui', label: t('adm.tab.navui2', 'Topbar'), icon: Navigation },
         { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
         { id: 'homepage', label: t('adm.tab.homepage', 'Home page'), icon: LayoutGrid },
-        { id: 'pagebuilder', label: t('adm.tab.pagebuilder', 'Page builder'), icon: Layers },
       ] },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
@@ -293,9 +291,6 @@ export function Admin() {
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
         {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
-        {/* Lazy: the builder carries the whole markdown renderer and the selection toolbar,
-            and an admin who came to moderate a queue must not download a page builder. */}
-        {s === 'pagebuilder' && <Suspense fallback={<Loading />}><PageBuilder /></Suspense>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -1302,6 +1297,8 @@ const AUDIT_QUICK = [['24', '24h'], ['168', '7d'], ['720', '30d'], ['8760', '1y'
 
 function AdminSecurity() {
   const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
   const [tab, setTab] = useState('logins');
   const [q, setQ] = useState('');
   const [loginFilter, setLoginFilter] = useState('all'); // all | success | failed | suspicious
@@ -1336,6 +1333,54 @@ function AdminSecurity() {
   const facets = useAsync(() => api.get('/admin/security/audit/facets'), []);
   const [verify, setVerify] = useState(null); // null | 'checking' | { ok, …, sinceBreak }
   const runVerify = async () => { setVerify('checking'); try { setVerify(await api.get('/admin/security/audit/verify')); } catch { setVerify({ error: true }); } };
+  // Repair, in the order it has to happen. `evidenceDone` is what unlocks re-sealing on this
+  // screen, and the API enforces the same rule against the log rather than trusting this flag.
+  const [busyTool, setBusyTool] = useState('');
+  const [evidenceDone, setEvidenceDone] = useState(false);
+  const exportEvidence = async () => {
+    setBusyTool('evidence');
+    try {
+      const bundle = await api.get('/admin/security/audit/evidence');
+      // Saved by the browser, not shown: this is the artefact, and reading it on the screen of
+      // the machine it accuses is not the point of taking it off that machine.
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `audit-evidence-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      setEvidenceDone(true);
+      toast.success(t('sec.tool.exported', 'Evidence exported. Keep it somewhere this server cannot reach.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusyTool(''); }
+  };
+  const anchorHead = async () => {
+    setBusyTool('anchor');
+    try { await api.post('/admin/security/audit/anchor', {}); toast.success(t('sec.tool.anchored', 'Head anchored outside the database.')); runVerify(); }
+    catch (e) { toast.error(e?.body?.error === 'no_signed_head' ? t('sec.tool.nohead', 'Nothing signed to anchor yet.') : t('common.failed', 'Failed.')); }
+    finally { setBusyTool(''); }
+  };
+  const reseal = async () => {
+    const ok = await dialog.confirm({
+      title: t('sec.tool.reseal.t', 'Re-sign the log from the break?'),
+      body: t('sec.tool.reseal.b', 'This makes the chain verify again and makes the NEXT alteration detectable. It does not make the re-signed entries trustworthy — their content is whatever the database holds now — and it overwrites the evidence that the break was ever there. Export the bundle first.'),
+      confirmText: t('sec.tool.reseal.go', 'Re-sign'),
+      danger: true,
+    });
+    if (!ok) return;
+    setBusyTool('reseal');
+    try {
+      const r = await api.post('/admin/security/audit/reseal', { confirmToken: 'CONFIRM' });
+      toast.success(`${t('sec.tool.resealed', 'Re-signed')} ${r.resealed}`);
+      runVerify();
+    } catch (e) {
+      const code = e?.body?.error;
+      toast.error(code === 'export_evidence_first' ? t('sec.tool.needexport', 'Export the evidence bundle first — re-sealing destroys it.')
+        : code === 'nothing_to_reseal' ? t('sec.tool.nobreak', 'The chain verifies. Nothing to re-sign.')
+        : t('common.failed', 'Failed.'));
+    }
+    finally { setBusyTool(''); }
+  };
   const attempts = logins.data?.attempts || [];
   const entries = audit.data?.entries || [];
   const total = audit.data?.total || 0;
@@ -1476,6 +1521,11 @@ function AdminSecurity() {
             )}
             {verify?.error && <Badge tone="red">{t('sec.verify.failed', 'Verify failed')}</Badge>}
             <Button size="sm" variant="ghost" disabled={verify === 'checking'} onClick={runVerify}>{verify === 'checking' ? <Spinner /> : <><ShieldCheck size={13} /> {t('sec.verify', 'Verify integrity')}</>}</Button>
+            {/* Reachable while everything is fine, because that is when it is worth doing:
+                an anchor placed during an incident only protects what comes after it. */}
+            <Button size="sm" variant="ghost" disabled={!!busyTool} onClick={anchorHead} title={t('sec.tool.anchor.d2', 'Write the newest entry\u2019s fingerprint outside the database, so deleting the newest rows becomes detectable.')}>
+              {busyTool === 'anchor' ? <Spinner /> : <><Anchor size={13} /> {t('sec.tool.anchor2', 'Anchor now')}</>}
+            </Button>
           </div>
           {/* Since when. A break's timestamp on a badge told an admin where the chain stopped
               and nothing about what that costs them: every entry from that moment on proves
@@ -1501,6 +1551,65 @@ function AdminSecurity() {
                     <Clock size={13} /> {t('sec.brk.window', 'Show the hour around it')}
                   </Button>
                 </div>}
+
+                {/* What a broken chain MEANS, per reason. The four reasons are not the same
+                    incident and do not have the same answer, and an admin reading "Chain
+                    broken" at 3am should not have to work out which one they have. */}
+                <div className="mt-3 pt-3 border-t border-error/25 text-[12px] leading-relaxed">
+                  <div className="font-medium mb-1">{t('sec.rb.what', 'What this means')}</div>
+                  <p className="text-[var(--muted)]">{{
+                    content_altered: t('sec.rb.content', 'A row\u2019s own content no longer matches its signature. Somebody edited an entry in the database directly — the log records the edited version, and the original is gone unless a backup has it.'),
+                    chain_broken: t('sec.rb.chain', 'Each row still signs itself correctly, but one no longer points at the row before it. Entries were deleted or inserted in the middle. Nothing says WHAT was removed — only that the count changed.'),
+                    anchored_entry_deleted: t('sec.rb.trunc', 'An entry written to the external anchor volume is missing from the database, and it is newer than the retention window, so it was not pruned. The newest rows were deleted — the one kind of tampering the in-database chain cannot see by itself.'),
+                    anchored_entry_altered: t('sec.rb.anchored', 'A sensitive action\u2019s entry differs from the copy anchored outside the database at the moment it happened. The anchor is the earlier, uncompromised record.'),
+                  }[brk?.reason] || t('sec.rb.generic', 'The chain no longer verifies. Treat every entry from the break onward as unverifiable in both directions.')}</p>
+                  <p className="text-[var(--muted)] mt-1.5">
+                    {t('sec.rb.key', 'The signing secret lives in the server\u2019s environment, not the database. A forged chain that verifies would mean that secret leaked too — so a break usually means somebody had database access and not the key.')}
+                  </p>
+                </div>
+
+                {/* Three tools, in the order they have to be used. Export first: every other
+                    action here writes to the database under suspicion, and re-sealing over a
+                    break destroys the only record of what the break looked like. */}
+                <div className="mt-3 pt-3 border-t border-error/25">
+                  <div className="font-medium text-[12px] mb-2">{t('sec.rb.do', 'What to do, in this order')}</div>
+                  <ol className="space-y-2.5">
+                    <li className="flex flex-wrap items-start gap-2">
+                      <span className="text-[11px] tabular-nums text-[var(--faint)] mt-1.5 w-4 shrink-0">1.</span>
+                      <div className="min-w-0 flex-1">
+                        <Button size="sm" variant={evidenceDone ? 'ghost' : 'primary'} disabled={!!busyTool} onClick={exportEvidence}>
+                          {busyTool === 'evidence' ? <Spinner /> : <><Download size={13} /> {t('sec.tool.export', 'Export the evidence bundle')}</>}
+                        </Button>
+                        <p className="text-[11px] text-[var(--muted)] mt-1">
+                          {t('sec.tool.export.d', 'The break, the rows on both sides of it, and every external anchor \u2014 signed with the site key so it can be shown to have come from here unedited. Save it somewhere this server cannot write to.')}
+                          {evidenceDone && <span className="text-success"> {t('sec.tool.export.ok', 'Exported.')}</span>}
+                        </p>
+                      </div>
+                    </li>
+                    <li className="flex flex-wrap items-start gap-2">
+                      <span className="text-[11px] tabular-nums text-[var(--faint)] mt-1.5 w-4 shrink-0">2.</span>
+                      <div className="min-w-0 flex-1">
+                        <Button size="sm" variant="ghost" disabled={!!busyTool} onClick={anchorHead}>
+                          {busyTool === 'anchor' ? <Spinner /> : <><Anchor size={13} /> {t('sec.tool.anchor', 'Anchor the log head now')}</>}
+                        </Button>
+                        <p className="text-[11px] text-[var(--muted)] mt-1">
+                          {t('sec.tool.anchor.d', 'Writes the newest entry\u2019s fingerprint to the anchor volume, outside the database. Only sensitive actions anchor themselves, so an ordinary log has nothing to compare against \u2014 after this, deleting the newest rows is detectable.')}
+                        </p>
+                      </div>
+                    </li>
+                    <li className="flex flex-wrap items-start gap-2">
+                      <span className="text-[11px] tabular-nums text-[var(--faint)] mt-1.5 w-4 shrink-0">3.</span>
+                      <div className="min-w-0 flex-1">
+                        <Button size="sm" variant="ghost" disabled={!!busyTool} onClick={reseal}>
+                          {busyTool === 'reseal' ? <Spinner /> : <><ShieldCheck size={13} /> {t('sec.tool.resealbtn', 'Re-sign from the break')}</>}
+                        </Button>
+                        <p className="text-[11px] text-[var(--muted)] mt-1">
+                          {t('sec.tool.reseal.d', 'Last, and only once the bundle is saved. It restores detection going forward; it does not restore trust in the entries it re-signs, and it overwrites the proof that the break happened. Superadmin, and elevation required.')}
+                        </p>
+                      </div>
+                    </li>
+                  </ol>
+                </div>
               </div>
             );
           })()}
@@ -11142,20 +11251,25 @@ function MultiChannelInput({ value, onChange, placeholder }) {
  * comes back. Otherwise the only way to undo an edit would be remembering the original.
  */
 
-// ── The shape behind every page ───────────────────────────────────────────────
+// ── The shape behind every page ─────────────────────────────────
 //
 // It was an orb, written into the component, and the settings that mentioned it said "3D hero
 // orb" — so the one thing a site could not change about its own look was the largest thing on
-// the screen. Three silhouettes and a custom row; the wording everywhere else now says
-// "scene", because "orb" stopped being true the moment there was a choice.
-const SCENE_ART = {
-  // Drawn rather than screenshotted: a screenshot goes stale the first time the palette
-  // changes, and these are the same three primitives the renderer builds.
-  orb: <circle cx="24" cy="24" r="15" />,
-  prism: <path d="M24 8 41 38 7 38Z" />,
-  ring: <><circle cx="24" cy="24" r="15" /><circle cx="24" cy="24" r="6.5" /></>,
-  custom: <><circle cx="24" cy="24" r="15" strokeDasharray="4 4" /><path d="M24 15v18M15 24h18" /></>,
-};
+// the screen. The wording everywhere else now says "scene", because "orb" stopped being true
+// the moment there was a choice.
+//
+// Two things this screen used to get wrong, both fixed here:
+//
+//   · one of the four "shapes" was called `custom` and built an icosahedron. It was the orb.
+//     Somebody wanting the numbers to do something picked the entry that did nothing, because
+//     the numbers already applied to every shape.
+//   · the shapes were previewed as flat SVG line art, hand-drawn to resemble them. Three
+//     drawings of three primitives, kept in step by hand — and a drawing cannot show what
+//     distortion, opacity, wireframe or a halo do, which is most of what there is to set.
+//
+// So the preview is the scene. `ScenePreview` imports its geometry and its shaders from the
+// same module the real backdrop imports; there is no second renderer to drift.
+const ScenePreview = lazy(() => import('../hero/ScenePreview.jsx'));
 
 function SceneEditor() {
   const { t } = useI18n();
@@ -11163,14 +11277,31 @@ function SceneEditor() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/site/scene'), []);
   const [cfg, setCfg] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (data) setCfg({ shape: data.shape, detail: data.detail, noise: data.noise, speed: data.speed }); }, [data]);
+  // Everything the API returns EXCEPT the two lists it ships alongside — those are its
+  // vocabulary, not the value, and PUTting them back would be sending the menu with the order.
+  useEffect(() => {
+    if (!data) return;
+    const { shapes, surfaces, ...v } = data;
+    setCfg(v);
+  }, [data]);
   if (loading || !cfg) return <Loading />;
+
+  const shapes = data.shapes || [];
+  const surfaces = data.surfaces || ['solid', 'wire', 'both'];
 
   const NAMES = {
     orb: [t('scn.orb', 'Orb'), t('scn.orb.d', 'A displaced sphere. What the site has always drawn.')],
-    prism: [t('scn.prism', 'Prism'), t('scn.prism.d', 'Four flat faces. Angular where the orb is soft, and the cheapest of the three.')],
-    ring: [t('scn.ring', 'Ring'), t('scn.ring.d', 'A knotted torus. The most movement, and the most fill — turn the detail down on a slow machine.')],
-    custom: [t('scn.custom', 'Custom'), t('scn.custom.d', 'The same renderer with the numbers exposed. Start from a shape you like, then move the sliders.')],
+    prism: [t('scn.prism', 'Prism'), t('scn.prism.d', 'Four flat faces. The most angular silhouette here, and the cheapest to draw.')],
+    crystal: [t('scn.crystal', 'Crystal'), t('scn.crystal.d', 'Eight faces. Large enough that the distortion shows inside a single one — the shape to pick when the surface is doing the work.')],
+    gem: [t('scn.gem', 'Gem'), t('scn.gem.d', 'Twelve pentagons. The most faceting before the outline becomes a sphere again; best with the distortion turned down.')],
+    ring: [t('scn.ring', 'Knot'), t('scn.ring.d', 'A knotted torus. The most movement and the most fill — turn the detail down on a slow machine.')],
+    halo: [t('scn.halo', 'Halo'), t('scn.halo.d', 'A plain ring. The knot\u2019s idea with one hole and a clean outline, which is what a page with a lot of text in front of it wants.')],
+  };
+
+  const SURFACES = {
+    solid: [t('scn.sf.solid', 'Solid'), t('scn.sf.solid.d', 'Filled faces.')],
+    wire: [t('scn.sf.wire', 'Wireframe'), t('scn.sf.wire.d', 'Edges only — the same surface, drawn as lines.')],
+    both: [t('scn.sf.both', 'Both'), t('scn.sf.both.d', 'A wireframe traced over the solid.')],
   };
 
   const save = async () => {
@@ -11180,59 +11311,107 @@ function SceneEditor() {
     finally { setBusy(false); }
   };
 
-  const slider = (key, label, hint, min, max, step) => (
+  const set = (patch) => setCfg({ ...cfg, ...patch });
+
+  const slider = (key, label, hint, min, max, step, fmt) => (
     <div>
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <span className="text-[13px] font-medium">{label}</span>
-        <span className="text-[11px] tabular-nums text-[var(--faint)]">{cfg[key]}</span>
+        <span className="text-[11px] tabular-nums text-[var(--faint)]">{fmt ? fmt(cfg[key]) : cfg[key]}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={cfg[key]}
-        onChange={(e) => setCfg({ ...cfg, [key]: Number(e.target.value) })}
+        onChange={(e) => set({ [key]: Number(e.target.value) })}
         className="w-full mt-1 accent-[var(--primary)]" />
       <p className="text-[11px] text-[var(--muted)] leading-snug">{hint}</p>
     </div>
   );
 
+  const pct = (v) => `${Math.round(v * 100)}%`;
+
   return (
     <Card className="p-5 mb-4">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('scn.title', '3D scene')}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('scn.title', '3D scene')}</h2>
+        {/* Off first, and phrased as the state rather than as an action: an admin who came
+            here to switch it off should not have to read four paragraphs about shapes. */}
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
+          <input type="checkbox" className="accent-[var(--primary)]" checked={cfg.enabled !== false}
+            onChange={(e) => set({ enabled: e.target.checked })} />
+          {cfg.enabled === false ? t('scn.off', 'Switched off') : t('scn.on', 'Drawn on every page')}
+        </label>
+      </div>
       <p className="text-xs text-[var(--muted)] mb-4 max-w-2xl">
         {t('scn.desc', 'The WebGL shape behind every page. A visitor can still switch it off for themselves, and it is never drawn at all on a machine without a working GPU — this decides what it draws when it does.')}
       </p>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {['orb', 'prism', 'ring', 'custom'].map((k) => (
-          <button key={k} type="button" onClick={() => setCfg({ ...cfg, shape: k })}
-            aria-pressed={cfg.shape === k}
-            className={`text-left rounded-xl border p-3 transition-colors ${
-              cfg.shape === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-            }`}>
-            <div className="grid place-items-center h-16 rounded-lg bg-[var(--surface-2)]">
-              <svg viewBox="0 0 48 48" width="46" height="46" fill="none"
-                stroke={cfg.shape === k ? 'var(--primary)' : 'var(--muted)'} strokeWidth="2" strokeLinejoin="round">
-                {SCENE_ART[k]}
-              </svg>
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+        <div className={cfg.enabled === false ? 'opacity-45 pointer-events-none' : ''}>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {shapes.map((k) => (
+              <button key={k} type="button" onClick={() => set({ shape: k })}
+                aria-pressed={cfg.shape === k}
+                className={`text-left rounded-xl border p-3 transition-colors ${
+                  cfg.shape === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                }`}>
+                <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
+                <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k]?.[1] || ''}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <div className="text-[13px] font-medium mb-1.5">{t('scn.surface', 'Surface')}</div>
+            <div className="flex flex-wrap gap-2">
+              {surfaces.map((k) => (
+                <button key={k} type="button" onClick={() => set({ surface: k })}
+                  aria-pressed={cfg.surface === k}
+                  title={SURFACES[k]?.[1] || ''}
+                  className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
+                    cfg.surface === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                  }`}>{SURFACES[k]?.[0] || k}</button>
+              ))}
             </div>
-            <div className="text-sm font-semibold mt-2">{NAMES[k][0]}</div>
-            <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{NAMES[k][1]}</p>
-          </button>
-        ))}
-      </div>
+          </div>
 
-      {/* The sliders apply to every shape, not only to "custom" — they are what the custom
-          option EXPOSES, not a separate mode. Hiding them behind it would mean picking
-          "custom" to make an orb slightly calmer, which is not a custom shape. */}
-      <div className="grid sm:grid-cols-3 gap-5 mt-5">
-        {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element — 4 is the shipped value.'), 0, 5, 1)}
-        {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'), 0, 1.5, 0.05)}
-        {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead — still drawn, no longer moving.'), 0, 3, 0.1)}
-      </div>
+          {/* Every slider applies to every shape. That is what the deleted "custom" entry
+              pretended to unlock — picking it to make an orb slightly calmer was not a
+              custom shape, it was the orb with a different label. */}
+          <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4 mt-5">
+            {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element — 4 is the shipped value.'), 0, 5, 1)}
+            {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'), 0, 1.5, 0.05)}
+            {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead — still drawn, no longer moving.'), 0, 3, 0.1)}
+            {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0 — that is the switch above, and it costs nothing instead of drawing nothing.'), 0.1, 1, 0.05, pct)}
+            {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'), 0.5, 1.8, 0.05, pct)}
+            {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d', 'The soft light behind it. At 0 it is not drawn at all.'), 0, 1, 0.05, pct)}
+            {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'), 0, 240, 10)}
+          </div>
+        </div>
 
-      <div className="flex items-center gap-2 mt-5">
-        <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
-        {/* The scene is built once on load, so the admin looking at it is looking at the old
-            one. Said rather than left to be discovered by staring at an unchanged page. */}
-        <span className="text-[11px] text-[var(--muted)]">{t('scn.reload', 'Reload the page to see it — the scene is built once, when a page loads.')}</span>
+        <div className="lg:sticky lg:top-4">
+          <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
+            {cfg.enabled === false ? (
+              <div className="h-[220px] grid place-items-center text-center px-4">
+                <p className="text-[12px] text-[var(--muted)] leading-snug">
+                  {t('scn.prev.off', 'Nothing is drawn. Pages render exactly as they do on a machine without WebGL — a path the site has always had to support.')}
+                </p>
+              </div>
+            ) : (
+              <Suspense fallback={<div className="h-[220px] grid place-items-center"><Spinner /></div>}>
+                <ScenePreview cfg={cfg} className="h-[220px] w-full" />
+              </Suspense>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--muted)] leading-snug mt-2">
+            {t('scn.prev.d', 'The real thing: same geometry, same shader, same palette as the page behind you. Only the intro, the cursor parallax and the scroll drift are left out.')}
+          </p>
+          <div className="flex items-center gap-2 mt-3">
+            <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>
+          </div>
+          {/* The backdrop is built once per page load, so the admin looking past this card is
+              looking at the previous scene. Said, rather than left to be discovered by
+              staring at an unchanged page. */}
+          <span className="block text-[11px] text-[var(--muted)] mt-2">{t('scn.reload', 'Reload the page to see it behind you — the backdrop is built once, when a page loads.')}</span>
+        </div>
       </div>
     </Card>
   );

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // The same three landing pages, named twice.
 //
-// `check-home-starters.mjs` already holds the SECTIONS of a variant to the preset that
-// rebuilds it. This is the other half of the same drift: what the variant is CALLED.
+// What a landing-page variant is CALLED, held in one place.
 //
 // The admin's home editor offered "The long one", with a sentence explaining who that page
-// is for. The page builder's "Start from:" offered "The long landing page", with no sentence
-// at all — the same page, two vocabularies, in two files, and nothing rendering them side by
-// side. Whichever list anybody edited, the other went stale silently.
+// is for. A second screen offered "The long landing page", with no sentence at all — the same
+// page, two vocabularies, in two files, and nothing rendering them side by side. Whichever
+// list anybody edited, the other went stale silently. That second screen is gone; the meta
+// module and this check outlived it, and both still earn their place the moment a third
+// screen offers the list again.
 //
 // So the names live in one module and this holds the arrangement in place:
 //   · the ids in that module are exactly the ids the API declares — no card for a variant
@@ -18,7 +19,7 @@ import { readFileSync, existsSync } from 'node:fs';
 const META = 'src/lib/home-variants-meta.js';
 const API = '../api/src/routes/misc.mjs';
 // Every screen that lets somebody pick a landing page. A new one belongs on this list.
-const SCREENS = ['src/pages/admin.jsx', 'src/editor/page-builder.jsx'];
+const SCREENS = ['src/pages/admin.jsx'];
 
 for (const f of [META, API, ...SCREENS]) {
   if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }
