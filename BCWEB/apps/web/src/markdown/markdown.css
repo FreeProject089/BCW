@@ -330,3 +330,59 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
     font-size: .8em;
     color: var(--muted, #9aa);
 }
+
+/* ── The built-in :::roadmap ───────────────────────────────────────────────
+   Drawn by the kit now, so it needs styles of its own — it used to be whatever the host
+   application's component looked like. */
+.md-body .doc-rm { margin: 1.2em 0; border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--surface); }
+.md-body .doc-rm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.md-body .doc-rm-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 1rem; font-weight: 700; }
+.md-body .doc-rm-sum { margin: 0; font-size: .82rem; color: var(--muted); }
+.md-body .doc-rm-meters { display: flex; flex-wrap: wrap; gap: 12px 20px; padding: 10px 0 14px; border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.md-body .doc-rm-meter { display: flex; align-items: center; gap: 8px; flex: 1 1 180px; font-size: .82rem; color: var(--muted); }
+.md-body .doc-rm-meter b { color: var(--text); font-variant-numeric: tabular-nums; }
+.md-body .doc-rm-updated { display: inline-flex; align-items: center; gap: 5px; font-size: .78rem; color: var(--faint); }
+.md-body .doc-rm-cat + .doc-rm-cat { margin-top: 14px; }
+.md-body .doc-rm-catname { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); margin-bottom: 4px; }
+.md-body .doc-rm-items { list-style: none; margin: 0; padding: 0; }
+.md-body .doc-rm-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.md-body .doc-rm-ico { flex: 0 0 auto; color: var(--faint); }
+.md-body .doc-rm-done .doc-rm-ico { color: var(--success); }
+.md-body .doc-rm-progress .doc-rm-ico { color: var(--warning); }
+.md-body .doc-rm-label { flex: 1 1 auto; min-width: 0; font-size: .9rem; }
+.md-body .doc-rm-eta { display: none; align-items: center; gap: 4px; font-size: .72rem; color: var(--faint); flex: 0 0 auto; }
+.md-body .doc-rm-pct { flex: 0 0 auto; width: 2.6em; text-align: right; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.md-body .doc-rm-bar { flex: 1 1 100%; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.md-body .doc-rm-bar-sm { flex: 0 0 4.5rem; height: 6px; }
+.md-body .doc-rm-bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-2)); }
+/* The ETA and the wider bar only once there is room for them. On a phone the label and the
+   figure are what matter; a 72px bar squeezed beside them makes both unreadable. */
+@media (min-width: 640px) {
+  .md-body .doc-rm-eta { display: inline-flex; }
+  .md-body .doc-rm-bar-sm { flex: 0 0 8rem; }
+}
+
+/* ── The built-in :::replay ────────────────────────────────────────────────── */
+.md-body .doc-replay { margin: 1.2em 0; }
+.md-body .doc-replay-media { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+.md-body .doc-replay-audio { width: 100%; }
+.md-body .doc-replay-cap { margin-top: 6px; font-size: .8rem; color: var(--muted); text-align: center; }
+.md-body .doc-replay-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-decoration: none; color: inherit; transition: border-color .15s; }
+.md-body .doc-replay-card:hover { border-color: var(--primary); }
+.md-body .doc-replay-icon { display: flex; color: var(--primary-2); flex: 0 0 auto; }
+.md-body .doc-replay-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.md-body .doc-replay-title { font-weight: 600; font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-body .doc-replay-sub { font-size: .78rem; color: var(--muted); }
+.md-body .doc-replay-dl { flex: 0 0 auto; color: var(--faint); }
+.md-body .doc-replay-empty { padding: 12px 14px; border: 1px dashed var(--line); border-radius: 12px; font-size: .85rem; color: var(--muted); }
+
+/* A link whose URL the policy refused. Still readable — the author's words are not the
+   problem — and visibly not a link, so nobody reports it as "the link does nothing". */
+.md-body .doc-url-blocked { text-decoration: line-through dotted; color: var(--muted); cursor: not-allowed; }
+
+/* ── A wide table stays inside the column ──────────────────────────────────
+   `width: 100%` on a table is a floor, not a ceiling: a row of long cells makes the table
+   wider than its container and the PAGE scrolls sideways, which on a phone moves the whole
+   article. The wrapper scrolls instead. */
+.md-body .md-table-wrap { overflow-x: auto; margin: .8em 0; -webkit-overflow-scrolling: touch; }
+.md-body .md-table-wrap > table { margin: 0; }

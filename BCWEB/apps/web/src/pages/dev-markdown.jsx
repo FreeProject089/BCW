@@ -203,15 +203,16 @@ export default function DevMarkdown() {
       <header className="max-w-2xl">
         <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Puzzle size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
-          {t('devmd.title', 'The markdown kit')}
+          {t('devmd.title', 'B.MD — better.markdown')}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          {t('devmd.lede', 'A GitBook-style block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, opening hours, maths. It is a React component you copy into your project, and it is the same one every page on this site renders with.')}
+          {t('devmd.lede', 'A GitBook-style block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, a roadmap, opening hours, maths. It is a React component you copy into your project, and it is the same one every page on this site renders with.')}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Badge>{t('devmd.b1', '32 block types')}</Badge>
+          <Badge>{t('devmd.b1', '48 directives')}</Badge>
           <Badge>{t('devmd.b2', 'No build step')}</Badge>
           <Badge>{t('devmd.b3', 'Sanitised by default')}</Badge>
+          <Badge>{t('devmd.b4', 'Extensible')}</Badge>
         </div>
       </header>
 

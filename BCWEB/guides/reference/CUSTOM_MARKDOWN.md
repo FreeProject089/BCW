@@ -1,11 +1,12 @@
-# BCWEB's custom markdown
+# B.MD — better.markdown
 
 Everything ordinary markdown does, plus the block directives below. They work anywhere the site
 renders markdown: blog posts, docs pages, FAQ answers, project pages, poll notes, and newsletter
 bodies — all of them go through the same renderer.
 
-**This list and every attribute in it were extracted from `apps/web/src/ui/md.jsx`, not written
-from memory.** A directive that is not here does not exist — an unknown `:::name` renders as
+**This list and every attribute in it were extracted from the renderer, not written from
+memory.** The renderer is `apps/web/src/markdown/` — `ui/md.jsx` is a thirty-line adapter
+around it, and `directives.js` is the file that decides what a directive means. A directive that is not here does not exist — an unknown `:::name` renders as
 literal text, which is how a typo shows up: visibly, rather than as a silently missing block.
 
 > **Changed August 2026.** The Steps and Columns examples in the previous version of this file
@@ -379,3 +380,65 @@ with a French spelling:
 
 Any other word in brackets is left as ordinary text, and so is anything inside code — fenced or
 backticked — so `[NEW]` in a sample stays literal.
+
+---
+
+## Where B.MD lives, and what it is made of
+
+`apps/web/src/markdown/` — sixteen files, no build step of its own. `apps/web/src/ui/md.jsx`
+is a thirty-line adapter that supplies this site's logo paths and its rrweb player; everything
+else is the kit.
+
+| File | What it is |
+|---|---|
+| `index.jsx` | the assembly — the pipeline, the component map, `<Markdown>` |
+| `directives.js` | the parser: markdown-with-directives → an mdast tree. No React |
+| `blocks.jsx` | one React component per block the parser emits |
+| `icons.jsx` | the icon set, and where a non-bundled icon comes from |
+| `sanitize.js` | what survives, and what a URL and a `style` are allowed to be |
+| `url.js` | the URL policy — one function, every link in a document |
+| `config.js` | everything a host application points at itself |
+| `plugins.js` | a block B.MD does not have, added without editing B.MD |
+| `roadmap.jsx` · `replay.jsx` | the two built-in blocks |
+| `nesting.js` · `shorthand.js` · `emoji.js` · `brands.jsx` | the pre-passes and the assets |
+| `markdown.css` · `markdown.d.ts` · `README.md` | styles, types, the kit's own documentation |
+
+The full README ships **inside** the kit, and it is the one the download carries — so the copy
+somebody takes away is documented by the same file the repository has.
+
+## Adding a block without forking the parser
+
+```jsx
+import { registerBlock } from '../markdown/index.jsx';
+
+registerBlock('pricing', {
+  component: ({ node, children }) => <PricingTable plan={node.properties.dataPlan}>{children}</PricingTable>,
+  attrs: ({ attrs }) => ({ 'data-plan': attrs.plan || 'free' }),
+});
+```
+
+`:::pricing{plan=pro}` then renders that component. The block is sanitised, anchored and packed
+like a built-in; its element is `doc-x-pricing`, prefixed so it cannot collide with an HTML tag,
+with one of B.MD's own, or with another plugin.
+
+## What is checked, and how
+
+Everything below runs in `apps/web`'s lint, against the **real** renderer — esbuild bundles
+`index.jsx` for node and renders with `renderToStaticMarkup`, so none of it is checking a
+second copy of the pipeline:
+
+| Check | What it would catch |
+|---|---|
+| `check-md-renders.mjs` | a directive that produces nothing, or its own source back as text |
+| `check-md-security.mjs` | 38 hostile documents — script tags, `javascript:`, `//evil.com`, `style` overlays, a missing `rel` |
+| `check-md-kit.mjs` | the folder reaching outside itself, an undocumented dependency, an unnamed directive |
+| `check-md-types.mjs` | an export with no declaration in `markdown.d.ts`, or the reverse |
+| `check-kit-markers.mjs` | an optional region that does not strip cleanly, or a file the download would miss |
+| `check-md-roundtrip.mjs` | a block the Visual editor destroys on save |
+| `check-md-leaf-text.mjs` | a text directive whose content is emptied before it is read |
+| `check-md-brands.mjs` | a brand button with no mark, an anchor whose class the sanitiser empties |
+
+`check-md-security.mjs` asserts on the **output**, not on the schema, and that distinction is
+not academic: `rehype-sanitize` refuses `javascript:` on an `href` and does nothing at all
+about `//evil.com`, which is not a protocol — so a reviewer reading the schema concludes the
+site is covered and it is not.

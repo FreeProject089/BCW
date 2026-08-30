@@ -80,7 +80,8 @@ if (undocumented.length) {
 //
 // Aliases count. Somebody reading a document that uses `:::hours` looks it up here, finds
 // nothing, and concludes their copy is out of date.
-const index = readFileSync(join(KIT, 'index.jsx'), 'utf8');
+// The parser, not the assembly: index.jsx names no directives now.
+const index = readFileSync(join(KIT, 'directives.js'), 'utf8');
 const directives = new Set();
 for (const m of index.matchAll(/name === '([a-z0-9-]+)'/g)) directives.add(m[1]);
 const callouts = index.match(/^const CALLOUTS = \{([\s\S]*?)^\};/m);

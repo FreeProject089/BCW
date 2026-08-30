@@ -19,7 +19,9 @@ import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const SRC = 'src/markdown/index.jsx';
+// The PARSER, which is where the directive names live. index.jsx is the assembly and
+// names none of them — a gate pointed at it reads zero and says so.
+const SRC = 'src/markdown/directives.js';
 if (!existsSync(SRC)) { console.error(`✗ ${SRC} is missing — refusing to report success`); process.exit(2); }
 
 // Every name the renderer answers to, read from it rather than listed here: a directive added
@@ -69,16 +71,14 @@ const bundle = join(process.cwd(), 'node_modules', '.md-render-bundle.mjs');
 const cleanup = () => { for (const f of [entry, bundle]) { try { rmSync(f, { force: true }); } catch { /* gone already */ } } };
 try {
   const esbuild = await import('esbuild');
-  // The two INJECTED blocks get stubs. Without them `<Markdown>` renders its honest
-  // placeholder — "no roadmap component was provided" — which quotes `:::roadmap` back and
-  // reads to this check exactly like a directive the parser never recognised. Passing stubs
-  // exercises the path the site actually takes.
+  // No stubs any more. `:::roadmap` and `:::replay` used to need a component passed in, so
+  // this had to supply two — which meant the check exercised a path with two fakes in it. The
+  // kit draws both itself now, and rendering with no props is what a reader of the README
+  // actually gets.
   writeFileSync(entry, [
     "import { renderToStaticMarkup } from 'react-dom/server';",
     "import Markdown from '../src/markdown/index.jsx';",
-    'const Stub = () => <div className="stub" />;',
-    'export const render = (md) => renderToStaticMarkup(',
-    '  <Markdown roadmap={Stub} replay={Stub}>{md}</Markdown>);',
+    'export const render = (md) => renderToStaticMarkup(<Markdown>{md}</Markdown>);',
   ].join('\n'));
   await esbuild.build({
     entryPoints: [entry], outfile: bundle, bundle: true, format: 'esm', platform: 'node',

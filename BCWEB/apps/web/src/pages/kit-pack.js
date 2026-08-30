@@ -7,6 +7,15 @@
 // This module is imported only by /dev/markdown, which is a lazy route, so the ~100 KB of
 // inlined source lands in that chunk and nowhere near the entry.
 import indexSrc from '../markdown/index.jsx?raw';
+import configSrc from '../markdown/config.js?raw';
+import urlSrc from '../markdown/url.js?raw';
+import pluginsSrc from '../markdown/plugins.js?raw';
+import sanitizeSrc from '../markdown/sanitize.js?raw';
+import directivesSrc from '../markdown/directives.js?raw';
+import blocksSrc from '../markdown/blocks.jsx?raw';
+import iconsSrc from '../markdown/icons.jsx?raw';
+import roadmapSrc from '../markdown/roadmap.jsx?raw';
+import replaySrc from '../markdown/replay.jsx?raw';
 import nestingSrc from '../markdown/nesting.js?raw';
 import shorthandSrc from '../markdown/shorthand.js?raw';
 import emojiSrc from '../markdown/emoji.js?raw';
@@ -44,16 +53,21 @@ export const KIT_PARTS = [
   },
   {
     id: 'injected',
+    // Two files, so `file` cannot say it. `files` is read by the packer alongside it.
     file: null,
+    files: ['roadmap.jsx', 'replay.jsx'],
     region: 'injected',
     label: '`:::roadmap` and `:::replay`',
-    detail: 'The two blocks you supply a component for. Without them \u2014 measured, not assumed \u2014 the directive renders its content in a plain div: unstyled, nothing lost, nothing to wire up.',
-    bytes: 0,
+    detail: 'A progress tracker and a media/recording embed, both drawn by the kit \u2014 you no longer supply a component for either. Without them the two directives render their content in a plain div: unstyled, nothing lost.',
+    bytes: roadmapSrc.length + replaySrc.length,
   },
 ];
 
-// Always in the zip, whichever flavour.
-const CORE = 'index.jsx nesting.js shorthand.js markdown.css'.split(' ');
+// Always in the zip, whichever flavour. Everything that is not an optional PART: a file
+// missing from this list is silently left out of the download, which is how a kit that
+// builds here ships as a folder with nine missing imports.
+const CORE = ('index.jsx config.js url.js plugins.js sanitize.js directives.js blocks.jsx '
+  + 'icons.jsx nesting.js shorthand.js markdown.css').split(' ');
 
 /**
  * The two flavours, and what actually differs.
@@ -127,17 +141,26 @@ export function buildKit(on, flavour = 'ts') {
   const offRegions = off.map((p) => p.region);
   const sources = {
     'index.jsx': indexSrc,
+    'config.js': configSrc,
+    'url.js': urlSrc,
+    'plugins.js': pluginsSrc,
+    'sanitize.js': sanitizeSrc,
+    'directives.js': directivesSrc,
+    'blocks.jsx': blocksSrc,
+    'icons.jsx': iconsSrc,
+    'roadmap.jsx': roadmapSrc,
+    'replay.jsx': replaySrc,
     'nesting.js': nestingSrc,
     'shorthand.js': shorthandSrc,
     'emoji.js': emojiSrc,
     'brands.jsx': brandsSrc,
     'markdown.css': cssSrc,
   };
-  const dropped = new Set(off.map((p) => p.file).filter(Boolean));
+  const dropped = new Set(off.flatMap((p) => p.files || [p.file]).filter(Boolean));
   const files = [];
   for (const [name, src] of Object.entries(sources)) {
     if (dropped.has(name)) continue;
-    if (!CORE.includes(name) && !on.has(KIT_PARTS.find((p) => p.file === name)?.id)) continue;
+    if (!CORE.includes(name) && !on.has(KIT_PARTS.find((p) => (p.files || [p.file]).includes(name))?.id)) continue;
     files.push({ name, text: clean(strip(src, offRegions)) });
   }
   // The TypeScript half. Appended rather than filtered out of `sources`, because it is not

@@ -146,3 +146,142 @@ export const BlueskyIcon: BrandIcon;
 export const InstagramIcon: BrandIcon;
 export const TelegramIcon: BrandIcon;
 export const TiktokIcon: BrandIcon;
+
+/* ── config.js ─────────────────────────────────────────────────────────── */
+
+/** How a URL may be written. See url.js for what each field does. */
+export interface MarkdownUrlPolicy {
+  /** Hostnames (and subdomains) links may point at. Empty/absent = any https host. */
+  allowHosts?: string[] | null;
+  /** The same, narrower, for `:::file` download buttons. */
+  allowDownloadHosts?: string[] | null;
+  /** Schemes, as a RegExp or an array of names. Default: http(s), mailto, tel, xmpp, irc. */
+  allowProtocols?: RegExp | string[] | null;
+  /** Last-chance rewrite, e.g. through a redirect notice. */
+  rewrite?: ((url: string, ctx: { kind: string; host: string }) => string) | null;
+}
+
+/** Everything a host application points at itself. */
+export interface MarkdownOptions {
+  /** `app:<key>` → an image URL. */
+  appIcons?: Record<string, string>;
+  /** Where a non-bundled icon comes from. `null` for a family switches it off entirely. */
+  cdn?: { lucide?: ((name: string) => string) | null; brand?: ((slug: string) => string) | null };
+  policy?: MarkdownUrlPolicy;
+  /** Which iframes survive sanitising. */
+  allowIframes?: RegExp;
+}
+
+/** Point B.MD at your project. Call once, at import time. */
+export function configureMarkdown(next?: MarkdownOptions): void;
+
+/** The whole current configuration. */
+export function markdownConfig(): Required<MarkdownOptions>;
+
+/** The URL policy alone. */
+export function urlPolicy(): MarkdownUrlPolicy;
+
+/** `app:<key>` → its image URL, or '' when the host configured none. */
+export function appIcon(key: string): string;
+
+/** The URL for a remote icon, or '' when that family is switched off. */
+export function cdnIconUrl(family: 'lucide' | 'brand', name: string): string;
+
+/* ── url.js ────────────────────────────────────────────────────────────── */
+
+export interface SafeUrlResult {
+  ok: boolean;
+  href: string;
+  external: boolean;
+  reason?: 'empty' | 'protocol_relative' | 'protocol' | 'host' | 'unparseable';
+}
+
+/** Is this a URL the kit is willing to emit, and in what form? */
+export function safeUrl(raw: string, opt?: { kind?: 'link' | 'media' | 'download'; policy?: MarkdownUrlPolicy }): SafeUrlResult;
+
+/** The attributes an anchor needs, given where it points. `null` when the URL is refused. */
+export function linkAttrs(url: string, opt?: { kind?: 'link' | 'media' | 'download'; policy?: MarkdownUrlPolicy }): { href: string; target?: string; rel?: string } | null;
+
+/* ── plugins.js ────────────────────────────────────────────────────────── */
+
+export interface BlockSpec {
+  component?: ComponentType<{ node?: unknown; children?: ReactNode }>;
+  tag?: string;
+  className?: string[];
+  attrs?: (ctx: { label: string; attrs: Record<string, string>; text: string }) => Record<string, string>;
+  leaf?: boolean;
+}
+
+/** Add a block B.MD does not have. Returns a function that removes it again. */
+export function registerBlock(name: string, spec?: BlockSpec): () => void;
+
+/** Every registered block name. */
+export function blockNames(): string[];
+
+/** One block's spec, or undefined. */
+export function blockSpec(name: string): BlockSpec | undefined;
+
+/** The element a registered block emits — `doc-x-<name>`. */
+export function blockTag(name: string): string;
+
+/** The component map the renderer merges in. */
+export function blockComponents(): Record<string, ComponentType<unknown>>;
+
+/** The tags and attributes the sanitiser must keep for the registered blocks. */
+export function blockSanitizeRules(): { tagNames: string[]; attributes: Record<string, string[]> };
+
+/* ── directives.js ─────────────────────────────────────────────────────── */
+
+/** The remark transform: directives → the hast elements the components draw. */
+export function remarkDocBlocks(): (tree: unknown) => void;
+
+/** A heading's id — what `::toc` links and every `#anchor` are built from. */
+export function slugify(s: string): string;
+
+/* ── sanitize.js ───────────────────────────────────────────────────────── */
+
+/** The rehype-sanitize schema, extended to permit exactly what the kit emits. */
+export const SANITIZE_SCHEMA: Record<string, unknown>;
+
+/** rehype-sanitize itself, re-exported so a consumer does not import it twice. */
+export const rehypeSanitize: unknown;
+
+/** Puts the sanitiser's id prefix on in-document links, so `#anchor` resolves. */
+export function rehypeAnchorPrefix(): (tree: unknown) => void;
+
+/** Drops any iframe whose src is not on the allowlist. */
+export function rehypeIframeAllowlist(): (tree: unknown) => void;
+
+/** Runs every href/src through the URL policy, after sanitising. */
+export function rehypeSafeUrls(): (tree: unknown) => void;
+
+/** One `style` attribute, declaration by declaration, with the attacking ones removed. */
+export function safeStyle(value: string): string;
+
+/** Runs every author-written `style` through safeStyle. */
+export function rehypeSafeStyle(): (tree: unknown) => void;
+
+/* ── blocks.jsx ────────────────────────────────────────────────────────── */
+
+/** One component per block the parser emits. Reached through the component map. */
+export type DocBlock = ComponentType<{ node?: unknown; children?: ReactNode }>;
+
+export const DocIcon: DocBlock;
+export const DocKbd: DocBlock;
+export const DocComment: DocBlock;
+export const DocTabs: DocBlock;
+export const DocSchedule: DocBlock;
+export const DocTime: DocBlock;
+export const DocRoadmap: DocBlock;
+export const DocReplay: DocBlock;
+
+/** The box a block draws when its component was not supplied. */
+export const MissingBlock: ComponentType<{ name: string }>;
+
+/* ── roadmap.jsx / replay.jsx ──────────────────────────────────────────── */
+
+/** The built-in `:::roadmap`. Pass `roadmap={…}` to `<Markdown>` to replace it. */
+export const Roadmap: ComponentType<{ data: unknown; title?: string; lang?: string }>;
+
+/** The built-in `:::replay`. Pass `replay={…}` to `<Markdown>` to replace it. */
+export const Replay: ComponentType<{ src: string; title?: string; autoplay?: boolean; loop?: boolean; lang?: string }>;

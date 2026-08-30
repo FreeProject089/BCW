@@ -14,7 +14,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SRC = path.join(here, '../../web/src/markdown/index.jsx');
+// The PARSER, not the assembly. index.jsx was split; it names no directives now, and this
+// test said so on the first run — "only found 0 directives, the extractor is stale" — which
+// is the guard below doing exactly its job.
+const SRC = path.join(here, '../../web/src/markdown/directives.js');
 const DOC = path.join(here, '../../../guides/reference/CUSTOM_MARKDOWN.md');
 
 const src = fs.readFileSync(SRC, 'utf8');
@@ -50,7 +53,7 @@ describe('the custom-markdown reference', () => {
         // Without this, a rename of the branch style ("name ===" → a lookup table) would empty
         // the left-hand side and the check above would pass by finding nothing at all.
         const code = directivesInCode();
-        assert.ok(code.size >= 30, `only found ${code.size} directives in md.jsx — the extractor is stale`);
+        assert.ok(code.size >= 30, `only found ${code.size} directives in directives.js — the extractor is stale`);
         for (const must of ['steps', 'step', 'roadmap', 'stage', 'card', 'note', 'columns']) {
             assert.ok(code.has(must), `expected to find "${must}" among the renderer's directives`);
         }

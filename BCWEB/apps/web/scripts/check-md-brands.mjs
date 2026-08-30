@@ -20,12 +20,20 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MD = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/index.jsx');
+// Four claims across four files now — the brand table is a parser concern, the icon set a
+// rendering one, the sanitiser schema its own file, and the math options live in the
+// assembly. Reading the whole kit and slicing from that is the only version of this check
+// that survives the next move, and it cannot report a false pass: every claim below still
+// has to find its text somewhere.
+const KIT = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown');
+const KIT_FILES = ['icons.jsx', 'directives.js', 'sanitize.js', 'index.jsx'];
+const MD = join(KIT, 'icons.jsx');
 const BRANDS = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/brands.jsx');
 for (const f of [MD, BRANDS]) {
   if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }
 }
-const src = readFileSync(MD, 'utf8');
+const src = KIT_FILES.map((f) => readFileSync(join(KIT, f), 'utf8')).join(String.fromCharCode(10));
+
 const brandSrc = readFileSync(BRANDS, 'utf8');
 
 const slice = (name) => {

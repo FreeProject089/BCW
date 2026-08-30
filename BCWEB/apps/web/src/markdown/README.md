@@ -1,9 +1,9 @@
-# The BetterCommunity markdown kit
+# B.MD — better.markdown
 
 A GitBook-style block system on top of GitHub-flavoured Markdown, as a **React component you
-copy into your project**. Thirty-two block types — callouts, cards, tabs, steps, columns,
-buttons with brand logos, file downloads, a table of contents, maths — and no build step of
-its own.
+copy into your project**. Forty-eight directives — callouts, cards, tabs, steps, columns,
+buttons with brand logos, file downloads, a roadmap, a media embed, a table of contents,
+maths — and no build step of its own.
 
 It is the same code that renders every blog post, doc page, FAQ answer and legal document on
 BetterCommunity, and the same code the page builder uses for a text block. There is one
@@ -13,13 +13,26 @@ renderer, not a copy: `apps/web/src/ui/md.jsx` is a thirty-line adapter around t
 
 | File | What it is |
 |---|---|
-| `index.jsx` | the renderer, `<Markdown>` and the pieces it exports |
+| `index.jsx` | the assembly — the pipeline, the component map, `<Markdown>` |
+| `directives.js` | the parser: markdown-with-directives → an mdast tree. No React |
+| `blocks.jsx` | one React component per block the parser emits |
+| `icons.jsx` | the icon set, and where a non-bundled icon comes from |
+| `sanitize.js` | what survives, and what a URL and a `style` are allowed to be |
+| `url.js` | the URL policy itself — one function, every link in a document |
+| `config.js` | everything a host application points at itself |
+| `plugins.js` | a block B.MD does not have, added without editing B.MD |
+| `roadmap.jsx` | the built-in `:::roadmap` |
+| `replay.jsx` | the built-in `:::replay` |
 | `nesting.js` | the pre-pass that makes `:::` blocks nest the way people write them |
 | `emoji.js` | 384 `:shortcode:` names — replace this file to bring your own set |
 | `shorthand.js` | the pre-parser rewrites: `> [!NOTE]` alerts and bare `[NEW]` chips |
 | `brands.jsx` | brand marks (Discord, Ko-fi, YouTube…) — lucide has none of these |
 | `markdown.css` | every style, scoped to `.md-body` and `.doc-*` |
 | `markdown.d.ts` | the types — see **TypeScript** below |
+
+It was one 1081-line file. Those seams were already in it; being in one file meant every one
+of them was reachable from every other, so "add a block" and "change what a URL may be" were
+edits to the same thing.
 
 Copy the folder. That is the install.
 
@@ -78,27 +91,74 @@ It covers every export of every file in the folder — including `EMOJI`, `repla
 in step, because a declaration file rots quietly: a function added to the kit and missing
 from the types is not an error anywhere, it just becomes `any` and stops being checked.
 
-## The three things it cannot know
+## Pointing it at your project
 
-Two blocks are React components rather than markup, and the kit does not ship either — they
-would drag in a charting library and an rrweb player for features most documents never use.
-Pass your own, or the block says so instead of crashing:
+Everything specific to one site by *value* rather than by import is in `config.js`. Call this
+once at import time, before anything renders:
+
+```js
+import { configureMarkdown } from './markdown/index.jsx';
+
+configureMarkdown({
+  // `:icon[app:acme]` — your own logos.
+  appIcons: { acme: '/logo.png' },
+
+  // Where an icon that is not bundled comes from. `null` for a family turns it off entirely:
+  // the glyph falls back to a neutral one and NOTHING is fetched. That is the switch a
+  // project behind a strict CSP actually needs.
+  cdn: { lucide: null, brand: null },
+
+  // Where authored URLs may point. Empty by default: a documentation site whose authors are
+  // staff needs no allowlist, and one whose authors are the public very much does.
+  policy: {
+    allowHosts: ['example.com', 'github.com'],   // and their subdomains
+    allowDownloadHosts: ['files.example.com'],   // narrower, for :::file buttons
+    rewrite: (url) => `/away?to=${encodeURIComponent(url)}`,
+  },
+
+  // Which iframes survive sanitising. One regexp, because the answer is a list of hosts.
+  allowIframes: /^https:\/\/(www\.)?youtube(-nocookie)?\.com\//i,
+});
+```
+
+### Replacing a built-in block
+
+`:::roadmap` and `:::replay` used to be the two blocks B.MD could not draw — it rendered a
+box saying a component was missing. Both are drawn now: the roadmap is a progress tracker
+(percentages are divs; it needs nothing), and the replay plays a video, an audio file or an
+image inline and links anything else.
+
+A project with something better passes it in. These are **overrides**, not requirements:
 
 ```jsx
 <Markdown
   lang={lang}
-  roadmap={MyProgressTracker}   /* ({ data, title, lang }) => node   — :::roadmap */
-  replay={MyReplayPlayer}       /* ({ src, title, autoplay, loop }) => node — :::replay */
+  roadmap={MyProgressTracker}   /* ({ data, title, lang }) => node */
+  replay={MyRrwebPlayer}        /* ({ src, title, autoplay, loop }) => node */
 >{body}</Markdown>
 ```
 
-The third is your own logos, for the `app:` icon namespace (`:icon[app:acme]`). Call this once
-at import time, before anything renders:
+BetterCommunity passes an rrweb player, which is the one thing a markdown renderer has no
+business bundling — 120 KB for a block most documents never use.
 
-```js
-import { configureMarkdown } from './markdown/index.jsx';
-configureMarkdown({ appIcons: { acme: '/logo.png' } });
+### A block B.MD does not have
+
+Adding one used to mean forking `directives.js`, and a fork is a copy that stops receiving
+the fixes. Register it instead:
+
+```jsx
+import { registerBlock } from './markdown/index.jsx';
+
+registerBlock('pricing', {
+  component: ({ node, children }) => <PricingTable plan={node.properties.dataPlan}>{children}</PricingTable>,
+  attrs: ({ attrs }) => ({ 'data-plan': attrs.plan || 'free' }),
+});
 ```
+
+`:::pricing{plan=pro}` now renders your component. Nothing about the pipeline changes: the
+block is sanitised, anchored and packed exactly like a built-in — which is what stops a
+plugin being a hole in the sanitiser. Its element is `doc-x-pricing`, prefixed so it cannot
+collide with an HTML tag, with one of B.MD's own, or with another plugin.
 
 ## Make it yours
 
@@ -132,8 +192,27 @@ icon and first line:
 
 Raw HTML in a document is allowed and then **sanitised** (`rehype-sanitize`) against a schema
 that permits exactly what the block system emits and nothing else — no `<script>`, no `on*`
-handlers, no `javascript:` URLs. `<iframe>` survives sanitising and is then filtered again to
-YouTube only, so an author cannot smuggle an arbitrary frame into a page.
+handlers, no `javascript:` URLs. Three passes run after it, each for something a schema
+cannot express:
+
+- **`rehypeSafeUrls`** — every `href` and `src`, including the ones directives build, goes
+  through `url.js`. A schema checks the *protocol*, which stops `javascript:` and does
+  nothing about `//evil.com`: no colon before the first slash, so it is "relative" to the
+  schema and protocol-relative to a browser — a link that reads as internal and is not. This
+  also strips control characters before reading the scheme (a browser does; `java\tscript:`
+  is a working URL), applies the host allowlist, and puts `rel="noopener noreferrer"` on
+  every anchor that opens a tab, whatever the author wrote.
+- **`rehypeSafeStyle`** — `style` is allowed (cards carry a colour) and its *value* was never
+  read. `expression()` and `url(javascript:…)` are refused, and so is `position: fixed`,
+  which needs no script at all: a `<div style="position:fixed;inset:0">` in a comment covers
+  the page.
+- **`rehypeIframeAllowlist`** — an `<iframe>` survives sanitising and is then filtered again
+  against `allowIframes`, so an author cannot smuggle an arbitrary frame into a page.
+
+In this repo `scripts/check-md-security.mjs` renders 38 hostile documents through the real
+component and asserts on the output rather than on the schema — because a schema is a *claim*
+about the output, and the protocol-relative hole above is exactly the kind a reviewer reads
+past.
 
 Two deliberate choices worth knowing before you change them:
 
@@ -145,6 +224,21 @@ Two deliberate choices worth knowing before you change them:
 - **Single-dollar inline maths is off.** `$x$` is what TeX users expect and it cannot be had
   on a site that quotes prices: remark-math reads `$5 and $10` as a formula and prints
   `5and10`. Measured on a live page before choosing. Maths is `$$…$$`, inline or display.
+
+## Accessibility
+
+The blocks that are interactive behave like the widgets they claim to be:
+
+- `:::tabs` is a real tablist — `aria-controls`/`aria-labelledby` pairing, roving tabindex,
+  and Left/Right/Home/End move between tabs. A `role="tablist"` without the arrow keys is a
+  promise the widget does not keep.
+- The inline comment (`<doc-comment>`) is a disclosure: `role="button"`, `aria-expanded`,
+  Enter/Space to open, Escape to close.
+- `:time` renders a `<time datetime="…">`, so the machine-readable instant is in the markup.
+- Every decorative icon is `aria-hidden`; the roadmap prints each percentage as text beside
+  its bar, so nothing is conveyed by a bar alone.
+- A wide table scrolls inside its own wrapper rather than widening the article — on a phone a
+  sideways-scrolling page moves the text you are reading.
 
 ## The vocabulary
 
@@ -162,7 +256,7 @@ short version:
 :::columns / :::column                              responsive columns (:::row / :::col)
 :::collapse[Summary]                                a disclosure (:::details is the same)
 :::center :::left :::right                          alignment
-:::roadmap{src=…} / :::replay{src=…}                the two injected components
+:::roadmap{src=…} / :::replay{src=…}                built in; pass your own to replace
                                                     (:::bmmreplay = :::replay)
 :button[Label]{brand=discord href=…}                a button, eight brands, three sizes (:btn)
 :link[text]{color=#e11 href=…}                      a coloured link
