@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -7825,6 +7825,7 @@ function AdminAssets() {
   // custom key, so `?.click()` silently did nothing: the picker never opened and the field was
   // cleared, making it look as though a custom key was refused. One dedicated input fixes it.
   const newFileRef = useRef(null);
+  const multiRef = useRef(null);
   const [pendingKey, setPendingKey] = useState('');
   // assetsAll, not the filtered list: a key whose delete is still inside the undo window has NOT
   // left the server yet, so offering to create it again would race the pending DELETE.
@@ -7852,6 +7853,64 @@ function AdminAssets() {
   // server was never touched.
   const undo = useUndoableDelete(reload);
   const assets = assetsAll.filter((a) => !undo.pending.has(a.key));
+
+  // ── the library half ────────────────────────────────────────────────────
+  const [dragOver, setDragOver] = useState(false);
+  const [filter, setFilter] = useState('');
+  const [q, setQ] = useState('');
+  const [viewing, setViewing] = useState(null);
+  const [dropping, setDropping] = useState(0);   // how many of a batch are still going
+  const dropRef = useRef(null);
+
+  /**
+   * Upload a batch, deriving a key per file.
+   *
+   * Sequential, not `Promise.all`: each upload is a presign, a PUT to storage and a confirm,
+   * and thirty of those at once is thirty presigned URLs racing to be confirmed against a
+   * table that must stay consistent. It also makes the counter mean something — "4 left" is
+   * true, where four parallel uploads at 60% each is not a number anybody can read.
+   *
+   * The taken-keys set grows as it goes, so two files called `logo.png` in one drop become
+   * `logo.png` and `logo-2.png` rather than one overwriting the other.
+   */
+  const uploadMany = async (files) => {
+    const list = [...files].filter(Boolean);
+    if (!list.length) return;
+    const taken = new Set(assetsAll.map((a) => a.key));
+    setDropping(list.length);
+    let ok = 0;
+    for (const file of list) {
+      const key = uniqueKey(keyFromFilename(file.name), taken);
+      taken.add(key);
+      try {
+        const meta = await uploadAsset(key, file);
+        await api.put(`/admin/assets/file/${encodeURIComponent(key)}`, { ...meta, label: file.name });
+        ok++;
+      } catch (x) {
+        toast.error(`${file.name}: ${x.data?.error || t('assets.uploadfail', 'Upload failed.')}`);
+      }
+      setDropping((n) => n - 1);
+    }
+    if (ok) toast.success(t('assets.uploadedN', 'Uploaded {n} file(s).').replace('{n}', String(ok)));
+    reload();
+  };
+
+  const setAsset = async (key, patch) => {
+    try { await api.patch(`/admin/assets/${encodeURIComponent(key)}`, patch); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+
+  // What the grid shows. The named slots (installers, links.json) stay in the list ABOVE it,
+  // because they are answers to "is the download page pointing at the right build" and not
+  // things anybody browses.
+  const shown = assets.filter((a) => {
+    if (filter && a.media !== filter) return false;
+    if (!q.trim()) return true;
+    const needle = q.trim().toLowerCase();
+    return a.key.toLowerCase().includes(needle) || (a.label || '').toLowerCase().includes(needle)
+      || (a.filename || '').toLowerCase().includes(needle);
+  });
+  const kinds = [...new Set(assets.map((a) => a.media).filter(Boolean))];
   const del = (a) => undo.del(a.key, () => api.del(`/admin/assets/${encodeURIComponent(a.key)}`),
     t('assets.deleted', 'Deleted “{k}”.').replace('{k}', a.key));
 
@@ -7884,6 +7943,32 @@ function AdminAssets() {
         ))}
       </div>
 
+      {/* Drop anything, as many as you like.
+          The card below still exists for the case it was built for: a NAMED slot at a URL
+          something else already points at (`bmm-installer`, `links.json`). That needs the key
+          typed, because the name is the contract. Everything else is a file whose name is
+          good enough, and typing a key thirty times is not a workflow. */}
+      <div ref={dropRef}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={(e) => { if (e.currentTarget === e.target) setDragOver(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragOver(false); void uploadMany(e.dataTransfer?.files || []); }}
+        className={`rounded-xl border-2 border-dashed p-6 text-center mb-4 transition-colors ${
+          dragOver ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] bg-[var(--surface-2)]'
+        }`}>
+        <UploadIcon size={22} className="mx-auto text-[var(--faint)] mb-2" />
+        <div className="text-sm font-medium">{t('assets.drop', 'Drop files here')}</div>
+        <p className="text-[11px] text-[var(--muted)] mt-1 max-w-md mx-auto leading-snug">
+          {t('assets.drop.d', 'Any type. The key comes from the filename, and a name already taken gets a number rather than replacing what is there.')}
+        </p>
+        <input ref={multiRef} type="file" multiple className="hidden"
+          onChange={(e) => { void uploadMany(e.target.files || []); e.target.value = ''; }} />
+        <Button size="sm" className="mt-3" disabled={dropping > 0} onClick={() => multiRef.current?.click()}>
+          {dropping > 0
+            ? `${t('assets.uploading', 'Uploading…')} ${dropping}`
+            : <><Plus size={13} /> {t('assets.choose', 'Choose files')}</>}
+        </Button>
+      </div>
+
       {/* New asset. */}
       <Card className="p-3 mb-4 flex flex-wrap items-end gap-2">
         <Field label={t('assets.key', 'Key (public slug)')}><Input value={newKey} onChange={(e) => setNewKey(e.target.value)} placeholder="bmm-installer" className="!w-56" /></Field>
@@ -7900,9 +7985,13 @@ function AdminAssets() {
         }} />
       </Card>
 
-      {assets.length === 0 ? <EmptyState icon={Download} title={t('assets.none', 'No assets yet')} sub={t('assets.none.s', 'Create one above or pick a standard slot.')} /> : (
-        <div className="space-y-2.5">
-          {assets.map((a) => (
+      {/* The named slots, in full.
+          A JSON config and an installer are not things anybody browses — they are answers to
+          "is the download page pointing at the right build". They keep the detailed row: the
+          version, the channel, the JSON editor, Replace. */}
+      {assets.some((a) => a.kind === 'json' || a.version) && (
+        <div className="space-y-2.5 mb-6">
+          {assets.filter((a) => a.kind === 'json' || a.version).map((a) => (
             <Card key={a.key} className="p-3.5">
               <div className="flex items-center gap-2 flex-wrap mb-2">
                 {a.kind === 'json' ? <FileJson size={15} className="text-info" /> : <Package size={15} className="text-[var(--primary-2)]" />}
@@ -7916,10 +8005,11 @@ function AdminAssets() {
               </div>
               {a.kind === 'file' ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-[var(--muted)]">{a.filename || '—'} {a.size > 0 && <span className="text-[var(--faint)]">· {(a.size / 1048576).toFixed(1)} MB</span>}</span>
+                  <span className="text-[var(--muted)]">{a.filename || '\u2014'} {a.size > 0 && <span className="text-[var(--faint)]">\u00b7 {assetSize(a.size)}</span>}</span>
                   <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost"><Download size={13} /> {t('assets.download', 'Download')}</Button></a>
                   <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
-                  <Button size="sm" variant="default" disabled={busy === a.key} onClick={() => fileRefs.current[a.key]?.click()}><UploadIcon size={13} /> {busy === a.key ? t('assets.uploading', 'Uploading…') : t('assets.replace', 'Replace file')}</Button>
+                  <Button size="sm" variant="default" disabled={busy === a.key} onClick={() => fileRefs.current[a.key]?.click()}><UploadIcon size={13} /> {busy === a.key ? t('assets.uploading', 'Uploading\u2026') : t('assets.replace', 'Replace file')}</Button>
+                  <AssetStats asset={a} onChange={setAsset} />
                 </div>
               ) : (
                 <div>
@@ -7943,8 +8033,209 @@ function AdminAssets() {
           ))}
         </div>
       )}
+
+      {/* Everything else, as a library. */}
+      {(() => {
+        const lib = shown.filter((a) => a.kind === 'file' && !a.version);
+        const anyLib = assets.some((a) => a.kind === 'file' && !a.version);
+        if (!anyLib) {
+          return <EmptyState icon={ImageIcon} title={t('assets.lib.none', 'Nothing uploaded yet')} sub={t('assets.lib.none.s', 'Drop files above \u2014 images, video, audio, anything.')} />;
+        }
+        return (
+          <>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                <Input className="!pl-9" placeholder={t('assets.search', 'Search by name\u2026')} value={q} onChange={(e) => setQ(e.target.value)} />
+              </div>
+              {/* Only the kinds actually present. A row of filters for categories that are all
+                  empty is a row of dead ends. */}
+              {!!kinds.length && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => setFilter('')}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border ${!filter ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                    {t('assets.all', 'All')} {assets.filter((a) => a.kind === 'file' && !a.version).length}
+                  </button>
+                  {kinds.map((k) => (
+                    <button key={k} type="button" onClick={() => setFilter(filter === k ? '' : k)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border ${filter === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                      {t(`assets.k.${k}`, k)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {!lib.length ? <EmptyState icon={Search} title={t('assets.nomatch', 'Nothing matches')} /> : (
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
+                {lib.map((a) => {
+                  const I = MEDIA_ICON[a.media] || Package;
+                  return (
+                    <Card key={a.key} className="p-0 overflow-hidden group">
+                      {/* The thumbnail IS the file, at `?inline=1` \u2014 which is also what the
+                          server counts as a view. An image that the server refuses to serve
+                          inline draws its icon instead of a broken frame. */}
+                      <button type="button" onClick={() => setViewing(a)}
+                        className="block w-full h-[120px] bg-[var(--surface-2)] grid place-items-center overflow-hidden">
+                        {a.media === 'image' && a.inlineOk
+                          ? <img src={`/api/assets/${encodeURIComponent(a.key)}?inline=1`} alt="" loading="lazy" className="w-full h-full object-cover" />
+                          : <I size={26} className="text-[var(--faint)] group-hover:text-[var(--primary-2)] transition-colors" />}
+                      </button>
+                      <div className="p-2.5">
+                        <div className="text-[13px] font-medium truncate" title={a.label || a.key}>{a.label || a.key}</div>
+                        <div className="text-[10.5px] text-[var(--faint)] font-mono truncate">{a.key}</div>
+                        <div className="text-[10.5px] text-[var(--muted)] mt-0.5">{assetSize(a.size)}</div>
+                        <AssetStats asset={a} onChange={setAsset} />
+                        <div className="flex items-center gap-1 mt-2">
+                          <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }}
+                            title={publicUrl(a.key)} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>
+                          <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"
+                            className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><Download size={13} /></a>
+                          <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
+                          <button onClick={() => fileRefs.current[a.key]?.click()} disabled={busy === a.key}
+                            title={t('assets.replace', 'Replace file')} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><UploadIcon size={13} /></button>
+                          <div className="flex-1" />
+                          <button onClick={() => del(a)} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      <AssetViewer asset={viewing} onClose={() => setViewing(null)} />
     </div>
   );
+}
+
+/**
+ * The counter, and the switch that turns it on.
+ *
+ * Off by default, per asset, because counting costs a row update on every public GET \u2014 and
+ * the named slots are polled by an application on a timer, where the number measures polling
+ * rather than interest.
+ *
+ * Two numbers because they are two events: a VIEW is the file rendered where it stands (a
+ * thumbnail, the viewer, an <img> on somebody's page), a DOWNLOAD is the bytes taken away.
+ * The caller declares which by asking for `?inline=1`; nothing is inferred from a header.
+ */
+function AssetStats({ asset, onChange }) {
+  const { t } = useI18n();
+  if (!asset.countStats) {
+    return (
+      <button type="button" onClick={() => onChange(asset.key, { countStats: true })}
+        className="mt-1.5 text-[10.5px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1">
+        <BarChart3 size={11} /> {t('assets.count.on', 'Count views & downloads')}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-[var(--muted)]">
+      <span className="inline-flex items-center gap-1" title={t('assets.count.views', 'Views \u2014 rendered in place')}><Eye size={11} /> {asset.views}</span>
+      <span className="inline-flex items-center gap-1" title={t('assets.count.dl', 'Downloads \u2014 bytes taken away')}><Download size={11} /> {asset.downloads}</span>
+      <button type="button" onClick={() => onChange(asset.key, { resetStats: true })}
+        className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('assets.count.reset', 'Back to zero')}><RotateCcw size={11} /></button>
+      <button type="button" onClick={() => onChange(asset.key, { countStats: false })}
+        className="text-[var(--faint)] hover:text-error" title={t('assets.count.off', 'Stop counting')}><EyeOff size={11} /></button>
+    </div>
+  );
+}
+
+/**
+ * A filename to an asset key.
+ *
+ * The key is the public URL, so it has to survive `KEY_RE` — letters, digits, dot, underscore,
+ * dash. Accents, spaces and brackets are what a phone puts in a filename, and refusing those
+ * would mean somebody renaming files on their disk before they can be dropped here.
+ *
+ * The extension is kept. `poster.png` and `poster.webp` are two different files and two
+ * different keys; stripping it would make the second silently replace the first.
+ */
+function keyFromFilename(name) {
+    const base = String(name || 'file')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // é → e, before the strip below
+        .replace(/[^a-zA-Z0-9._-]+/g, '-')
+        .replace(/-{2,}/g, '-')
+        .replace(/^[-.]+|[-.]+$/g, '')
+        .toLowerCase();
+    return (base || 'file').slice(0, 64);
+}
+
+/** `key`, then `key-2`, `key-3`… so dropping two files with the same name keeps both. */
+function uniqueKey(base, taken) {
+    if (!taken.has(base)) return base;
+    const dot = base.lastIndexOf('.');
+    const stem = dot > 0 ? base.slice(0, dot) : base;
+    const ext = dot > 0 ? base.slice(dot) : '';
+    for (let i = 2; i < 500; i++) {
+        const k = `${stem}-${i}${ext}`.slice(0, 64);
+        if (!taken.has(k)) return k;
+    }
+    return `${Date.now()}`;
+}
+
+const MEDIA_ICON = { image: ImageIcon, video: PlayCircle, audio: Mic, document: FileText, archive: Archive, other: Package };
+
+/** Bytes, at the precision somebody reading a file list wants. */
+function assetSize(n) {
+    if (!n) return '';
+    const U = ['B', 'KB', 'MB', 'GB'];
+    let v = n; let i = 0;
+    while (v >= 1024 && i < U.length - 1) { v /= 1024; i++; }
+    return `${v >= 10 || i === 0 ? Math.round(v) : v.toFixed(1)} ${U[i]}`;
+}
+
+/**
+ * Look at one asset.
+ *
+ * `?inline=1` is what makes this possible at all: the public route forces
+ * `Content-Disposition: attachment` on everything by default — correct for installers, and
+ * the reason nothing could ever be previewed — and serves inline only for types a browser
+ * cannot execute. It is also what the server counts as a VIEW rather than a download.
+ *
+ * Anything the server will not serve inline is offered as a download instead of being
+ * rendered into a broken frame. Saying "this one you download" is a better answer than an
+ * empty box.
+ */
+function AssetViewer({ asset, onClose }) {
+    const { t } = useI18n();
+    if (!asset) return null;
+    const src = `/api/assets/${encodeURIComponent(asset.key)}?inline=1`;
+    const body = !asset.inlineOk
+        ? (
+            <div className="p-10 text-center">
+                <p className="text-sm text-[var(--muted)] mb-4">
+                    {t('assets.noinline', 'This type is not rendered in the browser \u2014 it is served as a download, on purpose.')}
+                </p>
+                <a href={`/api/assets/${encodeURIComponent(asset.key)}`} target="_blank" rel="noreferrer">
+                    <Button variant="primary"><Download size={14} /> {t('assets.download', 'Download')}</Button>
+                </a>
+            </div>
+        )
+        : asset.media === 'image' ? <img src={src} alt={asset.label || asset.key} className="max-h-[70vh] w-full object-contain bg-[var(--surface-2)]" />
+        : asset.media === 'video' ? <video src={src} controls className="max-h-[70vh] w-full bg-black" />
+        : asset.media === 'audio' ? <div className="p-8"><audio src={src} controls className="w-full" /></div>
+        : <iframe src={src} title={asset.key} className="w-full h-[70vh] bg-[var(--surface-2)]" sandbox="" />;
+
+    return (
+        <Modal open onClose={onClose} title={asset.label || asset.key} icon={MEDIA_ICON[asset.media] || Package} width="max-w-[900px]">
+            <div className="rounded-xl overflow-hidden border border-[var(--line)]">{body}</div>
+            <div className="flex flex-wrap items-center gap-3 mt-3 text-xs text-[var(--muted)]">
+                <span className="font-mono">{asset.key}</span>
+                {asset.filename && <span>{asset.filename}</span>}
+                {asset.size > 0 && <span>{assetSize(asset.size)}</span>}
+                {asset.contentType && <span className="text-[var(--faint)]">{asset.contentType}</span>}
+                <div className="flex-1" />
+                <a href={`/api/assets/${encodeURIComponent(asset.key)}`} target="_blank" rel="noreferrer">
+                    <Button size="sm" variant="ghost"><Download size={13} /> {t('assets.download', 'Download')}</Button>
+                </a>
+            </div>
+        </Modal>
+    );
 }
 
 // A project's version history, as something an admin can curate.

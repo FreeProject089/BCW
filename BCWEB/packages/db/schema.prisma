@@ -2098,9 +2098,23 @@ model PlatformAsset {
   channel     String   @default("stable")
   // json assets
   json        Json?
+  /// Count views and downloads on this one. OFF by default and asked for per asset: counting
+  /// means a write on every public GET, and the assets this table was built for are fetched
+  /// by an application on a timer — where a counter measures polling, not interest.
+  countStats  Boolean  @default(false)
+  /// Two numbers, not one. A VIEW is the file rendered in place (an <img>, a <video>, the
+  /// dashboard viewer); a DOWNLOAD is the bytes taken away. The caller says which by asking
+  /// for `?inline=1` or not, rather than the server guessing from a header.
+  views       Int      @default(0)
+  downloads   Int      @default(0)
+  /// image · video · audio · document · archive · other — derived from the content type at
+  /// upload. Stored so a listing does not parse a MIME string per row.
+  media       String   @default("")
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([media, updatedAt])
 }
 
 // One row per Ko-fi webhook event — lets the public funding-goal widget show a
