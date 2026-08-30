@@ -242,20 +242,24 @@ export default function Hero3D() {
   // intro overlay on top of the site until it is ready, so a slow or failed /site/scene would
   // be a white page with a loader on it — the shape is a preference, and a preference must
   // never be able to do that. Defaults on failure, and after 1.2s regardless.
-  const [scene, setScene] = useState(null);
+  // NOT `scene`. The effect below declares `const scene = new THREE.Scene()`, and a `const`
+  // shadows its whole scope rather than the lines after it — so reading this one at the top
+  // of that effect was a read inside the other one's temporal dead zone, and the page did
+  // not render at all.
+  const [sceneCfg, setSceneCfg] = useState(null);
   useEffect(() => {
     let on = true;
-    const fall = setTimeout(() => { if (on) setScene((v) => v || SCENE_DEFAULTS); }, 1200);
+    const fall = setTimeout(() => { if (on) setSceneCfg((v) => v || SCENE_DEFAULTS); }, 1200);
     api.get('/site/scene')
-      .then((d) => { if (on) setScene({ ...SCENE_DEFAULTS, ...(d || {}) }); })
-      .catch(() => { if (on) setScene(SCENE_DEFAULTS); })
+      .then((d) => { if (on) setSceneCfg({ ...SCENE_DEFAULTS, ...(d || {}) }); })
+      .catch(() => { if (on) setSceneCfg(SCENE_DEFAULTS); })
       .finally(() => clearTimeout(fall));
     return () => { on = false; clearTimeout(fall); };
   }, []);
 
   useEffect(() => {
     const el = mount.current;
-    if (!el || !scene) return;
+    if (!el || !sceneCfg) return;
 
     // Static amber-glow backdrop used whenever the animated orb can't run well (no
     // WebGL2, or a software renderer that would lag). Reveals the page immediately so
@@ -315,7 +319,7 @@ export default function Hero3D() {
     // detail 4 = 2562 verts on the icosahedron — smooth enough for a blurred, displaced shape
     // at a fraction of the per-frame vertex-shader cost of detail 5 (10242). The admin can go
     // higher; the API caps it at 5 for exactly that reason.
-    const geo = buildGeometry(scene.shape, scene.detail);
+    const geo = buildGeometry(sceneCfg.shape, sceneCfg.detail);
 
     // Fracture shards: a coarser icosahedron (detail 2 = 320 faces). Icosahedron
     // geometry is ALREADY non-indexed (every face owns its 3 vertices — calling
@@ -327,7 +331,7 @@ export default function Hero3D() {
     // apart as one rigid piece — icosahedron and tetrahedron geometry is already built that
     // way (calling it on those was a no-op that logged a warning), but a torus knot is
     // indexed and shares vertices between faces, so without this the ring tore into ribbons.
-    const rawFracture = buildGeometry(scene.shape, Math.min(2, scene.detail));
+    const rawFracture = buildGeometry(sceneCfg.shape, Math.min(2, sceneCfg.detail));
     const fractureGeo = rawFracture.index ? rawFracture.toNonIndexed() : rawFracture;
     const fPos = fractureGeo.attributes.position;
     const centroidArr = new Float32Array(fPos.count * 3);
@@ -349,7 +353,7 @@ export default function Hero3D() {
     // One number, read in three places (the initial value, the intro tween and the skip
     // path). Three literal 0.45s were three chances for the shape to settle at a different
     // amplitude depending on whether the visitor watched the intro.
-    const AMP = 0.45 * scene.noise;
+    const AMP = 0.45 * sceneCfg.noise;
     const uniforms = {
       uTime: { value: 0 },
       uAmp: { value: active ? 0 : AMP }, // starts flat during the intro, then "comes alive"
@@ -644,13 +648,13 @@ export default function Hero3D() {
         } else if (fps < 30) { bailToStatic(); return; }
       }
       try {
-        t += 0.01 * scene.speed;
+        t += 0.01 * sceneCfg.speed;
         uniforms.uTime.value = t;
         uniforms.uFracture.value = fractureState.value;
         scrollNow += (scrollTarget - scrollNow) * 0.04;
         // slow constant auto-rotation (noticeably livelier the deeper you scroll,
         // to sell the "spiraling down" read), plus a small cursor-driven tilt on top
-        rotTarget.y += 0.0016 * scene.speed * (1 + scrollNow * 1.6);
+        rotTarget.y += 0.0016 * sceneCfg.speed * (1 + scrollNow * 1.6);
         rotTarget.x += (mouse.y * 0.35 - rotTarget.x) * 0.02;
         orb.rotation.y = rotTarget.y;
         orb.rotation.x += (rotTarget.x - orb.rotation.x) * 0.06;
@@ -723,7 +727,7 @@ export default function Hero3D() {
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene]);
+  }, [sceneCfg]);
 
   return (
     <>
