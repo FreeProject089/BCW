@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Bot, AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
+  AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
   ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send,
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
@@ -14,6 +14,7 @@ import { ReportComposer } from '../ui/report.jsx';
 // The deal, drawn once and shared with the landing band — two copies of "when do I pay"
 // is how the page and the front page end up quoting different prices.
 import DealRail from './myo-deal.jsx';
+import { DiscordIcon } from '../ui/brand.jsx';
 
 // ── shared helpers ──────────────────────────────────────────────────────────────
 // Moved to lib/money.js and re-exported: the home page renders a component that needs it, and
@@ -22,7 +23,9 @@ import DealRail from './myo-deal.jsx';
 export { fmtMoney } from '../lib/money.js';
 import { fmtMoney } from '../lib/money.js';
 const KIND_META = {
-  discord_bot: { icon: Bot, en: 'Discord bot', fr: 'Bot Discord' },
+  // The brand's own mark. The other three kinds stay on lucide, which is the point:
+  // "App", "Website" and "Something else" are nobody's trademark.
+  discord_bot: { icon: DiscordIcon, en: 'Discord bot', fr: 'Bot Discord' },
   app: { icon: AppWindow, en: 'Application', fr: 'Application' },
   website: { icon: Globe, en: 'Website', fr: 'Site web' },
   audit: { icon: ShieldCheck, en: 'Security audit', fr: 'Audit de sécurité' },

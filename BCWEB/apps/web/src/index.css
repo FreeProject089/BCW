@@ -543,6 +543,40 @@ html.js-anim .reveal-stagger.in > * { will-change: auto; }
    NOT gated on prefers-reduced-motion: Windows turns that on behind users' backs
    (animation settings/battery saver) and it silently flattened every reveal. */
 html.js-anim .reveal-stagger.in > * { transition-delay: calc(min(var(--i, 0), 6) * 105ms); }
+/* ── The five ways a section can arrive ───────────────────────────────────────
+   `data-reveal` on <html>, set from the site's scene settings. `rise` is what this
+   has always done and is the default: nobody gets a new animation by upgrading.
+
+   Only the START state is redefined. The transition, the stagger, the cap and the
+   fast-scroll escape hatch below are the same machinery for all five — a second copy
+   of that timing is how one of them ends up a version behind. */
+
+/* fade — opacity only. For a site whose content should not appear to move at all. */
+html.js-anim[data-reveal="fade"] .reveal-on-scroll,
+html.js-anim[data-reveal="fade"] .reveal-stagger > * { transform: none; filter: none; }
+
+/* slide — in from the orb's side, with no lift and no blur. `--reveal-x` is driven
+   live by Hero3D; here it is the whole movement rather than an accent on it, so it
+   gets a floor: with the orb off, `--reveal-x` is 0 and "slide" would be "fade". */
+html.js-anim[data-reveal="slide"] .reveal-on-scroll,
+html.js-anim[data-reveal="slide"] .reveal-stagger > * {
+  transform: translateX(calc(var(--reveal-x, 0px) + 34px));
+  filter: none;
+}
+
+/* zoom — grows into place. No translation, so a grid does not shift sideways under
+   a cursor that is already reaching for one of its cards. */
+html.js-anim[data-reveal="zoom"] .reveal-on-scroll,
+html.js-anim[data-reveal="zoom"] .reveal-stagger > * { transform: scale(.93); filter: none; }
+
+/* none — present immediately. NOT `display` and not a media query: the elements keep
+   their classes, the observer keeps running and the stagger indexes are still set, so
+   turning it back on is a repaint rather than a reload. */
+html.js-anim[data-reveal="none"] .reveal-on-scroll,
+html.js-anim[data-reveal="none"] .reveal-stagger > * {
+  opacity: 1; transform: none; filter: none; transition: none;
+}
+
 /* Fast scroll / jump: JS adds .reveal-instant when a reveal fires while its element
    is already well inside (or above) the viewport. Playing the rise+blur then visibly
    animates ON-SCREEN content and reads as a glitchy late "spawn" (the "truc bizarre"

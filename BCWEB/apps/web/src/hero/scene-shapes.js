@@ -237,6 +237,54 @@ export const SCENE_DEFAULTS = {
   opacity: 0.8,
   scale: 1,
   surface: 'solid',
+  // What the pointer does to it. `fracture` is what the hero has always done.
+  hover: 'fracture',
+  // How a section arrives when it scrolls into view. Applied by `applyReveal` below.
+  reveal: 'rise',
   glow: 0.45,
   twinkles: 110,
 };
+
+/**
+ * Put the reveal style on <html>, where the stylesheet reads it.
+ *
+ * Exported from here rather than done inside Hero3D because the two are not the same
+ * lifetime: the scene is not drawn at all without WebGL, when a visitor has switched it off,
+ * or on a page the orb does not cover — and the reveal applies to every page regardless. A
+ * setting that only took effect when the 3D backdrop happened to be running would look like
+ * it worked on the home page and nowhere else.
+ *
+ * `rise` writes no attribute: it is the bare-selector default in the stylesheet, so a site
+ * that never touched this setting has exactly the CSS it had before the setting existed.
+ */
+export function applyReveal(style) {
+  const el = document.documentElement;
+  if (!style || style === 'rise') el.removeAttribute('data-reveal');
+  else el.setAttribute('data-reveal', style);
+}
+
+/**
+ * The scene settings, fetched once per page load.
+ *
+ * Memoised on the PROMISE, not on the result: two callers starting before the first response
+ * arrives would otherwise both fetch. Never rejects — a settings endpoint that is down must
+ * not decide whether the site renders, so it resolves to the defaults.
+ *
+ * The 1.2s deadline is Hero3D's and lives here now: it holds the intro overlay over the site
+ * until it can build, so a slow answer would be a white page with a loader on it. A shape is
+ * a preference, and a preference must never be able to do that.
+ */
+let _scenePromise = null;
+export function readSceneConfig() {
+  if (_scenePromise) return _scenePromise;
+  _scenePromise = new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve({ ...SCENE_DEFAULTS, ...(v || {}) }); } };
+    const fall = setTimeout(() => done(null), 1200);
+    fetch('/api/site/scene', { headers: { accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { clearTimeout(fall); done(d); })
+      .catch(() => { clearTimeout(fall); done(null); });
+  });
+  return _scenePromise;
+}

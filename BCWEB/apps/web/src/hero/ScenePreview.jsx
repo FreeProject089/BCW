@@ -6,14 +6,20 @@
 // does not also use. A preview that redrew "something like the orb" would be a second
 // renderer, and the one that is wrong is whichever nobody looked at last.
 //
-// What it deliberately does NOT reproduce: the intro choreography, the cursor parallax, the
-// scroll drift and the fracture. Those are the hero's behaviour on a page, not the scene's
-// appearance — and an admin dragging a slider wants to see the shape change, not sit through
-// a loading animation each time.
+// What it deliberately does NOT reproduce: the intro choreography, the cursor parallax and
+// the scroll drift. Those are the hero's behaviour on a page, not the scene's appearance —
+// and an admin dragging a slider wants to see the shape change, not sit through a loading
+// animation each time.
+//
+// It DOES reproduce the hover reaction, because that is a setting now and four words in a
+// menu are four words to imagine. The gesture is hovering the CANVAS rather than the shape:
+// raycasting a 200px silhouette would make it a game of aim, and aim is not the subject.
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
-  palette, isLight, VERTEX_SHADER, FRAGMENT_SHADER, buildGeometry, SCENE_DEFAULTS,
+  palette, isLight, VERTEX_SHADER, FRAGMENT_SHADER,
+  FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
+  buildGeometry, SCENE_DEFAULTS,
 } from './scene-shapes.js';
 
 export default function ScenePreview({ cfg, className = '' }) {
@@ -56,6 +62,15 @@ export default function ScenePreview({ cfg, className = '' }) {
       uFracture: { value: 0 },
     };
 
+    // Hover, eased by hand rather than with GSAP: this file has no other reason to pull in an
+    // animation library, and one number moving towards another is four lines.
+    let hoverTarget = 0;
+    let hoverNow = 0;
+    const onEnter = () => { hoverTarget = 1; };
+    const onLeave = () => { hoverTarget = 0; };
+    el.addEventListener('pointerenter', onEnter);
+    el.addEventListener('pointerleave', onLeave);
+
     // The pieces that depend on a setting are rebuilt when that setting changes, and only
     // then. `shape`, `detail` and `surface` change the geometry or the material; everything
     // else is a number the frame loop reads.
@@ -65,6 +80,8 @@ export default function ScenePreview({ cfg, className = '' }) {
       stage.remove(built.root);
       built.geo.dispose();
       built.mat.dispose();
+      if (built.fractureGeo) built.fractureGeo.dispose();
+      if (built.fractureMat) built.fractureMat.dispose();
       if (built.wire) built.wire.material.dispose();
       if (built.glowTex) built.glowTex.dispose();
       if (built.glowMat) built.glowMat.dispose();
@@ -84,6 +101,42 @@ export default function ScenePreview({ cfg, className = '' }) {
       });
       const mesh = new THREE.Mesh(geo, mat);
       root.add(mesh);
+
+      // The shards.
+      //
+      // `uFracture` does two things in the shaders: it fades the SOLID out
+      // (`uOpacity * (1.0 - uFracture)`) and it flies the shards apart. The hero draws both
+      // meshes. Without this one, previewing "Fracture" would show a shape quietly vanishing
+      // — which is worse than no preview: it misdescribes the very setting being chosen.
+      //
+      // `toNonIndexed()` is conditional for the reason the hero explains: icosahedron and
+      // tetrahedron geometry already gives every face its own vertices, but a torus shares
+      // them, and without this a knot tears into ribbons instead of breaking into pieces.
+      const rawFracture = buildGeometry(c.shape, Math.min(2, c.detail));
+      const fractureGeo = rawFracture.index ? rawFracture.toNonIndexed() : rawFracture;
+      const fPos = fractureGeo.attributes.position;
+      const centroidArr = new Float32Array(fPos.count * 3);
+      const randArr = new Float32Array(fPos.count * 3);
+      for (let f = 0; f < fPos.count / 3; f++) {
+        const i0 = f * 3;
+        const cx = (fPos.getX(i0) + fPos.getX(i0 + 1) + fPos.getX(i0 + 2)) / 3;
+        const cy = (fPos.getY(i0) + fPos.getY(i0 + 1) + fPos.getY(i0 + 2)) / 3;
+        const cz = (fPos.getZ(i0) + fPos.getZ(i0 + 1) + fPos.getZ(i0 + 2)) / 3;
+        const rx = Math.random() * 2 - 1, ry = Math.random() * 2 - 1, rz = Math.random() * 2 - 1;
+        for (let v = 0; v < 3; v++) {
+          centroidArr.set([cx, cy, cz], (i0 + v) * 3);
+          randArr.set([rx, ry, rz], (i0 + v) * 3);
+        }
+      }
+      fractureGeo.setAttribute('aCentroid', new THREE.BufferAttribute(centroidArr, 3));
+      fractureGeo.setAttribute('aRandom', new THREE.BufferAttribute(randArr, 3));
+      // The same uniform OBJECTS as the solid, so colours, time and amplitude stay in
+      // lockstep with no per-frame syncing — exactly as the hero does it.
+      const fractureMat = new THREE.ShaderMaterial({
+        uniforms, vertexShader: FRACTURE_VERTEX_SHADER, fragmentShader: FRACTURE_FRAGMENT_SHADER,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      });
+      mesh.add(new THREE.Mesh(fractureGeo, fractureMat));
 
       let wire = null;
       if (c.surface === 'both') {
@@ -137,7 +190,7 @@ export default function ScenePreview({ cfg, className = '' }) {
       }
 
       stage.add(root);
-      built = { root, mesh, geo, mat, wire, glowTex, glowMat, twGeo, twMat };
+      built = { root, mesh, geo, mat, wire, glowTex, glowMat, twGeo, twMat, fractureGeo, fractureMat };
     };
 
     const applyPalette = () => {
@@ -172,12 +225,16 @@ export default function ScenePreview({ cfg, className = '' }) {
       if (k !== key) { key = k; build(c); applyPalette(); }
       if (!built) return;
 
+      // The same four reactions the hero applies, from the same setting.
+      const mode = c.hover || 'fracture';
+      hoverNow += ((mode === 'none' ? 0 : hoverTarget) - hoverNow) * 0.12;
       time += 0.01 * c.speed;
       uniforms.uTime.value = time;
-      uniforms.uAmp.value = 0.45 * c.noise;
+      uniforms.uAmp.value = 0.45 * c.noise * (mode === 'swell' ? 1 + hoverNow * 0.55 : 1);
       uniforms.uOpacity.value = palette().opacity * (c.opacity / SCENE_DEFAULTS.opacity);
-      built.root.scale.setScalar(c.scale);
-      built.mesh.rotation.y += 0.004 * c.speed;
+      uniforms.uFracture.value = mode === 'fracture' ? hoverNow : 0;
+      built.root.scale.setScalar(c.scale * (mode === 'swell' ? 1 + hoverNow * 0.13 : 1));
+      built.mesh.rotation.y += 0.004 * c.speed * (mode === 'spin' ? 1 + hoverNow * 3.5 : 1);
       built.mesh.rotation.x = 0.25;
       renderer.render(stage, camera);
     };
@@ -194,6 +251,8 @@ export default function ScenePreview({ cfg, className = '' }) {
 
     return () => {
       cancelAnimationFrame(raf);
+      el.removeEventListener('pointerenter', onEnter);
+      el.removeEventListener('pointerleave', onLeave);
       ro.disconnect();
       themeObserver.disconnect();
       dispose();

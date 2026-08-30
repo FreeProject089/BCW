@@ -7,7 +7,7 @@ import { api } from '../lib/api.js';
 import {
   isLight, palette, VERTEX_SHADER, FRAGMENT_SHADER,
   FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
-  buildGeometry, SCENE_DEFAULTS,
+  buildGeometry, SCENE_DEFAULTS, readSceneConfig,
 } from './scene-shapes.js';
 
 // v4 — the intro loader and the background are now literally the same canvas:
@@ -62,12 +62,11 @@ export default function Hero3D() {
   const [sceneCfg, setSceneCfg] = useState(null);
   useEffect(() => {
     let on = true;
-    const fall = setTimeout(() => { if (on) setSceneCfg((v) => v || SCENE_DEFAULTS); }, 1200);
-    api.get('/site/scene')
-      .then((d) => { if (on) setSceneCfg({ ...SCENE_DEFAULTS, ...(d || {}) }); })
-      .catch(() => { if (on) setSceneCfg(SCENE_DEFAULTS); })
-      .finally(() => clearTimeout(fall));
-    return () => { on = false; clearTimeout(fall); };
+    // The shared reader. It carries the deadline and the fallback that used to be here — the
+    // scroll-reveal style comes out of the same response and is applied on every page, so a
+    // second fetch would be two readers applying the same defaults in two places.
+    void readSceneConfig().then((d) => { if (on) setSceneCfg(d); });
+    return () => { on = false; };
   }, []);
 
   useEffect(() => {
@@ -330,6 +329,24 @@ export default function Hero3D() {
       gsap.killTweensOf(fractureState);
       gsap.to(fractureState, { value: target, duration, ease: target ? 'power2.out' : 'power2.inOut' });
     };
+
+    // ── what the pointer does, as chosen ──────────────────────────────────
+    //
+    // One entry point — "the pointer is on it" / "it is not" — and the setting decides what
+    // that means. It matters that this is a single function: the hover path, the tap path and
+    // the page-transition flourish all called `setFracture` directly, so any new reaction
+    // added beside it would have been applied by one of the three and not the others.
+    //
+    // `hoverAmt` is read by the frame loop. Tweened rather than switched, because every one of
+    // these is a movement and a movement that arrives instantly is a glitch.
+    const hoverAmt = { v: 0 };
+    const HOVER = sceneCfg.hover || 'fracture';
+    const setHover = (on) => {
+      if (HOVER === 'none') return;
+      if (HOVER === 'fracture') { setFracture(on ? 1 : 0, on ? 0.7 : 0.9); return; }
+      gsap.killTweensOf(hoverAmt);
+      gsap.to(hoverAmt, { v: on ? 1 : 0, duration: on ? 0.45 : 0.7, ease: on ? 'power2.out' : 'power2.inOut' });
+    };
     const raycastHits = (clientX, clientY) => {
       ndc.x = (clientX / W()) * 2 - 1;
       ndc.y = -(clientY / H()) * 2 + 1;
@@ -341,17 +358,18 @@ export default function Hero3D() {
       mouse.y = e.clientY / H() - 0.5;
       if (showOverlayRef.current) return; // ignore during intro — orb isn't in its resting spot yet
       const hit = raycastHits(e.clientX, e.clientY);
-      if (hit && !hovering) { hovering = true; clearTimeout(recomposeTimer); setFracture(1, 0.7); }
-      else if (!hit && hovering) { hovering = false; setFracture(0, 0.9); }
+      if (hit && !hovering) { hovering = true; clearTimeout(recomposeTimer); setHover(true); }
+      else if (!hit && hovering) { hovering = false; setHover(false); }
     };
     window.addEventListener('pointermove', onMove);
     const onClick = (e) => {
       if (showOverlayRef.current) return;
       if (!raycastHits(e.clientX, e.clientY)) return;
-      // touch devices (no real hover): shatter on tap, auto-recompose shortly after
+      // touch devices (no real hover): react on tap, settle back shortly after. Whatever
+      // the reaction is — a phone has no pointer to hold it open, so it is timed.
       clearTimeout(recomposeTimer);
-      setFracture(1, 0.5);
-      recomposeTimer = setTimeout(() => { if (!hovering) setFracture(0, 0.9); }, 1100);
+      setHover(true);
+      recomposeTimer = setTimeout(() => { if (!hovering) setHover(false); }, 1100);
     };
     window.addEventListener('click', onClick);
 
@@ -442,6 +460,7 @@ export default function Hero3D() {
 
     let raf, t = 0, ctxLost = false;
     const rotTarget = { x: 0, y: 0 };
+    const baseScale = new THREE.Vector3(1, 1, 1);
     // ── per-page-load spiral personality: direction, number of turns, width,
     //    vertical wobble and phase are all re-rolled every visit, so the orb
     //    never flies the same path twice ──
@@ -495,16 +514,32 @@ export default function Hero3D() {
       }
       try {
         t += 0.01 * sceneCfg.speed;
+        // What the intro/scroll left the scale at, before `swell` multiplies it. Captured
+        // every frame BEFORE the multiply, so the two never compound.
+        if (HOVER !== 'swell' || hoverAmt.v < 0.001) baseScale.copy(orb.scale);
         uniforms.uTime.value = t;
         uniforms.uFracture.value = fractureState.value;
         scrollNow += (scrollTarget - scrollNow) * 0.04;
         // slow constant auto-rotation (noticeably livelier the deeper you scroll,
         // to sell the "spiraling down" read), plus a small cursor-driven tilt on top
-        rotTarget.y += 0.0016 * sceneCfg.speed * (1 + scrollNow * 1.6);
+        // `swell` and `spin` ride on top of everything else rather than replacing it: the
+        // scroll drift, the cursor tilt and the intro all still own what they owned.
+        const hv = hoverAmt.v;
+        rotTarget.y += 0.0016 * sceneCfg.speed * (1 + scrollNow * 1.6) * (HOVER === 'spin' ? 1 + hv * 3.5 : 1);
         rotTarget.x += (mouse.y * 0.35 - rotTarget.x) * 0.02;
         orb.rotation.y = rotTarget.y;
         orb.rotation.x += (rotTarget.x - orb.rotation.x) * 0.06;
         orb.rotation.z += (mouse.x * 0.12 - orb.rotation.z) * 0.02;
+        if (HOVER === 'swell') {
+          // The surface breathes out and the distortion rises with it. Multiplying the base
+          // scale rather than setting one: the intro tween owns `orb.scale` for its first
+          // second and a half, and writing an absolute value here would fight it.
+          const k = 1 + hv * 0.13;
+          orb.scale.set(baseScale.x * k, baseScale.y * k, baseScale.z * k);
+          uniforms.uAmp.value = AMP * (1 + hv * 0.55);
+        } else if (HOVER === 'spin') {
+          orb.rotation.x += hv * 0.004;
+        }
         // background-mode-only spiral descent: the orb corkscrews down and inward
         // as you scroll — a wide, banking arc that sweeps across the page. The
         // radius eases in (sin ramp) so the orbit opens gracefully instead of

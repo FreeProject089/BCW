@@ -11480,6 +11480,8 @@ function SceneEditor() {
 
   const shapes = data.shapes || [];
   const surfaces = data.surfaces || ['solid', 'wire', 'both'];
+  const hovers = data.hovers || ['fracture', 'swell', 'spin', 'none'];
+  const reveals = data.reveals || ['rise', 'fade', 'slide', 'zoom', 'none'];
 
   const NAMES = {
     orb: [t('scn.orb', 'Orb'), t('scn.orb.d', 'A displaced sphere. What the site has always drawn.')],
@@ -11494,6 +11496,21 @@ function SceneEditor() {
     solid: [t('scn.sf.solid', 'Solid'), t('scn.sf.solid.d', 'Filled faces.')],
     wire: [t('scn.sf.wire', 'Wireframe'), t('scn.sf.wire.d', 'Edges only — the same surface, drawn as lines.')],
     both: [t('scn.sf.both', 'Both'), t('scn.sf.both.d', 'A wireframe traced over the solid.')],
+  };
+
+  const HOVERS = {
+    fracture: [t('scn.hv.fracture', 'Shatter'), t('scn.hv.fracture.d', 'It breaks into its own faces and flies apart. What the site has always done — written for the orb, so try it on the shape you picked.')],
+    swell: [t('scn.hv.swell', 'Swell'), t('scn.hv.swell.d', 'It grows a little and the distortion rises with it.')],
+    spin: [t('scn.hv.spin', 'Spin up'), t('scn.hv.spin.d', 'It turns faster while the pointer is on it, and settles back when it leaves.')],
+    none: [t('scn.hv.none', 'Nothing'), t('scn.hv.none.d', 'It ignores the pointer.')],
+  };
+
+  const REVEALS = {
+    rise: [t('scn.rv.rise', 'Rise'), t('scn.rv.rise.d', 'Lifts into place, shrinking slightly, with a blur that clears. The shipped one.')],
+    fade: [t('scn.rv.fade', 'Fade'), t('scn.rv.fade.d', 'Opacity only — nothing appears to move.')],
+    slide: [t('scn.rv.slide', 'Slide'), t('scn.rv.slide.d', 'In from the side, from whichever side the scene currently is.')],
+    zoom: [t('scn.rv.zoom', 'Zoom'), t('scn.rv.zoom.d', 'Grows into place, without shifting sideways under a cursor already reaching for it.')],
+    none: [t('scn.rv.none', 'None'), t('scn.rv.none.d', 'Sections are simply there.')],
   };
 
   const save = async () => {
@@ -11551,19 +11568,33 @@ function SceneEditor() {
             ))}
           </div>
 
-          <div className="mt-4">
-            <div className="text-[13px] font-medium mb-1.5">{t('scn.surface', 'Surface')}</div>
-            <div className="flex flex-wrap gap-2">
-              {surfaces.map((k) => (
-                <button key={k} type="button" onClick={() => set({ surface: k })}
-                  aria-pressed={cfg.surface === k}
-                  title={SURFACES[k]?.[1] || ''}
-                  className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
-                    cfg.surface === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
-                  }`}>{SURFACES[k]?.[0] || k}</button>
-              ))}
+          {/* Three rows of the same control, because they are three answers of the same
+              kind: what it is made of, what it does when touched, and how the page around
+              it arrives. Sliders would be wrong for all three — none of them is a quantity. */}
+          {[['surface', t('scn.surface', 'Surface'), surfaces, SURFACES, ''],
+            ['hover', t('scn.hover', 'When the pointer is on it'), hovers, HOVERS, t('scn.hover.d', 'Hover the preview to try it.')],
+            ['reveal', t('scn.reveal', 'How sections arrive'), reveals, REVEALS, t('scn.reveal.d', 'Applies to every page, including the ones the scene is not drawn on. Reload to see it.')],
+          ].map(([key, label, options, table, note]) => (
+            <div className="mt-4" key={key}>
+              <div className="text-[13px] font-medium mb-1.5">{label}</div>
+              <div className="flex flex-wrap gap-2">
+                {options.map((k) => (
+                  <button key={k} type="button" onClick={() => set({ [key]: k })}
+                    aria-pressed={cfg[key] === k}
+                    title={table[k]?.[1] || ''}
+                    className={`rounded-lg border px-3 py-1.5 text-[13px] transition-colors ${
+                      cfg[key] === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
+                    }`}>{table[k]?.[0] || k}</button>
+                ))}
+              </div>
+              {/* The description of the SELECTED one, spelled out. A title attribute is a
+                  tooltip you have to hover to find, and four of these are four things to
+                  discover by accident. */}
+              <p className="text-[11px] text-[var(--muted)] leading-snug mt-1.5">
+                {table[cfg[key]]?.[1] || ''}{note ? ` ${note}` : ''}
+              </p>
             </div>
-          </div>
+          ))}
 
           {/* Every slider applies to every shape. That is what the deleted "custom" entry
               pretended to unlock — picking it to make an orb slightly calmer was not a
@@ -11594,7 +11625,7 @@ function SceneEditor() {
             )}
           </div>
           <p className="text-[11px] text-[var(--muted)] leading-snug mt-2">
-            {t('scn.prev.d', 'The real thing: same geometry, same shader, same palette as the page behind you. Only the intro, the cursor parallax and the scroll drift are left out.')}
+            {t('scn.prev.d2', 'The real thing: same geometry, same shader, same palette as the page behind you — hover it to try the pointer reaction. Only the intro, the cursor parallax and the scroll drift are left out.')}
           </p>
           <div className="flex items-center gap-2 mt-3">
             <Button variant="primary" onClick={save} loading={busy}><Save size={15} /> {t('common.save', 'Save')}</Button>

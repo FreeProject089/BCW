@@ -344,6 +344,19 @@ const SCENE_KEY = 'site.scene';
 // precisely what it has been drawing all along. Nothing to migrate.
 export const SCENE_SHAPES = ['orb', 'prism', 'crystal', 'gem', 'ring', 'halo'];
 export const SCENE_SURFACES = ['solid', 'wire', 'both'];
+// What the shape does when the pointer is on it.
+//
+// `fracture` is what it has always done and stays the default — nobody picks a new animation
+// by upgrading. It was written for the orb, when the orb was the only shape: a knotted torus
+// bursting into triangles does not read as a solid breaking, it reads as a broken render.
+// With six silhouettes, what it does on hover is a decision of the same order as what it is.
+export const SCENE_HOVERS = ['fracture', 'swell', 'spin', 'none'];
+// How a section arrives when it scrolls into view. `rise` is what the site has always done.
+//
+// Kept with the scene rather than in a setting of its own because they are one visual system:
+// Hero3D writes `--reveal-x` live, so sections drift in from whichever side the orb is
+// currently on. Two admin screens for that would be asking somebody to guess they talk.
+export const SCENE_REVEALS = ['rise', 'fade', 'slide', 'zoom', 'none'];
 
 /** What the browser is told, with every default applied here rather than in the component. */
 const sceneConfig = (row) => {
@@ -371,6 +384,8 @@ const sceneConfig = (row) => {
     // Multiplies the framing, so the intro keeps its proportion to the resting size.
     scale: num(v.scale, 0.5, 1.8, 1),
     surface: SCENE_SURFACES.includes(v.surface) ? v.surface : 'solid',
+    hover: SCENE_HOVERS.includes(v.hover) ? v.hover : 'fracture',
+    reveal: SCENE_REVEALS.includes(v.reveal) ? v.reveal : 'rise',
     // The halo behind it, and the belt of specks orbiting it. Both reach 0, and at 0 neither
     // is added to the scene rather than added invisibly.
     glow: num(v.glow, 0, 1, 0.45),
@@ -410,6 +425,8 @@ export default async function miscRoutes(app) {
       ...sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } })),
       shapes: SCENE_SHAPES,
       surfaces: SCENE_SURFACES,
+      hovers: SCENE_HOVERS,
+      reveals: SCENE_REVEALS,
     };
   });
 
@@ -423,6 +440,8 @@ export default async function miscRoutes(app) {
       opacity: z.number().min(0.1).max(1).optional(),
       scale: z.number().min(0.5).max(1.8).optional(),
       surface: z.enum(SCENE_SURFACES).optional(),
+      hover: z.enum(SCENE_HOVERS).optional(),
+      reveal: z.enum(SCENE_REVEALS).optional(),
       glow: z.number().min(0).max(1).optional(),
       twinkles: z.number().int().min(0).max(240).optional(),
     }).safeParse(req.body);

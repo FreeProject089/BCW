@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import {
-  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, Bot, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
+  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -699,7 +699,9 @@ export function Home({ draft = null }) {
                   {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
                 </p>
                 <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
-                  {[[Bot, t('home.myo.f1', 'Discord bots')],
+                  {/* The Discord mark, not lucide's generic robot: it is the only one of the
+                      four that IS a brand, and the logo is already inline in this bundle. */}
+                  {[[DiscordIcon, t('home.myo.f1', 'Discord bots')],
                     [AppWindow, t('home.myo.f2', 'Apps')],
                     [Globe, t('home.myo.f3', 'Websites')],
                     [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
