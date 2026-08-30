@@ -854,8 +854,9 @@ A request with no proof against a locked repo answers **401**, not 403 — the c
 
 # Documentation blocks
 
-Docs and blog posts support rich blocks on top of Markdown. Here's the whole toolkit — every
-block below is shown twice: the source, and what it renders to.
+Docs and blog posts are written in **B.MD** (better.markdown) — the block vocabulary this site
+shares with BMM, so a page written once reads the same in the browser and in the app. Here is
+the whole toolkit: every block below is shown twice, the source and what it renders to.
 
 :::note[Write everything with three colons]
 Including blocks inside blocks. The renderer sorts the nesting out for you.
