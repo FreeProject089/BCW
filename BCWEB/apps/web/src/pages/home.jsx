@@ -9,11 +9,10 @@ import {
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { productCards } from '../lib/home-products.js';
+import { CATALOG_SEEN } from '../lib/prefs.js';
+import { IconGlyph } from '../ui/md.jsx';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
-import StatusWidget from './status-widget.jsx';
-import DealRail from './myo-deal.jsx';
-import DevTryIt from './dev-try.jsx';
 import { thumb } from '../lib/img.js';
 import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
@@ -340,6 +339,25 @@ export function Home({ draft = null }) {
   // v1 is the fallthrough and its markup is untouched: a variant mechanism whose first act
   // is to rewrite the page that already works has a much worse failure mode than one that
   // only adds.
+  // Where the reader has got to, for the three steps below.
+  //
+  // Two facts, read in two places on purpose. Opening the catalogue is a BROWSER fact — no
+  // server observes it, and making one observe it would mean following people around to tick
+  // a box. Owning a hosting pool is an ACCOUNT fact: it follows the person from one machine
+  // to the next, which is what "when you buy your first pool" means.
+  //
+  // A signed-out reader gets neither request and neither tick, which is correct: the first
+  // step is the one that is not done.
+  const [browsed, setBrowsed] = useState(false);
+  useEffect(() => {
+    try { setBrowsed(localStorage.getItem(CATALOG_SEEN) === '1'); } catch { /* private window */ }
+  }, []);
+  const progressReq = useAsync(() => (user ? api.get('/me/progress') : Promise.resolve(null)), [user?.id]);
+  const progress = progressReq.data;
+  // Either reading of "share or browse" counts. Somebody who has published is not waiting to
+  // be told to go and look.
+  const step2done = browsed || !!progress?.published;
+
   const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products, posts: data?.posts || [] };
   if (homeCfg?.variant === 'v2') return <HomeV2 {...ctx} />;
   if (homeCfg?.variant === 'v3') return <HomeV3 {...ctx} />;
@@ -414,7 +432,13 @@ export function Home({ draft = null }) {
                 <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
                 <div className="relative">
                   <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
-                    {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} /> : <p.icon size={22} className="text-[var(--primary-2)]" />}
+                    {/* A managed project draws its own logo; a hand-added row draws whatever
+                        it was given — an uploaded image first, then any icon name this site
+                        can resolve, then the generic box. */}
+                    {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} />
+                      : p.img ? <img src={p.img} alt="" width={30} height={30} loading="lazy" className="rounded-[6px] object-contain" />
+                      : p.glyph ? <IconGlyph name={p.glyph} size={26} className="text-[var(--primary-2)]" />
+                      : <p.icon size={22} className="text-[var(--primary-2)]" />}
                   </span>
                   <div className="font-semibold mt-3">{p.name}</div>
                   <div className="text-sm text-[var(--muted)] mt-1">{p.desc}</div>
@@ -487,8 +511,8 @@ export function Home({ draft = null }) {
               <div className="flex items-start gap-4 flex-wrap">
                 <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40 shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
                 <div className="min-w-0 flex-1">
-                  <div className="font-semibold">{t('home.feat.moderated', 'Moderated, and it says which kind')}</div>
-                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two routes onto this platform, and they are not moderated the same way. Saying so is the point: you can tell, before you install anything, which one you are looking at.')}</div>
+                  <div className="font-semibold">{t('home.feat.moderated', 'Every listing says how it was checked')}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Some things are reviewed by us before anyone can see them. Others are published straight away by the person who made them. Both belong here — and every page tells you which one you are looking at.')}</div>
                 </div>
               </div>
 
@@ -498,7 +522,7 @@ export function Home({ draft = null }) {
                 <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
                     <BadgeCheck size={15} className="text-success shrink-0" />
-                    {t('home.mod.official', 'The official catalog')}
+                    {t('home.mod.official', 'The official catalogue')}
                   </div>
                   <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                     <span className="badge !gap-1.5 text-[var(--muted)]"><Inbox size={12} /> {t('home.pipe.sub', 'Submitted')}</span>
@@ -508,7 +532,7 @@ export function Home({ draft = null }) {
                     <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.pipe.live', 'Published')}</span>
                   </div>
                   <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
-                    {t('home.mod.official.d', 'Nothing here is public until a human has opened it. A submission sits in the queue until it is approved, and it can be sent back with a reason.')}
+                    {t('home.mod.official.d', 'Checked before it appears. A submission stays out of sight until someone on the team has opened it and approved it, and a refusal comes with the reason.')}
                   </p>
                 </div>
 
@@ -517,7 +541,7 @@ export function Home({ draft = null }) {
                 <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
                     <Users size={15} className="text-[var(--primary-2)] shrink-0" />
-                    {t('home.mod.community', 'Community catalogs and repos')}
+                    {t('home.mod.community', 'Community catalogues and repositories')}
                   </div>
                   <div className="flex items-center gap-1.5 mt-3 flex-wrap">
                     <span className="badge badge-green !gap-1.5"><CheckCircle2 size={12} /> {t('home.mod.self', 'Published by its owner')}</span>
@@ -527,7 +551,7 @@ export function Home({ draft = null }) {
                     <span className="badge badge-amber !gap-1.5"><Ban size={12} /> {t('home.mod.suspended', 'Suspended')}</span>
                   </div>
                   <p className="text-[12px] text-[var(--muted)] mt-3 leading-relaxed">
-                    {t('home.mod.community.d', 'These go live when their owner says so — no queue, no wait. Every one carries the account that published it, anyone can report it, and staff can suspend it. Moderated after the fact, and labelled as such wherever it appears.')}
+                    {t('home.mod.community.d', 'Published by its author, immediately. Every one shows the account behind it, anyone can report a problem, and we suspend what breaks the rules. Checked after publication — and labelled that way wherever it appears.')}
                   </p>
                 </div>
               </div>
@@ -574,8 +598,10 @@ export function Home({ draft = null }) {
           <div aria-hidden className="absolute left-[15px] sm:left-[19px] top-6 bottom-6 w-px bg-[var(--line)]" />
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth',
              user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free'), !!user],
-            [Upload, t('home.step2'), t('home.step2.d'), '/catalog', t('home.step2.cta', 'Browse the catalog'), false],
-            [Rocket, t('home.step3'), t('home.step3.d'), '/hosting', t('home.step3.cta', 'See hosting plans'), false],
+            [Upload, t('home.step2'), t('home.step2.d'), '/catalog',
+             step2done ? t('home.step2.done', 'Seen — go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
+            [Rocket, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting',
+             progress?.hosting ? t('home.step3.done', 'Hosting is live — open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
           ].map(([I, title, d, to, cta, done], i) => (
             <li key={title} className="relative pb-9 last:pb-0">
               {/* The marker sits ON the spine. A done step is filled and shows a tick; the rest
@@ -627,24 +653,20 @@ export function Home({ draft = null }) {
           <Card className="p-8 sm:p-10 relative overflow-hidden">
             <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
               style={{ background: 'radial-gradient(60% 120% at 85% 0%, var(--primary) 0%, transparent 70%)' }} />
-            <div className="relative grid lg:grid-cols-[1.3fr_1fr] gap-8 items-center">
-              <div>
-                <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Code2 size={13} /> {t('home.dev.k', 'For developers')}</div>
-                <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.dev.t', 'Build on BetterCommunity')}</h3>
-                <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                  {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect and webhooks — no SDK to install, and a key takes about a minute.')}
-                </p>
-                <div className="flex flex-wrap gap-2 mt-6">
-                  <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
-                  <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
-                </div>
+            {/* One column and one message. The live API call that sat on the right belongs
+                on /dev, where it still is: a developer weighing the platform will click
+                through, and one that will not is not going to be won by a JSON body on a
+                landing page. Here it made the band twice as tall as its sentence and put a
+                second network request on a page that already makes eight. */}
+            <div className="relative max-w-3xl">
+              <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.dev.t', 'Build on BetterCommunity')}</h3>
+              <p className="text-[var(--muted)] mt-3 leading-relaxed">
+                {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect and webhooks — no SDK to install, and a key takes about a minute.')}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-6">
+                <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
+                <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
               </div>
-              {/* A request, running, instead of four links to places where it is described.
-                  The four tiles were fine and they were a brochure: every one of them said
-                  "go and read about this". A developer deciding whether to build on a
-                  platform is asking whether it works and what it hands back, and both are
-                  answerable here in about 200ms because these endpoints are public. */}
-              <DevTryIt />
             </div>
           </Card>
         </div>
@@ -666,16 +688,12 @@ export function Home({ draft = null }) {
             <Card className="p-8 sm:p-10 relative overflow-hidden">
               <div className="absolute inset-0 pointer-events-none opacity-[0.07]"
                 style={{ background: 'radial-gradient(60% 120% at 15% 0%, var(--primary) 0%, transparent 70%)' }} />
-              {/* One column, not two.
-                  The four kinds used to sit in a right-hand grid as bordered, padded,
-                  card-backed boxes — which is what a button looks like on this site, so the
-                  section offered five things to click and only one of them did anything.
-                  They are a LIST of what can be commissioned, so they are written as a list:
-                  no border, no surface, no padding, nothing that invites a click. The only
-                  control in the section is the one that works. */}
-              <div className="relative grid lg:grid-cols-[1.15fr_.85fr] gap-8 lg:gap-12 items-start">
-                <div>
-                <div className="inline-flex items-center gap-2 badge badge-primary mb-4"><Wand2 size={13} /> {t('home.myo.k', 'Make Your Own')}</div>
+              {/* One column, like its neighbour, and for the same reason. What can be
+                  commissioned is a LIST, so it is written as one — no border, no surface, no
+                  padding, nothing that invites a click. The only control in the section is
+                  the one that works. The payment rail that used to sit on the right is on
+                  /myo, next to the form it describes, which is where somebody reads it. */}
+              <div className="relative max-w-3xl">
                 <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
                 <p className="text-[var(--muted)] mt-3 leading-relaxed">
                   {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
@@ -694,28 +712,14 @@ export function Home({ draft = null }) {
                 <div className="flex flex-wrap gap-2 mt-6">
                   <Link to="/myo"><Button variant="primary" className="!px-5 !py-2.5"><Wand2 size={15} /> {t('home.myo.cta', 'Start a commission')}</Button></Link>
                 </div>
+                {/* A real state, and the one thing here that can change between two visits.
+                    It stays: a page still inviting commissions while the team is full sells a
+                    promise nobody can keep. */}
                 {myo?.queueFull && (
                   <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
                     <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
                   </p>
                 )}
-                </div>
-
-                {/* What actually happens, in three steps.
-                    The right half of this card used to be empty, so the section read as a
-                    paragraph and a button floating in a lot of nothing. What belongs there is
-                    not decoration — it is the question a person has before clicking: what am I
-                    committing to, and when does money change hands. Answering it here is what
-                    turns "interesting" into "I understand the deal".
-                    Numbered markers, not icons: this is a sequence, and a row of glyphs would
-                    say category where the meaning is order. */}
-                {/* The same rail the commission page draws, from the same config. It was
-                    three hand-written sentences here and three more over there, which is two
-                    places for the price to be wrong in. */}
-                <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-5">
-                  <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-3">{t('home.myo.deal', 'When money moves')}</div>
-                  <DealRail cfg={myo || {}} compact />
-                </div>
               </div>
             </Card>
           </div>
@@ -786,7 +790,6 @@ export function Home({ draft = null }) {
           incident, which means the site can only ever say "something is wrong" and never
           "this stays up" — and the second is what somebody deciding where to host a repo is
           asking. One switch drives both: they are two halves of "service status". */}
-      {show('status') && <section><StatusWidget /></section>}
 
       {/* latest posts */}
       {show('news') && (

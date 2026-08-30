@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Boxes, Download, Search, XCircle, Package, Inbox, Tag, FileJson, Eye, Lock, Users, Copy, BadgeCheck,
@@ -6,6 +6,7 @@ import {
 import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
+import { markCatalogSeen } from '../lib/prefs.js';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAsync, Loading, KIND_ICON, kindLabel, ALL_KINDS } from './pages.jsx';
 
@@ -17,6 +18,8 @@ export function Catalog() {
   const project = sp.get('project') || '', kind = sp.get('kind') || '', q = sp.get('q') || '', sort = sp.get('sort') || 'recent';
   const { data, loading } = useAsync(() => api.get(`/catalog?${new URLSearchParams({ project, kind, q, sort })}`), [project, kind, q, sort]);
   const set = (k, v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n); };
+  // Reaching this page is the whole of "browse". The home page's second step reads it back.
+  useEffect(markCatalogSeen, []);
   const [sel, setSel] = useState(new Set());
   const items = data?.items || [];
   // Multi-select download makes sense for presets (small JSON files).

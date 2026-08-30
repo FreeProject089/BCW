@@ -329,6 +329,26 @@ export default async function repoRoutes(app) {
   });
 
   // A user's multi-repo storage pools, with usage.
+  /**
+   * Where this account has got to, for the landing page's three steps.
+   *
+   * Three counts and three booleans. Deliberately NOT part of `/me`: that response is fetched
+   * on every page load by every signed-in visitor, and two joins added to it to light a tick
+   * on one section of one page is a cost paid everywhere for a benefit in one place.
+   *
+   * Counts rather than the rows: the page asks "has this happened", and answering with the
+   * pools themselves would send an account's whole hosting arrangement to draw a tick.
+   */
+  app.get('/me/progress', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const [items, repos, pools] = await Promise.all([
+      p.catalogItem.count({ where: { ownerId: req.user.uid } }),
+      p.serverRepo.count({ where: { ownerId: req.user.uid } }),
+      p.hostingGroup.count({ where: { ownerId: req.user.uid } }),
+    ]);
+    return { published: items > 0 || repos > 0, hosting: pools > 0 };
+  });
+
   app.get('/me/hosting/groups', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const groups = await p.hostingGroup.findMany({ where: { ownerId: req.user.uid }, include: { repos: true, catalogs: { select: { id: true, name: true, slug: true, storageQuotaBytes: true, storageUsedBytes: true } }, _count: { select: { subscriptions: { where: { status: 'active' } } } } }, orderBy: { createdAt: 'desc' } });

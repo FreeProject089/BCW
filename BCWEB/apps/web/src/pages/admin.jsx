@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -17,7 +17,7 @@ import IconPicker from '../editor/icon-picker.jsx';
 import ProjectConfigEditor from '../editor/project-config-editor.jsx';
 import { createRoot } from 'react-dom/client';
 import { KofiIcon, DiscordIcon } from '../ui/brand.jsx';
-import { api, uploadPayload, uploadImage, uploadAsset } from '../lib/api.js';
+import { api, uploadPayload, uploadImage, uploadAsset, uploadMedia } from '../lib/api.js';
 import Avatar from '../ui/Avatar.jsx';
 import { THEME_PRESETS } from '../ui/theme-presets.js';
 import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-default.js';
@@ -29,7 +29,6 @@ const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { I18nDraft } from '../i18n.jsx';
-import { EXTRA_ICON_KEYS } from '../lib/home-products.js';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -11417,6 +11416,61 @@ function SceneEditor() {
   );
 }
 
+/**
+ * The art on one hand-added suite card: an uploaded image, or any icon this site can draw.
+ *
+ * Two controls and not a mode switch, because they are not equal choices. An image is what a
+ * real application has and it wins whenever it is set; the icon is what stands in for the ones
+ * that do not have one. Offering a radio between them would make somebody choose "icon" before
+ * discovering that a logo was possible.
+ *
+ * The icon side is `IconPicker`, the same picker the project editor and the blog editor use —
+ * every lucide icon and every Simple Icons brand, not the ten names this row used to offer.
+ */
+function SuiteArt({ row, onChange }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+
+  const pickFile = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    try { onChange({ img: await uploadMedia(file) }); }
+    catch (e) { toast.error(e?.status === 413 ? t('hp.suite.big', 'That image is too large.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  return (
+    <div className="w-[92px] shrink-0 text-center">
+      <div className="grid place-items-center h-[52px] w-[52px] mx-auto rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
+        {row.img
+          ? <img src={row.img} alt="" className="h-full w-full object-contain" />
+          : row.icon ? <IconGlyph name={row.icon} size={24} className="text-[var(--primary-2)]" />
+          : <BoxesIcon size={22} className="text-[var(--faint)]" />}
+      </div>
+      <div className="flex justify-center gap-1 mt-1.5">
+        <button type="button" className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] underline decoration-dotted"
+          onClick={() => fileRef.current?.click()} disabled={busy}>
+          {busy ? t('hp.suite.up', 'Uploading…') : t('hp.suite.image', 'Image')}
+        </button>
+        <span className="text-[11px] text-[var(--faint)]">·</span>
+        <button type="button" className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] underline decoration-dotted"
+          onClick={() => setPicking(true)}>{t('hp.suite.icon', 'Icon')}</button>
+      </div>
+      {/* Only offered once there is something to clear, and it clears the IMAGE — which is
+          what "back to an icon" means when an image is what hides the icon. */}
+      {row.img && (
+        <button type="button" className="text-[11px] text-[var(--faint)] hover:text-error mt-0.5"
+          onClick={() => onChange({ img: '' })}>{t('hp.suite.rmimg', 'Remove image')}</button>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={(ev) => pickFile(ev.target.files?.[0])} />
+      {picking && <IconPicker title={t('hp.suite.pick', 'Pick an icon for this card')} onPick={(name) => onChange({ icon: name })} onClose={() => setPicking(false)} />}
+    </div>
+  );
+}
+
 // ── The showcase both landing pages open with ────────────────────────────────
 //
 // One list, edited once. The home page and /dev show the same projects, because two lists
@@ -11862,27 +11916,32 @@ function HomePageEditor() {
           <div className="mt-4">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('hp.suite.extra', 'Also in the row')}</div>
             {!suite.extra.length && <p className="text-[12px] text-[var(--muted)] mb-2">{t('hp.suite.none', 'Nothing added. The row shows your projects and the hosting card.')}</p>}
-            <div className="space-y-2">
-              {suite.extra.map((e, i) => (
-                <div key={e.id} className="grid sm:grid-cols-[1fr_1.4fr_1fr_auto] gap-2 items-start">
-                  <Input value={e.name} placeholder={t('hp.suite.name', 'Name')}
-                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, name: ev.target.value } : x) }))} />
-                  <Input value={e.desc} placeholder={t('hp.suite.desc', 'One line about it')}
-                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, desc: ev.target.value } : x) }))} />
-                  <Input value={e.to} placeholder="/hosting"
-                    onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, to: ev.target.value } : x) }))} />
-                  <div className="flex gap-2">
-                    <Select className="!w-[110px]" value={e.icon || 'box'}
-                      onChange={(ev) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => n === i ? { ...x, icon: ev.target.value } : x) }))}>
-                      {EXTRA_ICON_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
-                    </Select>
-                    <Button size="sm" variant="ghost" onClick={() => setSuite((v) => ({ ...v, extra: v.extra.filter((_, n) => n !== i) }))}><Trash2 size={13} /></Button>
+            <div className="space-y-3">
+              {suite.extra.map((e, i) => {
+                const patch = (d) => setSuite((v) => ({ ...v, extra: v.extra.map((x, n) => (n === i ? { ...x, ...d } : x)) }));
+                return (
+                  <div key={e.id} className="rounded-xl border border-[var(--line)] p-3">
+                    <div className="grid sm:grid-cols-[auto_1fr_auto] gap-3 items-start">
+                      {/* The art, decided first and shown at the size the card draws it. This
+                          row sits beside projects rendering their real logos; a generic box
+                          in that line reads as a broken image, not as a choice. */}
+                      <SuiteArt row={e} onChange={patch} />
+                      <div className="grid gap-2 min-w-0">
+                        <Input value={e.name} placeholder={t('hp.suite.name', 'Name')}
+                          onChange={(ev) => patch({ name: ev.target.value })} />
+                        <Input value={e.desc} placeholder={t('hp.suite.desc', 'One line about it')}
+                          onChange={(ev) => patch({ desc: ev.target.value })} />
+                        <Input value={e.to} placeholder="/hosting"
+                          onChange={(ev) => patch({ to: ev.target.value })} />
+                      </div>
+                      <Button size="sm" variant="ghost" onClick={() => setSuite((v) => ({ ...v, extra: v.extra.filter((_, n) => n !== i) }))}><Trash2 size={13} /></Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <Button size="sm" className="mt-2" disabled={suite.extra.length >= 12}
-              onClick={() => setSuite((v) => ({ ...v, extra: [...v.extra, { id: `x${Math.random().toString(36).slice(2, 9)}`, name: '', desc: '', to: '/', icon: 'box' }] }))}>
+              onClick={() => setSuite((v) => ({ ...v, extra: [...v.extra, { id: `x${Math.random().toString(36).slice(2, 9)}`, name: '', desc: '', to: '/', icon: '', img: '' }] }))}>
               <Plus size={13} /> {t('hp.suite.add', 'Add a row')}
             </Button>
             {/* The API refuses anything that is not a site path or an http(s) URL, and says so
@@ -17371,6 +17430,14 @@ function AdminFooter() {
             </Field>
           ))}
         </div>}
+        {/* Under the newsletter here because it is under the newsletter there. */}
+        <label className="flex items-center gap-2 text-sm mt-3 pt-3 border-t border-[var(--line)]">
+          <input type="checkbox" checked={f.brand?.status !== false} onChange={(e) => setBrand({ status: e.target.checked })} />
+          <span className="flex-1">{t('afoot.status', 'Service-status line')}</span>
+        </label>
+        <p className="text-[11px] text-[var(--muted)] mt-1">
+          {t('afoot.status.d', 'One line reading the same probes as the status page: a dot, whether everything is up, and the worst uptime of the last 90 days. Hidden entirely when no service is configured.')}
+        </p>
       </Card>
       )}
 

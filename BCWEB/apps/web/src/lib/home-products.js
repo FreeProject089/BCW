@@ -7,17 +7,8 @@
 //
 // One function, two callers. A second copy of this is a second list to keep in step with the
 // projects an admin actually manages, which is the thing this replaced in the first place.
-import { Boxes, Music2, Download, Rocket, Sparkles, Globe, Bot, Wand2, Server, Package } from 'lucide-react';
+import { Boxes, Music2, Download, Rocket } from 'lucide-react';
 
-/**
- * The icons an admin can pick for a hand-added row.
- *
- * A short list, not the whole lucide set: a dropdown of two thousand names is a worse
- * affordance than eight, and every one of these is already used somewhere on this site, so
- * an added row looks like it belongs rather than like it was pasted in.
- */
-export const EXTRA_ICON = { box: Boxes, music: Music2, download: Download, rocket: Rocket, sparkles: Sparkles, globe: Globe, bot: Bot, wand: Wand2, server: Server, package: Package };
-export const EXTRA_ICON_KEYS = Object.keys(EXTRA_ICON);
 
 /**
  * One icon per known key, for a project with no logo of its own. A key nobody mapped gets the
@@ -64,7 +55,12 @@ export function productCards(projData, t, extra = []) {
     // generic one rather than to nothing: an empty square in a row of logos reads as a broken
     // image, not as an entry without art.
     ...(Array.isArray(extra) ? extra : []).map((e) => ({
-      icon: EXTRA_ICON[e.icon] || Boxes,
+      // `glyph` is a NAME, resolved by IconGlyph at draw time; the `icon` above is a lucide
+      // component. Two fields rather than one because a hand-added row can name a brand or a
+      // project logo, and neither of those is a component this module could import.
+      glyph: e.icon || '',
+      img: e.img || '',
+      icon: Boxes,
       name: e.name,
       desc: e.desc || '',
       to: e.to || '/',

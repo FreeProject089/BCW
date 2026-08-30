@@ -250,7 +250,12 @@ const homeConfig = (row) => {
       name: String(e?.name || '').slice(0, 60),
       desc: String(e?.desc || '').slice(0, 160),
       to: String(e?.to || '').slice(0, 300),
-      icon: String(e?.icon || '').slice(0, 40),
+      // Any name IconGlyph understands: a lucide icon, `simple:<brand>`, or `app:<project>`.
+      // It was ten names from a dropdown, which is why a real application in this row could
+      // only be a generic box beside the projects drawn with their actual logos.
+      icon: String(e?.icon || '').slice(0, 60),
+      // …and when there IS a logo, the icon is not the answer at all.
+      img: String(e?.img || '').slice(0, 400),
     })).filter((e) => e.id && e.name),
   };
   return { text: v.text || {}, sections, variant, suite };
@@ -514,7 +519,12 @@ export default async function miscRoutes(app) {
           // renders it — the component is not the thing an attacker would be talking to.
           to: z.string().max(300).refine((u) => /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
             { message: 'must be a site path (/x) or an http(s) URL' }),
-          icon: z.string().max(40).default(''),
+          icon: z.string().max(60).default(''),
+          // Held to the same rule as `to`, and for the same reason: it becomes an attribute
+          // on the front page. An uploaded logo comes back as `/api/media/blog/…`, which is
+          // a site path; a logo hosted elsewhere is an https URL. Nothing else is a picture.
+          img: z.string().max(400).refine((u) => !u || /^\/(?![/\\])/.test(u) || /^https?:\/\//i.test(u),
+            { message: 'must be a site path (/x) or an http(s) URL' }).default(''),
         })).max(SUITE_MAX).optional(),
       }).optional(),
     }).safeParse(req.body);

@@ -51,6 +51,7 @@ import { Home } from './pages/home.jsx';
 import { Catalog, ItemDetail } from './pages/catalog.jsx';
 import { DEFAULT_FOOTER_SOCIALS, DEFAULT_FOOTER_COLUMNS } from './ui/footer-default.js';
 import { LucideCdnIcon } from './editor/icon-picker.jsx';
+import { FooterStatus } from './pages/status-widget.jsx';
 import { lazyChunk, lazyNamed, installPreloadErrorHandler } from './lib/lazy-chunk.js';
 installPreloadErrorHandler();
 // Lazy: route-split so the initial bundle no longer ships the whole admin back-office,
@@ -1033,6 +1034,10 @@ function Footer() {
             </div>
           )}
           {news.on !== false && <FooterNewsletter cfg={news} />}
+          {/* Under the newsletter, because they are the same kind of thing: the two facts
+              about the site itself that belong at the bottom of every page rather than in
+              the middle of one. */}
+          {cfg?.brand?.status !== false && <FooterStatus />}
         </div>
         )}
         {cols.length

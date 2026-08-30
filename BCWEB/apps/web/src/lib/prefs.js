@@ -109,3 +109,18 @@ export function getHero3dDisabled() {
 export function setHero3dDisabled(off) {
   try { localStorage.setItem(HERO_3D_KEY, off ? '1' : '0'); } catch { /* ignore */ }
 }
+
+/**
+ * "This browser has opened the catalogue at least once."
+ *
+ * A browser fact, not an account fact — nothing on the server records that somebody looked at
+ * a listing page, and adding something that did would be following people around to draw a
+ * tick on a landing page. It reads as `false` in a private window, which is the correct answer
+ * there: that visitor has not seen it, in this browser.
+ */
+export const CATALOG_SEEN = 'bcw_seen_catalog';
+
+/** Remember that the catalogue has been opened. Silent when storage is refused. */
+export function markCatalogSeen() {
+  try { localStorage.setItem(CATALOG_SEEN, '1'); } catch { /* private window, or storage off */ }
+}

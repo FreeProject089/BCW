@@ -8,20 +8,16 @@
 //
 // So the two coexist: the banner shouts during an incident, this states the record. Both read
 // the one /status endpoint, and neither invents a number the status page would not show.
+//
+// It used to be a full-height panel in the middle of the landing page: every service, thirty
+// day-bars each, an entire section spent saying — almost always — that nothing was wrong. That
+// answers "which one, and when", and the answer to that is the status page, one click away.
+// What belongs at the bottom of every page is the one line.
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Activity, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
-
-// The four states the API publishes, and how each is drawn. `not_configured` is not in this
-// table on purpose — a dependency the operator switched off is not a service with a state,
-// and drawing it grey beside the real ones invites "what is wrong with that one".
-const TONE = {
-  operational: { dot: 'bg-success', text: 'text-success' },
-  down: { dot: 'bg-error', text: 'text-error' },
-  degraded: { dot: 'bg-warning', text: 'text-warning' },
-};
 
 /** How many days of the window the site was fully up, as the status page counts them. */
 function pct(n) {
@@ -31,14 +27,23 @@ function pct(n) {
   return `${Math.round(n * 100) / 100}%`;
 }
 
-export default function StatusWidget() {
+/**
+ * The same answer, in one line, for the footer.
+ *
+ * Not a second reader of `/status`: it is this file, so the states, the tone table and the
+ * rounding are the ones the full panel uses. Two components describing uptime with two
+ * roundings is how 99.9 and 99.99 end up looking like the same promise.
+ *
+ * Deliberately without the per-service rows and the day bars. Those answer "which one, and
+ * when" — a question whose answer is the status page, one click away. What belongs beside a
+ * newsletter box is whether the site stays up.
+ */
+export function FooterStatus() {
   const { t } = useI18n();
   const [data, setData] = useState(null);
 
   useEffect(() => {
     let on = true;
-    // Silence on failure, like the banner: a panel reading "could not load the status" is a
-    // second broken thing on the page, and it is the one the reader can do nothing about.
     api.get('/status').then((d) => { if (on) setData(d); }).catch(() => {});
     return () => { on = false; };
   }, []);
@@ -48,60 +53,35 @@ export default function StatusWidget() {
   if (!services.length) return null;
 
   const down = services.filter((s) => s.state === 'down');
-  const allUp = !down.length;
-  // The 30 most recent days, not the 90 the status page draws. This is a strip in a section,
-  // not a page — 90 bars at this width are 2px each and read as texture rather than as days.
-  const WINDOW = 30;
+  const degraded = services.filter((s) => s.state === 'degraded');
+  const allUp = !down.length && !degraded.length;
+  // The site's uptime is the WORST of its parts, not their average: a service that has been
+  // down for a day does not become fine because four others were not.
+  const worst = services.reduce((a, s) => (typeof s.uptimePct === 'number' && (a === null || s.uptimePct < a) ? s.uptimePct : a), null);
 
   return (
-    <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-[var(--line)] flex-wrap">
-        <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${allUp ? 'bg-success' : 'bg-error'}`} />
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">
-            {allUp
-              ? t('sw.allup', 'All services are operational')
-              : down.length === 1
-                ? t('sw.one', 'One service is down')
-                : t('sw.many', 'Several services are down')}
-          </div>
-          <div className="text-[11px] text-[var(--muted)]">
-            {t('sw.window', 'Uptime over the last 90 days, measured by the same probes as the status page.')}
-          </div>
-        </div>
-        <Link to="/status" className="text-xs inline-flex items-center gap-1.5 text-[var(--primary)] hover:underline shrink-0">
-          <Activity size={13} /> {t('sw.more', 'Status and history')} <ArrowRight size={12} />
-        </Link>
-      </div>
-
-      <div className="divide-y divide-[var(--line)]">
-        {services.map((s) => {
-          const tone = TONE[s.state] || TONE.degraded;
-          const days = (s.days || []).slice(-WINDOW);
-          return (
-            <div key={s.key} className="flex items-center gap-3 px-5 py-3">
-              <span className={`h-2 w-2 rounded-full shrink-0 ${tone.dot}`} />
-              <span className="text-[13px] font-medium min-w-0 truncate">{s.label}</span>
-              {/* The bars, on their own line below the name at narrow widths. `min-w-0` is
-                  load-bearing: without it a fixed-width strip beside a flexible name blows the
-                  row out on a phone rather than shrinking. */}
-              <div className="hidden sm:flex items-end gap-[2px] h-4 ml-auto min-w-0" aria-hidden="true">
-                {days.map((d) => (
-                  <span
-                    key={d.day}
-                    title={`${d.day} · ${pct(d.uptimePct) ?? '—'}`}
-                    className={`w-[3px] rounded-[1px] ${d.uptimePct >= 99.9 ? 'bg-success/70' : d.uptimePct >= 95 ? 'bg-warning/70' : 'bg-error/70'}`}
-                    style={{ height: `${Math.max(20, Math.min(100, d.uptimePct))}%` }}
-                  />
-                ))}
-              </div>
-              <span className={`text-[11px] tabular-nums shrink-0 sm:ml-3 ml-auto ${tone.text}`}>
-                {pct(s.uptimePct) ?? t('sw.nodata', 'no data')}
-              </span>
-            </div>
-          );
-        })}
-      </div>
+    <div className="mt-6">
+      <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('sw.foot', 'Service status')}</div>
+      {/* One row that wraps rather than a grid: on a phone the sentence and the figure fall
+          onto two lines by themselves, and there is no width at which this needs a rule. */}
+      <Link to="/status" className="group inline-flex items-center gap-2 flex-wrap text-sm">
+        <span className={`h-2 w-2 rounded-full shrink-0 ${allUp ? 'bg-success' : down.length ? 'bg-error' : 'bg-warning'}`} />
+        <span className={allUp ? 'text-success' : down.length ? 'text-error' : 'text-warning'}>
+          {allUp
+            ? t('sw.allup', 'All services are operational')
+            : down.length === 1
+              ? t('sw.one', 'One service is down')
+              : down.length
+                ? t('sw.many', 'Several services are down')
+                : t('sw.deg', 'Degraded performance')}
+        </span>
+        {worst !== null && (
+          <span className="text-[var(--muted)] tabular-nums">
+            · {pct(worst)} {t('sw.90d', 'over 90 days')}
+          </span>
+        )}
+        <ArrowRight size={12} className="text-[var(--faint)] transition-transform group-hover:translate-x-0.5" />
+      </Link>
     </div>
   );
 }

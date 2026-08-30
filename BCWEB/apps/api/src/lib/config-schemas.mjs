@@ -142,6 +142,10 @@ export const footerSchema = z.object({
     socials: z.union([z.boolean(), z.array(footSocial).max(10)]).optional().default(true),
     // Same story: boolean was "show / hide"; the object adds the copy.
     newsletter: z.union([z.boolean(), footNewsletter]).optional().default(true),
+    // "Is everything up", in one line under the newsletter. It used to be a full-height
+    // panel in the middle of the landing page, listing every service with thirty day-bars
+    // each — a whole section spent saying, almost always, that nothing is wrong.
+    status: z.boolean().optional().default(true),
   }).optional().default({}),
   // Phone layout. The desktop grid is driven by the column count; a phone has to choose
   // between one column per row and a two-up grid, and neither is right for every site.
