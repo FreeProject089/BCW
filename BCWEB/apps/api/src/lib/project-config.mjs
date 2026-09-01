@@ -25,6 +25,43 @@ const LEGAL_TITLES = {
 };
 const LEGAL_ICONS = { tos: 'ShieldCheck', privacy: 'ShieldCheck', license: 'Scale', readme: 'FileText', eula: 'Scale' };
 
+const FR_KEYS = new Set(['tosFr', 'privacyFr', 'readmeFr', 'eulaFr']);
+const isUrl = (v) => typeof v === 'string' && /^https?:\/\//i.test(v.trim());
+
+// Repair a legal ARRAY produced by an EARLIER, buggy migration. That version enumerated
+// every legacy key, so its array holds a "License" card whose url is the license NAME
+// ("GPL-3.0", not a link), a separate `licenseUrl` card carrying the real link, and
+// `tosFr`/`privacyFr`/… French-twin cards. Detect that signature and consolidate: fold the
+// license name + link into one card and drop the French twins. Returns null for an array
+// that shows none of the signature — a clean, editor-authored array is left untouched, so
+// this is idempotent and safe to run over every row.
+function repairLegalCards(cards) {
+  const junk = cards.some((c) => c && (
+    c.title === 'licenseUrl' || FR_KEYS.has(c.title)
+    || (c.title === 'License' && typeof c.url === 'string' && c.url.trim() && !isUrl(c.url))
+  ));
+  if (!junk) return null;
+
+  let licenseName = '';
+  let licenseUrl = '';
+  const rest = [];
+  for (const c of cards) {
+    if (!c || !c.title) continue;
+    if (FR_KEYS.has(c.title)) continue;                       // French twin → drop
+    if (c.title === 'licenseUrl') { if (isUrl(c.url)) licenseUrl = c.url.trim(); continue; }
+    if (c.title === 'License') {                              // the name-as-url junk, or a real license card
+      if (isUrl(c.url)) licenseUrl ||= c.url.trim();
+      else if (typeof c.url === 'string' && c.url.trim()) licenseName = c.url.trim();
+      continue;
+    }
+    if (isUrl(c.url)) rest.push({ icon: c.icon || 'ShieldCheck', title: LEGAL_TITLES[c.title] || c.title, url: c.url.trim() });
+  }
+  const out = [];
+  if (licenseUrl) out.push(card('Scale', licenseName || 'License', licenseUrl));
+  out.push(...rest);
+  return out;
+}
+
 function toCurrentShape(cfg) {
   const out = { ...cfg };
   const moved = [];
@@ -52,16 +89,49 @@ function toCurrentShape(cfg) {
   delete out.contributorsUrl;
 
   // ── legal: an object of links becomes an array of cards ─────────────────
+  //
+  // The legacy shape is a KNOWN set of paired keys, not a free-form map:
+  //   • `license` is a NAME (e.g. "GPL-3.0"), and `licenseUrl` is its link;
+  //   • `tos` / `privacy` / `readme` / `eula` are each a URL, each with an
+  //     optional `*Fr` twin holding the French version of that same document.
+  //
+  // A blind Object.entries() over that turned every key into its own card: a
+  // "License" card whose url was the literal string "GPL-3.0", plus junk cards
+  // titled `licenseUrl`, `tosFr`, `privacyFr`. Map the known shape instead. A
+  // canonical card carries ONE url (its title/text may be localized, its url is
+  // not), so the French twin is folded away rather than shown as a second
+  // document — the same single-link-per-document the editor produces.
   if (out.legal && !Array.isArray(out.legal) && typeof out.legal === 'object') {
-    const cards = Object.entries(out.legal)
-      .filter(([, url]) => typeof url === 'string' && url.trim())
-      .map(([k, url]) => card(LEGAL_ICONS[k] || 'ShieldCheck', LEGAL_TITLES[k] || k, url.trim()));
+    const L = out.legal;
+    const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '');
+    const cards = [];
+    // License: the link is `licenseUrl`; `license` is the human name → the title.
+    if (str(L.licenseUrl)) cards.push(card('Scale', str(L.license) || 'License', str(L.licenseUrl)));
+    // The remaining known documents: one URL each, the `*Fr` twin dropped.
+    for (const k of ['tos', 'privacy', 'readme', 'eula']) {
+      if (str(L[k])) cards.push(card(LEGAL_ICONS[k] || 'ShieldCheck', LEGAL_TITLES[k] || k, str(L[k])));
+    }
+    // Anything else with a string URL that is NOT one of the paired keys we just
+    // consumed — keep it, titled by its key, so an unforeseen legacy field still
+    // surfaces instead of vanishing.
+    const consumed = new Set(['license', 'licenseUrl', 'tos', 'tosFr', 'privacy', 'privacyFr', 'readme', 'readmeFr', 'eula', 'eulaFr']);
+    for (const [k, url] of Object.entries(L)) {
+      if (consumed.has(k) || !str(url)) continue;
+      cards.push(card('ShieldCheck', LEGAL_TITLES[k] || k, str(url)));
+    }
     // The tab is opt-in, so turning the cards on without turning the tab on would hide them
     // exactly as effectively as leaving them in the wrong shape.
     out.legal = cards;
     if (cards.length) {
       out.tabs = { ...(out.tabs || {}), legal: true };
       moved.push(`legal (${cards.length} card${cards.length > 1 ? 's' : ''})`);
+    }
+  } else if (Array.isArray(out.legal) && out.legal.length) {
+    // Already an array — but possibly one an earlier, buggy migration filled with junk.
+    const repaired = repairLegalCards(out.legal);
+    if (repaired) {
+      out.legal = repaired;
+      moved.push(`legal (repaired to ${repaired.length} card${repaired.length > 1 ? 's' : ''})`);
     }
   }
 
