@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   computeOrgShare, clampCharityPct, normalizeCharityConfig,
   CHARITY_MAX_PCT, monthKey, validateContribution, potTotalCents,
-  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS,
+  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS, pollOpen,
 } from '../src/lib/charity.mjs';
 
 test('org-share is a percentage of net recurring revenue', () => {
@@ -61,6 +61,15 @@ test('contribution amounts are validated (integer cents within bounds)', () => {
   assert.equal(validateContribution(CONTRIBUTION_MAX_CENTS + 1).error, 'too_large');
   assert.equal(validateContribution(12.5).error, 'bad_amount');
   assert.equal(validateContribution('abc').error, 'bad_amount');
+});
+
+test('pollOpen reflects status + the open window', () => {
+  const now = new Date('2026-09-15T00:00:00Z');
+  assert.equal(pollOpen({ status: 'open' }, now), true);
+  assert.equal(pollOpen({ status: 'draft' }, now), false);
+  assert.equal(pollOpen({ status: 'open', opensAt: '2026-09-20T00:00:00Z' }, now), false); // not open yet
+  assert.equal(pollOpen({ status: 'open', closesAt: '2026-09-10T00:00:00Z' }, now), false); // already closed
+  assert.equal(pollOpen(null, now), false);
 });
 
 test('pot total = frozen org share + every community gift', () => {

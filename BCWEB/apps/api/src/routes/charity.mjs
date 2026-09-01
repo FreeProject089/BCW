@@ -5,7 +5,7 @@ import { stripe } from './hosting.mjs';
 import {
   CHARITY_CONFIG_KEY, CHARITY_DEFAULTS, CHARITY_MAX_PCT,
   normalizeCharityConfig, computeOrgShare, clampCharityPct,
-  validateContribution, potTotalCents, monthKey, CONTRIBUTION_PRESETS_CENTS,
+  validateContribution, potTotalCents, monthKey, CONTRIBUTION_PRESETS_CENTS, pollOpen,
 } from '../lib/charity.mjs';
 
 // B14 Community Charity — Phase 1: admin config + the org-share preview. No money moves here;
@@ -52,10 +52,19 @@ export default async function charityRoutes(app) {
     const month = monthKey(new Date());
     const pot = await p.charityPot.findUnique({ where: { month }, include: { contributions: { select: { amountCents: true } } } });
     const totals = potTotalCents(pot || {});
+    // The month's association vote, if one is linked. Only id/question/open travel — the full
+    // ballot and its tally live on /polls/:id, which already applies every visibility rule, so
+    // there is no second place that decides who may see the numbers.
+    let poll = null;
+    if (pot?.pollId) {
+      const row = await p.poll.findUnique({ where: { id: pot.pollId }, select: { id: true, question: true, status: true, opensAt: true, closesAt: true } }).catch(() => null);
+      if (row) poll = { id: row.id, question: row.question, open: pollOpen(row, new Date()) };
+    }
     return {
       enabled: true, month, currency: config.currency, percent: config.percent,
-      association: config.association || '', status: pot?.status || 'open',
-      presets: CONTRIBUTION_PRESETS_CENTS, ...totals,
+      // The month's own association wins over the config default once an admin has set it.
+      association: pot?.association || config.association || '', status: pot?.status || 'open',
+      poll, presets: CONTRIBUTION_PRESETS_CENTS, ...totals,
     };
   });
 
@@ -91,13 +100,55 @@ export default async function charityRoutes(app) {
     return { url: session.url };
   });
 
-  // Admin: read the config + a live org-share preview computed from mrr − monthlyBurn.
+  // Admin: read the config + a live org-share preview + the current month's pot (association
+  // vote link, chosen association, status, running total).
   app.get('/admin/charity', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const config = await loadConfig(p);
-    const [mrr, burn] = await Promise.all([recurringMrrCents(p), monthlyBurnCents(p)]);
+    const month = monthKey(new Date());
+    const [mrr, burn, potRow] = await Promise.all([
+      recurringMrrCents(p), monthlyBurnCents(p),
+      p.charityPot.findUnique({ where: { month }, include: { contributions: { select: { amountCents: true } } } }),
+    ]);
     const preview = computeOrgShare({ mrrCents: mrr, monthlyBurnCents: burn, percent: config.percent });
-    return { config, preview, maxPct: CHARITY_MAX_PCT };
+    const pot = potRow ? {
+      month, pollId: potRow.pollId || '', association: potRow.association || '', status: potRow.status,
+      proofUrl: potRow.proofUrl || '', ...potTotalCents(potRow),
+    } : { month, pollId: '', association: '', status: 'open', proofUrl: '', orgContribCents: 0, communityCents: 0, totalCents: 0 };
+    return { config, preview, maxPct: CHARITY_MAX_PCT, pot };
+  });
+
+  // Admin: manage THIS month's pot — link the association vote, set the chosen association, or
+  // move its status. Get-or-creates the pot so an admin can link a vote before any gift arrives.
+  app.put('/admin/charity/pot', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const body = z.object({
+      pollId: z.string().max(64).nullable().optional(),
+      association: z.string().max(200).optional(),
+      status: z.enum(['open', 'closing', 'paid']).optional(),
+    }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'bad_request' });
+    const p = await db();
+    // A linked poll must exist — a dangling id would render a broken "vote" link on the widget.
+    if (body.data.pollId) {
+      const exists = await p.poll.findUnique({ where: { id: body.data.pollId }, select: { id: true } }).catch(() => null);
+      if (!exists) return reply.code(400).send({ error: 'poll_not_found' });
+    }
+    const month = monthKey(new Date());
+    const config = await loadConfig(p);
+    const data = {};
+    if (body.data.pollId !== undefined) data.pollId = body.data.pollId || null;
+    if (body.data.association !== undefined) data.association = body.data.association;
+    if (body.data.status !== undefined) data.status = body.data.status;
+    const pot = await p.charityPot.upsert({
+      where: { month },
+      update: data,
+      create: { month, currency: config.currency, ...data },
+      include: { contributions: { select: { amountCents: true } } },
+    });
+    await logAudit(p, req.user.uid, 'charity.pot',
+      `${month}${data.pollId !== undefined ? ` poll=${data.pollId || 'none'}` : ''}${data.association !== undefined ? ` association=${data.association}` : ''}${data.status ? ` status=${data.status}` : ''}`,
+      clientIp(req)).catch(() => {});
+    return { pot: { month, pollId: pot.pollId || '', association: pot.association || '', status: pot.status, proofUrl: pot.proofUrl || '', ...potTotalCents(pot) } };
   });
 
   // Admin: update the config. Percent is clamped server-side to [0, 50] regardless of input,

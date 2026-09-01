@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -289,7 +289,7 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
-        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><LanguagesCard /></>}
+        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><CharityAdminCard /><LanguagesCard /></>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -18752,6 +18752,75 @@ function LocaleStringEditor({ locale, core, onClose }) {
         </div>
       )}
     </Modal>
+  );
+}
+
+// B14 — Community Charity admin. Turn the programme on, set the monthly percentage (hard-capped
+// at 50 server-side) and default association, see the org-share preview computed from the real
+// mrr − monthlyBurn, and manage this month's pot: link the association vote, set the chosen
+// association, move its status. Payment stays manual — nothing here moves money.
+function CharityAdminCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/charity'), []);
+  const [cfg, setCfg] = useState(null);
+  const [pot, setPot] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) { setCfg(data.config); setPot(data.pot); } }, [data]);
+  if (loading || !cfg) return null;
+  const money = (c) => `${((c || 0) / 100).toFixed(2)} ${(cfg.currency || 'chf').toUpperCase()}`;
+  const saveConfig = async () => {
+    setBusy(true);
+    try {
+      const r = await api.put('/admin/charity', { enabled: cfg.enabled, percent: Number(cfg.percent) || 0, currency: cfg.currency, association: cfg.association });
+      setCfg(r.config); toast.success(t('chc.saved', 'Saved.')); reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const savePot = async () => {
+    setBusy(true);
+    try {
+      const r = await api.put('/admin/charity/pot', { pollId: pot.pollId || null, association: pot.association, status: pot.status });
+      setPot(r.pot); toast.success(t('chc.saved', 'Saved.'));
+    } catch (e) { toast.error(e?.data?.error === 'poll_not_found' ? t('chc.pollnotfound', 'Poll not found.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const pv = data.preview || {};
+  return (
+    <Card className="mt-6 p-5">
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Heart size={16} className="text-[var(--primary-2)]" /> {t('chc.title', 'Community Charity')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('chc.sub', 'Each month a share of eligible revenue goes to a community-chosen association. The final payment is sent manually.')}</p>
+
+      <label className="flex items-center gap-2 text-sm cursor-pointer select-none mb-3">
+        <input type="checkbox" className="accent-[var(--primary)]" checked={cfg.enabled} onChange={(e) => setCfg((c) => ({ ...c, enabled: e.target.checked }))} /> {t('chc.enabled', 'Enable Community Charity')}
+      </label>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Field label={t('chc.percent', 'Percentage (max 50%)')}><Input type="number" min="0" max="50" value={cfg.percent} onChange={(e) => setCfg((c) => ({ ...c, percent: e.target.value }))} /></Field>
+        <Field label={t('chc.currency', 'Currency')}><Input value={cfg.currency} onChange={(e) => setCfg((c) => ({ ...c, currency: e.target.value }))} /></Field>
+        <Field label={t('chc.assoc', 'Default association')}><Input placeholder={t('chc.assoc.ph', 'Association name')} value={cfg.association} onChange={(e) => setCfg((c) => ({ ...c, association: e.target.value }))} /></Field>
+      </div>
+      <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="text-[var(--muted)]">{t('chc.eligible', 'Eligible recurring revenue')}: <b className="text-[var(--text)] tabular-nums">{money(pv.eligibleCents)}</b></span>
+        <span>{t('chc.orgadds', 'BetterCommunity adds {n} at {p}%').replace('{n}', money(pv.orgShareCents)).replace('{p}', pv.percent ?? cfg.percent)}</span>
+      </div>
+      <div className="flex justify-end mt-3"><Button variant="primary" loading={busy} onClick={saveConfig}><Save size={15} /> {t('chc.save', 'Save')}</Button></div>
+
+      {pot && (
+        <div className="mt-5 pt-4 border-t border-[var(--line)]">
+          <h3 className="font-medium mb-2 flex items-center gap-2"><Vote size={15} /> {t('chc.pot', 'This month’s pot')} · {pot.month}</h3>
+          <div className="text-sm text-[var(--muted)] mb-3">{t('chc.total', 'Total')}: <b className="text-[var(--text)] tabular-nums">{money(pot.totalCents)}</b> <span className="text-[var(--faint)]">({money(pot.orgContribCents)} + {money(pot.communityCents)})</span></div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Field label={t('chc.poll', 'Linked vote (poll ID)')}><Input placeholder={t('chc.poll.ph', 'Poll id of the association vote')} value={pot.pollId} onChange={(e) => setPot((x) => ({ ...x, pollId: e.target.value }))} /></Field>
+            <Field label={t('chc.assoc', 'Chosen association')}><Input placeholder={t('chc.assoc.ph', 'Association name')} value={pot.association} onChange={(e) => setPot((x) => ({ ...x, association: e.target.value }))} /></Field>
+            <Field label={t('chc.status', 'Status')}><Dropdown value={pot.status} onChange={(v) => setPot((x) => ({ ...x, status: v }))} options={[
+              { value: 'open', label: t('chc.status.open', 'Open') },
+              { value: 'closing', label: t('chc.status.closing', 'Closing') },
+              { value: 'paid', label: t('chc.status.paid', 'Paid') },
+            ]} /></Field>
+          </div>
+          <div className="flex justify-end mt-3"><Button variant="primary" loading={busy} onClick={savePot}><Save size={15} /> {t('chc.savepot', 'Save pot')}</Button></div>
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -97,6 +97,12 @@ function PotSummary({ pot, t }) {
           ? <span>{t('ch.for', 'This month’s association:')} <b>{pot.association}</b></span>
           : <span className="text-[var(--muted)]">{t('ch.voting', 'The association is being chosen by community vote.')}</span>}
       </div>
+      {pot.poll && !pot.association && (
+        <div className="mt-2 text-sm text-[var(--muted)] flex items-center justify-center gap-1.5">
+          <Vote size={14} className="shrink-0" />
+          <span>{pot.poll.question}{pot.poll.open ? '' : ` · ${t('ch.voteclosed', 'vote closed')}`}</span>
+        </div>
+      )}
       {pot.percent > 0 && <div className="text-xs text-[var(--faint)] mt-1">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', pot.percent)}</div>}
     </>
   );
@@ -117,7 +123,7 @@ export function CharityWidget() {
           <PotSummary pot={data} t={t} />
           <div className="flex flex-wrap gap-2 justify-center mt-5">
             <Button variant="primary" onClick={() => setGiving(true)}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
-            <Link to="/polls"><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
+            <Link to={data.poll?.id ? `/polls/${data.poll.id}` : '/polls'}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
             <Link to="/charity"><Button variant="ghost"><Info size={15} /> {t('ch.more', 'Learn more')}</Button></Link>
           </div>
         </div>
@@ -144,7 +150,7 @@ export default function CharityPage() {
           <PotSummary pot={data} t={t} />
           <div className="flex flex-wrap gap-2 justify-center mt-5">
             <Button variant="primary" onClick={() => setGiving(true)}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
-            <Link to="/polls"><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
+            <Link to={data.poll?.id ? `/polls/${data.poll.id}` : '/polls'}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
           </div>
         </Card>
       ) : (

@@ -80,6 +80,19 @@ export function validateContribution(amountCents) {
   return { ok: true, amountCents: n };
 }
 
+/**
+ * Is a linked poll live right now? A minimal open-check for the charity widget — NOT the tally
+ * or results-visibility rule (that stays in the poll module, where it is tested). Passed `now`
+ * so the caller controls the clock.
+ */
+export function pollOpen(poll, now) {
+  if (!poll || poll.status !== 'open') return false;
+  const t = now.getTime();
+  if (poll.opensAt && new Date(poll.opensAt).getTime() > t) return false;
+  if (poll.closesAt && new Date(poll.closesAt).getTime() <= t) return false;
+  return true;
+}
+
 /** Sum a pot's total = BetterCommunity's frozen share + every community gift. Pure. */
 export function potTotalCents(pot) {
   const org = Math.max(0, Math.round(pot?.orgContribCents || 0));
