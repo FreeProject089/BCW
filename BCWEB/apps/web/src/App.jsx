@@ -830,19 +830,30 @@ function MobileTabBar() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => { window.removeEventListener('scroll', onScroll); clearTimeout(tmr); };
   }, []);
-  // Off when the admin disabled it. Otherwise it mirrors the configured nav items (home +
-  // the leading links) when a custom nav exists, else the default app-shortcut bar.
-  if (navCfg?.downbar?.enabled === false) return null;
-  const items = navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM;
+  // Off when the admin disabled it. Otherwise: an admin-defined custom bar if one exists,
+  // else it mirrors the configured nav items (home + leading links), else the default
+  // app-shortcut bar. `display` decides icon / text / both.
+  const db = navCfg?.downbar || {};
+  if (db.enabled === false) return null;
+  const display = db.display === 'icon' || db.display === 'text' ? db.display : 'both';
+  const custom = Array.isArray(db.items) && db.items.length
+    ? db.items.filter((it) => it && it.to).slice(0, 5).map((it) => ({ to: it.to, icon: it.icon, label: it.label, labelFr: it.labelFr, exact: it.to === '/' }))
+    : null;
+  const items = custom || (navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM);
   const label = (n) => (n.k ? t(n.k) : navLabel(n, t, lang));
+  const showIcon = display !== 'text';
+  const showText = display !== 'icon';
+  // In 'both', labels collapse while scrolling (the app-style reveal). In 'text' they are
+  // the only thing on the bar, so they never collapse.
+  const labelVisible = display === 'text' || showLabels;
   const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`;
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--line)] topbar flex items-stretch px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       {items.map((n) => (
         <NavLink key={n.to} to={n.to} end={n.exact} className={tab} title={label(n)} aria-label={label(n)}>
           {({ isActive }) => <>
-            <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>
-            <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${showLabels ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>
+            {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
+            {showText && <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${display === 'text' ? 'font-medium max-w-full truncate px-1' : ''} ${labelVisible ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>}
           </>}
         </NavLink>
       ))}

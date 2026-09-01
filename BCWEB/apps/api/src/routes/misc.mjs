@@ -3026,9 +3026,20 @@ export default async function miscRoutes(app) {
     // pills, or grouped under a single "Projects" hover-dropdown. Icons stay each
     // project's own either way.
     projectsMode: z.enum(['inline', 'dropdown']).optional().default('inline'),
-    // Mobile bottom tab bar. Its contents are derived from the nav items (home + the
-    // first few links), so there's nothing to list here — just an on/off toggle.
-    downbar: z.object({ enabled: z.boolean().optional().default(true) }).optional().default({ enabled: true }),
+    // Mobile bottom tab bar. `enabled` is the on/off toggle. `display` decides whether each
+    // button shows its icon, its text, or both. `items` are OPTIONAL custom buttons that
+    // replace the auto-derived set (home + the first few nav links) — each an internal path,
+    // an icon, and a name in both languages. Empty `items` keeps the auto behaviour.
+    downbar: z.object({
+      enabled: z.boolean().optional().default(true),
+      display: z.enum(['icon', 'text', 'both']).optional().default('both'),
+      items: z.array(z.object({
+        label: z.string().max(24),
+        labelFr: z.string().max(24).optional().default(''),
+        to: z.string().max(200).startsWith('/'),
+        icon: z.string().max(60).optional().default(''),
+      })).max(5).optional().default([]),
+    }).optional().default({ enabled: true }),
     // Desktop topbar layout. align = where the nav sits; density = spacing; labels = whether
     // link/group text shows next to icons ('icons' hides it, saving room). Applied identically
     // by the real topbar (App.jsx) and the admin Live preview from one shared reader.
@@ -3098,7 +3109,11 @@ export default async function miscRoutes(app) {
     const utility = cfg?.utility && Object.keys(cfg.utility).length ? cfg.utility : null;
     // projectsMode + downbar + layout apply independently of custom items (like utility).
     const projectsMode = cfg?.projectsMode === 'dropdown' ? 'dropdown' : null; // 'inline' is the default → omit
-    const downbar = cfg?.downbar && cfg.downbar.enabled === false ? cfg.downbar : null; // enabled is the default → omit
+    // Forward the downbar config when it says anything other than the defaults: disabled, a
+    // non-'both' display, or custom buttons. A plain { enabled:true, display:'both', items:[] }
+    // is the built-in behaviour and is omitted so an untouched install still gets nav:null.
+    const _db = cfg?.downbar;
+    const downbar = _db && (_db.enabled === false || (_db.display && _db.display !== 'both') || (Array.isArray(_db.items) && _db.items.length > 0)) ? _db : null;
     // layout: only forward it when it differs from the defaults (start/comfortable/both), so an
     // untouched install still gets nav:null and the built-in look.
     const L = cfg?.layout;
