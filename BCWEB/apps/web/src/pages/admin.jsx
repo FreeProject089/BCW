@@ -12885,6 +12885,8 @@ function GuildStorageRow({ g, busy, onSave }) {
   const MODES = [['none', t('bg.mode.none', 'No storage')], ['moderation', t('bg.mode.mod', 'Moderation (Discord logs)')], ['pool', t('bg.mode.pool', 'Store members')]];
   const [quota, setQuota] = useState(g.storageQuotaBytes); // local so we PUT on Save, not per keystroke
   const quotaDirty = quota !== g.storageQuotaBytes;
+  const [showLogs, setShowLogs] = useState(false);
+  const keepsLogs = g.memberMode === 'pool' || (g.memberMode === 'moderation' && g.storeLogs);
   return (
     <div className="rounded-lg border border-[var(--line)] p-3">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
@@ -12915,6 +12917,37 @@ function GuildStorageRow({ g, busy, onSave }) {
       {g.memberMode === 'moderation' && (
         <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] mt-2 cursor-pointer select-none"><input type="checkbox" checked={g.storeLogs} disabled={busy} onChange={(e) => onSave(g.guildId, { storeLogs: e.target.checked })} /> {t('bg.storelogs', 'Also keep moderation logs in the dashboard (needs a pool)')}</label>
       )}
+      {keepsLogs && (
+        <div className="mt-2">
+          <button type="button" className="text-[11px] text-[var(--primary-2)] hover:underline" onClick={() => setShowLogs((s) => !s)}>
+            {showLogs ? t('bg.hidelogs', 'Hide moderation log') : t('bg.showlogs', 'Show moderation log')}
+          </button>
+          {showLogs && <GuildLogs guildId={g.guildId} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Lazy-loaded moderation record for one guild (B4 Phase 4). Fetched only when expanded.
+function GuildLogs({ guildId }) {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get(`/admin/bot/guilds/${guildId}/logs?take=50`), [guildId]);
+  if (loading) return <div className="mt-2"><Spinner /></div>;
+  const logs = data?.logs || [];
+  if (!logs.length) return <p className="text-[11px] text-[var(--faint)] mt-2">{t('bg.nologs', 'No moderation actions recorded yet.')}</p>;
+  const TONE = { ban: 'red', kick: 'amber', timeout: 'amber', warn: '', unban: 'green', untimeout: 'green' };
+  return (
+    <div className="mt-2 space-y-1 border-t border-[var(--line)] pt-2">
+      {logs.map((l) => (
+        <div key={l.id} className="flex items-center gap-2 text-[11px] flex-wrap">
+          <Badge tone={TONE[l.action] || ''}>{l.action}</Badge>
+          {l.auto ? <Badge tone="">{t('bg.auto', 'auto')}</Badge> : null}
+          <span className="text-[var(--muted)] font-mono">{l.targetId}</span>
+          {l.reason ? <span className="text-[var(--faint)] truncate max-w-[16rem]">— {l.reason}</span> : null}
+          <span className="text-[var(--faint)] ml-auto">{new Date(l.createdAt).toLocaleDateString()}</span>
+        </div>
+      ))}
     </div>
   );
 }

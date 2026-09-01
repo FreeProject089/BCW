@@ -5115,6 +5115,8 @@ const DICT = {
     'bg.storelogs': 'Conserver aussi les logs de modération dans le tableau de bord (nécessite une pool)',
     'bg.needlog': "Définissez d'abord un salon de logs Discord pour le mode modération.",
     'bg.none': "Aucun serveur détecté pour l'instant — le bot enregistre chaque serveur où il se trouve.",
+    'bg.showlogs': 'Afficher le journal de modération', 'bg.hidelogs': 'Masquer le journal de modération',
+    'bg.nologs': 'Aucune action de modération enregistrée pour le moment.', 'bg.auto': 'auto',
     'db.sec.global': 'Global — s’applique à tous les serveurs', 'db.sec.global.sub': 'Les annonces sont routées par salon (fonctionnent dans n’importe quel serveur) ; les limites sont partagées.',
     'db.sec.perserver': 'Configuration par serveur', 'db.sec.perserver.sub': 'Modération, bienvenue, vocal à la demande et rôles réservés — configurés indépendamment pour chaque serveur où est le bot.',
     'db.mod.blog': 'Annonces de blog', 'db.mod.blog.d': 'Publie les nouveaux articles dans n’importe quel salon — filtre chaque route par projet.',
