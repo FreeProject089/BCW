@@ -21,7 +21,7 @@ function DiffView({ a, b }) {
         {rows.map((r, i) => (
           <div key={i} className={`flex ${r.type === 'add' ? 'bg-success/[0.09]' : r.type === 'del' ? 'bg-error/[0.09]' : ''}`}>
             <span className={`select-none w-6 shrink-0 text-center ${r.type === 'add' ? 'text-success' : r.type === 'del' ? 'text-error' : 'text-transparent'}`}>{r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}</span>
-            <span className="whitespace-pre-wrap break-words flex-1 pr-2">{r.text || ' '}</span>
+            <span className="whitespace-pre-wrap break-words flex-1 pe-2">{r.text || ' '}</span>
           </div>
         ))}
       </div>
@@ -68,20 +68,20 @@ export default function HistoryModal({ base, onClose, onRestore }) {
   return (
     <Modal open onClose={onClose} title={t('hm.title', 'Edit history')} icon={History} width="max-w-4xl"
       footer={<>
-        <span className="text-xs text-[var(--faint)] mr-auto">{canRestore ? t('hm.restorehint', 'Restoring loads the version into the editor — nothing is lost until you Save.') : t('hm.readonly', 'Read-only version history for this published post.')}</span>
+        <span className="text-xs text-[var(--faint)] me-auto">{canRestore ? t('hm.restorehint', 'Restoring loads the version into the editor — nothing is lost until you Save.') : t('hm.readonly', 'Read-only version history for this published post.')}</span>
         <Button variant="ghost" onClick={onClose}>{t('hm.close', 'Close')}</Button>
         {canRestore && <Button variant="primary" disabled={!preview} onClick={restore}><RotateCcw size={14} /> {t('hm.restorebtn', 'Restore this version')}</Button>}
       </>}>
       <div className="grid sm:grid-cols-[240px_1fr] gap-4 sm:min-h-[50vh]">
         {/* On a phone the two panes stack: cap the version list short so the preview
             below is reachable without scrolling past every snapshot. */}
-        <div className="max-h-[30vh] sm:max-h-[56vh] overflow-auto scroll-thin -mr-1 pr-1 space-y-1">
+        <div className="max-h-[30vh] sm:max-h-[56vh] overflow-auto scroll-thin -me-1 pe-1 space-y-1">
           {revs === null ? <div className="grid place-items-center py-10"><Spinner /></div>
             : revs.length ? revs.map((r, i) => (
               <button key={r.id} onClick={() => select(i)}
-                className={`w-full text-left rounded-lg border px-3 py-2 transition ${activeIdx === i ? 'border-[var(--primary)] bg-[var(--primary)]/8' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`w-full text-start rounded-lg border px-3 py-2 transition ${activeIdx === i ? 'border-[var(--primary)] bg-[var(--primary)]/8' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ml-1.5 text-[10px] font-semibold uppercase tracking-wide text-success">{t('hm.latest', 'latest')}</span>}</span>
+                  <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ms-1.5 text-[10px] font-semibold uppercase tracking-wide text-success">{t('hm.latest', 'latest')}</span>}</span>
                   <span className="text-[11px] text-[var(--faint)]">{(r.bytes / 1024).toFixed(1)} KB</span>
                 </div>
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1" title={r.editor}>
@@ -92,7 +92,7 @@ export default function HistoryModal({ base, onClose, onRestore }) {
               </button>
             )) : <EmptyState icon={History} title={t('hm.nohistory', 'No history yet')} sub={t('hm.nohistorysub', 'Snapshots appear here after each save.')} />}
         </div>
-        <div className="min-w-0 border-t sm:border-t-0 sm:border-l border-[var(--line)] pt-4 sm:pt-0 sm:pl-4 max-h-[52vh] sm:max-h-[56vh] overflow-auto scroll-thin">
+        <div className="min-w-0 border-t sm:border-t-0 sm:border-s border-[var(--line)] pt-4 sm:pt-0 sm:ps-4 max-h-[52vh] sm:max-h-[56vh] overflow-auto scroll-thin">
           {loading ? <div className="grid place-items-center py-10"><Spinner /></div>
             : preview ? <>
               <div className="flex items-center justify-between gap-2 mb-2.5 flex-wrap">

@@ -231,7 +231,7 @@ export default function ProjectShowcase({ config }) {
                 onClick={() => go(i)}
                 aria-current={i === at ? 'true' : undefined}
                 aria-label={say(it.title, `${i + 1}`)}
-                className={`group text-left rounded-lg transition-colors w-full ${
+                className={`group text-start rounded-lg transition-colors w-full ${
                   i === at ? 'sm:bg-[var(--surface-2)]' : 'hover:sm:bg-[var(--surface)]'
                 }`}
               >

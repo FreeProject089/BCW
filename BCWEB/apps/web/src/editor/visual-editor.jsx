@@ -428,7 +428,7 @@ function BlockFields({ block: b, onChange }) {
           {tag('Tags')}
           <div className="flex flex-wrap gap-2">
             {tags.map((tg, idx) => (
-              <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] pl-1 pr-1.5 py-0.5"
+              <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] ps-1 pe-1.5 py-0.5"
                 style={{ color: tg.color || 'var(--primary)', background: tg.color ? `color-mix(in srgb, ${tg.color} 14%, transparent)` : undefined }}>
                 <input type="color" value={tg.color || '#7c3aed'} onChange={(e) => setTag(idx, { color: e.target.value })} title={t('ve.colour', "Colour")} className="w-4 h-4 rounded-full border-0 bg-transparent p-0 cursor-pointer" />
                 <input value={tg.text} onChange={(e) => setTag(idx, { text: e.target.value })} placeholder="Tag" className="bg-transparent border-0 outline-none text-xs font-semibold w-16" style={{ color: 'inherit' }} />

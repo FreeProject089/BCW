@@ -44,8 +44,8 @@ export default function HeroShowcase() {
             <div className="flex-1 mx-4 h-6 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] flex items-center px-3 text-[11px] text-[var(--faint)]">{typeof location !== 'undefined' ? location.hostname : 'bettercommunity.ch'}/dashboard</div>
           </div>
           {/* app body */}
-          <div className="grid grid-cols-[150px_1fr] min-h-[300px] text-left">
-            <aside className="border-r border-[var(--line)] p-3 bg-[var(--surface)] hidden sm:block">
+          <div className="grid grid-cols-[150px_1fr] min-h-[300px] text-start">
+            <aside className="border-e border-[var(--line)] p-3 bg-[var(--surface)] hidden sm:block">
               <div className="flex items-center gap-2 font-bold text-sm mb-4"><img src="/logo.png" alt="" className="w-5 h-5 rounded" /><span className="gradient-text">BC</span></div>
               {[[Boxes, 'BMM'], [Music2, 'BSM'], [Server, 'Repos'], [Rocket, 'Hosting'], [Newspaper, 'Blog']].map(([I, l], i) => (
                 <div key={l} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs mb-0.5 ${i === 2 ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><I size={13} />{l}</div>

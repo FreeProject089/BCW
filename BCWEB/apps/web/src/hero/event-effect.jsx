@@ -394,7 +394,7 @@ export default function EventEffect() {
       {link && <ArrowRight size={16} className="shrink-0 text-[var(--faint)]" />}
     </>
   );
-  const rowCls = `flex items-center gap-2.5 sm:gap-3 px-3.5 sm:px-5 py-2.5 sm:py-3 pr-9 ${link ? 'rounded-2xl transition hover:bg-[var(--surface-2)]/50' : ''}`;
+  const rowCls = `flex items-center gap-2.5 sm:gap-3 px-3.5 sm:px-5 py-2.5 sm:py-3 pe-9 ${link ? 'rounded-2xl transition hover:bg-[var(--surface-2)]/50' : ''}`;
   return (
     <>
       {(!reduced || preview) && <div ref={mount} aria-hidden className="fixed inset-0 z-[45]" style={{ pointerEvents: 'none' }} />}

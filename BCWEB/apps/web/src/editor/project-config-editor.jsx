@@ -30,7 +30,7 @@ function Section({ icon: Icon, title, desc, children, defaultOpen = false, badge
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--surface-2)] transition text-left">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--surface-2)] transition text-start">
         <Icon size={16} className="text-[var(--primary-2)] shrink-0" />
         <span className="font-medium text-sm flex-1">{title}</span>
         {badge != null && <Badge tone="primary">{badge}</Badge>}
@@ -656,7 +656,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               import or a call, because the whole claim of the feature is that every line was
               read from the source. What is editable is the framing and the scope. */}
           {!isShowcase && stack.showCodeMap === true && (
-            <div className="space-y-2 mt-2 pl-6">
+            <div className="space-y-2 mt-2 ps-6">
               <Field label={t('pce.introcodemap', "Intro line for the code map (optional)")}
                 hint="Your words, shown above the map. The standing explanation of what a code map is stays underneath it.">
                 <Textarea rows={2} value={stack.codeMapNote || ''}

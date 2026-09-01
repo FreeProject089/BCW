@@ -39,27 +39,27 @@ function CommentBody({ c, isReply, ctx }) {
         {edited && <button onClick={() => openHistory(c.id)} title={t('cm.history', "View this comment's edit history")} className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> {t('cm.edited', 'edited')}</button>}
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-success flex items-center gap-0.5"><Check size={10} /> resolved</span>}
         {c.participants?.length > 1 && (
-          <span className="flex items-center -space-x-1.5 ml-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
+          <span className="flex items-center -space-x-1.5 ms-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
             {c.participants.slice(0, 5).map((u) => (
               <UserAvatar key={u.id} user={{ id: u.id, displayName: u.name, avatar: u.avatar }} size={18} className="rounded-full" />
             ))}
-            {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] pl-2">+{c.participants.length - 5}</span>}
+            {c.participants.length > 5 && <span className="text-[10px] text-[var(--faint)] ps-2">+{c.participants.length - 5}</span>}
           </span>
         )}
       </div>
       {c.anchor && !isReply && (onJump
-        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
-        : <div className="ml-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
+        : <div className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
-        <div className="ml-8 mt-1.5">
+        <div className="ms-8 mt-1.5">
           <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder={t('cm.ph.edit', "Edit comment \u2014 supports blocks, tables, images\u2026")} />
           <div className="flex gap-1.5 mt-1.5"><Button size="sm" variant="primary" disabled={busy} onClick={saveEdit}>Save</Button><Button size="sm" variant="ghost" onClick={() => setEditing(null)}>Cancel</Button></div>
         </div>
       ) : (
-        <div className="ml-8 mt-1 text-sm comment-md"><Markdown>{c.body}</Markdown></div>
+        <div className="ms-8 mt-1 text-sm comment-md"><Markdown>{c.body}</Markdown></div>
       )}
       {canWrite && editing?.id !== c.id && (
-        <div className="ml-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
+        <div className="ms-8 mt-1 flex items-center gap-3 text-[11px] text-[var(--faint)]">
           {!isReply && <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => { setReplyTo(c.id); setReplyBody(''); }}><CornerDownRight size={11} /> Reply</button>}
           <button className="hover:text-[var(--text)] flex items-center gap-1" onClick={() => setEditing({ id: c.id, body: c.body, base: c.body })}><Pencil size={11} /> Edit</button>
           {!isReply && <button className="hover:text-success flex items-center gap-1" onClick={() => toggleResolved(c)}><Check size={11} /> {c.resolved ? 'Unresolve' : 'Resolve'}</button>}
@@ -67,7 +67,7 @@ function CommentBody({ c, isReply, ctx }) {
         </div>
       )}
       {replyTo === c.id && (
-        <div className="ml-8 mt-2 flex gap-1.5">
+        <div className="ms-8 mt-2 flex gap-1.5">
           <Input value={replyBody} autoFocus onChange={(e) => setReplyBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); reply(c.id); } }} placeholder={t('cm.ph.reply', "Reply\u2026")} className="!py-1.5 !text-sm" />
           <Button size="sm" variant="primary" disabled={busy} onClick={() => reply(c.id)}><Send size={13} /></Button>
         </div>
@@ -153,7 +153,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   return (
     <Modal open onClose={onClose} title={t('cm.comments', "Comments")} icon={MessageSquare} width="max-w-2xl"
       footer={<>
-        <span className="text-xs mr-auto flex items-center gap-1.5 text-[var(--faint)]">
+        <span className="text-xs me-auto flex items-center gap-1.5 text-[var(--faint)]">
           {data?.commentsPublic ? <><Globe size={13} className="text-success" /> {t('cm.visible', 'Visible to readers')}</> : <><Lock size={13} /> {t('cm.editorsOnly', 'Editors only')}</>}
         </span>
         <Button variant="ghost" onClick={onClose}>Close</Button>
@@ -170,7 +170,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                 : <button onClick={() => setCollapsed(new Set(roots.map((c) => c.id)))} className="press-sm inline-flex items-center gap-1 hover:text-[var(--text)]"><ChevronsDownUp size={13} /> {t('cm.collapseall', 'Collapse all')}</button>}
             </div>
           )}
-          <div className="space-y-3 max-h-[58vh] overflow-y-auto scroll-thin pr-1">
+          <div className="space-y-3 max-h-[58vh] overflow-y-auto scroll-thin pe-1">
             {roots.length === 0 && <EmptyState icon={MessageSquare} title={t('cm.none', 'No comments yet')} sub={canWrite ? t('cm.start', 'Start the discussion below.') : t('cm.nothing', 'Nothing here yet.')} />}
             {roots.map((c) => {
               const isCol = collapsed.has(c.id);
@@ -183,7 +183,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                     </button>
                     <div className="min-w-0 flex-1">
                       {isCol ? (
-                        <button onClick={() => toggleCollapse(c.id)} className="w-full text-left flex items-center gap-2">
+                        <button onClick={() => toggleCollapse(c.id)} className="w-full text-start flex items-center gap-2">
                           <CAvatar a={c} />
                           <span className="text-sm font-medium shrink-0">{c.author?.name}</span>
                           <span className="text-[11px] text-[var(--faint)] truncate flex-1 min-w-0">{plainPreview(c.body) || '—'}</span>
@@ -193,7 +193,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                       ) : (<>
                         <CommentBody c={c} ctx={ctx} />
                         {replies.length > 0 && (
-                          <div className="ml-3 sm:ml-4 mt-3 pl-2.5 sm:pl-3 border-l-2 border-[var(--line)] space-y-3">
+                          <div className="ms-3 sm:ms-4 mt-3 ps-2.5 sm:ps-3 border-s-2 border-[var(--line)] space-y-3">
                             {replies.map((r) => <CommentBody key={r.id} c={r} isReply ctx={ctx} />)}
                           </div>
                         )}
@@ -237,13 +237,13 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
           footer={<Button variant="ghost" onClick={() => setHistory(null)}>Close</Button>}>
           {history.revisions === null ? <div className="grid place-items-center py-8"><Spinner /></div>
             : history.revisions.length ? (
-              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pe-1">
                 {history.revisions.map((r, i) => (
                   <div key={r.id} className="rounded-lg border border-[var(--line)] p-3">
                     <div className="flex items-center gap-2 text-[11px] text-[var(--faint)] mb-1.5">
                       <Clock size={11} /> {fmtFull(r.createdAt)}
                       {r.editor && <span>· {r.editor}</span>}
-                      {i === 0 && <span className="ml-auto text-[10px] font-semibold uppercase tracking-wide text-success">current</span>}
+                      {i === 0 && <span className="ms-auto text-[10px] font-semibold uppercase tracking-wide text-success">current</span>}
                     </div>
                     <div className="text-sm comment-md"><Markdown>{r.body || '*(empty)*'}</Markdown></div>
                   </div>

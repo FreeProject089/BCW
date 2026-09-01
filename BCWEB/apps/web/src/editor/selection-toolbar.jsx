@@ -108,7 +108,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
       )}
       {sub === 'anchor' && (
         <div className="absolute top-full mt-1 left-0 w-56 max-h-52 overflow-auto py-1 rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
-          {headings.map((h, i) => <button key={i} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => anchor(h.slug)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--surface-2)] truncate">{h.txt}</button>)}
+          {headings.map((h, i) => <button key={i} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => anchor(h.slug)} className="w-full text-start px-3 py-1.5 text-sm hover:bg-[var(--surface-2)] truncate">{h.txt}</button>)}
         </div>
       )}
       {sub === 'comment' && (

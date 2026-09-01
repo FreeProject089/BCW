@@ -34,7 +34,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
       {(lines.length ? lines : ['']).map((ln, k) => (
         <div key={k} className="flex">
           <span className={`select-none w-6 shrink-0 text-center ${tone === 'add' ? 'text-success' : tone === 'del' ? 'text-error' : 'text-transparent'}`}>{tone === 'add' ? '+' : tone === 'del' ? '−' : ''}</span>
-          <span className="whitespace-pre-wrap break-words flex-1 pr-2">{ln || ' '}</span>
+          <span className="whitespace-pre-wrap break-words flex-1 pe-2">{ln || ' '}</span>
         </div>
       ))}
     </div>
@@ -43,7 +43,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
   return (
     <Modal open={open} onClose={onClose} title={`Resolve conflicts${langLabel ? ` · ${langLabel}` : ''}`} icon={GitMerge} width="max-w-4xl"
       footer={<>
-        <span className="text-xs mr-auto flex items-center gap-2 flex-wrap" style={{ color: allResolved ? 'var(--success, #10b981)' : 'var(--muted)' }}>
+        <span className="text-xs me-auto flex items-center gap-2 flex-wrap" style={{ color: allResolved ? 'var(--success, #10b981)' : 'var(--muted)' }}>
           <span className="flex items-center gap-1.5">{allResolved ? <Check size={14} /> : <GitMerge size={14} />} {resolvedCount}/{conflictIdxs.length} conflict{conflictIdxs.length === 1 ? '' : 's'} resolved</span>
           <span className="font-mono text-[11px]"><span className="text-success">+{stat.added}</span> <span className="text-error">−{stat.removed}</span> <span className="text-[var(--faint)]">their changes</span></span>
         </span>
@@ -84,7 +84,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
               <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-warning-bg border-b border-warning-border">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-warning flex items-center gap-1.5">
                   <GitMerge size={12} /> Conflict {conflictIdxs.indexOf(i) + 1}
-                  <span className="font-mono normal-case tracking-normal ml-1"><span className="text-success">+{h.mine.length}</span> <span className="text-error">−{h.theirs.length}</span></span>
+                  <span className="font-mono normal-case tracking-normal ms-1"><span className="text-success">+{h.mine.length}</span> <span className="text-error">−{h.theirs.length}</span></span>
                 </span>
                 <div className="flex items-center gap-1.5 text-[11px]">
                   <ChoiceBtn active={choice === 'mine'} onClick={() => pick(i, 'mine')} tone="emerald" icon={UserIcon}>Yours</ChoiceBtn>

@@ -33,7 +33,7 @@ function ProgressItem({ it, lang }) {
       <div className="flex-1 min-w-0 text-sm truncate">{pickLang(it.label ?? it.title, lang)}</div>
       {it.eta && <span className="text-xs text-[var(--faint)] hidden sm:flex items-center gap-1"><CalendarDays size={11} /> {it.eta}</span>}
       <div className="w-24 sm:w-32 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
-      <span className="text-xs text-[var(--muted)] w-9 text-right tabular-nums">{pct}%</span>
+      <span className="text-xs text-[var(--muted)] w-9 text-end tabular-nums">{pct}%</span>
     </div>
   );
 }
