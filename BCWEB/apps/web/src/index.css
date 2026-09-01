@@ -194,6 +194,27 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 
   /* Every interactive control carries a full state set: default · hover · active/pressed
      · focus-visible · disabled · loading (aria-busy). */
+  /* "Sign in with Google" per Google's brand guidelines: Google supplies the button
+     surface, not just the logo. Neutral white with a keyline and dark text in light mode,
+     their dark variant in dark mode. The 4-colour G is never recoloured (it carries its own
+     fills) and the button is never tinted with our accent — both are things the guidelines
+     forbid, and both are what a generic accented button would have done. */
+  .btn-google {
+    background: #fff;
+    color: #1f1f1f;
+    border: 1px solid #747775;
+    font-weight: 500;
+  }
+  .btn-google:hover { background: #f7f8f8; border-color: #747775; }
+  :root[data-theme="dark"] .btn-google,
+  :root:not([data-theme="light"]) .btn-google {
+    background: #131314;
+    color: #e3e3e3;
+    border-color: #8e918f;
+  }
+  :root[data-theme="dark"] .btn-google:hover,
+  :root:not([data-theme="light"]) .btn-google:hover { background: #1e1f20; }
+
   .btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     padding: 10px 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 500;

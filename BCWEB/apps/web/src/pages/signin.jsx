@@ -289,7 +289,7 @@ export function Auth() {
           <>
             <div className="flex items-center gap-3 my-4 text-xs text-[var(--faint)]"><div className="flex-1 h-px bg-[var(--line)]" /> {t('auth.or', 'or')} <div className="flex-1 h-px bg-[var(--line)]" /></div>
             <div className="flex flex-col gap-2">
-              {oauthProviders.google && <a href={`/api/auth/oauth/google/start${oauthNext}`}><Button className="w-full"><GoogleIcon size={16} /> {t('auth.oauth.google', 'Continue with Google')}</Button></a>}
+              {oauthProviders.google && <a href={`/api/auth/oauth/google/start${oauthNext}`}><Button className="w-full btn-google"><GoogleIcon size={18} /> {t('auth.oauth.google', 'Continue with Google')}</Button></a>}
               {oauthProviders.github && <a href={`/api/auth/oauth/github/start${oauthNext}`}><Button className="w-full"><GithubIcon size={16} /> {t('auth.oauth.github', 'Continue with GitHub')}</Button></a>}
               {oauthProviders.discord && <a href={`/api/auth/oauth/discord/start${oauthNext}`}><Button className="w-full"><DiscordIcon size={16} className="text-[#5865F2]" /> {t('auth.oauth.discord', 'Continue with Discord')}</Button></a>}
             </div>

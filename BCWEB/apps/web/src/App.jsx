@@ -422,6 +422,7 @@ const NOTIF_LINK = {
 
 function NavNotifications() {
   const { t, lang } = useI18n();
+  const { user } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -454,16 +455,23 @@ function NavNotifications() {
   const unread = items.filter((n) => !n.readAt).length;
   // Staff queues count towards the SAME badge. A moderator standing on the blog page has no
   // other signal that a report came in — the queue counters only exist inside the admin
-  // dashboard, which is exactly where they are not needed. 403 for a non-staff account, so
-  // the failure is the answer and no role check is needed here.
+  // dashboard, which is exactly where they are not needed.
+  //
+  // Gated on the user actually being staff. The route is `requireCap('manage_users', …)`, so
+  // for a normal account this poll only ever 403s — once a minute, for nothing. Checking the
+  // caps we already hold means the request is never made rather than made and refused. (The
+  // api client no longer toasts a GET 403, so a stray one is silent either way — but a
+  // refused request every 60s is still a refused request.)
+  const canSeeQueues = !!user && (canAdmin(user) || effectiveCaps(user).includes('manage_users'));
   const [pending, setPending] = useState(0);
   useEffect(() => {
+    if (!canSeeQueues) { setPending(0); return undefined; }
     let live = true;
     const poll = () => api.get('/admin/pending').then((r) => { if (live) setPending(r?.total || 0); }).catch(() => { if (live) setPending(0); });
     poll();
     const id = setInterval(poll, 60_000);
     return () => { live = false; clearInterval(id); };
-  }, []);
+  }, [canSeeQueues]);
   const badge = unread + pending;
   const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await markNotifRead(n.id); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).

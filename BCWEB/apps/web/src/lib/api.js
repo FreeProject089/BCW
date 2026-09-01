@@ -12,9 +12,15 @@ async function req(method, path, body) {
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    // A capability denial → surface an explicit, global toast so the user is told exactly
-    // what they lack, regardless of which component made the call (App listens for this).
-    if (res.status === 403 && data?.error === 'missing_permission' && typeof window !== 'undefined') {
+    // A capability denial on a MUTATION → surface an explicit, global toast so the user is
+    // told exactly what they lack, regardless of which component made the call.
+    //
+    // GET is excluded on purpose. A background GET that 403s is a component asking for data it
+    // is not entitled to — the notification bell polling the staff queue counters every 60s,
+    // a deep-linked admin panel — and its job is to render nothing, not to shout. Toasting
+    // those turned an expected-silent 403 into "you don't have permission" on every refresh
+    // for every normal user. A mutation, by contrast, is always something the user just did.
+    if (method !== 'GET' && res.status === 403 && data?.error === 'missing_permission' && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('bcw:forbidden', { detail: { capability: data.capability } }));
     }
     throw Object.assign(new Error('api_error'), { status: res.status, data });

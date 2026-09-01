@@ -368,7 +368,7 @@ export default function ProjectPage() {
 
       {tab === 'overview' && <Overview c={c} pkey={key} />}
       {tab === 'releases' && <Releases pkey={key} />}
-      {tab === 'community' && <Community c={c} communityUrl={c.contributorsUrl ? `/projects/${key}/community` : null} />}
+      {tab === 'community' && <Community c={c} communityUrl={contribUrlOf(c) ? `/projects/${key}/community` : null} />}
       {tab === 'stack' && (
         <>
           <StackMap stack={c.stack} t={t} />
@@ -579,12 +579,24 @@ function resolveCat(p) {
 }
 const toMessages = (arr) => (arr || []).map((m) => (typeof m === 'string' ? { message: m } : m)).filter((m) => m.message);
 
+// Contributors, their messages and the JSON URL live under `community.*` in the current
+// config shape — what the visual editor writes and what the showcase pages read — but at the
+// top level in configs written before that migration. Prefer the current location, fall back
+// to the legacy one, so a project page renders whichever an admin actually saved.
+//
+// This is the whole of the "I configure contributors/legal and nothing shows" bug: the
+// editor moved to `community.*` and `legal[]`, and only the fixed-project renderers were left
+// reading the old flat shape.
+const contribOf = (c) => (Array.isArray(c.community?.contributors) && c.community.contributors.length ? c.community.contributors : (c.contributors || []));
+const messagesOf = (c) => (c.community?.messages ?? c.messages);
+const contribUrlOf = (c) => c.community?.contributorsUrl || c.contributorsUrl || '';
+
 function Community({ c, communityUrl }) {
   const { t } = useI18n();
-  const [people, setPeople] = useState(c.contributors || []);
-  const [messages, setMessages] = useState(toMessages(c.messages));
+  const [people, setPeople] = useState(contribOf(c));
+  const [messages, setMessages] = useState(toMessages(messagesOf(c)));
   useEffect(() => {
-    if (!communityUrl) { setPeople(c.contributors || []); setMessages(toMessages(c.messages)); return; }
+    if (!communityUrl) { setPeople(contribOf(c)); setMessages(toMessages(messagesOf(c))); return; }
     let on = true;
     // Proxied through the API (cached + covered by "Refresh site caches") instead
     // of a direct browser fetch to the raw GitHub URL, which no admin action
@@ -632,23 +644,36 @@ function Community({ c, communityUrl }) {
   );
 }
 
+// A legal card's icon name (as stored by toCurrentShape) to a component.
+const LEGAL_ICON = { ShieldCheck, Scale: ShieldCheck, FileText, ScrollText, BookOpen };
+
 function Legal({ c }) {
   const { t } = useI18n();
   const { lang } = useI18n();
-  const l = c.legal || {};
   const pick = (en, fr) => (lang === 'fr' && fr) ? fr : en;
-  const docs = [
-    l.licenseUrl && { icon: ScrollText, title: l.license || 'License', sub: 'Open-source license', url: l.licenseUrl },
-    (l.tos || l.tosFr) && { icon: ShieldCheck, title: 'Terms of Use', sub: 'How you may use the app', url: pick(l.tos, l.tosFr) },
-    (l.privacy || l.privacyFr) && { icon: FileText, title: 'Privacy Policy', sub: 'How your data is handled', url: pick(l.privacy, l.privacyFr) },
-    (l.readme || l.readmeFr) && { icon: BookOpen, title: 'README', sub: 'Project documentation', url: pick(l.readme, l.readmeFr) },
-  ].filter(Boolean);
+  // The current shape is an ARRAY of {icon, title, url} cards (what the editor writes and the
+  // showcase page renders); older configs store an OBJECT of fixed license/tos/privacy/readme
+  // links. Read whichever this project has.
+  const arr = Array.isArray(c.legal) ? c.legal : null;
+  const obj = (!arr && c.legal && typeof c.legal === 'object') ? c.legal : {};
+  const docs = arr
+    ? arr.filter((card) => card && card.url).map((card) => ({
+        icon: LEGAL_ICON[card.icon] || ShieldCheck, title: card.title || 'Document', sub: card.sub || '', url: card.url,
+      }))
+    : [
+      obj.licenseUrl && { icon: ScrollText, title: obj.license || 'License', sub: 'Open-source license', url: obj.licenseUrl },
+      (obj.tos || obj.tosFr) && { icon: ShieldCheck, title: 'Terms of Use', sub: 'How you may use the app', url: pick(obj.tos, obj.tosFr) },
+      (obj.privacy || obj.privacyFr) && { icon: FileText, title: 'Privacy Policy', sub: 'How your data is handled', url: pick(obj.privacy, obj.privacyFr) },
+      (obj.readme || obj.readmeFr) && { icon: BookOpen, title: 'README', sub: 'Project documentation', url: pick(obj.readme, obj.readmeFr) },
+    ].filter(Boolean);
+  // The license summary card only applies to the legacy object shape.
+  const legacyLicense = obj.license;
   if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')} sub={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
   return (
     <div className="max-w-2xl">
-      {l.license && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
+      {legacyLicense && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
         <ShieldCheck size={20} className="text-[var(--primary-2)]" />
-        <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {l.license}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
+        <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {legacyLicense}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
       </Card>}
       <div className="grid sm:grid-cols-2 gap-3">
         {docs.map((d) => (

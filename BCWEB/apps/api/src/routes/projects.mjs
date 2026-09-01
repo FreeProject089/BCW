@@ -988,7 +988,10 @@ export default async function projectRoutes(app) {
     const p = await db();
     if (!(await assertVisible(p, req, reply))) return;
     const cfg = await getConfig(p, req.params.key);
-    const url = cfg?.contributorsUrl;
+    // Current shape stores it under community.*; older configs at the top level. Same
+    // fallback the page renderer uses — otherwise a contributorsUrl set in the editor
+    // (which writes community.contributorsUrl) resolves to nothing here.
+    const url = cfg?.community?.contributorsUrl || cfg?.contributorsUrl;
     if (!url) return { data: null };
     if (!/^https?:\/\//.test(url)) return reply.code(400).send({ error: 'bad_source' });
     try { return { data: await gh(await versionedRawUrl(url)) }; }

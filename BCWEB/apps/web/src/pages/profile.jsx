@@ -6,11 +6,11 @@ import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
-import { DiscordIcon, KofiIcon } from '../ui/brand.jsx';
+import { DiscordIcon, KofiIcon, YoutubeIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Youtube, Twitch, Gamepad2, Github, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
+import { LayoutDashboard, Copy, RefreshCw, Terminal, Smartphone, Fingerprint, Twitch, Gamepad2, Github, X, Monitor, Tablet, MapPin, LogOut, Globe } from 'lucide-react';
 import { stagePending, addLocalAccount, attachBackupCodesBySecret } from '../lib/twofa-lib.js';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
@@ -1289,7 +1289,7 @@ function DiscordLinks() {
 // server-side (.env) are offered; the whole card hides if none are. GitHub/Discord come
 // from sign-in and are toggled in the Public-profile privacy card above.
 const CONN_META = [
-  ['youtube', Youtube, 'YouTube', '#ff0000', 'oauth'],
+  ['youtube', YoutubeIcon, 'YouTube', '#ff0000', 'oauth'],
   ['twitch', Twitch, 'Twitch', '#9146ff', 'oauth'],
   ['steam', Gamepad2, 'Steam', '#66c0f4', 'oauth'],
   ['kofi', KofiIcon, 'Ko-fi', '#ff5e5b', 'manual'],
@@ -1305,7 +1305,20 @@ function SocialConnections() {
   useEffect(() => {
     const q = new URLSearchParams(location.search);
     if (q.get('connected')) { toast.success(t('sc.linked', 'Account linked.')); history.replaceState({}, '', location.pathname); load(); }
-    else if (q.get('connect_error')) { toast.error(t('sc.failed', 'Could not link that account.')); history.replaceState({}, '', location.pathname); }
+    else if (q.get('connect_error')) {
+      // The callback forwards the real reason. The most common YouTube failure is a Google
+      // account with no channel — nothing is wrong with the account, so "could not link"
+      // sends people to re-check credentials that were never the problem. Name it instead.
+      const reason = q.get('connect_error');
+      const msg = {
+        no_channel: t('sc.err.nochannel', 'That Google account has no YouTube channel yet. Create one on YouTube, then link it here.'),
+        profile_failed: t('sc.err.profile', "YouTube didn't return your channel. If you just created it, wait a minute and try again."),
+        token_failed: t('sc.err.token', "The sign-in didn't complete. Please try connecting again."),
+        no_code: t('sc.err.token', "The sign-in didn't complete. Please try connecting again."),
+      }[reason] || t('sc.failed', 'Could not link that account.');
+      toast.error(msg);
+      history.replaceState({}, '', location.pathname);
+    }
   }, []); // eslint-disable-line
   if (!providers) return null;
   const configured = CONN_META.filter(([k]) => providers[k]);
