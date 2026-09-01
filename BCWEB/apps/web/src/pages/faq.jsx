@@ -45,7 +45,9 @@ export default function Faq() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <PageHeader icon={HelpCircle} title={t('faq.title', 'FAQ')} subtitle={t('faq.sub', 'Answers to the most common questions.')}
+      {/* No subtitle: "Answers to the most common questions" only restates "FAQ". The header is
+          clearer without it — the questions themselves are right below. */}
+      <PageHeader icon={HelpCircle} title={t('faq.title', 'FAQ')}
         actions={canEdit && <Link to="/admin?s=faq" className="btn btn-sm"><Settings2 size={15} /> {t('faq.manage', 'Manage')}</Link>} />
 
       <div className="relative mb-6"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
