@@ -40,6 +40,18 @@ async function loadConfig(p) {
   return normalizeCharityConfig(row?.value);
 }
 
+// cents → "12.50 CHF" for an announcement body.
+function money(cents, currency) {
+  return `${((cents || 0) / 100).toFixed(2)} ${(currency || 'chf').toUpperCase()}`;
+}
+
+// Queue a Discord announcement (the bot polls /bot/announcements/pending and posts it, routing by
+// kind). 'custom' lands in the general channel. Never allowed to block the admin action that
+// raised it — a charity milestone must still be recorded even if the announcement cannot be.
+async function charityAnnounce(p, { title, body, url }) {
+  await p.botAnnouncement.create({ data: { kind: 'custom', title, body, url: url || null } }).catch(() => {});
+}
+
 // The admin-facing shape of a pot row (with its contributions included for the totals).
 function potView(pot) {
   return {
@@ -149,6 +161,9 @@ export default async function charityRoutes(app) {
     }
     const month = monthKey(new Date());
     const config = await loadConfig(p);
+    // Read the pot BEFORE the write, so a Discord announcement fires only on a real TRANSITION
+    // (a first vote link, the move to paid) — not on every incidental save of the same values.
+    const before = await p.charityPot.findUnique({ where: { month } });
     const data = {};
     if (body.data.pollId !== undefined) data.pollId = body.data.pollId || null;
     if (body.data.association !== undefined) data.association = body.data.association;
@@ -167,6 +182,27 @@ export default async function charityRoutes(app) {
     await logAudit(p, req.user.uid, 'charity.pot',
       `${month}${data.pollId !== undefined ? ` poll=${data.pollId || 'none'}` : ''}${data.association !== undefined ? ` association=${data.association}` : ''}${data.status ? ` status=${data.status}` : ''}${data.proofUrl !== undefined ? ' proof' : ''}`,
       clientIp(req)).catch(() => {});
+
+    // ── Discord milestones (B14 Phase 6), transition-guarded ──
+    const siteUrl = (process.env.SITE_URL || '').replace(/\/+$/, '');
+    // A newly-linked association vote → announce it's open (only when the id actually changed).
+    if (data.pollId && data.pollId !== (before?.pollId || null)) {
+      const poll = await p.poll.findUnique({ where: { id: data.pollId }, select: { question: true } }).catch(() => null);
+      await charityAnnounce(p, {
+        title: 'Community Charity — vote open',
+        body: poll?.question ? `Vote now for this month's association: ${poll.question}` : 'Vote now for this month\'s charity.',
+        url: `${siteUrl}/polls/${data.pollId}`,
+      });
+    }
+    // The donation went out → confirmation + proof (spec: "Confirmation du don + preuve").
+    if (data.status === 'paid' && before?.status !== 'paid') {
+      const totals = potTotalCents(pot);
+      await charityAnnounce(p, {
+        title: 'Community Charity — donation sent',
+        body: `This month's donation of ${money(totals.totalCents, pot.currency)}${pot.association ? ` was sent to ${pot.association}` : ' has been sent'}. Thank you to everyone who took part!`,
+        url: pot.proofUrl || `${siteUrl}/charity`,
+      });
+    }
     return { pot: potView(pot) };
   });
 
@@ -189,6 +225,17 @@ export default async function charityRoutes(app) {
       include: { contributions: { select: { amountCents: true } } },
     });
     await logAudit(p, req.user.uid, 'charity.close', `${month} orgShare=${share.orgShareCents} (${share.percent}% of ${share.eligibleCents})`, clientIp(req)).catch(() => {});
+    // Announce the tally once, on the move INTO closing — the community sees where the month
+    // landed. Not re-announced if the pot was already closing.
+    if (existing?.status !== 'closing') {
+      const totals = potTotalCents(pot);
+      const siteUrl = (process.env.SITE_URL || '').replace(/\/+$/, '');
+      await charityAnnounce(p, {
+        title: `Community Charity — ${month}`,
+        body: `This month's pot: ${money(totals.totalCents, pot.currency)} (${money(totals.orgContribCents, pot.currency)} from BetterCommunity + ${money(totals.communityCents, pot.currency)} from the community). The donation will be sent shortly.`,
+        url: `${siteUrl}/charity`,
+      });
+    }
     return { pot: potView(pot), frozen: share };
   });
 
