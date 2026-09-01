@@ -2,7 +2,7 @@
 
 *🇫🇷 [Version française](DEPLOY_SCRIPTS_FR.md).*
 
-Five scripts in `infra/`. They do different things and are not interchangeable; picking the
+Six scripts in `infra/`. They do different things and are not interchangeable; picking the
 wrong one costs you either time or a database.
 
 ## The cheat sheet
@@ -11,6 +11,7 @@ wrong one costs you either time or a database.
 infra/configure-env.sh  # build a .env by answering questions, each one explained
 infra/bootstrap.sh      # FIRST time on a fresh machine
 infra/deploy.sh         # normal update — backs up, rolls back on its own
+infra/zdd.sh            # same update, WITHOUT the site going down — see ZDD_EN.md
 infra/deploy-fast.sh    # small update — rebuilds only what changed
 infra/rollback.sh       # go back deliberately, after the fact
 ```
@@ -28,6 +29,7 @@ before it does it.
 | You want to decide each setting rather than accept generated ones | `configure-env.sh` |
 | Fresh machine, nothing installed | `bootstrap.sh` |
 | You pushed code and want it live | `deploy.sh` |
+| Same, but people are on the site right now | `zdd.sh` — rolls api+web with no gap. One demand: additive migrations ([ZDD_EN.md](ZDD_EN.md)) |
 | A copy fix, some CSS, nothing touching the database | `deploy-fast.sh` |
 | The deploy succeeded but something is broken | `rollback.sh` |
 | The deploy never came up | nothing to do — `deploy.sh` already rolled back |

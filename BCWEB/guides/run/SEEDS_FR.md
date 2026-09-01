@@ -119,3 +119,22 @@ npm run seed:content
 ```
 
 `npm run nuke` va plus loin. Lis ce qu'il affiche avant de lui répondre.
+
+---
+
+## Défaire la démo : `clear-demo.mjs`
+
+`node src/clear-demo.mjs` retire **exactement ce que `seed:demo` a créé, et rien d'autre** —
+le pendant pour lequel `npm run clear-content` est trop brutal : celui-là efface TOUT le
+contenu utilisateur, celui de tout le monde ; c'est l'outil pour repartir de zéro, pas pour
+« ressortir la démo ».
+
+## Prévu : le générateur de seed du dashboard
+
+Un panneau du dashboard qui parcourt le site vivant — docs, blog, FAQ, offres d'hébergement,
+pages légales, projets, assets — vous laisse cocher quoi inclure, et émet un
+`seed-custom.mjs` exécutable. Ce guide est son contrat : **ce qu'il génère doit faire des
+upserts sur les mêmes clés stables que les seeds écrits à la main** (slug, e-mail, clé de
+projet), pour qu'un seed généré et un seed livré puissent tourner dans n'importe quel ordre
+sans se battre, et que relancer l'un rafraîchisse au lieu de dupliquer. Tant qu'il n'existe
+pas, le tableau ci-dessus est la liste complète.

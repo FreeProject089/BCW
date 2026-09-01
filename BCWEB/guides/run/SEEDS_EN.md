@@ -115,3 +115,20 @@ npm run seed:content
 ```
 
 `npm run nuke` goes further. Read what it says before answering it.
+
+---
+
+## Undoing the demo: `clear-demo.mjs`
+
+`node src/clear-demo.mjs` removes **exactly what `seed:demo` created, and nothing else** —
+it is the counterpart `npm run clear-content` is too blunt for: that one wipes ALL user
+content, everyone's, and is the start-over tool, not the "take the demo back out" tool.
+
+## Planned: the dashboard seed generator
+
+A dashboard panel that walks the live site — docs, blog, FAQ, hosting plans, legal pages,
+projects, platform assets — lets you tick what to include, and emits a runnable
+`seed-custom.mjs`. This guide is its contract: **whatever it generates must upsert by the
+same stable keys the hand-written seeds use** (slug, email, project key), so a generated
+seed and a shipped seed can run in either order without fighting, and re-running one
+refreshes instead of duplicating. Until it exists, the table above is the complete list.

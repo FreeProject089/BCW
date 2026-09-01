@@ -1,6 +1,6 @@
 # Reverse proxy. SITE_DOMAIN drives the scheme:
-#   local dev → http://localhost  (plain HTTP on :80)
-#   production → your-domain.com   (Caddy auto-provisions HTTPS)
+#   local dev ? http://localhost  (plain HTTP on :80)
+#   production ? your-domain.com   (Caddy auto-provisions HTTPS)
 #
 # TUNNEL_DOMAIN is a SECOND address on this same block, for showing a local stack to somebody
 # who is not on this machine (infra/tunnel.mjs). Listed here rather than duplicated as its own
@@ -32,13 +32,39 @@
 			port 3000
 			refresh 10s
 		}
+		# The DNS answer lags a rolling deploy by up to `refresh`. Without retries, every
+		# request that dials a just-stopped container during that lag is a 502 the visitor
+		# sees; with them, a failed DIAL tries the next address and nobody sees anything.
+		# Dial failures only — a request the upstream ACCEPTED is never replayed, because
+		# replaying a non-idempotent write is worse than failing it.
+		lb_try_duration 12s
+		lb_try_interval 250ms
+		# A container that refused one dial is set aside briefly rather than re-tried by
+		# every request in the queue.
+		fail_duration 10s
+	}
+}
+
+# Same shape, same reason. `reverse_proxy web:80` resolved the name when the config loaded
+# and stuck with what it got — the exact defect described above api_upstream — so a rolling
+# replacement of the web container would leave Caddy talking to the dead one's address.
+(web_upstream) {
+	reverse_proxy {
+		dynamic a {
+			name web
+			port 80
+			refresh 10s
+		}
+		lb_try_duration 12s
+		lb_try_interval 250ms
+		fail_duration 10s
 	}
 }
 
 {$SITE_DOMAIN:http://localhost}, {$TUNNEL_DOMAIN:http://tunnel.invalid} {
 	encode gzip zstd
 
-	# ── Security headers ──
+	# -- Security headers --
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options SAMEORIGIN
@@ -52,9 +78,9 @@
 		-Server
 	}
 
-	# ── Edge anti-bot / anti-scan (handle blocks are evaluated in written order
+	# -- Edge anti-bot / anti-scan (handle blocks are evaluated in written order
 	#    and are mutually exclusive, so these run BEFORE any upstream — unlike a
-	#    bare `respond`, which Caddy orders after `handle`). ──
+	#    bare `respond`, which Caddy orders after `handle`). --
 	# Block known attack-tool / aggressive-scraper User-Agents outright.
 	@badbots header_regexp User-Agent (?i)(sqlmap|nikto|nmap|masscan|zgrab|nuclei|wpscan|dirbuster|gobuster|feroxbuster|acunetix|nessus|openvas|metasploit|semrushbot|ahrefsbot|mj12bot|petalbot|bytespider)
 	handle @badbots {
@@ -67,7 +93,7 @@
 		respond 404
 	}
 
-	# ── Link-unfurl prerender ──
+	# -- Link-unfurl prerender --
 	# Social/link-preview crawlers (Discord, Twitter/X, Slack, Telegram, WhatsApp,
 	# Facebook, …) don't run our SPA's JS, so a shared URL would only ever show the
 	# static homepage card. Route ONLY those bots (by User-Agent) to the API's /og
@@ -125,18 +151,18 @@
 		import api_upstream
 	}
 
-	# Content-hashed static assets (Vite emits immutable `assets/*.[hash].js|css`) →
+	# Content-hashed static assets (Vite emits immutable `assets/*.[hash].js|css`) ?
 	# cache hard at the browser/CDN so a CDN serves repeats with zero origin hits.
 	# The HTML shell (handled below) stays uncached so a deploy is picked up at once.
 	@assets path /assets/*
 	handle @assets {
 		header Cache-Control "public, max-age=31536000, immutable"
-		reverse_proxy web:80
+		import web_upstream
 	}
 
-	# Everything else → the web SPA
+	# Everything else ? the web SPA
 	handle {
-		reverse_proxy web:80
+		import web_upstream
 	}
 }
 
@@ -170,7 +196,7 @@
 	}
 
 	# The DASHBOARD (SPA + /api/stats + assets): gated behind a BCWEB login + the
-	# canViewTelemetry grant. forward_auth hits the BCWEB API first: 2xx → proceed;
+	# canViewTelemetry grant. forward_auth hits the BCWEB API first: 2xx ? proceed;
 	# otherwise its response (302 to /auth for anon, 403 for signed-in-but-not-
 	# granted) is returned to the browser. The telemetry app itself is never modified.
 	# NOTE: the bcw_session cookie must reach this sub-domain, so set COOKIE_DOMAIN
@@ -190,7 +216,7 @@
 	}
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Object storage (MinIO) on its own origin.
 #
 # INERT until S3_DOMAIN is set — the default is a hostname nobody can request, exactly like

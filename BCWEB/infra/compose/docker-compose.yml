@@ -263,6 +263,15 @@ services:
         VITE_GTM_ID: ${VITE_GTM_ID:-}
     restart: unless-stopped
     depends_on: [api]
+    # What the rolling deploy (infra/zdd.sh) waits on before it stops the old container.
+    # nginx serving a baked-in dist is ready almost instantly, but "almost instantly" is not
+    # a thing a script can wait for — a health state is. busybox wget ships in nginx:alpine.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:80/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 3s
 
   # BetterCommunity Discord bot. Idle (exits 0) unless DISCORD_TOKEN is set in .env.
   bot:
