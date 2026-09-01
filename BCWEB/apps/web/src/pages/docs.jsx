@@ -46,14 +46,9 @@ export default function Docs() {
     api.get(`/docs/${target}`).then((r) => { setPage(r.page); setContributors(r.contributors || []); }).catch(() => { setPage(null); setContributors([]); }).finally(() => setLoading(false));
   }, [slug, firstSlug]);
 
-  // Global ⌘K / Ctrl-K opens the search palette.
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearch(true); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  // ⌘K / Ctrl-K is now the site-wide command palette (ui/command-palette.jsx, mounted in App),
+  // which searches the docs too — so the docs page no longer binds its own global key (that would
+  // double-fire). The docs full-text palette here stays reachable via the search button.
 
   // Swipe from the left edge opens the sidebar drawer on touch devices.
   useEffect(() => {

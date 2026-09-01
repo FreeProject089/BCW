@@ -11,6 +11,7 @@ import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
 import { ThemeToggle } from './ui/theme.jsx';
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
+import CommandPalette from './ui/command-palette.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
   MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon, APP_LOGO } from './ui/brand.jsx';
 import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
@@ -1283,6 +1284,7 @@ export default function App() {
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
           <LocaleSync />
+          <CommandPalette />
           <SanctionBanner />
           <LegalReaccept />
           {/* One-time, and it answers the cookie question itself — so it replaces the
