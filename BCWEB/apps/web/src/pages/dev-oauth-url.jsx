@@ -92,7 +92,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
                 <button key={sc} type="button" disabled={locked}
                   onClick={() => setPicked((v) => (on ? v.filter((x) => x !== sc) : [...v, sc]))}
                   className={`text-[11px] font-mono px-2 py-1 rounded-lg border transition ${on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:border-[var(--ring)]'} ${locked ? 'opacity-70 cursor-default' : ''}`}>
-                  {on && <Check size={10} className="inline mr-1" />}{sc}
+                  {on && <Check size={10} className="inline me-1" />}{sc}
                 </button>
               );
             })}
@@ -114,7 +114,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-semibold">PKCE</span>
             {needsPkce && <span className="text-[11px] text-warning">{t('ourl.pkce.req', 'required — this app is a public client')}</span>}
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={async () => setPkce(await pkcePair())}>
+            <Button size="sm" variant="ghost" className="ms-auto" onClick={async () => setPkce(await pkcePair())}>
               {pkce ? t('ourl.pkce.again', 'Generate another') : t('ourl.pkce.gen', 'Generate a pair')}
             </Button>
           </div>
@@ -134,7 +134,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
         <div className="mt-3">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ourl.result', 'Your authorize URL')}</span>
-            <Button size="sm" variant="ghost" className="ml-auto" disabled={!url} onClick={() => { copyText(url); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
+            <Button size="sm" variant="ghost" className="ms-auto" disabled={!url} onClick={() => { copyText(url); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
             {/* Opening it really starts a flow against the real provider — which is the point,
                 and also why it is a link the person chooses rather than a preview. */}
             <a href={url || '#'} target="_blank" rel="noreferrer" className={`text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1 ${url ? '' : 'pointer-events-none opacity-50'}`}>

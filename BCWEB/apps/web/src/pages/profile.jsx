@@ -123,7 +123,7 @@ export default function Profile() {
           {avatar.image && <div className="text-[11px] text-[var(--faint)] mt-2">{t('prof.customphoto', "Using a custom photo — the generated avatar below is hidden while it's set.")}</div>}
 
           <div className={avatar.image ? 'opacity-40 pointer-events-none' : ''}>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-5 mb-1.5 text-left">{t('prof.style', 'Style')}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-5 mb-1.5 text-start">{t('prof.style', 'Style')}</div>
           <div className="grid grid-cols-3 gap-2">
             {VARIANTS.map((v) => (
               <button key={v} onClick={() => setAvatar((a) => ({ ...a, variant: v }))}
@@ -132,7 +132,7 @@ export default function Profile() {
               </button>
             ))}
           </div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-left">{t('prof.presets', 'Presets')}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-start">{t('prof.presets', 'Presets')}</div>
           {/* Give the presets room to breathe: a 3-col grid of taller chips instead of a
               cramped wrap row — reads cleanly on a phone where the card is full-width. */}
           <div className="grid grid-cols-3 gap-2">
@@ -143,7 +143,7 @@ export default function Profile() {
               </button>
             ))}
           </div>
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-left flex items-center gap-1"><Palette size={11} /> {t('prof.custompalette', 'Custom palette')}</div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-4 mb-1.5 text-start flex items-center gap-1"><Palette size={11} /> {t('prof.custompalette', 'Custom palette')}</div>
           {/* Fluid swatches: they share the row evenly at ANY width, with room to breathe. */}
           <div className="flex gap-2">
             {colors.map((col, i) => (
@@ -448,7 +448,7 @@ export function TransfersCard({ className = '' }) {
                           .replace('{n}', tr.targetName)}
                       </div>
                       {tr.message && (
-                        <p className="text-[12px] text-[var(--muted)] mt-2 pl-3 border-l-2 border-[var(--primary-2)] leading-relaxed">{tr.message}</p>
+                        <p className="text-[12px] text-[var(--muted)] mt-2 ps-3 border-s-2 border-[var(--primary-2)] leading-relaxed">{tr.message}</p>
                       )}
                       <div className={`text-[11px] mt-2 ${expiryTone(d)}`}>
                         {t('tr.expires', 'Expires in {n} day(s)').replace('{n}', String(d))}
@@ -545,7 +545,7 @@ export function TransfersCard({ className = '' }) {
                 {/* The reason is the whole point of having asked for one: a decline that
                     files its explanation somewhere nobody reads is a decline with none. */}
                 {tr.reason && (
-                  <p className="text-[11px] text-[var(--faint)] mt-1 pl-3 border-l-2 border-[var(--line)] leading-relaxed">{tr.reason}</p>
+                  <p className="text-[11px] text-[var(--faint)] mt-1 ps-3 border-s-2 border-[var(--line)] leading-relaxed">{tr.reason}</p>
                 )}
               </div>
             ))}
@@ -890,7 +890,7 @@ function SessionsCard() {
                 </div>
                 <div className="text-[11px] font-mono text-[var(--faint)] truncate">{sess.ip || '-'}</div>
               </div>
-              <div className="text-[11px] text-[var(--faint)] text-right shrink-0">
+              <div className="text-[11px] text-[var(--faint)] text-end shrink-0">
                 <div>{t('prof.sess.active', 'Active')} {ago(sess.lastSeenAt)}</div>
                 <div>{t('prof.sess.since', 'Since')} {new Date(sess.createdAt).toLocaleDateString()}</div>
               </div>
@@ -1368,7 +1368,7 @@ function SocialConnections() {
             {!c && kind === 'manual' && <div className="mt-2">
               <div className="flex items-stretch gap-2">
                 <div className="flex items-center flex-1 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] overflow-hidden focus-within:border-[var(--primary)]">
-                  <span className="px-2.5 py-2 text-xs text-[var(--faint)] bg-[var(--surface-2)] border-r border-[var(--line)] shrink-0 select-none">ko-fi.com/</span>
+                  <span className="px-2.5 py-2 text-xs text-[var(--faint)] bg-[var(--surface-2)] border-e border-[var(--line)] shrink-0 select-none">ko-fi.com/</span>
                   <input value={kofi} onChange={(e) => setKofi(e.target.value)} placeholder={t('sc.kofiph2', 'yourname')} onKeyDown={(e) => e.key === 'Enter' && saveKofi()} className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-sm" />
                 </div>
                 <Button size="sm" variant="primary" disabled={!kofiHandle} onClick={saveKofi}>{t('sc.save', 'Save')}</Button>

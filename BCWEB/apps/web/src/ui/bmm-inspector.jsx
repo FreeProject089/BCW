@@ -41,7 +41,7 @@ function BmmpaStep({ node, depth = 0, t }) {
   const params = node.params ? Object.entries(node.params) : [];
   return (
     <>
-      <div className="border-l-2 border-[var(--line)] pl-2 py-0.5" style={{ marginLeft: depth * 14 }}>
+      <div className="border-s-2 border-[var(--line)] ps-2 py-0.5" style={{ marginLeft: depth * 14 }}>
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[12px]">{node.type || node.kind}</span>
           {/* A glyph, not colour alone: a faint red word is easy to skim past on a light
@@ -55,7 +55,7 @@ function BmmpaStep({ node, depth = 0, t }) {
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
             {params.map(([k, v]) => (
               <span key={k} className="text-[10px] text-[var(--muted)] break-all">
-                <span className="text-[var(--faint)] mr-1">{k}</span>{v}
+                <span className="text-[var(--faint)] me-1">{k}</span>{v}
               </span>
             ))}
           </div>
@@ -361,7 +361,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
           <div className="flex items-center gap-2 flex-wrap text-[12px] text-[var(--muted)] mb-1">
             <span>{t('bmi.zipn', '{n} file(s), {kb} KB').replace('{n}', String(arch.total)).replace('{kb}', String(Math.round(arch.bytes / 1024)))}</span>
             {arch.truncated && <Badge tone="amber">{t('bmi.ziptrunc', 'showing the first {n}').replace('{n}', String(arch.listed))}</Badge>}
-            <Button size="sm" variant="ghost" className="ml-auto"
+            <Button size="sm" variant="ghost" className="ms-auto"
               onClick={() => { setArch(null); setEntry(null); setZipFile(null); setFileName(''); }}>
               {t('common.clear', 'Clear')}
             </Button>
@@ -415,7 +415,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               {arch.entries.map((e) => (
                 <button key={e.name} type="button"
                   onClick={() => openEntry(e)}
-                  className={`w-full text-left px-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] ${
+                  className={`w-full text-start px-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] ${
                     entry?.name === e.name ? 'bg-[var(--surface-2)]' : ''}`}>
                   <div className="break-all">{e.name}</div>
                   <div className="text-[var(--faint)]">
@@ -499,7 +499,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               <div className="mt-1.5 flex flex-col gap-0.5">
                 {(rep.summary || []).map((r, i) => (
                   <div key={i} className={`text-[12px] break-all ${r.tone === 'warn' ? 'text-[var(--warning)]' : ''}`}>
-                    <span className="text-[var(--faint)] mr-1.5">{r.label}</span>{r.value}
+                    <span className="text-[var(--faint)] me-1.5">{r.label}</span>{r.value}
                   </div>
                 ))}
               </div>
@@ -509,7 +509,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
                   <div className="mt-1.5 flex flex-col gap-0.5 max-h-64 overflow-auto">
                     {rep.detail.map((d, i) => (
                       <div key={i} className="text-[11px] break-all">
-                        <span className="mr-1.5">{d.name}</span>
+                        <span className="me-1.5">{d.name}</span>
                         <span className="text-[var(--muted)]">{d.note}</span>
                       </div>
                     ))}
@@ -548,7 +548,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               <div className="flex items-baseline gap-2 flex-wrap">
                 <b className="text-[13px]">{tk.name}</b>
                 <span className="text-[11px] text-[var(--primary-2)]">{tk.trigger}</span>
-                <span className="text-[11px] text-[var(--muted)] ml-auto">{tk.stepCount} {t('bmi.steps', 'steps')}</span>
+                <span className="text-[11px] text-[var(--muted)] ms-auto">{tk.stepCount} {t('bmi.steps', 'steps')}</span>
               </div>
               {tk.description && <div className="text-[12px] text-[var(--muted)] mt-1">{tk.description}</div>}
               {tk.perms.length > 0 && <div className="text-[12px] text-[var(--warning)] mt-1.5"><b>{t('bmi.asks', 'Grants itself:')}</b> {tk.perms.map((k) => PERM[k] || k).join(' · ')}</div>}

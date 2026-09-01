@@ -265,7 +265,7 @@ function PollSlider({ polls }) {
             ))}
           </div>
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-[var(--faint)] tabular-nums mr-1">{pos.page + 1}/{pos.pages}</span>
+            <span className="text-[11px] text-[var(--faint)] tabular-nums me-1">{pos.page + 1}/{pos.pages}</span>
             {/* Disabled at the ends rather than wrapping. A rail you can scroll by hand has a
                 visible beginning and end, so an arrow that jumps back to the start from the last
                 card contradicts what the scrollbar just showed you. */}
@@ -457,7 +457,7 @@ export function Home({ draft = null }) {
                 role="region" aria-label={t('home.k.products', 'The suite')}>
                 <div className="reviews-track flex py-1" style={{ animationDuration: `${Math.max(24, products.length * 9)}s` }}>
                   {[...products, ...products].map((p, i) => (
-                    <div key={`${p.name}-${i}`} className="w-[260px] shrink-0 mr-5" aria-hidden={i >= products.length}>
+                    <div key={`${p.name}-${i}`} className="w-[260px] shrink-0 me-5" aria-hidden={i >= products.length}>
                       {card(p)}
                     </div>
                   ))}
@@ -566,7 +566,7 @@ export function Home({ draft = null }) {
               // A rule instead of a border. Four bordered boxes under a bordered card is five
               // rectangles competing for the same attention; a 2px accent reads as "four of
               // these" without asking for any.
-              <div key={title} className="group pl-4 border-l-2 border-[var(--line)] hover:border-[var(--primary)] transition-colors">
+              <div key={title} className="group ps-4 border-s-2 border-[var(--line)] hover:border-[var(--primary)] transition-colors">
                 <I size={18} className="text-[var(--primary-2)]" />
                 <div className="font-semibold mt-2.5 text-[15px]">{title}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{d}</div>
@@ -592,7 +592,7 @@ export function Home({ draft = null }) {
             So: a rail with a real state on the first stop. Signed in, it is ticked and the row
             goes quiet; signed out, it is the only lit one. The other two are not claimed to be
             done, because nothing on this page can tell. */}
-        <ol className="reveal-stagger relative max-w-3xl mx-auto pl-11 sm:pl-14">
+        <ol className="reveal-stagger relative max-w-3xl mx-auto ps-11 sm:ps-14">
           {/* The spine. It starts and ends at the centre of the first and last marker rather
               than running the height of the list — a line continuing past the last stop
               promises a fourth one. */}
@@ -748,7 +748,7 @@ export function Home({ draft = null }) {
                 const text = (lang === 'fr' && rv.bodyFr) ? rv.bodyFr : rv.body;
                 const av = rv.avatar || {};
                 return (
-                  <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 mr-5 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
+                  <Card key={idx} className="w-[340px] max-w-[80vw] shrink-0 me-5 p-6 flex flex-col" style={{ background: 'var(--bg-solid)' }} aria-hidden={idx >= reviewsData.reviews.length}>
                     {rv.rating > 0 && (
                       <div className="flex items-center gap-0.5 mb-3">
                         {[1, 2, 3, 4, 5].map((n) => <Star key={n} size={15} className={n <= rv.rating ? 'text-warning' : 'text-[var(--line-strong)]'} fill={n <= rv.rating ? 'currentColor' : 'none'} />)}

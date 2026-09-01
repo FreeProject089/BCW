@@ -169,7 +169,7 @@ export default function NotificationCentre() {
                 className={`px-2.5 py-1 rounded-[8px] text-[12px] ${filter === k ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
             ))}
           </div>
-          <div className="ml-auto flex gap-2">
+          <div className="ms-auto flex gap-2">
             {unread > 0 && <Button size="sm" variant="ghost" onClick={markAll}><CheckCheck size={13} /> {t('notif.markall', 'Mark all read')}</Button>}
             {(items || []).length > 0 && <Button size="sm" variant="ghost" onClick={clearAll}><Trash2 size={13} /> {t('notif.clear', 'Clear')}</Button>}
           </div>

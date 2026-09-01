@@ -33,7 +33,7 @@ function PwInput({ value, onChange, placeholder = '••••••••' }) 
   const [show, setShow] = useState(false);
   return (
     <div className="relative">
-      <Input type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} className="!pr-10" />
+      <Input type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} className="!pe-10" />
       <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'}
         className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)] p-1">
         {show ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -67,7 +67,7 @@ function AccountLockedPanel({ data, onBack }) {
         <h1 className="text-xl font-bold mt-4">{banned ? t('lock.banned.title', 'Account banned') : t('lock.susp.title', 'Account suspended')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1.5">{banned ? t('lock.banned.sub', 'Your account has been banned and you can’t sign in.') : t('lock.susp.sub', 'Your account is temporarily suspended.')}</p>
         {data.reason && (
-          <div className="mt-4 text-left rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
+          <div className="mt-4 text-start rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('lock.reason', 'Reason')}</div>
             <div className="text-sm break-words">{data.reason}</div>
           </div>

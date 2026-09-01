@@ -38,7 +38,7 @@ function TermSelect({ months, setMonths, termDisc, t }) {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}
-        className={`w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition ${open ? 'border-[var(--primary)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}
+        className={`w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start transition ${open ? 'border-[var(--primary)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}
         style={open ? { boxShadow: '0 0 0 1px var(--primary)' } : undefined}>
         <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white shrink-0"><Receipt size={16} /></span>
         <span className="flex-1 min-w-0">
@@ -51,7 +51,7 @@ function TermSelect({ months, setMonths, termDisc, t }) {
         <div role="listbox" className="absolute z-30 mt-2 w-full rounded-xl border border-[var(--line-strong)] overflow-hidden anim-fade" style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55)' }}>
           {opts.map((m) => { const active = m === months; const d = disc(m); return (
             <button key={m} type="button" role="option" aria-selected={active} onClick={() => { setMonths(m); setOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left text-sm transition ${active ? 'bg-orange-500/10' : 'hover:bg-[var(--surface-2)]'}`}>
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-start text-sm transition ${active ? 'bg-orange-500/10' : 'hover:bg-[var(--surface-2)]'}`}>
               <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />
               <span className="flex-1 font-medium">{label(m)}</span>
               {m === 12 && <BestTag />}
@@ -93,7 +93,7 @@ function PromoCodeField({ months, onChange }) {
     <div>
       <div className="relative">
         <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-        <Input className="!pl-8" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t('hosting.promo.ph', 'Promo code (optional)')} />
+        <Input className="!ps-8" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t('hosting.promo.ph', 'Promo code (optional)')} />
         {checking && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2" />}
       </div>
       {state?.error && <div className="text-xs text-error mt-1 flex items-center gap-1"><XCircle size={12} /> {t('hosting.promo.invalid', 'Invalid or expired code.')}</div>}
@@ -165,7 +165,7 @@ function RedeemPromoModal({ code, promo, onClose }) {
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('promo.pickrepo', 'Which repo should get the boost?')}</div>
             {repos.map((r) => (
               <button key={r.id} type="button" onClick={() => setRepoId(r.id)}
-                className={`w-full text-left px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`w-full text-start px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <HardDrive size={14} className={repoId === r.id ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
                 <span className="flex-1 truncate">{r.name}</span>
                 {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--primary)]" />}
@@ -298,7 +298,7 @@ export function Hosting() {
           <Card className="p-5 mb-4 bg-success/[0.05] overflow-hidden relative">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
-              <div className="flex-1 text-center sm:text-left min-w-0">
+              <div className="flex-1 text-center sm:text-start min-w-0">
                 <div className="font-semibold text-lg">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
@@ -378,7 +378,7 @@ export function Hosting() {
       {/* Custom plan */}
       <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
         <Sliders size={26} className="text-[var(--primary-2)]" />
-        <div className="flex-1 text-center sm:text-left"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
+        <div className="flex-1 text-center sm:text-start"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
           <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub2', 'Build a custom plan — pick your storage and upload speed. Price adapts instantly.')}</div></div>
         <Button variant="default" disabled={soldOut} onClick={() => setCustomOpen(true)}><Sliders size={16} /> {soldOut ? t('hosting.soldout.short', 'Sold out') : t('hosting.custom.cta', 'Build custom plan')}</Button>
       </Card>
@@ -386,7 +386,7 @@ export function Hosting() {
       {/* Enterprise / bespoke — no fixed price, contact us for a tailored quote. */}
       <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
         <Building2 size={26} className="text-[var(--primary-2)] shrink-0" />
-        <div className="flex-1 text-center sm:text-left">
+        <div className="flex-1 text-center sm:text-start">
           <div className="font-semibold text-lg">{t('hosting.enterprise.title', 'Enterprise / bespoke')}</div>
           <div className="text-sm text-[var(--muted)]">{t('hosting.enterprise.sub', "Bigger needs — high storage/bandwidth, dedicated resources, an SLA, custom terms. No fixed price: tell us what you need and we'll tailor a plan.")}</div>
         </div>
@@ -483,7 +483,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
   // wrappers, reveal transforms) can turn `fixed` into a clipped absolute — that
   // was making the cart + its button hide under the footer and go un-clickable.
   if (!open) return createPortal((
-    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 pl-3.5 pr-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-brand to-brand-2 hover:brightness-105 transition">
+    <button onClick={() => setOpen(true)} className="fixed bottom-20 md:bottom-4 right-3 md:right-4 z-[90] flex items-center gap-2 ps-3.5 pe-4 py-3 rounded-2xl text-white font-semibold shadow-xl bg-gradient-to-r from-brand to-brand-2 hover:brightness-105 transition">
       <span className="relative"><ShoppingCart size={18} /><span className="absolute -top-2 -right-2 grid place-items-center w-4 h-4 rounded-full bg-white text-orange-600 text-[10px] font-bold">{count}</span></span>
       {t('cart.title', 'Cart')}
     </button>

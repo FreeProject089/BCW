@@ -65,16 +65,16 @@ function Step({ s, n, last, current, repoUrl, t }) {
         ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }, [current]);
     return (
-        <li ref={ref} className={`relative pl-6 rounded-lg transition ${current ? 'ring-1 ring-[var(--primary)] px-1 py-1 -mx-1' : ''}`}>
+        <li ref={ref} className={`relative ps-6 rounded-lg transition ${current ? 'ring-1 ring-[var(--primary)] px-1 py-1 -mx-1' : ''}`}>
             <span className="absolute left-0 top-1 w-4 h-4 rounded-full grid place-items-center text-[10px] font-bold"
                 style={{ background: current ? 'var(--primary)' : 'var(--surface-2)', color: current ? 'var(--bg-solid)' : 'var(--muted)' }}>{n}</span>
-            <button onClick={() => setOpen((v) => !v)} className="text-left w-full">
+            <button onClick={() => setOpen((v) => !v)} className="text-start w-full">
                 <div className="text-[13px] font-medium flex items-center gap-1.5">
                     <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
                     {s.label}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] pl-[18px]" title={s.file}>
-                    <FileCode2 size={10} className="inline mr-1" />{short(s.file)}:{s.line}
+                <div className="text-[11px] text-[var(--faint)] ps-[18px]" title={s.file}>
+                    <FileCode2 size={10} className="inline me-1" />{short(s.file)}:{s.line}
                 </div>
             </button>
             {open && s.code?.text && (<>
@@ -82,7 +82,7 @@ function Step({ s, n, last, current, repoUrl, t }) {
                     does not record one. An excerpt is a few lines out of a file, so the line
                     that matters is the one the step points at — hence the link below rather
                     than more excerpt. */}
-                <pre className="mt-1 ml-[18px] p-2 rounded-lg overflow-x-auto text-[11px] leading-relaxed"
+                <pre className="mt-1 ms-[18px] p-2 rounded-lg overflow-x-auto text-[11px] leading-relaxed"
                     style={{ background: 'var(--surface-2)' }}>
                     <code className={`language-${langOf(s.file) || 'none'}`}
                         dangerouslySetInnerHTML={{ __html: highlightCode(s.code.text, langOf(s.file)) }} />
@@ -91,12 +91,12 @@ function Step({ s, n, last, current, repoUrl, t }) {
                     like"; the next question is always "and what is around it". */}
                 {githubLink(repoUrl, s.file, s.line) && (
                     <a href={githubLink(repoUrl, s.file, s.line)} target="_blank" rel="noreferrer"
-                        className="ml-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline">
+                        className="ms-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline">
                         <ExternalLink size={11} /> {t('cf.open', 'Open {f} on GitHub').replace('{f}', short(s.file))}
                     </a>
                 )}
             </>)}
-            {!last && <ArrowDown size={12} className="text-[var(--faint)] ml-[3px] my-1" />}
+            {!last && <ArrowDown size={12} className="text-[var(--faint)] ms-[3px] my-1" />}
         </li>
     );
 }
@@ -174,7 +174,7 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                         onChange={(e) => setQ(e.target.value)}
                         placeholder={t('cf.search', 'Search a flow, a function or a file…')}
                         aria-label={t('cf.search', 'Search a flow, a function or a file…')}
-                        className="input w-full !pl-8 !pr-8 !py-1.5 !text-[13px]"
+                        className="input w-full !ps-8 !pe-8 !py-1.5 !text-[13px]"
                     />
                     {q && (
                         <button type="button" onClick={() => setQ('')} title={t('cf.clear', 'Clear')}
@@ -199,10 +199,10 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                 {shown.map(({ f, i }) => (
                     <div key={i} className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface)]">
                         <button onClick={() => openFlow(i)}
-                            className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--surface-2)]">
+                            className="w-full text-start px-3 py-2 flex items-center gap-2 hover:bg-[var(--surface-2)]">
                             <ChevronRight size={13} className={`transition-transform ${open === i ? 'rotate-90' : ''}`} />
                             <span className="text-[13px] font-medium truncate">{f.label}</span>
-                            <span className="text-[11px] text-[var(--faint)] ml-auto shrink-0">
+                            <span className="text-[11px] text-[var(--faint)] ms-auto shrink-0">
                                 {KIND_LABEL[f.kind] || f.kind} · {f.steps.length} {t('cf.steps', 'steps')}
                             </span>
                         </button>
@@ -224,7 +224,7 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                                     className="w-6 h-6 rounded-md border border-[var(--line)] grid place-items-center text-[var(--muted)] hover:text-[var(--text)]">
                                     <SkipForward size={12} />
                                 </button>
-                                <span className="text-[11px] text-[var(--faint)] tabular-nums ml-1">
+                                <span className="text-[11px] text-[var(--faint)] tabular-nums ms-1">
                                     {at == null ? t('cf.notstarted', 'not started') : `${at + 1} / ${f.steps.length}`}
                                 </span>
                             </div>

@@ -270,7 +270,7 @@ function LegalParagraph({ text }) {
       <Tag key={i}
         className={`mb-3 last:mb-0 space-y-1.5 text-[var(--muted)] leading-relaxed ${
           b.kind === 'ul' ? 'list-disc' : b.kind === 'oa' ? 'list-[lower-alpha]' : 'list-decimal'
-        } pl-5 marker:text-[var(--primary-2)]`}>
+        } ps-5 marker:text-[var(--primary-2)]`}>
         {b.items.map((s, k) => <li key={k}><Emphasised text={s} /></li>)}
       </Tag>
     );
@@ -438,11 +438,11 @@ export function Legal({ page: fixed }) {
             `no-scrollbar` because the bar was the loudest thing in the column — a grey track
             running the full height beside a list of quiet grey links. The region still
             scrolls, by wheel, by drag, by keyboard and by focus; only the chrome is gone. */}
-        <nav className="hidden md:block sticky top-20 self-start space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto no-scrollbar pr-1 print:hidden">
+        <nav className="hidden md:block sticky top-20 self-start space-y-0.5 max-h-[calc(100vh-7rem)] overflow-y-auto no-scrollbar pe-1 print:hidden">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{lang === 'fr' ? 'Sur cette page' : 'On this page'}</div>
           {d.body.map(([h], i) => (
             <a key={h} href={`#s${i}`}
-              className={`block text-sm py-1 border-l pl-2 -ml-px transition-colors ${
+              className={`block text-sm py-1 border-s ps-2 -ms-px transition-colors ${
                 active === i
                   ? 'text-[var(--primary-2)] border-[var(--primary)] font-medium'
                   : 'text-[var(--muted)] border-transparent hover:text-[var(--primary-2)] hover:border-[var(--primary)]'

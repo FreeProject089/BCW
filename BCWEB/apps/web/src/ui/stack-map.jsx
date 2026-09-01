@@ -230,9 +230,9 @@ export default function StackMap({ stack, t = (k, d) => d }) {
             <tbody>
               {nodes.map((n) => (
                 <tr key={n.id} className="border-t border-[var(--line)]">
-                  <td className="py-1 pr-3 font-medium">{n.label || n.id}</td>
-                  <td className="py-1 pr-3 text-[var(--muted)]">{kindLabel(t, n.kind, KIND[n.kind] || KIND.app)}</td>
-                  <td className="py-1 pr-3 text-[var(--muted)]">{n.tech || ''}</td>
+                  <td className="py-1 pe-3 font-medium">{n.label || n.id}</td>
+                  <td className="py-1 pe-3 text-[var(--muted)]">{kindLabel(t, n.kind, KIND[n.kind] || KIND.app)}</td>
+                  <td className="py-1 pe-3 text-[var(--muted)]">{n.tech || ''}</td>
                   <td className="py-1 text-[var(--muted)]">
                     {clean.filter(([, to]) => to === n.id).map(([from]) => display(byId.get(from)) || from).join(', ') || '—'}
                   </td>
@@ -346,7 +346,7 @@ function Side({ title, list, name, onPick, empty }) {
             {list.map(([id, label]) => (
               <li key={id}>
                 <button type="button" onClick={() => onPick(id)}
-                  className="text-[13px] text-left hover:text-[var(--primary-2)] transition">
+                  className="text-[13px] text-start hover:text-[var(--primary-2)] transition">
                   {name(id)}{label && <span className="text-[var(--faint)]"> · {label}</span>}
                 </button>
               </li>

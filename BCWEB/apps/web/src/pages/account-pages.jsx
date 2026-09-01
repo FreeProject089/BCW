@@ -95,10 +95,10 @@ export function Settings() {
           <Switch on={glass.on} onChange={(v) => applyGlass({ ...glass, on: v })} />
         </Row>
         {glass.on && (
-          <div className="flex items-center gap-3 py-3 pl-12">
+          <div className="flex items-center gap-3 py-3 ps-12">
             <span className="text-xs text-[var(--muted)] shrink-0">{t('set.glass.opacity', 'Opacity')}</span>
             <input type="range" min="40" max="100" step="5" value={glass.pct} onChange={(e) => applyGlass({ ...glass, pct: Number(e.target.value) })} className="flex-1 accent-[var(--primary)]" />
-            <span className="text-xs font-medium tabular-nums w-10 text-right">{glass.pct}%</span>
+            <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
           </div>
         )}
       </Card>
@@ -242,7 +242,7 @@ export function Authorize() {
             <li key={s} className="flex items-center gap-3 px-3.5 py-2.5">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={16} /></span>
               <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate">{sub}</div>}</div>
-              <CheckCircle2 size={16} className="text-success ml-auto shrink-0" />
+              <CheckCircle2 size={16} className="text-success ms-auto shrink-0" />
             </li>
           ); })}
         </ul>

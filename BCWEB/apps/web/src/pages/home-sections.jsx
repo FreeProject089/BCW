@@ -62,7 +62,7 @@ export function ProductRows({ products = [], style = 'rows' }) {
               <span className="block font-semibold text-sm">{p.name}</span>
               <span className="block text-[12px] text-[var(--muted)] truncate">{p.desc}</span>
             </span>
-            <ArrowRight size={16} className="ml-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--primary)] transition-colors" />
+            <ArrowRight size={16} className="ms-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--primary)] transition-colors" />
           </Link>
         </li>
       ))}
@@ -95,7 +95,7 @@ export function NewsGrid({ posts = [], limit = 3, heading = true, compact = fals
               <Link to={`/blog/${p.slug || p.id}`} className="flex items-baseline gap-3 py-2.5 hover:text-[var(--primary-2)] transition-colors">
                 <span className="text-sm font-medium min-w-0 truncate">{p.title}</span>
                 {p.publishedAt && (
-                  <span className="ml-auto shrink-0 text-[11px] text-[var(--faint)] tabular-nums">
+                  <span className="ms-auto shrink-0 text-[11px] text-[var(--faint)] tabular-nums">
                     {new Date(p.publishedAt).toLocaleDateString()}
                   </span>
                 )}
@@ -231,7 +231,7 @@ export function OffersCard({ myo, limit = 3 }) {
         {offers.map((o) => (
           <li key={o.id} className="flex items-center gap-2 text-[12px]">
             <span className="min-w-0 truncate">{o.name}</span>
-            {o.priceCents != null && <Badge className="ml-auto shrink-0">{(o.priceCents / 100).toFixed(0)} €</Badge>}
+            {o.priceCents != null && <Badge className="ms-auto shrink-0">{(o.priceCents / 100).toFixed(0)} €</Badge>}
           </li>
         ))}
       </ul>

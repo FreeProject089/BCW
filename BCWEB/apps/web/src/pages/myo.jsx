@@ -119,7 +119,7 @@ export function MyoPage() {
             <AlertTriangle size={15} className="shrink-0 text-warning" />
             {t('myo.disclaimer.head', 'What the consultation fee covers, and what it does not')}
           </summary>
-          <p className="text-xs text-[var(--muted)] mt-2.5 pl-[25px] leading-relaxed">
+          <p className="text-xs text-[var(--muted)] mt-2.5 ps-[25px] leading-relaxed">
             {t('myo.disclaimer', 'The fee pays for advice and a quote — it is NOT the price of the product. Building starts only once you approve and pay that quote. Whether source code is included is always stated on it.')}
           </p>
         </details>
@@ -477,7 +477,7 @@ export function MyoConversation({ id, admin = false }) {
       {r.consultationPaid && r.status !== 'closed' && r.status !== 'cancelled' && (
         <Card className="p-3"><ReportComposer onSend={send} sending={sending} placeholder={t('myo.msgph', 'Write a message…')} /></Card>
       )}
-      {(r.status === 'closed') && <div className="text-sm text-[var(--faint)] text-center py-2">{t('myo.closed', 'This request is closed. Send a message to reopen it.')}{r.consultationPaid && <div className="mt-2"><Card className="p-3 text-left"><ReportComposer onSend={send} sending={sending} placeholder={t('myo.reopen', 'Reopen with a message…')} /></Card></div>}</div>}
+      {(r.status === 'closed') && <div className="text-sm text-[var(--faint)] text-center py-2">{t('myo.closed', 'This request is closed. Send a message to reopen it.')}{r.consultationPaid && <div className="mt-2"><Card className="p-3 text-start"><ReportComposer onSend={send} sending={sending} placeholder={t('myo.reopen', 'Reopen with a message…')} /></Card></div>}</div>}
 
       {/* actions */}
       {r.consultationPaid && (
@@ -495,7 +495,7 @@ function MessageRow({ m, lang }) {
   return (
     <div className={`flex gap-2.5 ${m.staff ? 'flex-row-reverse' : ''}`}>
       {!system && <Avatar user={m.author} size={30} className="shrink-0" />}
-      <div className={`min-w-0 max-w-[80%] ${m.staff ? 'items-end text-right' : ''}`}>
+      <div className={`min-w-0 max-w-[80%] ${m.staff ? 'items-end text-end' : ''}`}>
         <div className={`inline-block rounded-2xl px-3.5 py-2 text-sm ${system ? 'bg-[var(--surface-2)] text-[var(--muted)] text-xs italic' : m.staff ? 'bg-[var(--primary)]/12 border border-[var(--primary)]/25' : 'bg-[var(--surface-2)]'}`}>
           {!system && <div className="text-[11px] text-[var(--faint)] mb-0.5">{m.author?.displayName || ''}{m.staff ? ' · staff' : ''}</div>}
           {m.body && <div className="whitespace-pre-wrap break-words">{m.body}</div>}
@@ -551,7 +551,7 @@ function AdminPanel({ r, reload }) {
   return (
     <div className="w-full mt-2 border-t border-[var(--line)] pt-3">
       <div className="flex flex-wrap gap-2 items-center">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mr-1">{t('myo.admin', 'Consultant')}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] me-1">{t('myo.admin', 'Consultant')}</span>
         <Button size="sm" variant={mode === 'quote' ? 'primary' : 'default'} onClick={() => setMode(mode === 'quote' ? null : 'quote')}><FileText size={14} /> {t('myo.a.quote', 'Send quote')}</Button>
         <Button size="sm" variant={mode === 'deliver' ? 'primary' : 'default'} onClick={() => setMode(mode === 'deliver' ? null : 'deliver')}><Package size={14} /> {t('myo.a.deliver', 'Deliver')}</Button>
         <Select className="!w-auto !py-1.5" value={r.status} onChange={async (e) => { try { await api.put(`/admin/myo/requests/${r.id}/status`, { status: e.target.value }); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } }}>

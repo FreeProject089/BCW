@@ -321,7 +321,7 @@ function QuestionList({ qs, setQs, t }) {
               only ever be a bare number box — the config was reachable by the API and by
               nothing a human uses. */}
           {q.kind === 'scale' && (
-            <div className="flex items-center gap-2 pl-7 text-xs">
+            <div className="flex items-center gap-2 ps-7 text-xs">
               <span className="text-[var(--muted)]">{t('apq.scale.range', 'From')}</span>
               <Input type="number" style={{ maxWidth: 70 }} value={q.config?.min ?? 1}
                 onChange={(e) => patch(i, 'config', { ...q.config, min: Number(e.target.value) })} />
@@ -343,7 +343,7 @@ function QuestionList({ qs, setQs, t }) {
             const rows = Array.isArray(q.config?.rows) ? q.config.rows : [];
             const setRows = (r) => patch(i, 'config', { ...q.config, rows: r });
             return (
-              <div className="space-y-1.5 pl-7">
+              <div className="space-y-1.5 ps-7">
                 <div className="text-xs text-[var(--muted)]">{t('apq.grid.rows', 'Rows (the options above are the columns)')}</div>
                 {rows.map((r, ri) => (
                   <div key={ri} className="flex gap-2">
@@ -367,7 +367,7 @@ function QuestionList({ qs, setQs, t }) {
             );
           })()}
           {HAS_CHOICES(q.kind) && (
-            <div className="space-y-1.5 pl-7">
+            <div className="space-y-1.5 ps-7">
               {q.choices.map((c, ci) => (
                 <div key={c.id || `c-${ci}`} className="flex gap-2">
                   <Input value={c.label} placeholder={`${t('apoll.option', 'Option')} ${ci + 1}`}
@@ -556,7 +556,7 @@ function Timeline({ days }) {
     <div className="mt-3">
       <div className="flex items-baseline gap-2 mb-1">
         <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('apoll.ch.timeline', 'Answers per day')}</span>
-        <span className="text-[11px] text-[var(--muted)] tabular-nums ml-auto">
+        <span className="text-[11px] text-[var(--muted)] tabular-nums ms-auto">
           {t('apoll.ch.peak', 'peak {n} on {d}').replace('{n}', String(peak.votes)).replace('{d}', peak.day)}
         </span>
       </div>
@@ -714,7 +714,7 @@ export function AdminPolls() {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <h2 className="font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[var(--primary-2)]" /> {t('apoll.title', 'Polls')}</h2>
-        <Button size="sm" variant="primary" className="ml-auto" onClick={() => setEditor(emptyDraft())}><Plus size={13} /> {t('apoll.new', 'New poll')}</Button>
+        <Button size="sm" variant="primary" className="ms-auto" onClick={() => setEditor(emptyDraft())}><Plus size={13} /> {t('apoll.new', 'New poll')}</Button>
       </div>
 
       {!polls.length ? <EmptyState icon={BarChart3} title={t('apoll.none', 'No poll yet.')} sub={t('apoll.none.s', 'Ask something — a two-option question gets more answers than a survey.')} /> : (

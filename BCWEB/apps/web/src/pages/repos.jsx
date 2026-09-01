@@ -109,7 +109,7 @@ export function ReposPage() {
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <input className="input !pl-9" placeholder={t('repos.search', 'Search repos, tags, authors…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input !ps-9" placeholder={t('repos.search', 'Search repos, tags, authors…')} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -248,7 +248,7 @@ export function DotDropdown({ value, options, onChange, className = '' }) {
           <div className="fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop" style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
             {options.map((o) => (
               <button key={o.value} type="button" onClick={() => { setOpen(false); if (o.value !== value) onChange(o.value); }}
-                className={`press-sm w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs text-left transition-colors ${o.value === value ? 'bg-[var(--surface-2)] font-medium' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+                className={`press-sm w-full flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-xs text-start transition-colors ${o.value === value ? 'bg-[var(--surface-2)] font-medium' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
                 {o.Icon ? <o.Icon size={14} style={{ color: o.color }} /> : <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: o.color }} />}
                 <span className="flex-1 whitespace-nowrap">{o.label}</span>
                 {o.value === value && <Check size={13} className="text-[var(--primary-2)]" />}
@@ -381,7 +381,7 @@ function MyAccessPolicyCard() {
 
   return (
     <div className="mt-6">
-      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
+      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
         <Globe size={16} className="text-[var(--primary-2)]" />
         <h3 className="font-semibold text-sm flex-1">{t('repos.mypolicy.title', 'My repos — access policy')}</h3>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />
@@ -788,7 +788,7 @@ export function MyRepos() {
       {repos.length > 3 && (
         <div className="flex flex-wrap gap-2 mb-3">
           <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Dropdown size="sm" value={typeF} onChange={setTypeF} options={[
             { value: 'all', label: t('repos.f.type.all', 'All types') }, { value: 'hosted', label: t('repos.hosted', 'Hosted') },
             { value: 'external', label: t('repos.f.external', 'External') }, { value: 'listed', label: t('repos.listed', 'Listed') }, { value: 'unlisted', label: t('repos.unlisted', 'Unlisted') },
@@ -946,7 +946,7 @@ export function MyRepos() {
           <div className="space-y-2">
             {moveFrom.options.map((r) => (
               <button key={r.id} onClick={() => moveContentTo(moveFrom.from, r)}
-                className="card p-3 w-full text-left flex items-center gap-3 hover:border-[var(--primary)]">
+                className="card p-3 w-full text-start flex items-center gap-3 hover:border-[var(--primary)]">
                 <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><Server size={16} /></span>
                 <span className="flex-1 min-w-0"><span className="block font-medium truncate">{r.name}</span></span>
               </button>
@@ -1303,7 +1303,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
         <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
       {periodEnd && (
-        <div className={`text-xs text-right shrink-0 ${expired ? 'text-error' : soon ? 'text-warning' : 'text-[var(--muted)]'}`}>
+        <div className={`text-xs text-end shrink-0 ${expired ? 'text-error' : soon ? 'text-warning' : 'text-[var(--muted)]'}`}>
           <div className="flex items-center gap-1 justify-end"><Clock size={11} /> {expired ? t('bill.expired', 'Expired') : canceling ? t('bill.ah.ends', 'Ends') : hasSub ? t('bill.ah.renews', 'Renews') : t('bill.renewson', 'Renews/expires')}</div>
           <div className="font-medium">{new Date(periodEnd).toLocaleDateString()}</div>
         </div>
@@ -1378,7 +1378,7 @@ export function Billing() {
             {hostedRepos.length > 3 && (
               <div className="flex gap-2">
                 <div className="relative w-40 sm:w-52"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-                  <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('bill.search', 'Search hosting…')} value={hq} onChange={(e) => setHq(e.target.value)} /></div>
+                  <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('bill.search', 'Search hosting…')} value={hq} onChange={(e) => setHq(e.target.value)} /></div>
                 <Select className="!w-auto !py-1.5 !text-sm" value={hStatus} onChange={(e) => setHStatus(e.target.value)}>
                   <option value="all">{t('repos.f.all', 'All')}</option><option value="online">{t('repos.online', 'Online')}</option><option value="suspended">Suspended</option></Select>
               </div>
@@ -1412,7 +1412,7 @@ export function Billing() {
               return (
                 <div key={s.id} className={`${i ? 'border-t border-[var(--line)]' : ''}`}>
                   <div className="flex items-center gap-3 px-4 py-3 text-sm">
-                    <button onClick={() => setExpandedSub(isOpen ? null : s.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                    <button onClick={() => setExpandedSub(isOpen ? null : s.id)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
                       <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                       {isBoost ? <Rocket size={15} className="text-warning shrink-0" /> : <Server size={15} className="text-[var(--primary-2)] shrink-0" />}
                       <div className="flex-1 min-w-0">
@@ -1421,18 +1421,18 @@ export function Billing() {
                       </div>
                     </button>
                     <Badge tone={s.cancelAtPeriodEnd ? 'amber' : (s.status === 'active' || s.status === 'trialing' ? 'green' : 'amber')}>{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</Badge>
-                    <span className="font-semibold text-right whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
+                    <span className="font-semibold text-end whitespace-nowrap">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
                     <Button size="sm" variant="ghost" disabled={subBusy === s.id} onClick={() => cancelSub(s)} title={s.cancelAtPeriodEnd ? t('bill.sub.resume.h', 'Turn auto-renew back on') : t('bill.sub.cancel.h', 'Stop auto-renew (stays active until the period ends)')}>
                       {subBusy === s.id ? <Spinner /> : s.cancelAtPeriodEnd ? <><RefreshCw size={13} /> {t('bill.sub.resume', 'Resume')}</> : <><X size={13} /> {t('bill.sub.cancel', 'Cancel')}</>}
                     </Button>
                   </div>
                   {isOpen && (
-                    <div className="px-4 pb-3 pl-11">
+                    <div className="px-4 pb-3 ps-11">
                       <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
-                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-right">{label}{s.repoName ? ` · ${s.repoName}` : ''}</span></div>
-                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-right">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span></div>
-                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.status', 'Status')}</span><span className="text-right">{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</span></div>
-                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{s.cancelAtPeriodEnd ? t('bill.sub.endson2', 'Ends') : t('bill.sub.renews2', 'Next renewal')}</span><span className="text-right">{(s.currentPeriodEnd || s.trialEnd) ? new Date(s.currentPeriodEnd || s.trialEnd).toLocaleString() : '—'}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-end">{label}{s.repoName ? ` · ${s.repoName}` : ''}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-end">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.status', 'Status')}</span><span className="text-end">{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</span></div>
+                        <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{s.cancelAtPeriodEnd ? t('bill.sub.endson2', 'Ends') : t('bill.sub.renews2', 'Next renewal')}</span><span className="text-end">{(s.currentPeriodEnd || s.trialEnd) ? new Date(s.currentPeriodEnd || s.trialEnd).toLocaleString() : '—'}</span></div>
                       </div>
                       <p className="text-[11px] text-[var(--faint)] mt-2 flex items-center gap-1"><Info size={11} /> {t('bill.sub.pdfnote', 'Each billing cycle appears as its own invoice with a downloadable PDF in Payment history below.')}</p>
                     </div>
@@ -1457,22 +1457,22 @@ export function Billing() {
             return (
             <div key={inv.id} className={`${i ? 'border-t border-[var(--line)]' : ''}`}>
               {/* Compact summary row — click to expand the full detail. */}
-              <button onClick={() => setExpandedInv(isOpen ? null : inv.id)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-left hover:bg-[var(--surface-2)] transition">
+              <button onClick={() => setExpandedInv(isOpen ? null : inv.id)} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-start hover:bg-[var(--surface-2)] transition">
                 <ChevronDown size={15} className={`shrink-0 text-[var(--faint)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium flex items-center gap-2">{invSummary(inv)}{inv.recurring && <Badge tone="primary"><RefreshCw size={9} /> {t('bill.recurringtag', 'subscription')}</Badge>}</div>
                   <div className="text-xs text-[var(--faint)]">{inv.created ? new Date(inv.created).toLocaleDateString() : ''}</div>
                 </div>
                 <Badge tone={inv.status === 'paid' ? 'green' : 'amber'}>{inv.status === 'paid' ? t('bill.paid', 'PAID') : inv.status}</Badge>
-                <span className="font-semibold text-right whitespace-nowrap">{money(inv.amountCents, inv.currency)}</span>
+                <span className="font-semibold text-end whitespace-nowrap">{money(inv.amountCents, inv.currency)}</span>
               </button>
               {isOpen && (
-                <div className="px-4 pb-3 pt-0 pl-11 space-y-2">
+                <div className="px-4 pb-3 pt-0 ps-11 space-y-2">
                   <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
-                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-right">{inv.description}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.invoiceno', 'Invoice №')}</span><span className="font-mono text-right">{inv.number}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.date', 'Date')}</span><span className="text-right">{inv.created ? new Date(inv.created).toLocaleString() : ''}</span></div>
-                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-right">{money(inv.amountCents, inv.currency)}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-end">{inv.description}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.invoiceno', 'Invoice №')}</span><span className="font-mono text-end">{inv.number}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.date', 'Date')}</span><span className="text-end">{inv.created ? new Date(inv.created).toLocaleString() : ''}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-end">{money(inv.amountCents, inv.currency)}</span></div>
                   </div>
                   <div className="flex justify-end">
                     {inv.hasPdf
@@ -1491,7 +1491,7 @@ export function Billing() {
             <div key={pay.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
               <div className="flex-1 min-w-0"><div className="font-medium truncate">{pay.description}</div><div className="text-xs text-[var(--faint)]">{new Date(pay.createdAt).toLocaleString()}</div></div>
               <Badge tone={pay.status === 'paid' ? 'green' : ''}>{pay.status}</Badge>
-              <span className="font-semibold w-16 text-right">${(pay.amountCents / 100).toFixed(2)}</span>
+              <span className="font-semibold w-16 text-end">${(pay.amountCents / 100).toFixed(2)}</span>
               <Button size="sm" onClick={() => setInvoice(pay.id)}><Receipt size={13} /> {t('bill.invoice', 'Invoice')}</Button>
             </div>
           ))}
@@ -1530,7 +1530,7 @@ function InvoiceModal({ id, onClose }) {
               <span className="grid place-items-center w-10 h-10 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-black text-lg shrink-0">B</span>
               <div><div className="font-extrabold text-base leading-tight">BetterCommunity</div><div className="text-[11px] text-[var(--faint)]">bettercommunity.ch</div></div>
             </div>
-            <div className="text-right">
+            <div className="text-end">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--faint)]">{t('bill.receipt', 'Receipt')}</div>
               <div className="font-mono text-xs mt-0.5">{inv.number}</div>
               <div className="text-[11px] text-[var(--muted)]">{new Date(inv.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>
@@ -1554,15 +1554,15 @@ function InvoiceModal({ id, onClose }) {
           {/* Line items */}
           <div className="rounded-lg border border-[var(--line)] overflow-hidden mb-4">
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 bg-[var(--surface-2)]/60 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-              <span>{t('bill.desc', 'Description')}</span><span className="text-right">{t('bill.qty', 'Qty')}</span><span className="text-right">{t('bill.amount', 'Amount')}</span>
+              <span>{t('bill.desc', 'Description')}</span><span className="text-end">{t('bill.qty', 'Qty')}</span><span className="text-end">{t('bill.amount', 'Amount')}</span>
             </div>
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2.5 border-t border-[var(--line)]">
-              <span className="min-w-0">{inv.description}</span><span className="text-right tabular-nums text-[var(--muted)]">{qty}</span><span className="text-right tabular-nums font-medium">{money(inv.amountCents)}</span>
+              <span className="min-w-0">{inv.description}</span><span className="text-end tabular-nums text-[var(--muted)]">{qty}</span><span className="text-end tabular-nums font-medium">{money(inv.amountCents)}</span>
             </div>
           </div>
 
           {/* Totals */}
-          <div className="ml-auto w-full sm:w-1/2 space-y-1.5 mb-4">
+          <div className="ms-auto w-full sm:w-1/2 space-y-1.5 mb-4">
             <div className="flex justify-between text-[var(--muted)]"><span>{t('bill.subtotal', 'Subtotal')}</span><span className="tabular-nums">{money(inv.amountCents)}</span></div>
             <div className="flex justify-between font-bold text-base pt-1.5 border-t border-[var(--line)]"><span>{t('repos.total', 'Total')} <span className="text-xs font-normal text-[var(--faint)]">({cur})</span></span><span className="tabular-nums">{money(inv.amountCents)}</span></div>
           </div>

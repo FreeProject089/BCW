@@ -45,7 +45,7 @@ function Deliveries({ id }) {
               <code className="font-mono">{d.event}</code>
               {d.httpStatus ? <Badge tone={st.tone}>{d.httpStatus}</Badge> : null}
               {d.attempts > 1 && <span className="text-[var(--faint)]">{t('wh.attempts', '{n} attempts').replace('{n}', String(d.attempts))}</span>}
-              <span className="text-[var(--faint)] ml-auto">{new Date(d.createdAt).toLocaleString()}</span>
+              <span className="text-[var(--faint)] ms-auto">{new Date(d.createdAt).toLocaleString()}</span>
               <button onClick={() => setOpen(open === d.id ? null : d.id)} className="text-[var(--primary-2)] hover:underline">{t('wh.payload', 'payload')}</button>
               <button onClick={() => replay(d)} className="text-[var(--primary-2)] hover:underline">{t('wh.replay', 'replay')}</button>
             </div>

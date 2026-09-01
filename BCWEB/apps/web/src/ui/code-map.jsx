@@ -231,7 +231,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                 this made of" and "what runs" are different questions, and the second is only
                 answerable where the scan found functions to draw. */}
             <div className="flex items-center gap-1.5 mb-2">
-                <span className="text-[11px] text-[var(--faint)] uppercase tracking-wide mr-1">{t('cm.detail', 'Detail')}</span>
+                <span className="text-[11px] text-[var(--faint)] uppercase tracking-wide me-1">{t('cm.detail', 'Detail')}</span>
                 {[['folders', t('cm.d.folders', 'Folders')], ['files', t('cm.d.files', 'Files')], ['functions', t('cm.d.functions', 'Functions')]].map(([k, label]) => {
                     const off = k === 'functions' && !Object.keys(graph?.fnByFile || {}).length;
                     return (
@@ -439,7 +439,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                                         <span className="text-[10px] text-[var(--faint)]">{l.kind}</span>
                                                     </div>
                                                     <button type="button" onClick={() => setPicked(other.file)}
-                                                        className="block text-left text-[11px] text-[var(--muted)] hover:text-[var(--primary-2)] break-all">
+                                                        className="block text-start text-[11px] text-[var(--muted)] hover:text-[var(--primary-2)] break-all">
                                                         {other.file}:{other.line}
                                                     </button>
                                                     <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface)] border border-[var(--line)] text-[10.5px] break-all">
@@ -501,7 +501,7 @@ function Side({ title, list, onPick, empty }) {
                     {list.map((id) => (
                         <li key={id}>
                             <button type="button" onClick={() => onPick(id)}
-                                className="text-[12px] text-left hover:text-[var(--primary-2)] break-all">{id}</button>
+                                className="text-[12px] text-start hover:text-[var(--primary-2)] break-all">{id}</button>
                         </li>
                     ))}
                 </ul>

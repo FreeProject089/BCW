@@ -198,13 +198,13 @@ function VersionHistoryModal({ endpoint, currentVersion, onClose }) {
     <Modal open onClose={onClose} title={t('ver.title', 'Version history')} icon={Clock} width="max-w-2xl">
       <div className="grid sm:grid-cols-[190px_1fr] gap-4 min-h-[280px]">
         {/* Version list */}
-        <div className="sm:border-r sm:border-[var(--line)] sm:pr-3 max-h-[60vh] overflow-auto scroll-thin">
+        <div className="sm:border-e sm:border-[var(--line)] sm:pe-3 max-h-[60vh] overflow-auto scroll-thin">
           {versions == null ? <div className="p-4 text-center"><Spinner /></div>
             : versions.length === 0 ? <div className="text-sm text-[var(--faint)] p-2">{t('ver.none', 'No version history yet.')}</div>
             : <div className="space-y-1">
                 {versions.map((v) => (
                   <button key={v.version} onClick={() => open(v.version)}
-                    className={`w-full text-left px-3 py-2 rounded-lg border text-sm transition press-sm ${sel?.version === v.version ? 'border-[var(--primary)] bg-[var(--surface-2)]' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+                    className={`w-full text-start px-3 py-2 rounded-lg border text-sm transition press-sm ${sel?.version === v.version ? 'border-[var(--primary)] bg-[var(--surface-2)]' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
                     <div className="flex items-center gap-2"><span className="font-medium">v{v.version}</span>{v.current && <Badge tone="primary">{t('ver.current', 'current')}</Badge>}</div>
                     {v.createdAt && <div className="text-[11px] text-[var(--faint)]">{new Date(v.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}</div>}
                   </button>
@@ -270,7 +270,7 @@ function CountdownBlock({ announcement, done, cd, bare }) {
           {unit(cd.seconds, 'sec')}
         </div>
       ) : <div className="my-8 text-[var(--muted)]">Revealing…</div>}
-      {announcement.markdown && <div className="text-left"><Markdown>{announcement.markdown}</Markdown></div>}
+      {announcement.markdown && <div className="text-start"><Markdown>{announcement.markdown}</Markdown></div>}
       <CtaButton button={announcement.button} />
     </div>
   );
@@ -552,7 +552,7 @@ function ProjectActivity({ endpoint, timeline }) {
                 <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
                   <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
                 </div>
-                <div className="w-12 text-right text-xs tabular-nums text-[var(--muted)]">{c.commits}</div>
+                <div className="w-12 text-end text-xs tabular-nums text-[var(--muted)]">{c.commits}</div>
               </div>
             ))}
           </div>
@@ -586,7 +586,7 @@ function TimelineCard({ tl, showBody, onToggleBody, t }) {
               {m.title ? (m.url
                 ? <a href={m.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">{m.title}</a>
                 : <span className="text-sm font-medium">{m.title}</span>) : null}
-              <span className="text-[11px] text-[var(--faint)] ml-auto">{m.date}</span>
+              <span className="text-[11px] text-[var(--faint)] ms-auto">{m.date}</span>
             </div>
             {showBody && m.body ? <p className="text-[12px] text-[var(--muted)] mt-2 whitespace-pre-wrap leading-relaxed">{m.body}</p> : null}
           </div>
@@ -656,16 +656,16 @@ function Releases({ pkey, releasesUrl }) {
           const gclosed = isClosed(dir);
           return (
             <Card key={dir} className="p-0 overflow-hidden">
-              <button onClick={() => toggle(dir)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--surface-2)] transition text-left">
+              <button onClick={() => toggle(dir)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--surface-2)] transition text-start">
                 <FolderGit2 size={14} className="text-[var(--primary-2)] shrink-0" />
                 <span className="font-medium text-sm truncate">{dir}</span>
                 <Badge>{groups[dir].length}</Badge>
-                <ChevronDown size={16} className={`ml-auto shrink-0 text-[var(--faint)] transition-transform ${gclosed ? '-rotate-90' : ''}`} />
+                <ChevronDown size={16} className={`ms-auto shrink-0 text-[var(--faint)] transition-transform ${gclosed ? '-rotate-90' : ''}`} />
               </button>
               {!gclosed && (
                 <div className="border-t border-[var(--line)] divide-y divide-[var(--line)]">
                   {groups[dir].map((f) => { const I = noteIcon(f.name); return (
-                    <button key={f.path} onClick={() => setActive(f)} className="group w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface-2)] transition">
+                    <button key={f.path} onClick={() => setActive(f)} className="group w-full flex items-center gap-3 px-4 py-3 text-start hover:bg-[var(--surface-2)] transition">
                       <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--bg-solid)] transition shrink-0"><I size={16} className="text-[var(--primary-2)]" /></span>
                       <span className="flex-1 min-w-0 text-sm font-medium truncate">{f.name}</span>
                       <span className="text-xs text-[var(--muted)] flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">{lang === 'fr' ? 'Lire' : 'Read'} <ChevronRight size={13} /></span>
@@ -683,7 +683,7 @@ function Releases({ pkey, releasesUrl }) {
         <Modal open onClose={() => setActive(null)} title={active.name} icon={noteIcon(active.name)} width="max-w-3xl"
           footer={<Button variant="ghost" onClick={() => setActive(null)}>{lang === 'fr' ? 'Fermer' : 'Close'}</Button>}>
           {mdLoading ? <div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading')}</div>
-            : <div className="max-h-[65vh] overflow-auto pr-1"><Markdown>{md}</Markdown></div>}
+            : <div className="max-h-[65vh] overflow-auto pe-1"><Markdown>{md}</Markdown></div>}
         </Modal>
       )}
     </div>

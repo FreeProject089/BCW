@@ -64,10 +64,10 @@ export default function AdminStatusPage() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 mr-2">
+        <h2 className="font-semibold flex items-center gap-2 me-2">
           <Activity size={16} className="text-[var(--primary-2)]" /> {t('stp.title', 'Status page')}
         </h2>
-        <Select className="w-auto ml-auto" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
+        <Select className="w-auto ms-auto" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
           <option value="30">{t('cls.d30', 'Last 30 days')}</option>
           <option value="90">{t('cls.d90', 'Last 90 days')}</option>
           <option value="365">{t('cls.d365', 'Last year')}</option>
@@ -93,14 +93,14 @@ export default function AdminStatusPage() {
                   <Badge tone={o.endedAt ? 'green' : 'red'}>{o.endedAt ? t('stp.over', 'Over') : t('stp.ongoing', 'Ongoing')}</Badge>
                   <span className="font-medium">{o.service}</span>
                   <span className="text-[12px] text-[var(--faint)]">{new Date(o.startedAt).toLocaleString()} · {mins} min</span>
-                  <Button size="sm" className="ml-auto" onClick={() => setOpen(open === o.id ? null : o.id)}>
+                  <Button size="sm" className="ms-auto" onClick={() => setOpen(open === o.id ? null : o.id)}>
                     <PenSquare size={13} /> {t('stp.n.add', 'Write an update')}
                   </Button>
                 </div>
                 {o.cause && <div className="text-[12px] text-[var(--muted)] mt-1">{t('stp.cause', 'Cause')}: {o.cause}</div>}
 
                 {(o.notes || []).length > 0 && (
-                  <div className="mt-3 space-y-2 border-l-2 border-[var(--line)] pl-3">
+                  <div className="mt-3 space-y-2 border-s-2 border-[var(--line)] ps-3">
                     {o.notes.map((n) => (
                       <div key={n.id} className="text-[12px]">
                         <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--faint)]">
@@ -108,7 +108,7 @@ export default function AdminStatusPage() {
                           <span>{new Date(n.createdAt).toLocaleString()}</span>
                           {n.authorLabel && <span>· {n.authorLabel}</span>}
                           {!n.publicNote && <Badge>{t('stp.n.internal', 'internal')}</Badge>}
-                          <button className="ml-auto hover:text-[var(--text)]" onClick={() => toggleVisible(n)}>
+                          <button className="ms-auto hover:text-[var(--text)]" onClick={() => toggleVisible(n)}>
                             {n.publicNote ? t('stp.n.hide', 'Hide from the page') : t('stp.n.show', 'Publish')}
                           </button>
                           <button className="hover:text-[var(--error)]" onClick={() => remove(n)}>{t('common.delete', 'Delete')}</button>

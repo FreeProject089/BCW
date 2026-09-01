@@ -52,7 +52,7 @@ export default function CookieConsent() {
               </div>
               <span className="w-9 h-5 rounded-full bg-success-bg relative shrink-0 opacity-70" aria-hidden><span className="absolute top-0.5 left-[18px] w-4 h-4 rounded-full bg-white" /></span>
             </div>
-            <button type="button" onClick={() => setAnalytics((v) => !v)} aria-pressed={analytics} className="w-full text-left flex items-start gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 hover:border-[var(--line-strong)] transition">
+            <button type="button" onClick={() => setAnalytics((v) => !v)} aria-pressed={analytics} className="w-full text-start flex items-start gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 hover:border-[var(--line-strong)] transition">
               <BarChart3 size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium">{t('cookie.cat.analytics', 'Analytics')}</div>

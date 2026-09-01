@@ -127,7 +127,7 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
         <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]">
           <button type="button" onClick={toggle} className="shrink-0 text-[var(--text)] hover:text-[var(--primary-2)]" aria-label={playing ? tr('Pause', 'Pause') : tr('Lire', 'Play')}>{playing ? <Pause size={17} /> : <Play size={17} />}</button>
           <button type="button" onClick={restart} className="shrink-0 text-[var(--muted)] hover:text-[var(--text)]" aria-label={tr('Recommencer', 'Restart')}><RotateCcw size={15} /></button>
-          <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9 text-right">{fmtTime(cur)}</span>
+          <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9 text-end">{fmtTime(cur)}</span>
           <input type="range" min={0} max={dur || 0} value={Math.min(cur, dur || 0)} onChange={seek} className="flex-1 accent-[var(--primary)] h-1 cursor-pointer" aria-label={tr('Position', 'Seek')} />
           <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9">{fmtTime(dur)}</span>
           <button type="button" onClick={changeSpeed} className="shrink-0 text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] w-7 text-center" aria-label={tr('Vitesse', 'Speed')}>{speed}×</button>

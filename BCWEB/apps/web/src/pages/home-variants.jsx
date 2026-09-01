@@ -112,7 +112,7 @@ export function HomeV3(ctx) {
             and had no way in at all — a stranger who landed on it could read the feed and
             never be offered an account. A member needs nothing here, and gets nothing. */}
         {!user && (
-          <Link to={closingCta(user, t).action.to} className="ml-auto">
+          <Link to={closingCta(user, t).action.to} className="ms-auto">
             <Button variant="primary" className="!px-4 !py-2">
               {closingCta(user, t).action.label} <ArrowRight size={15} />
             </Button>

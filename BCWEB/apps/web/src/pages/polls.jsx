@@ -24,7 +24,7 @@ function Bar({ label, votes, total, mine }) {
           {mine && <Check size={12} className="text-[var(--success)] shrink-0" />}{label}
         </span>
         <span className="tabular-nums text-[var(--muted)]">{pct}%</span>
-        <span className="tabular-nums text-[11px] text-[var(--faint)] w-10 text-right">{votes}</span>
+        <span className="tabular-nums text-[11px] text-[var(--faint)] w-10 text-end">{votes}</span>
       </div>
       <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
         <div className={`h-full rounded-full ${mine ? 'bg-[var(--success)]' : 'bg-[var(--primary-2)]'}`} style={{ width: `${pct}%` }} />
@@ -130,7 +130,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
         <div key={q.id} className={`rounded-lg border p-3 ${errAt === q.id ? 'border-[var(--error)]' : 'border-[var(--line)]'}`}>
           <div className="text-[13px] font-medium">
             {q.label}
-            {q.required && <span className="text-[var(--error)] ml-1" title={t('poll.f.required', 'Required')}>*</span>}
+            {q.required && <span className="text-[var(--error)] ms-1" title={t('poll.f.required', 'Required')}>*</span>}
           </div>
           {q.help && <p className="text-[12px] text-[var(--muted)] mt-0.5">{q.help}</p>}
 
@@ -140,7 +140,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
               const on = Array.isArray(cur) ? cur.includes(c.id) : cur === c.id;
               return (
                 <button key={c.id} type="button" onClick={() => toggleChoice(q, c.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
                   {c.label}
                 </button>
               );
@@ -202,7 +202,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                             the radios — you could not tell which row you were on. It must be
                             OPAQUE (--bg-solid, not --surface): with "Translucent surfaces" on,
                             the columns would read straight through it. */}
-                        <th className="sticky left-0 z-10 bg-[var(--bg-solid)] text-left font-normal text-[12px] text-[var(--muted)] pb-1.5 pr-3" />
+                        <th className="sticky left-0 z-10 bg-[var(--bg-solid)] text-start font-normal text-[12px] text-[var(--muted)] pb-1.5 pe-3" />
                         {(q.choices || []).map((c) => (
                           <th key={c.id} className="font-normal text-[12px] text-[var(--muted)] pb-1.5 px-2 whitespace-nowrap">{c.label}</th>
                         ))}
@@ -211,7 +211,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                     <tbody>
                       {rows.map((label, i) => (
                         <tr key={i} className="border-t border-[var(--line)]">
-                          <th scope="row" className="sticky left-0 z-10 bg-[var(--bg-solid)] text-left font-normal py-2 pr-3 min-w-0">{label}</th>
+                          <th scope="row" className="sticky left-0 z-10 bg-[var(--bg-solid)] text-start font-normal py-2 pe-3 min-w-0">{label}</th>
                           {(q.choices || []).map((c) => (
                             // The whole cell is the target, not the 13px dot inside it. A bare
                             // radio measured 13×13 here — barely half the 24px minimum, in the
@@ -261,7 +261,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                   })}
                   {cur ? (
                     <button type="button" onClick={() => set(q.id, '')}
-                      className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] ml-1">
+                      className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] ms-1">
                       {t('poll.f.clear', 'Clear')}
                     </button>
                   ) : null}
@@ -356,13 +356,13 @@ export function PollTeaser({ poll }) {
 
       {/* One line, and only if there is something to say. An empty second line on a card that
           has none is furniture. */}
-      {excerpt && <p className="text-[12px] text-[var(--muted)] line-clamp-2 pl-[23px]">{excerpt}</p>}
+      {excerpt && <p className="text-[12px] text-[var(--muted)] line-clamp-2 ps-[23px]">{excerpt}</p>}
 
-      <div className="flex items-center gap-2 mt-auto pl-[23px] text-[11px] text-[var(--faint)]">
+      <div className="flex items-center gap-2 mt-auto ps-[23px] text-[11px] text-[var(--faint)]">
         {!poll.open && <Badge>{t('poll.closed', 'Closed')}</Badge>}
         {poll.open && poll.audience === 'users' && <Badge tone="primary"><Users size={10} /> {t('poll.members', 'Members')}</Badge>}
         {count !== null && <span className="tabular-nums">{t('poll.t.answers', '{n} answers').replace('{n}', String(count))}</span>}
-        <span className="ml-auto text-[var(--primary-2)] opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-0.5">
+        <span className="ms-auto text-[var(--primary-2)] opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-0.5">
           {answered || !poll.open ? t('poll.t.see', 'See results') : t('poll.t.answer', 'Answer')} <ArrowRight size={11} />
         </span>
       </div>
@@ -495,14 +495,14 @@ export function PollCard({ poll: initial, onChange }) {
             {needsAccount && !closed && (
               <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
                 <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
-                <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+                <Link to="/signin" className="ms-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
               </div>
             )}
           </div>
         ) : needsAccount ? (
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
             <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
-            <Link to="/signin" className="ml-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
+            <Link to="/signin" className="ms-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
           </div>
         ) : closed ? (
           <div className="text-[13px] text-[var(--muted)]">{t('poll.closednoresults', 'This poll is closed.')}</div>
@@ -511,7 +511,7 @@ export function PollCard({ poll: initial, onChange }) {
             <div className="space-y-1.5">
               {poll.options.map((o) => (
                 <button key={o.id} onClick={() => toggle(o.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg border text-[13px] transition-colors ${picked.includes(o.id) ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${picked.includes(o.id) ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
                   {o.label}
                 </button>
               ))}
@@ -627,7 +627,7 @@ export default function PollsPage() {
         <div className="mb-5 space-y-2">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} className="!pl-9 !pr-9"
+            <Input value={q} onChange={(e) => setQ(e.target.value)} className="!ps-9 !pe-9"
               placeholder={t('poll.search', 'Search the polls…')} aria-label={t('poll.search', 'Search the polls…')} />
             {q && (
               <button type="button" onClick={() => setQ('')} aria-label={t('common.clear', 'Clear')}

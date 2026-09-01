@@ -49,7 +49,7 @@ export default function Faq() {
         actions={canEdit && <Link to="/admin?s=faq" className="btn btn-sm"><Settings2 size={15} /> {t('faq.manage', 'Manage')}</Link>} />
 
       <div className="relative mb-6"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-        <Input className="!pl-10" placeholder={t('faq.searchph', 'Search the FAQ…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+        <Input className="!ps-10" placeholder={t('faq.searchph', 'Search the FAQ…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
 
       {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>
         : groups.length ? <div className="space-y-7">
@@ -59,8 +59,8 @@ export default function Faq() {
               <div className="space-y-2">
                 {items.map((it) => { const isOpen = open.has(it.id); return (
                   <Card key={it.id} className="overflow-hidden">
-                    <button onClick={() => toggle(it.id)} className="w-full flex items-center gap-3 text-left p-4 hover:bg-[var(--surface-2)]/40 transition">
-                      <span className="flex-1 font-medium">{questionOf(it)}{!it.published && <span className="ml-2 text-[10px] uppercase tracking-wide text-warning">{t('faq.draft', 'draft')}</span>}</span>
+                    <button onClick={() => toggle(it.id)} className="w-full flex items-center gap-3 text-start p-4 hover:bg-[var(--surface-2)]/40 transition">
+                      <span className="flex-1 font-medium">{questionOf(it)}{!it.published && <span className="ms-2 text-[10px] uppercase tracking-wide text-warning">{t('faq.draft', 'draft')}</span>}</span>
                       <ChevronDown size={17} className={`text-[var(--faint)] shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {isOpen && <div className="px-4 pb-4 pt-1 border-t border-[var(--line)] text-sm"><Markdown>{answerOf(it) || t('faq.empty', '*No answer yet.*')}</Markdown></div>}

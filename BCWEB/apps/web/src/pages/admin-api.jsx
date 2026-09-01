@@ -41,7 +41,7 @@ function UsageBars({ series }) {
   return (
     <div className="mt-3">
       <div className="flex gap-2">
-        <div className="flex flex-col justify-between h-24 text-[10px] text-[var(--faint)] tabular-nums shrink-0 w-8 text-right">
+        <div className="flex flex-col justify-between h-24 text-[10px] text-[var(--faint)] tabular-nums shrink-0 w-8 text-end">
           {ticks.map((n, i) => <span key={i}>{fmt(n)}</span>)}
         </div>
         <div className="relative flex-1 min-w-0 h-24">
@@ -69,7 +69,7 @@ function UsageBars({ series }) {
       {/* Legend, always — three bands cannot be told apart by shape. The hovered day
           replaces it rather than floating over the bars, so nothing is ever covered by
           the thing explaining it. */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] pl-10 min-h-[18px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[11px] ps-10 min-h-[18px]">
         {h ? (
           <>
             <span className="font-medium tabular-nums">{h.day}</span>
@@ -226,14 +226,14 @@ export function AdminApi() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 mr-2"><KeyRound size={16} className="text-[var(--primary-2)]" /> {t('aapi.title', 'Public API')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><KeyRound size={16} className="text-[var(--primary-2)]" /> {t('aapi.title', 'Public API')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
               className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>
           ))}
         </div>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
+        <Button size="sm" variant="ghost" className="ms-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
       </div>
 
       {view === 'overview' && (
@@ -269,7 +269,7 @@ export function AdminApi() {
                       <div className="text-sm truncate">{k.label || t('aapi.untitled', 'Untitled key')} {k.prefix && <code className="text-[10px] font-mono text-[var(--faint)]">{k.prefix}…</code>}</div>
                       <div className="text-[11px] text-[var(--faint)] truncate">{k.owner ? `${k.owner.displayName} · ${k.owner.email}` : t('aapi.ownergone', 'owner unknown')}</div>
                     </div>
-                    <div className="text-right shrink-0">
+                    <div className="text-end shrink-0">
                       <div className="text-sm font-semibold tabular-nums">{k.count.toLocaleString()}</div>
                       {k.errors > 0 && <div className="text-[11px] text-warning tabular-nums">{k.errors} {t('aapi.errs', 'errors')}</div>}
                     </div>
@@ -394,7 +394,7 @@ function KeysTable() {
                     owner's e-mail. */}
                 <div className="mt-1"><ScopeChips scopes={k.scopes} /></div>
               </div>
-              <div className="text-right shrink-0">
+              <div className="text-end shrink-0">
                 <div className="text-sm font-semibold tabular-nums">{(k.calls || 0).toLocaleString()}</div>
                 <div className="text-[10px] text-[var(--faint)]">{t('aapi.calls', 'calls')}</div>
               </div>

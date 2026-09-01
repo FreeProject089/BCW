@@ -103,10 +103,10 @@ export function Evidence({ s, onChanged }) {
           {s.attachments.map((a) => (
             <li key={a.id} className="flex items-center gap-2 text-[12px] min-w-0">
               <Badge tone="">{a.kind}</Badge>
-              <button className="underline truncate text-left min-w-0" onClick={() => open(a)}>{a.name}</button>
+              <button className="underline truncate text-start min-w-0" onClick={() => open(a)}>{a.name}</button>
               {a.bytes > 0 && <span className="text-[var(--faint)] shrink-0">{fmtBytes(a.bytes)}</span>}
               {a.note && <span className="text-[var(--faint)] truncate">— {a.note}</span>}
-              <button className="ml-auto shrink-0 text-[var(--faint)] hover:text-[var(--error)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
+              <button className="ms-auto shrink-0 text-[var(--faint)] hover:text-[var(--error)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
                 <Trash2 size={12} />
               </button>
             </li>
@@ -118,7 +118,7 @@ export function Evidence({ s, onChanged }) {
         <label className="inline-flex">
           <input type="file" className="hidden" disabled={busy} onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
           <span className={`px-3 py-1.5 rounded-lg text-[12px] border border-[var(--line)] cursor-pointer ${busy ? 'opacity-50' : 'hover:border-[var(--line-strong)]'}`}>
-            <Paperclip size={12} className="inline mr-1" />{t('sanc.ev.upload', 'Attach a file')}
+            <Paperclip size={12} className="inline me-1" />{t('sanc.ev.upload', 'Attach a file')}
           </span>
         </label>
         <Input className="flex-1 min-w-[180px]" placeholder="https://…" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
@@ -139,7 +139,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
 
   return (
     <div className={`border-b border-[var(--line)] last:border-0 ${contestOpen ? 'bg-warning/5' : ''}`}>
-      <button onClick={() => setOpen((o) => !o)} className="w-full text-left px-3 py-2.5 flex items-start gap-3 hover:bg-[var(--surface-2)]">
+      <button onClick={() => setOpen((o) => !o)} className="w-full text-start px-3 py-2.5 flex items-start gap-3 hover:bg-[var(--surface-2)]">
         <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--surface-2)] shrink-0 mt-0.5"><Icon size={14} className="text-[var(--muted)]" /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 flex-wrap">
@@ -160,7 +160,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
       </button>
 
       {open && (
-        <div className="px-3 pb-3 pl-[52px] space-y-2">
+        <div className="px-3 pb-3 ps-[52px] space-y-2">
           {s.request && (
             <div className="text-[12px]">
               <span className="text-[var(--faint)]">{t('sanc.request', 'Asked of them')}: </span>{s.request}
@@ -337,13 +337,13 @@ export function AdminSanctions() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 mr-2"><Gavel size={16} className="text-[var(--primary-2)]" /> {t('sanc.title', 'Sanctions')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Gavel size={16} className="text-[var(--primary-2)]" /> {t('sanc.title', 'Sanctions')}</h2>
         {data?.openContests > 0 && (
           <button onClick={() => setStatus('contested')} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-warning/15 text-warning hover:bg-warning/25">
             <Scale size={12} /> {t('sanc.opencontests', '{n} waiting for an answer').replace('{n}', String(data.openContests))}
           </button>
         )}
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
+        <Button size="sm" variant="ghost" className="ms-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
       </div>
 
       <Card className="p-3 mb-3">
@@ -416,10 +416,10 @@ function ClosureSurveys() {
 
   return (
     <Card className="p-4 mt-8">
-      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+      <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((o) => !o)}>
         <FileText size={15} className="text-[var(--primary-2)]" />
         <span className="font-semibold text-sm">{t('cls.title', 'Why people left')}</span>
-        <span className="text-[11px] text-[var(--faint)] ml-auto">{open ? t('common.hide', 'Hide') : t('common.show', 'Show')}</span>
+        <span className="text-[11px] text-[var(--faint)] ms-auto">{open ? t('common.hide', 'Hide') : t('common.show', 'Show')}</span>
       </button>
       {!open ? (
         <p className="text-[11px] text-[var(--muted)] mt-1.5">
@@ -449,13 +449,13 @@ function ClosureSurveys() {
                   <span className="flex-1 min-w-0 truncate">{t(`acl.reason.${r.reason}`, r.reason)}</span>
                   {/* Share of the window, so one answer out of three does not read like a trend. */}
                   <span className="h-1.5 rounded bg-[var(--primary)]" style={{ width: `${Math.round((r.n / data.total) * 120)}px` }} />
-                  <span className="tabular-nums text-[var(--muted)] w-8 text-right">{r.n}</span>
+                  <span className="tabular-nums text-[var(--muted)] w-8 text-end">{r.n}</span>
                 </div>
               ))}
             </div>
             <div className="space-y-2">
               {(data.recent || []).filter((r) => r.comment).slice(0, 25).map((r, i) => (
-                <div key={i} className="text-[12px] border-l-2 border-[var(--line)] pl-2.5">
+                <div key={i} className="text-[12px] border-s-2 border-[var(--line)] ps-2.5">
                   <div className="text-[var(--faint)] text-[11px]">
                     {new Date(r.createdAt).toLocaleDateString()} · {t(`cls.o.${r.outcome}`, r.outcome)} · {t(`acl.reason.${r.reason}`, r.reason || '—')}
                   </div>

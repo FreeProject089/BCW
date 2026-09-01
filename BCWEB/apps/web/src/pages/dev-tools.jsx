@@ -106,7 +106,7 @@ function CallLog() {
     <Card className="p-5">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} className="text-[var(--primary-2)]" /> {t('dvt.calls', 'What your keys did')}</div>
-        <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ml-auto">
+        <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ms-auto">
           {[[24, '24h'], [24 * 7, '7d'], [24 * 30, '30d']].map(([h, l]) => (
             <button key={h} onClick={() => setHours(h)}
               className={`px-2.5 py-1 rounded-[8px] text-[12px] ${hours === h ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
@@ -525,7 +525,7 @@ function RecipeChecker() {
             {res.ok
               ? <span className="flex items-center gap-1.5 text-success text-sm font-medium"><CheckCircle2 size={15} /> {t('dvt.rec.ok', 'Every key is one the engine reads.')}</span>
               : <span className="flex items-center gap-1.5 text-error text-sm font-medium"><XCircle size={15} /> {t('dvt.rec.bad', '{n} key(s) the installer will discard').replace('{n}', String(res.dropped.length))}</span>}
-            <span className="text-[11px] text-[var(--faint)] ml-auto">
+            <span className="text-[11px] text-[var(--faint)] ms-auto">
               {t('dvt.rec.against', 'against {n} keys, bpkg {v}').replace('{n}', String(res.schema?.keys ?? 0)).replace('{v}', res.schema?.version || '?')}
             </span>
           </div>
@@ -721,7 +721,7 @@ export default function DevTools() {
         <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
           className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
           <Wrench size={16} className="text-[var(--primary-2)] shrink-0" />
-          <span className="flex-1 text-left truncate">{current?.label}</span>
+          <span className="flex-1 text-start truncate">{current?.label}</span>
           <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{currentIdx + 1}/{ALL_TOOLS.length}</span>
           <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
         </button>
@@ -735,16 +735,16 @@ export default function DevTools() {
                 <input value={query} onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter' && hits[0]) pick(hits[0].id); if (e.key === 'Escape') setQuery(''); }}
                   placeholder={t('dvt.search', 'Jump to a tool…')} aria-label={t('dvt.search', 'Jump to a tool…')}
-                  className="w-full pl-7 pr-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--primary)]" />
+                  className="w-full ps-7 pe-2 py-1.5 rounded-lg text-[13px] bg-[var(--surface-2)] border border-[var(--line)] outline-none focus:border-[var(--primary)]" />
               </div>
             )}
             {q ? (
               <div className="space-y-0.5">
                 {hits.length ? hits.map((tl) => (
                   <button key={tl.id} onClick={() => pick(tl.id)}
-                    className="w-full text-left px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
+                    className="w-full text-start px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
                     <span className="truncate">{tl.label}</span>
-                    <span className="text-[10px] text-[var(--faint)] truncate ml-auto">{t(tl.group.k, tl.group.label)}</span>
+                    <span className="text-[10px] text-[var(--faint)] truncate ms-auto">{t(tl.group.k, tl.group.label)}</span>
                   </button>
                 )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{t('dvt.nohit', 'No tool by that name.')}</div>}
               </div>
@@ -754,12 +754,12 @@ export default function DevTools() {
                 {g.tools.map((tl) => (
                   <button key={tl.id} onClick={() => pick(tl.id)}
                     aria-current={active === tl.id ? 'true' : undefined}
-                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${
+                    className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${
                       active === tl.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'
                     }`}>
                     <span className="truncate">{tl.label}</span>
                     {/* Said on the picker, not after the tap — same rule as the rail. */}
-                    {tl.needsAuth && !user && <span className="text-[10px] text-[var(--faint)] ml-auto shrink-0">{t('dvt.needsAcc', 'needs an account')}</span>}
+                    {tl.needsAuth && !user && <span className="text-[10px] text-[var(--faint)] ms-auto shrink-0">{t('dvt.needsAcc', 'needs an account')}</span>}
                   </button>
                 ))}
               </div>
@@ -780,7 +780,7 @@ export default function DevTools() {
                 {g.tools.map((tl) => (
                   <button key={tl.id} type="button" onClick={() => pick(tl.id)}
                     aria-current={active === tl.id ? 'true' : undefined}
-                    className={`text-left text-xs px-2.5 py-1.5 rounded-lg border transition whitespace-nowrap lg:whitespace-normal ${
+                    className={`text-start text-xs px-2.5 py-1.5 rounded-lg border transition whitespace-nowrap lg:whitespace-normal ${
                       active === tl.id
                         ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--surface-2)]'
                         : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'

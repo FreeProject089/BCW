@@ -145,7 +145,7 @@ function KitPacker() {
             type="button"
             onClick={() => setFlavour(f.id)}
             aria-pressed={flavour === f.id}
-            className={`text-left rounded-xl border p-2.5 flex-1 min-w-[220px] transition-colors ${
+            className={`text-start rounded-xl border p-2.5 flex-1 min-w-[220px] transition-colors ${
               flavour === f.id
                 ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
                 : 'border-[var(--line)] hover:border-[var(--line-strong)]'
@@ -164,7 +164,7 @@ function KitPacker() {
             <input type="checkbox" checked={on.has(p.id)} onChange={() => toggle(p.id)} className="mt-0.5 shrink-0" />
             <span className="min-w-0">
               <span className="text-sm font-medium">{p.label}</span>
-              {p.bytes > 0 && <span className="ml-1.5 text-[11px] text-[var(--faint)] tabular-nums">{Math.round(p.bytes / 1024)} KB</span>}
+              {p.bytes > 0 && <span className="ms-1.5 text-[11px] text-[var(--faint)] tabular-nums">{Math.round(p.bytes / 1024)} KB</span>}
               <span className="block text-[12px] text-[var(--muted)] leading-snug"><Markdown className="!text-[12px]">{p.detail}</Markdown></span>
             </span>
           </label>
@@ -180,7 +180,7 @@ function KitPacker() {
             </span>
           ))}
         </div>
-        <span className="text-[11px] text-[var(--faint)] tabular-nums ml-auto">{Math.round(bytes / 1024)} KB</span>
+        <span className="text-[11px] text-[var(--faint)] tabular-nums ms-auto">{Math.round(bytes / 1024)} KB</span>
         <Button variant="primary" onClick={download} loading={busy} disabled={!!err}>
           <Download size={15} /> {t('devmd.dl.btn', 'Download the folder')}
         </Button>
@@ -220,7 +220,7 @@ export default function DevMarkdown() {
       <section>
         <div className="flex items-baseline gap-2 mb-2">
           <h2 className="text-lg font-semibold">{t('devmd.try', 'Try it')}</h2>
-          <button type="button" onClick={() => setSrc(SAMPLE)} className="ml-auto text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1">
+          <button type="button" onClick={() => setSrc(SAMPLE)} className="ms-auto text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1">
             <RotateCcw size={12} /> {t('devmd.reset', 'Reset')}
           </button>
         </div>

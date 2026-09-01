@@ -150,7 +150,7 @@ export default function StatusPage() {
         ) : (
           <ul className="space-y-3">
             {d.incidents.map((i) => (
-              <li key={i.id} className="border-l-2 pl-3" style={{ borderColor: i.endedAt ? 'var(--line)' : 'var(--error)' }}>
+              <li key={i.id} className="border-s-2 ps-3" style={{ borderColor: i.endedAt ? 'var(--line)' : 'var(--error)' }}>
                 <div className="flex items-center gap-2 flex-wrap text-sm">
                   <span className="font-medium">{SERVICE_NAME(i.key, i.service, t)}</span>
                   {i.endedAt ? <Badge>{t('st.resolved', 'Resolved')}</Badge> : <Badge tone="red">{t('st.ongoing', 'Ongoing')}</Badge>}
@@ -196,21 +196,21 @@ export default function StatusPage() {
           {table && (
           <div className="overflow-x-auto mt-2">
             <table className="text-[12px] w-full">
-              <thead><tr className="text-[var(--faint)] text-left">
+              <thead><tr className="text-[var(--faint)] text-start">
                 <th className="font-normal pb-1">{t('st.m.day', 'Day')}</th>
-                <th className="font-normal pb-1 text-right">CPU</th>
-                <th className="font-normal pb-1 text-right">{t('st.m.mem', 'Memory')}</th>
-                <th className="font-normal pb-1 text-right">{t('st.m.disk', 'Disk')}</th>
-                <th className="font-normal pb-1 text-right">{t('st.m.lat', 'Latency')}</th>
+                <th className="font-normal pb-1 text-end">CPU</th>
+                <th className="font-normal pb-1 text-end">{t('st.m.mem', 'Memory')}</th>
+                <th className="font-normal pb-1 text-end">{t('st.m.disk', 'Disk')}</th>
+                <th className="font-normal pb-1 text-end">{t('st.m.lat', 'Latency')}</th>
               </tr></thead>
               <tbody>
                 {d.metrics.slice(-30).reverse().map((m) => (
                   <tr key={String(m.day)} className="border-t border-[var(--line)]">
                     <td className="py-1">{String(m.day).slice(0, 10)}</td>
-                    <td className="py-1 text-right tabular-nums">{m.cpu}%</td>
-                    <td className="py-1 text-right tabular-nums">{m.mem}%</td>
-                    <td className="py-1 text-right tabular-nums">{m.disk}%</td>
-                    <td className="py-1 text-right tabular-nums">{m.latencyMs != null ? `${m.latencyMs} ms` : '—'}</td>
+                    <td className="py-1 text-end tabular-nums">{m.cpu}%</td>
+                    <td className="py-1 text-end tabular-nums">{m.mem}%</td>
+                    <td className="py-1 text-end tabular-nums">{m.disk}%</td>
+                    <td className="py-1 text-end tabular-nums">{m.latencyMs != null ? `${m.latencyMs} ms` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

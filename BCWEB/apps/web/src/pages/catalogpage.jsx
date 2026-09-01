@@ -115,7 +115,7 @@ export default function CommunityCatalogPage() {
                     </div>
                   )}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] text-right shrink-0 space-y-0.5">
+                <div className="text-[11px] text-[var(--faint)] text-end shrink-0 space-y-0.5">
                   {it.downloads > 0 && <div className="flex items-center gap-1 justify-end"><Download size={10} /> {it.downloads}</div>}
                   {it.size > 0 && <div>{(it.size / 1048576).toFixed(1)} MB</div>}
                   {it.external && <div className="italic">{t('ccp.extern', 'external link')}</div>}

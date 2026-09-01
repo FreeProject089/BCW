@@ -135,9 +135,9 @@ function Dashboard({ data, reload }) {
             </div>
           </div>
           {r.hosted && (
-            <div className="text-right">
+            <div className="text-end">
               <div className="text-xs text-[var(--faint)] flex items-center gap-1 justify-end"><HardDrive size={12} /> {mb(r.used)} / {gb(r.storageQuotaBytes) * 1024 >= 1024 ? `${gb(r.storageQuotaBytes)} GB` : `${mb(r.storageQuotaBytes)} MB`}</div>
-              <div className="w-40 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 ml-auto"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
+              <div className="w-40 h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 ms-auto"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
               <div className="text-[11px] text-[var(--faint)] mt-1 flex items-center gap-1 justify-end"><Zap size={11} /> {(r.effectiveUploadKbps / 1024).toFixed(1)} Mbps {t('repos.cap', 'cap')}</div>
             </div>
           )}
@@ -213,7 +213,7 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, c
                 {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                 {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
-                  <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
+                  <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
                   {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                   {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                   {/* Open rather than download: a manifest, a log or a README is something you want to
@@ -358,7 +358,7 @@ function FilesTab({ r, reload }) {
   // and a sha256 is 64 characters nobody transcribes correctly. Silent when a file
   // predates hashing rather than copying an empty string that looks like a value.
   const copySha = (sha) => { if (!sha) return; copyText(sha); toast.success(t('rd.shacopied', 'Checksum copied.')); };
-  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline mr-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo — its content lives at its own URL, not here.')}</Card>;
+  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline me-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo — its content lives at its own URL, not here.')}</Card>;
 
   const shown = files
     .filter((f) => !q.trim() || f.path.toLowerCase().includes(q.trim().toLowerCase()))
@@ -424,7 +424,7 @@ function FilesTab({ r, reload }) {
           </label>
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-2 shrink-0"><Files size={13} /> {files.length} {t('rd.files', 'file(s)')} · {fmtSize(totalBytes)}</span>
           <div className="flex-1 min-w-[140px] relative">
-            <input className="input !py-1.5 !text-xs !pl-7 w-full" placeholder={t('rd.filesearch', 'Filter by name…')} value={q} onChange={(e) => setQ(e.target.value)} />
+            <input className="input !py-1.5 !text-xs !ps-7 w-full" placeholder={t('rd.filesearch', 'Filter by name…')} value={q} onChange={(e) => setQ(e.target.value)} />
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           </div>
           <select className="input !py-1.5 !text-xs !w-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
@@ -434,7 +434,7 @@ function FilesTab({ r, reload }) {
           </select>
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
             <button type="button" onClick={() => setView('list')} className={`px-2.5 py-1.5 text-xs flex items-center gap-1 ${view === 'list' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><FileText size={12} /> {t('rd.view.list', 'List')}</button>
-            <button type="button" onClick={() => setView('tree')} className={`px-2.5 py-1.5 text-xs flex items-center gap-1 border-l border-[var(--line)] ${view === 'tree' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><FolderUp size={12} /> {t('rd.view.tree', 'Tree')}</button>
+            <button type="button" onClick={() => setView('tree')} className={`px-2.5 py-1.5 text-xs flex items-center gap-1 border-s border-[var(--line)] ${view === 'tree' ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'}`}><FolderUp size={12} /> {t('rd.view.tree', 'Tree')}</button>
           </div>
           {sel.size > 0 && <Button size="sm" disabled={zipping} onClick={downloadSelected}>{zipping ? <Spinner /> : <><Download size={12} /> {t('rd.dlsel.btn', 'Download {n}').replace('{n}', sel.size)}</>}</Button>}
           {!locked && sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-error"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
@@ -454,7 +454,7 @@ function FilesTab({ r, reload }) {
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                   {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
-                    <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-right shrink-0">{fmtSize(f.size)}</span>
+                    <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
                     {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
                     {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                     {/* Open rather than download: a manifest, a log or a README is something you want to
@@ -583,7 +583,7 @@ function UsersTab({ r }) {
                 <span className="font-mono text-xs text-[var(--muted)] shrink-0">{e.ip}</span>
                 <span className="text-[var(--faint)]">{e.kind === 'download' ? t('rd.downloaded', 'downloaded') : t('rd.connected2', 'connected')}</span>
                 {e.kind === 'download' && <span className="font-mono text-xs truncate flex-1">{e.path}</span>}
-                <span className="text-[11px] text-[var(--faint)] shrink-0 ml-auto">{timeAgo(e.createdAt, t)}</span>
+                <span className="text-[11px] text-[var(--faint)] shrink-0 ms-auto">{timeAgo(e.createdAt, t)}</span>
               </div>
             ))}
           </div>

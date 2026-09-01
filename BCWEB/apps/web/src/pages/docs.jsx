@@ -150,7 +150,7 @@ export default function Docs() {
       </div>
       <button onClick={() => setSearch(true)}
         className="w-full flex items-center gap-2 px-3 py-2 mb-2.5 rounded-2xl border border-[var(--line)] bg-[var(--surface-2)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
-        <Search size={14} /> <span className="flex-1 text-left">{t('docs.search')}</span>
+        <Search size={14} /> <span className="flex-1 text-start">{t('docs.search')}</span>
         <kbd className="text-[10px] font-semibold px-1.5 py-0.5 rounded-lg border border-[var(--line)] bg-[var(--bg)]">⌘K</kbd>
       </button>
       <div className="relative mb-4">
@@ -159,7 +159,7 @@ export default function Docs() {
       {(() => {
         const PageLink = (p) => (
           <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
-            className={`group relative flex items-center gap-2.5 pl-3 pr-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+            className={`group relative flex items-center gap-2.5 ps-3 pe-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
             {activeSlug === p.slug && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[var(--primary)]" />}
             <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
             <span className="truncate flex-1">{titleOf(p)}</span>
@@ -174,11 +174,11 @@ export default function Docs() {
           return (
             <div key={node.path} className={depth === 0 ? 'mb-3' : 'mt-1.5'}>
               <button onClick={() => toggleCat(node.path)} className={`w-full flex items-center gap-1 px-1 mb-1 font-bold uppercase tracking-wide hover:text-[var(--muted)] ${head}`}>
-                <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-left truncate">{node.name}</span>
+                <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-start truncate">{node.name}</span>
                 <span className="text-[10px] font-semibold tabular-nums text-[var(--faint)] bg-[var(--surface-2)] rounded-full px-1.5 py-px">{node.count}</span>
               </button>
               {!isCollapsed && (
-                <div className={depth === 0 ? 'space-y-0.5' : 'ml-2 border-l border-[var(--line)] pl-1.5 space-y-0.5'}>
+                <div className={depth === 0 ? 'space-y-0.5' : 'ms-2 border-s border-[var(--line)] ps-1.5 space-y-0.5'}>
                   {node.pages.map(PageLink)}
                   {node.children.map((c) => renderNode(c, depth + 1))}
                 </div>
@@ -216,11 +216,11 @@ export default function Docs() {
       <main className="flex-1 min-w-0 w-full max-w-3xl xl:max-w-4xl 2xl:max-w-5xl">
         <div className="flex items-center gap-2 mb-2">
           <button className="btn btn-sm" onClick={() => setSidebar((v) => !v)} title={t('dcs.togglesidebar', "Toggle sidebar")}><PanelLeftClose size={15} className="hidden md:block" /><Menu size={15} className="md:hidden" /></button>
-          {page && (canEdit || page.commentsPublic) && <div className="ml-auto flex gap-2">
+          {page && (canEdit || page.commentsPublic) && <div className="ms-auto flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => setReaderComments(true)}><MessageSquare size={14} /> {t('docs.comments', 'Comments')}</Button>
             {canEdit && <Button size="sm" onClick={() => setEditing(page)}><Pencil size={14} /> {t('docs.edit')}</Button>}
           </div>}
-          {canEdit && !page && <Button size="sm" className="ml-auto" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
+          {canEdit && !page && <Button size="sm" className="ms-auto" onClick={() => setEditing({})}><Plus size={14} /> {t('docs.newpage')}</Button>}
         </div>
 
         {loading ? <div className="py-20 grid place-items-center"><Spinner /></div>
@@ -304,7 +304,7 @@ function PageTocMobile({ body }) {
         <ChevronRight size={13} className="doc-toc-m-chevron transition-transform" /> {t('docs.onthispage')}
       </summary>
       <nav className="px-3 pb-3 space-y-0.5">
-        {heads.map((h) => <a key={h.id} href={`#${h.id}`} onClick={(e) => go(e, h.id)} className={`block py-1 text-sm text-[var(--muted)] hover:text-[var(--primary)] ${h.depth === 3 ? 'pl-4 text-[13px]' : ''}`}>{h.text}</a>)}
+        {heads.map((h) => <a key={h.id} href={`#${h.id}`} onClick={(e) => go(e, h.id)} className={`block py-1 text-sm text-[var(--muted)] hover:text-[var(--primary)] ${h.depth === 3 ? 'ps-4 text-[13px]' : ''}`}>{h.text}</a>)}
       </nav>
     </details>
   );
@@ -342,10 +342,10 @@ function PageToc({ body }) {
   return (
     <aside className="hidden xl:block w-52 shrink-0 sticky top-20 self-start max-h-[calc(100vh-6rem)] overflow-auto no-scrollbar">
       <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-2">{t('docs.onthispage')}</div>
-      <nav className="border-l border-[var(--line)]">
+      <nav className="border-s border-[var(--line)]">
         {heads.map((h) => (
           <a key={h.id} href={`#${h.id}`} onClick={(e) => { e.preventDefault(); anchorEl(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${h.id}`); }}
-            className={`block -ml-px border-l-2 py-1 text-sm leading-snug ${h.depth === 3 ? 'pl-6 text-[13px]' : 'pl-3'} ${active === h.id ? 'border-[var(--primary)] text-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`block -ms-px border-s-2 py-1 text-sm leading-snug ${h.depth === 3 ? 'ps-6 text-[13px]' : 'ps-3'} ${active === h.id ? 'border-[var(--primary)] text-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {h.text}
           </a>
         ))}
@@ -438,13 +438,13 @@ function SearchPalette({ onClose, onPick }) {
   const Row = (r, i) => r.sub ? (
     // Nested section hit: tree connector + # tile, page context muted below.
     <button key={`${r.slug}-${r.anchor || i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-left pr-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
+      className={`w-full text-start pe-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
       <span className="relative w-9 shrink-0" aria-hidden>
         <span className="absolute left-[22px] -top-1 bottom-1/2 w-px bg-[var(--line-strong)]" />
         <span className="absolute left-[22px] top-1/2 w-2.5 h-px bg-[var(--line-strong)]" style={{ transform: 'translateY(-0.5px)' }} />
       </span>
       <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
-      <div className="min-w-0 flex-1 self-center pl-3">
+      <div className="min-w-0 flex-1 self-center ps-3">
         <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
         <div className="text-[11px] text-[var(--faint)] truncate">{r.title}</div>
       </div>
@@ -452,7 +452,7 @@ function SearchPalette({ onClose, onPick }) {
     </button>
   ) : (
     <button key={`${r.slug}-page-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-left px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
+      className={`w-full text-start px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
       <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
         <IconGlyph name={r.icon || 'file'} size={15} />
       </span>
@@ -641,11 +641,11 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   return (
     <Modal open onClose={onClose} title={page ? 'Edit page' : 'New page'} icon={BookOpen} width="max-w-3xl"
       footer={<>
-        {page && <Button variant="ghost" className="!text-error mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {page && <Button variant="ghost" className="!text-error me-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         {page && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2" title="{t('docs.comments.showReaders', 'Show the comment thread to readers on the published page')}"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2" title="{t('docs.comments.showReaders', 'Show the comment thread to readers on the published page')}"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
       </>}>

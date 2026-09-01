@@ -258,7 +258,7 @@ export function BlogPostPage() {
         {/* reactions */}
         {p.reactionsEnabled && p.reactionTypes?.length > 0 && (
           <div className="mt-8 pt-5 border-t border-[var(--line)] flex flex-wrap items-center gap-2">
-            <span className="text-xs text-[var(--faint)] mr-1">{t('blog.rx.label', 'Reactions')}</span>
+            <span className="text-xs text-[var(--faint)] me-1">{t('blog.rx.label', 'Reactions')}</span>
             {p.reactionTypes.map((type) => {
               const count = rx?.counts?.[type] || 0; const mine = rx?.mine === type;
               return (
@@ -331,7 +331,7 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
           <div className="flex flex-wrap gap-2">
             {CLASSIC_BADGES.map((b) => (
               <button key={b} type="button" onClick={() => { onPickRaw?.(`[${b}] `); onClose(); }} className="!p-0 bg-transparent border-0 cursor-pointer">
-                <span className={`md-badge md-badge-${CLASSIC_CLASS[b]} !mr-0`}>{b}</span>
+                <span className={`md-badge md-badge-${CLASSIC_CLASS[b]} !me-0`}>{b}</span>
               </button>
             ))}
           </div>
@@ -346,7 +346,7 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
             <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">{t('blg.mybadges', "My badges")}</div>
             <div className="flex flex-wrap gap-2">
               {saved.map(([l, c]) => (
-                <span key={l} className="inline-flex items-center gap-1 text-xs font-bold pl-2.5 pr-1 py-1 rounded-full border" style={chipStyle(c)}>
+                <span key={l} className="inline-flex items-center gap-1 text-xs font-bold ps-2.5 pe-1 py-1 rounded-full border" style={chipStyle(c)}>
                   <button type="button" onClick={() => { onPick(l, c); onClose(); }} className="bg-transparent border-0 cursor-pointer font-bold" style={{ color: 'inherit' }}>{l}</button>
                   <button type="button" title={t('blg.remove', "Remove")} onClick={() => persist(saved.filter((s) => s[0] !== l))} className="opacity-60 hover:opacity-100"><X size={11} /></button>
                 </span>
@@ -476,7 +476,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-[var(--line)]">
         {full && (
-          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 mr-1">
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 me-1">
             {[['write', 'Markdown'], ['visual', 'Visual']].map(([m, label]) => (
               <button key={m} type="button" onClick={() => { setMode(m); setPreview(false); }}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium ${mode === m ? 'bg-[var(--surface)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
@@ -505,13 +505,13 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
               {blocksOpen && createPortal(<>
                 <div className="fixed inset-0 z-[60]" onClick={() => setBlocksOpen(false)} />
                 <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left, maxHeight: blocksPos.maxH || 288 }}>
-                  {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
+                  {BLOCKS.map((bl) => <button key={bl.label} type="button" onClick={() => bl.onPick ? bl.onPick() : insertBlock(bl.snip)} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-start hover:bg-[var(--surface-2)]"><bl.icon size={14} className="text-[var(--muted)]" /> {bl.label}</button>)}
                 </div>
               </>, document.body)}
             </div>
           </>}
         </>}
-        <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ml-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
+        <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
         {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {preview
@@ -689,10 +689,10 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   return (
     <Modal open onClose={onClose} title={post ? t('be.editpost', 'Edit post') : t('be.writepost', 'Write a post')} icon={PenSquare} width="max-w-3xl"
       footer={<>
-        {post && <Button variant="ghost" className="!text-error mr-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
+        {post && <Button variant="ghost" className="!text-error me-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
         {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
         {post && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] mr-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
+        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (post ? 'Save' : 'Publish')}</Button>
       </>}>
@@ -735,7 +735,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         </select>
         <Button type="button" size="sm" onClick={pickCover}><ImagePlus size={14} /> {f.cover ? t('blg.changecover', 'Change cover') : t('blg.addcover', 'Add cover')}</Button>
         {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> {t('blg.removecover', 'Remove')}</Button>}
-        <span className="text-xs text-[var(--faint)] ml-auto">{t('blg.sharedlang', 'Cover & blog are shared across languages')}</span>
+        <span className="text-xs text-[var(--faint)] ms-auto">{t('blg.sharedlang', 'Cover & blog are shared across languages')}</span>
       </div>
       {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
       {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> {t('be.coverInBody', 'Also show the cover at the top of the article')}</label>}
@@ -813,7 +813,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
                   <span className="text-[var(--faint)]">{f.publish ? t('be.nl.notifyhint', 'Emails active subscribers about this new article (with a link). Sent once.') : t('be.nl.draftnote', 'Publish the post to announce it.')}</span></span>
               </label>
               {f.notifyNewsletter && f.publish && (
-                <div className="mt-2.5 ml-6 space-y-2">
+                <div className="mt-2.5 ms-6 space-y-2">
                   <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional) — default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
                   <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional) — defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
                 </div>

@@ -76,7 +76,7 @@ export default function DevTryIt() {
               }`}>/api{c.path}</button>
           ))}
         </div>
-        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+        <div className="ms-auto flex items-center gap-1.5 shrink-0">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {LANGS.map(([k, label]) => (
               <button key={k} type="button" onClick={() => setLang(k)}
@@ -101,7 +101,7 @@ export default function DevTryIt() {
         </button>
         <span className="text-[11px] text-[var(--muted)]">{t('dtry.note', 'Public endpoint — no key, no account.')}</span>
         {state && state !== 'running' && !state.error && (
-          <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
+          <span className="ms-auto text-[11px] tabular-nums text-[var(--faint)]">
             <span className={state.status < 300 ? 'text-success font-semibold' : 'text-error font-semibold'}>{state.status}</span> · {state.ms} ms
           </span>
         )}

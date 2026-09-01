@@ -101,7 +101,7 @@ function NotificationsPanel() {
           </Link>
         </div>
       </div>
-      {loading ? <Loading /> : (list.length ? <div className="space-y-2 max-h-[460px] overflow-auto pr-1">
+      {loading ? <Loading /> : (list.length ? <div className="space-y-2 max-h-[460px] overflow-auto pe-1">
         {list.map((n) => { const m = NOTIF[n.kind] || NOTIF_FALLBACK; return (
           <Card key={n.id} className={`p-3.5 flex gap-3 group ${!n.readAt ? 'border-[var(--ring)]' : ''}`}
             onClick={() => openNotif(n)}
@@ -163,7 +163,7 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
             </div>
           );
           if (st.done || (!st.to && !st.action)) return <div key={st.key}>{inner}</div>;
-          if (st.action === 'submit') return <button key={st.key} type="button" className="w-full text-left" onClick={onSubmit}>{inner}</button>;
+          if (st.action === 'submit') return <button key={st.key} type="button" className="w-full text-start" onClick={onSubmit}>{inner}</button>;
           return <Link key={st.key} to={st.to}>{inner}</Link>;
         })}
       </div>
@@ -304,7 +304,7 @@ function PaymentResultModal({ result, onClose }) {
           const money2 = (c) => { const cur = (inv?.currency || pay?.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; };
           const single = pay?.description || (kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
           return (
-          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-left text-sm max-w-xs mx-auto">
+          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-start text-sm max-w-xs mx-auto">
             {inv?.number && (
               <div className="flex items-center justify-between gap-3 mb-1.5 pb-1.5 border-b border-[var(--line)]">
                 <span className="text-[var(--faint)]">{t('dash.pay.invoice', 'Invoice №')}</span>
@@ -445,7 +445,7 @@ export function Dashboard() {
             })()}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
               {actions.map((a) => (
-                <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-left flex items-center gap-2.5">
+                <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-start flex items-center gap-2.5">
                   <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2"><a.icon size={16} className="text-white" /></span>
                   <span className="text-sm font-medium">{a.label}</span>
                 </button>
@@ -466,7 +466,7 @@ export function Dashboard() {
             {list.length > 3 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-                  <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('dash.search', 'Search my items…')} value={itemQ} onChange={(e) => setItemQ(e.target.value)} /></div>
+                  <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('dash.search', 'Search my items…')} value={itemQ} onChange={(e) => setItemQ(e.target.value)} /></div>
                 <Select className="!w-auto !py-1.5 !text-sm" value={itemKind} onChange={(e) => setItemKind(e.target.value)}>
                   <option value="all">{t('dash.allkinds', 'All kinds')}</option><option value="APP">APP</option><option value="PLUGIN">PLUGIN</option><option value="THEME">THEME</option><option value="PRESET">PRESET</option></Select>
                 <Select className="!w-auto !py-1.5 !text-sm" value={itemStatus} onChange={(e) => setItemStatus(e.target.value)}>
@@ -635,7 +635,7 @@ function MyData() {
               </div>
             </div>
             <button type="button" disabled={!!busy}
-              className="ml-auto text-xs underline decoration-dotted underline-offset-4 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-50 flex items-center gap-1.5"
+              className="ms-auto text-xs underline decoration-dotted underline-offset-4 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-50 flex items-center gap-1.5"
               onClick={() => download('/api/me/export', 'bettercommunity-data.json', 'json')}>
               {busy === 'json' ? <Spinner /> : <FileJson size={13} />} {t('data.json', 'Account record only (JSON)')}
             </button>
@@ -764,9 +764,9 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     ? <><Button variant="ghost" onClick={onClose}>{t('bill.close', 'Close')}</Button><Button variant="primary" disabled={busy} onClick={cancelDeletion}>{busy ? <Spinner /> : t('ie.canceldel', 'Cancel deletion')}</Button></>
     : <>
         {confirmDel
-          ? <span className="flex items-center gap-2 mr-auto text-sm text-[var(--muted)]">{t('ie.delthis', 'Delete this item?')}<Button size="sm" className="!bg-error-bg !text-error !border-error-border" disabled={busy} onClick={doDelete}>{busy ? <Spinner /> : t('ie.yesdelete', 'Yes, delete')}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>{t('ie.no', 'No')}</Button></span>
+          ? <span className="flex items-center gap-2 me-auto text-sm text-[var(--muted)]">{t('ie.delthis', 'Delete this item?')}<Button size="sm" className="!bg-error-bg !text-error !border-error-border" disabled={busy} onClick={doDelete}>{busy ? <Spinner /> : t('ie.yesdelete', 'Yes, delete')}</Button><Button size="sm" variant="ghost" onClick={() => setConfirmDel(false)}>{t('ie.no', 'No')}</Button></span>
           : <>
-              <button className="mr-auto text-sm text-error hover:text-error flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>
+              <button className="me-auto text-sm text-error hover:text-error flex items-center gap-1.5" onClick={() => setConfirmDel(true)}><Trash2 size={14} /> {t('repos.del.ok', 'Delete')}</button>
               {/* Beside Delete rather than beside Save: both are ways of ceasing to own
                   this, and neither belongs next to an edit you might still be making. */}
               <button className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"

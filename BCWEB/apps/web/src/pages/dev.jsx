@@ -210,7 +210,7 @@ export function ApiConsole() {
               }
               return rows.map(({ e, i }) => (
                 <button key={e.m + e.p} type="button" onClick={() => pick(i)}
-                  className={`w-full text-left px-2.5 py-2 flex items-start gap-2 hover:bg-[var(--surface-2)] ${i === idx ? 'bg-[var(--surface-2)]' : ''}`}>
+                  className={`w-full text-start px-2.5 py-2 flex items-start gap-2 hover:bg-[var(--surface-2)] ${i === idx ? 'bg-[var(--surface-2)]' : ''}`}>
                   <MethodChip m={e.m} />
                   <span className="min-w-0 flex-1">
                     <span className="font-mono text-[12px] break-all">{e.p}</span>
@@ -265,7 +265,7 @@ export function ApiConsole() {
         <div className="pt-3 mt-1 border-t border-[var(--line)]">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Code2 size={12} /> {t('dev.snip', 'The same call, in code')}</span>
-            <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ml-auto">
+            <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ms-auto">
               {LANGS.map((l) => (
                 <button key={l} onClick={() => setLang(l)}
                   className={`px-2 py-0.5 rounded-[8px] text-[11px] ${lang === l ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
@@ -287,7 +287,7 @@ export function ApiConsole() {
             <Badge tone={tone(res.status)}>{res.status || t('dev.console.nonet', 'no response')}</Badge>
             <span className="text-[var(--faint)]">{res.ms} ms</span>
             {ep.write && sandbox && <Badge>{t('dev.console.sandbox', 'Sandbox')}</Badge>}
-            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { copyText(res.body); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
+            <Button size="sm" variant="ghost" className="ms-auto" onClick={() => { copyText(res.body); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
           </div>
           <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-[var(--surface-2)] rounded-lg p-3 max-h-72 overflow-auto">{res.body}</pre>
           {res.status === 403 && (

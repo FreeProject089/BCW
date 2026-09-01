@@ -92,7 +92,7 @@ export default function WelcomePrefs() {
 
     const Toggle = ({ icon: Icon, title, desc, on, onChange }) => (
         <button type="button" onClick={() => onChange(!on)}
-            className="w-full flex items-center gap-3 py-2.5 text-left border-b border-[var(--line)] last:border-0">
+            className="w-full flex items-center gap-3 py-2.5 text-start border-b border-[var(--line)] last:border-0">
             <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0">
                 <Icon size={14} className="text-[var(--primary-2)]" />
             </span>

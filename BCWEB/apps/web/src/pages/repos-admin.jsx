@@ -40,10 +40,10 @@ function RepoIdentifyCard() {
       {res && (
         <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 text-sm space-y-1.5">
           <div className="flex items-center gap-2"><GitBranch size={13} className="text-[var(--primary-2)]" /> <span className="font-medium">{res.repo.name}</span> <Badge tone={res.repo.hosted ? 'primary' : ''}>{res.repo.hosted ? 'hosted' : 'listed'}</Badge></div>
-          <div className="text-[var(--muted)]"><Users size={12} className="inline mr-1" /> Owner: <b>{res.owner.displayName}</b> · {res.owner.email} <Badge>{res.owner.role}</Badge></div>
+          <div className="text-[var(--muted)]"><Users size={12} className="inline me-1" /> Owner: <b>{res.owner.displayName}</b> · {res.owner.email} <Badge>{res.owner.role}</Badge></div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">BCWEB id:</span> <span className="font-mono text-xs">{res.owner.id}</span></div>
-          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">{t('radm.creatorids', "Creator ids:")}</span> {res.identity.creatorIds.length ? res.identity.creatorIds.map((c) => <span key={c} className="font-mono text-xs mr-1.5">{c}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
-          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Discord ids:</span> {res.identity.discordIds.length ? res.identity.discordIds.map((d) => <span key={d} className="font-mono text-xs mr-1.5">{d}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
+          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">{t('radm.creatorids', "Creator ids:")}</span> {res.identity.creatorIds.length ? res.identity.creatorIds.map((c) => <span key={c} className="font-mono text-xs me-1.5">{c}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
+          <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Discord ids:</span> {res.identity.discordIds.length ? res.identity.discordIds.map((d) => <span key={d} className="font-mono text-xs me-1.5">{d}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">Ko-fi donor:</span> {res.identity.kofiDonor ? <Badge tone="green">yes</Badge> : <span className="text-[var(--faint)]">no</span>}</div>
         </div>
       )}
@@ -68,7 +68,7 @@ function AdminRepoTraffic() {
   const rollup = data?.rollup || [];
   return (
     <Card className="p-4 mb-4">
-      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((v) => !v)}>
+      <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((v) => !v)}>
         <Wifi size={16} className="text-[var(--primary-2)]" />
         <span className="font-semibold flex-1">{t('radm.livetraffic', "Live repo traffic")}</span>
         {recent.length > 0 && <Badge tone="primary">{recent.length} in the last 15 min</Badge>}
@@ -95,14 +95,14 @@ function AdminRepoTraffic() {
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('radm.last24', "Last 24h \u2014 downloads per repo")}</div>
             {!rollup.length ? <div className="text-sm text-[var(--faint)] py-3">{t('radm.nodl24', "No downloads in the last 24h.")}</div> : (
-              <div className="space-y-1.5 max-h-64 overflow-auto pr-1">
+              <div className="space-y-1.5 max-h-64 overflow-auto pe-1">
                 {rollup.map((r) => {
                   const max = rollup[0]?.count || 1;
                   return (
                     <div key={r.repoId} className="flex items-center gap-2 text-xs">
                       <span className="w-36 truncate font-medium" title={`${r.name} · ${r.owner}`}>{r.name}</span>
                       <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.max(4, (r.count / max) * 100)}%` }} /></div>
-                      <span className="tabular-nums text-[var(--muted)] w-10 text-right">{r.count}</span>
+                      <span className="tabular-nums text-[var(--muted)] w-10 text-end">{r.count}</span>
                     </div>
                   );
                 })}
@@ -190,7 +190,7 @@ export function AdminPools() {
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
         <div className="flex items-center gap-2">
-          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Button size="sm" variant="primary" onClick={grant}><HardDrive size={13} /> {t('apools.grantbtn', 'Grant a pool')}</Button>
         </div>
       </div>
@@ -202,7 +202,7 @@ export function AdminPools() {
               <Link to={`/u/${o.ownerId}`} className="font-medium hover:text-[var(--primary)]">{o.ownerName}</Link>
               <button onClick={() => { navigator.clipboard?.writeText(o.ownerBcId); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {o.ownerBcId}</button>
               <span className="text-[var(--faint)]">· {o.pools.length} {t('apools.pools', 'pools')}</span>
-              {selected.size >= 1 && o.pools.length > 1 && <span className="ml-auto flex items-center gap-1.5">
+              {selected.size >= 1 && o.pools.length > 1 && <span className="ms-auto flex items-center gap-1.5">
                 <select className="input !w-auto !py-1 !text-xs" defaultValue="" onChange={(e) => e.target.value && mergeOwner(o, e.target.value)}>
                   <option value="">{t('pools.mergeinto', 'Merge into…')}</option>
                   {o.pools.map((pp) => <option key={pp.id} value={pp.id}>{pp.name}</option>)}
@@ -294,7 +294,7 @@ export function AdminRepos() {
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <input className="input !pl-9" placeholder={t('arp.search', 'Search by name, owner, repo ID or tag…')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input !ps-9" placeholder={t('arp.search', 'Search by name, owner, repo ID or tag…')} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
         </div>
         <div className="flex gap-2 flex-wrap">

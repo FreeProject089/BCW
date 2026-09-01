@@ -357,7 +357,7 @@ function HostCatalog({ onBack }) {
               // the server will reject is worse than no offer.
               ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
             ].map(([m, Icon, label, desc]) => (
-              <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-left p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+              <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
               </button>
@@ -413,12 +413,12 @@ export function Submit() {
         : path === 'host' ? <HostCatalog onBack={() => setPath(null)} />
         : (
           <div className="grid sm:grid-cols-2 gap-3">
-            <button onClick={() => setPath('official')} className="text-left p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
+            <button onClick={() => setPath('official')} className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
               <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Boxes size={20} className="text-[var(--primary-2)]" /></div>
               <div className="font-semibold">{t('sub2.official', 'Propose to the official catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.official.d', 'Submit a plugin, theme, app or preset. Free, reviewed by our team. You can bulk-import a whole catalog.json.')}</div>
             </button>
-            <button onClick={() => setPath('host')} className="text-left p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
+            <button onClick={() => setPath('host')} className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
               <div className="w-11 h-11 rounded-xl bg-success-bg grid place-items-center mb-3"><Server size={20} className="text-success" /></div>
               <div className="font-semibold">{t('sub2.host', 'Host my own catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.host.d', 'Publish and manage your own catalog. Free if you self-host the downloads, or paid to host the files with us.')}</div>
@@ -428,7 +428,7 @@ export function Submit() {
                 said so — someone with a repo to share was offered catalogs twice and their
                 actual case never. A LINK, not a third inline form: the hosting page already
                 carries pools, quotas and payment, and a duplicate here would drift. */}
-            <Link to="/hosting" className="text-left p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
+            <Link to="/hosting" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
               <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
               <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>

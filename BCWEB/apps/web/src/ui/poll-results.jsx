@@ -72,10 +72,10 @@ export function QTally({ rows, mine = [] }) {
               <div className={`h-full ${isMine ? 'bg-[var(--success)]' : 'bg-[var(--primary-2)]'}`}
                 style={{ width: `${(r.votes / max) * 100}%` }} />
             </div>
-            <span className="tabular-nums text-[var(--muted)] w-9 text-right shrink-0">
+            <span className="tabular-nums text-[var(--muted)] w-9 text-end shrink-0">
               {total ? Math.round((r.votes / total) * 100) : 0}%
             </span>
-            <span className="tabular-nums text-[var(--faint)] w-6 text-right shrink-0">{r.votes}</span>
+            <span className="tabular-nums text-[var(--faint)] w-6 text-end shrink-0">{r.votes}</span>
           </div>
         );
       })}
@@ -134,7 +134,7 @@ export function QuestionResults({ questions, completion, myChoices = {}, texts =
             texts[q.id]?.length ? (
               <ul className="mt-1 space-y-1">
                 {texts[q.id].map((line, i) => (
-                  <li key={i} className="text-[12px] text-[var(--muted)] border-l-2 border-[var(--line)] pl-2 whitespace-pre-wrap break-words">
+                  <li key={i} className="text-[12px] text-[var(--muted)] border-s-2 border-[var(--line)] ps-2 whitespace-pre-wrap break-words">
                     {line}
                   </li>
                 ))}

@@ -101,7 +101,7 @@ function RepoContents({ id, k }) {
     return (
       <>
         <li className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth * 16}px` }}>
-          <button onClick={() => setOpen(!open)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+          <button onClick={() => setOpen(!open)} className="flex items-center gap-2 min-w-0 flex-1 text-start">
             <ChevronDown size={13} className={`text-[var(--faint)] flex-none transition-transform ${open ? '' : '-rotate-90'}`} />
             <FolderOpen size={13} className="text-[var(--primary-2)] flex-none" />
             <span className="text-sm truncate min-w-0" title={path}>{name}</span>

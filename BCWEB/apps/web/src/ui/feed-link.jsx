@@ -97,7 +97,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
             style={{ background: 'var(--bg-solid)' }}>
             {rows.map((r) => (
               <div key={r.k} className="flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-[var(--surface-2)]">
-                <button type="button" className="flex-1 text-left min-w-0" onClick={() => take(r)}>
+                <button type="button" className="flex-1 text-start min-w-0" onClick={() => take(r)}>
                   <div className="text-[12px]">{r.label}</div>
                   <div className="text-[10px] text-[var(--faint)] truncate">{r.url.replace(origin, '')}</div>
                 </button>

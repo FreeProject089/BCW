@@ -85,7 +85,7 @@ export function AdminReactions() {
                     </span>
                   ))}
                 </div>
-                <div className="text-sm font-semibold tabular-nums w-10 text-right">{b.total}</div>
+                <div className="text-sm font-semibold tabular-nums w-10 text-end">{b.total}</div>
               </div>
             ))}
           </div>
@@ -124,7 +124,7 @@ export function AdminReactions() {
                     <span className="bg-[var(--muted)]" style={{ width: `${pct(x.ok, x.votes)}%` }} />
                     <span className="bg-[var(--error)]" style={{ width: `${pct(x.no, x.votes)}%` }} />
                   </div>
-                  <div className="text-[10px] text-[var(--faint)] text-right mt-0.5 tabular-nums">
+                  <div className="text-[10px] text-[var(--faint)] text-end mt-0.5 tabular-nums">
                     {t('adm.react.votes', '{n} votes').replace('{n}', String(x.votes))}
                   </div>
                 </div>

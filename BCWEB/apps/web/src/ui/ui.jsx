@@ -160,7 +160,7 @@ export function ActionBar({ actions, extra = [], className = '', size = 'sm' }) 
               <div role="menu" className="fixed z-[61] rounded-xl border border-[var(--line-strong)] shadow-xl p-1"
                 style={{ top: pos.top, right: pos.right, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
                 {rest.map((a) => {
-                  const cls = `w-full text-left px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-error' : 'text-[var(--text)]'}`;
+                  const cls = `w-full text-start px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-2 enabled:hover:bg-[var(--surface-2)] disabled:opacity-40 disabled:cursor-not-allowed ${a.danger ? 'text-error' : 'text-[var(--text)]'}`;
                   const body = <>{a.icon && <a.icon size={14} />} {a.label}</>;
                   // A navigating action stays a link once it folds in here too — otherwise
                   // the affordance would vanish at exactly the narrow widths that fold it.
@@ -253,7 +253,7 @@ export function Dropdown({ value, options, onChange, className = '', size, place
         <div ref={menuRef} role="listbox" onKeyDown={onMenuKey} className="dd-menu fixed z-[71] rounded-xl border border-[var(--line-strong)] p-1 shadow-lg anim-pop max-h-[60vh] overflow-auto scroll-thin" style={{ top: pos.top, left: pos.left, minWidth: pos.minWidth, background: 'var(--bg-solid)' }}>
           {options.map((o) => (
             <button key={String(o.value)} type="button" role="option" aria-selected={String(o.value) === String(value)} onClick={() => { setOpen(false); btnRef.current?.focus?.(); if (String(o.value) !== String(value)) onChange(o.value); }}
-              className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-left transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
+              className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-start transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
               {o.icon}<span className="flex-1 truncate">{o.label}</span>
               {String(o.value) === String(value) && <Check size={14} className="text-[var(--primary-2)]" />}
             </button>
@@ -465,7 +465,7 @@ export function DialogProvider({ children }) {
           {o.type === 'password' ? (
             <div className="relative">
               <Input ref={inputRef} type={reveal ? 'text' : 'password'} value={value} placeholder={o.placeholder} onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && close(value || '')} className="!pr-10" />
+                onKeyDown={(e) => e.key === 'Enter' && close(value || '')} className="!pe-10" />
               <button type="button" onClick={() => setReveal((v) => !v)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]" title={reveal ? 'Hide' : 'Show'} aria-label={reveal ? 'Hide' : 'Show'}>
                 {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
@@ -587,7 +587,7 @@ const PREVIEW_CLASS = { remove: 'undo-going', add: 'undo-arriving' };
           {items.map((t) => { const I = Ico[t.tone] || Info;
             const tone = t.tone === 'success' ? 'var(--success)' : t.tone === 'error' ? 'var(--error)' : 'var(--info)';
             return (
-            <div key={t.id} role="alert" className="anim-slide relative overflow-hidden rounded-xl border flex items-center gap-3 pl-3.5 pr-2 py-3"
+            <div key={t.id} role="alert" className="anim-slide relative overflow-hidden rounded-xl border flex items-center gap-3 ps-3.5 pe-2 py-3"
               style={{ background: `color-mix(in srgb, ${tone} 8%, var(--bg-solid))`, borderColor: `color-mix(in srgb, ${tone} 32%, var(--line))`, boxShadow: '0 14px 40px -14px rgba(0,0,0,0.62)' }}>
               {/* tone-tinted, spring-in icon chip: an explicit success / error / info cue */}
               <span className={`toast-icon-in grid place-items-center w-7 h-7 rounded-lg shrink-0 ${t.tone === 'success' ? 'burst' : ''}`} style={{ background: `color-mix(in srgb, ${tone} 18%, transparent)`, color: tone }}><I size={16} /></span>
@@ -603,7 +603,7 @@ const PREVIEW_CLASS = { remove: 'undo-going', add: 'undo-arriving' };
               <button onClick={() => finalize(t.id, 'commit')}
                 aria-label={t.action ? 'Apply now and dismiss' : 'Dismiss'}
                 title={t.action ? 'Apply now' : undefined}
-                className="shrink-0 -mr-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
+                className="shrink-0 -me-0.5 p-1 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] transition"><X size={14} /></button>
               {/* countdown bar — for action toasts this is the undo window before commit */}
               <span className="absolute left-0 bottom-0 h-[3px] rounded-full toast-progress" style={{ background: tone, animationDuration: `${t.duration}ms` }} />
             </div>); })}

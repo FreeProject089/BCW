@@ -296,7 +296,7 @@ export function Admin() {
           <CodebaseMaps />
           <div className="flex flex-wrap gap-2 mb-3">
             <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
+              <Input className="!ps-9" placeholder={t('mod.search.ph', 'Search by item name, author or email…')} value={modQ} onChange={(e) => setModQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setModQApplied(modQ)} /></div>
             <Button variant="primary" onClick={() => setModQApplied(modQ)}><Search size={15} /> {t('mod.search', 'Search')}</Button>
             <Dropdown value={modKind} onChange={setModKind} options={[
               { value: '', label: t('mod.allkinds', 'All kinds') }, { value: 'APP', label: t('mod.k.app', 'App') },
@@ -694,7 +694,7 @@ function AdminUsers() {
       <div className="flex gap-2 mb-5">
         <div className="relative flex-1">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
+          <Input className="!ps-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         </div>
         <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('au.search', 'Search')}</>}</Button>
       </div>
@@ -728,7 +728,7 @@ function AdminUsers() {
       {results === null ? <EmptyState icon={Users} title={t('au.find.t', 'Find a user')} sub={t('au.find.s', 'Enter a term above to search.')} />
         : results.length ? <div className="space-y-2">
           {results.map((u) => (
-            <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-left card card-hover p-4 flex items-center gap-3">
+            <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-start card card-hover p-4 flex items-center gap-3">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
@@ -836,11 +836,11 @@ function AdminExpenses({ mrrCents }) {
 
   return (
     <Card className="p-4 mb-3">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-left mb-1">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start mb-1">
         <Wallet size={15} className="text-[var(--primary-2)]" />
         <span className="font-medium text-sm">{t('ex.title', 'Running costs')}</span>
         <Badge>{rows.length}</Badge>
-        <span className="ml-auto text-sm tabular-nums">
+        <span className="ms-auto text-sm tabular-nums">
           <span className="text-[var(--muted)]">{t('ex.burn', 'per month')} </span>
           <b>{money(burn)}</b>
         </span>
@@ -926,7 +926,7 @@ function AdminExpenses({ mrrCents }) {
                 <span className="font-medium truncate">{e.label}</span>
                 <span className="text-[var(--faint)] shrink-0">{t(`ex.cat.${e.category}`, e.category)}</span>
                 {ended && <Badge tone="amber">{t('ex.ended', 'ended')}</Badge>}
-                <span className="ml-auto tabular-nums shrink-0">{money(e.amountCents)} {e.currency}</span>
+                <span className="ms-auto tabular-nums shrink-0">{money(e.amountCents)} {e.currency}</span>
                 {!ended && e.recurring !== 'none' && (
                   <button onClick={() => end(e)} className="text-[var(--faint)] hover:text-[var(--warning)] shrink-0" title={t('ex.end.ok', 'Mark ended')}>
                     <XCircle size={13} />
@@ -1016,7 +1016,7 @@ function AdminPlanUsers() {
       })()}
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer — name, email, creator id…')} value={q}
+          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer — name, email, creator id…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
         <Button size="sm" onClick={() => setQApplied(q.trim())}>{t('pu.searchbtn', 'Search')}</Button>
         {qApplied && <Button size="sm" variant="ghost" onClick={() => { setQ(''); setQApplied(''); }}><X size={13} /> {t('pu.clear', 'Clear')}</Button>}
@@ -1027,7 +1027,7 @@ function AdminPlanUsers() {
       <div className="flex gap-2 mb-4">
         {PLANUSERS_TABS.map(([id, I, label]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex-1 px-3 py-2 rounded-xl text-sm font-medium border transition ${tab === id ? 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <I size={14} className="inline mr-1.5 -mt-0.5" /> {t(`pu.tab.${id}`, label)}</button>
+            <I size={14} className="inline me-1.5 -mt-0.5" /> {t(`pu.tab.${id}`, label)}</button>
         ))}
       </div>
       {busy && !results ? <Loading /> : results && results.length ? <div className="space-y-2">
@@ -1035,17 +1035,17 @@ function AdminPlanUsers() {
           const isOpen = expanded === u.id;
           return (
           <Card key={u.id} className="p-0 overflow-hidden">
-            <button onClick={() => setExpanded(isOpen ? null : u.id)} className="w-full text-left p-4 flex items-center gap-3 hover:bg-[var(--surface-2)] transition">
+            <button onClick={() => setExpanded(isOpen ? null : u.id)} className="w-full text-start p-4 flex items-center gap-3 hover:bg-[var(--surface-2)] transition">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
                 {/* A <button>, not a clickable <span>: it opens the user detail, and looked
                     like a link (hover:underline) while being unreachable by keyboard — no
                     focus, no Enter (WCAG 2.1.1 / 4.1.2). */}
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-left hover:underline hover:text-[var(--primary-2)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-start hover:underline hover:text-[var(--primary-2)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email}</div>
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
-                <div className="text-xs text-right shrink-0">
+                <div className="text-xs text-end shrink-0">
                   {u.mrrCents > 0 && <div className="text-sm font-semibold text-success">{mrrMoney(u.mrrCents)}<span className="text-[var(--faint)] font-normal">/{t('pu.mo', 'mo')}</span></div>}
                   {u.totalSpentCents != null && <div className="text-[var(--faint)]">{t('pu.spent', '{n} spent').replace('{n}', mrrMoney(u.totalSpentCents))} · {t('pu.payments', '{n} payment(s)').replace('{n}', u.paymentCount)}</div>}
                 </div>
@@ -1271,7 +1271,7 @@ function AuditDetail({ id, onClose, onPickActor }) {
           </div>
           {row(t('sec.detail.when', 'When'), new Date(e.createdAt).toLocaleString())}
           {row(t('sec.detail.actor', 'Actor'), e.actor
-            ? <button onClick={() => { onPickActor?.(e.actor.id); onClose(); }} className="hover:text-[var(--primary-2)] text-left">
+            ? <button onClick={() => { onPickActor?.(e.actor.id); onClose(); }} className="hover:text-[var(--primary-2)] text-start">
                 {e.actor.displayName} <span className="text-xs text-[var(--faint)]">({e.actor.role})</span>
               </button>
             : '—')}
@@ -1436,7 +1436,7 @@ function AdminSecurity() {
 
       <div className="flex flex-wrap gap-2 mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={tab === 'logins' ? t('sec.search.logins', 'Search email, IP or account…') : t('sec.search.audit', 'Search actor, action, detail or IP…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <Input className="!ps-9" placeholder={tab === 'logins' ? t('sec.search.logins', 'Search email, IP or account…') : t('sec.search.audit', 'Search actor, action, detail or IP…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
         {tab === 'logins' && (
           <Select className="!w-auto" value={loginFilter} onChange={(e) => setLoginFilter(e.target.value)}>
             <option value="all">{t('sec.f.all', 'All outcomes')}</option><option value="success">{t('sec.f.success', 'Success only')}</option><option value="failed">{t('sec.f.failed', 'Failed only')}</option><option value="suspicious">{t('sec.f.suspicious', 'Suspicious IPs only')}</option>
@@ -1498,7 +1498,7 @@ function AdminSecurity() {
             <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               {a.success ? <CheckCircle2 size={15} className="text-success shrink-0" /> : <XCircle size={15} className="text-error shrink-0" />}
               <div className="flex-1 min-w-0">
-                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ml-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
+                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ms-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--primary-2)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
               </div>
               <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
@@ -1621,7 +1621,7 @@ function AdminSecurity() {
             {entries.map((e) => (
               <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--surface-2)] transition">
                 <Shield size={15} className="text-[var(--primary-2)] shrink-0" />
-                <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-left">
+                <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-start">
                   <div className="truncate"><span className="font-medium">{e.actor?.displayName || '—'}</span> <span className="text-[var(--muted)] font-mono text-[12px]">{e.action}</span>{e.detail && <span className="text-[var(--faint)]"> · {e.detail}</span>}</div>
                   <div className="text-[11px] text-[var(--faint)] font-mono">{e.ip || '—'}</div>
                 </button>
@@ -1899,18 +1899,18 @@ function PerfCompare() {
           <table className="w-full text-[13px]">
             <thead>
               <tr className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
-                <th className="text-left font-normal pb-1.5" />
+                <th className="text-start font-normal pb-1.5" />
                 {/* Both windows are dated. "The one before" is not a date, and an admin
                     reading a regression needs to know which days it is blamed on. */}
-                <th className="text-right font-normal pb-1.5">
+                <th className="text-end font-normal pb-1.5">
                   {t('perf.cmp.now', 'This period')}
                   {range(data?.from, data?.to) && <div className="font-normal normal-case text-[10px] opacity-70">{range(data.from, data.to)}</div>}
                 </th>
-                <th className="text-right font-normal pb-1.5">
+                <th className="text-end font-normal pb-1.5">
                   {t('perf.cmp.before', 'The one before')}
                   {range(data?.previousFrom, data?.previousTo) && <div className="font-normal normal-case text-[10px] opacity-70">{range(data.previousFrom, data.previousTo)}</div>}
                 </th>
-                <th className="text-right font-normal pb-1.5">{t('perf.cmp.change', 'Change')}</th>
+                <th className="text-end font-normal pb-1.5">{t('perf.cmp.change', 'Change')}</th>
               </tr>
             </thead>
             <tbody>
@@ -1934,10 +1934,10 @@ function PerfCompare() {
                 { k: 'downMinutes', label: t('perf.cmp.down', 'Minutes not running'), fmt: (v) => String(Math.round(v)), unit: 'min', sub: true },
               ].map((row) => (
                 <tr key={row.k} className="border-t border-[var(--line)]">
-                  <td className={`py-1.5 ${row.sub ? 'pl-3 text-[var(--muted)] text-[12px]' : ''}`}>{row.label}</td>
-                  <td className="py-1.5 text-right tabular-nums">{row.fmt(cur[row.k])}</td>
-                  <td className="py-1.5 text-right tabular-nums text-[var(--muted)]">{prev ? row.fmt(prev[row.k]) : '—'}</td>
-                  <td className="py-1.5 text-right tabular-nums">
+                  <td className={`py-1.5 ${row.sub ? 'ps-3 text-[var(--muted)] text-[12px]' : ''}`}>{row.label}</td>
+                  <td className="py-1.5 text-end tabular-nums">{row.fmt(cur[row.k])}</td>
+                  <td className="py-1.5 text-end tabular-nums text-[var(--muted)]">{prev ? row.fmt(prev[row.k]) : '—'}</td>
+                  <td className="py-1.5 text-end tabular-nums">
                     {/* Network has no better direction — more traffic is not good or bad, it
                         is just more — so it shows the movement without a verdict colour. */}
                     <Delta v={data?.change?.[row.k]} unit={row.unit ?? '%'} good={row.good || 'down'} digits={row.digits ?? 1} />
@@ -2298,7 +2298,7 @@ function AdminServerPerf() {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                 {rows.map(([k, label, c]) => (
-                  <div key={k} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c }} /><span className="text-[var(--muted)] truncate">{label}</span><span className="ml-auto tabular-nums font-medium">{Math.round(((bw[k] || 0) / total) * 100)}%</span></div>
+                  <div key={k} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c }} /><span className="text-[var(--muted)] truncate">{label}</span><span className="ms-auto tabular-nums font-medium">{Math.round(((bw[k] || 0) / total) * 100)}%</span></div>
                 ))}
               </div>
               <p className="text-[11px] text-[var(--faint)] mt-2.5">{t('sp.bw.note', 'Counted from response sizes since the API last restarted. Telemetry runs as a separate service, so it isn’t included here.')}</p>
@@ -2314,7 +2314,7 @@ function AdminServerPerf() {
         if (!ra?.repos?.length) return null;
         return (
           <Card className="p-4 mb-4">
-            <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-left">
+            <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-start">
               <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Server size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
               <span className="flex items-center gap-2">
                 <span className="text-[11px] tabular-nums text-[var(--muted)] hidden sm:inline">
@@ -2343,9 +2343,9 @@ function AdminServerPerf() {
                   <table className="w-full text-sm border-collapse min-w-[480px]">
                     <thead>
                       <tr className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
-                        <th className="font-semibold text-left py-1.5 pl-1 pr-3 min-w-[150px]">{t('sp.repo', 'Repo')}</th>
-                        <th className="font-semibold text-left py-1.5 px-3 min-w-[150px]">{t('sp.upload', 'Upload')}</th>
-                        <th className="font-semibold text-left py-1.5 pl-3 pr-1 min-w-[150px]">{t('sp.storage', 'Storage')}</th>
+                        <th className="font-semibold text-start py-1.5 ps-1 pe-3 min-w-[150px]">{t('sp.repo', 'Repo')}</th>
+                        <th className="font-semibold text-start py-1.5 px-3 min-w-[150px]">{t('sp.upload', 'Upload')}</th>
+                        <th className="font-semibold text-start py-1.5 ps-3 pe-1 min-w-[150px]">{t('sp.storage', 'Storage')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--line)]">
@@ -2357,7 +2357,7 @@ function AdminServerPerf() {
                         const upPct = cap > 0 ? Math.min(100, (live / cap) * 100) : (live > 0 ? 100 : 0);
                         return (
                           <tr key={r.id} className="hover:bg-[var(--surface-2)]/40">
-                            <td className="py-2 pl-1 pr-3 min-w-[150px]">
+                            <td className="py-2 ps-1 pe-3 min-w-[150px]">
                               <div className="font-medium break-all leading-tight">{r.name}</div>
                               <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 flex-wrap">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{rawStatusLabel(r.status, t)}</Badge>}</div>
                             </td>
@@ -2370,7 +2370,7 @@ function AdminServerPerf() {
                               <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-info transition-all" style={{ width: `${Math.max(live > 0 ? 3 : 0, upPct)}%` }} /></div>
                             </td>
                             {/* Storage actually used vs quota. */}
-                            <td className="py-2 pl-3 pr-1">
+                            <td className="py-2 ps-3 pe-1">
                               <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
                                 <span><b className="text-[var(--text)]">{fmtBytes(r.storageUsedBytes)}</b> <span className="text-[var(--faint)]">/ {fmtBytes(r.storageQuotaBytes)}</span></span>
                                 <span className="text-[var(--faint)]">{stoUsed < 0.5 ? t('sp.alloc.empty', 'empty') : t('sp.alloc.pctused', '{n}%').replace('{n}', stoUsed.toFixed(0))}</span>
@@ -2441,7 +2441,7 @@ function AdminServerPerf() {
                     >
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${ok === null ? 'bg-[var(--faint)]' : ok ? 'bg-success' : 'bg-error'}`} />
                       <span className={`text-sm min-w-0 truncate ${ok === false ? 'text-error font-medium' : ''}`}>{labels[k] || k}</span>
-                      <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)] shrink-0">
+                      <span className="ms-auto text-[11px] tabular-nums text-[var(--faint)] shrink-0">
                         {/* The number, when there is one. A check that answered "not applicable"
                             never ran, so timing it would be a figure about nothing. */}
                         {ok === null
@@ -2495,7 +2495,7 @@ function AdminServerPerf() {
       </div>
 
       <div className="mt-8 pt-6 border-t border-[var(--line)]">
-        <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-left mb-2">
+        <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-start mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
         </button>
@@ -2531,7 +2531,7 @@ function AdminServerPerf() {
               )}
               <Button size="sm" variant="ghost" onClick={copyAll}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
             </div>
-            <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
+            <div className="space-y-1.5 max-h-96 overflow-auto pe-1 -me-1">
               {groups.map((g) => <AlertRow key={g.id} a={g} />)}
             </div>
           </>);
@@ -2548,7 +2548,7 @@ function AdminServerPerf() {
           A Card, like everything else on this page: a bare div ignores the translucent-
           surfaces setting and reads as loose text rather than as a panel. */}
       <Card className="p-4 mt-4">
-        <button onClick={() => toggleSec('outages')} className="w-full flex items-center justify-between text-left mb-2">
+        <button onClick={() => toggleSec('outages')} className="w-full flex items-center justify-between text-start mb-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
             <AlertTriangle size={11} /> {t('sp.out.title', 'Outage history')}
             {mergedOutages.length > 0 && <span className="text-[var(--muted)] normal-case tracking-normal">· {mergedOutages.length}</span>}
@@ -2619,7 +2619,7 @@ function AdminServerPerf() {
             <Button size="sm" variant="ghost" onClick={copyOutages}><Copy size={12} /> {t('sp.al.copyall', 'Copy all')}</Button>
           </div>
 
-          <div className="space-y-1.5 max-h-96 overflow-auto pr-1 -mr-1">
+          <div className="space-y-1.5 max-h-96 overflow-auto pe-1 -me-1">
             {mergedOutages.map((o) => {
               const from = new Date(o.startedAt);
               const to = o.endedAt ? new Date(o.endedAt) : null;
@@ -2701,7 +2701,7 @@ function AdminServerPerf() {
           performance (server-side + client-side) lives on one Server-perf tab.
           Collapsible + separated so it isn't jammed against the alerts list. */}
       <div className="mt-8 pt-6 border-t border-[var(--line)]">
-        <button onClick={() => toggleSec('vitals')} className="w-full flex items-center justify-between text-left mb-2">
+        <button onClick={() => toggleSec('vitals')} className="w-full flex items-center justify-between text-start mb-2">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gauge size={13} /> {t('sp.vitals', 'Web Vitals (real-user)')}</h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.vitals ? '' : '-rotate-90'}`} />
         </button>
@@ -2916,11 +2916,11 @@ function FileManager() {
       ) : (
         <>
           <div className="relative mb-2"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-8 !py-1.5 !text-xs" placeholder={t('fm.filter', 'Filter this folder…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Input className="!ps-8 !py-1.5 !text-xs" placeholder={t('fm.filter', 'Filter this folder…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <div className="divide-y divide-[var(--line)] max-h-80 overflow-auto scroll-thin">
             {entries.length ? entries.map((e) => (
               <div key={e.name} className="flex items-center gap-2 py-1.5 text-sm group">
-                <button onClick={() => openEntry(e)} className="flex-1 min-w-0 text-left flex items-center gap-2 hover:text-[var(--primary-2)]">
+                <button onClick={() => openEntry(e)} className="flex-1 min-w-0 text-start flex items-center gap-2 hover:text-[var(--primary-2)]">
                   {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />} <span className="truncate">{e.name}</span>
                 </button>
                 {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{(e.size / 1024).toFixed(1)} KB</span>}
@@ -3007,7 +3007,7 @@ function DbViewer() {
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('dbv.title', 'Database viewer')}</span>
         <span className="text-xs text-[var(--faint)]">{canEdit ? t('dbv.editcare', '(edit with care)') : t('dbv.readonly', '(read-only)')}</span>
-        <div className="ml-auto flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
+        <div className="ms-auto flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
           {[['bcweb', 'BCWEB'], ['telemetry', 'BMM Telemetry']].map(([v, l]) => (
             <button key={v} onClick={() => setSource(v)} className={`px-2.5 py-1 ${source === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
           ))}
@@ -3017,10 +3017,10 @@ function DbViewer() {
         <div className="grid sm:grid-cols-[180px_1fr] gap-3">
           <div>
             <div className="relative mb-1.5"><Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-7 !py-1 !text-xs" placeholder={t('dbv.filtertables', 'Filter tables…')} value={tableQ} onChange={(e) => setTableQ(e.target.value)} /></div>
+              <Input className="!ps-7 !py-1 !text-xs" placeholder={t('dbv.filtertables', 'Filter tables…')} value={tableQ} onChange={(e) => setTableQ(e.target.value)} /></div>
             <div className="max-h-80 overflow-auto scroll-thin space-y-0.5">
               {visibleTables.map((t) => (
-                <button key={t.name} onClick={() => openTable(t.name)} className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 ${active === t.name ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                <button key={t.name} onClick={() => openTable(t.name)} className={`w-full text-start px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 ${active === t.name ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
                   <span className="truncate">{t.name}</span><span className="text-[var(--faint)] shrink-0">{t.approxRows}</span>
                 </button>
               ))}
@@ -3035,7 +3035,7 @@ function DbViewer() {
                   <div className="overflow-auto max-h-96 scroll-thin border border-[var(--line)] rounded-lg">
                     <table className="text-xs w-full">
                       <thead><tr className="border-b border-[var(--line)]">{cols.map((c) => (
-                        <th key={c} className="text-left px-2 py-1.5 font-semibold text-[var(--faint)] whitespace-nowrap">
+                        <th key={c} className="text-start px-2 py-1.5 font-semibold text-[var(--faint)] whitespace-nowrap">
                           <button onClick={() => toggleSort(c)} className="flex items-center gap-1 hover:text-[var(--text)]">
                             {c} {sort.col === c && <ChevronDown size={11} className={sort.dir === 'asc' ? 'rotate-180' : ''} />}
                           </button>
@@ -3288,8 +3288,8 @@ function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
           </div>
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)]">
             <div className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)]">
-              <span>{t('cb.pre.section', 'Section')}</span><span className="text-right">{t('cb.pre.records', 'In zip')}</span>
-              <span className="text-right">{t('cb.pre.new', 'New')}</span><span className="text-right">{t('cb.pre.over', 'Replaced')}</span>
+              <span>{t('cb.pre.section', 'Section')}</span><span className="text-end">{t('cb.pre.records', 'In zip')}</span>
+              <span className="text-end">{t('cb.pre.new', 'New')}</span><span className="text-end">{t('cb.pre.over', 'Replaced')}</span>
             </div>
             {rows.map(([key, v]) => (
               <div key={key} className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[12px] items-center">
@@ -3297,10 +3297,10 @@ function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
                   {v.label || key}
                   {!v.restorable && <span className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">{t('cb.exportonly', 'export only')}</span>}
                 </span>
-                <span className="text-right tabular-nums">{v.error ? '—' : v.records}</span>
+                <span className="text-end tabular-nums">{v.error ? '—' : v.records}</span>
                 {/* null is "we could not tell", which must not be drawn as zero. */}
-                <span className="text-right tabular-nums text-success">{v.adds == null ? '?' : v.adds}</span>
-                <span className="text-right tabular-nums text-warning">{v.replaces == null ? '?' : v.replaces}</span>
+                <span className="text-end tabular-nums text-success">{v.adds == null ? '?' : v.adds}</span>
+                <span className="text-end tabular-nums text-warning">{v.replaces == null ? '?' : v.replaces}</span>
               </div>
             ))}
           </div>
@@ -3440,7 +3440,7 @@ function ContentBackup() {
               </span>
             )}
             {/* null is "could not count", which is not the same as zero and must not read as it. */}
-            <span className="ml-auto text-[11px] tabular-nums text-[var(--faint)]">
+            <span className="ms-auto text-[11px] tabular-nums text-[var(--faint)]">
               {sec.count === null ? t('cb.unknown', 'unknown') : sec.count}
             </span>
           </label>
@@ -3449,7 +3449,7 @@ function ContentBackup() {
 
       {/* Both caveats, on the screen, before the download \u2014 not in the manifest inside the zip
           where they are read after the fact. */}
-      <div className="text-[11px] text-[var(--muted)] leading-relaxed border-l-2 border-[var(--line)] pl-2.5 space-y-1">
+      <div className="text-[11px] text-[var(--muted)] leading-relaxed border-s-2 border-[var(--line)] ps-2.5 space-y-1">
         <p>{t('cb.note.users', 'Accounts are records only \u2014 no password hashes, no 2FA secrets, no tokens. Restoring them means re-inviting people.')}</p>
         <p>{t('cb.note.files', 'Catalogue and repository sections are metadata; the uploaded files they point at are not in the archive. That is why they are off by default.')}</p>
         <p>{t('cb.note.restore', 'This is not a restore point. For that, use the database backup under Backups.')}</p>
@@ -3536,7 +3536,7 @@ function BundleBrowser({ readDir, readFile }) {
           : !(state.data?.entries || []).length ? <div className="px-2.5 py-2 text-[12px] text-[var(--faint)]">{t('snap.br.empty', 'This folder is empty in the backup.')}</div>
           : state.data.entries.map((e) => (
             <button key={e.name} onClick={() => open(e)} disabled={!e.isDir && !readFile}
-              className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 text-[12px] hover:bg-[var(--surface-2)] disabled:hover:bg-transparent disabled:cursor-default">
+              className="w-full text-start px-2.5 py-1.5 flex items-center gap-2 text-[12px] hover:bg-[var(--surface-2)] disabled:hover:bg-transparent disabled:cursor-default">
               {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />}
               <span className="truncate flex-1">{e.name}</span>
               {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtBytes(e.size)}</span>}
@@ -3979,7 +3979,7 @@ function SnapshotsPanel({ onChanged }) {
             <span className="text-[11px] text-[var(--muted)]">{t('snap.keeplabel', 'Keep')}</span>
             <Input className="w-20" type="number" min="0" value={keep} onChange={(e) => setKeep(e.target.value)} placeholder={String(keepNow)} />
           </div>
-          <Button size="sm" className="ml-auto" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
+          <Button size="sm" className="ms-auto" disabled={!!busy} onClick={saveKeep}>{busy === 'keep' ? <Spinner /> : t('common.save', 'Save')}</Button>
         </div>
       <div className={`mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 ${autoOn ? '' : 'opacity-50'}`}>
         <span className="text-[11px] text-[var(--muted)]">{t('snap.what', 'Back up')}</span>
@@ -4129,7 +4129,7 @@ function BackupManager() {
           <History size={14} className="text-[var(--primary-2)]" />
           <span className="font-semibold">{t('bkp.title', 'Backup storage')}</span>
         </div>
-        <div className="ml-auto text-right leading-tight">
+        <div className="ms-auto text-end leading-tight">
           <div className="text-lg font-semibold tabular-nums">{fmtBytes(d.totalBytes || 0)}</div>
           <div className="text-[11px] text-[var(--faint)] tabular-nums">
             {d.maxBytes != null
@@ -4181,7 +4181,7 @@ function BackupManager() {
                     <span className={`w-2 h-2 rounded-full shrink-0 ${p.cls}`} />
                     <span className="truncate">{p.label}</span>
                   </div>
-                  <div className="text-sm tabular-nums pl-3.5">
+                  <div className="text-sm tabular-nums ps-3.5">
                     {fmtBytes(p.bytes)}
                     {p.k === 'snap' && d.snapshotCount != null && (
                       <span className="text-[11px] text-[var(--faint)]"> · {d.snapshotCount}</span>
@@ -4492,12 +4492,12 @@ function AdminAccess({ isSuperAdmin }) {
         {isSuperAdmin && <PowerHolders onOpen={openHolder} />}
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
+            <Input className="!ps-9" placeholder={t('au.search.ph', 'id / display name / email / creator id / Discord…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} /></div>
           <Button variant="primary" disabled={busy} onClick={search}>{busy ? <Spinner /> : <><Search size={15} /> {t('acc.search', 'Search')}</>}</Button>
         </div>
         {results && (results.length ? <div className="space-y-1.5">
           {results.map((u) => (
-            <button key={u.id} onClick={() => pick(u)} className={`w-full text-left card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
+            <button key={u.id} onClick={() => pick(u)} className={`w-full text-start card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
               <div className="flex-1 min-w-0"><div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
             </button>
@@ -4532,7 +4532,7 @@ function AdminAccess({ isSuperAdmin }) {
                   const on = permsSel.includes(c.id);
                   const Icon = c.icon;
                   return (
-                    <button key={c.id} onClick={() => togglePerm(c.id)} className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    <button key={c.id} onClick={() => togglePerm(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                       <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium">{t('acc.perm.' + c.id, c.label)}</span>
@@ -4555,7 +4555,7 @@ function AdminAccess({ isSuperAdmin }) {
                 {customRoles.map((r) => {
                   const on = rolesSel.includes(r.id);
                   return (
-                    <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm pl-2.5 pr-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm ps-2.5 pe-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                       <RoleBadge color={r.color}>{r.name}</RoleBadge>
                       <span className="text-xs text-[var(--faint)]">{t('acc.roles.ncaps', '{n} caps').replace('{n}', (r.capabilities || []).length)}</span>
                       {on && <Check size={13} className="text-[var(--primary-2)]" />}
@@ -4574,7 +4574,7 @@ function AdminAccess({ isSuperAdmin }) {
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.proj.desc', "Let this user edit a project's page content from the dashboard — one project, several, or all other-projects. They still can't pin, publish or change a project's visibility (that needs the “Manage other projects” capability).")}</p>
               {userProjGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
               </div>}
               <div className="flex flex-wrap items-center gap-2">
                 <Select className="!w-auto" value={pscopeSel} onChange={(e) => setPscopeSel(e.target.value)}>
@@ -4606,7 +4606,7 @@ function AdminAccess({ isSuperAdmin }) {
           <div className="pt-4 border-t border-[var(--line)]">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.blog.title', 'Blog-post access')}</div>
             {userGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs pl-2.5 pr-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
             </div>}
             <div className="flex flex-wrap items-center gap-2">
               <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
@@ -4736,7 +4736,7 @@ function RoleManager({ roles }) {
                   <input type="color" value={isHex(color) ? color : '#3b82f6'} onChange={(e) => setColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
                 </label>
                 {ROLE_SWATCHES.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`w-6 h-6 rounded-full border-2 transition ${color === c ? 'border-[var(--text)] scale-110' : 'border-transparent hover:scale-105'}`} style={{ backgroundColor: c }} title={c} />)}
-                <span className="ml-1"><RoleBadge color={color}>{name.trim() || t('rm.preview', 'Preview')}</RoleBadge></span>
+                <span className="ms-1"><RoleBadge color={color}>{name.trim() || t('rm.preview', 'Preview')}</RoleBadge></span>
               </div>
             </Field>
             <div>
@@ -4752,7 +4752,7 @@ function RoleManager({ roles }) {
                         {inCat.map((c) => {
                           const on = caps.includes(c.id); const Icon = c.icon;
                           return (
-                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                               <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                               <span className="flex-1 min-w-0">
                                 <span className="block text-sm font-medium">{t('acc.perm.' + c.id, capLabel(c))}</span>
@@ -5109,7 +5109,7 @@ function AdminNewsletter() {
         {mode === 'pick' && (loading ? <Loading /> : <div className="rounded-xl border border-[var(--line)] overflow-hidden">
           <div className="flex items-center gap-2 p-2 border-b border-[var(--line)] bg-[var(--surface-2)]">
             <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer select-none"><input type="checkbox" checked={allShownPicked} onChange={toggleAllShown} /> {t('nl.pick.all', 'Select all shown')}</label>
-            <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 text-sm" placeholder={t('nl.pick.search', 'Filter by email…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           </div>
           <div className="max-h-64 overflow-y-auto divide-y divide-[var(--line)]">
             {shown.length ? shown.map((s) => (
@@ -5617,7 +5617,7 @@ function UserExtras({ userId }) {
                       <div key={g.clientId} className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
                         <span className="truncate flex-1">
                           {g.client.name}
-                          <span className="text-[10px] text-[var(--faint)] ml-1.5">{g.scope}</span>
+                          <span className="text-[10px] text-[var(--faint)] ms-1.5">{g.scope}</span>
                         </span>
                         {g.activeTokens > 0 && <Badge tone="green">{t('ud.sso.live', '{n} live').replace('{n}', String(g.activeTokens))}</Badge>}
                         <Button size="sm" variant="ghost" onClick={() => revokeGrant(g)} title={t('ud.sso.revoke.ok', 'Cut it')}><Ban size={12} className="text-[var(--error)]" /></Button>
@@ -5764,7 +5764,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
         {[[true, t('ud.cl.mode.soft', 'They can call it off'), t('ud.cl.mode.soft.s', 'The email carries a cancel link. Use this when the account should probably go, but you might be wrong.')],
           [false, t('ud.cl.mode.final', 'Final'), t('ud.cl.mode.final.s', 'No cancel link is sent and the account cannot stop it. You can still call it off from here until the date.')]].map(([val, label, sub]) => (
           <button key={String(val)} onClick={() => setForm((f) => ({ ...f, cancellable: val }))}
-            className={`text-left rounded-lg border p-2.5 transition ${(form.cancellable !== false) === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+            className={`text-start rounded-lg border p-2.5 transition ${(form.cancellable !== false) === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
             <div className="text-xs font-semibold">{label}</div>
             <div className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</div>
           </button>
@@ -5874,14 +5874,14 @@ function AccountEndActions({ user, onClose, onChanged }) {
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
         <button type="button" onClick={onClose}
-          className="text-left rounded-lg border border-[var(--line)] p-2.5 hover:border-[var(--line-strong)] transition">
+          className="text-start rounded-lg border border-[var(--line)] p-2.5 hover:border-[var(--line-strong)] transition">
           <div className="text-xs font-semibold flex items-center gap-1.5"><Clock size={12} /> {t('ud.end.close', 'Close it in 30 days')}</div>
           <div className="text-[11px] text-[var(--muted)] mt-0.5">
             {t('ud.end.close.s', 'They are emailed the reason, the date and a link to call it off. Their content is suspended now and deleted on the date — calling it off puts everything back.')}
           </div>
         </button>
         <button type="button" disabled={busy} onClick={erase}
-          className="text-left rounded-lg border border-[var(--error)]/40 p-2.5 hover:border-[var(--error)] transition disabled:opacity-50">
+          className="text-start rounded-lg border border-[var(--error)]/40 p-2.5 hover:border-[var(--error)] transition disabled:opacity-50">
           <div className="text-xs font-semibold text-[var(--error)] flex items-center gap-1.5">
             {busy ? <Spinner size={12} /> : <Trash2 size={12} />} {t('ud.end.erase', 'Delete it now')}
           </div>
@@ -6039,7 +6039,7 @@ function UserSanctions({ userId }) {
     <Card className="p-4 mb-3">
       <div className="text-sm font-semibold flex items-center gap-2 mb-1">
         <Gavel size={15} className="text-[var(--primary-2)]" /> {t('usanc.title', 'Sanctions')}
-        <span className="text-[11px] text-[var(--muted)] ml-auto">{rows.length}</span>
+        <span className="text-[11px] text-[var(--muted)] ms-auto">{rows.length}</span>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('usanc.sub', 'Lifting, editing and answering a contest stay on the Sanctions page. Evidence can be added here.')}
@@ -6051,7 +6051,7 @@ function UserSanctions({ userId }) {
               <code>{sn.code}</code>
               <Badge tone={sn.status === 'active' ? 'red' : ''}>{sn.kind}</Badge>
               {sn.scope === 'content' && sn.targetName && <span className="text-[var(--faint)]">{sn.targetName}</span>}
-              <span className="text-[var(--faint)] ml-auto">{new Date(sn.issuedAt).toLocaleDateString()}</span>
+              <span className="text-[var(--faint)] ms-auto">{new Date(sn.issuedAt).toLocaleDateString()}</span>
             </div>
             <div className="text-[12px] mt-1">{sn.reason}</div>
             {/* Staff-only, and labelled as such on screen — the reason above is what the
@@ -6142,7 +6142,7 @@ function StaffNotes({ userId }) {
                     ? <span className="text-[var(--success)]">{t('un.sent', 'reason sent to {e}').replace('{e}', n.notifiedTo || '')}</span>
                     : <span>{t('un.notsent', 'not sent to them')}</span>)}
                   {n.kind === 'note' && (
-                    <button onClick={() => remove(n)} className="ml-auto hover:text-error" title={t('common.delete', 'Delete')}>
+                    <button onClick={() => remove(n)} className="ms-auto hover:text-error" title={t('common.delete', 'Delete')}>
                       <Trash2 size={12} />
                     </button>
                   )}
@@ -6305,7 +6305,7 @@ function UserDetailModal({ id, onClose }) {
                 <DiscordIcon size={13} className="text-[#5865F2] shrink-0" />
                 <span className="font-medium">{d.username || '—'}</span>
                 <code className="text-xs text-[var(--faint)]">{d.discordId}</code>
-                <span className="text-[11px] text-[var(--faint)] ml-auto shrink-0">{t('ud.linked', 'linked {d}').replace('{d}', fdate(d.linkedAt))}</span>
+                <span className="text-[11px] text-[var(--faint)] ms-auto shrink-0">{t('ud.linked', 'linked {d}').replace('{d}', fdate(d.linkedAt))}</span>
               </div>
             ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nodiscord', 'No Discord linked.')}</div>}
           </div>
@@ -6340,7 +6340,7 @@ function UserDetailModal({ id, onClose }) {
           {u.sessions && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Monitor size={12} /> {t('ud.sessions', 'Signed-in devices')} ({u.sessions.length})</div>
-              {u.sessions.length ? <div className="space-y-1 max-h-52 overflow-auto pr-1">{u.sessions.map((sn) => (
+              {u.sessions.length ? <div className="space-y-1 max-h-52 overflow-auto pe-1">{u.sessions.map((sn) => (
                 <div key={sn.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
                   <Monitor size={13} className="text-[var(--primary-2)] shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -6349,7 +6349,7 @@ function UserDetailModal({ id, onClose }) {
                       {sn.ip || '—'}{[sn.city, sn.region, sn.country].filter(Boolean).length ? ' · ' + [sn.city, sn.region, sn.country].filter(Boolean).join(', ') : ''}
                     </div>
                   </div>
-                  <div className="text-[11px] text-[var(--faint)] shrink-0 text-right">
+                  <div className="text-[11px] text-[var(--faint)] shrink-0 text-end">
                     {new Date(sn.lastSeenAt).toLocaleString()}
                   </div>
                   <Button size="sm" variant="ghost" onClick={async () => {
@@ -6384,7 +6384,7 @@ function UserDetailModal({ id, onClose }) {
           {u.apiKeys && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><KeyRound size={12} /> {t('ud.apikeys', 'API keys')} ({u.apiKeys.length})</div>
-              {u.apiKeys.length ? <div className="space-y-1 max-h-52 overflow-auto pr-1">{u.apiKeys.map((k) => {
+              {u.apiKeys.length ? <div className="space-y-1 max-h-52 overflow-auto pe-1">{u.apiKeys.map((k) => {
                 // A key is dead if it was revoked OR its expiry has passed. Showing only
                 // the revoked ones as inactive would leave an expired key looking live,
                 // and an admin would revoke something that already stopped working.
@@ -6423,7 +6423,7 @@ function UserDetailModal({ id, onClose }) {
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>
-            {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.payments.map((pay) => (
+            {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.payments.map((pay) => (
               <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
                 <Receipt size={13} className="text-success shrink-0" />
                 <span className="flex-1 truncate">{pay.description}</span>
@@ -6435,18 +6435,18 @@ function UserDetailModal({ id, onClose }) {
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
-            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
+            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
 
           {listed.length > 0 && <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
-            <div className="space-y-1 max-h-40 overflow-auto pr-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
+            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
           </div>}
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
-            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pr-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
+            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
 
@@ -6618,7 +6618,7 @@ function AdminHistory() {
 
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person…')} value={q}
+          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setTake(60), setQApplied(q))} /></div>
         <Button size="sm" variant="primary" onClick={() => { setTake(60); setQApplied(q); }}><Search size={14} /> {t('common.search', 'Search')}</Button>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
@@ -6811,7 +6811,7 @@ function AdminHistory() {
                           <div key={k} className="flex items-baseline gap-2 min-w-0">
                             <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-24 shrink-0">{k}</span>
                             <button onClick={() => { copyText(String(v)); toast.success(t('common.copied', 'Copied.')); }}
-                              className="text-[12px] font-mono break-all text-left hover:text-[var(--primary-2)] min-w-0"
+                              className="text-[12px] font-mono break-all text-start hover:text-[var(--primary-2)] min-w-0"
                               title={t('hist.copy', 'Copy')}>{String(v)}</button>
                           </div>
                         ))}
@@ -6953,7 +6953,7 @@ function MailGallery({ t }) {
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <Mail size={15} className="text-[var(--primary-2)]" />
         <span className="font-semibold text-sm">{t('adm.mail.gal.title', 'Every mail we send')}</span>
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ms-auto flex items-center gap-1">
           {['auto', 'light', 'dark'].map((k) => (
             <button key={k} type="button" onClick={() => setScheme(k)}
               className={`text-xs px-2 py-1 rounded-full border ${scheme === k
@@ -6970,7 +6970,7 @@ function MailGallery({ t }) {
       </p>
 
       <div className="grid lg:grid-cols-[260px_1fr] gap-3">
-        <div className="space-y-3 max-h-[560px] overflow-auto pr-1">
+        <div className="space-y-3 max-h-[560px] overflow-auto pe-1">
           {groups.map((g) => {
             const mine = samples.filter((s) => s.group === g.id);
             if (!mine.length) return null;
@@ -6980,7 +6980,7 @@ function MailGallery({ t }) {
                 <div className="space-y-1">
                   {mine.map((s) => (
                     <button key={s.id} type="button" onClick={() => setPick(s.id)}
-                      className={`w-full text-left px-2 py-1.5 rounded-lg text-[13px] ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                      className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
                       {s.label}
                     </button>
                   ))}
@@ -7052,9 +7052,9 @@ function UserPicker({ picked, setPicked }) {
         <div className="mt-2 rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-52 overflow-y-auto">
           {hits.map((u) => (
             <button key={u.id} type="button" onClick={() => add(u)}
-              className="w-full text-left px-3 py-2 hover:bg-[var(--surface-2)] transition flex items-center gap-2">
+              className="w-full text-start px-3 py-2 hover:bg-[var(--surface-2)] transition flex items-center gap-2">
               <span className="text-sm truncate">{u.displayName || u.email}</span>
-              <span className="text-[11px] text-[var(--faint)] truncate ml-auto">{u.email}</span>
+              <span className="text-[11px] text-[var(--faint)] truncate ms-auto">{u.email}</span>
             </button>
           ))}
         </div>
@@ -7420,10 +7420,10 @@ function AdminTransfers() {
                     <span>{r.to.displayName}</span>
                     {r.to.email && <span className="text-[var(--faint)]">({r.to.email})</span>}
                   </div>
-                  {r.message && <p className="text-[12px] text-[var(--muted)] mt-1.5 pl-2 border-l-2 border-[var(--line)]">{r.message}</p>}
-                  {r.reason && <p className="text-[12px] text-[var(--muted)] mt-1.5 pl-2 border-l-2 border-error">{t('adt.reason', 'Declined:')} {r.reason}</p>}
+                  {r.message && <p className="text-[12px] text-[var(--muted)] mt-1.5 ps-2 border-s-2 border-[var(--line)]">{r.message}</p>}
+                  {r.reason && <p className="text-[12px] text-[var(--muted)] mt-1.5 ps-2 border-s-2 border-error">{t('adt.reason', 'Declined:')} {r.reason}</p>}
                 </div>
-                <div className="text-[11px] text-[var(--faint)] text-right shrink-0 space-y-0.5">
+                <div className="text-[11px] text-[var(--faint)] text-end shrink-0 space-y-0.5">
                   <div>{t('adt.offered', 'Offered')} {when(r.createdAt)}</div>
                   {r.respondedAt && <div>{t('adt.answered', 'Answered')} {when(r.respondedAt)}</div>}
                   {/* The question support is actually holding. */}
@@ -7655,7 +7655,7 @@ function AdminHostingPlans() {
                 {[[false, t('adm.plans.who.new', 'New buyers only'), t('adm.plans.who.new.s', 'Everyone already subscribed keeps the price they signed up at, for as long as they stay. Nobody is emailed — nothing changes for them.')],
                   [true, t('adm.plans.who.all', 'Existing subscribers too'), t('adm.plans.who.all.s', 'Their Stripe subscription moves to the new amount on that date, starting at their next renewal — never mid-term. Every one of them is emailed now.')]].map(([val, label, sub]) => (
                   <button key={String(val)} onClick={() => setApplyExisting(val)}
-                    className={`text-left rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    className={`text-start rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                     <div className="text-xs font-semibold flex items-center gap-1.5">
                       {applyExisting === val ? <Check size={12} className="text-[var(--primary-2)]" /> : <span className="w-3" />}
                       {label}
@@ -7938,7 +7938,7 @@ function AdminAssets() {
           // setting like every other surface instead of ignoring it (never hardcode a
           // translucent/solid background here; that's what broke .input once).
           <button key={sl.key} onClick={() => { setNewKey(sl.key); setNewKind(sl.kind); }} className="text-xs px-2.5 py-1 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface-2)] text-[var(--muted)] hover:border-[var(--primary-2)] hover:text-[var(--text)]">
-            <Plus size={11} className="inline mr-1" />{sl.label}
+            <Plus size={11} className="inline me-1" />{sl.label}
           </button>
         ))}
       </div>
@@ -8046,7 +8046,7 @@ function AdminAssets() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <div className="relative flex-1 min-w-[180px]">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-                <Input className="!pl-9" placeholder={t('assets.search', 'Search by name\u2026')} value={q} onChange={(e) => setQ(e.target.value)} />
+                <Input className="!ps-9" placeholder={t('assets.search', 'Search by name\u2026')} value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
               {/* Only the kinds actually present. A row of filters for categories that are all
                   empty is a row of dead ends. */}
@@ -8392,7 +8392,7 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
                 <div key={r.version} className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-[13px] flex-wrap">
                   <span className="font-mono">{r.version}</span>
                   {r.current && <Badge tone="green">{t('apv.current', 'live')}</Badge>}
-                  <span className="text-[11px] text-[var(--faint)] flex-1 text-right tabular-nums min-w-[70px]">
+                  <span className="text-[11px] text-[var(--faint)] flex-1 text-end tabular-nums min-w-[70px]">
                     {r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}
                   </span>
                   <Button size="sm" variant="ghost" className="shrink-0" disabled={busy === r.version}
@@ -8739,7 +8739,7 @@ function AdminProjects() {
   return (
     <div className="mt-10">
       {/* Header row keeps the "Refresh caches" action OUT of the wrapping chooser below —
-          with many showcase projects an ml-auto button in a flex-wrap row orphaned itself. */}
+          with many showcase projects an ms-auto button in a flex-wrap row orphaned itself. */}
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
         {canMngProjects && <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
@@ -8753,7 +8753,7 @@ function AdminProjects() {
       {/* Project chooser — a self-contained rail that wraps cleanly (and gives the chips a
           subtle surface so they aren't see-through under Translucent surfaces). The built-in
           projects and the showcase ones share one grid; a labelled divider separates them
-          without the fragile inline ml-auto / orphaned w-px of the old flex row. */}
+          without the fragile inline ms-auto / orphaned w-px of the old flex row. */}
       {(() => {
         const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--surface-2)]/40 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
         // Chips while they fit on one line; a picker once they don't (measured above). The
@@ -8988,7 +8988,7 @@ function Breakdown({ title, rows, iconOf }) {
           <div key={r.label} className="flex items-center gap-3 text-sm">
             <span className="text-[var(--muted)] w-28 shrink-0 flex items-center gap-2 capitalize truncate">{iconOf ? iconOf(r.label) : null}{r.label}</span>
             <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(r.count / max) * 100}%` }} /></div>
-            <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
+            <span className="w-12 text-end font-medium">{Math.round((r.count / tot) * 100)}%</span>
           </div>
         )) : <div className="text-sm text-[var(--faint)]">{t('an.nodata', 'No data yet.')}</div>}
       </div>
@@ -9070,11 +9070,11 @@ function BlockedUrls({ t }) {
 
   return (
     <Card className="p-4 mb-3">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-left">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start">
         <Ban size={15} className="text-error" />
         <span className="font-medium text-sm">{t('bu.title', 'Blocked addresses')}</span>
         {!loading && <Badge tone={rules.length ? 'error' : undefined}>{rules.length}</Badge>}
-        <ChevronDown size={15} className={`ml-auto text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={15} className={`ms-auto text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (<div className="mt-3 space-y-3">
         <p className="text-xs text-[var(--muted)]">
@@ -9454,7 +9454,7 @@ function AdminLegal() {
             </button>
           );
         })}
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setManage((v) => !v)}>
+        <Button size="sm" variant="ghost" className="ms-auto" onClick={() => setManage((v) => !v)}>
           <Sliders size={13} /> {manage ? t('al.mng.hide', 'Done') : t('al.mng', 'Documents & headings')}
         </Button>
       </div>
@@ -9490,7 +9490,7 @@ function AdminLegal() {
             </label>
             <Button size="sm" variant="ghost" onClick={add}><Plus size={14} /> {t('al.add.btn', 'Add a section')}</Button>
             <Button size="sm" variant="ghost" onClick={revert}><RotateCcw size={14} /> {t('al.revert.btn', 'Back to the built-in text')}</Button>
-            <span className="text-xs text-[var(--faint)] ml-auto">{t('al.md', 'Markdown, with the same blocks as the docs (:::note, :::steps, …)')}</span>
+            <span className="text-xs text-[var(--faint)] ms-auto">{t('al.md', 'Markdown, with the same blocks as the docs (:::note, :::steps, …)')}</span>
           </div>
           {/* Unpublished edits are live on the site but are not what an acceptance points at.
               Saying so here is the difference between an archive and a decoration. */}
@@ -9508,7 +9508,7 @@ function AdminLegal() {
                     <span>{new Date(v.publishedAt).toLocaleDateString()}</span>
                     {v.note && <span className="truncate">— {v.note}</span>}
                     <a href={`/legal/archive/${v.id}`} target="_blank" rel="noreferrer"
-                      className="ml-auto text-[var(--primary-2)] hover:underline shrink-0">{t('al.view', 'view')}</a>
+                      className="ms-auto text-[var(--primary-2)] hover:underline shrink-0">{t('al.view', 'view')}</a>
                   </li>
                 ))}
               </ul>
@@ -9522,7 +9522,7 @@ function AdminLegal() {
             {mine.map((sec) => (
               <Card key={sec.id} className="p-0 overflow-hidden">
                 <button type="button" onClick={() => (openId === sec.id ? setOpenId(null) : open(sec))}
-                  className="w-full flex items-center gap-2 p-3 text-left">
+                  className="w-full flex items-center gap-2 p-3 text-start">
                   <span className="font-mono text-[10px] text-[var(--faint)] tabular-nums w-6 shrink-0">{String(sec.order + 1).padStart(2, '0')}</span>
                   <span className="font-medium text-sm flex-1 min-w-0 truncate">{sec.title}</span>
                   {/* A section with no French text falls back to English on a French page,
@@ -9549,7 +9549,7 @@ function AdminLegal() {
                     <div className="flex items-center gap-2">
                       <Button size="sm" onClick={save} disabled={busy}><Save size={14} /> {t('common.save', 'Save')}</Button>
                       <Button size="sm" variant="ghost" onClick={() => { setOpenId(null); setDraft(null); }}>{t('common.cancel', 'Cancel')}</Button>
-                      <Button size="sm" variant="ghost" className="ml-auto text-error" onClick={() => del(sec)}><Trash2 size={14} /></Button>
+                      <Button size="sm" variant="ghost" className="ms-auto text-error" onClick={() => del(sec)}><Trash2 size={14} /></Button>
                     </div>
                     {sec.updatedBy?.displayName && (
                       <div className="text-[11px] text-[var(--faint)]">
@@ -9637,7 +9637,7 @@ function AdminMessages() {
                   <a href={`mailto:${m.email}`} className="text-xs text-[var(--primary-2)] hover:underline">{m.email}</a>
                   {m.user && <Badge tone="primary"><Users size={9} /> {m.user.displayName}</Badge>}
                   {!m.readAt && <Badge tone="amber">{t('am.newbadge', 'new')}</Badge>}
-                  <span className="text-xs text-[var(--faint)] ml-auto">{new Date(m.createdAt).toLocaleString()}</span>
+                  <span className="text-xs text-[var(--faint)] ms-auto">{new Date(m.createdAt).toLocaleString()}</span>
                 </div>
                 <div className="text-sm text-[var(--muted)] mt-1.5 break-words prose-sm"><Markdown>{m.body}</Markdown></div>
                 <div className="flex items-center gap-2 mt-2.5">
@@ -9672,7 +9672,7 @@ function ChannelIdList({ ids, onChange, placeholder }) {
     <div className="space-y-1.5">
       {list.length > 0 && <div className="flex flex-wrap gap-1.5">
         {list.map((id) => (
-          <span key={id} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">
+          <span key={id} className="inline-flex items-center gap-1.5 ps-2.5 pe-1.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">
             {id}<button onClick={() => onChange(list.filter((x) => x !== id))} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>
         ))}
@@ -9770,7 +9770,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
           <Input value={commentInput} onChange={(e) => setCommentInput(e.target.value.slice(0, 200))} placeholder={t('sr.commentph', 'Leave a note for other moderators…')} onKeyDown={(e) => e.key === 'Enter' && addComment()} />
           <Button size="sm" disabled={busy} onClick={addComment}>{busy ? <Spinner /> : <Send size={13} />}</Button>
         </div>
-        <div className="text-[10px] text-[var(--faint)] mt-1 text-right">{commentInput.length}/200</div>
+        <div className="text-[10px] text-[var(--faint)] mt-1 text-end">{commentInput.length}/200</div>
       </div>
 
       {/* Examine the payload content in detail (zip entries + inline text) + download it. */}
@@ -9787,7 +9787,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
               {insp.data.entries.map((e) => (
                 <div key={e.name}>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-left font-mono ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline mr-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                    <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start font-mono ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
                     <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
                     <button onClick={() => dlEntry(e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
                   </div>
@@ -10002,7 +10002,7 @@ function AdminPromo() {
                 <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{((c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0)) > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', (c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0))}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5"><Badge tone="primary">{c.kind.replace('_', ' ')}</Badge> {desc(c)}{c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}{c.note ? ` · ${c.note}` : ''}</div>
               </div>
-              <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline mr-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
+              <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline me-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
               <Button size="sm" variant="ghost" onClick={() => toggleStack(c)} title={t('pc.f.stackable.h', 'Allow this code to be combined with OTHER stackable codes in one cart. Non-stackable codes must be used alone.')}><Layers size={13} /> {c.stackable ? t('pc.unstack', 'Unstack') : t('pc.stack', 'Stack')}</Button>
               <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('pc.disable', 'Disable') : t('pc.enable', 'Enable')}</Button>
               <Button size="sm" className="!text-error" onClick={() => del(c)}><Trash2 size={14} /></Button>
@@ -10273,7 +10273,7 @@ function AdminSso() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 mr-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')], ['webhooks', t('sso.tab.webhooks', 'Webhooks')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
@@ -10335,10 +10335,10 @@ function RbacMap() {
 
   return (
     <Card className="p-4 mb-3">
-      <button className="w-full flex items-center gap-2 text-left" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
+      <button className="w-full flex items-center gap-2 text-start" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
         <ShieldCheck size={15} className="text-[var(--primary-2)]" />
         <span className="text-sm font-semibold">{t('rbac.title', 'Which guard protects which route')}</span>
-        {rep?.total && <span className="text-[11px] text-[var(--muted)] ml-auto">{rep.total}</span>}
+        {rep?.total && <span className="text-[11px] text-[var(--muted)] ms-auto">{rep.total}</span>}
       </button>
       {open && (
         <div className="mt-3">
@@ -10364,7 +10364,7 @@ function RbacMap() {
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rbac.caps', 'By capability')}</div>
                 {(rep.byCapability || []).map((c) => (
                   <div key={c.capability} className="text-[12px] flex gap-2">
-                    <span className="text-[var(--muted)] w-8 text-right">{c.paths.length}</span>
+                    <span className="text-[var(--muted)] w-8 text-end">{c.paths.length}</span>
                     <code>{c.capability}</code>
                   </div>
                 ))}
@@ -10373,7 +10373,7 @@ function RbacMap() {
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rbac.roles', 'By role')}</div>
                 {(rep.byRole || []).map((r) => (
                   <div key={r.role} className="text-[12px] flex gap-2">
-                    <span className="text-[var(--muted)] w-8 text-right">{r.paths.length}</span>
+                    <span className="text-[var(--muted)] w-8 text-end">{r.paths.length}</span>
                     <code>{r.role}</code>
                   </div>
                 ))}
@@ -10409,10 +10409,10 @@ function CodebaseMaps() {
   const MAP_COUNT = MAPS.length;
   return (
     <Card className="p-4 mb-3">
-      <button className="w-full flex items-center gap-2 text-left" onClick={() => setOpen((o) => !o)}>
+      <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((o) => !o)}>
         <Code2 size={15} className="text-[var(--primary-2)]" />
         <span className="text-sm font-semibold">{t('maps.title', 'Codebase maps')}</span>
-        <span className="text-[11px] text-[var(--muted)] ml-auto">
+        <span className="text-[11px] text-[var(--muted)] ms-auto">
           {/* Counted, not typed. It said "7" while eight were mounted the moment one was
               added, and a number in a label is exactly the kind of thing nobody re-reads. */}
           {open ? t('maps.hide', 'hide') : t('maps.show', '{n} read-only reports').replace('{n}', String(MAP_COUNT))}
@@ -10590,10 +10590,10 @@ function MapCard({ icon: Icon, title, badge, children, path, explainError }) {
 
   return (
     <Card className="p-4 mb-3">
-      <button className="w-full flex items-center gap-2 text-left" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
+      <button className="w-full flex items-center gap-2 text-start" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
         <Icon size={15} className="text-[var(--primary-2)]" />
         <span className="text-sm font-semibold">{title}</span>
-        {rep && !rep.error && badge?.(rep) && <span className="text-[11px] text-[var(--muted)] ml-auto">{badge(rep)}</span>}
+        {rep && !rep.error && badge?.(rep) && <span className="text-[11px] text-[var(--muted)] ms-auto">{badge(rep)}</span>}
       </button>
       {open && (
         <div className="mt-3">
@@ -10614,7 +10614,7 @@ function MapCard({ icon: Icon, title, badge, children, path, explainError }) {
 function MapRow({ n, children, tone }) {
   return (
     <div className="text-[12px] flex gap-2">
-      <span className={`w-8 text-right ${tone || 'text-[var(--muted)]'}`}>{n}</span>
+      <span className={`w-8 text-end ${tone || 'text-[var(--muted)]'}`}>{n}</span>
       <span className="min-w-0 break-all">{children}</span>
     </div>
   );
@@ -11066,7 +11066,7 @@ function AdminWebhooks() {
                 </div>
                 {e.disabledReason && <div className="text-[11px] text-error mt-0.5">{e.disabledReason}</div>}
               </div>
-              <div className="text-right shrink-0 text-[11px] text-[var(--muted)]">
+              <div className="text-end shrink-0 text-[11px] text-[var(--muted)]">
                 <div>{e.user?.displayName || e.user?.email || '—'}</div>
                 <div className="text-[var(--faint)]">
                   {e.lastAt ? `${t('sso.wh.last', 'last')} ${new Date(e.lastAt).toLocaleDateString()}${e.lastStatus ? ` · ${e.lastStatus}` : ''}` : t('sso.wh.never', 'never fired')}
@@ -11479,7 +11479,7 @@ function AnnounceComposer({ guildList = [] }) {
           <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
           {t('db.ac.urgent', 'Urgent — ping the role, force red')}
         </label>
-        <Button variant="primary" onClick={send} disabled={busy} className="ml-auto">
+        <Button variant="primary" onClick={send} disabled={busy} className="ms-auto">
           {busy ? <Spinner /> : <Send size={14} />} {t('db.ac.send', 'Send')}
         </Button>
       </div>
@@ -11501,7 +11501,7 @@ function AnnounceComposer({ guildList = [] }) {
             type="button"
             key={a.id}
             onClick={() => setDetail(a)}
-            className="w-full text-left flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] rounded px-1 -mx-1"
+            className="w-full text-start flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] rounded px-1 -mx-1"
           >
             <Badge tone={a.status === 'sent' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
             <span className="flex-1 min-w-0 truncate">{a.title}</span>
@@ -11850,7 +11850,7 @@ function SceneEditor() {
             {shapes.map((k) => (
               <button key={k} type="button" onClick={() => set({ shape: k })}
                 aria-pressed={cfg.shape === k}
-                className={`text-left rounded-xl border p-3 transition-colors ${
+                className={`text-start rounded-xl border p-3 transition-colors ${
                   cfg.shape === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
                 }`}>
                 <div className="text-sm font-semibold">{NAMES[k]?.[0] || k}</div>
@@ -12118,7 +12118,7 @@ function ShowcaseEditor() {
           <input type="checkbox" checked={cfg.enabled} onChange={(e) => setCfg({ ...cfg, enabled: e.target.checked })} />
           {t('shsc.on', 'Show it on the landing pages')}
         </label>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ms-auto flex items-center gap-2">
           <label className="text-xs text-[var(--muted)]">{t('shsc.every', 'Every')}</label>
           <Input type="number" min={2} max={30} className="!w-20" value={Math.round(cfg.intervalMs / 1000)}
             onChange={(e) => setCfg({ ...cfg, intervalMs: Math.min(30, Math.max(2, Number(e.target.value) || 6)) * 1000 })} />
@@ -12150,7 +12150,7 @@ function ShowcaseEditor() {
               <Select className="!w-52" value={it.kind || 'image'} onChange={(e) => set(i, { kind: e.target.value })}>
                 {KINDS.map((k) => <option key={k.v} value={k.v}>{k.l}</option>)}
               </Select>
-              <div className="ml-auto flex gap-1">
+              <div className="ms-auto flex gap-1">
                 <Button size="sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label={t('shsc.up', 'Move up')}><ChevronUp size={14} /></Button>
                 <Button size="sm" onClick={() => move(i, 1)} disabled={i === cfg.items.length - 1} aria-label={t('shsc.down', 'Move down')}><ChevronDown size={14} /></Button>
                 <Button size="sm" onClick={() => drop(i)} aria-label={t('common.delete', 'Delete')}><Trash2 size={14} /></Button>
@@ -12179,7 +12179,7 @@ function ShowcaseEditor() {
                   </Select>
                   <input type="range" min="0.5" max="2" step="0.05" className="flex-1"
                     value={it.scale ?? 1} onChange={(e) => set(i, { scale: Number(e.target.value) })} />
-                  <span className="text-xs font-mono text-[var(--muted)] w-10 text-right">{(it.scale ?? 1).toFixed(2)}×</span>
+                  <span className="text-xs font-mono text-[var(--muted)] w-10 text-end">{(it.scale ?? 1).toFixed(2)}×</span>
                 </div>
               </Field>
             </div>
@@ -12386,7 +12386,7 @@ function HomePageEditor() {
               type="button"
               onClick={() => setVariant(v.v)}
               aria-pressed={variant === v.v}
-              className={`text-left rounded-xl border p-3 transition-colors ${
+              className={`text-start rounded-xl border p-3 transition-colors ${
                 variant === v.v
                   ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]'
                   : 'border-[var(--line)] hover:border-[var(--line-strong)]'
@@ -12394,7 +12394,7 @@ function HomePageEditor() {
             >
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold">{v.name}</span>
-                <span className="ml-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
+                <span className="ms-auto text-[10px] font-mono text-[var(--faint)]">{v.v}</span>
               </div>
 
               {/* The page, small. aria-hidden because the list under it says the same thing
@@ -12474,7 +12474,7 @@ function HomePageEditor() {
               .map(([k, label, desc]) => (
               <button key={k} type="button" onClick={() => setSuite((v) => ({ ...v, style: k }))}
                 aria-pressed={suite.style === k}
-                className={`text-left rounded-xl border p-3 transition-colors ${
+                className={`text-start rounded-xl border p-3 transition-colors ${
                   suite.style === k ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'
                 }`}>
                 {/* Each option draws what it does. Three words in a radio list would ask an
@@ -12550,7 +12550,7 @@ function HomePageEditor() {
         </div>
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
-          <Input className="!pl-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} />
+          <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} />
         </div>
       </div>
 
@@ -12568,7 +12568,7 @@ function HomePageEditor() {
           <Card key={g.id} className={`p-0 overflow-hidden ${off ? 'opacity-70' : ''}`}>
             <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--line)]">
               <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.id]: !open }))}
-                aria-expanded={open} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                aria-expanded={open} className="flex-1 min-w-0 flex items-center gap-2 text-start">
                 <ChevronDown size={15} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
                 <span className="font-medium text-sm truncate">{g.label}</span>
                 <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
@@ -12598,7 +12598,7 @@ function HomePageEditor() {
                       <span className="text-[11px] text-[var(--faint)] font-mono truncate" title={k}>{k}</span>
                       {isChanged(k) && (
                         <button type="button" onClick={() => resetLine(k)}
-                          className="text-[11px] text-[var(--muted)] hover:text-[var(--error)] inline-flex items-center gap-1 shrink-0 ml-auto"
+                          className="text-[11px] text-[var(--muted)] hover:text-[var(--error)] inline-flex items-center gap-1 shrink-0 ms-auto"
                           title={t('hp.reset.h', 'Put this line back to the wording the site ships with')}>
                           <RotateCcw size={11} /> {t('hp.reset', 'Reset')}
                         </button>
@@ -12664,9 +12664,9 @@ function RolePanels({ panels, onChange, guildList }) {
         return (
           <div key={p.id} className="rounded-lg border border-[var(--line)] p-2.5">
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setOpenId(open ? null : p.id)} className="flex-1 min-w-0 text-left text-sm font-medium truncate hover:text-[var(--primary-2)]">
+              <button type="button" onClick={() => setOpenId(open ? null : p.id)} className="flex-1 min-w-0 text-start text-sm font-medium truncate hover:text-[var(--primary-2)]">
                 {p.title || t('db.rp.untitled', '(untitled panel)')}
-                <span className="ml-2 text-[11px] font-normal text-[var(--faint)]">
+                <span className="ms-2 text-[11px] font-normal text-[var(--faint)]">
                   {(p.roles || []).length} {t('db.rp.roles', 'roles')} · {p.mode === 'dropdown' ? t('db.rp.dropdown', 'dropdown') : t('db.rp.buttons', 'buttons')}
                 </span>
               </button>
@@ -12813,7 +12813,7 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
   const initial = (name || '?').slice(0, 2).toUpperCase();
   return (
     <button onClick={onClick} title={name}
-      className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-left transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50'}`}>
+      className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-start transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50'}`}>
       {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
         : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-white">{initial}</span>}
       <div className="min-w-0 flex-1">
@@ -12859,7 +12859,7 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
         {/* The heading is the fold control. The switch is NOT: turning a module off and
             hiding its settings are different intentions, and one click must not do both. */}
         <button type="button" onClick={collapsible ? toggleOpen : undefined}
-          className={`flex-1 min-w-0 text-left ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
+          className={`flex-1 min-w-0 text-start ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
           aria-expanded={collapsible ? open : undefined}>
           <div className="font-semibold text-sm flex items-center gap-1.5">
             {collapsible && <ChevronDown size={14} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />}
@@ -12945,7 +12945,7 @@ function GuildLogs({ guildId }) {
           {l.auto ? <Badge tone="">{t('bg.auto', 'auto')}</Badge> : null}
           <span className="text-[var(--muted)] font-mono">{l.targetId}</span>
           {l.reason ? <span className="text-[var(--faint)] truncate max-w-[16rem]">— {l.reason}</span> : null}
-          <span className="text-[var(--faint)] ml-auto">{new Date(l.createdAt).toLocaleDateString()}</span>
+          <span className="text-[var(--faint)] ms-auto">{new Date(l.createdAt).toLocaleDateString()}</span>
         </div>
       ))}
     </div>
@@ -12986,7 +12986,7 @@ function BotLogsCard() {
   const color = (lv) => lv === 'error' ? 'text-error' : lv === 'warn' ? 'text-warning' : 'text-[var(--muted)]';
   return (
     <Card className="p-4 mb-4">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
         <span className="font-medium text-sm flex items-center gap-2"><FileText size={14} className="text-[var(--primary-2)]" /> {t('db.logs', 'Live bot logs')}{at && <span className="text-[11px] text-[var(--faint)] font-normal">· {t('db.logs.updated', 'updated {t}').replace('{t}', new Date(at).toLocaleTimeString())}</span>}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -13096,7 +13096,7 @@ function BotDMCard() {
   };
   return (
     <Card className="p-4 mb-4">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
         <span className="font-medium text-sm flex items-center gap-2"><Mail size={14} className="text-[var(--primary-2)]" /> {t('dm.title', 'Direct message / gift')}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -13117,7 +13117,7 @@ function BotDMCard() {
                 <div className="max-h-52 overflow-auto divide-y divide-[var(--line)]">
                   {members.data.members.map((m) => (
                     <button key={m.discordId} type="button" onClick={() => { setDiscordId(m.discordId); setPicker(false); }}
-                      className="w-full flex items-center gap-2 px-1.5 py-1.5 text-left text-sm hover:bg-[var(--surface-2)] rounded">
+                      className="w-full flex items-center gap-2 px-1.5 py-1.5 text-start text-sm hover:bg-[var(--surface-2)] rounded">
                       <span className="grid place-items-center w-7 h-7 rounded-full bg-[var(--surface-2)] text-[var(--faint)] shrink-0 text-xs font-bold">{(m.username || '?').slice(0, 2).toUpperCase()}</span>
                       <span className="flex-1 min-w-0"><span className="font-medium truncate block">{m.username || t('dm.unknownuser', 'unknown')}</span><span className="text-[11px] text-[var(--faint)] font-mono">{m.discordId}</span></span>
                       {m.linkedUser ? <Badge tone="green"><CheckCircle2 size={9} /> {t('dm.linked', 'linked')}</Badge> : <Badge>{t('dm.unlinked', 'unlinked')}</Badge>}
@@ -13171,7 +13171,7 @@ function BotGiveawaysCard() {
   const del = (g) => undo.del(g.id, () => api.del(`/admin/bot/giveaways/${g.id}`), t('common.deleted', 'Deleted.'));
   return (
     <Card className="p-4 mb-4">
-      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
         <span className="font-medium text-sm flex items-center gap-2"><Gift size={14} className="text-[var(--primary-2)]" /> {t('gw.title', 'Giveaways')}{giveaways.some((g) => g.status === 'active') && <Badge tone="green">{giveaways.filter((g) => g.status === 'active').length}</Badge>}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -13876,7 +13876,7 @@ function AdminBotMembers() {
   const tabs = [['', t('bm.all', 'All'), counts?.all], ['linked', t('bm.linked', 'Linked'), counts?.linked], ['unlinked', t('bm.notlinked', 'Not linked'), counts?.unlinked]];
   return (
     <div className="mt-6">
-      <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
+      <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
         <Users size={16} className="text-[var(--primary-2)]" />
         <h2 className="font-semibold flex-1">{t('bm.title', 'Members')}{counts ? <span className="text-sm font-normal text-[var(--faint)]"> · {t('bm.count', '{a} total · {l} linked').replace('{a}', counts.all).replace('{l}', counts.linked)}</span> : null}</h2>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
@@ -13913,7 +13913,7 @@ function AdminBotMembers() {
         </div>
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder={t('bm.search', 'Search by Discord id or username…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
+            <Input className="!ps-9" placeholder={t('bm.search', 'Search by Discord id or username…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
           <Button variant="primary" disabled={busy} onClick={() => load(false)}>{busy ? <Spinner /> : <><Search size={15} /> {t('bm.searchbtn', 'Search')}</>}</Button>
         </div>
         {rows === null ? <Loading /> : rows.length ? <div className="space-y-1.5">
@@ -14127,7 +14127,7 @@ function AdminStorage() {
           <div className="text-sm font-medium">{t('as.hostedrepos', 'Hosted repos')} <span className="text-[var(--faint)] font-normal">({(d.topRepos || []).length})</span></div>
           {(d.topRepos || []).length > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('as.searchnameowner', 'Search name or owner…')} value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
+              <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('as.searchnameowner', 'Search name or owner…')} value={repoQ} onChange={(e) => setRepoQ(e.target.value)} /></div>
           )}
         </div>
         <div className="grid grid-cols-3 gap-3 text-center mb-3">
@@ -14145,7 +14145,7 @@ function AdminStorage() {
           <div className="text-sm font-medium flex items-center gap-2"><Trash2 size={14} className="text-error" /> {t('as.pendingdel', 'Pending deletions (72h grace)')}{pending > 0 && <Badge tone="red">{pending}</Badge>}</div>
           {pending > 2 && (
             <div className="relative w-full sm:w-56"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-              <Input className="!pl-8 !py-1.5 !text-sm" placeholder={t('as.searchnameownerkind', 'Search name, owner or kind…')} value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
+              <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('as.searchnameownerkind', 'Search name, owner or kind…')} value={pendQ} onChange={(e) => setPendQ(e.target.value)} /></div>
           )}
         </div>
         {pending ? ((pendItems.length + pendRepos.length) ? <div className="space-y-1.5 max-h-72 overflow-auto">
@@ -14303,7 +14303,7 @@ function GeoPanel({ countries, regions, cities, days, hours }) {
       </div>
       {tab === 'map' ? <GeoMap days={days} hours={hours} height={340} />
         : (list && list.length) ? (
-          <div className="space-y-2.5 max-h-[340px] overflow-auto pr-1">
+          <div className="space-y-2.5 max-h-[340px] overflow-auto pe-1">
             {list.map((r, i) => (
               <div key={`${r.label}-${i}`} className="flex items-center gap-3 text-sm">
                 <span className="text-[var(--muted)] w-40 shrink-0 flex items-center gap-2 truncate">
@@ -14326,7 +14326,7 @@ function GeoPanel({ countries, regions, cities, days, hours }) {
                   </span>
                 </span>
                 <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(r.count / max) * 100}%` }} /></div>
-                <span className="w-12 text-right font-medium">{Math.round((r.count / tot) * 100)}%</span>
+                <span className="w-12 text-end font-medium">{Math.round((r.count / tot) * 100)}%</span>
               </div>
             ))}
           </div>
@@ -14388,7 +14388,7 @@ function VitalsBreakdownTable({ rows, dim }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm min-w-[620px]">
-        <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-left border-b border-[var(--line)]">
+        <thead><tr className="text-[11px] uppercase text-[var(--faint)] text-start border-b border-[var(--line)]">
           <Th col="key" label={t(WV_DIMS.find((d) => d[0] === dim)?.[1], dim)} align="left" />
           <Th col="lcp" label="LCP" /><Th col="cls" label="CLS" /><Th col="inp" label="INP" /><Th col="fcp" label="FCP" /><Th col="ttfb" label="TTFB" />
           <Th col="samples" label={t('an.wv.samplesCol', 'Samples')} />
@@ -14398,19 +14398,19 @@ function VitalsBreakdownTable({ rows, dim }) {
             <tr key={label} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/30">
               <td className="py-2 px-2 relative">
                 <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${rate ? RATING_DOT[rate] : 'bg-[var(--line-strong)]'}`} />
-                <span className="inline-flex items-center gap-1.5 pl-3.5 align-middle text-xs text-[var(--muted)] truncate max-w-[240px]" title={label}>
+                <span className="inline-flex items-center gap-1.5 ps-3.5 align-middle text-xs text-[var(--muted)] truncate max-w-[240px]" title={label}>
                   {isCountry && label !== '—' && <Flag cc={label} className="w-4 h-3 shrink-0" />}<span className={dim === 'pages' ? 'font-mono' : ''}>{label}</span>
                 </span>
               </td>
-              <td className="py-2 px-2 text-right">{vitalChip('LCP', r.lcp)}</td>
-              <td className="py-2 px-2 text-right">{vitalChip('CLS', r.cls)}</td>
-              <td className="py-2 px-2 text-right">{vitalChip('INP', r.inp)}</td>
-              <td className="py-2 px-2 text-right">{vitalChip('FCP', r.fcp)}</td>
-              <td className="py-2 px-2 text-right">{vitalChip('TTFB', r.ttfb)}</td>
-              <td className="py-2 px-2 text-right">
+              <td className="py-2 px-2 text-end">{vitalChip('LCP', r.lcp)}</td>
+              <td className="py-2 px-2 text-end">{vitalChip('CLS', r.cls)}</td>
+              <td className="py-2 px-2 text-end">{vitalChip('INP', r.inp)}</td>
+              <td className="py-2 px-2 text-end">{vitalChip('FCP', r.fcp)}</td>
+              <td className="py-2 px-2 text-end">{vitalChip('TTFB', r.ttfb)}</td>
+              <td className="py-2 px-2 text-end">
                 <div className="flex items-center justify-end gap-2">
                   <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]/70" style={{ width: `${Math.round((r.samples || 0) / maxN * 100)}%` }} /></div>
-                  <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-right">{r.samples}</span>
+                  <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-end">{r.samples}</span>
                 </div>
               </td>
             </tr>
@@ -14471,7 +14471,7 @@ function WebVitals() {
       {/* Path filter (à la Rybbit "Filtre"). Narrows every KPI + breakdown to a page. */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
+          <Input className="!ps-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
         <Button size="sm" variant="ghost" onClick={() => setPathFilter(filterInput.trim())}><Search size={14} /> {t('ev.filter', 'Filter')}</Button>
         {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/30"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
       </div>
@@ -14490,7 +14490,7 @@ function WebVitals() {
             <div key={m.metric} className="rounded-xl border border-[var(--line)] p-3 relative overflow-hidden">
               {tr.length > 1 && <Sparkline data={tr} stroke={stroke} className="absolute inset-x-0 bottom-0 h-7 w-full opacity-50 pointer-events-none" />}
               <div className="relative">
-                <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{!thin && m.goodShare != null && <span className="ml-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
+                <div className="text-[11px] text-[var(--muted)] flex items-center gap-1" title={VITAL_META[m.metric].label}>{m.metric}{!thin && m.goodShare != null && <span className="ms-auto text-[10px] text-[var(--faint)]">{m.goodShare}% {t('an.wv.good', 'good')}</span>}</div>
                 <div className={`text-xl font-bold mt-1 ${r ? vitalColor(r) : ''}`}>{v == null ? '—' : VITAL_META[m.metric].fmt(v)}</div>
                 {!thin && m.goodShare != null && <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5 mb-0.5"><div className="h-full" style={{ width: `${m.goodShare}%`, background: m.goodShare >= 75 ? '#34d399' : m.goodShare >= 50 ? '#f59e0b' : '#f87171' }} /></div>}
                 <div className="text-[10px] text-[var(--faint)]">
@@ -14580,7 +14580,7 @@ function SessionRow({ s }) {
   const nick = fakeNick(s.visitor);
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
-      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-[var(--surface-2)]/50">
+      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-start hover:bg-[var(--surface-2)]/50">
         <span className="relative shrink-0">
           <Avatar seed={s.visitor} {...seededAvatar(s.visitor)} size={30} />
           {s.country && <span className="absolute -bottom-1 -right-1 rounded-[2px] overflow-hidden ring-1 ring-[var(--bg-solid)]"><Flag cc={s.country} className="w-3.5 h-2.5" /></span>}
@@ -14598,7 +14598,7 @@ function SessionRow({ s }) {
           </div>
           <div className="text-[11px] text-[var(--faint)] truncate">{geo || t('an.unknown', 'Unknown')} · {refHost(s.ref)}</div>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-end shrink-0">
           <div className="text-xs flex items-center gap-1.5 justify-end">
             {s.live && <span className="inline-flex items-center gap-1 text-success"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('an.liveLabel', 'live')}</span>}
             <span className="text-[var(--muted)]">{s.pages} {t('an.pg', 'pg')} · {fmtDur(s.durationSec)}</span>
@@ -14844,12 +14844,12 @@ function SessionsPanel({ days, hours }) {
   const sessions = data?.sessions || [];
   return (
     <Card className="p-5 mb-4">
-      <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-left">
+      <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
         <Activity size={15} className="text-[var(--primary-2)]" />
         <h2 className="font-semibold flex-1 flex items-center gap-2">{t('an.sess.title', 'Sessions')}
           {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.liveCount} {t('an.liveLabel', 'live')}</span>}
         </h2>
-        <span className="text-[11px] text-[var(--faint)] mr-1">{t('an.sess.autorefresh', 'auto-refresh 15s')}</span>
+        <span className="text-[11px] text-[var(--faint)] me-1">{t('an.sess.autorefresh', 'auto-refresh 15s')}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
@@ -14862,7 +14862,7 @@ function SessionsPanel({ days, hours }) {
       </div>
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
         : view === 'globe' ? <GeoMap days={days} hours={hours} height={460} />
-        : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pr-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
+        : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pe-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
         : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
   );
@@ -15050,7 +15050,7 @@ function AdminErrors() {
       )}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[220px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!pl-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
+          <Input className="!ps-9" placeholder={t('er.pathph', 'Filter by page path…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
         <Dropdown value={source} onChange={setSource} options={[
           { value: '', label: t('er.src.all', 'All sources') },
           { value: 'server', label: t('er.src.server', 'Server (API 5xx)') },
@@ -15061,7 +15061,7 @@ function AdminErrors() {
       {loading ? <Loading /> : errors.length ? <div className="space-y-2">
         {errors.map((e, i) => { const isOpen = open === i; return (
           <Card key={i} className="overflow-hidden">
-            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-left p-4 flex items-start gap-3 hover:bg-[var(--surface-2)]/40 transition">
+            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-start p-4 flex items-start gap-3 hover:bg-[var(--surface-2)]/40 transition">
               <AlertTriangle size={16} className="text-error mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm text-error break-words">{e.message}</div>
@@ -15151,7 +15151,7 @@ function EventsFeed({ days, hours }) {
           <span className={`w-1.5 h-1.5 rounded-full ${live ? 'bg-success' : 'bg-[var(--faint)]'}`} />
           {live ? t('an.ev.live.on', 'Live') : t('an.ev.live.off', 'Paused')}
         </button>
-        <Button size="sm" variant="ghost" className="ml-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
+        <Button size="sm" variant="ghost" className="ms-auto" onClick={reload}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
       </div>
 
       <form className="flex gap-2 mb-2" onSubmit={(e) => { e.preventDefault(); setTerm(path.trim()); }}>
@@ -15350,7 +15350,7 @@ function AdminAnalytics() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><TrendingUp size={16} /> {t('an.title', 'Site analytics')}
-          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success ml-1"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
+          {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success ms-1"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
@@ -15394,7 +15394,7 @@ function AdminAnalytics() {
                 <div key={tp.path} className="flex items-center gap-3 text-sm">
                   <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{tp.path}</span>
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(tp.count / maxTop) * 100}%` }} /></div>
-                  <span className="w-10 text-right font-medium">{tp.count}</span>
+                  <span className="w-10 text-end font-medium">{tp.count}</span>
                 </div>
               )) : <div className="text-sm text-[var(--faint)]">{t('an.nopages', 'No page data yet.')}</div>}
             </div>
@@ -15406,7 +15406,7 @@ function AdminAnalytics() {
                 <div key={r.ref} className="flex items-center gap-3 text-sm">
                   <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0 flex items-center gap-2"><BrandImg favicon={/\.[a-z]{2,}$/i.test(host) ? `https://icons.duckduckgo.com/ip3/${host}.ico` : null} /> {host}</span>
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${(r.count / maxRef) * 100}%` }} /></div>
-                  <span className="w-10 text-right font-medium">{r.count}</span>
+                  <span className="w-10 text-end font-medium">{r.count}</span>
                 </div>); })
                 : <div className="text-sm text-[var(--faint)]">{t('an.norefs', 'No referrers yet — most visits are direct.')}</div>}
             </div>
@@ -15558,7 +15558,7 @@ function RetentionCard() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
-                <Input type="number" min={0} max={3650} value={form[key]} onChange={(e) => set(key, e.target.value)} className="w-20 text-right" />
+                <Input type="number" min={0} max={3650} value={form[key]} onChange={(e) => set(key, e.target.value)} className="w-20 text-end" />
                 <span className="text-xs text-[var(--faint)]">{t('an.ret.days', 'days')}</span>
               </div>
             </div>
@@ -15657,7 +15657,7 @@ function AnnouncementSection({ value, onChange }) {
     <div className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] space-y-2">
       <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--primary-2)]" /> {t('adm2.projann', "Project announcement (countdown teaser)")}</label>
       {value.announceEnabled && (
-        <div className="space-y-2 pl-1">
+        <div className="space-y-2 ps-1">
           <Field label={t('adm2.title', "Title")}><Input value={value.announceTitle} onChange={(e) => set('announceTitle')(e.target.value)} placeholder={t('adm2.ph.teaser', "Something big is coming\u2026")} /></Field>
           <Field label={t('adm2.logourl', "Logo URL (optional)")}><Input value={value.announceLogo || ''} onChange={(e) => set('announceLogo')(e.target.value)} placeholder="https://example.com/logo.png" /></Field>
           <Field label={t('adm2.mddesc', "Markdown description")}><Textarea rows={4} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder={t('adm2.ph.mddesc', "Tell people what's coming \u2014 markdown supported.")} /></Field>
@@ -15705,7 +15705,7 @@ function AlertRow({ a }) {
   const copy = (e) => { e.stopPropagation(); navigator.clipboard?.writeText(`[${a.kind}] ${a.message} — ${when.toLocaleString()}`); toast.success(t('common.copied', 'Copied.')); };
   return (
     <Card className="p-0 overflow-hidden">
-      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-left hover:bg-[var(--surface-2)] transition">
+      <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-start hover:bg-[var(--surface-2)] transition">
         <AlertTriangle size={15} className={`${info.tone} shrink-0`} />
         <Badge tone={info.tone.includes('red') ? 'red' : 'amber'} className="shrink-0">{info.label}</Badge>
         <span className="flex-1 min-w-0 text-[var(--muted)] truncate">{a.message}</span>
@@ -16418,18 +16418,18 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
             {valid.length === 0 && <div className="col-span-2 text-xs text-[var(--faint)] p-2">{t('nav.pv.empty', 'No valid items yet.')}</div>}
             {valid.map(({ it, idx }) => it.type === 'group' ? (
               <div key={idx} className="col-span-2">
-                <button type="button" onClick={() => toggleGroup(idx)} className={pvSheet + ' w-full text-left'} aria-expanded={!!openGroups[idx]}>
+                <button type="button" onClick={() => toggleGroup(idx)} className={pvSheet + ' w-full text-start'} aria-expanded={!!openGroups[idx]}>
                   <NavPvIcon name={it.icon} size={16} /><span className="flex-1">{pvLabel(it, lang)}</span><ChevronDown size={15} className={`transition-transform ${openGroups[idx] ? 'rotate-180' : ''}`} />
                 </button>
-                {openGroups[idx] && <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                {openGroups[idx] && <div className="ps-3 ms-3 border-s border-[var(--line)] space-y-0.5">
                   {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => <div key={j} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><NavPvIcon name={c.icon} size={16} /> {pvLabel(c, lang)}</div>)}
                 </div>}
               </div>
             ) : <div key={idx} className={pvSheet}><NavPvIcon name={it.icon} size={16} /> {pvLabel(it, lang)}</div>)}
             {pvProjects.length > 0 && (projDropdown ? (
               <div className="col-span-2">
-                <button type="button" onClick={() => setProjOpen((o) => !o)} className={pvSheet + ' w-full text-left'} aria-expanded={projOpen}><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} /></button>
-                {projOpen && <div className="pl-3 ml-3 border-l border-[var(--line)] space-y-0.5">
+                <button type="button" onClick={() => setProjOpen((o) => !o)} className={pvSheet + ' w-full text-start'} aria-expanded={projOpen}><Sparkles size={16} /><span className="flex-1">{t('nav.projects', 'Projects')}</span><ChevronDown size={15} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} /></button>
+                {projOpen && <div className="ps-3 ms-3 border-s border-[var(--line)] space-y-0.5">
                   {pvProjects.map((p) => <div key={p.slug} className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-[var(--muted)]"><ShowcaseIcon icon={p.icon} size={16} fallback={<Sparkles size={16} />} /> {p.name}</div>)}
                 </div>}
               </div>
@@ -16488,7 +16488,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
     <div ref={barRef} style={{ width: DESKTOP_W, transform: `scale(${scale})`, transformOrigin: 'top left' }}
       className="rounded-2xl border border-[var(--line)] px-3 py-2 min-h-14 flex items-center gap-1 topbar bg-[var(--bg-solid)]">
       <img src="/logo.png" alt="" className="w-8 h-8 rounded-lg shrink-0" />
-      <span className="font-bold text-sm mr-2 shrink-0">BetterCommunity</span>
+      <span className="font-bold text-sm me-2 shrink-0">BetterCommunity</span>
       {/* flex-1 align track + inline pill bar, mirroring the real topbar (App.jsx): the track
           positions the content-width pill bar left/center/right per layout.align. */}
       <div className={`flex-1 min-w-0 flex ${navAlignClass(layout.align)}`}>
@@ -16497,7 +16497,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
           <div key={idx} className="relative">
             <button title={onEdit ? t('nav.pv.edit', 'Click to edit · chevron opens the dropdown') : undefined} onClick={() => jump(idx)} className={pillCls(openIdx === idx)}>
               <NavPvIcon name={it.icon} />{!iconsOnly && <span>{pvLabel(it, lang)}</span>}
-              <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setOpenIdx(openIdx === idx ? null : idx); }} className="-mr-1 p-0.5 rounded hover:bg-[var(--surface-3,var(--line))]"><ChevronDown size={13} className={`transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} /></span>
+              <span role="button" tabIndex={-1} onClick={(e) => { e.stopPropagation(); setOpenIdx(openIdx === idx ? null : idx); }} className="-me-1 p-0.5 rounded hover:bg-[var(--surface-3,var(--line))]"><ChevronDown size={13} className={`transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} /></span>
             </button>
             {openIdx === idx && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
               {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => (
@@ -16538,7 +16538,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
       {/* Right-side utility cluster — mirrors the real topbar (App.jsx): cluster A always
           on, then a border divider, then the account cluster B. Theme = the real switch,
           lang = globe + code, profile = avatar disc — drawn by PvUtil so it matches 1:1. */}
-      <div className="ml-auto flex items-center gap-0.5 shrink-0">
+      <div className="ms-auto flex items-center gap-0.5 shrink-0">
         {clusterA.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
         {clusterB.length > 0 && <span className="w-px h-5 bg-[var(--line)] mx-1.5" />}
         {clusterB.map((k) => <span key={k} className="inline-flex items-center px-1.5 py-1" title={t('nav.util.' + k, UTIL_LABEL[k])}><PvUtil k={k} lang={lang} /></span>)}
@@ -16827,7 +16827,7 @@ function AdminNav() {
               <button type="button" draggable
                 onDragStart={(e) => { setDragIdx(i); setOverIdx(i); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch { /* Safari */ } }}
                 onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-                className="p-1 -ml-1 rounded-md text-[var(--faint)] hover:text-[var(--text)] cursor-grab active:cursor-grabbing" title={t('nav.drag', 'Drag to reorder')} aria-label={t('nav.drag', 'Drag to reorder')}>
+                className="p-1 -ms-1 rounded-md text-[var(--faint)] hover:text-[var(--text)] cursor-grab active:cursor-grabbing" title={t('nav.drag', 'Drag to reorder')} aria-label={t('nav.drag', 'Drag to reorder')}>
                 <GripVertical size={15} />
               </button>
               <Badge tone={it.type === 'group' ? 'primary' : ''}>{it.type === 'group' ? <><Layers size={11} /> {t('nav.group', 'Dropdown')}</> : <><Link2 size={11} /> {t('nav.link', 'Link')}</>}</Badge>
@@ -17232,7 +17232,7 @@ function AdminCatalogs() {
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
         <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc2', 'Owner-hosted catalogs. Suspend takes one offline for everyone; unlist just removes it from the public browser (its URL still works); delete purges it. Examine reads the hosted files without running anything.')}</p>
       </div>
-      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+      <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-1.5">
         {rows.map((c) => { const cur = c.status === 'SUSPENDED' ? 'suspended' : c.listed ? 'online' : 'offline'; const cr = (c.creators || [])[0];
         // Stack on phones: the status select + Examine + delete sat beside the text, so on a
@@ -17323,7 +17323,7 @@ function AdminCatalogExamine({ catalog, onClose }) {
                   {inspect.data.entries.map((e) => (
                     <div key={e.name}>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-left ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline mr-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                        <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
                         <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
                         <button onClick={() => dl(it, e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
                       </div>
@@ -17404,7 +17404,7 @@ function AdminBadges() {
             <Field label={edit.iconType === 'image' ? t('ab.iconurl', 'Image URL / data URI') : t('ab.iconname2', 'Icon')}>
               {edit.iconType === 'image'
                 ? <Input value={edit.icon} onChange={(e) => setEdit({ ...edit, icon: e.target.value })} placeholder="https://…/icon.svg" />
-                : <Button variant="default" className="!w-full !justify-start" onClick={() => setIconPick(true)}><Sparkles size={14} /> {t('ab.pickicon', 'Pick an icon')} <span className="text-[var(--faint)] font-mono ml-1 truncate">{edit.icon}</span></Button>}
+                : <Button variant="default" className="!w-full !justify-start" onClick={() => setIconPick(true)}><Sparkles size={14} /> {t('ab.pickicon', 'Pick an icon')} <span className="text-[var(--faint)] font-mono ms-1 truncate">{edit.icon}</span></Button>}
             </Field>
           </div>
           {edit.iconType !== 'image' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.pickhint', 'Search every Lucide icon + every Simple Icons brand (YouTube, Twitch, Steam, GitHub…).')}</p>}
@@ -17493,7 +17493,7 @@ export function MyReports() {
       </div>
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
-          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
+          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
               <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
@@ -17563,7 +17563,7 @@ function ReportThreadModal({ id, admin, onClose }) {
             ? <Button size="sm" variant="ghost" onClick={() => setOwnStatus('open')}><RefreshCw size={13} /> {t('mr.reopen', 'Reopen my report')}</Button>
             : <Button size="sm" variant="ghost" onClick={() => setOwnStatus('closed')}><CheckCircle2 size={13} /> {t('mr.close', 'Close my report')}</Button>}
         </div>}
-        <div className="max-h-[45vh] overflow-y-auto pr-1"><ReportThread messages={r.messages} /></div>
+        <div className="max-h-[45vh] overflow-y-auto pe-1"><ReportThread messages={r.messages} /></div>
         {own ? null
           : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed — reopen it above if you still need help.')}</p>
           : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
@@ -17655,11 +17655,11 @@ function AdminReports() {
         <Button size="sm" variant="ghost" onClick={() => setCfgOpen(true)}><Settings2 size={14} /> {t('ar.settings', 'Settings')}</Button>
       </div>
       <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit">
-        {STATUSES.map(([k, lbl]) => <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 text-sm ${status === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}{counts[k] ? <span className="ml-1.5 text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span> : null}</button>)}
+        {STATUSES.map(([k, lbl]) => <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 text-sm ${status === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}{counts[k] ? <span className="ms-1.5 text-[10px] tabular-nums text-[var(--faint)]">{counts[k]}</span> : null}</button>)}
       </div>
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
-          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-left"><Card className="p-3 flex items-center gap-3 card-hover">
+          <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
               <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
@@ -18149,7 +18149,7 @@ function AdminFooter() {
               <button onClick={() => setF({ ...f, columns: move(f.columns, ci, 1) })} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)]" aria-label="down">↓</button>
               <button onClick={() => setF({ ...f, columns: f.columns.filter((_, n) => n !== ci) })} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
             </div>
-            <div className="space-y-1.5 pl-1">
+            <div className="space-y-1.5 ps-1">
               {(c.links || []).map((l, li) => (
                 <div key={li} className={`flex items-center gap-2 flex-wrap ${shows(l) ? '' : 'opacity-50'}`}>
                   <Input className="!w-40 !text-xs" value={l.label} onChange={(e) => setLink(ci, li, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
@@ -18339,7 +18339,7 @@ function AdminSiteTheme() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {THEME_PRESETS.map((p) => (
             <button key={p.id} type="button" onClick={() => pick(p)}
-              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${f.preset === p.id ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-start transition-colors ${f.preset === p.id ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
               <span className="w-9 h-9 rounded-lg shrink-0" style={{ background: `linear-gradient(120deg, ${p.accent}, ${p.accent2})` }} />
               <span className="min-w-0">
                 <span className="block text-sm font-medium truncate">{p.name}</span>
@@ -18386,7 +18386,7 @@ function AdminSiteTheme() {
       <Card className="p-4 mb-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('st.tokens', 'Tokens')}</div>
-          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs ml-auto">
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs ms-auto">
             {[['shared', t('st.scope.shared', 'Shared')], ['light', t('st.light', 'Light')], ['dark', t('st.dark', 'Dark')]].map(([k, label]) => (
               <button key={k} type="button" onClick={() => setScope(k)}
                 className={`px-2.5 py-1 rounded-md ${scope === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{label}</button>
@@ -18730,9 +18730,9 @@ function LocaleStringEditor({ locale, core, onClose }) {
       {loading ? <Loading /> : (
         <div className="space-y-3">
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder={t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Input className="!ps-9" placeholder={t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <p className="text-xs text-[var(--faint)]">{t('lc.hint', 'Only the most visible strings are shown here. Anything left blank falls back to English.')}</p>
-          <div className="max-h-[52vh] overflow-auto space-y-2.5 pr-1">
+          <div className="max-h-[52vh] overflow-auto space-y-2.5 pe-1">
             {keys.map((k) => (
               <div key={k} className="rounded-lg border border-[var(--line)] p-2.5">
                 <div className="flex items-center justify-between gap-2 mb-1">
@@ -19019,7 +19019,7 @@ function AdminSettings() {
             {c.diskFreeGB != null && <div className="text-[11px] text-[var(--faint)] mt-1.5">{t('hs.realdisk', 'Real disk:')} <b className="text-[var(--text)]">{t('hs.gbfree', '{n} GB free').replace('{n}', c.diskFreeGB.toFixed(0))}</b> / {t('hs.gbtotal', '{n} GB total').replace('{n}', c.diskTotalGB?.toFixed(0))}.</div>}
             {c.freeTierCapEnabled && c.freeTierCapGB > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--line)]">
-                <button type="button" onClick={() => setFreePoolOpen(true)} className="w-full text-left group" title={t('hs.freepool.view', 'See what fills this pool')}>
+                <button type="button" onClick={() => setFreePoolOpen(true)} className="w-full text-start group" title={t('hs.freepool.view', 'See what fills this pool')}>
                   <div className="flex items-center justify-between text-xs mb-1"><span className="text-[var(--muted)] flex items-center gap-1.5 group-hover:text-[var(--text)]"><Gift size={12} className="text-success" /> {t('hs.freepool', 'Free-plan pool (separate)')} <ArrowUpRight size={11} className="opacity-40 group-hover:opacity-100" /></span><span className="tabular-nums font-medium">{(c.freeTierUsedGB || 0).toFixed(1)} / {c.freeTierCapGB} GB</span></div>
                   <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-success" style={{ width: `${Math.min(100, ((c.freeTierUsedGB || 0) / c.freeTierCapGB) * 100)}%` }} /></div>
                 </button>

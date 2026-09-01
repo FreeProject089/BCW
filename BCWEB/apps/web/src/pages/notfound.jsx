@@ -225,9 +225,9 @@ export default function NotFound() {
         </div>
 
         {/* Leaderboard — collapsible (collapsed by default on phones). */}
-        <Card className="p-4 w-full md:max-w-xs text-left">
+        <Card className="p-4 w-full md:max-w-xs text-start">
           <button onClick={() => setBoardOpen((v) => !v)} className="w-full text-sm font-semibold flex items-center gap-2 md:cursor-default" aria-expanded={boardOpen}>
-            <Trophy size={15} className="text-warning" /> <span className="flex-1 text-left">{t('nf.leaderboard', 'Leaderboard')}</span>
+            <Trophy size={15} className="text-warning" /> <span className="flex-1 text-start">{t('nf.leaderboard', 'Leaderboard')}</span>
             <ChevronDown size={16} className={`md:hidden text-[var(--faint)] transition-transform ${boardOpen ? 'rotate-180' : ''}`} />
           </button>
           {boardOpen && (board.length ? <div className="space-y-1.5 mt-3">

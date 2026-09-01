@@ -166,7 +166,7 @@ export default function CharityPage() {
 
       <Card className="p-6 space-y-4">
         <h2 className="font-semibold flex items-center gap-2"><Info size={16} /> {t('ch.how.t', 'How it works')}</h2>
-        <ol className="space-y-3 text-sm text-[var(--muted)] list-decimal ml-4">
+        <ol className="space-y-3 text-sm text-[var(--muted)] list-decimal ms-4">
           <li>{t('ch.how.1', 'Each month BetterCommunity sets aside a percentage (up to 50%) of its eligible recurring revenue — what remains after recurring costs.')}</li>
           <li>{t('ch.how.2', 'You can add to the pot at any time. Your gifts and BetterCommunity’s share are tracked as two separate amounts and shown together in one pot.')}</li>
           <li>{t('ch.how.3', 'The community votes on which association receives the month’s pot.')}</li>

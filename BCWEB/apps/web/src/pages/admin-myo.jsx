@@ -20,7 +20,7 @@ export function AdminMyo() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 mr-2"><Wand2 size={16} className="text-[var(--primary-2)]" /> {t('amyo.title', 'Make Your Own — commissions')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Wand2 size={16} className="text-[var(--primary-2)]" /> {t('amyo.title', 'Make Your Own — commissions')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['requests', t('amyo.tab.requests', 'Requests')], ['products', t('amyo.tab.products', 'Catalog')], ['settings', t('amyo.tab.settings', 'Settings')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${view === k ? 'bg-[var(--bg-solid)] text-[var(--primary)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
@@ -109,7 +109,7 @@ function AdminMyoRequests() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!pl-9" placeholder={t('amyo.search', 'Search name / user / email…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setApplied({ q, status })} /></div>
+        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" placeholder={t('amyo.search', 'Search name / user / email…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setApplied({ q, status })} /></div>
         <Dropdown value={status} onChange={setStatus} options={[{ value: '', label: t('amyo.allstatus', 'All statuses') }, ...MYO_STATUSES.map((s) => ({ value: s, label: s }))]} />
         <Button variant="primary" onClick={() => setApplied({ q, status })}><Search size={15} /> {t('common.search', 'Search')}</Button>
       </div>
@@ -122,7 +122,7 @@ function AdminMyoRequests() {
                added to it would have been a button inside a button — invalid markup, and
                in practice a claim click that also opened the conversation. */
             <div key={r.id} className="card p-3 flex items-center gap-3 hover:border-[var(--primary)]">
-              <button onClick={() => setOpenId(r.id)} className="flex-1 min-w-0 text-left">
+              <button onClick={() => setOpenId(r.id)} className="flex-1 min-w-0 text-start">
                 <div className="font-medium truncate flex items-center gap-2">
                   {r.name}
                   {r.urgent && <Badge tone="amber"><Clock size={10} /> {t('myo.urgent', 'urgent')}</Badge>}

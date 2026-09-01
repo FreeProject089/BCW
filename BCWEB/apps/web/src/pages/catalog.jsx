@@ -59,7 +59,7 @@ export function Catalog() {
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!pl-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
+            <Input className="!ps-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
           </div>
           {/* Kinds are project-scoped. PRESET is BOTH a BSM audio preset and a BMM scheduler
               automation — one enum value, two meanings, separated by the project. The comment
@@ -90,7 +90,7 @@ export function Catalog() {
                 </label>
               )}
               <Link to={`/item/${it.slug}`}><Card hover className={`p-5 h-full ${checked ? 'border-[var(--primary)]' : ''}`}>
-                <div className="flex items-center justify-between"><div className={`grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] ${multi ? 'ml-6' : ''}`}><I size={17} className="text-[var(--primary-2)]" /></div><Badge>v{it.version}</Badge></div>
+                <div className="flex items-center justify-between"><div className={`grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] ${multi ? 'ms-6' : ''}`}><I size={17} className="text-[var(--primary-2)]" /></div><Badge>v{it.version}</Badge></div>
                 <div className="font-semibold mt-3">{it.name}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{it.description || t('cat.nodesc', 'No description.')}</div>
                 <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-3 flex-wrap">
