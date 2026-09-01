@@ -98,6 +98,15 @@ export const LEGAL = {
       ['How to request a refund', 'Reach us through the Contact page with your account email and the approximate date/amount of the charge. We respond within a few business days. Approved refunds are returned to the original payment method via Stripe.'],
       ['Chargebacks', 'If something looks wrong, please contact us first — we can almost always resolve it faster than a bank dispute. Opening a chargeback without contacting us may result in suspension of the associated account and repos pending resolution.'],
     ] },
+    submissions: { icon: FileText, title: 'Submission Terms', body: [
+      ['What this covers', 'These terms apply when you ask us to list or host something: a Server-Repo, catalog files, or an "Other projects" listing. Submitting is a request for REVIEW — it creates no obligation on us to publish, host or keep anything, and a page or file only goes live once a person here has reviewed it.'],
+      ['Open-source and closed-source', 'We list both. An OPEN-SOURCE project may be submitted by anyone — its owner, or someone who simply likes it — and must name its licence. A CLOSED-SOURCE project may be submitted ONLY by the rights-holder, and only with proof of rights attached: without proof we do not add it.'],
+      ['Proof of rights, and how we handle it', 'Proof you upload for a closed-source listing (a licence, an invoice, a signed statement) is stored PRIVATELY — never served publicly, shown only to review staff and to you, and DELETED as soon as we reach a decision (approve, reject or withdraw). Upload the minimum needed to establish rights; do not upload other people’s personal data without a lawful basis.'],
+      ['Your declarations', 'When you submit you declare that the information is accurate, that you have the right to request the listing, and — for a project that is yours — that you may grant the permission needed to display it. A false declaration is grounds to remove the listing and, for repeated abuse, to sanction the account.'],
+      ['Paid reviews are non-refundable', 'A paid review fee buys a PLACE IN THE QUEUE and priority. It does not buy a listing, it does not change the answer, and it is NON-REFUNDABLE — including if the request is ultimately rejected. Any wait time shown is an ESTIMATE from how many requests are queued: not a promise, and paying does not guarantee a time. (Where consumer law grants a withdrawal right, that right still applies — see Payments & Refunds.)'],
+      ['The contact thread', 'Each submission opens a private thread in your dashboard under "Reports & contact", where staff may ask for more detail and you can reply. It is readable only by you and staff.'],
+      ['Removal and your rights (GDPR)', 'You can withdraw a pending request at any time, which deletes it and any proof. Approving or rejecting also deletes the proof. Your declaration (owner/fan, licence) is kept with the record so we can show why a listing exists. Exercise your GDPR rights (access, correction, deletion) through the Contact page; retention is in the Privacy Policy.'],
+    ] },
   },
   fr: {
     privacy: { icon: Lock, title: 'Politique de confidentialité', body: [
@@ -190,6 +199,15 @@ export const LEGAL = {
       ['Comment demander un remboursement', 'Contactez-nous via la page Contact avec l’e-mail de votre compte et la date/le montant approximatif du débit. Nous répondons sous quelques jours ouvrés. Les remboursements approuvés sont renvoyés sur le moyen de paiement d’origine via Stripe.'],
       ['Oppositions bancaires (chargebacks)', 'Si quelque chose semble anormal, contacte-nous d’abord — nous résolvons presque toujours plus vite qu’un litige bancaire. Ouvrir un chargeback sans nous contacter peut entraîner la suspension du compte et des dépôts associés en attendant résolution.'],
     ] },
+    submissions: { icon: FileText, title: 'Conditions de soumission', body: [
+      ['Ce que ça couvre', 'Ces conditions s’appliquent quand vous nous demandez de référencer ou d’héberger quelque chose : un Server-Repo, des fichiers de catalogue, ou une fiche « Autres projets ». Soumettre est une demande d’EXAMEN — cela ne nous oblige à rien publier, héberger ni conserver, et une page ou un fichier ne paraît qu’après examen par une personne ici.'],
+      ['Open-source et closed-source', 'Nous référençons les deux. Un projet OPEN-SOURCE peut être soumis par n’importe qui — son auteur, ou quelqu’un qui l’apprécie simplement — et doit indiquer sa licence. Un projet CLOSED-SOURCE ne peut être soumis QUE par l’ayant droit, et uniquement avec une preuve de droits jointe : sans preuve, nous ne l’ajoutons pas.'],
+      ['La preuve de droits, et comment nous la traitons', 'La preuve que vous téléversez pour une fiche closed-source (une licence, une facture, une déclaration signée) est stockée de façon PRIVÉE — jamais servie publiquement, visible uniquement par le personnel d’examen et par vous, et SUPPRIMÉE dès qu’une décision est prise (acceptation, refus ou retrait). Ne téléversez que le minimum nécessaire pour établir les droits ; ne téléversez pas les données personnelles d’autrui sans base légale.'],
+      ['Vos déclarations', 'En soumettant, vous déclarez que les informations sont exactes, que vous avez le droit de demander ce référencement, et — pour un projet qui est le vôtre — que vous pouvez accorder l’autorisation nécessaire à son affichage. Une fausse déclaration justifie le retrait de la fiche et, en cas d’abus répété, une sanction du compte.'],
+      ['Les examens payants ne sont pas remboursables', 'Des frais d’examen payants achètent une PLACE DANS LA FILE et une priorité. Ils n’achètent pas un référencement, ne changent pas la réponse, et NE SONT PAS REMBOURSABLES — y compris si la demande est finalement refusée. Tout délai affiché est une ESTIMATION selon le nombre de demandes en attente : ce n’est pas une promesse, et payer ne garantit pas un délai. (Là où le droit de la consommation accorde un droit de rétractation, ce droit s’applique — voir Paiements & Remboursements.)'],
+      ['Le fil de contact', 'Chaque soumission ouvre un fil privé dans votre tableau de bord, dans « Signalements & contact », où le personnel peut demander plus de détails et où vous pouvez répondre. Il n’est lisible que par vous et par le personnel.'],
+      ['Retrait et vos droits (RGPD)', 'Vous pouvez retirer une demande en attente à tout moment, ce qui la supprime ainsi que toute preuve. Une acceptation ou un refus supprime aussi la preuve. Votre déclaration (auteur/fan, licence) est conservée avec le dossier pour justifier l’existence d’une fiche. Exercez vos droits RGPD (accès, rectification, suppression) via la page Contact ; la conservation est détaillée dans la Politique de confidentialité.'],
+    ] },
   },
 };
 
@@ -200,6 +218,7 @@ export const LEGAL_SUMMARY = {
     cookies: 'One essential sign-in cookie, plus optional privacy-friendly first-party analytics — no third parties.',
     about: 'Who we are, the Better* projects, and what BetterCommunity is here to do.',
     refunds: 'How billing works, the free tier, cancellation, and exactly when a refund applies.',
+    submissions: 'What you agree to when you ask us to list or host a project — open vs closed source, proof of rights, and the non-refundable paid review.',
   },
   fr: {
     privacy: 'Les données que nous collectons, pourquoi, et les droits RGPD que vous pouvez exercer à tout moment.',
@@ -207,6 +226,7 @@ export const LEGAL_SUMMARY = {
     cookies: 'Un seul cookie de session essentiel, plus des statistiques internes optionnelles et respectueuses — aucun tiers.',
     about: 'Qui nous sommes, les projets Better*, et la raison d’être de BetterCommunity.',
     refunds: 'Le fonctionnement de la facturation, l’offre gratuite, la résiliation, et quand un remboursement s’applique.',
+    submissions: 'Ce que vous acceptez en demandant un référencement ou un hébergement — open/closed source, preuve de droits, et l’examen payant non remboursable.',
   },
 };
 
@@ -285,10 +305,10 @@ function LegalParagraph({ text }) {
  * has a compiled-in fallback text, which is why it is also the list that keeps working when
  * nothing loads.
  */
-const BUILTIN_ORDER = ['about', 'privacy', 'terms', 'cookies', 'refunds'];
+const BUILTIN_ORDER = ['about', 'privacy', 'terms', 'cookies', 'refunds', 'submissions'];
 
 /** The icon a built-in document has always had. */
-const BUILTIN_ICON = { about: Sparkles, privacy: Lock, terms: ShieldCheck, cookies: Cookie, refunds: Receipt };
+const BUILTIN_ICON = { about: Sparkles, privacy: Lock, terms: ShieldCheck, cookies: Cookie, refunds: Receipt, submissions: FileText };
 
 /**
  * A built-in's label, from the dictionary rather than from the database.
@@ -305,6 +325,7 @@ function builtinLabel(key, t) {
     case 'terms': return t('foot.terms');
     case 'cookies': return t('foot.cookies');
     case 'refunds': return t('foot.refunds', 'Payments');
+    case 'submissions': return t('foot.submissions', 'Submission Terms');
     default: return '';
   }
 }

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
-import { api } from '../lib/api.js';
+import { api, uploadPayload } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
 import { useI18n } from '../i18n.jsx';
 import StackMap from '../ui/stack-map.jsx';
@@ -852,30 +852,61 @@ function RequestListing() {
   const [cfg, setCfg] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [f, setF] = useState({ name: '', short: '', url: '', icon: '', description: '', pitch: '' });
+  const [f, setF] = useState({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner' });
+  const [proof, setProof] = useState(null);   // { key, name } once uploaded (closed-source)
+  const [uploading, setUploading] = useState(false);
+  const [tos, setTos] = useState(false);      // accepted the Submission Terms
+  const [payAck, setPayAck] = useState(false); // acknowledged the payment is non-refundable
 
   useEffect(() => { api.get('/showcase-requests/config').then(setCfg).catch(() => setCfg(null)); }, []);
   if (!cfg || (!cfg.requestsEnabled && !cfg.paidEnabled)) return null;
 
   const money = (c, cur) => new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase() }).format((c || 0) / 100);
+  // Estimate formatting — hours if under two days, else rounded days.
+  const dur = (h) => (h >= 48 ? t('rl.days', '{n} days').replace('{n}', String(Math.round(h / 24))) : t('rl.hours', '{n}h').replace('{n}', String(h)));
+  const est = cfg.estimate;
+  const closed = !f.isOpenSource;
+  const set = (patch) => setF((v) => ({ ...v, ...patch }));
+
+  const uploadProof = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try { const key = await uploadPayload('PROOF', file); setProof({ key, name: file.name }); }
+    catch (e) { toast.error(e?.status === 413 ? t('rl.prooftoobig', 'That file is too large (25 MB max).') : e?.status === 415 ? t('rl.proofbadtype', 'Use an image or a PDF.') : t('rl.prooffail', 'Upload failed.')); }
+    finally { setUploading(false); }
+  };
+
+  // The gate: name + label + accepted terms, plus either a licence (open-source) or ownership
+  // + proof (closed-source). The paid button additionally needs the non-refundable ack.
+  const baseOk = !!user && f.name.trim() && f.short.trim() && tos
+    && (closed ? (f.ownership === 'owner' && !!proof) : !!f.license.trim());
 
   const submit = async (paid) => {
     if (!f.name.trim() || !f.short.trim()) return toast.error(t('rl.need', 'A name and a short label are required.'));
     setBusy(true);
     try {
-      const r = await api.post('/showcase-requests', { ...f, paid });
+      const r = await api.post('/showcase-requests', {
+        ...f, paid, tosAccepted: tos,
+        proofKey: proof?.key || '', proofName: proof?.name || '',
+      });
       // A paid request answers with a checkout URL. Following it is the whole point, so it
       // happens here rather than behind a second button somebody has to find.
       if (r?.checkoutUrl) { window.location.href = r.checkoutUrl; return; }
-      toast.success(t('rl.sent', 'Sent \u2014 we will reply either way.'));
+      toast.success(t('rl.sent2', 'Sent \u2014 we will reply either way. If we need more detail, you will find a thread in your dashboard under Reports & contact.'));
       setOpen(false);
-      setF({ name: '', short: '', url: '', icon: '', description: '', pitch: '' });
+      setF({ name: '', short: '', url: '', icon: '', description: '', pitch: '', isOpenSource: true, license: '', ownership: 'owner' });
+      setProof(null); setTos(false); setPayAck(false);
     } catch (e) {
       const code = e?.body?.error;
       toast.error(
         code === 'too_many_open' ? t('rl.toomany', 'You already have the maximum number of requests waiting for an answer.')
           : code === 'payments_unavailable' ? t('rl.nopay', 'Payments are unavailable right now \u2014 your request was saved, unpaid.')
-            : t('rl.fail', 'Could not send that.'));
+            : code === 'tos_required' ? t('rl.tosreq', 'Please accept the Submission Terms first.')
+              : code === 'closed_needs_owner' ? t('rl.closedowner', 'A closed-source project can only be submitted by its rights-holder.')
+                : code === 'closed_needs_proof' ? t('rl.closedproof', 'A closed-source project needs proof of rights attached.')
+                  : code === 'license_required' ? t('rl.licreq', 'Name the licence for an open-source project.')
+                    : code === 'bad_proof_key' ? t('rl.badproof', 'That proof upload was not recognised \u2014 try uploading it again.')
+                      : t('rl.fail', 'Could not send that.'));
     } finally { setBusy(false); }
   };
 
@@ -914,28 +945,85 @@ function RequestListing() {
                 <Textarea rows={3} value={f.pitch} onChange={(e) => setF({ ...f, pitch: e.target.value })} />
               </Field>
             </div>
+
+            {/* ── Licence, source & ownership ─────────────────────────────── */}
+            <div className="sm:col-span-2 pt-2 border-t border-[var(--line)]">
+              <div className="text-xs font-semibold mb-2">{t('rl.src.h', 'Licence & ownership')}</div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {[['open', true], ['closed', false]].map(([k, v]) => (
+                  <button key={k} type="button" onClick={() => set({ isOpenSource: v, ownership: v ? f.ownership : 'owner' })}
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)]/40'}`}>
+                    {k === 'open' ? t('rl.src.open', 'Open source') : t('rl.src.closed', 'Closed source')}
+                  </button>
+                ))}
+              </div>
+
+              {f.isOpenSource ? (
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Field label={t('rl.license', 'Licence')} hint={t('rl.license.h', 'e.g. MIT, GPL-3.0, Apache-2.0.')}>
+                    <Input value={f.license} onChange={(e) => set({ license: e.target.value })} placeholder="MIT" />
+                  </Field>
+                  <Field label={t('rl.own', 'Your relationship to it')}>
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ownership" checked={f.ownership === 'owner'} onChange={() => set({ ownership: 'owner' })} /> {t('rl.own.owner', 'It’s my project')}</label>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="radio" name="ownership" checked={f.ownership === 'fan'} onChange={() => set({ ownership: 'fan' })} /> {t('rl.own.fan', 'A project I like (not mine)')}</label>
+                    </div>
+                  </Field>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                  <p className="text-[11px] text-[var(--muted)] mb-2">{t('rl.closed.note', 'We list closed-source projects too — but only at the request of the rights-holder, and only with proof of rights (a licence, an invoice, a signed statement). Your document is stored privately, shown only to review staff, and deleted once we decide.')}</p>
+                  <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" className="hidden" onChange={(e) => uploadProof(e.target.files?.[0])} />
+                    <span className="btn btn-sm">{uploading ? <Spinner /> : (proof ? t('rl.proof.replace', 'Replace proof') : t('rl.proof.add', 'Attach proof of rights'))}</span>
+                    {proof && <span className="text-xs text-success truncate max-w-[200px]">✓ {proof.name}</span>}
+                  </label>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap mt-4">
+          {/* Estimated wait \u2014 shown BEFORE paying. Queue-driven, and explicitly an estimate:
+              paying is priority, not a guarantee. */}
+          {est && (
+            <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Clock size={13} className="text-[var(--primary-2)]" />
+                <span className="text-[var(--muted)]">{t('rl.est.free', 'Typical wait: {r}').replace('{r}', `${dur(est.freeLowH)}\u2013${dur(est.freeHighH)}`)}</span>
+                {cfg.paidEnabled && <span className="text-[var(--muted)]">\u00b7 {t('rl.est.paid', 'paid (priority): {r}').replace('{r}', `${dur(est.paidLowH)}\u2013${dur(est.paidHighH)}`)}</span>}
+              </div>
+              <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('rl.est.note', 'An estimate, from how many requests are waiting right now ({n} pending) \u2014 not a promise. Paying moves you up the queue but does not guarantee a time: you may still wait.').replace('{n}', String(est.pendingCount))}</p>
+            </div>
+          )}
+
+          {/* The terms gate. The buttons stay disabled until these are ticked. */}
+          <div className="mt-3 space-y-1.5">
+            <label className="flex items-start gap-2 text-xs cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={tos} onChange={(e) => setTos(e.target.checked)} />
+              <span>{t('rl.tos.pre', 'I have read and accept the')} <Link to="/legal/submissions" target="_blank" className="text-[var(--primary-2)] underline">{t('rl.tos.link', 'Submission Terms')}</Link>{t('rl.tos.post', ', and I confirm my declarations above are accurate.')}</span>
+            </label>
+            {cfg.paidEnabled && (
+              <label className="flex items-start gap-2 text-xs cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={payAck} onChange={(e) => setPayAck(e.target.checked)} />
+                <span>{t('rl.pay.ack', 'I understand a paid review fee is NON-REFUNDABLE \u2014 it buys a place in the queue and priority, not a listing and not a guaranteed time.')}</span>
+              </label>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mt-3">
             {cfg.requestsEnabled && (
-              <Button disabled={busy || !user} onClick={() => submit(false)}>{busy ? <Spinner /> : t('rl.send', 'Send the request')}</Button>
+              <Button disabled={busy || !baseOk} onClick={() => submit(false)}>{busy ? <Spinner /> : t('rl.send', 'Send the request')}</Button>
             )}
             {cfg.paidEnabled && (
-              <Button variant={cfg.requestsEnabled ? 'ghost' : 'primary'} disabled={busy || !user} onClick={() => submit(true)}>
+              <Button variant={cfg.requestsEnabled ? 'ghost' : 'primary'} disabled={busy || !baseOk || !payAck} onClick={() => submit(true)}>
                 {t('rl.pay', 'Pay {p} to be reviewed sooner').replace('{p}', money(cfg.priceCents, cfg.currency))}
               </Button>
             )}
             <div className="flex-1" />
             <Button variant="ghost" onClick={() => setOpen(false)}>{t('common.cancel', 'Cancel')}</Button>
           </div>
+          {!user && <p className="text-[11px] text-warning mt-2">{t('rl.signin.short', 'Sign in to submit \u2014 we need somewhere to send the answer.')}</p>}
 
-          {/* Said on the form, not only in the code. Somebody about to pay deserves to know
-              what the money does before they click, not after they are rejected. */}
-          {cfg.paidEnabled && (
-            <p className="text-[11px] text-[var(--faint)] mt-3">
-              {t('rl.paynote', 'Paying buys a place in the review queue \u2014 it does not buy a listing, and it does not change the answer. If we say no to a paid request, get in touch about a refund.')}
-            </p>
-          )}
           {cfg.maxOpenPerUser > 0 && (
             <p className="text-[11px] text-[var(--faint)] mt-1">
               {t('rl.cap', 'Up to {n} requests can be waiting for an answer at once.').replace('{n}', String(cfg.maxOpenPerUser))}
