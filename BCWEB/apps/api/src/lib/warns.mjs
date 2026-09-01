@@ -19,6 +19,8 @@
  *  down and disabled without deleting it. */
 export const WARN_ACTIONS = ['warn', 'timeout', 'kick', 'ban'];
 
+import { logModeration } from './discord-storage.mjs';
+
 /** The default ladder, used when a server has configured none. Deliberately mild: the point
  *  of a default is to be defensible everywhere, not to be right anywhere. */
 export const DEFAULT_THRESHOLDS = [
@@ -113,6 +115,9 @@ export async function issueWarn(p, { discordId, reason, guildId = null, issuedBy
             triggered: triggered ? `${triggered.kind}${triggered.minutes ? `:${triggered.minutes}` : ''}` : null,
         },
     });
+    // Record the warning itself in the guild's moderation log (mode permitting). auto = no
+    // human issuer (a bot rule fired it). The ladder-triggered ban/kick below logs on success.
+    await logModeration(p, { guildId, actorId: issuedById, targetId: discordId, action: 'warn', reason, auto: !issuedById });
 
     // Queued as an ordinary BotAction so it lands in the same list, with the same outcome
     // reporting: a ban Discord refuses because the bot's role sits too low must be as visible
@@ -121,7 +126,7 @@ export async function issueWarn(p, { discordId, reason, guildId = null, issuedBy
     if (triggered) {
         action = await p.botAction.create({
             data: {
-                kind: triggered.kind, discordId, minutes: triggered.minutes ?? null,
+                kind: triggered.kind, discordId, guildId, minutes: triggered.minutes ?? null,
                 reason: `Warning ${count}: ${reason}`.slice(0, 500),
                 targetLabel,
                 requestedById: issuedById,

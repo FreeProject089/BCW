@@ -3,7 +3,7 @@ import { getObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
-import { memberCapacity, admitMembers, capacityStatus } from '../lib/discord-storage.mjs';
+import { memberCapacity, admitMembers, capacityStatus, logModeration } from '../lib/discord-storage.mjs';
 
 // B4: a guild's member-storage config, created lazily on first sight with the safe default
 // (mode `none` — store nothing). Every member write goes through this so a guild the admin
@@ -16,6 +16,7 @@ async function botGuild(p, guildId, name) {
     update: name ? { name } : {},
   });
 }
+
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
@@ -354,6 +355,15 @@ export default async function botRoutes(app) {
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     return { ok: true, guild: serGuild(g, stored) };
   });
+
+  // The guild's moderation record (B4 Phase 3) — populated only for guilds that keep logs.
+  app.get('/admin/bot/guilds/:id/logs', { preHandler: requireRole('MOD', 'ADMIN') }, async (req) => {
+    const p = await db();
+    const take = Math.min(Math.max(Number(req.query?.take) || 50, 1), 200);
+    const logs = await p.moderationLog.findMany({ where: { guildId: req.params.id }, orderBy: { createdAt: 'desc' }, take });
+    return { logs };
+  });
+
   app.put('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
@@ -1127,13 +1137,14 @@ export default async function botRoutes(app) {
     const b = z.object({
       kind: z.enum(ACTIONS),
       discordId: z.string().min(1).max(32),
+      guildId: z.string().max(32).optional(), // B4: which server; recorded in its ModerationLog on success
       // Required for the ones that punish. Unban and untimeout are the undo, and demanding a
       // reason to undo something is how an undo stops being used.
       reason: z.string().trim().max(500).optional(),
       minutes: z.number().int().min(1).max(60 * 24 * 28).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    const { kind, discordId, minutes } = b.data;
+    const { kind, discordId, minutes, guildId } = b.data;
     const reason = (b.data.reason || '').trim();
     if (['ban', 'kick', 'timeout'].includes(kind) && !reason) return reply.code(400).send({ error: 'reason_required' });
     // Discord's own ceiling. Asking for 40 days silently becomes 28, so it is refused instead.
@@ -1148,7 +1159,7 @@ export default async function botRoutes(app) {
     ]);
     const action = await p.botAction.create({
       data: {
-        kind, discordId, minutes: minutes ?? null, reason,
+        kind, discordId, guildId: guildId || null, minutes: minutes ?? null, reason,
         targetLabel: member?.username || discordId,
         requestedById: req.user.uid,
         requestedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · ').slice(0, 200),
@@ -1331,10 +1342,14 @@ export default async function botRoutes(app) {
     const b = z.object({ ok: z.boolean(), error: z.string().max(500).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    await p.botAction.update({
+    const action = await p.botAction.update({
       where: { id: req.params.id },
       data: { status: b.data.ok ? 'done' : 'failed', error: b.data.ok ? null : (b.data.error || 'unknown'), attemptedAt: new Date() },
-    }).catch(() => {});
+    }).catch(() => null);
+    // A carried-out action goes into the guild's moderation record (mode permitting).
+    if (b.data.ok && action?.guildId) {
+      await logModeration(p, { guildId: action.guildId, actorId: action.requestedById, targetId: action.discordId, action: action.kind, reason: action.reason });
+    }
     return { ok: true };
   });
 

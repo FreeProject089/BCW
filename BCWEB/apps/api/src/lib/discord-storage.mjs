@@ -30,6 +30,22 @@ export function admitMembers(mode, stored, capacity, incoming = 0) {
   return { store: true, admit: admit === Infinity ? incoming : admit, full: room !== Infinity && admit < incoming, room };
 }
 
+// Record a moderation action in a guild's ModerationLog — but only when the guild keeps logs:
+// `pool` (it stores everything), or `moderation` + storeLogs. Otherwise the action is
+// Discord-channel-only, the privacy-preserving default (Prmtp123 §20: rien n'est stocké par
+// défaut). Takes the Prisma client so it can live in this dependency-free module (no import
+// cycle between bot.mjs and warns.mjs). Best-effort: a record that fails to save must never
+// fail the moderation it records.
+export async function logModeration(p, { guildId, actorId, targetId, action, reason = '', auto = false }) {
+  if (!guildId || !targetId || !action) return;
+  try {
+    const g = await p.botGuild.findUnique({ where: { guildId }, select: { memberMode: true, storeLogs: true } });
+    if (!g) return;
+    if (!(g.memberMode === 'pool' || (g.memberMode === 'moderation' && g.storeLogs))) return;
+    await p.moderationLog.create({ data: { guildId, actorId: actorId || 'system', targetId, action, reason: reason || null, auto } });
+  } catch { /* a moderation record that fails to save must not fail the moderation */ }
+}
+
 /** A human-facing capacity summary for the dashboard warning. */
 export function capacityStatus(quotaBytes, stored) {
   const cap = memberCapacity(quotaBytes);

@@ -3274,6 +3274,9 @@ model BotAction {
   /// ban · unban · kick · timeout · untimeout
   kind        String
   discordId   String
+  /// Which guild the action targets (B4). Nullable for rows created before the field existed;
+  /// when set, a successful action is recorded in that guild's ModerationLog (mode permitting).
+  guildId     String?
   /// Who it is about, as they were named when it was asked for — the member may leave.
   targetLabel String @default("")
   reason      String @default("")
