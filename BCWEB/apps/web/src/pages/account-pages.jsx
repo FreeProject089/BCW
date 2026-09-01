@@ -54,78 +54,91 @@ export function Settings() {
     </button>
   );
 
+  // A titled card — one settings group. Its icon chip gives the page a consistent rhythm
+  // instead of four differently-weighted headers.
+  const Group = ({ icon: Icon, title, children, className = '' }) => (
+    <Card className={`p-4 sm:p-5 ${className}`}>
+      <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
+        <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Icon size={14} className="text-[var(--primary-2)]" /></span>
+        <span className="text-sm font-semibold">{title}</span>
+      </div>
+      {children}
+    </Card>
+  );
+
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <PageHeader icon={Sliders} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences — saved on this browser only.')} />
 
-      <Card className="p-4 sm:p-5 mb-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><Palette size={13} /> {t('set.appearance', 'Appearance')}</div>
-        <Row icon={theme === 'dark' ? Sparkles : Palette} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark — applies instantly.')}>
-          <Select value={theme} onChange={(e) => { if (e.target.value !== theme) toggleTheme(); }} className="!w-auto"><option value="light">{t('set.light', 'Light')}</option><option value="dark">{t('set.dark', 'Dark')}</option></Select>
-        </Row>
-        <Row icon={Globe} title={t('set.lang', 'Language')} desc={t('set.lang.d', 'Interface language.')}>
-          <Select value={lang} onChange={(e) => setLang(e.target.value)} className="!w-auto"><option value="en">English</option><option value="fr">Français</option></Select>
-        </Row>
-        <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
-          <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
-        </Row>
-        <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
-          <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
-        </Row>
+      {/* Two columns on desktop so the page uses the width instead of a long narrow strip;
+          stacks on mobile. items-start keeps each card its own height (no stretched gaps). */}
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
+        <Group icon={Palette} title={t('set.appearance', 'Appearance')}>
+          <Row icon={theme === 'dark' ? Sparkles : Palette} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark — applies instantly.')}>
+            <Select value={theme} onChange={(e) => { if (e.target.value !== theme) toggleTheme(); }} className="!w-auto"><option value="light">{t('set.light', 'Light')}</option><option value="dark">{t('set.dark', 'Dark')}</option></Select>
+          </Row>
+          <Row icon={Globe} title={t('set.lang', 'Language')} desc={t('set.lang.d', 'Interface language.')}>
+            <Select value={lang} onChange={(e) => setLang(e.target.value)} className="!w-auto"><option value="en">English</option><option value="fr">Français</option></Select>
+          </Row>
+          <Row icon={Eye} title={t('set.glass', 'Translucent surfaces')} desc={t('set.glass.d', 'Frosted-glass cards & dialogs instead of solid ones.')}>
+            <Switch on={glass.on} onChange={(v) => applyGlass({ ...glass, on: v })} />
+          </Row>
+          {glass.on && (
+            <div className="flex items-center gap-3 py-3 ps-12">
+              <span className="text-xs text-[var(--muted)] shrink-0">{t('set.glass.opacity', 'Opacity')}</span>
+              <input type="range" min="40" max="100" step="5" value={glass.pct} onChange={(e) => applyGlass({ ...glass, pct: Number(e.target.value) })} className="flex-1 accent-[var(--primary)]" />
+              <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
+            </div>
+          )}
+        </Group>
 
-        <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
-          <Switch on={orbTransition} onChange={setOrbTr} />
-        </Row>
-        {/* Three states, not a switch. A switch could only say on/off, and "off" was
-            being reported for two very different reasons — you turned it off, or your
-            system asks for reduced motion. The second one used to be unoverridable and
-            still displayed as ON, so the setting lied. Now Automatic is the default and
-            says out loud when the OS is the one holding it back. */}
-        <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')}
-          desc={fx === 'auto' && prefersReducedMotion()
-            ? t('set.fx.reduced', 'Your system asks for reduced motion, so Automatic keeps these off. Choose On if you want them anyway.')
-            : t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
-          <Select className="!w-auto" value={fx} onChange={(e) => setFx(e.target.value)}>
-            <option value="auto">{t('set.fx.auto', 'Automatic')}</option>
-            <option value="on">{t('set.fx.on', 'On')}</option>
-            <option value="off">{t('set.fx.off', 'Off')}</option>
-          </Select>
-        </Row>
-        <Row icon={Eye} title={t('set.glass', 'Translucent surfaces')} desc={t('set.glass.d', 'Frosted-glass cards & dialogs instead of solid ones.')}>
-          <Switch on={glass.on} onChange={(v) => applyGlass({ ...glass, on: v })} />
-        </Row>
-        {glass.on && (
-          <div className="flex items-center gap-3 py-3 ps-12">
-            <span className="text-xs text-[var(--muted)] shrink-0">{t('set.glass.opacity', 'Opacity')}</span>
-            <input type="range" min="40" max="100" step="5" value={glass.pct} onChange={(e) => applyGlass({ ...glass, pct: Number(e.target.value) })} className="flex-1 accent-[var(--primary)]" />
-            <span className="text-xs font-medium tabular-nums w-10 text-end">{glass.pct}%</span>
+        <Group icon={Orbit} title={t('set.motion', 'Motion & effects')}>
+          <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
+            <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
+          </Row>
+          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
+            <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
+          </Row>
+          <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
+            <Switch on={orbTransition} onChange={setOrbTr} />
+          </Row>
+          {/* Three states, not a switch — see the note that used to live here: "off" meant
+              either you turned it off or your OS asks for reduced motion, so a switch lied.
+              Automatic is the default and says when the OS is the one holding it back. */}
+          <Row icon={Sparkles} title={t('set.fx', 'Event fireworks')}
+            desc={fx === 'auto' && prefersReducedMotion()
+              ? t('set.fx.reduced', 'Your system asks for reduced motion, so Automatic keeps these off. Choose On if you want them anyway.')
+              : t('set.fx.d', 'Full-screen fireworks during a live event (New Year, national days…). The announcement badge still shows.')}>
+            <Select className="!w-auto" value={fx} onChange={(e) => setFx(e.target.value)}>
+              <option value="auto">{t('set.fx.auto', 'Automatic')}</option>
+              <option value="on">{t('set.fx.on', 'On')}</option>
+              <option value="off">{t('set.fx.off', 'Off')}</option>
+            </Select>
+          </Row>
+        </Group>
+
+        <Group icon={Undo2} title={t('set.behaviour', 'Actions')}>
+          <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
+            <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
+          </Row>
+          <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile — and with 2FA on, getting back in is not one click.')}>
+            <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
+          </Row>
+          <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
+            desc={t('set.forceconfirm.d', 'Holding Shift while clicking normally answers a confirmation without showing it — clearing a queue is one decision, not forty. Turn this on to make every confirmation unskippable, which is what you want on a shared or supervised machine. It never applies to the prompts that ask you to type something.')}>
+            <Switch on={forceConfirm} onChange={(v) => { setForceConfirmState(v); setForceConfirm(v); }} />
+          </Row>
+        </Group>
+
+        <Group icon={Cookie} title={t('set.privacy', 'Cookies & privacy')}>
+          <Row icon={Cookie} title={t('set.cookies', 'Analytics cookies')} desc={t('set.cookies.d', 'Essential keeps you signed in; All also enables privacy-friendly, first-party page analytics.')}>
+            <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
+          </Row>
+          <div className="pt-3 text-xs text-[var(--muted)]">
+            {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
           </div>
-        )}
-      </Card>
-
-      <Card className="p-4 sm:p-5 mb-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><Undo2 size={13} /> {t('set.behaviour', 'Actions')}</div>
-        <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
-          <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
-        </Row>
-        <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile — and with 2FA on, getting back in is not one click.')}>
-          <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
-        </Row>
-        <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
-          desc={t('set.forceconfirm.d', 'Holding Shift while clicking normally answers a confirmation without showing it — clearing a queue is one decision, not forty. Turn this on to make every confirmation unskippable, which is what you want on a shared or supervised machine. It never applies to the prompts that ask you to type something.')}>
-          <Switch on={forceConfirm} onChange={(v) => { setForceConfirmState(v); setForceConfirm(v); }} />
-        </Row>
-      </Card>
-
-      <Card className="p-4 sm:p-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1.5"><Cookie size={13} /> {t('set.privacy', 'Cookies & privacy')}</div>
-        <Row icon={Cookie} title={t('set.cookies', 'Analytics cookies')} desc={t('set.cookies.d', 'Essential keeps you signed in; All also enables privacy-friendly, first-party page analytics.')}>
-          <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
-        </Row>
-        <div className="pt-3 text-xs text-[var(--muted)]">
-          {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
-        </div>
-      </Card>
+        </Group>
+      </div>
     </div>
   );
 }

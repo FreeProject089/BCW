@@ -1183,7 +1183,7 @@ const DICT = {
     'docs.search.none': 'Aucun résultat pour', 'docs.search.hint': 'Recherche les titres et sections dans la documentation.',
     'docs.kb.nav': 'naviguer', 'docs.kb.open': 'ouvrir', 'docs.kb.close': 'fermer',
     'set.title': 'Paramètres', 'set.sub': 'Tes préférences — enregistrées sur ce navigateur uniquement.',
-    'set.appearance': 'Apparence', 'set.theme': 'Thème', 'set.theme.d': 'Clair ou sombre — appliqué instantanément.',
+    'set.appearance': 'Apparence', 'set.motion': 'Mouvement & effets', 'set.theme': 'Thème', 'set.theme.d': 'Clair ou sombre — appliqué instantanément.',
     'set.light': 'Clair', 'set.dark': 'Sombre',
     'set.lang': 'Langue', 'set.lang.d': "Langue de l'interface.",
     'set.intro': "Animation d'intro", 'set.intro.d': "Jouer l'intro de l'orbe à chaque chargement de page.",
