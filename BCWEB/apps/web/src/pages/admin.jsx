@@ -18762,6 +18762,7 @@ function LocaleStringEditor({ locale, core, onClose }) {
 function CharityAdminCard() {
   const { t } = useI18n();
   const toast = useToast();
+  const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/charity'), []);
   const [cfg, setCfg] = useState(null);
   const [pot, setPot] = useState(null);
@@ -18779,9 +18780,16 @@ function CharityAdminCard() {
   const savePot = async () => {
     setBusy(true);
     try {
-      const r = await api.put('/admin/charity/pot', { pollId: pot.pollId || null, association: pot.association, status: pot.status });
+      const r = await api.put('/admin/charity/pot', { pollId: pot.pollId || null, association: pot.association, status: pot.status, proofUrl: pot.proofUrl, proofNote: pot.proofNote });
       setPot(r.pot); toast.success(t('chc.saved', 'Saved.'));
     } catch (e) { toast.error(e?.data?.error === 'poll_not_found' ? t('chc.pollnotfound', 'Poll not found.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const closeMonth = async () => {
+    if (!await dialog.confirm({ title: t('chc.close.t', 'Freeze this month’s share?'), message: t('chc.close.m', 'This computes BetterCommunity’s contribution from the current revenue and freezes it, so a later change never rewrites it. You can still record the proof and mark it paid afterwards.'), confirmLabel: t('chc.close.ok', 'Freeze share') })) return;
+    setBusy(true);
+    try { const r = await api.post('/admin/charity/close', {}); setPot(r.pot); toast.success(t('chc.frozen', 'Share frozen.')); reload(); }
+    catch (e) { toast.error(e?.data?.error === 'already_paid' ? t('chc.paidalready', 'This month is already paid.') : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   const pv = data.preview || {};
@@ -18817,7 +18825,16 @@ function CharityAdminCard() {
               { value: 'paid', label: t('chc.status.paid', 'Paid') },
             ]} /></Field>
           </div>
-          <div className="flex justify-end mt-3"><Button variant="primary" loading={busy} onClick={savePot}><Save size={15} /> {t('chc.savepot', 'Save pot')}</Button></div>
+          {/* Month-end: freeze the share, then record the manual donation's proof. */}
+          <div className="grid gap-2 sm:grid-cols-2 mt-2">
+            <Field label={t('chc.proofurl', 'Proof link (receipt / transfer)')}><Input placeholder="https://…" value={pot.proofUrl} onChange={(e) => setPot((x) => ({ ...x, proofUrl: e.target.value }))} /></Field>
+            <Field label={t('chc.proofnote', 'Proof note (internal)')}><Input value={pot.proofNote} onChange={(e) => setPot((x) => ({ ...x, proofNote: e.target.value }))} /></Field>
+          </div>
+          {pot.paidAt && <div className="text-xs text-[var(--faint)] mt-2">{t('chc.paidon', 'Marked paid on {d}').replace('{d}', new Date(pot.paidAt).toLocaleDateString())}</div>}
+          <div className="flex flex-wrap justify-end gap-2 mt-3">
+            <Button variant="ghost" loading={busy} onClick={closeMonth} disabled={pot.status === 'paid'}><Lock size={15} /> {t('chc.close.ok', 'Freeze share')}</Button>
+            <Button variant="primary" loading={busy} onClick={savePot}><Save size={15} /> {t('chc.savepot', 'Save pot')}</Button>
+          </div>
         </div>
       )}
     </Card>

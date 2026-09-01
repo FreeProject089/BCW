@@ -40,6 +40,16 @@ async function loadConfig(p) {
   return normalizeCharityConfig(row?.value);
 }
 
+// The admin-facing shape of a pot row (with its contributions included for the totals).
+function potView(pot) {
+  return {
+    month: pot.month, pollId: pot.pollId || '', association: pot.association || '',
+    status: pot.status, proofUrl: pot.proofUrl || '', proofNote: pot.proofNote || '',
+    paidAt: pot.paidAt ? pot.paidAt.toISOString() : null,
+    ...potTotalCents(pot),
+  };
+}
+
 export default async function charityRoutes(app) {
   // Public: the current month's pot — BetterCommunity's frozen share + the community's gifts,
   // summed, plus the configured percent/association. Read by the landing widget (Phase 3) and
@@ -64,6 +74,10 @@ export default async function charityRoutes(app) {
       enabled: true, month, currency: config.currency, percent: config.percent,
       // The month's own association wins over the config default once an admin has set it.
       association: pot?.association || config.association || '', status: pot?.status || 'open',
+      // When the month is paid, the proof link + date travel so the page can show the completed
+      // donation. proofNote is admin-facing only and stays out of the public shape.
+      proofUrl: pot?.status === 'paid' ? (pot.proofUrl || '') : '',
+      paidAt: pot?.paidAt ? pot.paidAt.toISOString() : null,
       poll, presets: CONTRIBUTION_PRESETS_CENTS, ...totals,
     };
   });
@@ -111,10 +125,8 @@ export default async function charityRoutes(app) {
       p.charityPot.findUnique({ where: { month }, include: { contributions: { select: { amountCents: true } } } }),
     ]);
     const preview = computeOrgShare({ mrrCents: mrr, monthlyBurnCents: burn, percent: config.percent });
-    const pot = potRow ? {
-      month, pollId: potRow.pollId || '', association: potRow.association || '', status: potRow.status,
-      proofUrl: potRow.proofUrl || '', ...potTotalCents(potRow),
-    } : { month, pollId: '', association: '', status: 'open', proofUrl: '', orgContribCents: 0, communityCents: 0, totalCents: 0 };
+    const pot = potRow ? potView(potRow)
+      : { month, pollId: '', association: '', status: 'open', proofUrl: '', proofNote: '', paidAt: null, orgContribCents: 0, communityCents: 0, totalCents: 0 };
     return { config, preview, maxPct: CHARITY_MAX_PCT, pot };
   });
 
@@ -125,6 +137,8 @@ export default async function charityRoutes(app) {
       pollId: z.string().max(64).nullable().optional(),
       association: z.string().max(200).optional(),
       status: z.enum(['open', 'closing', 'paid']).optional(),
+      proofUrl: z.string().max(2000).optional(),
+      proofNote: z.string().max(2000).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'bad_request' });
     const p = await db();
@@ -139,6 +153,11 @@ export default async function charityRoutes(app) {
     if (body.data.pollId !== undefined) data.pollId = body.data.pollId || null;
     if (body.data.association !== undefined) data.association = body.data.association;
     if (body.data.status !== undefined) data.status = body.data.status;
+    if (body.data.proofUrl !== undefined) data.proofUrl = body.data.proofUrl;
+    if (body.data.proofNote !== undefined) data.proofNote = body.data.proofNote;
+    // Marking a pot paid stamps when — the public page and any later audit want the date the
+    // donation actually went out, not the row's mtime.
+    if (data.status === 'paid') data.paidAt = new Date();
     const pot = await p.charityPot.upsert({
       where: { month },
       update: data,
@@ -146,9 +165,31 @@ export default async function charityRoutes(app) {
       include: { contributions: { select: { amountCents: true } } },
     });
     await logAudit(p, req.user.uid, 'charity.pot',
-      `${month}${data.pollId !== undefined ? ` poll=${data.pollId || 'none'}` : ''}${data.association !== undefined ? ` association=${data.association}` : ''}${data.status ? ` status=${data.status}` : ''}`,
+      `${month}${data.pollId !== undefined ? ` poll=${data.pollId || 'none'}` : ''}${data.association !== undefined ? ` association=${data.association}` : ''}${data.status ? ` status=${data.status}` : ''}${data.proofUrl !== undefined ? ' proof' : ''}`,
       clientIp(req)).catch(() => {});
-    return { pot: { month, pollId: pot.pollId || '', association: pot.association || '', status: pot.status, proofUrl: pot.proofUrl || '', ...potTotalCents(pot) } };
+    return { pot: potView(pot) };
+  });
+
+  // Admin: FREEZE this month's BetterCommunity share. Computes org-share from the live
+  // mrr − monthlyBurn once and writes it onto the pot, then moves the pot to 'closing'. Frozen so
+  // a later revenue swing never rewrites a promise already shown to the community. Refused once a
+  // pot is 'paid' — the donation is out, the number is history.
+  app.post('/admin/charity/close', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const month = monthKey(new Date());
+    const existing = await p.charityPot.findUnique({ where: { month } });
+    if (existing?.status === 'paid') return reply.code(409).send({ error: 'already_paid' });
+    const config = await loadConfig(p);
+    const [mrr, burn] = await Promise.all([recurringMrrCents(p), monthlyBurnCents(p)]);
+    const share = computeOrgShare({ mrrCents: mrr, monthlyBurnCents: burn, percent: config.percent });
+    const pot = await p.charityPot.upsert({
+      where: { month },
+      update: { orgContribCents: share.orgShareCents, status: 'closing' },
+      create: { month, currency: config.currency, orgContribCents: share.orgShareCents, status: 'closing' },
+      include: { contributions: { select: { amountCents: true } } },
+    });
+    await logAudit(p, req.user.uid, 'charity.close', `${month} orgShare=${share.orgShareCents} (${share.percent}% of ${share.eligibleCents})`, clientIp(req)).catch(() => {});
+    return { pot: potView(pot), frozen: share };
   });
 
   // Admin: update the config. Percent is clamped server-side to [0, 50] regardless of input,

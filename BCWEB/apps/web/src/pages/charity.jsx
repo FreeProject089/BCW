@@ -11,7 +11,7 @@
 // off — so every piece here renders nothing at all until an admin turns it on.
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Vote, Info, ArrowRight } from 'lucide-react';
+import { Heart, Vote, Info, ArrowRight, Check } from 'lucide-react';
 import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -104,6 +104,13 @@ function PotSummary({ pot, t }) {
         </div>
       )}
       {pot.percent > 0 && <div className="text-xs text-[var(--faint)] mt-1">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', pot.percent)}</div>}
+      {pot.status === 'paid' && (
+        <div className="mt-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] flex items-center justify-center gap-2 flex-wrap">
+          <Check size={15} className="text-[var(--primary-2)] shrink-0" />
+          <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
+          {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--primary-2)]">{t('ch.proof', 'View proof')}</a>}
+        </div>
+      )}
     </>
   );
 }
