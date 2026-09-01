@@ -17629,7 +17629,7 @@ function AdminBadgeHolders({ badge, onClose }) {
 }
 
 const REPORT_STATUS_TONE = { open: 'green', archived: 'amber', closed: '' };
-const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare };
+const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare, showcase_request: Sparkles };
 
 // User dashboard: the reports / support threads this user opened, GitHub-PR style.
 // Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
@@ -17821,7 +17821,7 @@ function AdminReports() {
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
             <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason || r.targetType}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason === 'showcase_submission' ? t('mr.submission', 'Project submission') : (r.reason || r.targetType)}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
             </div>
           </Card></button>

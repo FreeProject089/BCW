@@ -2365,7 +2365,7 @@ const DICT = {
     'rp.self': 'Tu ne peux pas te signaler toi-même.', 'rp.note': 'Les signalements vont à l’équipe de modération. Suis la conversation dans Tableau de bord → Signalements.',
     'rp.staff': 'Équipe', 'rp.you': 'Toi',
     'mr.title': 'Signalements & contact', 'mr.sub': 'Tes signalements et conversations de support. Les réponses de l’équipe apparaissent ici.',
-    'mr.general': 'Demande de support', 'mr.new': 'nouvelle réponse', 'mr.on': 'sur {t}', 'mr.msgs': 'messages',
+    'mr.general': 'Demande de support', 'mr.new': 'nouvelle réponse', 'mr.on': 'sur {t}', 'mr.msgs': 'messages', 'mr.submission': 'Soumission de projet',
     'mr.none.t': 'Aucun signalement', 'mr.none.s': 'Utilise le bouton Signaler sur un profil, repo ou catalogue — ou la page Contact.',
     'mr.closed': 'Ce signalement est fermé.', 'mr.closednote': 'Ce signalement est fermé — rouvre-le ci-dessus si tu as encore besoin d’aide.',
     'mr.close': 'Fermer mon signalement', 'mr.reopen': 'Rouvrir mon signalement',
