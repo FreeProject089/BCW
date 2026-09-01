@@ -137,6 +137,32 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
+      // A Community Charity gift (B14). Credit the month's pot with the paid amount — get-or-
+      // create the pot, then record the contribution keyed on the SESSION id so a retried
+      // webhook credits it exactly once (the unique index turns a double-fire into a no-op).
+      // A gift is kept as a separate stream from BetterCommunity's own share; both sum in the pot.
+      if (meta.type === 'charity' && meta.month) {
+        const month = meta.month;
+        const amountCents = s.amount_total ?? (Number(meta.amountCents) || 0);
+        if (amountCents > 0) {
+          const pot = await p.charityPot.upsert({
+            where: { month }, update: {}, create: { month, currency: s.currency || 'chf' },
+          });
+          try {
+            await p.charityContribution.create({ data: {
+              potId: pot.id, userId: meta.userId || null, amountCents,
+              currency: s.currency || pot.currency, source: 'stripe', sessionId: s.id,
+            } });
+            if (meta.userId) await notify(p, meta.userId, 'account', `Thank you — your ${(amountCents / 100).toFixed(2)} ${(s.currency || pot.currency).toUpperCase()} gift was added to this month's community charity pot.`).catch(() => {});
+          } catch (e) {
+            // Unique-violation on sessionId = the webhook already credited this session. Anything
+            // else is a real error worth surfacing to Stripe for a retry.
+            if (e?.code !== 'P2002') throw e;
+          }
+        }
+        return { received: true };
+      }
+
       // Paid catalog-file hosting: clear the unpaid flag, queue for moderation, record.
       // This is a real RECURRING Stripe subscription (billed monthly by file size) —
       // stash its id so `customer.subscription.deleted` can find and unpublish the

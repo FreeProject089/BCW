@@ -3493,6 +3493,8 @@ model CharityContribution {
   amountCents Int
   currency    String     @default("chf")
   paymentId   String? // the Payment row the rail wrote, when applicable
+  // The Stripe checkout session id, so a retried webhook credits the pot exactly once.
+  sessionId   String?    @unique
   source      String     @default("stripe") // stripe | kofi
   createdAt   DateTime   @default(now())
 

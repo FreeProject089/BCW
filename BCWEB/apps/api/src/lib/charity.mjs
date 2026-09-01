@@ -60,3 +60,29 @@ export function normalizeCharityConfig(v) {
 export function monthKey(now) {
   return now.toISOString().slice(0, 7);
 }
+
+// "Augmenter la cagnotte" preset amounts from the spec (§24), in cents: 5 / 10 / 25 / 50.
+export const CONTRIBUTION_PRESETS_CENTS = [500, 1000, 2500, 5000];
+// A gift must be at least 1 unit and is capped to keep a typo (or an abuse) from a runaway
+// charge; well above any preset. Both in cents.
+export const CONTRIBUTION_MIN_CENTS = 100;
+export const CONTRIBUTION_MAX_CENTS = 1000000; // 10,000
+
+/**
+ * Validate a contribution amount (cents). Returns { ok, amountCents } or { ok:false, error }.
+ * Integer cents only — a fractional cent is a client bug, not a smaller gift.
+ */
+export function validateContribution(amountCents) {
+  const n = Number(amountCents);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return { ok: false, error: 'bad_amount' };
+  if (n < CONTRIBUTION_MIN_CENTS) return { ok: false, error: 'too_small' };
+  if (n > CONTRIBUTION_MAX_CENTS) return { ok: false, error: 'too_large' };
+  return { ok: true, amountCents: n };
+}
+
+/** Sum a pot's total = BetterCommunity's frozen share + every community gift. Pure. */
+export function potTotalCents(pot) {
+  const org = Math.max(0, Math.round(pot?.orgContribCents || 0));
+  const gifts = (pot?.contributions || []).reduce((n, c) => n + Math.max(0, Math.round(c.amountCents || 0)), 0);
+  return { orgContribCents: org, communityCents: gifts, totalCents: org + gifts };
+}

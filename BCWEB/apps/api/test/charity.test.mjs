@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   computeOrgShare, clampCharityPct, normalizeCharityConfig,
-  CHARITY_MAX_PCT, monthKey,
+  CHARITY_MAX_PCT, monthKey, validateContribution, potTotalCents,
+  CONTRIBUTION_MIN_CENTS, CONTRIBUTION_MAX_CENTS,
 } from '../src/lib/charity.mjs';
 
 test('org-share is a percentage of net recurring revenue', () => {
@@ -51,4 +52,20 @@ test('config normalises to the current shape and clamps', () => {
 test('monthKey is UTC YYYY-MM', () => {
   assert.equal(monthKey(new Date('2026-09-01T00:00:00Z')), '2026-09');
   assert.equal(monthKey(new Date('2026-12-31T23:59:59Z')), '2026-12');
+});
+
+test('contribution amounts are validated (integer cents within bounds)', () => {
+  assert.equal(validateContribution(500).ok, true);
+  assert.equal(validateContribution(CONTRIBUTION_MIN_CENTS).ok, true);
+  assert.equal(validateContribution(CONTRIBUTION_MIN_CENTS - 1).error, 'too_small');
+  assert.equal(validateContribution(CONTRIBUTION_MAX_CENTS + 1).error, 'too_large');
+  assert.equal(validateContribution(12.5).error, 'bad_amount');
+  assert.equal(validateContribution('abc').error, 'bad_amount');
+});
+
+test('pot total = frozen org share + every community gift', () => {
+  const r = potTotalCents({ orgContribCents: 600, contributions: [{ amountCents: 500 }, { amountCents: 250 }] });
+  assert.deepEqual(r, { orgContribCents: 600, communityCents: 750, totalCents: 1350 });
+  // an empty pot is all zeros, never NaN
+  assert.deepEqual(potTotalCents({}), { orgContribCents: 0, communityCents: 0, totalCents: 0 });
 });

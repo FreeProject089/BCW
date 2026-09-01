@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { db, requireRole, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
+import { stripe } from './hosting.mjs';
 import {
   CHARITY_CONFIG_KEY, CHARITY_DEFAULTS, CHARITY_MAX_PCT,
   normalizeCharityConfig, computeOrgShare, clampCharityPct,
+  validateContribution, potTotalCents, monthKey, CONTRIBUTION_PRESETS_CENTS,
 } from '../lib/charity.mjs';
 
 // B14 Community Charity — Phase 1: admin config + the org-share preview. No money moves here;
@@ -39,6 +41,56 @@ async function loadConfig(p) {
 }
 
 export default async function charityRoutes(app) {
+  // Public: the current month's pot — BetterCommunity's frozen share + the community's gifts,
+  // summed, plus the configured percent/association. Read by the landing widget (Phase 3) and
+  // the contribute modal. Returns zeros (not an error) before any pot exists this month.
+  app.get('/charity/current', async (req, reply) => {
+    const p = await db();
+    const config = await loadConfig(p);
+    reply.header('Cache-Control', 'public, max-age=30');
+    if (!config.enabled) return { enabled: false };
+    const month = monthKey(new Date());
+    const pot = await p.charityPot.findUnique({ where: { month }, include: { contributions: { select: { amountCents: true } } } });
+    const totals = potTotalCents(pot || {});
+    return {
+      enabled: true, month, currency: config.currency, percent: config.percent,
+      association: config.association || '', status: pot?.status || 'open',
+      presets: CONTRIBUTION_PRESETS_CENTS, ...totals,
+    };
+  });
+
+  // Public (auth optional — an anonymous gift is allowed): start a contribution checkout. The
+  // pot itself is created/credited in the webhook AFTER payment, so an abandoned checkout leaves
+  // nothing behind. No money moves here — this only opens Stripe's hosted payment page.
+  app.post('/charity/contribute', { preHandler: optionalAuth() }, async (req, reply) => {
+    const body = z.object({ amountCents: z.number() }).safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'bad_request' });
+    const v = validateContribution(body.data.amountCents);
+    if (!v.ok) return reply.code(400).send({ error: v.error });
+
+    const p = await db();
+    const config = await loadConfig(p);
+    if (!config.enabled) return reply.code(403).send({ error: 'charity_disabled' });
+
+    const sk = await stripe({ forPurchase: true });
+    if (!sk) return reply.code(503).send({ error: 'stripe_not_configured' });
+
+    const siteUrl = process.env.SITE_URL || 'http://localhost';
+    const month = monthKey(new Date());
+    const session = await sk.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{ quantity: 1, price_data: {
+        currency: config.currency,
+        unit_amount: v.amountCents,
+        product_data: { name: `Community Charity — ${month}` },
+      } }],
+      metadata: { type: 'charity', month, amountCents: String(v.amountCents), userId: req.user?.uid || '' },
+      success_url: `${siteUrl}/?charity=thanks`,
+      cancel_url: `${siteUrl}/?charity=cancel`,
+    });
+    return { url: session.url };
+  });
+
   // Admin: read the config + a live org-share preview computed from mrr − monthlyBurn.
   app.get('/admin/charity', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
