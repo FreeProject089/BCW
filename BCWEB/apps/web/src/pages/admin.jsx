@@ -16248,6 +16248,43 @@ function TelemetryConfigCard() {
   );
 }
 
+// Discord bot member-storage cap. It lives INSIDE the `bot.config` JSON blob
+// (edited via /admin/bot/config), not as a flat AdminSetting — so it cannot be a
+// SETTINGS_GROUPS key: the settings save handler would write a top-level
+// `limits.storageMB` row the bot never reads (the silent-no-op trap). It is surfaced
+// HERE, on Hosting settings, so that screen is the single place every service cap is
+// shown and editable; the PER-SERVER split of this budget stays on Admin → Discord bot.
+// Round-trips the WHOLE config (GET → patch limits.storageMB → PUT) so nothing else in
+// the bot config is clobbered.
+function DiscordStorageCapCard() {
+  const { t } = useI18n();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/config').catch(() => null), []);
+  const [mb, setMb] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.config) setMb(Number(data.config.limits?.storageMB) || 0); }, [data]);
+  const undoSave = useUndoableSave(reload);
+  // No card at all when the bot config is unreachable — a dead editor here would read as
+  // "the Discord cap is broken" when it just isn't configured on this install.
+  if (loading || !data?.config || mb == null) return null;
+  const save = () => {
+    setBusy(true);
+    const config = { ...data.config, limits: { ...(data.config.limits || {}), storageMB: Math.round(mb) } };
+    undoSave(() => api.put('/admin/bot/config', { config }),
+      t('hs.dcap.saved', 'Saved to the Discord bot.'),
+      { onSettled: () => setBusy(false), errorFor: () => t('hs.dcap.fail', 'Save failed.') });
+  };
+  return (
+    <Card className="p-4 mb-3">
+      <div className="text-sm font-medium flex items-center gap-2 mb-1"><MessageSquare size={15} className="text-info" /> {t('hs.dcap.title', 'Discord bot member storage')}</div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('hs.dcap.sub', 'Total size the Discord bot may use for member activity + moderation logs across every server; oldest inactive members are pruned once over. Each server’s slice of this budget is allocated on the Discord bot page.')}</p>
+      <div className="flex items-end gap-2 max-w-md">
+        <div className="flex-1"><Field label={t('hs.dcap.f', 'Member DB cap')}><ByteSize value={(mb || 0) * (1024 ** 2)} onChange={(bytes) => setMb(bytes / (1024 ** 2))} /></Field></div>
+        <Button size="sm" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('hs.save', 'Save')}</Button>
+      </div>
+    </Card>
+  );
+}
+
 // Icon names an admin may attach to a nav item — must mirror NAV_ICONS in App.jsx
 // (an unknown name harmlessly falls back to the Boxes icon at render time).
 const NAV_ICON_CHOICES = ['Boxes', 'Music2', 'Newspaper', 'Server', 'Rocket', 'Shield', 'Download', 'Sparkles', 'Mail', 'Home', 'BookOpen', 'LayoutGrid', 'Info', 'Bell', 'Code'];
@@ -19114,6 +19151,9 @@ function AdminSettings() {
         </Card>
       )}
       <TempStorageManager open={tempOpen} onClose={() => setTempOpen(false)} onChange={() => cap.reload?.()} />
+      {/* Discord bot member-storage cap — same screen as every other service cap, even
+          though it lives in the bot.config blob rather than a flat AdminSetting. */}
+      <DiscordStorageCapCard />
       <div className="space-y-5">
         {SETTINGS_GROUPS.map((g) => (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
