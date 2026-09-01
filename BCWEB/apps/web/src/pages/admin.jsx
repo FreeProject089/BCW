@@ -8525,6 +8525,17 @@ function ShowcaseQueue() {
                 {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--primary-2)] underline break-all">{r.url}</a>}
                 {r.description && <p className="text-xs text-[var(--muted)] mt-1.5 whitespace-pre-wrap">{r.description}</p>}
                 {r.pitch && <p className="text-xs mt-1.5 whitespace-pre-wrap"><b>{t('sq.why', 'Why:')}</b> {r.pitch}</p>}
+                {/* Declarations + evidence the reviewer needs: source & licence, whether the
+                    applicant is the owner, the private proof download (closed-source), and the
+                    contact thread. Proof streams from a guarded route — staff-only, attachment. */}
+                <div className="flex items-center gap-2 flex-wrap mt-2 text-[11px]">
+                  <Badge tone={r.isOpenSource ? 'green' : 'amber'}>{r.isOpenSource ? t('sq.open', 'open source') : t('sq.closed', 'closed source')}</Badge>
+                  {r.isOpenSource && r.license && <span className="text-[var(--muted)]">{t('sq.lic', 'licence:')} <b>{r.license}</b></span>}
+                  <Badge tone="blue">{r.ownership === 'owner' ? t('sq.owner', 'rights-holder') : t('sq.fan', 'fan (not owner)')}</Badge>
+                  {r.hasProof && <a href={`/api/showcase-requests/${r.id}/proof`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] underline">{t('sq.proof', 'Download proof')}{r.proofName ? ` (${r.proofName})` : ''}</a>}
+                  {r.contactReportId && <Link to="/admin?s=reports" className="text-[var(--primary-2)] underline">{t('sq.thread', 'Contact thread')}</Link>}
+                  {!r.isOpenSource && !r.hasProof && <span className="text-warning">{t('sq.noproof', 'closed-source but no proof — do not approve')}</span>}
+                </div>
                 {r.status === 'pending' ? (
                   <div className="flex items-center gap-2 flex-wrap mt-2.5">
                     <Input className="!text-xs flex-1 !min-w-[180px]" value={note[r.id] || ''}
