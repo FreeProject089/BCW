@@ -313,6 +313,7 @@ export default function ProjectPage() {
     // project page share so the rule cannot drift between them.
     stackTabEnabled(c.stack) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
     data.showBlogTab && ['blog', t('proj.blog'), Newspaper],
+    (c.releaseNotes || c.links?.github) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
   const tab = pickTab(wantTab, tabs);
@@ -367,6 +368,7 @@ export default function ProjectPage() {
       </div>
 
       {tab === 'overview' && <Overview c={c} pkey={key} />}
+      {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={contribUrlOf(c) ? `/projects/${key}/community` : null} />}
       {tab === 'stack' && (
@@ -450,6 +452,116 @@ function AppPreview({ pkey, replayUrl }) {
 // `:::roadmap` Markdown block). Re-exported so existing importers (e.g.
 // project-config-editor.jsx) keep resolving it from here.
 export { ProgressTracker };
+
+// Git-linked activity (B13): a commit heatmap, span stats, contributors and release markers,
+// from GET /projects/:key/activity. Shared by the official and showcase project pages.
+//
+// The heatmap is a magnitude field, so it uses ONE hue light→dark (var(--primary) mixed with
+// transparent) with a neutral empty cell and a Less→More legend — never a rainbow.
+function heatColor(count) {
+  if (!count) return 'var(--surface-2)';
+  const pctMix = count >= 12 ? 100 : count >= 7 ? 75 : count >= 3 ? 50 : 28;
+  return `color-mix(in srgb, var(--primary) ${pctMix}%, transparent)`;
+}
+
+function ProjectActivity({ endpoint }) {
+  const { t } = useI18n();
+  const [messages, setMessages] = useState(false);
+  const { data, loading, err } = useFetch(() => api.get(`${endpoint}${messages ? '?messages=1' : ''}`), [endpoint, messages]);
+  if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
+  if (err) return <EmptyState icon={CalendarDays} title={t('act.err', 'Could not load activity')} sub={t('act.err.d', 'The repository may be private, or GitHub is rate-limiting reads right now.')} />;
+  const a = data || {};
+  if (a.computing) return <EmptyState icon={CalendarDays} title={t('act.computing', 'Preparing activity…')} sub={t('act.computing.d', 'GitHub is building this repository’s statistics — open this tab again in a moment.')} />;
+
+  const weeks = [];
+  for (let i = 0; i < (a.heatmap || []).length; i += 7) weeks.push(a.heatmap.slice(i, i + 7));
+  const maxContrib = Math.max(1, ...(a.contributors || []).map((c) => c.commits));
+  const spanValue = a.spanYears >= 1 ? `${a.spanYears} y` : `${a.spanMonths} mo`;
+
+  const Stat = ({ value, label, sub }) => (
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
+      <div className="text-2xl font-extrabold tabular-nums">{value}</div>
+      <div className="text-xs text-[var(--muted)] mt-0.5">{label}</div>
+      {sub ? <div className="text-[11px] text-[var(--faint)] mt-0.5 truncate">{sub}</div> : null}
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Stat value={a.totalCommits ?? 0} label={t('act.commits', 'Commits')} />
+        <Stat value={a.activeDays ?? 0} label={t('act.activedays', 'Active days')} sub={t('act.lastyear', 'last 12 months')} />
+        <Stat value={spanValue} label={t('act.span', 'Worked over')} sub={a.firstCommit && a.lastCommit ? `${a.firstCommit} → ${a.lastCommit}` : ''} />
+        <Stat value={(a.contributors || []).length} label={t('act.contributors', 'Contributors')} />
+      </div>
+
+      {!!weeks.length && (
+        <Card className="p-5 overflow-x-auto">
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="text-sm font-semibold">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span></div>
+            <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
+              {t('act.less', 'Less')}
+              {[0, 2, 4, 8, 13].map((n) => <span key={n} className="w-3 h-3 rounded-sm border border-[var(--line)]" style={{ backgroundColor: heatColor(n) }} />)}
+              {t('act.more', 'More')}
+            </div>
+          </div>
+          <div className="flex gap-[3px]" style={{ minWidth: 'max-content' }}>
+            {weeks.map((wk, wi) => (
+              <div key={wi} className="flex flex-col gap-[3px]">
+                {wk.map((d) => (
+                  <span key={d.date} title={`${d.date}: ${d.count} ${t('act.commitsl', 'commit(s)')}`}
+                    className="w-3 h-3 rounded-sm" style={{ backgroundColor: heatColor(d.count) }} />
+                ))}
+              </div>
+            ))}
+          </div>
+          {a.busiestDay ? <div className="text-[11px] text-[var(--muted)] mt-3">{t('act.busiest', 'Busiest day')}: {a.busiestDay.date} — {a.busiestDay.count} {t('act.commitsl', 'commit(s)')}</div> : null}
+        </Card>
+      )}
+
+      {!!(a.contributors || []).length && (
+        <Card className="p-5">
+          <div className="text-sm font-semibold mb-3">{t('act.contributors', 'Contributors')}</div>
+          <div className="space-y-2">
+            {a.contributors.slice(0, 20).map((c) => (
+              <div key={c.name} className="flex items-center gap-3">
+                <div className="w-32 shrink-0 truncate text-sm">{c.name}</div>
+                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
+                </div>
+                <div className="w-12 text-right text-xs tabular-nums text-[var(--muted)]">{c.commits}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {!!(a.markers || []).length && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="text-sm font-semibold">{t('act.releases', 'Releases')}</div>
+            <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] cursor-pointer select-none">
+              <input type="checkbox" className="accent-[var(--primary)]" checked={messages} onChange={(e) => setMessages(e.target.checked)} />
+              {t('act.shownotes', 'Show release notes')}
+            </label>
+          </div>
+          <div className="space-y-2">
+            {a.markers.slice().reverse().map((m, i) => (
+              <div key={`${m.tag}-${i}`} className="rounded-lg border border-[var(--line)] p-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge tone={m.kind === 'prerelease' ? 'amber' : 'primary'}>{m.tag || m.kind}</Badge>
+                  {m.title ? <span className="text-sm font-medium">{m.title}</span> : null}
+                  <span className="text-[11px] text-[var(--faint)] ml-auto">{m.date}</span>
+                </div>
+                {m.body ? <p className="text-[12px] text-[var(--muted)] mt-2 whitespace-pre-wrap leading-relaxed">{m.body}</p> : null}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
 
 function Overview({ c, pkey, progressUrl }) {
   const { t, lang } = useI18n();

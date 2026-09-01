@@ -1320,6 +1320,13 @@ const DICT = {
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Vérifier', 'auth.2fa.back': 'Retour à la connexion', 'auth.2fa.bad': 'Code invalide.',
 
     'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal', 'proj.countdown': 'Compte à rebours',
+    'proj.activity': 'Activité',
+    'act.err': "Impossible de charger l'activité", 'act.err.d': "Le dépôt est peut-être privé, ou GitHub limite les lectures pour le moment.",
+    'act.computing': "Préparation de l'activité…", 'act.computing.d': "GitHub construit les statistiques de ce dépôt — rouvrez cet onglet dans un instant.",
+    'act.commits': 'Commits', 'act.activedays': 'Jours actifs', 'act.lastyear': '12 derniers mois',
+    'act.span': 'Travaillé sur', 'act.contributors': 'Contributeurs', 'act.heatmap': 'Commits par jour',
+    'act.less': 'Moins', 'act.more': 'Plus', 'act.commitsl': 'commit(s)', 'act.busiest': 'Jour le plus actif',
+    'act.releases': 'Versions', 'act.shownotes': 'Afficher les notes de version',
     'proj.browse': 'Voir le catalogue', 'proj.progress': 'Suivi d’avancement', 'proj.noprogress': 'Pas encore de roadmap',
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore d’articles',
