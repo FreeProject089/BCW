@@ -172,6 +172,28 @@ table { display: block; max-width: 100%; overflow-x: auto; }
 /* Long unbreakable tokens (URLs, ids, sha, emails) wrap instead of overflowing. */
 code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 
+/* ── Right-to-left (B9) ──────────────────────────────────────────────────────
+   `dir` is set on <html> by I18nProvider from the active locale's `rtl` flag. Most of the
+   layout is flexbox with `gap`, which mirrors on its own under RTL, so this handles only what
+   does NOT flip automatically:
+   • Code, machine identifiers and numeric runs stay LEFT-to-right even in an RTL page — a
+     command, a URL, a hash or a price reads the same in every language and looks broken mirrored.
+   • `.rtl-mirror` flips a directional glyph (a back-arrow, a breadcrumb chevron) horizontally.
+     Add it to an icon that points a fixed way; a symmetric icon needs nothing.
+   The per-component sweep (physical margins/padding → logical, `text-left`→`text-start`) is a
+   separate mechanical pass; it is safe because a logical utility renders identically to its
+   physical twin in LTR, so it never changes the left-to-right experience. */
+[dir="rtl"] pre,
+[dir="rtl"] code,
+[dir="rtl"] kbd,
+[dir="rtl"] .tabular-nums,
+[dir="rtl"] .font-mono { direction: ltr; unicode-bidi: isolate; }
+[dir="rtl"] pre, [dir="rtl"] code { text-align: left; }
+[dir="rtl"] .rtl-mirror { transform: scaleX(-1); }
+/* The scroll-reveal slides IN from the orb's side; the orb sits on the opposite side under RTL,
+   so the horizontal offset is negated to keep the motion pointing inward. */
+[dir="rtl"] { --reveal-x: 0px; }
+
 @layer components {
   .gradient-text {
     background: linear-gradient(110deg, var(--primary), var(--primary-2) 70%, #fbbf24);

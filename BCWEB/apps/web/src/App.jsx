@@ -285,11 +285,11 @@ function NavSheetGroup({ item, t, lang, onNavigate }) {
   const children = item.children || [];
   return (
     <div className="col-span-2">
-      <button type="button" onClick={() => setOpen((o) => !o)} className={sheet({ isActive: false }) + ' w-full text-left'} aria-expanded={open}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className={sheet({ isActive: false }) + ' w-full text-start'} aria-expanded={open}>
         <NavIcon item={item} size={16} /><span className="flex-1">{navLabel(item, t, lang)}</span><ChevronDown size={15} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="pl-3 mt-0.5 space-y-0.5 border-l border-[var(--line)] ml-3">
+        <div className="ps-3 mt-0.5 space-y-0.5 border-s border-[var(--line)] ms-3">
           {children.map((c, i) => (
             <NavLink key={c.to + i} to={c.to} className={sheet} onClick={onNavigate}><NavIcon item={c} size={16} />{navLabel(c, t, lang)}</NavLink>
           ))}
@@ -513,7 +513,7 @@ function NavNotifications() {
           <div className="overflow-y-auto flex-1 min-h-0">
           {items.length ? items.slice(0, 30).map((n) => { const m = NOTIF[n.kind] || NOTIF_FALLBACK; return (
             <div key={n.id} className={`group w-full px-3 py-2.5 border-b border-[var(--line)] hover:bg-[var(--surface-2)] flex gap-2.5 items-start ${n.readAt ? '' : 'bg-orange-500/5'}`}>
-              <button onClick={() => openNotif(n)} className={`flex gap-2.5 items-start text-left min-w-0 flex-1 ${NOTIF_LINK[n.kind] ? 'cursor-pointer' : ''}`}>
+              <button onClick={() => openNotif(n)} className={`flex gap-2.5 items-start text-start min-w-0 flex-1 ${NOTIF_LINK[n.kind] ? 'cursor-pointer' : ''}`}>
                 <span className={`grid place-items-center w-7 h-7 rounded-lg shrink-0 mt-0.5 ${m.tint}`}><m.icon size={13} className={m.tone} /></span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
@@ -715,7 +715,7 @@ function Nav() {
     <header className="sticky top-0 z-40 px-2 sm:px-3 pt-2 sm:pt-3">
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
-        <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] mr-1 shrink-0" onClick={() => setOpen(false)}>
+        <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
           <img src="/logo.png" alt="BC" className="w-8 h-8 rounded-xl" />
           <span className="text-[var(--text)] hidden sm:inline">BetterCommunity</span>
         </Link>
@@ -750,7 +750,7 @@ function Nav() {
           {clusterA.map(renderUtil)}
         </div>
         {/* Right cluster B — lg+ account cluster, admin-configurable order/visibility. */}
-        <div className="hidden lg:flex items-center gap-1 shrink-0 pl-1 ml-1 border-l border-[var(--line)]">
+        <div className="hidden lg:flex items-center gap-1 shrink-0 ps-1 ms-1 border-s border-[var(--line)]">
           {clusterB.map(renderUtil)}
         </div>
         {/* below lg: profile/sign-in shortcut + menu (the hamburger sheet already
@@ -782,7 +782,7 @@ function Nav() {
               {uVisible('dashboard') && <NavLink to="/dashboard" className={sheet} onClick={() => setOpen(false)}><LayoutDashboard size={16} />{t("nav.dashboard")}</NavLink>}
               {uVisible('admin') && canAdmin(user) && <NavLink to="/admin" className={sheet} onClick={() => setOpen(false)}><Shield size={16} />{t("nav.admin")}</NavLink>}
               {uVisible('profile') && <NavLink to="/profile" className={sheet} onClick={() => setOpen(false)}><Avatar user={user} size={18} /> Profile</NavLink>}
-              {uVisible('logout') && <button className={sheet({ isActive: false }) + ' text-left'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>}
+              {uVisible('logout') && <button className={sheet({ isActive: false }) + ' text-start'} onClick={() => { logout(); setOpen(false); }}><LogOut size={16} />{t("nav.signout")}</button>}
             </>) : <Link to="/auth" className="col-span-2" onClick={() => setOpen(false)}><Button variant="primary" className="w-full">{t("nav.signin")}</Button></Link>}
           </div>
         </div>
@@ -896,7 +896,7 @@ function FooterCol({ title, links }) {
   return (
     <div className="border-b border-[var(--line)] md:border-0">
       <button type="button" onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-left">
+        className="w-full flex items-center justify-between py-3.5 md:py-0 md:mb-3 md:cursor-default text-start">
         <span className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider">{title}</span>
         <ChevronDown size={15} className={`md:hidden text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
