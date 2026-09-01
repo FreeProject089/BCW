@@ -12877,6 +12877,72 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
 
 // Live bot console logs (shipped in the heartbeat) — the fastest way to see WHY the
 // bot did or didn't do something (e.g. a payment channel not found / no permission).
+// B4 Phase 2: per-server member-storage config. Lists the guilds the bot has seen and lets an
+// admin choose each one's mode and, for `pool`, its byte budget — the UI over the guild CRUD
+// and the per-guild budget Phase 1 enforces server-side.
+function GuildStorageRow({ g, busy, onSave }) {
+  const { t } = useI18n();
+  const MODES = [['none', t('bg.mode.none', 'No storage')], ['moderation', t('bg.mode.mod', 'Moderation (Discord logs)')], ['pool', t('bg.mode.pool', 'Store members')]];
+  const [quota, setQuota] = useState(g.storageQuotaBytes); // local so we PUT on Save, not per keystroke
+  const quotaDirty = quota !== g.storageQuotaBytes;
+  return (
+    <div className="rounded-lg border border-[var(--line)] p-3">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+        <span className="font-medium text-sm">{g.name || g.guildId}</span>
+        <span className="text-[11px] text-[var(--faint)]">{g.memberCount} {t('bg.real', 'members')} · {g.storedMembers} {t('bg.stored', 'stored')}</span>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-3 items-end">
+        <label className="block"><div className="text-[11px] text-[var(--muted)] mb-1">{t('bg.mode', 'Mode')}</div>
+          <Select value={g.memberMode} disabled={busy} onChange={(e) => onSave(g.guildId, { memberMode: e.target.value })}>
+            {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </Select>
+        </label>
+        {g.memberMode === 'pool' && (
+          <div><div className="text-[11px] text-[var(--muted)] mb-1">{t('bg.quota', 'Storage budget (0 = unlimited)')}</div>
+            <div className="flex gap-2 items-center">
+              <ByteSize value={quota} onChange={setQuota} className="flex-1" />
+              <Button size="sm" disabled={busy || !quotaDirty} onClick={() => onSave(g.guildId, { storageQuotaBytes: quota })}>{t('common.save', 'Save')}</Button>
+            </div>
+          </div>
+        )}
+      </div>
+      {g.memberMode === 'pool' && g.capacity && !g.capacity.unlimited && (
+        <div className="mt-2">
+          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${g.capacity.full ? 'bg-error' : g.capacity.near ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${g.capacity.pct}%` }} /></div>
+          <div className="text-[11px] text-[var(--faint)] mt-1">{g.capacity.stored} / {g.capacity.cap} · {g.capacity.remaining} {t('bg.left', 'left')}{g.capacity.full ? ` — ${t('bg.full', 'full; new members are not stored')}` : ''}</div>
+        </div>
+      )}
+      {g.memberMode === 'moderation' && (
+        <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] mt-2 cursor-pointer select-none"><input type="checkbox" checked={g.storeLogs} disabled={busy} onChange={(e) => onSave(g.guildId, { storeLogs: e.target.checked })} /> {t('bg.storelogs', 'Also keep moderation logs in the dashboard (needs a pool)')}</label>
+      )}
+    </div>
+  );
+}
+
+function BotGuildStorageCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/guilds'), []);
+  const [busy, setBusy] = useState('');
+  const guilds = data?.guilds || [];
+  const save = async (guildId, patch) => {
+    setBusy(guildId);
+    try { await api.put(`/admin/bot/guilds/${guildId}`, patch); reload(); }
+    catch (x) { toast.error(x.data?.error === 'log_channel_required' ? t('bg.needlog', 'Set a Discord log channel first for moderation mode.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+  return (
+    <Card className="p-4">
+      <div className="text-sm font-medium flex items-center gap-2 mb-1"><HardDrive size={14} className="text-[var(--primary-2)]" /> {t('bg.title', 'Per-server member storage')}</div>
+      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('bg.sub', 'Each server decides whether the bot stores its members, and how much. New servers store nothing until you turn it on — so the bot joining a huge server costs no storage. A full pool keeps counting the real member count but stops adding rows.')}</p>
+      {loading ? <Spinner /> : !guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet — the bot registers each one it is in.')}</p> : (
+        <div className="space-y-3">
+          {guilds.map((g) => <GuildStorageRow key={g.guildId} g={g} busy={busy === g.guildId} onSave={save} />)}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function BotLogsCard() {
   const { t } = useI18n();
   const [logs, setLogs] = useState(null);
@@ -13363,6 +13429,7 @@ function AdminBot() {
         )}
       </div>
 
+      <BotGuildStorageCard />
       <BotLogsCard />
       <BotDMCard />
       <BotGiveawaysCard />
