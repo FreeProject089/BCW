@@ -429,8 +429,11 @@ export function Home({ draft = null }) {
         {(() => {
           const card = (p, extraClass = '') => (
             <Link key={p.name} to={p.to} className={`group ${extraClass}`}>
-              <Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-300 group-hover:-translate-y-1">
-                <div aria-hidden className="absolute top-0 right-0 w-32 h-32 rounded-full pointer-events-none blur-3xl opacity-0 group-hover:opacity-40 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
+              {/* No hover glow. A blurred coloured disc bloomed out of one corner on hover —
+                  it read as a smudge behind the card rather than as feedback, and it was the
+                  "moche hover" flagged on these product cards. The clean lift + the Card's own
+                  border-brighten already say "this is a target"; that is the whole signal. */}
+              <Card hover className="relative overflow-hidden p-5 h-full transition-transform duration-200 group-hover:-translate-y-1">
                 <div className="relative">
                   <span className="inline-block transition-transform duration-300 group-hover:scale-110 group-hover:-rotate-3">
                     {/* A managed project draws its own logo; a hand-added row draws whatever
@@ -513,7 +516,7 @@ export function Home({ draft = null }) {
                 <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40 shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold">{t('home.feat.moderated', 'Every listing says how it was checked')}</div>
-                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Some things are reviewed by us before anyone can see them. Others are published straight away by the person who made them. Both belong here — and every page tells you which one you are looking at.')}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two ways in: reviewed by us first, or posted straight by its maker. Every page tells you which — no guessing.')}</div>
                 </div>
               </div>
 

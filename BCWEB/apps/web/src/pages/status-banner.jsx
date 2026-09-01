@@ -62,6 +62,13 @@ export default function StatusBanner({ compact = false }) {
         className="w-full flex items-center gap-2.5 px-4 py-3 text-start"
         aria-expanded={open}
       >
+        {/* A live pulse, not just a static triangle — an incident is a thing happening now,
+            and a page reloaded during one should read as "active", not as a notice that has
+            always been there. */}
+        <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
+          <span className="absolute inline-flex h-full w-full rounded-full bg-warning opacity-60 animate-ping" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warning" />
+        </span>
         <AlertTriangle size={16} className="text-warning shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">
@@ -78,7 +85,12 @@ export default function StatusBanner({ compact = false }) {
             </div>
           )}
         </div>
-        {!compact && (open ? <ChevronUp size={15} className="shrink-0 text-[var(--muted)]" /> : <ChevronDown size={15} className="shrink-0 text-[var(--muted)]" />)}
+        {!compact && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--muted)]">
+            <span className="hidden sm:inline">{open ? t('sb.hide', 'Hide') : t('sb.details', 'Details')}</span>
+            {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </span>
+        )}
       </button>
 
       {open && !compact && (
