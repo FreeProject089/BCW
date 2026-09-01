@@ -4,6 +4,7 @@ import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } fro
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
 import { recordErasure, emailHash as erasureEmailHash } from '../lib/erasure-log.mjs';
+import { SEED_SECTIONS, readSeedContent, generateSeedScript } from '../lib/seed-export.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
@@ -489,6 +490,34 @@ export default async function miscRoutes(app) {
     await logAudit(p, req.user.uid, 'site.scene',
       value.enabled === false ? 'off' : `shape=${value.shape} detail=${value.detail} surface=${value.surface}`);
     return sceneConfig({ value });
+  });
+
+  // ── Custom seed generator (Prmtp123 §3) ──────────────────────────────────────
+  // Pick content types → see what each holds → download a runnable, idempotent seed script.
+  const parseSections = (q) => String(q || '').split(',').map((s) => s.trim()).filter((s) => SEED_SECTIONS[s]);
+
+  // The catalogue of sections + a live count of what each currently holds — so the admin knows
+  // what will be created before generating (the "ce qui sera créé / existe déjà" the ask wants).
+  app.get('/admin/seed/preview', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const selected = parseSections(req.query?.sections) ;
+    const { summary } = await readSeedContent(p, selected);
+    return {
+      sections: Object.entries(SEED_SECTIONS).map(([key, s]) => ({ key, label: s.label })),
+      selected, summary,
+    };
+  });
+
+  // The generated script itself, as a download.
+  app.get('/admin/seed/generate', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const selected = parseSections(req.query?.sections);
+    const { data } = await readSeedContent(p, selected);
+    const script = generateSeedScript(selected, data, { by: req.user?.uid, generatedAtIso: new Date().toISOString() });
+    await logAudit(p, req.user.uid, 'seed.generate', selected.join(',') || '(none)');
+    reply.header('Content-Type', 'text/javascript; charset=utf-8');
+    reply.header('Content-Disposition', 'attachment; filename="custom-seed.mjs"');
+    return script;
   });
 
   app.get('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async () => {

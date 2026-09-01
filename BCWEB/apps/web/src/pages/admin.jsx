@@ -18652,6 +18652,49 @@ function TempStorageManager({ open, onClose, onChange }) {
   );
 }
 
+// Custom seed generator (Prmtp123 §3): pick content sections, see how much each holds, and
+// download a runnable idempotent seed script. Drives /admin/seed/preview + /generate.
+function SeedGeneratorCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [selected, setSelected] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get('/admin/seed/preview?sections=').then(setPreview).catch(() => {}); }, []);
+  const refresh = (next) => { setSelected(next); api.get(`/admin/seed/preview?sections=${next.join(',')}`).then(setPreview).catch(() => {}); };
+  const toggle = (key) => refresh(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  const download = async () => {
+    if (!selected.length) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/seed/generate?sections=${selected.join(',')}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('http');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'custom-seed.mjs'; document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success(t('sg.done', 'Seed script downloaded.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const sectionsList = preview?.sections || [];
+  return (
+    <Card className="p-4 mt-4">
+      <div className="text-sm font-medium flex items-center gap-2 mb-1"><Database size={14} className="text-[var(--primary-2)]" /> {t('sg.title', 'Custom seed generator')}</div>
+      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('sg.sub', 'Pick what to include and download a runnable, idempotent seed script that recreates this content on another install. Running it twice changes nothing the second time. The number is how many rows each section currently holds.')}</p>
+      <div className="grid sm:grid-cols-2 gap-2 mb-3">
+        {sectionsList.map((s) => (
+          <label key={s.key} className="flex items-center gap-2 text-[13px] cursor-pointer select-none rounded-lg border border-[var(--line)] px-3 py-2">
+            <input type="checkbox" className="accent-[var(--primary)]" checked={selected.includes(s.key)} onChange={() => toggle(s.key)} />
+            <span className="flex-1">{s.label}</span>
+            {preview?.summary?.[s.key] != null && <Badge tone={preview.summary[s.key] ? 'primary' : ''}>{preview.summary[s.key]}</Badge>}
+          </label>
+        ))}
+      </div>
+      <Button variant="primary" disabled={busy || !selected.length} onClick={download}>{busy ? <Spinner /> : <><Download size={14} /> {t('sg.download', 'Download seed script')}</>}</Button>
+    </Card>
+  );
+}
+
 function AdminSettings() {
   const toast = useToast();
   const { t } = useI18n();
@@ -18835,6 +18878,7 @@ function AdminSettings() {
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
           value, so it cannot be a key/label/type entry like the rest. */}
       <SeoPagesCard />
+      <SeedGeneratorCard />
     </div>
   );
 }
