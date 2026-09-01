@@ -63,6 +63,7 @@ const named = lazyNamed;
 const Hero3D = lazyChunk(() => import('./hero/Hero3D.jsx'));
 const ClosureCancel = lazyChunk(() => import('./pages/closure.jsx'));
 const PollsPage = lazyChunk(() => import('./pages/polls.jsx'));
+const CharityPage = lazyChunk(() => import('./pages/charity.jsx'));
 const SinglePollPage = lazyChunk(() => import('./pages/polls.jsx').then((m) => ({ default: m.SinglePollPage })));
 const DevHub = lazyChunk(() => import('./pages/dev.jsx'));
 const StatusPage = lazyChunk(() => import('./pages/status.jsx'));
@@ -1297,6 +1298,7 @@ export default function App() {
           {/* Open to visitors: a poll whose audience is "everyone" has to be reachable
               without an account, and one for members says so on the card itself. */}
           <Route path="/polls" element={<PollsPage />} />
+          <Route path="/charity" element={<CharityPage />} />
           {/* An unlisted poll is in no list by design, so a link to /polls cannot reach it —
               this is the only way in, and ?k= is read from the query string. */}
           <Route path="/polls/:id" element={<SinglePollPage />} />

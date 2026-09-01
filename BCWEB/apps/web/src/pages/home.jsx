@@ -22,6 +22,7 @@ import { AuthorsRow } from './blog.jsx';
 import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';
+import { CharityWidget } from './charity.jsx';
 import { HomeV2, HomeV3 } from './home-variants.jsx';
 // Resolved before React mounted, so asking here is a synchronous read and not a request the
 // page renders around. That is what keeps a built page from arriving after the default one.
@@ -869,6 +870,10 @@ export function Home({ draft = null }) {
           </div>
         </Card>
       </section>
+
+      {/* Community Charity — a card beside the support block. Renders only when an admin has
+          turned the programme on (GET /charity/current → { enabled:false } otherwise). */}
+      <CharityWidget />
 
       {/* Ko-fi funding goal — its own section, pinned at the very bottom of the
           page (only renders when an admin has set a goal). */}
