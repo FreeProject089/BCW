@@ -289,7 +289,7 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
-        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
+        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><LanguagesCard /></>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -18692,6 +18692,152 @@ function SeedGeneratorCard() {
         ))}
       </div>
       <Button variant="primary" disabled={busy || !selected.length} onClick={download}>{busy ? <Spinner /> : <><Download size={14} /> {t('sg.download', 'Download seed script')}</>}</Button>
+    </Card>
+  );
+}
+
+// B9 Phase 2 — admin languages panel. Add/enable/remove runtime languages (en/fr are the
+// built-in base, handled server-side and never listed here as removable) and translate a
+// curated core of high-visibility keys per language. The full-key editor is a later phase; here
+// the editor covers the strings a visitor meets first, and everything else falls back to English.
+const CORE_I18N_PREFIXES = ['nav.', 'home.', 'foot.', 'common.', 'docs.', 'auth.'];
+
+function LocaleStringEditor({ locale, core, onClose }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading } = useAsync(() => api.get(`/admin/locales/${locale.code}`), [locale.code]);
+  const [draft, setDraft] = useState({});
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const current = data?.strings || {};
+  const keys = useMemo(() => {
+    const all = Object.keys(core);
+    const needle = q.trim().toLowerCase();
+    return (needle ? all.filter((k) => (k + ' ' + (core[k]?.en || '')).toLowerCase().includes(needle)) : all).slice(0, 300);
+  }, [core, q]);
+  const valOf = (k) => (k in draft ? draft[k] : (current[k] ?? ''));
+  const save = async () => {
+    // Only the keys the admin actually touched travel, as a patch (empty value deletes).
+    const patch = {};
+    for (const k of Object.keys(draft)) if (draft[k] !== (current[k] ?? '')) patch[k] = draft[k];
+    if (!Object.keys(patch).length) { onClose(); return; }
+    setBusy(true);
+    try { await api.put(`/admin/locales/${locale.code}`, { patch }); toast.success(t('lc.saved', 'Translations saved.')); onClose(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} title={`${t('lc.edit', 'Translate')} — ${locale.nativeName}`} width="max-w-2xl">
+      {loading ? <Loading /> : (
+        <div className="space-y-3">
+          <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Input className="!pl-9" placeholder={t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <p className="text-xs text-[var(--faint)]">{t('lc.hint', 'Only the most visible strings are shown here. Anything left blank falls back to English.')}</p>
+          <div className="max-h-[52vh] overflow-auto space-y-2.5 pr-1">
+            {keys.map((k) => (
+              <div key={k} className="rounded-lg border border-[var(--line)] p-2.5">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <code className="text-[11px] text-[var(--faint)]">{k}</code>
+                </div>
+                <div className="text-[13px] text-[var(--muted)] mb-1.5 line-clamp-2">{core[k]?.en || ''}</div>
+                <Input dir={locale.rtl ? 'rtl' : 'ltr'} value={valOf(k)} placeholder={core[k]?.en || ''}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
+              </div>
+            ))}
+            {!keys.length && <EmptyState icon={Languages} title={t('lc.nokeys', 'No matching strings')} />}
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
+            <Button variant="primary" loading={busy} onClick={save}><Save size={15} /> {t('common.save', 'Save')}</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function LanguagesCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/locales'), []);
+  const [add, setAdd] = useState({ code: '', nativeName: '', englishName: '', rtl: false });
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const locales = data?.locales || [];
+  const core = useMemo(() => {
+    const out = {};
+    for (const p of CORE_I18N_PREFIXES) Object.assign(out, shippedText(p));
+    return out;
+  }, []);
+  const create = async () => {
+    const code = add.code.trim();
+    if (!code || !add.nativeName.trim()) return;
+    setBusy(true);
+    try {
+      await api.post('/admin/locales', { code, nativeName: add.nativeName.trim(), englishName: add.englishName.trim(), rtl: add.rtl });
+      toast.success(t('lc.added', 'Language added.'));
+      setAdd({ code: '', nativeName: '', englishName: '', rtl: false });
+      reload();
+    } catch (e) {
+      const err = e?.data?.error;
+      toast.error(err === 'exists' ? t('lc.exists', 'That language already exists.')
+        : err === 'reserved_code' ? t('lc.reserved', 'English and French are built in.')
+          : err === 'bad_code' ? t('lc.badcode', 'Invalid language code (e.g. “ru”, “zh-Hans”).')
+            : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  const patchOne = async (code, body) => { try { await api.put(`/admin/locales/${code}`, body); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const remove = async (l) => {
+    if (!await dialog.confirm({
+      title: t('lc.del.t', 'Remove language'),
+      message: t('lc.del.m', 'Remove {x}? Its translations are deleted; visitors on it fall back to English.').replace('{x}', l.nativeName),
+      confirmLabel: t('lc.del.ok', 'Remove'),
+    })) return;
+    try { await api.del(`/admin/locales/${l.code}`); toast.success(t('lc.removed', 'Language removed.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+  const coreCount = Object.keys(core).length;
+  return (
+    <Card className="mt-6 p-5">
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Languages size={16} className="text-[var(--primary-2)]" /> {t('lc.title', 'Languages')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('lc.sub', 'English and French are built in. Add more here — a new language starts empty and shows English until you translate it.')}</p>
+
+      {/* Add a language */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4 grid gap-2 sm:grid-cols-[7rem_1fr_1fr_auto] items-end">
+        <Field label={t('lc.code', 'Code')}><Input placeholder="ru" value={add.code} onChange={(e) => setAdd((a) => ({ ...a, code: e.target.value }))} /></Field>
+        <Field label={t('lc.native', 'Native name')}><Input placeholder="Русский" value={add.nativeName} onChange={(e) => setAdd((a) => ({ ...a, nativeName: e.target.value }))} /></Field>
+        <Field label={t('lc.english', 'English name')}><Input placeholder="Russian" value={add.englishName} onChange={(e) => setAdd((a) => ({ ...a, englishName: e.target.value }))} /></Field>
+        <div className="flex items-center gap-2 pb-1">
+          <label className="flex items-center gap-1.5 text-[13px] cursor-pointer select-none whitespace-nowrap"><input type="checkbox" className="accent-[var(--primary)]" checked={add.rtl} onChange={(e) => setAdd((a) => ({ ...a, rtl: e.target.checked }))} /> {t('lc.rtl', 'RTL')}</label>
+          <Button size="sm" variant="primary" loading={busy} onClick={create} disabled={!add.code.trim() || !add.nativeName.trim()}><Plus size={14} /> {t('lc.add', 'Add')}</Button>
+        </div>
+      </div>
+
+      {/* Existing languages */}
+      {loading ? <Loading /> : locales.length ? (
+        <div className="space-y-2">
+          {locales.map((l) => (
+            <div key={l.code} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2 flex-wrap">
+              <span className="font-medium">{l.nativeName}</span>
+              <code className="text-[11px] text-[var(--faint)]">{l.code}</code>
+              {l.rtl && <Badge>RTL</Badge>}
+              <Badge tone={l.translatedKeys ? 'primary' : ''}>{t('lc.count', '{n} translated').replace('{n}', l.translatedKeys)}</Badge>
+              <div className="flex-1" />
+              <label className="flex items-center gap-1.5 text-[12px] cursor-pointer select-none" title={t('lc.enabled.h', 'Show this language in the public picker')}>
+                <input type="checkbox" className="accent-[var(--primary)]" checked={l.enabled} onChange={(e) => patchOne(l.code, { enabled: e.target.checked })} /> {t('lc.enabled', 'Public')}
+              </label>
+              <label className="flex items-center gap-1.5 text-[12px] cursor-pointer select-none">
+                <input type="checkbox" className="accent-[var(--primary)]" checked={l.rtl} onChange={(e) => patchOne(l.code, { rtl: e.target.checked })} /> {t('lc.rtl', 'RTL')}
+              </label>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(l)}><PenSquare size={13} /> {t('lc.translate', 'Translate')}</Button>
+              <button className="p-1.5 rounded-lg text-error hover:bg-error-bg" title={t('lc.del.ok', 'Remove')} onClick={() => remove(l)}><Trash2 size={13} /></button>
+            </div>
+          ))}
+        </div>
+      ) : <EmptyState icon={Languages} title={t('lc.none', 'No extra languages yet')} sub={t('lc.none.s', 'Add one above to translate the site beyond English and French.')} />}
+
+      <p className="text-[11px] text-[var(--faint)] mt-3">{t('lc.editornote', 'The translator covers the {n} most-visible strings; a full-dictionary editor and the right-to-left layout pass come later.').replace('{n}', coreCount)}</p>
+      {editing && <LocaleStringEditor locale={editing} core={core} onClose={() => { setEditing(null); reload(); }} />}
     </Card>
   );
 }
