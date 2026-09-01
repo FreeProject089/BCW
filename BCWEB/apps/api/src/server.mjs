@@ -79,14 +79,19 @@ import { productionSecretProblems, formatProblems, isProduction, productionSiteU
 // repository first.
 if (isProduction(process.env)) {
   const siteProblem = productionSiteUrlProblem(process.env);
+  // A localhost SITE_URL is a WARNING, not a stop: the bundled compose is the production
+  // artifact yet is also what people run locally, where localhost is correct and is the
+  // shipped default. It is logged loudly so a real cloud deploy that left it there sees it.
+  // Everything else about SITE_URL (unset, unparseable, non-https) is a hard stop.
+  const fatalSite = siteProblem && siteProblem.severity !== 'warning';
   const problems = productionSecretProblems(process.env);
-  if (problems.length || siteProblem) {
+  if (siteProblem && siteProblem.severity === 'warning') {
+    console.warn('[warn] ' + formatSiteUrlProblem(siteProblem).trim());
+  }
+  if (problems.length || fatalSite) {
     console.error('[fatal] refusing to start in production:');
     if (problems.length) console.error(formatProblems(problems));
-    // Reported in the same breath as the secrets and for the same reason: a deployment that
-    // boots without it works perfectly for the operator testing from the machine it runs on,
-    // and sends everybody else links to that machine.
-    if (siteProblem) console.error(formatSiteUrlProblem(siteProblem));
+    if (fatalSite) console.error(formatSiteUrlProblem(siteProblem));
     process.exit(1);
   }
 }

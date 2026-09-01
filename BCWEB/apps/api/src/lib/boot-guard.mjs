@@ -128,7 +128,13 @@ export function productionSiteUrlProblem(env) {
     return { reason: 'unparseable', value: raw, consequence: 'every absolute link the server builds would be malformed' };
   }
   if (/^(localhost|127\.|0\.0\.0\.0|\[::1\]|::1$)/i.test(u.hostname) || u.hostname.endsWith('.local')) {
-    return { reason: 'localhost', value: raw, consequence: 'e-mails, the OpenID issuer and every share link would point at the server itself' };
+    // A WARNING, not a fatal. The bundled compose is the production artifact but people also
+    // run it locally, where SITE_URL=http://localhost is CORRECT — and the compose ships that
+    // as the default, so a fatal here bricks every out-of-the-box `docker compose up`. A real
+    // cloud deploy that leaves this at localhost still gets a loud line in the boot log, and
+    // its own first outside test shows every link pointing at the box. The unambiguous
+    // mistakes below — unset, non-https — stay fatal.
+    return { reason: 'localhost', severity: 'warning', value: raw, consequence: 'e-mails, the OpenID issuer and every share link would point at the server itself' };
   }
   if (u.protocol !== 'https:') {
     return { reason: 'not_https', value: raw, consequence: 'session cookies would not be marked Secure (COOKIE_SECURE reads this value)' };

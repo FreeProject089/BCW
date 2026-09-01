@@ -29,15 +29,19 @@ describe('productionSiteUrlProblem', () => {
     }
   });
 
-  test('every way of naming this machine is caught', () => {
-    // The example file ships one of these, so this is the mistake that actually happens:
-    // copy .env.example, deploy, and every link points at the server itself.
+  test('every way of naming this machine is caught, as a WARNING not a stop', () => {
+    // Localhost is flagged but NOT fatal: the bundled compose is the production artifact and
+    // also what people run locally, where localhost is correct and is the shipped default —
+    // a fatal here would brick every out-of-the-box `docker compose up`. server.mjs logs it
+    // and boots; unset and non-https (below) are the hard stops.
     const local = [
       'http://localhost:5176', 'https://localhost', 'http://127.0.0.1:3000',
       'http://0.0.0.0:5176', 'https://LOCALHOST:5176', 'http://myhost.local',
     ];
     for (const v of local) {
-      assert.equal(productionSiteUrlProblem({ SITE_URL: v })?.reason, 'localhost', v);
+      const p = productionSiteUrlProblem({ SITE_URL: v });
+      assert.equal(p?.reason, 'localhost', v);
+      assert.equal(p?.severity, 'warning', v);
     }
   });
 
