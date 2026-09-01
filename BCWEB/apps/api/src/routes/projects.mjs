@@ -35,7 +35,7 @@ async function getConfig(p, key) {
 // Which GitHub repo a project's activity heatmap reads (B13). The structured releaseNotes
 // owner/repo is authoritative; failing that, parse the project's GitHub link.
 const GH_REPO_RE = /github\.com\/([^/]+)\/([^/?#]+)/i;
-function repoOf(cfg) {
+export function repoOf(cfg) {
   const rn = cfg?.releaseNotes;
   if (rn?.owner && rn?.repo) return { owner: rn.owner, repo: String(rn.repo).replace(/\.git$/, '') };
   const url = cfg?.links?.github || cfg?.github || cfg?.community?.github || '';
@@ -101,7 +101,7 @@ export async function gh(url) {
 // (re)builds them and 200 with the real data once ready. gh() would treat that 202 as success
 // AND cache the empty body for 5 minutes, so every retry in that window would also come back
 // empty. Here a 202 is reported as { computing: true } and never cached; only a 200 is.
-async function ghStats(url) {
+export async function ghStats(url) {
   const hit = cache.get(url);
   if (hit && Date.now() - hit.at < 5 * 60_000) return { data: hit.data };
   const res = await safeFetch(url, { headers: { 'User-Agent': 'bcweb', Accept: 'application/vnd.github+json' } });

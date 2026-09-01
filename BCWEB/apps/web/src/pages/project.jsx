@@ -1011,6 +1011,7 @@ export function ShowcaseProjectPage() {
     // Same rule as the built-in projects below: the admin switch decides, and a switch that
     // is on with nothing described would show an empty tab.
     stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
+    (cfg.releaseNotes?.owner || cfg.links?.github) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     T.legal && ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
@@ -1043,6 +1044,7 @@ export function ShowcaseProjectPage() {
       {activeTab === 'countdown' && inlineCountdown && <CountdownPanel announcement={inlineCountdown} onReveal={refetch} />}
       {activeTab === 'overview' && <Overview c={c} pkey={slug} progressUrl={`/showcase/${slug}/progress`} />}
       {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
+      {activeTab === 'activity' && <ProjectActivity endpoint={`/showcase/${slug}/activity`} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
       {/* A showcase page has no code snapshot of its own — those are keyed on the fixed

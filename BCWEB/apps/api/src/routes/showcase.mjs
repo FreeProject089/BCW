@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants } from '../lib/lib.mjs';
+import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
 /** applyScheduledUpdate, plus the version-history entry it does not know to write.
  *
@@ -26,7 +27,7 @@ async function applyShowcaseSchedule(p, row) {
 }
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { safeFetch } from '../lib/net.mjs';
-import { gh, ghCache, versionedRawUrl } from './projects.mjs';
+import { gh, ghCache, ghStats, repoOf, versionedRawUrl } from './projects.mjs';
 
 // Cached fetch for progress.json / GitHub release-notes trees / community
 // contributors. Shares `ghCache` with projects.mjs (previously a SEPARATE Map
@@ -132,6 +133,31 @@ export default async function showcaseRoutes(app) {
           rawUrl: `https://raw.githubusercontent.com/${rn.owner}/${rn.repo}/${branch}/${e.path}?v=${(e.sha || '').slice(0, 8)}` }; })
         .sort((a, b) => b.path.localeCompare(a.path));
       return { source: { owner: rn.owner, repo: rn.repo, branch, path: base }, files };
+    } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
+  });
+
+  // Git-linked activity (B13), the showcase twin of /projects/:key/activity — same engine and
+  // the same 202-aware ghStats + shared cache, sourced from the showcase row's own config.
+  app.get('/showcase/:slug/activity', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    const row = await p.showcaseProject.findUnique({ where: { slug: req.params.slug } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    if (!isAnnouncing(row) && !(await canViewPage(p, row, req))) return reply.code(403).send({ error: 'no_access' });
+    const src = repoOf(row.config);
+    if (!src) return reply.code(404).send({ error: 'no_git_source' });
+    const includeMessages = req.query?.messages === '1' || req.query?.messages === 'true';
+    try {
+      const [ca, cb, releases] = await Promise.all([
+        ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/commit_activity`).catch(() => ({ data: [] })),
+        ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/contributors`).catch(() => ({ data: [] })),
+        gh(`https://api.github.com/repos/${src.owner}/${src.repo}/releases?per_page=100`).catch(() => []),
+      ]);
+      return {
+        source: { owner: src.owner, repo: src.repo },
+        computing: !!ca.computing || !!cb.computing,
+        ...computeActivity(ca.data || [], cb.data || []),
+        markers: releaseMarkers(releases, { includeMessages }),
+      };
     } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
   });
 
