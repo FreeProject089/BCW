@@ -3459,3 +3459,42 @@ model SessionReplay {
 
   @@index([createdAt])
 }
+
+// ── B14 Community Charity ─────────────────────────────────────────────────────
+// One pot per calendar month. BetterCommunity's own share (`orgContribCents`, computed from
+// mrr − monthlyBurn and FROZEN at close so a later revenue swing never rewrites a past
+// promise) and the community's voluntary gifts (`contributions`) are kept as two distinct
+// numbers and summed in the UI — the spec is explicit that they must read as two things in one
+// pot. The final donation is sent MANUALLY by an admin, who records the proof here.
+model CharityPot {
+  id              String                @id @default(cuid())
+  month           String                @unique // "2026-09"
+  orgContribCents Int                   @default(0)
+  currency        String                @default("chf")
+  pollId          String? // the association vote for this month (bare link — no Poll back-relation)
+  association     String                @default("")
+  status          String                @default("open") // open | closing | paid
+  paidAt          DateTime?
+  proofUrl        String                @default("")
+  proofNote       String                @default("")
+  contributions   CharityContribution[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+}
+
+// A community "increase the pot" gift. `userId`/`paymentId` are bare scalars, not relations:
+// a contribution can be anonymous (logged-out), and it must survive the contributor deleting
+// their account — the money is already in the pot. Written by the payment webhook (Phase 2).
+model CharityContribution {
+  id          String     @id @default(cuid())
+  potId       String
+  pot         CharityPot @relation(fields: [potId], references: [id], onDelete: Cascade)
+  userId      String? // null = anonymous / logged-out
+  amountCents Int
+  currency    String     @default("chf")
+  paymentId   String? // the Payment row the rail wrote, when applicable
+  source      String     @default("stripe") // stripe | kofi
+  createdAt   DateTime   @default(now())
+
+  @@index([potId])
+}
