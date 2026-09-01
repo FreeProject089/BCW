@@ -1458,4 +1458,67 @@ export default async function botRoutes(app) {
     await p.discordLink.delete({ where: { id: link.id } });
     return { ok: true };
   });
+
+  // ── B10: user-facing per-server config ────────────────────────────────────
+  // A logged-in user configures the Discord servers they own (or hold Manage-Server on),
+  // resolved through their linked Discord account(s) — no site-admin role. They set the
+  // member mode / log channel / whether to keep logs; the storage POOL and byte budget stay
+  // admin-only (a user must never self-grant storage), so capacity is shown read-only. The
+  // field rules mirror the admin PUT exactly, so the two never diverge. Every route re-checks
+  // ownership against the caller's own links — the :id is never trusted on its own.
+  const myDiscordIds = async (p, uid) => (await p.discordLink.findMany({ where: { userId: uid }, select: { discordId: true } })).map((l) => l.discordId);
+  // owner OR a Manage-Server admin. `in`/`hasSome` over an empty list matches nothing, but we
+  // guard on ids.length before calling so an account with no linked Discord never lists guilds.
+  const manageableWhere = (ids) => ({ OR: [{ ownerDiscordId: { in: ids } }, { managerDiscordIds: { hasSome: ids } }] });
+  const serGuildUser = (g, stored, ids) => ({
+    guildId: g.guildId, name: g.name, memberMode: g.memberMode, logChannelId: g.logChannelId,
+    storeLogs: g.storeLogs, memberCount: g.memberCount, storedMembers: stored,
+    capacity: capacityStatus(g.storageQuotaBytes, stored), // read-only: user can't set the budget
+    role: g.ownerDiscordId && ids.includes(g.ownerDiscordId) ? 'owner' : 'manager',
+  });
+
+  app.get('/me/discord/guilds', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    if (!ids.length) return { linked: false, guilds: [] };
+    const guilds = await p.botGuild.findMany({ where: manageableWhere(ids), orderBy: { memberCount: 'desc' } });
+    const counts = guilds.length ? await p.discordActivity.groupBy({ by: ['guildId'], _count: { _all: true }, where: { guildId: { in: guilds.map((g) => g.guildId) } } }) : [];
+    const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
+    return { linked: true, guilds: guilds.map((g) => serGuildUser(g, storedBy[g.guildId] || 0, ids)) };
+  });
+
+  app.get('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const g = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
+    // Only a guild that keeps logs has any to show; a moderation guild without storeLogs
+    // logs to Discord only, so there is nothing in our DB to read.
+    const logs = g.storeLogs ? await p.moderationLog.findMany({ where: { guildId: g.guildId }, orderBy: { createdAt: 'desc' }, take: 50 }) : [];
+    return { guild: serGuildUser(g, stored, ids), logs };
+  });
+
+  app.put('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({
+      memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
+      logChannelId: z.string().max(32).nullable().optional(),
+      storeLogs: z.boolean().optional(),
+      // Deliberately NOT accepted here: hostingGroupId + storageQuotaBytes. Those are the
+      // storage budget and stay on the admin path — the zod strip drops them silently, which
+      // is the intended guard, not a bug.
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const cur = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+    const next = { ...cur, ...b.data };
+    // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
+    if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
+    const g = await p.botGuild.update({ where: { guildId: cur.guildId }, data: b.data });
+    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}`);
+    const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
+    return { ok: true, guild: serGuildUser(g, stored, ids) };
+  });
 }
