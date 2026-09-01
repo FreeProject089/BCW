@@ -161,8 +161,8 @@ function AdminMyoRequests() {
                   <ArchiveRestore size={13} /> {t('amyo.restore', 'Restore')}
                 </Button>
               ) : (
-                <Button size="sm" variant="ghost" disabled={busyId === r.id || !ARCHIVABLE.includes(r.status)}
-                  title={ARCHIVABLE.includes(r.status) ? t('amyo.archive', 'Archive') : t('amyo.stillactive', 'Still in progress — deliver, close or cancel it first.')}
+                <Button size="sm" variant="ghost" disabled={busyId === r.id || !(ARCHIVABLE.includes(r.status) || r.assignedToId)}
+                  title={(ARCHIVABLE.includes(r.status) || r.assignedToId) ? t('amyo.archive', 'Archive') : t('amyo.stillactive', 'Still in progress — deliver, close or cancel it first.')}
                   onClick={() => setArchived(r, true)}>
                   <Archive size={13} />
                 </Button>
@@ -261,7 +261,7 @@ function AdminMyoSettings() {
   const { data, loading, reload } = useAsync(() => api.get('/admin/myo/settings'), []);
   const [f, setF] = useState(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (data) setF({ enabled: data.enabled, consultation: (data.consultationCents / 100).toString(), urgent: (data.urgentConsultationCents / 100).toString(), currency: data.currency, maxOpen: String(data.maxOpen ?? 0), maxOpenUrgent: String(data.maxOpenUrgent ?? 0), maxOpenPerUser: String(data.maxOpenPerUser ?? 0) }); }, [data]);
+  useEffect(() => { if (data) setF({ enabled: data.enabled, consultation: (data.consultationCents / 100).toString(), urgent: (data.urgentConsultationCents / 100).toString(), currency: data.currency, maxOpen: String(data.maxOpen ?? 0), maxOpenUrgent: String(data.maxOpenUrgent ?? 0), maxOpenPerUser: String(data.maxOpenPerUser ?? 0), autoArchiveOn: data.autoArchive?.enabled !== false, autoArchiveDays: String(data.autoArchive?.days ?? 21) }); }, [data]);
   if (loading || !f) return <Loading />;
   const save = async () => {
     setBusy(true);
@@ -274,6 +274,7 @@ function AdminMyoSettings() {
         maxOpen: Math.max(0, parseInt(f.maxOpen, 10) || 0),
         maxOpenUrgent: Math.max(0, parseInt(f.maxOpenUrgent, 10) || 0),
         maxOpenPerUser: Math.max(0, parseInt(f.maxOpenPerUser, 10) || 0),
+        autoArchive: { enabled: !!f.autoArchiveOn, days: Math.min(365, Math.max(1, parseInt(f.autoArchiveDays, 10) || 21)) },
       });
       toast.success(t('common.saved', 'Saved.')); reload();
     }
@@ -308,6 +309,18 @@ function AdminMyoSettings() {
             <Input type="number" min="0" className="!w-32" value={f.maxOpenPerUser} onChange={(e) => setF((s) => ({ ...s, maxOpenPerUser: e.target.value }))} />
           </Field>
         </div>
+      </div>
+
+      {/* Auto-archive requests that never pay the consultation fee — the "abandoned form"
+          case. Only pending_payment requests are swept; a paid, live conversation is never
+          touched. On by default so the queue does not silently fill with dead intake forms. */}
+      <div className="pt-3 border-t border-[var(--line)]">
+        <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={f.autoArchiveOn} onChange={(e) => setF((s) => ({ ...s, autoArchiveOn: e.target.checked }))} /><span><span className="font-medium">{t('amyo.s.autoarch', 'Auto-archive abandoned requests')}</span><span className="block text-xs text-[var(--faint)]">{t('amyo.s.autoarchsub', 'Requests that never pay the consultation fee are archived after a quiet spell. Paid, live conversations are never touched.')}</span></span></label>
+        {f.autoArchiveOn && (
+          <div className="mt-3"><Field label={t('amyo.s.autoarchdays', 'Archive after (days with no payment)')}>
+            <Input type="number" min="1" max="365" className="!w-32" value={f.autoArchiveDays} onChange={(e) => setF((s) => ({ ...s, autoArchiveDays: e.target.value }))} />
+          </Field></div>
+        )}
       </div>
 
       <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>

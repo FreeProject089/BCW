@@ -80,6 +80,12 @@ export async function cleanupFixtures(p) {
       ['hostingGroup', { ownerId: { in: users } }],
       ['notification', { userId: { in: users } }],
       ['sanction', { userId: { in: users } }],
+      // MYO requests hang off a user (owner), and their messages/quotes/deliverables hang
+      // off the request — children before the parent, or Postgres rejects the parent delete.
+      ['myoMessage', { request: { userId: { in: users } } }],
+      ['myoQuote', { request: { userId: { in: users } } }],
+      ['myoDeliverable', { request: { userId: { in: users } } }],
+      ['myoRequest', { userId: { in: users } }],
     ];
     for (const [model, where] of owned) {
       if (!p[model]) continue;

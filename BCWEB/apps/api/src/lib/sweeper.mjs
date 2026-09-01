@@ -27,6 +27,7 @@ import { deleteObject } from './storage.mjs';
 import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
+import { sweepStaleMyoRequests } from '../routes/myo.mjs';
 import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
@@ -573,6 +574,7 @@ export function startSweeper(app) {
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
+      await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));

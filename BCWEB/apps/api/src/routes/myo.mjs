@@ -30,15 +30,19 @@ const mediaUrlOpt = z.union([z.literal(''), z.string().max(500).regex(/^(https?:
 async function myoConfig(p) {
   const rows = await p.adminSetting.findMany({ where: { key: { in: [
     'myo.enabled', 'myo.consultationCents', 'myo.urgentConsultationCents', 'myo.currency',
-    'myo.maxOpenUrgent', 'myo.maxOpen', 'myo.maxOpenPerUser',
+    'myo.maxOpenUrgent', 'myo.maxOpen', 'myo.maxOpenPerUser', 'myo.autoArchive',
   ] } } });
   const get = (k) => rows.find((r) => r.key === k)?.value;
   const num = (v, d) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : d; };
+  const aa = get('myo.autoArchive');
   return {
     enabled: get('myo.enabled') !== false,
     consultationCents: num(get('myo.consultationCents'), 500),
     urgentConsultationCents: num(get('myo.urgentConsultationCents'), 1000),
     currency: typeof get('myo.currency') === 'string' ? get('myo.currency') : 'usd',
+    // Auto-archive of requests that never paid the consultation fee (see sweepStaleMyoRequests).
+    // On by default; the window is in days. A single source of truth for the sweeper and the UI.
+    autoArchive: { enabled: (aa && typeof aa === 'object') ? aa.enabled !== false : true, days: num(aa?.days, 21) },
     // Capacity, not pricing. Commissions are work done by people, and a form that keeps
     // accepting urgent jobs after the team is full sells a promise nobody can keep.
     // 0 = no limit everywhere, which is what every existing install has.
@@ -434,12 +438,17 @@ async function actorName(p, uid, fallback) {
     const b = z.object({ archived: z.boolean().default(true) }).safeParse(req.body ?? {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const cur = await p.myoRequest.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true } });
+    const cur = await p.myoRequest.findUnique({ where: { id: req.params.id }, select: { id: true, name: true, status: true, assignedToId: true } });
     if (!cur) return reply.code(404).send({ error: 'not_found' });
     // Archiving a LIVE request would hide work in progress from the only view that shows
     // it. Finish it or cancel it first -- the button is disabled in the UI for the same
     // reason, and this is the half that actually holds.
-    if (b.data.archived && !['delivered', 'closed', 'cancelled'].includes(cur.status)) {
+    //
+    // A CLAIMED request is the exception: someone on the team owns it, so archiving it is a
+    // deliberate call by the person handling it (a lead that went nowhere, a duplicate),
+    // not work being hidden from the queue. Allow it at any status.
+    const settled = ['delivered', 'closed', 'cancelled'].includes(cur.status);
+    if (b.data.archived && !settled && !cur.assignedToId) {
       return reply.code(400).send({ error: 'still_active', status: cur.status });
     }
     const r = await p.myoRequest.update({ where: { id: cur.id }, data: { archivedAt: b.data.archived ? new Date() : null }, include: { assignedTo: true, user: true } });
@@ -546,6 +555,7 @@ async function actorName(p, uid, fallback) {
       maxOpenUrgent: z.number().int().min(0).max(10000).optional(),
       maxOpen: z.number().int().min(0).max(10000).optional(),
       maxOpenPerUser: z.number().int().min(0).max(10000).optional(),
+      autoArchive: z.object({ enabled: z.boolean(), days: z.number().int().min(1).max(365) }).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -557,6 +567,7 @@ async function actorName(p, uid, fallback) {
     await set('myo.maxOpenUrgent', b.data.maxOpenUrgent);
     await set('myo.maxOpen', b.data.maxOpen);
     await set('myo.maxOpenPerUser', b.data.maxOpenPerUser);
+    await set('myo.autoArchive', b.data.autoArchive);
     return { ...await myoConfig(p), load: await myoLoad(p) };
   });
 }
@@ -582,4 +593,30 @@ async function consultationCheckout(p, userId, request, cfg) {
   });
   await p.myoRequest.update({ where: { id: request.id }, data: { stripeSessionId: session.id } });
   return session.url;
+}
+
+// ── Auto-archive abandoned requests (B3) ─────────────────────────────────────
+// A request stuck at `pending_payment` never opened a conversation: the consultation fee —
+// the gate to talk to a consultant — was never paid. After a quiet window it is just dead
+// weight in the active queue. Archive it (NEVER delete — there may be a Stripe session on
+// file); it moves under the "archived" filter and can be unarchived at any time.
+//
+// Deliberately ONLY `pending_payment`, and only while still unpaid and untouched for the
+// window: once the fee is paid the request is a live conversation, and the trap for this
+// feature is precisely not to archive one of those out from under the person handling it
+// ("no payment AND no reply for X"). Config lives in AdminSetting `myo.autoArchive`
+// ({ enabled, days }); defaults to on at 21 days.
+export async function sweepStaleMyoRequests(p, log) {
+  const { autoArchive } = await myoConfig(p);
+  if (!autoArchive.enabled) return 0;
+  const days = Math.max(1, autoArchive.days || 21);
+  const cutoff = new Date(Date.now() - days * 864e5);
+  const stale = await p.myoRequest.findMany({
+    where: { status: 'pending_payment', consultationPaid: false, archivedAt: null, lastActivityAt: { lt: cutoff } },
+    select: { id: true }, take: 500,
+  });
+  if (!stale.length) return 0;
+  const res = await p.myoRequest.updateMany({ where: { id: { in: stale.map((r) => r.id) } }, data: { archivedAt: new Date() } });
+  if (log && res.count) log.info(`[sweeper] auto-archived ${res.count} abandoned MYO request(s) — no consultation payment for ${days}d`);
+  return res.count;
 }
