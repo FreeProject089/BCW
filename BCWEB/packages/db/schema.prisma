@@ -298,7 +298,11 @@ model DiscordLink {
 // telemetry dashboard alongside the linked creator id (join date, last message, last
 // voice join/create, avatar/username).
 model DiscordActivity {
-  discordId         String    @id
+  // Now keyed per GUILD (B4): storage is budgeted per server, so a member in three guilds is
+  // three rows. Was keyed by discordId alone (one flat global table) — which is why one busy
+  // guild could evict another's members and why a 1M-member guild meant 1M unbudgeted rows.
+  guildId           String    @default("")
+  discordId         String
   username          String?
   avatar            String? // full CDN avatar URL
   guildJoinedAt     DateTime?
@@ -312,9 +316,52 @@ model DiscordActivity {
   nickname          String?
   updatedAt         DateTime  @updatedAt
 
-  // The storage-cap sweeper evicts oldest-updated rows first (`orderBy updatedAt asc take N`);
-  // without this it full-sorts the table on every prune — worst exactly when it's at its cap.
-  @@index([updatedAt])
+  @@id([guildId, discordId])
+  // Per-guild oldest-first eviction (`where guildId orderBy updatedAt asc take N`): the sweeper
+  // now prunes within ONE guild's budget, never across guilds.
+  @@index([guildId, updatedAt])
+  // Cross-guild lookups (a member's link/telemetry) still hit discordId directly.
+  @@index([discordId])
+}
+
+// Per-guild bot configuration + member-storage budget (B4). Replaces the loose
+// `bot.config.guilds[guildId]` JSON for the storage-relevant fields; the JSON keeps the
+// feature toggles (welcome/joinToCreate/…) it already holds.
+model BotGuild {
+  guildId        String   @id
+  name           String?
+  // none = don't scan or store members (the safe default; a fresh guild stores nothing).
+  // moderation  = run mod commands, log to Discord; store logs only if storeLogs + a pool.
+  // pool        = store members, budgeted against a storage pool.
+  memberMode     String   @default("none")
+  logChannelId   String? // required to enable `moderation`
+  storeLogs      Boolean  @default(false) // moderation: also persist logs (needs a pool)
+  // The storage pool this guild draws from (a HostingGroup id — a loose FK, no relation, so
+  // HostingGroup stays untouched). Null → the free-tier default budget.
+  hostingGroupId String?
+  // Bytes this guild may use for member rows + logs. 0 = the global default budget.
+  storageQuotaBytes BigInt @default(0)
+  // The guild's REAL member count from the gateway — kept accurate even when NOT storing rows,
+  // so "at capacity" can still show how big the server actually is.
+  memberCount    Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@index([memberMode])
+}
+
+// A moderation action (B4). Written only when the guild is `pool`, or `moderation` + storeLogs;
+// otherwise sanctions are logged to Discord only. Counts against the guild's storage budget.
+model ModerationLog {
+  id        String   @id @default(cuid())
+  guildId   String
+  actorId   String // who did it (a moderator, or the bot for an automatic action)
+  targetId  String // who it was done to
+  action    String // ban | kick | warn | timeout | unban | …
+  reason    String?
+  auto      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
 }
 
 // Short-lived pairing code the bot issues (via /link) so a website account can claim

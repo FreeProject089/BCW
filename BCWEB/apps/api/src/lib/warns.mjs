@@ -95,7 +95,8 @@ export function warnMessage(count, reason, triggered) {
  */
 export async function issueWarn(p, { discordId, reason, guildId = null, issuedById = null, issuedByLabel = '' }) {
     const [member, cfgRow] = await Promise.all([
-        p.discordActivity.findUnique({ where: { discordId }, select: { username: true } }).catch(() => null),
+        // findFirst, not findUnique: discordId alone is no longer unique (B4's per-guild rows).
+        p.discordActivity.findFirst({ where: { discordId }, select: { username: true } }).catch(() => null),
         p.adminSetting.findUnique({ where: { key: 'bot.config' } }).catch(() => null),
     ]);
     const targetLabel = member?.username || discordId;

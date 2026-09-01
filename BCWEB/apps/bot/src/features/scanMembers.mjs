@@ -10,6 +10,11 @@ const CHUNK = 500;
 export async function scanAllMembers(client) {
   let total = 0;
   for (const guild of client.guilds.cache.values()) {
+    // B4: only guilds the admin opted into `pool` store members. Check the mode BEFORE the
+    // (expensive, privileged) full-roster fetch — this is what stops the bot pulling a million
+    // members for a server that stores nothing. `none`/`moderation` guilds are skipped entirely.
+    const mode = await api.guildMode(guild.id);
+    if (mode !== 'pool') continue;
     let members;
     try { members = await guild.members.fetch(); } catch (e) { console.warn(`[bot] member scan failed for ${guild.name}:`, e.message); continue; }
     const roster = [];
@@ -27,8 +32,9 @@ export async function scanAllMembers(client) {
       });
     }
     for (let i = 0; i < roster.length; i += CHUNK) {
-      const r = await api.syncMembers(roster.slice(i, i + CHUNK));
+      const r = await api.syncMembers(guild.id, guild.name, guild.memberCount, roster.slice(i, i + CHUNK));
       total += r?.synced || 0;
+      if (r && r.stored === false) break; // guild not storing (mode changed mid-scan) — stop
     }
   }
   if (total) console.log(`[bot] member scan: synced ${total} member(s) to the database`);

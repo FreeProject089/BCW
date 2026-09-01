@@ -66,8 +66,13 @@ export const api = {
   giveawayDrawn: (id, winnerIds) => call('POST', `/bot/giveaways/${id}/drawn`, { winnerIds }).catch(() => ({ gifts: {} })),
   issueLink: (discordId, username) => call('POST', '/bot/link/issue', { discordId, username }),
   account: (discordId) => call('GET', `/bot/account/${discordId}`).catch(() => ({ linked: false })),
-  // Bulk-sync the guild roster into the member database (startup + periodic full scan).
-  syncMembers: (members) => call('POST', '/bot/members/sync', { members }).catch(() => ({ synced: 0 })),
+  // Bulk-sync ONE guild's roster into the member database (startup + periodic full scan). The
+  // guild is now required (B4): storage is budgeted per guild, and a guild the admin left at the
+  // default `none` mode stores nothing at all.
+  syncMembers: (guildId, guildName, memberCount, members) => call('POST', '/bot/members/sync', { guildId, guildName, memberCount, members }).catch(() => ({ synced: 0 })),
+  // A guild's member-storage mode, so the bot can skip the expensive full-roster fetch for a
+  // guild that stores nothing. Defaults to `none` on any failure — the safe, no-storage side.
+  guildMode: (guildId) => call('GET', `/bot/guilds/${guildId}`).then((r) => r?.memberMode || 'none').catch(() => 'none'),
 
   // Warnings go through the site so the count, the ladder and the record are in one place —
   // a bot keeping its own tally would disagree with the admin screen the first time either
@@ -85,7 +90,7 @@ export const api = {
   actionResult: (id, ok, error) => call('POST', `/bot/actions/${id}/result`, { ok, error }).catch(() => null),
   // Report a Discord activity event (join / message / voiceJoin / voiceCreate) so the
   // telemetry dashboard can show it next to the linked creator id. Best-effort.
-  activity: (discordId, event, user) => call('POST', '/bot/activity', {
-    discordId, event, username: user?.username, avatar: user?.displayAvatarURL?.({ size: 128 }),
+  activity: (guildId, discordId, event, user) => call('POST', '/bot/activity', {
+    guildId, discordId, event, username: user?.username, avatar: user?.displayAvatarURL?.({ size: 128 }),
   }).catch(() => {}),
 };

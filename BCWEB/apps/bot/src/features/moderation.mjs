@@ -15,7 +15,7 @@ export async function onMessage(msg) {
 
   // Report "last message" activity (throttled to once/60s per user) for telemetry.
   const last = msgReported.get(msg.author.id) || 0;
-  if (Date.now() - last > 60_000) { msgReported.set(msg.author.id, Date.now()); api.activity(msg.author.id, 'message', msg.author); }
+  if (Date.now() - last > 60_000) { msgReported.set(msg.author.id, Date.now()); api.activity(msg.guild.id, msg.author.id, 'message', msg.author); }
 
   const cfg = await guildConfig(msg.guild.id);
   const mod = cfg.moderation || {};

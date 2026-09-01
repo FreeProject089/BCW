@@ -3,6 +3,19 @@ import { getObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
+import { memberCapacity, admitMembers, capacityStatus } from '../lib/discord-storage.mjs';
+
+// B4: a guild's member-storage config, created lazily on first sight with the safe default
+// (mode `none` — store nothing). Every member write goes through this so a guild the admin
+// has not opted into `pool` never accumulates rows.
+async function botGuild(p, guildId, name) {
+  if (!guildId) return null;
+  return p.botGuild.upsert({
+    where: { guildId },
+    create: { guildId, name: name || null },
+    update: name ? { name } : {},
+  });
+}
 
 // Server-to-server auth for the Discord bot (shared secret, like the telemetry link
 // lookup). The bot sends `x-bot-secret`; anything else is rejected.
@@ -300,6 +313,46 @@ export default async function botRoutes(app) {
       // service knows about roles at all.
       roles: allRoles,
     };
+  });
+
+  // ── Per-guild member-storage config (B4) ──────────────────────────────────
+  const serGuild = (g, stored) => ({
+    guildId: g.guildId, name: g.name, memberMode: g.memberMode, logChannelId: g.logChannelId,
+    storeLogs: g.storeLogs, hostingGroupId: g.hostingGroupId,
+    storageQuotaBytes: Number(g.storageQuotaBytes), // BigInt → Number for JSON
+    memberCount: g.memberCount, storedMembers: stored,
+    capacity: capacityStatus(g.storageQuotaBytes, stored),
+  });
+
+  app.get('/admin/bot/guilds', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const guilds = await p.botGuild.findMany({ orderBy: { updatedAt: 'desc' } });
+    // One grouped count instead of a query per guild.
+    const counts = await p.discordActivity.groupBy({ by: ['guildId'], _count: { _all: true } });
+    const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
+    return { guilds: guilds.map((g) => serGuild(g, storedBy[g.guildId] || 0)) };
+  });
+
+  app.put('/admin/bot/guilds/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
+      logChannelId: z.string().max(32).nullable().optional(),
+      storeLogs: z.boolean().optional(),
+      hostingGroupId: z.string().max(40).nullable().optional(),
+      storageQuotaBytes: z.number().int().min(0).max(1_000_000_000_000).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cur = await p.botGuild.findUnique({ where: { guildId: req.params.id } });
+    const next = { ...cur, ...b.data };
+    // `moderation` runs bans/kicks and MUST log somewhere — refuse it without a channel.
+    if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
+    const data = { ...b.data };
+    if ('storageQuotaBytes' in data) data.storageQuotaBytes = BigInt(data.storageQuotaBytes);
+    const g = await p.botGuild.upsert({ where: { guildId: req.params.id }, create: { guildId: req.params.id, ...data }, update: data });
+    await logAudit(p, req.user.uid, 'bot.guild', `${g.guildId} mode=${g.memberMode}`);
+    const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
+    return { ok: true, guild: serGuild(g, stored) };
   });
   app.put('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
@@ -702,7 +755,9 @@ export default async function botRoutes(app) {
     const linked = new Set((await p.discordLink.findMany({ select: { discordId: true } })).map((l) => l.discordId));
     // DiscordActivity records only real members the scan has seen — there is no `bot`
     // column to filter on, and selecting one would make Prisma refuse the whole query.
-    const all = await p.discordActivity.findMany({ select: { discordId: true } });
+    // DISTINCT by discordId: a member in several guilds is several rows now (B4's per-guild
+    // key), and a broadcast must DM each person once, not once per shared server.
+    const all = await p.discordActivity.findMany({ select: { discordId: true }, distinct: ['discordId'] });
     const ids = all
       .map((m) => m.discordId)
       .filter((id) => (b.data.linkedOnly ? linked.has(id) : true));
@@ -1019,6 +1074,8 @@ export default async function botRoutes(app) {
   app.post('/bot/activity', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
+      guildId: z.string().min(1).max(32), // B4: activity is per guild now (composite key)
+      guildName: z.string().max(120).optional(),
       discordId: z.string().min(1).max(32),
       username: z.string().max(80).optional(),
       avatar: z.string().max(400).optional(),
@@ -1026,15 +1083,33 @@ export default async function botRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    const g = await botGuild(p, b.data.guildId, b.data.guildName);
+    // Same privacy default as the bulk sync: a guild not opted into `pool` stores nothing.
+    if (g.memberMode !== 'pool') return { ok: true, stored: false, reason: 'member_storage_off' };
     const now = new Date();
     const field = { join: 'guildJoinedAt', message: 'lastMessageAt', voiceJoin: 'lastVoiceJoinAt', voiceCreate: 'lastVoiceCreateAt' }[b.data.event];
     const base = { username: b.data.username, avatar: b.data.avatar };
+    // A brand-new member counts against the budget; an existing row is only refreshed.
+    const exists = await p.discordActivity.findUnique({ where: { guildId_discordId: { guildId: g.guildId, discordId: b.data.discordId } }, select: { discordId: true } });
+    if (!exists) {
+      const cap = memberCapacity(g.storageQuotaBytes);
+      if (cap !== Infinity && (await p.discordActivity.count({ where: { guildId: g.guildId } })) >= cap) return { ok: true, stored: false, reason: 'at_capacity' };
+    }
     await p.discordActivity.upsert({
-      where: { discordId: b.data.discordId },
-      create: { discordId: b.data.discordId, ...base, [field]: now },
+      where: { guildId_discordId: { guildId: g.guildId, discordId: b.data.discordId } },
+      create: { guildId: g.guildId, discordId: b.data.discordId, ...base, [field]: now },
       update: { ...base, [field]: now },
     });
-    return { ok: true };
+    return { ok: true, stored: true };
+  });
+
+  // Bot-facing: a guild's member-storage mode, so the bot can skip the expensive full-roster
+  // fetch for a guild that stores nothing. Lazily creates the row at the safe default (`none`).
+  app.get('/bot/guilds/:id', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const g = await botGuild(p, req.params.id);
+    return { guildId: g.guildId, memberMode: g.memberMode };
   });
 
   // Bulk member sync — the bot posts its FULL guild roster on startup (and periodically)
@@ -1066,7 +1141,9 @@ export default async function botRoutes(app) {
 
     const p = await db();
     const [member, me] = await Promise.all([
-      p.discordActivity.findUnique({ where: { discordId }, select: { username: true } }),
+      // findFirst, not findUnique: discordId is no longer a unique key on its own (B4's per-guild
+      // rows) — any guild's row gives the username we want for the action label.
+      p.discordActivity.findFirst({ where: { discordId }, select: { username: true } }),
       p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, email: true } }),
     ]);
     const action = await p.botAction.create({
@@ -1264,6 +1341,12 @@ export default async function botRoutes(app) {
   app.post('/bot/members/sync', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
+      // B4: the roster is now per GUILD. The bot must say which server it is syncing so the
+      // rows are budgeted against that guild's storage — and so a guild set to `none` (the
+      // default) is skipped entirely, which is what keeps a 1M-member server from writing 1M rows.
+      guildId: z.string().min(1).max(32),
+      guildName: z.string().max(120).optional(),
+      memberCount: z.number().int().min(0).optional(), // the guild's REAL size, kept even when not storing
       members: z.array(z.object({
         discordId: z.string().min(1).max(32),
         username: z.string().max(80).optional(),
@@ -1275,21 +1358,36 @@ export default async function botRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
+    const g = await botGuild(p, b.data.guildId, b.data.guildName);
+    // Keep the REAL member count even when we store nothing — "at capacity" can still show how
+    // big the server actually is, and a `none` guild still reports its size to the dashboard.
+    if (b.data.memberCount != null) await p.botGuild.update({ where: { guildId: g.guildId }, data: { memberCount: b.data.memberCount } }).catch(() => {});
+
+    const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
+    const gate = admitMembers(g.memberMode, stored, memberCapacity(g.storageQuotaBytes), b.data.members.length);
+    if (!gate.store) return { ok: true, stored: false, reason: gate.reason, mode: g.memberMode };
+
     let synced = 0;
+    // Update rows we already hold FIRST (they cost no new budget), then admit new ones only
+    // while there is room — so a full guild keeps its existing members fresh but stops growing.
+    const existing = new Set((await p.discordActivity.findMany({ where: { guildId: g.guildId, discordId: { in: b.data.members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
+    let room = gate.room;
     for (const m of b.data.members) {
+      const isNew = !existing.has(m.discordId);
+      if (isNew && room !== Infinity && room <= 0) continue; // budget full — count real size, store no more
       const joinedAt = m.joinedAt ? new Date(m.joinedAt) : null;
       await p.discordActivity.upsert({
-        where: { discordId: m.discordId },
-        create: { discordId: m.discordId, username: m.username, avatar: m.avatar, guildJoinedAt: joinedAt, roles: m.roles || [], nickname: m.nickname ?? null },
+        where: { guildId_discordId: { guildId: g.guildId, discordId: m.discordId } },
+        create: { guildId: g.guildId, discordId: m.discordId, username: m.username, avatar: m.avatar, guildJoinedAt: joinedAt, roles: m.roles || [], nickname: m.nickname ?? null },
         // Don't clobber a known join date with null; refresh name/avatar (they change).
         // Roles are replaced wholesale when the scan sends them, and left alone when it does
         // not — a scan that could not read them must not empty the list and make everybody
         // look like they have no roles at all.
         update: { username: m.username, avatar: m.avatar, ...(joinedAt ? { guildJoinedAt: joinedAt } : {}),
           ...(m.roles ? { roles: m.roles } : {}), ...(m.nickname !== undefined ? { nickname: m.nickname } : {}) },
-      }).then(() => synced++).catch(() => {});
+      }).then(() => { synced++; if (isNew && room !== Infinity) room -= 1; }).catch(() => {});
     }
-    return { ok: true, synced };
+    return { ok: true, stored: true, synced, full: gate.full || (room !== Infinity && room <= 0) };
   });
 
   // Account resolution for gated access + telemetry enrichment.

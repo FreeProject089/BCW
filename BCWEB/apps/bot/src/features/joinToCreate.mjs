@@ -44,11 +44,11 @@ export async function onVoiceStateUpdate(client, oldS, newS) {
     temp.set(ch.id, { ownerId: newS.member.id, guildId: guild.id, bans: new Set(), kicks: new Set(), locked: false, private: false, lastRename: 0, tempCatName: lobby.categoryId ? null : (lobby.tempCategoryName || 'Temp Voice') });
     await newS.member.voice.setChannel(ch).catch(() => {});
     await sendPanelTo(ch, newS.member).catch(() => {});
-    api.activity(newS.member.id, 'voiceCreate', newS.member.user); // created a room
+    api.activity(guild.id, newS.member.id, 'voiceCreate', newS.member.user); // created a room
   }
 
   // Report joining any voice channel (for telemetry) + enforce per-room bans.
-  if (newS.channelId && !oldS.channelId) api.activity(newS.member.id, 'voiceJoin', newS.member.user);
+  if (newS.channelId && !oldS.channelId) api.activity(guild.id, newS.member.id, 'voiceJoin', newS.member.user);
   if (newS.channelId && temp.has(newS.channelId)) {
     const st = temp.get(newS.channelId);
     if (st.bans.has(newS.member.id)) await newS.member.voice.disconnect('Banned from this room').catch(() => {});

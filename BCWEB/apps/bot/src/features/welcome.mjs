@@ -159,7 +159,7 @@ function welcomeEmbed(text, img, color) {
 }
 
 export async function onMemberAdd(member) {
-  api.activity(member.id, 'join', member.user); // record server-join for telemetry (always)
+  api.activity(member.guild.id, member.id, 'join', member.user); // record server-join for telemetry (per guild)
   const cfg = await guildConfig(member.guild.id); const w = cfg.welcome || {};
   if (!cfg.enabled || !w.enabled || !w.channelId) return;
   const ch = member.guild.channels.cache.get(w.channelId);
