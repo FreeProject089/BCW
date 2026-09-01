@@ -4104,7 +4104,7 @@ function BackupManager() {
       }
       toast.success(t('bkp.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
     } catch (x) {
-      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing has been backed up yet.')
+      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing to export yet — the backup store fills automatically as you edit files or database rows on this server. Make an edit, then its history is here to export.')
         : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
         : t('common.failed', 'Failed.'));
     } finally { setExporting(''); }
@@ -4228,6 +4228,11 @@ function BackupManager() {
         <p className="text-[11px] text-[var(--muted)] mb-2">
           {t('bkp.export.s', 'Each download is a git bundle containing the full history — open it anywhere with “git clone”, no part of this site required. It is signed, and the signature is saved beside it.')}
         </p>
+        {/* Say WHY it's empty before the export button 404s: the store only accrues as an
+            admin edits files/rows, so a fresh install having nothing is expected, not broken. */}
+        {(d.totalBytes || 0) === 0 && (
+          <p className="text-[11px] text-warning mb-2 flex items-start gap-1.5"><Info size={12} className="shrink-0 mt-0.5" /> {t('bkp.export.empty', 'Nothing to export yet. The backup store fills automatically as you edit files or database rows on this server — there is no separate “create a backup” step.')}</p>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button size="sm" disabled={!!exporting} onClick={() => exportRepo('files')}>
             {exporting === 'files' ? <Spinner /> : <Download size={13} />} {t('bkp.export.files', 'File history')}
