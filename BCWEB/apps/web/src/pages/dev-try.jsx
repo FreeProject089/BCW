@@ -42,7 +42,7 @@ export default function DevTryIt() {
   const [lang, setLang] = useState('curl');
   const [state, setState] = useState(null); // null | 'running' | { ms, status, body } | { error }
   const [copied, setCopied] = useState(false);
-  const origin = typeof location !== 'undefined' ? location.origin : 'https://bettercommunity.app';
+  const origin = typeof location !== 'undefined' ? location.origin : 'https://bettercommunity.ch';
 
   const run = async () => {
     setState('running');

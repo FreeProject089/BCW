@@ -66,7 +66,7 @@ import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
 import { installAbuseGuards } from './lib/abuse.mjs';
-import { productionSecretProblems, formatProblems, isProduction } from './lib/boot-guard.mjs';
+import { productionSecretProblems, formatProblems, isProduction, productionSiteUrlProblem, formatSiteUrlProblem } from './lib/boot-guard.mjs';
 
 // Fail-safe: never boot in production on a secret that is in the repository (CWE-798).
 //
@@ -78,10 +78,15 @@ import { productionSecretProblems, formatProblems, isProduction } from './lib/bo
 // A failed boot is loud and fixed in a minute; a silent one is found by whoever reads the
 // repository first.
 if (isProduction(process.env)) {
+  const siteProblem = productionSiteUrlProblem(process.env);
   const problems = productionSecretProblems(process.env);
-  if (problems.length) {
-    console.error('[fatal] refusing to start in production with these secrets:');
-    console.error(formatProblems(problems));
+  if (problems.length || siteProblem) {
+    console.error('[fatal] refusing to start in production:');
+    if (problems.length) console.error(formatProblems(problems));
+    // Reported in the same breath as the secrets and for the same reason: a deployment that
+    // boots without it works perfectly for the operator testing from the machine it runs on,
+    // and sends everybody else links to that machine.
+    if (siteProblem) console.error(formatSiteUrlProblem(siteProblem));
     process.exit(1);
   }
 }

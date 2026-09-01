@@ -41,7 +41,7 @@ warn() { printf '\033[1;33m! %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31mx %s\033[0m\n' "$*" >&2; exit 1; }
 
 DOMAIN=""
-SITE_SUB="app"
+SITE_SUB=""
 DRY=0
 
 while [ $# -gt 0 ]; do

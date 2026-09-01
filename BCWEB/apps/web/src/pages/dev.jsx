@@ -69,7 +69,10 @@ const ENDPOINTS = [
 const LANGS = ['curl', 'fetch', 'python'];
 
 function snippetFor(lang, { method, path, body, sandbox, write }) {
-  const url = `https://bettercommunity.app/api${path}`;
+  // The origin of the page the reader is on. On localhost the snippet says localhost, which
+  // is where their key actually works right now; deployed, it says the deployed domain. A
+  // hardcoded domain was wrong in BOTH directions — and it was the wrong TLD besides.
+  const url = `${typeof location !== 'undefined' ? location.origin : 'https://bettercommunity.ch'}/api${path}`;
   const hdr = [['Authorization', 'Bearer $BCW_KEY']];
   if (body) hdr.push(['Content-Type', 'application/json']);
   if (write && sandbox) hdr.push(['X-BCW-Sandbox', '1']);
