@@ -11,13 +11,13 @@ const RUN = !!process.env.DATABASE_URL;
 const skip = RUN ? false : 'set DATABASE_URL to a throwaway Postgres (see CI) to run pool-billing tests';
 
 const GiB = 1024n ** 3n;
-let p, recomputePoolBytes;
+let p, recomputePoolBytes, provisionHostingPool;
 
 before(async () => {
   if (!RUN) return;
   const lib = await import('../src/lib/lib.mjs');
   p = await lib.db();
-  ({ recomputePoolBytes } = await import('../src/routes/hosting.mjs'));
+  ({ recomputePoolBytes, provisionHostingPool } = await import('../src/routes/hosting.mjs'));
 });
 after(async () => { if (RUN) { await cleanupFixtures(p); await p?.$disconnect?.(); } });
 
@@ -33,6 +33,17 @@ const sub = (u, pl, g, bytes, status = 'active') =>
   p.subscription.create({ data: { user: { connect: { id: u.id } }, plan: { connect: { id: pl.id } }, hostingGroup: { connect: { id: g.id } }, poolContribBytes: bytes, status } });
 const mkRepo = (u, g, data) => p.serverRepo.create({ data: { owner: { connect: { id: u.id } }, group: { connect: { id: g.id } }, name: 'r', hosted: true, ...data } });
 const mkCat = (u, g, slug, data) => p.communityCatalog.create({ data: { owner: { connect: { id: u.id } }, group: { connect: { id: g.id } }, name: 'c', slug, ...data } });
+
+test('a sub-GB plan (0.5 GB) provisions exact bytes — the storageGB=Float point', { skip }, async () => {
+  const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const user = track('user', await p.user.create({ data: { email: `t-${uid}@test.local`, displayName: 'Test' } }));
+  // A 0.5 GB plan was impossible while storageGB was Int, and BigInt(0.5) would have thrown
+  // in provisionHostingPool. Both must work now.
+  const plan = track('hostingPlan', await p.hostingPlan.create({ data: { name: 'Half', storageGB: 0.5, uploadLimitKbps: 1000, priceMonthlyCents: 100 } }));
+  assert.equal(plan.storageGB, 0.5, 'the DB round-trips a fractional GB');
+  const group = await provisionHostingPool(p, { userId: user.id, plan, poolName: 'half', months: 1 });
+  assert.equal(group.poolBytes, 536870912n, '0.5 GB provisions exactly 512 MiB of bytes');
+});
 
 test('poolBytes = sum of ACTIVE subs only (cancelled ones are ignored)', { skip }, async () => {
   const { user, plan, group } = await scaffold();

@@ -10,7 +10,7 @@ import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, useDialog, useToast, copyText } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
@@ -7611,7 +7611,7 @@ function AdminHostingPlans() {
           <div className="text-sm font-semibold">{draft.id ? t('adm.plans.edit', 'Edit plan') : t('adm.plans.new', 'New plan')}</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field label={t('adm.plans.f.name', 'Name')}><Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
-            <Field label={t('adm.plans.f.storage', 'Storage (GB)')}><Input type="number" min="0" value={draft.storageGB} onChange={(e) => setDraft({ ...draft, storageGB: e.target.value })} /></Field>
+            <Field label={t('adm.plans.f.storage', 'Storage')}><ByteSize value={(Number(draft.storageGB) || 0) * (1024 ** 3)} onChange={(bytes) => setDraft({ ...draft, storageGB: bytes / (1024 ** 3) })} /></Field>
             <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
             <Field label={t('adm.plans.f.cpu', 'CPU share')}><Input type="number" step="0.05" min="0" value={draft.cpuShare} onChange={(e) => setDraft({ ...draft, cpuShare: e.target.value })} /></Field>
             {/* Cents, not dollars: money in floats is how a $9.99 plan quietly becomes
@@ -7707,7 +7707,7 @@ function AdminHostingPlans() {
                   {pl.priceMonthlyCents === 0 && <Badge tone="success">{t('adm.plans.free', 'free')}</Badge>}
                 </div>
                 <div className="text-[11px] text-[var(--faint)] font-mono">
-                  {pl.storageGB} GB · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
+                  {formatBytes((pl.storageGB || 0) * (1024 ** 3))} · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
                 </div>
                 {/* A change that has been PROMISED to customers is not an editor detail —
                     it is a commitment with a date on it, so it belongs on the row. */}
@@ -7779,7 +7779,7 @@ function AdminFreeHost() {
         ) : (
           <Field label={t('fh.plan', 'Plan')}><Select value={f.planId} onChange={(e) => setF({ ...f, planId: e.target.value })}>
             <option value="">{t('fh.selectplan', 'Select a plan…')}</option>
-            {(plans.data?.plans || []).map((pl) => <option key={pl.id} value={pl.id}>{pl.name} — {pl.storageGB}GB</option>)}
+            {(plans.data?.plans || []).map((pl) => <option key={pl.id} value={pl.id}>{pl.name} — {formatBytes((pl.storageGB || 0) * (1024 ** 3))}</option>)}
           </Select></Field>
         )}
         <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.listed} onChange={(e) => setF({ ...f, listed: e.target.checked })} /> {t('fh.listpub', 'List publicly once verified')}</label>

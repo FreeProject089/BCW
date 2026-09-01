@@ -270,7 +270,7 @@ export default async function stripeWebhook(app) {
         if (plan && repo) {
           const months = Number(meta.months || 1);
           await p.serverRepo.update({ where: { id: repo.id }, data: {
-            storageQuotaBytes: BigInt(plan.storageGB) * BigInt(1024 ** 3),
+            storageQuotaBytes: BigInt(Math.round(plan.storageGB * (1024 ** 3))),
             uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare,
           } });
           // upsert, not create — every hosted repo already has a Subscription row

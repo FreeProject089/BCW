@@ -1196,7 +1196,7 @@ export default async function repoRoutes(app) {
       // Empty storage pool — the owner fills it with repos and/or catalogs. No forced
       // first repo (that was the old "half the pool goes to repo-1" behaviour).
       const group = await p.hostingGroup.create({ data: {
-        ownerId, name: b.data.name, poolBytes: BigInt(storageGB) * BigInt(GiB), uploadLimitKbps: uploadKbps, cpuShare,
+        ownerId, name: b.data.name, poolBytes: BigInt(Math.round(storageGB * GiB)), uploadLimitKbps: uploadKbps, cpuShare,
       } });
       await notify(p, ownerId, 'hosting_started', `A storage pool "${b.data.name}" (${storageGB}GB) was provisioned for you (free host). Add repos or catalogs to it.`);
       return reply.code(201).send({ group: serGroup(group) });
@@ -1204,7 +1204,7 @@ export default async function repoRoutes(app) {
 
     const repo = await p.serverRepo.create({ data: {
       ownerId, name: b.data.name, hosted: true, status: 'PROVISIONING',
-      storageQuotaBytes: BigInt(storageGB) * BigInt(GiB),
+      storageQuotaBytes: BigInt(Math.round(storageGB * GiB)),
       uploadLimitKbps: uploadKbps, cpuShare, listed: !!b.data.listed,
     } });
     await notify(p, ownerId, 'hosting_started', `A hosted repo "${repo.name}" was provisioned for you (free host).`);

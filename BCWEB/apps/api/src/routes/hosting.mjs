@@ -163,7 +163,8 @@ export function priceCents(s, storageGB, uploadMbps, cpuShare) {
 // empty STORAGE POOL — the subscription anchors to the pool, and the owner fills it with
 // repos and/or catalogs afterward (no forced first repo). Returns the created pool.
 export async function provisionHostingPool(p, { userId, plan, poolName, months, stripeSubId = null, freePlan = false }) {
-  const bytes = BigInt(plan.storageGB) * BigInt(GiB);
+  // storageGB is a float now — BigInt(0.5) throws, so round the byte product, not the GB.
+  const bytes = BigInt(Math.round(plan.storageGB * GiB));
   const group = await p.hostingGroup.create({ data: {
     ownerId: userId, name: poolName || 'pool', poolBytes: bytes,
     uploadLimitKbps: plan.uploadLimitKbps, cpuShare: plan.cpuShare, freePlan,
@@ -309,7 +310,9 @@ export default async function hostingRoutes(app) {
   // A price nobody can change without a database client is a price that never changes.
   const planShape = {
     name: z.string().min(1).max(60),
-    storageGB: z.number().int().min(0).max(100000),
+    // Float, min 0 — a plan can now be set below 1 GB (the editor enters MB/GB/TB and sends
+    // the GB value). max 100000 GB ≈ 100 TB, well within a JS-safe number.
+    storageGB: z.number().min(0).max(100000),
     uploadLimitKbps: z.number().int().min(0).max(10_000_000),
     cpuShare: z.number().min(0).max(64),
     // NULLABLE on purpose: leaving the price empty means "whatever Hosting settings say

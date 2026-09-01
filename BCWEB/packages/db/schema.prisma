@@ -914,7 +914,11 @@ model Announcement {
 model HostingPlan {
   id                   String         @id @default(cuid())
   name                 String
-  storageGB            Int
+  // GB, stored as a float so a plan (or an admin service cap) can be set below 1 GB — the
+  // Hosting-settings UI lets an admin enter MB / GB / TB and converts to this canonical GB
+  // value, so the unit choice is never itself stored. Was Int, which silently could not hold
+  // the sub-GB "custom"/renewal plans that repos.mjs and stripe-webhook.mjs already create.
+  storageGB            Float
   uploadLimitKbps      Int
   cpuShare             Float          @default(0.25)
   priceMonthlyCents    Int

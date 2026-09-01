@@ -268,6 +268,49 @@ export const Spinner = ({ className = '' }) => <Loader2 className={`animate-spin
 export function Field({ label, hint, children }) {
   return <label className="block"><div className="text-xs font-medium text-[var(--muted)] mb-1.5">{label}</div>{children}{hint && <div className="text-xs text-[var(--faint)] mt-1">{hint}</div>}</label>;
 }
+
+// ── Storage sizes: store BYTES, display units ────────────────────────────────
+// The canonical value everywhere in the app is bytes (poolBytes, storageQuotaBytes, …).
+// These let a person read and enter a size in MB / GB / TB without the unit ever becoming
+// the stored source of truth — the trap the hosting/field-name work kept hitting.
+const BYTE_UNITS = [
+  { u: 'MB', f: 1024 ** 2 },
+  { u: 'GB', f: 1024 ** 3 },
+  { u: 'TB', f: 1024 ** 4 },
+];
+export const bytesInUnit = (bytes, unit) => (Number(bytes) || 0) / (BYTE_UNITS.find((x) => x.u === unit)?.f || 1);
+/** The largest unit that keeps the value ≥ 1 (0 shows as GB, the common default). */
+export function bestByteUnit(bytes) {
+  const b = Number(bytes) || 0;
+  if (b >= 1024 ** 4) return 'TB';
+  if (b < 1024 ** 3 && b > 0) return 'MB';
+  return 'GB';
+}
+/** "512 MB", "1.5 GB", "2 TB" — trailing zeros trimmed. */
+export function formatBytes(bytes, { max = 2 } = {}) {
+  const u = bestByteUnit(bytes);
+  return `${Number(bytesInUnit(bytes, u).toFixed(max))} ${u}`;
+}
+/**
+ * A number field + MB/GB/TB unit picker. `value` is BYTES; `onChange` receives BYTES.
+ * The unit is remembered locally (seeded from the value) so switching it never rewrites
+ * the stored figure — only how it is shown and entered.
+ */
+export function ByteSize({ value, onChange, min = 0, step = 'any', className = '', unitClassName = '!w-20', disabled, ...rest }) {
+  const [unit, setUnit] = useState(() => bestByteUnit(value));
+  const factor = BYTE_UNITS.find((x) => x.u === unit)?.f || 1;
+  const shown = bytesInUnit(value, unit);
+  return (
+    <div className={`flex gap-2 ${className}`}>
+      <Input type="number" min={min} step={step} disabled={disabled}
+        value={Number.isFinite(shown) ? +shown.toFixed(6) : ''}
+        onChange={(e) => onChange(Math.max(min, Math.round((Number(e.target.value) || 0) * factor)))} {...rest} />
+      <Select className={unitClassName} value={unit} disabled={disabled} onChange={(e) => setUnit(e.target.value)}>
+        {BYTE_UNITS.map((x) => <option key={x.u} value={x.u}>{x.u}</option>)}
+      </Select>
+    </div>
+  );
+}
 export function PageHeader({ icon: Icon, title, subtitle, actions }) {
   return (
     <div className="flex items-start justify-between gap-4 mb-6">
