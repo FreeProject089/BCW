@@ -3096,7 +3096,7 @@ const DICT = {
     'nav.users': 'Membres', 'nav.contact': 'Contact', 'nav.status': 'Statut',
     'lang.search': 'Rechercher une langue…', 'lang.none': 'Aucun résultat',
     'cmdk.placeholder': 'Rechercher pages, actions, docs…', 'cmdk.none': 'Aucun résultat',
-    'cmdk.doc': 'Docs', 'cmdk.action': 'Action', 'cmdk.page': 'Page', 'cmdk.navigate': 'naviguer', 'cmdk.open': 'ouvrir',
+    'cmdk.doc': 'Docs', 'cmdk.action': 'Action', 'cmdk.page': 'Page', 'cmdk.onpage': 'Sur cette page', 'cmdk.navigate': 'naviguer', 'cmdk.open': 'ouvrir',
     'cmdk.switchLang': 'Changer de langue', 'cmdk.kofi': 'Soutenir sur Ko-fi',
     'lc.title': 'Langues', 'lc.sub': 'L’anglais et le français sont intégrés. Ajoutez-en d’autres ici — une nouvelle langue démarre vide et affiche l’anglais jusqu’à ce que vous la traduisiez.',
     'lc.code': 'Code', 'lc.native': 'Nom natif', 'lc.english': 'Nom anglais', 'lc.rtl': 'RTL', 'lc.add': 'Ajouter',

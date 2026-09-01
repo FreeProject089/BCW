@@ -7,9 +7,44 @@
 // "feels semantic" part without a vector index. Ranking is a fuzzy scorer over label + aliases.
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, CornerDownLeft, FileText, ArrowRight, Hash, Compass, Zap } from 'lucide-react';
+import { Search, CornerDownLeft, FileText, ArrowRight, Hash, Compass, Zap, Target } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
+
+// Snapshot the CURRENT view's searchable content — headings, buttons, links, labels, table
+// headers, list rows — so ⌘K can find "the thing on this page" and jump to it. Scoped to the
+// main content column: the palette overlay and any body-level modal/portal render outside it,
+// and the topbar/footer nav are excluded (those are covered by the page directory). Text is
+// captured once on open (cheap, bounded) and filtered per keystroke.
+function collectPageElements() {
+  const root = document.querySelector('main') || document.getElementById('app-main') || document.querySelector('[data-page-root]') || document.body;
+  const els = root.querySelectorAll('h1,h2,h3,h4,button,a[href],[role="button"],label,summary,th,[data-cmdk-target]');
+  const seen = new Set();
+  const out = [];
+  for (const el of els) {
+    if (el.closest('.cmdk-overlay') || el.closest('nav') || el.closest('header') || el.closest('footer')) continue;
+    if (el.closest('[aria-hidden="true"]')) continue;
+    const text = (el.getAttribute('aria-label') || el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text || text.length < 2 || text.length > 90) continue;
+    const key = `${el.tagName}|${text.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    // Visible only — a jump to something the user can't see reads as broken.
+    if (el.offsetParent === null && el.getClientRects().length === 0) continue;
+    out.push({ text, el, tag: el.tagName.toLowerCase() });
+    if (out.length >= 400) break;
+  }
+  return out;
+}
+
+// Scroll to and briefly highlight an element the palette matched.
+function flashElement(el) {
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('cmdk-flash');
+  setTimeout(() => el.classList.remove('cmdk-flash'), 1400);
+  if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { /* not focusable */ } }
+}
 
 // PAGES — every destination, with concept aliases (EN+FR) so a search by intent lands the page.
 function pageDefs(t) {
@@ -63,6 +98,7 @@ export default function CommandPalette() {
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const [docs, setDocs] = useState([]);
+  const [pageEls, setPageEls] = useState([]);
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
@@ -75,7 +111,7 @@ export default function CommandPalette() {
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
-  useEffect(() => { if (open) { setQ(''); setActive(0); setDocs([]); setTimeout(() => inputRef.current?.focus(), 20); } }, [open]);
+  useEffect(() => { if (open) { setQ(''); setActive(0); setDocs([]); setPageEls(collectPageElements()); setTimeout(() => inputRef.current?.focus(), 20); } }, [open]);
 
   // Live docs full-text (the same endpoint the docs page uses), debounced.
   useEffect(() => {
@@ -105,10 +141,13 @@ export default function CommandPalette() {
     const d = docs.map((r) => ({
       kind: 'doc', label: r.title, section: r.section, to: `/docs/${r.slug}${r.anchor ? `#${r.anchor}` : ''}`, s: 1,
     }));
-    // No query → show the pages as a directory + actions. Query → ranked everything.
-    const out = n ? [...p.slice(0, 8), ...d, ...a.slice(0, 3)] : [...pages.map((x) => ({ ...x, s: 1 })), ...actions];
+    // Content of the page you're ON — the most contextual result, so it leads when querying.
+    const onpage = n ? pageEls.map((x) => ({ kind: 'onpage', label: x.text, el: x.el, s: score(n, x.text.toLowerCase()) }))
+      .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, 6) : [];
+    // No query → show the pages as a directory + actions. Query → on-page first, then everything.
+    const out = n ? [...onpage, ...p.slice(0, 6), ...d, ...a.slice(0, 2)] : [...pages.map((x) => ({ ...x, s: 1 })), ...actions];
     return out;
-  }, [q, docs, actions, t]);
+  }, [q, docs, actions, pageEls, t]);
 
   useEffect(() => { setActive(0); }, [q, docs]);
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);
@@ -117,6 +156,7 @@ export default function CommandPalette() {
     if (!it) return;
     setOpen(false);
     if (it.kind === 'action') it.run?.();
+    else if (it.kind === 'onpage') { setTimeout(() => flashElement(it.el), 30); }
     else if (it.to) nav(it.to);
   }, [nav]);
 
@@ -127,9 +167,9 @@ export default function CommandPalette() {
   };
 
   if (!open) return null;
-  const icon = (k) => k === 'doc' ? <FileText size={15} /> : k === 'action' ? <Zap size={15} /> : <Compass size={15} />;
+  const icon = (k) => k === 'doc' ? <FileText size={15} /> : k === 'action' ? <Zap size={15} /> : k === 'onpage' ? <Target size={15} /> : <Compass size={15} />;
   return (
-    <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4" role="dialog" aria-modal="true"
+    <div className="cmdk-overlay fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4" role="dialog" aria-modal="true"
       style={{ background: 'rgba(0,0,0,0.45)' }} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
       <div className="w-full max-w-xl rounded-2xl border border-[var(--line-strong)] overflow-hidden anim-fade"
         style={{ background: 'var(--bg-solid)', boxShadow: '0 30px 80px -20px rgba(0,0,0,0.6)' }}>
@@ -152,7 +192,7 @@ export default function CommandPalette() {
                 {it.kind === 'doc' && it.section && <span className="block text-[11px] text-[var(--faint)] truncate flex items-center gap-1"><Hash size={10} /> {it.section}</span>}
               </span>
               <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] shrink-0">
-                {it.kind === 'doc' ? t('cmdk.doc', 'Docs') : it.kind === 'action' ? t('cmdk.action', 'Action') : t('cmdk.page', 'Page')}
+                {it.kind === 'doc' ? t('cmdk.doc', 'Docs') : it.kind === 'action' ? t('cmdk.action', 'Action') : it.kind === 'onpage' ? t('cmdk.onpage', 'On this page') : t('cmdk.page', 'Page')}
               </span>
               {i === active && <CornerDownLeft size={13} className="text-[var(--faint)] shrink-0" />}
             </button>
