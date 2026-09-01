@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
+import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
@@ -29,6 +30,17 @@ const settingKey = (k) => `project.${k}`;
 async function getConfig(p, key) {
   const row = await p.adminSetting.findUnique({ where: { key: settingKey(key) } });
   return row?.value ?? null;
+}
+
+// Which GitHub repo a project's activity heatmap reads (B13). The structured releaseNotes
+// owner/repo is authoritative; failing that, parse the project's GitHub link.
+const GH_REPO_RE = /github\.com\/([^/]+)\/([^/?#]+)/i;
+function repoOf(cfg) {
+  const rn = cfg?.releaseNotes;
+  if (rn?.owner && rn?.repo) return { owner: rn.owner, repo: String(rn.repo).replace(/\.git$/, '') };
+  const url = cfg?.links?.github || cfg?.github || cfg?.community?.github || '';
+  const m = String(url).match(GH_REPO_RE);
+  return m ? { owner: m[1], repo: m[2].replace(/\.git$/, '') } : null;
 }
 
 /** Record a project-page snapshot under the config's own `version` string.
@@ -83,6 +95,21 @@ export async function gh(url) {
   const data = await res.json();
   cache.set(url, { at: Date.now(), data });
   return data;
+}
+
+// Like gh(), but for the /stats/* endpoints, which answer 202 with an EMPTY body while GitHub
+// (re)builds them and 200 with the real data once ready. gh() would treat that 202 as success
+// AND cache the empty body for 5 minutes, so every retry in that window would also come back
+// empty. Here a 202 is reported as { computing: true } and never cached; only a 200 is.
+async function ghStats(url) {
+  const hit = cache.get(url);
+  if (hit && Date.now() - hit.at < 5 * 60_000) return { data: hit.data };
+  const res = await safeFetch(url, { headers: { 'User-Agent': 'bcweb', Accept: 'application/vnd.github+json' } });
+  if (res.status === 202) return { computing: true };
+  if (!res.ok) throw new Error(`github_${res.status}`);
+  const data = await res.json();
+  cache.set(url, { at: Date.now(), data });
+  return { data };
 }
 
 // raw.githubusercontent.com is fronted by its own CDN (Fastly) with a cache TTL
@@ -972,6 +999,39 @@ export default async function projectRoutes(app) {
         })
         .sort((a, b) => b.path.localeCompare(a.path)); // newest-ish first
       return { source: { owner: rn.owner, repo: rn.repo, branch, path: base }, files };
+    } catch (e) {
+      return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) });
+    }
+  });
+
+  // Git-linked activity for the project page (B13): a commit heatmap, contributors, the span
+  // of the project's life, and dated release markers. Sourced from GitHub's commit-stats
+  // endpoints (one call each, through the shared 5-min cache) rather than paging /commits,
+  // which on a large repo would spend the whole hourly budget. The repo is the config's
+  // releaseNotes owner/repo, falling back to parsing its GitHub link.
+  app.get('/projects/:key/activity', { preHandler: optionalAuth() }, async (req, reply) => {
+    const p = await db();
+    if ((await KEYS()).includes(req.params.key) && !(await assertVisible(p, req, reply))) return;
+    const cfg = await getConfig(p, req.params.key);
+    const src = repoOf(cfg);
+    if (!src) return reply.code(404).send({ error: 'no_git_source' });
+    // The "include commit messages" toggle the feature asks for — applied to release notes.
+    const includeMessages = req.query?.messages === '1' || req.query?.messages === 'true';
+    try {
+      const [ca, cb, releases] = await Promise.all([
+        ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/commit_activity`).catch(() => ({ data: [] })),
+        ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/contributors`).catch(() => ({ data: [] })),
+        gh(`https://api.github.com/repos/${src.owner}/${src.repo}/releases?per_page=100`).catch(() => []),
+      ]);
+      // Either stat still building ⇒ tell the client to retry shortly rather than render the
+      // project as if that dimension were empty. The markers (releases) are ready either way.
+      const computing = !!ca.computing || !!cb.computing;
+      return {
+        source: { owner: src.owner, repo: src.repo },
+        computing,
+        ...computeActivity(ca.data || [], cb.data || []),
+        markers: releaseMarkers(releases, { includeMessages }),
+      };
     } catch (e) {
       return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) });
     }
