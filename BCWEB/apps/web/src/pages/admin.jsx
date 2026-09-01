@@ -18702,20 +18702,30 @@ function SeedGeneratorCard() {
 // the editor covers the strings a visitor meets first, and everything else falls back to English.
 const CORE_I18N_PREFIXES = ['nav.', 'home.', 'foot.', 'common.', 'docs.', 'auth.'];
 
-function LocaleStringEditor({ locale, core, onClose }) {
+function LocaleStringEditor({ locale, core, allKeys, onClose }) {
   const { t } = useI18n();
   const toast = useToast();
   const { data, loading } = useAsync(() => api.get(`/admin/locales/${locale.code}`), [locale.code]);
   const [draft, setDraft] = useState({});
   const [q, setQ] = useState('');
+  const [scope, setScope] = useState('core'); // 'core' (curated) | 'all' (~7k keys)
+  const [untransOnly, setUntransOnly] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importText, setImportText] = useState('');
   const [busy, setBusy] = useState(false);
   const current = data?.strings || {};
-  const keys = useMemo(() => {
-    const all = Object.keys(core);
-    const needle = q.trim().toLowerCase();
-    return (needle ? all.filter((k) => (k + ' ' + (core[k]?.en || '')).toLowerCase().includes(needle)) : all).slice(0, 300);
-  }, [core, q]);
+  const dict = scope === 'all' ? allKeys : core;
   const valOf = (k) => (k in draft ? draft[k] : (current[k] ?? ''));
+  const keys = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    let ks = Object.keys(dict);
+    if (needle) ks = ks.filter((k) => (k + ' ' + (dict[k]?.en || '') + ' ' + (dict[k]?.fr || '')).toLowerCase().includes(needle));
+    if (untransOnly) ks = ks.filter((k) => !(k in draft ? draft[k] : current[k]));
+    return ks.slice(0, 400);
+  }, [dict, q, untransOnly, draft, current]);
+  const totalKeys = Object.keys(dict).length;
+  const translatedCount = Object.keys(dict).filter((k) => (k in draft ? draft[k] : current[k])).length;
+
   const save = async () => {
     // Only the keys the admin actually touched travel, as a patch (empty value deletes).
     const patch = {};
@@ -18725,21 +18735,58 @@ function LocaleStringEditor({ locale, core, onClose }) {
     try { await api.put(`/admin/locales/${locale.code}`, { patch }); toast.success(t('lc.saved', 'Translations saved.')); onClose(); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
+  // Export the locale's current strings (saved + edited) as a { key: value } JSON file.
+  const exportJson = () => {
+    const merged = { ...current };
+    for (const k of Object.keys(draft)) { if (draft[k]) merged[k] = draft[k]; else delete merged[k]; }
+    const blob = new Blob([JSON.stringify(merged, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = `i18n-${locale.code}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  // Import a { key: value } JSON blob — merged into the draft for review, not saved until Save.
+  const applyImport = () => {
+    let obj;
+    try { obj = JSON.parse(importText); } catch { toast.error(t('lc.badjson', 'That is not valid JSON.')); return; }
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) { toast.error(t('lc.badjson', 'That is not valid JSON.')); return; }
+    const add = {}; let n = 0;
+    for (const [k, v] of Object.entries(obj)) if (typeof v === 'string') { add[k] = v; n++; }
+    setDraft((d) => ({ ...d, ...add }));
+    setImporting(false); setImportText('');
+    toast.success(t('lc.imported', '{n} strings loaded — review, then Save.').replace('{n}', n));
+  };
+
   return (
     <Modal open onClose={onClose} title={`${t('lc.edit', 'Translate')} — ${locale.nativeName}`} width="max-w-2xl">
       {loading ? <Loading /> : (
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="seg-rail p-0.5 gap-0.5">
+              <button onClick={() => setScope('core')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'core' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.core', 'Core')}</button>
+              <button onClick={() => setScope('all')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'all' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.all', 'All strings')}</button>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none"><input type="checkbox" className="accent-[var(--primary)]" checked={untransOnly} onChange={(e) => setUntransOnly(e.target.checked)} /> {t('lc.untrans', 'Untranslated only')}</label>
+            <div className="flex-1" />
+            <Badge tone={translatedCount ? 'primary' : ''}>{translatedCount}/{totalKeys}</Badge>
+            <Button size="sm" variant="ghost" onClick={() => setImporting((v) => !v)}><UploadIcon size={13} /> {t('lc.import', 'Import')}</Button>
+            <Button size="sm" variant="ghost" onClick={exportJson}><Download size={13} /> {t('lc.export', 'Export')}</Button>
+          </div>
+          {importing && (
+            <div className="rounded-lg border border-[var(--line)] p-2.5 space-y-2">
+              <p className="text-xs text-[var(--muted)]">{t('lc.import.h', 'Paste a { "key": "value" } JSON. It is merged into the editor for review; nothing is saved until you press Save.')}</p>
+              <Textarea rows={5} className="font-mono text-xs" value={importText} onChange={(e) => setImportText(e.target.value)} placeholder='{ "nav.home": "Дом" }' />
+              <div className="flex justify-end gap-2"><Button size="sm" variant="ghost" onClick={() => { setImporting(false); setImportText(''); }}>{t('common.cancel', 'Cancel')}</Button><Button size="sm" variant="primary" onClick={applyImport}>{t('lc.import.apply', 'Load')}</Button></div>
+            </div>
+          )}
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-            <Input className="!ps-9" placeholder={t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <p className="text-xs text-[var(--faint)]">{t('lc.hint', 'Only the most visible strings are shown here. Anything left blank falls back to English.')}</p>
-          <div className="max-h-[52vh] overflow-auto space-y-2.5 pe-1">
+            <Input className="!ps-9" placeholder={scope === 'all' ? t('lc.searchall', 'Search all strings…') : t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <p className="text-xs text-[var(--faint)]">{scope === 'all' ? t('lc.hint.all', 'Every string in the app. Anything left blank falls back to English.') : t('lc.hint', 'The most visible strings. Anything left blank falls back to English.')}{keys.length >= 400 ? ` · ${t('lc.capped', 'showing first 400 — search to narrow')}` : ''}</p>
+          <div className="max-h-[48vh] overflow-auto space-y-2.5 pe-1">
             {keys.map((k) => (
               <div key={k} className="rounded-lg border border-[var(--line)] p-2.5">
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <code className="text-[11px] text-[var(--faint)]">{k}</code>
-                </div>
-                <div className="text-[13px] text-[var(--muted)] mb-1.5 line-clamp-2">{core[k]?.en || ''}</div>
-                <Input dir={locale.rtl ? 'rtl' : 'ltr'} value={valOf(k)} placeholder={core[k]?.en || ''}
+                <code className="text-[11px] text-[var(--faint)]">{k}</code>
+                <div className="text-[13px] text-[var(--muted)] mb-1.5 line-clamp-2">{dict[k]?.en || ''}{dict[k]?.fr ? <span className="text-[var(--faint)]"> · FR: {dict[k].fr}</span> : ''}</div>
+                <Input dir={locale.rtl ? 'rtl' : 'ltr'} value={valOf(k)} placeholder={dict[k]?.en || ''}
                   onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
               </div>
             ))}
@@ -18855,6 +18902,9 @@ function LanguagesCard() {
     for (const p of CORE_I18N_PREFIXES) Object.assign(out, shippedText(p));
     return out;
   }, []);
+  // The FULL dictionary (~7k keys) for the "All strings" editor scope. `shippedText('')` returns
+  // every key (every key startsWith ''), enumerated from the complete French dictionary.
+  const allKeys = useMemo(() => shippedText(''), []);
   const create = async () => {
     const code = add.code.trim();
     if (!code || !add.nativeName.trim()) return;
@@ -18923,7 +18973,7 @@ function LanguagesCard() {
       ) : <EmptyState icon={Languages} title={t('lc.none', 'No extra languages yet')} sub={t('lc.none.s', 'Add one above to translate the site beyond English and French.')} />}
 
       <p className="text-[11px] text-[var(--faint)] mt-3">{t('lc.editornote', 'The translator covers the {n} most-visible strings; a full-dictionary editor and the right-to-left layout pass come later.').replace('{n}', coreCount)}</p>
-      {editing && <LocaleStringEditor locale={editing} core={core} onClose={() => { setEditing(null); reload(); }} />}
+      {editing && <LocaleStringEditor locale={editing} core={core} allKeys={allKeys} onClose={() => { setEditing(null); reload(); }} />}
     </Card>
   );
 }
