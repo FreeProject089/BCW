@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
+import { Code2, Shield, KeyRound, BookOpen, Send, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { highlightCode, useAsync } from './pages.jsx';
 import { Card, Button, Input, Select, Textarea, Badge, Field, Spinner, useToast, copyText } from '../ui/ui.jsx';
-import DevTryIt from './dev-try.jsx';
+import { NewsGrid } from './home-sections.jsx';
 import { useAuth } from './auth.jsx';
-import { IconGlyph } from '../ui/md.jsx';
 
 // /dev — the front door for anybody building against BetterCommunity.
 //
@@ -373,34 +372,6 @@ export function devCards(cfg, t) {
   }));
 }
 
-// ONE tile, used for everything on this page that is "somewhere you can go".
-//
-// There were three shapes doing this job — a <Link> tile for the tools, a <Card> with
-// decorative pills for the two jobs, and a <Card> with a Button inside for the rest —
-// laid out in three separate grids under two headings. Same job, three dialects, so the
-// page read as three unrelated sections rather than one list of doors.
-function Tile({ icon, title, hint, to }) {
-  // One border for every tile, deliberately. An accent border on the five tools ranked
-  // them above the three plain cards — on screen that was five orange boxes reading as
-  // five warnings, and a row of one orange beside one grey that looked like a mistake.
-  // Their position in the list already says which came first; the icon already carries
-  // the colour.
-  return (
-    <Link to={to || '#'}
-      className="group rounded-xl border border-[var(--line)] p-4 flex flex-col transition hover:border-[var(--primary)]"
-      style={{ background: 'var(--surface)' }}>
-      <span className="flex items-center gap-2 text-[13px] font-semibold">
-        <IconGlyph name={icon || 'circle'} size={15} className="text-[var(--primary-2)]" />
-        <span className="min-w-0 flex-1">{title}</span>
-        {/* Always rendered, revealed on hover. Mounting it on hover would shift the title
-            by 13px every time the pointer crossed a tile. */}
-        <ArrowRight size={13} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
-      </span>
-      {hint && <p className="text-[12px] text-[var(--muted)] mt-1.5 leading-snug">{hint}</p>}
-    </Link>
-  );
-}
-
 export default function DevHub() {
   const { t } = useI18n(); const toast = useToast();
   const { user } = useAuth();
@@ -409,7 +380,10 @@ export default function DevHub() {
   // "none".
   const mine = useAsync(() => (user ? api.get('/me/api-keys') : Promise.resolve({ keys: [] })), [!!user]);
   const myKeys = (mine.data?.keys || []).filter((k) => !k.revokedAt);
-  const [scopes, setScopes] = useState(null);
+  // The developer blog, as a reading feed on the landing itself — not a link you might not
+  // follow. Filtered to the developers project; failure is silent so the page never depends
+  // on there being posts (or on the endpoint answering).
+  const devPosts = useAsync(() => api.get('/blog?project=developers').then((d) => d.posts || []).catch(() => []), []);
   const base = typeof location !== 'undefined' ? location.origin : '';
   // Only read by a `stat` block on a built page, and fetched unconditionally so the hook
   // order never depends on whether one exists.
@@ -424,29 +398,6 @@ export default function DevHub() {
   }, []);
   const hero = cfg?.hero || {};
   const show = cfg?.sections || {};
-  const allCards = devCards(cfg, t);
-  // Every chip on every card, flattened: an admin who adds a chip to a custom card gets it
-  // in the tools grid without a second list to keep in step.
-  const toolCards = allCards.flatMap((c) => c.chips || []);
-  // A card whose chips are drawn as tiles is not shown again as a tile of its own: /dev
-  // would otherwise offer six links to /dev/tools, five of them anchors into the same page.
-  const cards = allCards.filter((c) => !(c.chips && c.chips.length));
-  // Every door on this page, in one list of one shape. Tools first (they are what a
-  // developer came to use), then the plain cards, admin order preserved within each.
-  const doors = [
-    ...toolCards.map((c, i) => ({
-      key: `t${i}`, icon: c.icon || 'circle', to: c.to,
-      title: c.labelKey ? t(c.labelKey, c.label || '') : (c.label || ''),
-      hint: c.hintKey ? t(c.hintKey, c.hint || '') : (c.hint || ''),
-    })),
-    ...cards.map((c) => ({ key: c.key, icon: c.icon, to: c.to, title: c.title, hint: c.body })),
-  ].filter((d) => d.title);
-
-  const loadScopes = async () => {
-    if (scopes) return setScopes(null);
-    try { setScopes((await api.get('/v1/scopes')).scopes); }
-    catch { toast.error(t('common.failed', 'Failed.')); }
-  };
 
   return (
     <div className="max-w-5xl mx-auto py-8 sm:py-12">
@@ -492,17 +443,6 @@ export default function DevHub() {
         )}
       </div>
 
-      {/* Before the fork, before the tiles: proof.
-          This page opened with a promise and then offered nine doors to documentation. The
-          fastest way to answer "is this real" is to answer it — one public GET, timed on the
-          reader's own machine, with the response printed underneath. */}
-      <div className="mb-10">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
-          {t('dev.hub.tryh', 'Try it, right now')}
-        </h2>
-        <DevTryIt />
-      </div>
-
       {/* ONE fork, first: which of the two things are you building?
           Getting this wrong is the mistake that costs a day, and the names do not give it
           away. Each side is now a LINK to where that answer starts — they were dead-end
@@ -529,52 +469,54 @@ export default function DevHub() {
         </div>
       )}
 
-      {/* ONE grid, one shape, one heading.
-          It was two grids under "Tools you can use right now" and "Everything here" — a
-          pair of titles that do not distinguish anything, since everything is here. Measured
-          at 931px, where both fell back to two columns: five items left an orphan on a row of
-          its own, and three items left another. Merged, the same eight tiles fill four clean
-          rows there, and three rows from 1024px up.
-
-          Order is preserved, so an admin reordering cards in Projects config still gets what
-          they arranged: the tools a card carries, then the plain cards. */}
-      {doors.length > 0 && (
-        <>
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">
-            {hero.toolsTitle || t('dev.hub.toolsh', 'Everything here')}
-          </h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {doors.map((d, i) => <Tile key={d.key || i} icon={d.icon} title={d.title} hint={d.hint} to={d.to} />)}
+      {/* Two doors into the material — the workbench and the written guides — as a calm
+          pair, not a nine-tile wall. This is a landing page: it names where to go and gets
+          out of the way. The interactive console, the feed validator and the deeplink
+          builder all still live at /dev/tools; they are no longer inlined onto the front
+          door, so arriving here reads as "here is what you can build" rather than "here is a
+          control panel". */}
+      <div className="grid sm:grid-cols-2 gap-4 mb-12">
+        <Link to="/dev/tools" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <FlaskConical size={16} className="text-[var(--primary-2)]" />
+            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.toolsT', 'Developer tools & console')}</span>
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
           </div>
-        </>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.toolsS', 'Try a call, validate a catalog feed, build a bmm:// link, check a webhook signature.')}</p>
+        </Link>
+        <Link to={hero.refUrl || '/docs/bcweb-api'} className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <BookOpen size={16} className="text-[var(--primary-2)]" />
+            <span className="font-semibold text-[15px] flex-1">{hero.refLabel || t('dev.landing.guidesT', 'Guides & API reference')}</span>
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+          </div>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks — the full written reference.')}</p>
+        </Link>
+      </div>
+
+      {/* The living half of the page: the latest from the developer blog, read right here.
+          Same NewsGrid the home landing uses, so the two front doors share one look. Absent
+          when there are no developer posts — the page never shows an empty band. */}
+      {devPosts.data?.length > 0 && (
+        <div className="mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-2xl font-extrabold tracking-tight">{t('dev.hub.newsh', 'From the developer blog')}</h2>
+            <Link to="/blog?project=developers" className="text-sm text-[var(--primary-2)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('dev.hub.newsall', 'All posts')} <ArrowRight size={13} /></Link>
+          </div>
+          <NewsGrid posts={devPosts.data} limit={3} heading={false} />
+        </div>
       )}
 
-      {/* The machine-readable corner, kept but demoted.
-          A discovery URL and a scope table are reference material, not a destination — as a
-          full Card at the same weight as the tiles above, they read as a ninth door. */}
+      {/* The discovery URL, demoted to one quiet line — reference material, not a destination.
+          copyText takes ONE argument and returns a boolean; it does not toast, so the toast
+          is explicit here. */}
       {show.discovery !== false && (
-      <div className="mt-8 rounded-xl border border-[var(--line)] p-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="mt-8 rounded-xl border border-[var(--line)] p-4 flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('dev.hub.discovery', 'Discovery')}</span>
           <code className="text-[11px] font-mono break-all bg-[var(--surface-2)] rounded px-2 py-1 flex-1 min-w-[240px]">{base}/.well-known/openid-configuration</code>
-          {/* copyText takes ONE argument and returns a boolean — it does not toast. The two
-              other copy buttons in this file already pair it with an explicit toast; a third
-              spelling of the same action is how one of them ends up silently doing nothing. */}
           <Button size="sm" variant="ghost" title={t('common.copy', 'Copy')} aria-label={t('common.copy', 'Copy')}
             onClick={() => { copyText(`${base}/.well-known/openid-configuration`); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
         </div>
-        <div className="flex flex-wrap gap-2 mt-3">
-          <Button size="sm" variant="ghost" onClick={loadScopes}>{scopes ? t('common.close', 'Close') : t('dev.hub.scopes', 'What the scopes mean')}</Button>
-          <Link to="/blog?project=developers"><Button size="sm" variant="ghost"><Newspaper size={13} /> {t('dev.hub.blog', 'Developer blog')}</Button></Link>
-        </div>
-        {scopes && (
-          <div className="mt-3 space-y-1">
-            {Object.entries(scopes).map(([k, v]) => (
-              <div key={k} className="text-[11px]"><code className="font-mono text-[var(--primary-2)]">{k}</code> — <span className="text-[var(--muted)]">{v}</span></div>
-            ))}
-          </div>
-        )}
-      </div>
       )}
 
     </div>
