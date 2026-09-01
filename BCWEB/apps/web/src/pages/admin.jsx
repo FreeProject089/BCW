@@ -13434,7 +13434,7 @@ function AdminBot() {
         <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Field label={t('db.f.maxtemp', 'Max temp channels')}><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
-            <Field label={t('db.f.dbcap', 'Member DB cap (MB)')} hint={t('db.f.dbcap.h', 'Oldest inactive members are pruned once over.')}><Input type="number" value={g('limits.storageMB')} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
+            <Field label={t('db.f.dbcap', 'Member DB cap')} hint={t('db.f.dbcap.h', 'Oldest inactive members are pruned once over.')}><ByteSize value={(Number(g('limits.storageMB')) || 0) * (1024 ** 2)} onChange={(bytes) => set('limits.storageMB', Math.round(bytes / (1024 ** 2)))} /></Field>
           </div>
         </ModuleCard>
       </div>
@@ -15943,15 +15943,15 @@ function SeoPagesCard() {
 // each field gets a real description of its effect, not just a bare label.
 const SETTINGS_GROUPS = [
   { title: 'Capacity', gk: 'capacity', icon: HardDrive, keys: [
-    ['hosting.totalCapacityGB', 'Total capacity (GB)', 'The overall ceiling for everything hosting draws against — checked against the real disk on save.', 'number'],
-    ['hosting.reservedFreeGB', 'Reserved free margin (GB)', 'Always kept free below Total capacity, as a safety buffer.', 'number'],
-    ['hosting.tempMarginGB', 'Temp margin for submissions (GB)', 'Separate pool for catalog submissions awaiting moderation — full = new uploads refused until reviewed.', 'number'],
+    ['hosting.totalCapacityGB', 'Total capacity (GB)', 'The overall ceiling for everything hosting draws against — checked against the real disk on save.', 'gbmb', 'GB'],
+    ['hosting.reservedFreeGB', 'Reserved free margin (GB)', 'Always kept free below Total capacity, as a safety buffer.', 'gbmb', 'GB'],
+    ['hosting.tempMarginGB', 'Temp margin for submissions (GB)', 'Separate pool for catalog submissions awaiting moderation — full = new uploads refused until reviewed.', 'gbmb', 'GB'],
     ['hosting.rejectedRetentionDays', 'Rejected-payload grace (days)', 'How long a rejected submission keeps its uploaded file before the sweeper purges it to reclaim temp space. The author can still fix & resubmit within this window. Default 7.', 'number'],
     ['hosting.freeTierCapEnabled', 'Cap the free hosting-plan pool', 'When on, the Free hosting plan goes "sold out" once free repos together reach the cap below — paid plans never count against this.', 'bool'],
-    ['hosting.freeTierCapGB', 'Free hosting-plan pool cap (GB)', 'Total storage the Free plan can ever occupy across every user, once the toggle above is on.', 'number'],
+    ['hosting.freeTierCapGB', 'Free hosting-plan pool cap (GB)', 'Total storage the Free plan can ever occupy across every user, once the toggle above is on.', 'gbmb', 'GB'],
     ['catalog.freeTierCapEnabled', 'Cap the free catalog-upload pool', 'When on, free catalog file hosting goes "sold out" once free uploads together reach the cap below — paid uploads never count against this.', 'bool'],
-    ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'number'],
-    ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'number'],
+    ['catalog.freeTierCapMB', 'Free catalog-upload pool cap (MB)', 'Total payload bytes the free catalog tier can ever occupy across every user, once the toggle above is on.', 'gbmb', 'MB'],
+    ['telemetry.storageLimitGB', 'BMM telemetry storage limit (GB)', 'How much storage the (separate) BMM telemetry database is allowed — shown as used vs. allocated in Total capacity above. 0 = untracked.', 'gbmb', 'GB'],
     ['hosting.maxUploadMbps', 'Max upload per repo (Mbps)', 'Hard ceiling on the upload bandwidth a single repo can request (custom plans + upgrades). Scarcity may lower it further as capacity fills. Default 1000.', 'number'],
     ['hosting.burstFactor', 'Bandwidth burst factor', 'Smart sharing: while the server is quiet, a repo download may burst to its cap × this factor, borrowing idle capacity. Tightens back to the cap under load. 1 = no bursting. Default 4.', 'number'],
     ['hosting.burstUntilActive', 'Burst until N active transfers', 'Bursting is allowed only while fewer than this many downloads are in flight at once; beyond it, each repo is held to its own cap. Default 3.', 'number'],
@@ -16024,7 +16024,11 @@ const GROUP_DESC = {
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
 // always stays in its native unit (GB for hostingFreeGB, MB for catalogFreeMB);
 // only the on-screen number changes when the admin picks a different unit.
-const convertUnit = (value, fromUnit, toUnit) => fromUnit === toUnit ? Number(value) : (fromUnit === 'GB' ? Number(value) * 1024 : Number(value) / 1024);
+// Storage-unit conversion via a common MB base — general over MB/GB/TB (the old form only
+// knew MB↔GB and ignored `toUnit` entirely, so a third unit converted wrongly).
+const UNIT_IN_MB = { MB: 1, GB: 1024, TB: 1024 * 1024 };
+const convertUnit = (value, fromUnit, toUnit) => (fromUnit === toUnit ? Number(value)
+  : Number(value) * (UNIT_IN_MB[fromUnit] || 1) / (UNIT_IN_MB[toUnit] || 1));
 
 // Live BMM telemetry config — proxies the telemetry service's own admin API, so
 // changes here are APPLIED to the running telemetry service (config.json, no .env
@@ -16073,7 +16077,7 @@ function TelemetryConfigCard() {
         {limitGB > 0 && <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-info'}`} style={{ width: `${pct}%` }} /></div>}
       </div>
       <div className="grid sm:grid-cols-3 gap-3">
-        <Field label={t('tc.storage', 'Storage cap (GB)')} hint={t('tc.storage.h', 'Oldest events trimmed when exceeded.')}><Input type="number" min="0.125" step="0.5" value={f.storageGB} onChange={(e) => setF({ ...f, storageGB: e.target.value })} /></Field>
+        <Field label={t('tc.storage', 'Storage cap')} hint={t('tc.storage.h', 'Oldest events trimmed when exceeded.')}><ByteSize value={(Number(f.storageGB) || 0) * (1024 ** 3)} onChange={(bytes) => setF({ ...f, storageGB: String(bytes / (1024 ** 3)) })} /></Field>
         <Field label={t('tc.retention', 'Retention (days)')} hint={t('tc.retention.h', 'Raw events auto-deleted after this.')}><Input type="number" min="1" max="3650" value={f.retentionDays} onChange={(e) => setF({ ...f, retentionDays: e.target.value })} /></Field>
         <Field label={t('tc.delay', 'Erase delay (h)')} hint={t('tc.delay.h', 'Review window before an erasure request auto-applies.')}><Input type="number" min="0" max="720" value={f.deleteDelayH} onChange={(e) => setF({ ...f, deleteDelayH: e.target.value })} /></Field>
       </div>
@@ -18647,7 +18651,7 @@ function AdminSettings() {
                     return (
                       <div className="flex items-end gap-2">
                         <div className="flex-1"><Field label={L}><Input type="number" value={displayValue} onChange={(e) => setDraft({ ...draft, [k]: e.target.value === '' ? '' : convertUnit(Number(e.target.value), curUnit, nativeUnit) })} /></Field></div>
-                        <Select className="!w-auto !py-2.5" value={curUnit} onChange={(e) => setUnit({ ...unit, [k]: e.target.value })}><option value="MB">MB</option><option value="GB">GB</option></Select>
+                        <Select className="!w-auto !py-2.5" value={curUnit} onChange={(e) => setUnit({ ...unit, [k]: e.target.value })}><option value="MB">MB</option><option value="GB">GB</option><option value="TB">TB</option></Select>
                         <Button size="sm" disabled={busy === k} onClick={() => save(k, 'number')}>{busy === k ? <Spinner /> : saveLabel}</Button>
                       </div>
                     );
