@@ -3772,6 +3772,7 @@ const DICT = {
     'bkp.export.db': "Historique lignes BDD",
     'bkp.exported': "{n} téléchargé — la signature a été enregistrée à côté.",
     'bkp.nobackups': "Rien n’a encore été sauvegardé.",
+    'bkp.nobackups2': "Rien à sauvegarder pour l’instant — une sauvegarde fige les modifications de fichiers et de lignes de base faites via les outils ici, et aucune n’a été faite. Modifiez quelque chose d’abord, ou attendez la sauvegarde automatique quotidienne.",
     'bkp.toobig': "Trop volumineux pour un seul fichier — compacte les sauvegardes d’abord.",
     'bkp.contents': "Ce qu’elles contiennent",
     'bkp.empty': "Rien d’enregistré pour l’instant.",

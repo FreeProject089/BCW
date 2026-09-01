@@ -3840,7 +3840,7 @@ function SnapshotsPanel({ onChanged }) {
         : t('snap.made', 'Backup taken.'));
       reload(); onChanged?.();
     } catch (x) {
-      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing has been backed up yet.') : t('common.failed', 'Failed.'));
+      toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups2', 'Nothing to back up yet — a snapshot freezes the file and DB-row edits made through the tools here, and none have been made. Edit something first, or wait for the daily automatic backup.') : t('common.failed', 'Failed.'));
     } finally { setBusy(''); }
   };
 
