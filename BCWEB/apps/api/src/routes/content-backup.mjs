@@ -156,6 +156,43 @@ export const SECTIONS = {
       },
     }),
   },
+  // B6(c): the content types the export did not yet cover.
+  hostingPlans: {
+    label: 'Hosting plans',
+    on: true,
+    restore: (p, rows) => rows.map((r) => p.hostingPlan.upsert({ where: { id: r.id }, update: r, create: r })),
+    count: (p) => p.hostingPlan.count(),
+    read: (p) => p.hostingPlan.findMany({ orderBy: { priceMonthlyCents: 'asc' } }),
+  },
+  showcase: {
+    label: 'Other projects (showcase pages)',
+    on: true,
+    restore: (p, rows) => rows.map((r) => p.showcaseProject.upsert({ where: { id: r.id }, update: r, create: r })),
+    count: (p) => p.showcaseProject.count(),
+    read: (p) => p.showcaseProject.findMany({ orderBy: { order: 'asc' } }),
+  },
+  projects: {
+    label: 'Project registry',
+    on: true,
+    // The project ROWS (key + name + scheduling). Their PAGE content is under Admin settings
+    // (`project.<key>`), so a full restore of a project wants this AND the settings section.
+    restore: (p, rows) => rows.map((r) => p.project.upsert({ where: { key: r.key }, update: r, create: r })),
+    count: (p) => p.project.count(),
+    read: (p) => p.project.findMany({ orderBy: { key: 'asc' } }),
+  },
+  platformAssets: {
+    label: 'Downloads & platform assets (metadata only)',
+    on: false,
+    // Metadata only — the actual files live in object storage (storageKey), like catalogs/repos.
+    count: (p) => p.platformAsset.count(),
+    read: (p) => p.platformAsset.findMany({
+      orderBy: { key: 'asc' },
+      select: {
+        id: true, key: true, kind: true, label: true, filename: true, contentType: true,
+        size: true, storageKey: true, version: true, channel: true,
+      },
+    }),
+  },
 };
 
 export const SECTION_KEYS = Object.keys(SECTIONS);
@@ -231,13 +268,19 @@ export default async function contentBackupRoutes(app) {
       const rows = await SECTIONS[key].read(p);
       const n = Array.isArray(rows) ? rows.length : Object.values(rows).reduce((a, v) => a + v.length, 0);
       manifest.sections[key] = { label: SECTIONS[key].label, records: n };
-      zip.append(JSON.stringify(rows, null, 2), { name: `${key}.json` });
+      // BigInt → Number: some rows carry BigInt columns (repo/catalog quotas, a platform
+      // asset's size), and JSON.stringify THROWS on a bigint — which would abort the whole
+      // export mid-stream. Prisma accepts a plain number back for those fields on restore.
+      zip.append(JSON.stringify(rows, (_k, v) => (typeof v === 'bigint' ? Number(v) : v), 2), { name: `${key}.json` });
     }
     if (include.includes('users')) {
       manifest.notes.push('Accounts are records only: no password hashes, no 2FA secrets, no tokens. Restoring them means re-inviting people.');
     }
-    if (include.includes('catalogs') || include.includes('repos')) {
-      manifest.notes.push('Catalogue and repository sections are metadata. The uploaded files they point at are not in this archive.');
+    if (include.includes('catalogs') || include.includes('repos') || include.includes('platformAssets')) {
+      manifest.notes.push('Catalogue, repository and platform-asset sections are metadata. The uploaded files they point at are not in this archive.');
+    }
+    if (include.includes('showcase') || include.includes('projects')) {
+      manifest.notes.push('Restore the Accounts and Admin settings sections first: a project/showcase page can reference an author or config that must already exist.');
     }
     manifest.notes.push('This is a content backup, not a restore point. For that, use the database backup in Advanced server management.');
     zip.append(JSON.stringify(manifest, null, 2), { name: 'manifest.json' });
