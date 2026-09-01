@@ -11,6 +11,7 @@ import { useI18n } from '../i18n.jsx';
 import { useIntro } from '../ui/IntroContext.jsx';
 import { MyRepos, Billing } from './repos.jsx';
 import { TransfersCard } from './profile.jsx';
+import { MyDiscordServers } from './discord-servers.jsx';
 
 // These two tabs live in admin.jsx (an artefact of splitting the old pages monolith —
 // nothing in admin.jsx renders them; this page is their only consumer). Referencing them
@@ -395,6 +396,12 @@ export function Dashboard() {
   const { data: pollMe } = useAsync(() => api.get('/me/polls').catch(() => null), []);
   const pollsOpen = pollMe?.open?.length || 0;
 
+  // B10: the "My Discord servers" tab only appears for people who actually manage a server the
+  // bot is in — resolved server-side from their linked Discord account(s). `.catch` so a badge
+  // fetch never takes the dashboard down; no guilds → no tab, no clutter for everyone else.
+  const { data: discordMe } = useAsync(() => api.get('/me/discord/guilds').catch(() => null), []);
+  const discordGuilds = discordMe?.guilds?.length || 0;
+
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
     { icon: Upload, label: t('sub.title', 'Submit content'), to: '/submit' },
@@ -407,6 +414,7 @@ export function Dashboard() {
     { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined },
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
+    ...(discordGuilds ? [{ id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds }] : []),
     { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
     // The badge counts what is still WAITING, not what has been answered — a number that
     // goes down as you use it, rather than one that only ever grows and stops meaning anything.
@@ -512,6 +520,7 @@ export function Dashboard() {
 
           {s === 'catalogs' && <OwnerCatalogs />}
           {s === 'repos' && <MyRepos />}
+          {s === 'discord' && <MyDiscordServers />}
           {s === 'starred' && <Starred />}
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
