@@ -313,7 +313,7 @@ export default function ProjectPage() {
     // project page share so the rule cannot drift between them.
     stackTabEnabled(c.stack) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
     data.showBlogTab && ['blog', t('proj.blog'), Newspaper],
-    (c.releaseNotes || c.links?.github) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
+    (c.releaseNotes || c.links?.github || c.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
   const tab = pickTab(wantTab, tabs);
@@ -368,7 +368,7 @@ export default function ProjectPage() {
       </div>
 
       {tab === 'overview' && <Overview c={c} pkey={key} />}
-      {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} />}
+      {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} timeline={c.timeline} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={contribUrlOf(c) ? `/projects/${key}/community` : null} />}
       {tab === 'stack' && (
@@ -464,12 +464,35 @@ function heatColor(count) {
   return `color-mix(in srgb, var(--primary) ${pctMix}%, transparent)`;
 }
 
-function ProjectActivity({ endpoint }) {
+// Project timeline (Prmtp123 §8): the manually-added events from config.timeline, MERGED with
+// B13's git release markers into one chronological list — so a project's history reads in one
+// place whether an entry came from a GitHub release or was written by hand.
+const TL_KINDS = {
+  release: 'primary', prerelease: 'amber', update: 'blue', announcement: 'primary', message: '', custom: '',
+};
+const TL_LABEL = { release: 'Release', prerelease: 'Pre-release', update: 'Update', announcement: 'Announcement', message: 'Message', custom: 'Event' };
+export const TL_KIND_KEYS = ['release', 'update', 'announcement', 'message', 'custom'];
+function buildTimeline(manual, gitMarkers) {
+  const norm = (Array.isArray(manual) ? manual : [])
+    .filter((e) => e && e.date && (e.title || e.body))
+    .map((e) => ({ kind: TL_KINDS[e.kind] !== undefined ? e.kind : 'custom', date: String(e.date).slice(0, 10), title: e.title || '', body: e.body || '', url: /^https?:\/\//i.test(e.url || '') ? e.url : '', manual: true }));
+  const git = (Array.isArray(gitMarkers) ? gitMarkers : [])
+    .map((m) => ({ kind: m.kind === 'prerelease' ? 'prerelease' : 'release', date: m.date, title: m.title || m.tag || '', tag: m.tag, body: m.body || '', url: '', manual: false }));
+  return [...norm, ...git].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+function ProjectActivity({ endpoint, timeline }) {
   const { t } = useI18n();
   const [messages, setMessages] = useState(false);
   const { data, loading, err } = useFetch(() => api.get(`${endpoint}${messages ? '?messages=1' : ''}`), [endpoint, messages]);
+  const manual = Array.isArray(timeline) ? timeline : [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err) return <EmptyState icon={CalendarDays} title={t('act.err', 'Could not load activity')} sub={t('act.err.d', 'The repository may be private, or GitHub is rate-limiting reads right now.')} />;
+  // No git source (or GitHub unreachable): still show a hand-written timeline if there is one.
+  if (err) {
+    const tl = buildTimeline(manual, []);
+    if (!tl.length) return <EmptyState icon={CalendarDays} title={t('act.err', 'Could not load activity')} sub={t('act.err.d', 'The repository may be private, or GitHub is rate-limiting reads right now.')} />;
+    return <div className="space-y-6"><TimelineCard tl={tl} showBody={messages} onToggleBody={setMessages} t={t} /></div>;
+  }
   const a = data || {};
   if (a.computing) return <EmptyState icon={CalendarDays} title={t('act.computing', 'Preparing activity…')} sub={t('act.computing.d', 'GitHub is building this repository’s statistics — open this tab again in a moment.')} />;
 
@@ -536,30 +559,40 @@ function ProjectActivity({ endpoint }) {
         </Card>
       )}
 
-      {!!(a.markers || []).length && (
-        <Card className="p-5">
-          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <div className="text-sm font-semibold">{t('act.releases', 'Releases')}</div>
-            <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] cursor-pointer select-none">
-              <input type="checkbox" className="accent-[var(--primary)]" checked={messages} onChange={(e) => setMessages(e.target.checked)} />
-              {t('act.shownotes', 'Show release notes')}
-            </label>
-          </div>
-          <div className="space-y-2">
-            {a.markers.slice().reverse().map((m, i) => (
-              <div key={`${m.tag}-${i}`} className="rounded-lg border border-[var(--line)] p-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <Badge tone={m.kind === 'prerelease' ? 'amber' : 'primary'}>{m.tag || m.kind}</Badge>
-                  {m.title ? <span className="text-sm font-medium">{m.title}</span> : null}
-                  <span className="text-[11px] text-[var(--faint)] ml-auto">{m.date}</span>
-                </div>
-                {m.body ? <p className="text-[12px] text-[var(--muted)] mt-2 whitespace-pre-wrap leading-relaxed">{m.body}</p> : null}
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      {(() => { const tl = buildTimeline(manual, a.markers); return tl.length
+        ? <TimelineCard tl={tl} showBody={messages} onToggleBody={setMessages} t={t} />
+        : null; })()}
     </div>
+  );
+}
+
+// One chronological card of timeline entries (manual events + git releases). The "show notes"
+// toggle reveals the git release bodies (fetched with ?messages=1) and any manual event body.
+function TimelineCard({ tl, showBody, onToggleBody, t }) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="text-sm font-semibold">{t('act.timeline', 'Timeline')}</div>
+        <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] cursor-pointer select-none">
+          <input type="checkbox" className="accent-[var(--primary)]" checked={showBody} onChange={(e) => onToggleBody(e.target.checked)} />
+          {t('act.shownotes', 'Show notes')}
+        </label>
+      </div>
+      <div className="space-y-2">
+        {tl.map((m, i) => (
+          <div key={`${m.date}-${i}`} className="rounded-lg border border-[var(--line)] p-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge tone={TL_KINDS[m.kind] || ''}>{m.tag || t(`tl.kind.${m.kind}`, TL_LABEL[m.kind] || m.kind)}</Badge>
+              {m.title ? (m.url
+                ? <a href={m.url} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">{m.title}</a>
+                : <span className="text-sm font-medium">{m.title}</span>) : null}
+              <span className="text-[11px] text-[var(--faint)] ml-auto">{m.date}</span>
+            </div>
+            {showBody && m.body ? <p className="text-[12px] text-[var(--muted)] mt-2 whitespace-pre-wrap leading-relaxed">{m.body}</p> : null}
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -1011,7 +1044,7 @@ export function ShowcaseProjectPage() {
     // Same rule as the built-in projects below: the admin switch decides, and a switch that
     // is on with nothing described would show an empty tab.
     stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
-    (cfg.releaseNotes?.owner || cfg.links?.github) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
+    (cfg.releaseNotes?.owner || cfg.links?.github || cfg.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     T.legal && ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
@@ -1044,7 +1077,7 @@ export function ShowcaseProjectPage() {
       {activeTab === 'countdown' && inlineCountdown && <CountdownPanel announcement={inlineCountdown} onReveal={refetch} />}
       {activeTab === 'overview' && <Overview c={c} pkey={slug} progressUrl={`/showcase/${slug}/progress`} />}
       {activeTab === 'releases' && <Releases releasesUrl={`/showcase/${slug}/releases`} />}
-      {activeTab === 'activity' && <ProjectActivity endpoint={`/showcase/${slug}/activity`} />}
+      {activeTab === 'activity' && <ProjectActivity endpoint={`/showcase/${slug}/activity`} timeline={cfg.timeline} />}
       {activeTab === 'community' && <ShowcaseCommunity cfg={cfg} c={c} slug={slug} />}
       {activeTab === 'blog' && <ProjectBlogTab page={slug} />}
       {/* A showcase page has no code snapshot of its own — those are keyed on the fixed

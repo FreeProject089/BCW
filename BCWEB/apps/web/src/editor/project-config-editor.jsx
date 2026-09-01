@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays,
 } from 'lucide-react';
-import { Button, Input, Textarea, Field, Badge, Spinner } from '../ui/ui.jsx';
+import { Button, Input, Textarea, Field, Badge, Spinner, Select } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api, uploadMedia } from '../lib/api.js';
@@ -819,6 +819,30 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             <button type="button" onClick={() => set({ legal: [] })} className="text-[11px] text-[var(--faint)] hover:text-[var(--text)] underline">{t('pce.legalcards', "Switch to card-style legal (advanced)")}</button>
           </div>
         )}
+      </Section>
+
+      {/* Timeline (Prmtp123 §8) — hand-written dated events, merged with GitHub releases on the
+          Activity tab. Shown for every project kind. */}
+      <Section icon={CalendarDays} title={t('pce.timeline', "Timeline")} badge={(c.timeline?.length) || null}
+        desc="Dated events shown on the Activity tab, newest first, merged with GitHub releases. Use it for updates, announcements, milestones — anything not a git release.">
+        <Repeatable items={c.timeline || []} onChange={(v) => set({ timeline: v })} addLabel="Add event" empty="No timeline events yet."
+          add={() => ({ kind: 'update', date: '', title: '', body: '', url: '' })}
+          render={(it, patch) => (
+            <div className="space-y-2">
+              <div className="grid sm:grid-cols-[9rem_9rem_1fr] gap-2">
+                <Field label={t('pce.tl.kind', "Kind")}>
+                  <Select value={it.kind || 'update'} onChange={(e) => patch({ kind: e.target.value })}>
+                    {['release', 'update', 'announcement', 'message', 'custom'].map((k) => <option key={k} value={k}>{t(`tl.kind.${k}`, k)}</option>)}
+                  </Select>
+                </Field>
+                <Field label={t('pce.tl.date', "Date")}><Input type="date" value={it.date || ''} onChange={(e) => patch({ date: e.target.value })} /></Field>
+                <Field label={t('pce.tl.title', "Title")}><Input value={it.title || ''} onChange={(e) => patch({ title: e.target.value })} placeholder={t('pce.ph.tltitle', "What happened")} /></Field>
+              </div>
+              <Field label={t('pce.tl.body', "Details (optional)")}><Textarea rows={2} value={it.body || ''} onChange={(e) => patch({ body: e.target.value })} /></Field>
+              <Field label={t('pce.tl.url', "Link (optional)")}><Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" /></Field>
+            </div>
+          )}
+        />
       </Section>
 
       {/* Blog limits — showcase ("Other Projects") pages only. Caps how much this page's
