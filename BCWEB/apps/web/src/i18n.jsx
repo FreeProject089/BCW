@@ -2478,6 +2478,7 @@ const DICT = {
     'db.rp.rolelist': 'Rôles proposés', 'db.rp.pickrole': 'Choisir un rôle…',
     'db.rp.label': 'Libellé', 'db.rp.emoji': 'Émoji', 'db.rp.desc': 'Description',
     'db.rp.addrole': 'Ajouter un rôle', 'db.rp.add': 'Ajouter un panneau',
+    'db.nav.global': 'Global', 'db.nav.perserver': 'Par serveur',
     'db.rp.preview': 'Aperçu', 'db.rp.role': 'rôle',
     'db.rp.prev.nobody': '(pas encore de message)', 'db.rp.prev.noroles': 'Ajoute un rôle pour voir les boutons.',
     'db.rp.prev.select': 'Choisir {n} rôle(s)…',

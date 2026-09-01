@@ -12683,6 +12683,49 @@ function RolePanelPreview({ panel }) {
   );
 }
 
+// B10 Phase 4: the sticky section rail for the admin Discord-bot page. Jumps to each
+// ModuleCard by its id (scrollIntoView, guarded so a missing per-server section no-ops).
+// Server-wide sections are always present; the per-server group only when those sections
+// render (isCustomized) — otherwise its links would scroll to nothing.
+function BotSectionNav({ isCustomized }) {
+  const { t } = useI18n();
+  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const groups = [
+    { label: t('db.nav.global', 'Server-wide'), show: true, items: [
+      ['sec-announce', t('db.mod.announce', 'Write an announcement'), Send],
+      ['sec-route', t('db.mod.route', 'Where announcements go'), Megaphone],
+      ['sec-blog', t('db.mod.blog', 'Blog announcements'), Newspaper],
+      ['sec-alerts', t('db.mod.alerts', 'Alerts'), AlertTriangle],
+      ['sec-kofi', t('db.mod.kofi', 'Ko-fi tips'), Heart],
+      ['sec-pay', t('db.mod.pay', 'Payments & refunds'), Receipt],
+      ['sec-rp', t('db.mod.rp', 'Rules & role panels'), ShieldCheck],
+      ['sec-dma', t('db.mod.dma', 'Message every member'), Mail],
+      ['sec-limits', t('db.mod.limits', 'Limits'), Sliders],
+    ] },
+    { label: t('db.nav.perserver', 'Per-server'), show: isCustomized, items: [
+      ['sec-moderation', t('db.mod.moderation', 'Moderation'), Shield],
+      ['sec-jtc', t('db.mod.jtc', 'Join-to-create voice'), Mic],
+      ['sec-welcome', t('db.mod.welcome', 'Welcome / bye'), Sparkles],
+      ['sec-gating', t('db.mod.gating', 'Gated access'), KeyRound],
+    ] },
+  ];
+  return (
+    <nav className="hidden xl:block sticky top-16 self-start text-sm">
+      {groups.filter((g) => g.show).map((g) => (
+        <div key={g.label} className="mb-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] px-2 mb-1">{g.label}</div>
+          {g.items.map(([id, label, Icon]) => (
+            <button key={id} type="button" onClick={() => go(id)}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60 transition">
+              <Icon size={14} className="shrink-0 text-[var(--faint)]" /> <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
 function RolePanels({ panels, onChange, guildList }) {
   const { t } = useI18n();
   const [openId, setOpenId] = useState(null);
@@ -12910,7 +12953,9 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
   };
   const collapsible = !!children && !off;
   return (
-    <Card className={`p-0 overflow-hidden self-start transition ${off ? 'opacity-75' : ''}`}>
+    // id also lands on the DOM as a scroll anchor (B10 Phase 4 section nav), with scroll-mt
+    // so a jump clears the sticky page header. Was previously used only for the storage key.
+    <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-75' : ''}`}>
       <div className="flex items-start gap-3 p-4">
         <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
         {/* The heading is the fold control. The switch is NOT: turning a module off and
@@ -13470,6 +13515,12 @@ function AdminBot() {
         ) : null}
       </Card>
 
+      {/* B10 Phase 4: side layout — a sticky section nav on the left (xl+), the whole
+          config in the content column. Stacks (nav hidden) below xl. The nav + content are
+          the two grid cells; nothing inside the content column is restructured. */}
+      <div className="xl:grid xl:grid-cols-[220px_minmax(0,1fr)] xl:gap-6 xl:items-start">
+        <BotSectionNav isCustomized={isCustomized} />
+        <div className="min-w-0">
       {/* Token + member DB usage, side by side */}
       <div className="grid md:grid-cols-2 gap-4 mb-2">
         <Card className="p-4">
@@ -13549,13 +13600,13 @@ function AdminBot() {
         {/* Where each kind of announcement lands. Empty means the general channel, which is
             what every existing install already does — so this whole card changes nothing until
             somebody fills a box in. */}
-        <ModuleCard icon={Send} title={t('db.mod.announce', 'Write an announcement')}
+        <ModuleCard id="sec-announce" icon={Send} title={t('db.mod.announce', 'Write an announcement')}
           desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
           onToggle={null}>
           <AnnounceComposer guildList={guildList} />
         </ModuleCard>
 
-        <ModuleCard icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
+        <ModuleCard id="sec-route" icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
           desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
           enabled onToggle={null}>
           {[
@@ -13590,11 +13641,11 @@ function AdminBot() {
             </div>
           ))}
         </ModuleCard>
-        <ModuleCard icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
+        <ModuleCard id="sec-blog" icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
         </ModuleCard>
 
-        <ModuleCard icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
+        <ModuleCard id="sec-alerts" icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
           <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
@@ -13606,13 +13657,13 @@ function AdminBot() {
           </Field>
         </ModuleCard>
 
-        <ModuleCard icon={Heart} title={t('db.mod.kofi', 'Ko-fi tips')} desc={t('db.mod.kofi.d', 'Thank supporters automatically with a running total.')} enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
+        <ModuleCard id="sec-kofi" icon={Heart} title={t('db.mod.kofi', 'Ko-fi tips')} desc={t('db.mod.kofi.d', 'Thank supporters automatically with a running total.')} enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
           <Field label={t('db.f.tipsch', 'Tips channel id')} hint={t('db.f.tipsch.h', 'Each new tip is posted as a thank-you embed. Old tips are never re-posted.')}>
             <Input value={g('kofi.channelId')} onChange={(e) => set('kofi.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
         </ModuleCard>
 
-        <ModuleCard icon={Receipt} title={t('db.mod.pay', 'Payments & refunds')} desc={t('db.mod.pay.d', 'Post each successful Stripe payment and each refund to the chosen channels.')} enabled={!!cfg.payments?.enabled} onToggle={(v) => set('payments.enabled', v)}>
+        <ModuleCard id="sec-pay" icon={Receipt} title={t('db.mod.pay', 'Payments & refunds')} desc={t('db.mod.pay.d', 'Post each successful Stripe payment and each refund to the chosen channels.')} enabled={!!cfg.payments?.enabled} onToggle={(v) => set('payments.enabled', v)}>
           <Field label={t('db.f.paych', 'Payments channels')} hint={t('db.f.paych.h', 'Every successful payment (hosting, boost…) is posted to each of these channels.')}>
             <MultiChannelInput value={cfg.payments?.channelIds?.length ? cfg.payments.channelIds : (cfg.payments?.channelId ? [cfg.payments.channelId] : [])} onChange={(v) => set('payments.channelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
@@ -13638,11 +13689,11 @@ function AdminBot() {
             for adding the first one — the state it is most needed in. It has no switch
             either: an empty list already means off, and a second switch on top of that is a
             way to have panels configured, saved, and silently not live. */}
-        <ModuleCard icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
+        <ModuleCard id="sec-rp" icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
           <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
         </ModuleCard>
 
-        <ModuleCard icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
+        <ModuleCard id="sec-dma" icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
           <DmBroadcast />
         </ModuleCard>
       </div>
@@ -13650,7 +13701,7 @@ function AdminBot() {
       <SectionTitle icon={Sliders} title={t('db.sec.limits', "Limits")} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
-        <ModuleCard icon={Sliders} title={t('db.mod.limits', 'Limits')}>
+        <ModuleCard id="sec-limits" icon={Sliders} title={t('db.mod.limits', 'Limits')}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Field label={t('db.f.maxtemp', 'Max temp channels')}><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
             <Field label={t('db.f.dbcap', 'Member DB cap')} hint={t('db.f.dbcap.h', 'Oldest inactive members are pruned once over.')}><ByteSize value={(Number(g('limits.storageMB')) || 0) * (1024 ** 2)} onChange={(bytes) => set('limits.storageMB', Math.round(bytes / (1024 ** 2)))} /></Field>
@@ -13693,7 +13744,7 @@ function AdminBot() {
       ) : (
         <div className="grid md:grid-cols-2 gap-4 items-start">
           {/* Moderation */}
-          <ModuleCard icon={Shield} title={t('db.mod.moderation', 'Moderation')} desc={t('db.mod.moderation.d', 'Auto-kick + purge in no-post channels; anti-selfbot timeout.')} enabled={!!scopeObj.moderation?.enabled} onToggle={(v) => sset('moderation.enabled', v)}>
+          <ModuleCard id="sec-moderation" icon={Shield} title={t('db.mod.moderation', 'Moderation')} desc={t('db.mod.moderation.d', 'Auto-kick + purge in no-post channels; anti-selfbot timeout.')} enabled={!!scopeObj.moderation?.enabled} onToggle={(v) => sset('moderation.enabled', v)}>
             <label className="flex items-center justify-between gap-2 text-sm"><span>{t('db.f.antiselfbot', 'Anti-selfbot filter')} <span className="text-[var(--faint)]">{t('db.f.antiselfbot.sub', '(mass-mention timeout)')}</span></span><BotSwitch checked={!!scopeObj.moderation?.antiSelfbot} onChange={(v) => sset('moderation.antiSelfbot', v)} /></label>
             <Field label={t('db.f.nopost', 'No-post channels')} hint={t('db.f.nopost.h', 'Posting here kicks the user + purges their messages. A channel id is unique to its server.')}>
               <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder={t('db.f.chanph', 'Channel ID — press Enter')} />
@@ -13701,7 +13752,7 @@ function AdminBot() {
           </ModuleCard>
 
           {/* Join-to-create */}
-          <ModuleCard icon={Mic} title={t('db.mod.jtc', 'Join-to-create voice')} desc={t('db.mod.jtc.d', 'Joining a lobby spawns a personal temp voice room.')} enabled={!!scopeObj.joinToCreate?.enabled} onToggle={(v) => sset('joinToCreate.enabled', v)}
+          <ModuleCard id="sec-jtc" icon={Mic} title={t('db.mod.jtc', 'Join-to-create voice')} desc={t('db.mod.jtc.d', 'Joining a lobby spawns a personal temp voice room.')} enabled={!!scopeObj.joinToCreate?.enabled} onToggle={(v) => sset('joinToCreate.enabled', v)}
             action={<Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> {t('db.jtc.addlobby', 'Lobby')}</Button>}>
             {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.jtc.nolobbies', 'No lobbies — add one. Joining that voice channel spawns a temp room in its category.')}</div>}
             {jtcLobbies.map((lb, i) => (
@@ -13718,7 +13769,7 @@ function AdminBot() {
           </ModuleCard>
 
           {/* Welcome / bye */}
-          <ModuleCard icon={Sparkles} title={t('db.mod.welcome', 'Welcome / bye')} desc={t('db.mod.welcome.d', 'Animated banner + message when members join or leave.')} enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
+          <ModuleCard id="sec-welcome" icon={Sparkles} title={t('db.mod.welcome', 'Welcome / bye')} desc={t('db.mod.welcome.d', 'Animated banner + message when members join or leave.')} enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
             <Field label={t('db.f.welcomech', 'Welcome channel id')}><Input value={sg('welcome.channelId')} onChange={(e) => sset('welcome.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} /></Field>
             <Field label={t('db.f.joinmsg', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
             <Field label={t('db.f.leavemsg', 'Leave message')}><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>
@@ -13777,12 +13828,15 @@ function AdminBot() {
           </ModuleCard>
 
           {/* Gated access */}
-          <ModuleCard icon={KeyRound} title={t('db.mod.gating', 'Gated access')} desc={t('db.mod.gating.d', 'Grant roles automatically to members who link their account.')} enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
+          <ModuleCard id="sec-gating" icon={KeyRound} title={t('db.mod.gating', 'Gated access')} desc={t('db.mod.gating.d', 'Grant roles automatically to members who link their account.')} enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
             <p className="text-xs text-[var(--muted)]">{t('db.gating.desc', 'Each rule grants ONE Discord role to members who meet its requirements. Re-checked every ~5 min (granting AND removing); members can run /refreshroles to sync instantly after linking on the site.')}</p>
             <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} />
           </ModuleCard>
         </div>
       )}
+
+        </div>
+      </div>
 
       <AdminBotMembers />
     </div>
