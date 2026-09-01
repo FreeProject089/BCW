@@ -3498,3 +3498,24 @@ model CharityContribution {
 
   @@index([potId])
 }
+
+// ── B9 Extra languages ────────────────────────────────────────────────────────
+// A language added by an admin at RUNTIME. The compiled `en`/`fr` dictionaries live in the JS
+// bundle and are NOT rows here (and are unremovable by construction — the admin API refuses
+// those two codes). An added locale is a partial override layer: `strings` holds only the keys
+// somebody has translated so far, and every other key falls back to English through `t()`,
+// exactly as a missing translation already does. `enabled=false` lets a locale be translated
+// privately before it appears in the public picker.
+model SiteLocale {
+  code        String   @id // BCP-47: 'ru', 'he', 'zh-Hans'
+  nativeName  String // shown in the picker, e.g. 'Русский', 'עברית'
+  englishName String   @default("") // admin list, e.g. 'Russian'
+  rtl         Boolean  @default(false)
+  enabled     Boolean  @default(true)
+  order       Int      @default(0)
+  strings     Json     @default("{}") // { key: value } for THIS locale, partial by design
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled])
+}

@@ -3041,6 +3041,7 @@ const DICT = {
     'hs.serverrepos': 'Dépôts serveur',
     'ip.ourprojects': 'Projets Better*',
     'nav.language': 'Langue',
+    'lang.search': 'Rechercher une langue…', 'lang.none': 'Aucun résultat',
     'radm.paste': 'Collez l’identifiant <span class=\"font-mono\">BCR-XXXX-XXXX</span> affiché sur un dépôt pour retrouver son propriétaire et ses identités liées (identifiants créateur BMM, Discord, Ko-fi).',
     'rrw.loading': 'Chargement de l’aperçu en direct…',
     'sb.ph.name': 'Mes plugins serveur',
@@ -5235,12 +5236,50 @@ export function I18nProvider({ children }) {
     return () => { live = false; };
   }, []);
 
+  // The available languages (B9). Starts as the compiled base and is EXTENDED — never replaced —
+  // by the admin-added runtime locales, so a slow or failed fetch leaves EN/FR working. The
+  // switchers read this from context instead of the module `LANGS`, which stays the base list.
+  const [locales, setLocales] = useState(LANGS.map((l) => ({ code: l.code, nativeName: l.label, rtl: false })));
+  useEffect(() => {
+    let live = true;
+    fetch('/api/site/locales')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live && Array.isArray(d?.locales) && d.locales.length) setLocales(d.locales); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  // The current runtime locale's strings — a flat { key: value } map fetched only for a
+  // language that is NOT one of the compiled base dictionaries. Partial by design: any key it
+  // lacks falls through to English below. A base language (en/fr) clears it.
+  const [localeStrings, setLocaleStrings] = useState({});
+  useEffect(() => {
+    if (lang === 'en' || lang === 'fr') { setLocaleStrings({}); return undefined; }
+    let live = true;
+    fetch(`/api/site/i18n/${encodeURIComponent(lang)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (live) setLocaleStrings(d?.strings || {}); })
+      .catch(() => { if (live) setLocaleStrings({}); });
+    return () => { live = false; };
+  }, [lang]);
+
+  // Reflect the chosen language on <html>: `lang` for a11y/SEO, `dir` for RTL scripts. Driven by
+  // the locale's `rtl` flag from the fetched list; the compiled base is always LTR. This is the
+  // switch the RTL layout pass (Phase 3) keys off — `[dir=rtl]` rules do nothing until it is set.
+  useEffect(() => {
+    const el = document.documentElement;
+    const rtl = !!locales.find((l) => l.code === lang)?.rtl;
+    el.setAttribute('lang', lang);
+    el.setAttribute('dir', rtl ? 'rtl' : 'ltr');
+  }, [lang, locales]);
+
   // `||`, not `??`: an override is only an override when it has words in it. An empty
   // string means "not translated here", and must fall through to the dictionary rather than
   // blanking the line — otherwise an admin who fills in French and leaves English empty
-  // erases the English.
-  const t = (k, fb) => over?.[k]?.[lang] || over?.[k]?.en || DICT[lang]?.[k] || DICT.en[k] || fb || k;
-  return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
+  // erases the English. A runtime locale's string sits between the admin overrides and the
+  // compiled dictionary: it beats the English fallback but not an explicit admin override.
+  const t = (k, fb) => over?.[k]?.[lang] || over?.[k]?.en || localeStrings?.[k] || DICT[lang]?.[k] || DICT.en[k] || fb || k;
+  return <Ctx.Provider value={{ lang, setLang, t, locales }}>{children}</Ctx.Provider>;
 }
 
 /**
@@ -5256,9 +5295,9 @@ export function I18nProvider({ children }) {
  * lies about the one case admins get wrong.
  */
 export function I18nDraft({ over, children }) {
-  const { lang, setLang } = useI18n();
+  const { lang, setLang, locales } = useI18n();
   const t = (k, fb) => over?.[k]?.[lang] || over?.[k]?.en || DICT[lang]?.[k] || DICT.en[k] || fb || k;
-  return <Ctx.Provider value={{ lang, setLang, t }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ lang, setLang, t, locales }}>{children}</Ctx.Provider>;
 }
 
 /**
@@ -5291,9 +5330,11 @@ export const LANGS = [
 // Topbar switcher. With exactly two languages it's a fast one-tap toggle; once a
 // third language is added it becomes a proper dropdown listing every language.
 export function LangToggle() {
-  const { t } = useI18n();
-  const { lang, setLang } = useI18n();
+  const { t, lang, setLang, locales } = useI18n();
+  const LIST = (locales && locales.length) ? locales : LANGS.map((l) => ({ code: l.code, nativeName: l.label }));
+  const nameOf = (l) => l.nativeName || l.label || l.code;
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
   const ref = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -5301,28 +5342,38 @@ export function LangToggle() {
     document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  if (LANGS.length <= 2) {
-    const other = LANGS.find((l) => l.code !== lang) || LANGS[0];
+  if (LIST.length <= 2) {
+    const other = LIST.find((l) => l.code !== lang) || LIST[0];
     return (
-      <button className="nav-link" onClick={() => setLang(other.code)} title={`Language — ${other.label}`} aria-label={t('nav.language', 'Language')}>
+      <button className="nav-link" onClick={() => setLang(other.code)} title={`Language — ${nameOf(other)}`} aria-label={t('nav.language', 'Language')}>
         <Languages size={16} /> <span className="text-xs font-semibold uppercase">{lang}</span>
       </button>
     );
   }
+  // With more than a handful of languages the list gets a search box (native names).
+  const showSearch = LIST.length > 6;
+  const filtered = q ? LIST.filter((l) => (nameOf(l) + ' ' + l.code).toLowerCase().includes(q.toLowerCase())) : LIST;
   return (
     <div className="relative" ref={ref}>
-      <button className="nav-link" onClick={() => setOpen((o) => !o)} title={t('nav.language', 'Language')} aria-label={t('nav.language', 'Language')} aria-expanded={open}>
+      <button className="nav-link" onClick={() => setOpen((o) => { const n = !o; if (n) setQ(''); return n; })} title={t('nav.language', 'Language')} aria-label={t('nav.language', 'Language')} aria-expanded={open}>
         <Languages size={16} /> <span className="text-xs font-semibold uppercase">{lang}</span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-40 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
+        <div className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
           style={{ background: 'var(--bg-solid)', boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5)' }}>
-          {LANGS.map((l) => (
-            <button key={l.code} onClick={() => { setLang(l.code); setOpen(false); }}
-              className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
-              {l.label} {l.code === lang && <span className="text-[10px] uppercase tracking-wider">{l.code}</span>}
-            </button>
-          ))}
+          {showSearch && (
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('lang.search', 'Search language…')}
+              className="w-[calc(100%-0.5rem)] mx-1 mb-1 px-2 py-1.5 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] text-[var(--text)] outline-none focus:border-[var(--ring)]" />
+          )}
+          <div className="max-h-72 overflow-auto">
+            {filtered.map((l) => (
+              <button key={l.code} onClick={() => { setLang(l.code); setOpen(false); }}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
+                {nameOf(l)} {l.code === lang && <span className="text-[10px] uppercase tracking-wider">{l.code}</span>}
+              </button>
+            ))}
+            {!filtered.length && <div className="px-3 py-2 text-xs text-[var(--faint)]">{t('lang.none', 'No match')}</div>}
+          </div>
         </div>
       )}
     </div>
@@ -5336,11 +5387,15 @@ export function LangToggle() {
 // render as an OS-grey menu — this was the last one left. Self-contained (no import from
 // ui.jsx, which would cycle back through useI18n here); mirrors LangToggle's opaque menu.
 export function LangSelect({ className = '' }) {
-  const { t } = useI18n();
-  const { lang, setLang } = useI18n();
+  const { t, lang, setLang, locales } = useI18n();
+  const LIST = (locales && locales.length) ? locales : LANGS.map((l) => ({ code: l.code, nativeName: l.label }));
+  const nameOf = (l) => l.nativeName || l.label || l.code;
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
   const ref = useRef(null);
-  const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+  const cur = LIST.find((l) => l.code === lang) || LIST[0];
+  const showSearch = LIST.length > 6;
+  const filtered = q ? LIST.filter((l) => (nameOf(l) + ' ' + l.code).toLowerCase().includes(q.toLowerCase())) : LIST;
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -5350,20 +5405,27 @@ export function LangSelect({ className = '' }) {
   }, [open]);
   return (
     <div className={`relative inline-flex ${className}`} ref={ref}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open} aria-label={t('nav.language', 'Language')}
+      <button type="button" onClick={() => setOpen((o) => { const n = !o; if (n) setQ(''); return n; })} aria-haspopup="listbox" aria-expanded={open} aria-label={t('nav.language', 'Language')}
         className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors">
-        <Languages size={14} className="shrink-0" /> {cur.label}
+        <Languages size={14} className="shrink-0" /> {nameOf(cur)}
         <ChevronDown size={13} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div role="listbox" className="absolute left-0 bottom-full mb-2 w-40 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
+        <div role="listbox" className="absolute left-0 bottom-full mb-2 w-48 rounded-xl border border-[var(--line-strong)] py-1 z-[60] anim-fade overflow-hidden"
           style={{ background: 'var(--bg-solid)', boxShadow: '0 18px 50px -12px rgba(0,0,0,0.5)' }}>
-          {LANGS.map((l) => (
-            <button key={l.code} type="button" role="option" aria-selected={l.code === lang} onClick={() => { setLang(l.code); setOpen(false); }}
-              className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
-              {l.label} {l.code === lang && <Check size={13} />}
-            </button>
-          ))}
+          {showSearch && (
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('lang.search', 'Search language…')}
+              className="w-[calc(100%-0.5rem)] mx-1 mb-1 px-2 py-1.5 text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] text-[var(--text)] outline-none focus:border-[var(--ring)]" />
+          )}
+          <div className="max-h-72 overflow-auto">
+            {filtered.map((l) => (
+              <button key={l.code} type="button" role="option" aria-selected={l.code === lang} onClick={() => { setLang(l.code); setOpen(false); }}
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
+                {nameOf(l)} {l.code === lang && <Check size={13} />}
+              </button>
+            ))}
+            {!filtered.length && <div className="px-3 py-2 text-xs text-[var(--faint)]">{t('lang.none', 'No match')}</div>}
+          </div>
         </div>
       )}
     </div>
