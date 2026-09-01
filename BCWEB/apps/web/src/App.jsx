@@ -723,7 +723,7 @@ function Nav() {
     switch (k) {
       case 'notifications': return <NavNotifications key="u-notif" />;
       case 'projects': return <NavLink key="u-proj" to="/projects" className={({ isActive }) => `hidden sm:inline-flex nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.projects')} aria-label={t('nav.projects')}><Boxes size={16} /></NavLink>;
-      case 'lang': return <LangToggle key="u-lang" />;
+      case 'lang': return <LangToggle key="u-lang" type={uCfg.lang?.type || 'auto'} />;
       case 'theme': return <ThemeToggle key="u-theme" />;
       case 'settings': return <NavLink key="u-set" to="/settings" className={({ isActive }) => `nav-link !px-2 ${isActive ? 'nav-link-active' : ''}`} title={t('nav.settings', 'Settings')} aria-label={t('nav.settings', 'Settings')}><SettingsIcon size={16} /></NavLink>;
       case 'dashboard': return <NavLink key="u-dash" to="/dashboard" className={(s) => pill(s) + ' !py-2 !px-2.5'} title={t('nav.dashboard')} aria-label={t('nav.dashboard')}><LayoutDashboard size={15} /></NavLink>;
@@ -1090,7 +1090,7 @@ function Footer() {
           ? bottomText.replace(/\{year\}/g, year)
           : `© ${year} ${cfg?.brand?.name || 'BetterCommunity'}. ${t('foot.rights')}`)}</span>
         <div className="flex items-center gap-4 flex-wrap">
-          {bottom.lang !== false && <LangSelect />}
+          {bottom.lang !== false && <LangSelect type={bottom.langType || 'dropdown'} />}
           {bottom.egg !== false && <FooterEgg />}
         </div>
       </div></div>

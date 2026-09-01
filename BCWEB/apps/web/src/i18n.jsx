@@ -2884,7 +2884,7 @@ const DICT = {
     'afoot.copyright': 'Ligne de copyright',
     'afoot.bottomtext': 'Texte',
     'afoot.bottomtextfr': 'Texte (FR)',
-    'afoot.langpicker': 'Sélecteur de langue',
+    'afoot.langpicker': 'Sélecteur de langue', 'afoot.langtype': 'Style du sélecteur de langue',
     'afoot.egg': 'Œuf de Pâques',
     'afoot.yeartoken': 'Écris {year} dans le texte : il devient l’année en cours, donc la ligne reste juste au 1er janvier.',
     'afoot.news.title': 'Titre',
@@ -3596,6 +3596,7 @@ const DICT = {
     'nav.util.title': 'Boutons de la barre', 'nav.util.reset': 'Tout afficher, ordre d’origine', 'nav.util.desc': 'Afficher/masquer et réordonner les boutons intégrés. Chacun respecte sa propre règle (ex. Admin ne s’affiche que pour le staff, Connexion seulement si déconnecté). L’ordre reste dans son groupe.',
     'nav.util.always': 'Toujours visibles', 'nav.util.account': 'Compte (bureau)', 'nav.util.hide': 'Masquer', 'nav.util.show': 'Afficher',
     'nav.util.notifications': 'Notifications', 'nav.util.projects': 'Projets', 'nav.util.lang': 'Langue', 'nav.util.theme': 'Thème', 'nav.util.settings': 'Réglages', 'nav.util.dashboard': 'Tableau de bord', 'nav.util.admin': 'Admin', 'nav.util.profile': 'Profil', 'nav.util.logout': 'Déconnexion', 'nav.util.login': 'Connexion',
+    'nav.util.langtype': 'Style du sélecteur de langue', 'nav.util.langtype.auto': 'Auto', 'nav.util.langtype.toggle': 'Bascule', 'nav.util.langtype.inline': 'Pastilles', 'nav.util.langtype.dropdown': 'Menu déroulant',
     'nav.imported': 'Preset importé — vérifie puis enregistre.', 'nav.importbad': 'Preset de topbar JSON invalide.',
 
     // ── Admin : file de modération ──
@@ -5428,7 +5429,14 @@ export const LANGS = [
 
 // Topbar switcher. With exactly two languages it's a fast one-tap toggle; once a
 // third language is added it becomes a proper dropdown listing every language.
-export function LangToggle() {
+// The presentations an admin can pick for a language selector (topbar utility + footer):
+//   auto     — toggle when ≤2 languages, dropdown beyond (the historical behaviour)
+//   toggle   — one button that cycles to the next language (compact)
+//   inline   — a pill per language, shown inline (best for a few languages)
+//   dropdown — always the searchable native-name menu
+export const LANG_SELECTOR_TYPES = ['auto', 'toggle', 'inline', 'dropdown'];
+
+export function LangToggle({ type = 'auto' } = {}) {
   const { t, lang, setLang, locales } = useI18n();
   const LIST = (locales && locales.length) ? locales : LANGS.map((l) => ({ code: l.code, nativeName: l.label }));
   const nameOf = (l) => l.nativeName || l.label || l.code;
@@ -5441,12 +5449,29 @@ export function LangToggle() {
     document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  if (LIST.length <= 2) {
-    const other = LIST.find((l) => l.code !== lang) || LIST[0];
+  // Toggle: cycle to the next language. Forced by type='toggle', and the default when there are
+  // only two languages under 'auto'.
+  if (type === 'toggle' || (type === 'auto' && LIST.length <= 2)) {
+    const idx = Math.max(0, LIST.findIndex((l) => l.code === lang));
+    const next = LIST[(idx + 1) % LIST.length] || LIST[0];
     return (
-      <button className="nav-link" onClick={() => setLang(other.code)} title={`Language — ${nameOf(other)}`} aria-label={t('nav.language', 'Language')}>
+      <button className="nav-link" onClick={() => setLang(next.code)} title={`Language — ${nameOf(next)}`} aria-label={t('nav.language', 'Language')}>
         <Languages size={16} /> <span className="text-xs font-semibold uppercase">{lang}</span>
       </button>
+    );
+  }
+  // Inline pills — one per language. Only sensible for a short list; falls back to the dropdown
+  // beyond five so the topbar never overflows.
+  if (type === 'inline' && LIST.length <= 5) {
+    return (
+      <div className="inline-flex items-center gap-0.5">
+        {LIST.map((l) => (
+          <button key={l.code} onClick={() => setLang(l.code)} title={nameOf(l)}
+            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            {l.code}
+          </button>
+        ))}
+      </div>
     );
   }
   // With more than a handful of languages the list gets a search box (native names).
@@ -5485,7 +5510,7 @@ export function LangToggle() {
 // app replaced native selects app-wide because their <option> popups ignore the theme and
 // render as an OS-grey menu — this was the last one left. Self-contained (no import from
 // ui.jsx, which would cycle back through useI18n here); mirrors LangToggle's opaque menu.
-export function LangSelect({ className = '' }) {
+export function LangSelect({ className = '', type = 'dropdown' }) {
   const { t, lang, setLang, locales } = useI18n();
   const LIST = (locales && locales.length) ? locales : LANGS.map((l) => ({ code: l.code, nativeName: l.label }));
   const nameOf = (l) => l.nativeName || l.label || l.code;
@@ -5494,6 +5519,30 @@ export function LangSelect({ className = '' }) {
   const ref = useRef(null);
   const cur = LIST.find((l) => l.code === lang) || LIST[0];
   const showSearch = LIST.length > 6;
+  // Toggle: a single pill that cycles to the next language.
+  if (type === 'toggle' || (type === 'auto' && LIST.length <= 2)) {
+    const idx = Math.max(0, LIST.findIndex((l) => l.code === lang));
+    const next = LIST[(idx + 1) % LIST.length] || LIST[0];
+    return (
+      <button type="button" onClick={() => setLang(next.code)} title={`Language — ${nameOf(next)}`} aria-label={t('nav.language', 'Language')}
+        className={`inline-flex items-center gap-1.5 rounded-lg border border-[var(--line-strong)] bg-[var(--surface-2)] px-2.5 py-1.5 text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--ring)] transition-colors ${className}`}>
+        <Languages size={14} /> <span className="uppercase font-semibold">{lang}</span>
+      </button>
+    );
+  }
+  // Inline pills.
+  if (type === 'inline' && LIST.length <= 5) {
+    return (
+      <div className={`inline-flex items-center gap-0.5 ${className}`}>
+        {LIST.map((l) => (
+          <button key={l.code} type="button" onClick={() => setLang(l.code)} title={nameOf(l)}
+            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            {l.code}
+          </button>
+        ))}
+      </div>
+    );
+  }
   const filtered = q ? LIST.filter((l) => (nameOf(l) + ' ' + l.code).toLowerCase().includes(q.toLowerCase())) : LIST;
   useEffect(() => {
     if (!open) return undefined;

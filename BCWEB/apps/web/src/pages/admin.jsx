@@ -16774,6 +16774,8 @@ function AdminNav() {
   // ── Built-in topbar utility buttons: show/hide + reorder within a cluster ──
   const uVis = (k) => utility[k]?.visible !== false;
   const setUVis = (k, v) => setUtility((u) => ({ ...u, [k]: { ...u[k], visible: v } }));
+  // The language button can be presented several ways (auto / toggle / inline pills / dropdown).
+  const setUType = (k, v) => setUtility((u) => ({ ...u, [k]: { ...u[k], type: v } }));
   const orderedU = (list) => [...list].sort((a, b) => (utility[a]?.order ?? list.indexOf(a)) - (utility[b]?.order ?? list.indexOf(b)));
   const moveUtil = (list, k, dir) => {
     const ord = orderedU(list); const i = ord.indexOf(k); const j = i + dir;
@@ -16962,6 +16964,11 @@ function AdminNav() {
                 <div key={k} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-1.5 bg-[var(--surface-2)]/40">
                   <NavPvIcon name={UTIL_ICON[k]} size={15} />
                   <span className="flex-1 text-sm">{t('nav.util.' + k, UTIL_LABEL[k])}</span>
+                  {k === 'lang' && (
+                    <Select className="!w-auto !py-1 !text-xs" value={utility.lang?.type || 'auto'} onChange={(e) => setUType('lang', e.target.value)} title={t('nav.util.langtype', 'Language selector style')}>
+                      {['auto', 'toggle', 'inline', 'dropdown'].map((o) => <option key={o} value={o}>{t('nav.util.langtype.' + o, o)}</option>)}
+                    </Select>
+                  )}
                   <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === 0} onClick={() => moveUtil(keys, k, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={13} className="rotate-180" /></button>
                   <button className="p-1 rounded text-[var(--muted)] disabled:opacity-30 hover:text-[var(--text)]" disabled={idx === arr.length - 1} onClick={() => moveUtil(keys, k, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={13} /></button>
                   <button type="button" onClick={() => setUVis(k, !uVis(k))} aria-pressed={uVis(k)} title={uVis(k) ? t('nav.util.hide', 'Hide') : t('nav.util.show', 'Show')} className={`w-9 h-5 rounded-full relative shrink-0 transition ${uVis(k) ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${uVis(k) ? 'left-[18px]' : 'left-0.5'}`} /></button>
@@ -18290,6 +18297,13 @@ function AdminFooter() {
         <Field label={t('afoot.bottomtext', 'Text')}><Input className="!w-72 !text-xs" value={f.bottom?.text || ''} onChange={(e) => setBottom({ text: e.target.value })} placeholder={COPY_PH} /></Field>
         <Field label={t('afoot.bottomtextfr', 'Text (FR)')}><Input className="!w-72 !text-xs" value={f.bottom?.textFr || ''} onChange={(e) => setBottom({ textFr: e.target.value })} /></Field>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.lang !== false} onChange={(e) => setBottom({ lang: e.target.checked })} /> {t('afoot.langpicker', 'Language picker')}</label>
+        {f.bottom?.lang !== false && (
+          <Field label={t('afoot.langtype', 'Language picker style')}>
+            <Select className="!w-auto !text-xs" value={f.bottom?.langType || 'dropdown'} onChange={(e) => setBottom({ langType: e.target.value })}>
+              {['dropdown', 'toggle', 'inline', 'auto'].map((o) => <option key={o} value={o}>{t('nav.util.langtype.' + o, o)}</option>)}
+            </Select>
+          </Field>
+        )}
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.bottom?.egg !== false} onChange={(e) => setBottom({ egg: e.target.checked })} /> {t('afoot.egg', 'Easter egg')}</label>
         <p className="text-[11px] text-[var(--faint)] w-full">{t('afoot.yeartoken', 'Write {year} in the text and it becomes the current year, so the line stays right on 1 January.')}</p>
       </Card>
