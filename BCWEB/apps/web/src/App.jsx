@@ -322,6 +322,29 @@ function timeAgo(d, justnow) {
 // have not clicked, and holding the product hostage over a policy update is the pattern this
 // platform exists to avoid. It is persistent instead — present on every page until answered,
 // which is enough pressure for something that is genuinely their choice.
+// Keeps the UI language in step with the signed-in account (B9 Phase 5). On login it adopts the
+// account's saved locale (so the choice follows the user across devices); when a logged-in user
+// switches language it persists that to the account. A logged-out visitor keeps the localStorage
+// choice untouched — an account with NO saved locale is never auto-written on login, only when the
+// person actually changes it. Renders nothing.
+function LocaleSync() {
+  const { lang, setLang } = useI18n();
+  const { user } = useAuth();
+  const known = useRef(undefined); // what we believe the account's locale is (undefined = not synced yet)
+  useEffect(() => {
+    if (!user) { known.current = undefined; return; }
+    if (known.current !== undefined) return; // already synced this session
+    if (user.locale) { known.current = user.locale; if (user.locale !== lang) setLang(user.locale); }
+    else known.current = lang; // no account pref → seed with the current choice, don't auto-write
+  }, [user, lang, setLang]);
+  useEffect(() => {
+    if (!user || known.current === undefined || lang === known.current) return;
+    known.current = lang;
+    api.patch('/me', { locale: lang }).catch(() => {});
+  }, [lang, user]);
+  return null;
+}
+
 function LegalReaccept() {
   const { user } = useAuth();
   const { lang } = useI18n();
@@ -1259,6 +1282,7 @@ export default function App() {
           {/* relative z-10: keep the page content (and any in-page overlays like the
               mobile dashboard nav sheet) stacked ABOVE the footer, which follows in the
               DOM and would otherwise paint over an open dropdown on short pages. */}
+          <LocaleSync />
           <SanctionBanner />
           <LegalReaccept />
           {/* One-time, and it answers the cookie question itself — so it replaces the

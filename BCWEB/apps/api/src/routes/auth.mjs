@@ -374,7 +374,7 @@ export default async function authRoutes(app) {
     return { ok: true };
   });
 
-  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } }, status: true, moderationUntil: true, moderationReason: true };
+  const profileSelect = { id: true, email: true, displayName: true, role: true, permissions: true, customRoleIds: true, emailVerified: true, bio: true, avatar: true, createdAt: true, totpEnabled: true, profilePublic: true, showConnections: true, website: true, locale: true, badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } } }, oauthAccounts: { select: { provider: true } }, socialConnections: { select: { provider: true } }, _count: { select: { discordLinks: true, creatorLinks: true } }, status: true, moderationUntil: true, moderationReason: true };
 
   // Soft-authed "who am I": logged-out visitors get 200 { user: null } instead of a
   // noisy 401 in the console. The app boots this on every load.
@@ -528,6 +528,8 @@ export default async function authRoutes(app) {
       // Only http(s) — zod .url() otherwise accepts javascript:/data: URIs, which would
       // become an XSS sink when the website is rendered as an <a href> on the public profile.
       website: z.union([z.literal(''), z.string().max(200).url().refine((v) => /^https?:\/\//i.test(v), 'http_or_https_only')]).nullable().optional(),
+      // Preferred UI language (BCP-47-ish); null clears the account preference (back to browser).
+      locale: z.union([z.literal(''), z.string().regex(/^[a-zA-Z]{2,8}(-[a-zA-Z0-9]{2,8})*$/).max(35)]).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

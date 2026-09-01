@@ -210,6 +210,9 @@ model User {
   // Empty = show none. The owner opts each in explicitly.
   showConnections        String[]  @default([])
   website                String? // optional public link the user chooses to show
+  // Preferred UI language (BCP-47), persisted so it follows the account across devices (B9).
+  // Null = no account preference; the browser's localStorage choice is used instead.
+  locale                 String?
 
   badges UserBadge[]
 
