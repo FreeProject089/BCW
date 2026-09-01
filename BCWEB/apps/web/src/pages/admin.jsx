@@ -12633,6 +12633,56 @@ function HomePageEditor() {
   );
 }
 
+// B10 Phase 5: a live preview of what a rules & role panel looks like once the bot posts it.
+// Discord renders its buttons in four fixed colours regardless of any site theme, so those are
+// intentionally hard-coded (they mirror Discord, not our palette); the message surface uses our
+// tokens so it reads in light and dark. This is the "what will members see" the editor lacked.
+const DISCORD_BTN = { primary: '#5865F2', secondary: '#4e5058', success: '#248046', danger: '#da373c' };
+function RolePanelPreview({ panel }) {
+  const { t } = useI18n();
+  const roles = (panel.roles || []).filter((r) => r.roleId || r.label).slice(0, 25);
+  const label = (r, i) => r.label || r.roleId || `${t('db.rp.role', 'role')} ${i + 1}`;
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-3">
+      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={11} /> {t('db.rp.preview', 'Preview')}</div>
+      {/* The message itself — an embed (colour bar + title) or a plain message. */}
+      {panel.asEmbed ? (
+        <div className="rounded-md overflow-hidden flex bg-[var(--bg-solid)] border border-[var(--line)]">
+          <div className="w-1 shrink-0" style={{ background: panel.color || '#f59e0b' }} />
+          <div className="p-3 min-w-0">
+            {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
+            <div className="text-xs text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-md bg-[var(--bg-solid)] border border-[var(--line)] p-3">
+          {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
+          <div className="text-xs text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
+        </div>
+      )}
+      {/* The controls, exactly as members meet them: coloured buttons, or a dropdown. */}
+      <div className="mt-2">
+        {roles.length === 0 ? (
+          <div className="text-[11px] text-[var(--faint)] italic">{t('db.rp.prev.noroles', 'Add a role to see the buttons.')}</div>
+        ) : panel.mode === 'dropdown' ? (
+          <div className="rounded-md border border-[var(--line)] bg-[var(--bg-solid)] px-3 py-2 text-xs text-[var(--muted)] flex items-center justify-between max-w-sm">
+            <span>{roles.length === 1 ? label(roles[0], 0) : t('db.rp.prev.select', 'Select {n} role(s)…').replace('{n}', panel.multi !== false ? '' : '1').trim()}</span>
+            <ChevronDown size={14} />
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {roles.map((r, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white" style={{ background: DISCORD_BTN[r.style] || DISCORD_BTN.secondary }}>
+                {r.emoji && <span>{r.emoji}</span>}{label(r, i)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RolePanels({ panels, onChange, guildList }) {
   const { t } = useI18n();
   const [openId, setOpenId] = useState(null);
@@ -12745,6 +12795,8 @@ function RolePanels({ panels, onChange, guildList }) {
                   <Button size="sm" variant="ghost" onClick={() => set(i, { roles: [...(p.roles || []), { roleId: '', label: '', style: 'secondary' }] })}><Plus size={12} /> {t('db.rp.addrole', 'Add a role')}</Button>
                   {(p.roles || []).length > 25 && <div className="text-[11px] text-warning">{t('db.rp.cap', 'Discord shows at most 25 — the rest are not posted.')}</div>}
                 </div>
+
+                <RolePanelPreview panel={p} />
               </div>
             )}
           </div>
