@@ -435,10 +435,6 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         <Section icon={ListTodo} title={t('pce.blocks', "Blocks")} desc="Turn a whole block of the page off.">
           {[
             ['jobs', 'Show the “which of the two jobs is yours” pair'],
-            // The projects showcase. It is the home page's, embedded here, and it pulls in
-            // rrweb the moment a replay panel is shown — on a page somebody opened to read
-            // about REST endpoints.
-            ['showcase', 'Show the projects showcase'],
             // The OIDC discovery URL and the scope table. A site not running OIDC was
             // publishing a /.well-known address on its developer landing page anyway.
             ['discovery', 'Show the discovery URL and scopes'],

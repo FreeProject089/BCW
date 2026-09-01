@@ -1,7 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
-// Lazily, for the same reason home.jsx does: the showcase pulls in rrweb the moment a
-// `.bmmreplay` panel is shown, and a developer reading about API keys must not pay for it.
-const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Code2, Shield, KeyRound, BookOpen, Send, Newspaper, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
 import { api } from '../lib/api.js';
@@ -420,11 +417,9 @@ export default function DevHub() {
   // What an admin saved for this page. Absent (or a 404 before it has ever been saved) leaves
   // every default in place, so the page never depends on the config existing.
   const [cfg, setCfg] = useState(null);
-  const [showcase, setShowcase] = useState(null);
   useEffect(() => {
     let on = true;
     api.get('/projects/developers').then((d) => { if (on) setCfg(d.config || d || null); }).catch(() => {});
-    api.get('/site/showcase').then((d) => { if (on) setShowcase(d); }).catch(() => {});
     return () => { on = false; };
   }, []);
   const hero = cfg?.hero || {};
@@ -497,14 +492,6 @@ export default function DevHub() {
         )}
       </div>
 
-      {/* The same projects the home page opens with, and deliberately the same list: two
-          lists would drift the first week and this page would quietly be a month behind. */}
-      {show.showcase !== false && showcase?.enabled && (
-        <div className="mb-12">
-          <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
-        </div>
-      )}
-
       {/* Before the fork, before the tiles: proof.
           This page opened with a promise and then offered nine doors to documentation. The
           fastest way to answer "is this real" is to answer it — one public GET, timed on the
@@ -530,9 +517,6 @@ export default function DevHub() {
               <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key.')}</p>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {['API keys', 'Test keys', 'Webhooks'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
-            </div>
           </Link>
           <Link to="/docs/sso" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
             <div className="flex items-center gap-2 mb-1">
@@ -541,9 +525,6 @@ export default function DevHub() {
               <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it — you never touch their password.')}</p>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {['OpenID Connect', 'PKCE', 'URL generator'].map((x) => <span key={x} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{x}</span>)}
-            </div>
           </Link>
         </div>
       )}
@@ -596,11 +577,6 @@ export default function DevHub() {
       </div>
       )}
 
-      {!user && (
-        <p className="text-[11px] text-[var(--muted)] mt-4">
-          {t('dev.hub.signin', 'Only keys and apps need an account.')}
-        </p>
-      )}
     </div>
   );
 }
