@@ -1038,6 +1038,10 @@ export default async function botRoutes(app) {
         id: z.string().max(32), name: z.string().max(120),
         icon: z.string().max(400).nullable().optional(), members: z.number().nullable().optional(),
         botTop: z.number().nullable().optional(),
+        // B10: who may manage this guild from the user-facing dashboard. ownerId is always
+        // known; managerIds (Manage-Server admins) is best-effort from the bot's member cache.
+        ownerId: z.string().max(32).nullable().optional(),
+        managerIds: z.array(z.string().max(32)).max(200).optional(),
         roles: z.array(z.object({
           id: z.string().max(32), name: z.string().max(100),
           color: z.string().max(16).nullable().optional(), position: z.number().optional(),
@@ -1055,6 +1059,21 @@ export default async function botRoutes(app) {
     const value = { ...rest, at: new Date().toISOString(), online: rest.online !== false };
     await p.adminSetting.upsert({ where: { key: 'bot.status' }, create: { key: 'bot.status', value }, update: { value } });
     if (logs) await p.adminSetting.upsert({ where: { key: 'bot.logs' }, create: { key: 'bot.logs', value: { logs, at: Date.now() } }, update: { value: { logs, at: Date.now() } } });
+    // B10: mirror the guild roster into BotGuild so every server the bot is in exists as a
+    // row carrying its owner — even one still in the default `none` mode. This is what lets a
+    // server owner manage their guild from the user dashboard before any admin touches it.
+    // Only the reported fields are updated (name/memberCount/owner/managers); the admin-set
+    // memberMode/logChannel/pool/quota are never clobbered. A new guild is created in `none`.
+    if (d.guildList?.length) {
+      for (const g of d.guildList) {
+        const upd = {};
+        if (g.name != null) upd.name = g.name;
+        if (g.members != null) upd.memberCount = g.members;
+        if (g.ownerId !== undefined) upd.ownerDiscordId = g.ownerId || null;
+        if (g.managerIds !== undefined) upd.managerDiscordIds = g.managerIds || [];
+        await p.botGuild.upsert({ where: { guildId: g.id }, create: { guildId: g.id, ...upd }, update: upd }).catch(() => {});
+      }
+    }
     return { ok: true };
   });
 

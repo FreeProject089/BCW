@@ -347,9 +347,17 @@ model BotGuild {
   // The guild's REAL member count from the gateway — kept accurate even when NOT storing rows,
   // so "at capacity" can still show how big the server actually is.
   memberCount    Int      @default(0)
+  // B10: who may manage this guild from the USER-facing dashboard (not just site admins).
+  // The bot reports the guild owner (always) + best-effort Manage-Server admins on every
+  // heartbeat, so this is populated for EVERY guild the bot is in, even one still in `none`
+  // mode. A logged-in site user whose linked DiscordLink.discordId is the owner — or is in
+  // managerDiscordIds — may configure this guild's bot settings for their own server.
+  ownerDiscordId    String?
+  managerDiscordIds String[] @default([])
   updatedAt      DateTime @updatedAt
 
   @@index([memberMode])
+  @@index([ownerDiscordId])
 }
 
 // A moderation action (B4). Written only when the guild is `pool`, or `moderation` + storeLogs;

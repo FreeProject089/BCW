@@ -3,7 +3,7 @@
 // is enabled, reconnects when the token changes, and disconnects when disabled — so the
 // token can be set/rotated from the dashboard with no container restart.
 import './logbuffer.mjs'; // patch console first so all startup logs are captured
-import { Client, GatewayIntentBits, Partials, Events, REST, Routes } from 'discord.js';
+import { Client, GatewayIntentBits, Partials, Events, REST, Routes, PermissionsBitField } from 'discord.js';
 import { recentLogs } from './logbuffer.mjs';
 import { api } from './api.mjs';
 import { config } from './config.mjs';
@@ -63,6 +63,13 @@ function buildClient() {
       guildList: [...c.guilds.cache.values()].slice(0, 200).map((g) => ({
         id: g.id, name: String(g.name || '').slice(0, 120), icon: g.iconURL?.({ size: 64 }) || null, members: g.memberCount ?? null,
         botTop: g.members.me?.roles?.highest?.position ?? null,
+        // B10: the owner (always known) + best-effort Manage-Server admins from the member
+        // cache — so the user dashboard knows who may configure this server. Owner is the
+        // reliable signal; managers depend on how much of the roster is cached, hence capped.
+        ownerId: g.ownerId ?? null,
+        managerIds: [...g.members.cache.values()]
+          .filter((m) => !m.user?.bot && m.id !== g.ownerId && m.permissions?.has?.(PermissionsBitField.Flags.ManageGuild))
+          .map((m) => m.id).slice(0, 50),
         roles: [...g.roles.cache.values()]
           .filter((r) => r.id !== g.id && !r.managed)
           .sort((a, b) => b.position - a.position)
