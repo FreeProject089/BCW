@@ -402,6 +402,52 @@ export async function sweepAnalyticsRetention(p, log) {
   return purged;
 }
 
+// Analytics/replay STORAGE cap (B7 / Prmtp123 §17) — a size ceiling to sit alongside the
+// time-based retention above. Replays carry a real byte weight (SessionReplay.bytes); the
+// event tables are estimated per row (deleting rows must reduce the figure immediately, so
+// pg_total_relation_size is unusable here — it does not shrink until VACUUM). When over the
+// cap, the heaviest artefacts (oldest replays) are trimmed first, then oldest events.
+const ANALYTICS_ROW_BYTES = { analyticsEvent: 300, interactionEvent: 150, webVital: 120 };
+export async function sweepAnalyticsSizeCap(p, log) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'analytics.maxMB' } }).catch(() => null);
+  const capMB = Number(row?.value?.mb ?? row?.value ?? 0);
+  if (!(capMB > 0)) return 0; // 0 / unset = no size cap
+  const cap = capMB * 1024 * 1024;
+  const [replayAgg, aCount, iCount, vCount] = await Promise.all([
+    p.sessionReplay.aggregate({ _sum: { bytes: true } }).catch(() => ({ _sum: { bytes: 0 } })),
+    p.analyticsEvent.count(), p.interactionEvent.count(), p.webVital.count(),
+  ]);
+  const replayBytes = Number(replayAgg._sum.bytes || 0);
+  const eventBytes = aCount * ANALYTICS_ROW_BYTES.analyticsEvent + iCount * ANALYTICS_ROW_BYTES.interactionEvent + vCount * ANALYTICS_ROW_BYTES.webVital;
+  const total = replayBytes + eventBytes;
+  if (total <= cap) return 0;
+  let over = total - Math.floor(cap * 0.9); // trim a little under the cap, not to the exact line
+  let deleted = 0;
+  try {
+    // Oldest replays first — they are the bulk, and we know each one's real weight.
+    if (over > 0 && replayBytes > 0) {
+      const olds = await p.sessionReplay.findMany({ orderBy: { createdAt: 'asc' }, take: 500, select: { id: true, bytes: true } });
+      const victims = [];
+      for (const r of olds) { if (over <= 0) break; victims.push(r.id); over -= (r.bytes || 0); }
+      if (victims.length) { const { count } = await p.sessionReplay.deleteMany({ where: { id: { in: victims } } }); deleted += count; }
+    }
+    // Still over → oldest events, by estimate, one table at a time (bounded per tick).
+    const trimEvents = async (model, est) => {
+      if (over <= 0) return;
+      const n = Math.min(5000, Math.ceil(over / est));
+      const olds = await model.findMany({ orderBy: { createdAt: 'asc' }, take: n, select: { id: true } });
+      if (!olds.length) return;
+      const { count } = await model.deleteMany({ where: { id: { in: olds.map((x) => x.id) } } });
+      deleted += count; over -= count * est;
+    };
+    await trimEvents(p.analyticsEvent, ANALYTICS_ROW_BYTES.analyticsEvent);
+    await trimEvents(p.interactionEvent, ANALYTICS_ROW_BYTES.interactionEvent);
+    await trimEvents(p.webVital, ANALYTICS_ROW_BYTES.webVital);
+  } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'sweeper: analytics size cap failed'); }
+  if (deleted) log?.info?.({ deleted, capMB }, 'sweeper: analytics size cap trimmed');
+  return deleted;
+}
+
 // ── Analytics daily rollup ───────────────────────────────────────────────────
 // Pre-aggregates AnalyticsEvent into AnalyticsDaily (day → views + unique visitors) so the
 // dashboard's day-granularity series is a tiny PK read instead of two full-window GROUP BYs.
@@ -573,6 +619,7 @@ export function startSweeper(app) {
         await runWebhookQueue(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
+      await sweepAnalyticsSizeCap(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics size cap failed'));
       await sweepDeadSessions(p, app.log);
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
