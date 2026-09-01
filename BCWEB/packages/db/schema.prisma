@@ -2234,6 +2234,24 @@ model ShowcaseRequest {
   reviewerId  String?
   /// The page it became, once approved.
   projectId   String?
+  /// ── Submission metadata (the applicant must declare these) ──
+  /// Open-source projects are accepted from anyone; closed-source only from the rights-holder.
+  isOpenSource Boolean @default(true)
+  /// The licence, when open-source (SPDX id or free text). Empty for closed-source.
+  license      String  @default("")
+  /// "owner" = the applicant is the rights-holder; "fan" = a project they like but do not own
+  /// (only allowed for open-source — a closed-source listing must come from the owner).
+  ownership    String  @default("owner")
+  /// Proof of rights for a CLOSED-SOURCE listing: a PRIVATE object key (uploads/<uid>/…), NOT
+  /// public. Served only to the applicant + staff via a guarded route. Empty otherwise.
+  proofKey     String  @default("")
+  proofName    String  @default("")
+  /// When the applicant accepted the Submission Terms (+ the non-refundable notice on a paid
+  /// request). A submission cannot be created without it.
+  tosAcceptedAt DateTime?
+  /// The Report thread opened for this submission — the dashboard "Reports & contact" chat box
+  /// where staff can ask for more detail. Null until the thread is created (on submit).
+  contactReportId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

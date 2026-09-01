@@ -91,10 +91,16 @@ const LIMITS = {
   // a built app/site/bot bundle, with or without source. Admin-tier only; served from the
   // media proxy behind an unguessable UUID URL (attachment on direct navigation).
   MYO_DELIVER: { maxBytes: 500 * 1024 * 1024, types: [...IMG, 'application/zip', 'application/x-zip-compressed', 'application/octet-stream', 'application/json', 'application/pdf'], prefix: 'blog', adminOnly: true },
+  // Proof-of-rights for a CLOSED-SOURCE showcase submission (a licence, an invoice, a signed
+  // statement). Deliberately NO `prefix`, so it lands under uploads/<uid>/ and is NEVER served
+  // by the public /media proxy — only through the guarded per-request proof route (owner +
+  // staff). No SVG (script-carrying); images + PDF only. Small cap — it's a document, not a
+  // payload.
+  PROOF:  { maxBytes: 25 * 1024 * 1024, types: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'] },
 };
 
 const schema = z.object({
-  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY', 'MYO_DELIVER']),
+  kind: z.enum(['APP', 'PLUGIN', 'THEME', 'PRESET', 'MODPACK', 'BLOG', 'MEDIA', 'REPORT', 'REPLAY', 'MYO_DELIVER', 'PROOF']),
   filename: z.string().min(1).max(160),
   contentType: z.string().min(1).max(120),
   size: z.number().int().positive(),
