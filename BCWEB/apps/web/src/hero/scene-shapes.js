@@ -8,6 +8,7 @@
 // So: no React, no GSAP, no intro. Geometry, shaders, palette and the defaults, importable by
 // a 900-line hero and by a 60mm-wide canvas in a settings card alike.
 import * as THREE from 'three';
+import { mergeEventScene } from './scene-events.js';
 
 export function isLight() { return document.documentElement.getAttribute('data-theme') !== 'dark'; } // default theme is light
 // The orb's colours are DERIVED from the site accent rather than hardcoded, so a superadmin
@@ -279,12 +280,28 @@ export function readSceneConfig() {
   if (_scenePromise) return _scenePromise;
   _scenePromise = new Promise((resolve) => {
     let settled = false;
-    const done = (v) => { if (!settled) { settled = true; resolve({ ...SCENE_DEFAULTS, ...(v || {}) }); } };
+    // clearTimeout lives in done() so the 1.2s deadline is a hard ceiling over EVERYTHING
+    // below, the live-event lookup included — a slow /events/active can never hold the intro
+    // overlay open past it.
+    const done = (v) => { if (!settled) { settled = true; clearTimeout(fall); resolve({ ...SCENE_DEFAULTS, ...(v || {}) }); } };
     const fall = setTimeout(() => done(null), 1200);
     fetch('/api/site/scene', { headers: { accept: 'application/json' } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { clearTimeout(fall); done(d); })
-      .catch(() => { clearTimeout(fall); done(null); });
+      .then(async (d) => {
+        // A live event can swap the scene (B11) — but only when the base is on and any event
+        // scenes are configured, so the common case pays for no second request. The lookup is
+        // bounded by its own 600ms race as well, well inside the 1.2s ceiling above.
+        if (d && d.enabled !== false && d.events && Object.keys(d.events).length) {
+          const ev = await Promise.race([
+            fetch('/api/events/active', { headers: { accept: 'application/json' } }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+            new Promise((res) => { setTimeout(() => res(null), 600); }),
+          ]);
+          done(mergeEventScene({ ...SCENE_DEFAULTS, ...d }, ev?.event || null));
+        } else {
+          done(d);
+        }
+      })
+      .catch(() => done(null));
   });
   return _scenePromise;
 }

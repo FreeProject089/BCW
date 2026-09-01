@@ -358,6 +358,35 @@ export const SCENE_HOVERS = ['fracture', 'swell', 'spin', 'none'];
 // currently on. Two admin screens for that would be asking somebody to guess they talk.
 export const SCENE_REVEALS = ['rise', 'fade', 'slide', 'zoom', 'none'];
 
+// ── Per-event scene overrides (B11) ──────────────────────────────────────────
+// The scene can change while an event is live — a different shape/glow for a holiday, say.
+// The map is keyed by event id and holds only the visual params to override; it is applied
+// CLIENT-SIDE (see mergeEventScene) and only when the base scene is enabled, so an event can
+// never force-draw a scene the admin switched off. `enabled` and `reveal` are deliberately
+// not overridable: `enabled` is that global switch, and `reveal` is a page-wide CSS choice.
+export const scenePartial = (v) => {
+  if (!v || typeof v !== 'object') return null;
+  const num = (x, lo, hi) => (Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : undefined);
+  const out = {};
+  if (SCENE_SHAPES.includes(v.shape)) out.shape = v.shape;
+  if (SCENE_SURFACES.includes(v.surface)) out.surface = v.surface;
+  if (SCENE_HOVERS.includes(v.hover)) out.hover = v.hover;
+  const set = (k, lo, hi, round) => { const n = num(v[k], lo, hi); if (n !== undefined) out[k] = round ? Math.round(n) : n; };
+  set('detail', 0, 5, true); set('noise', 0, 1.5); set('speed', 0, 3); set('opacity', 0.1, 1);
+  set('scale', 0.5, 1.8); set('glow', 0, 1); set('twinkles', 0, 240, true);
+  return Object.keys(out).length ? out : null;
+};
+const sceneEvents = (v) => {
+  if (!v || typeof v !== 'object') return {};
+  const out = {};
+  for (const [id, ov] of Object.entries(v)) {
+    if (typeof id !== 'string' || !id) continue;
+    const s = scenePartial(ov);
+    if (s) out[id] = s;
+  }
+  return out;
+};
+
 /** What the browser is told, with every default applied here rather than in the component. */
 const sceneConfig = (row) => {
   const v = row?.value || {};
@@ -390,6 +419,8 @@ const sceneConfig = (row) => {
     // is added to the scene rather than added invisibly.
     glow: num(v.glow, 0, 1, 0.45),
     twinkles: Math.round(num(v.twinkles, 0, 240, 110)),
+    // Per-event overrides, applied client-side while an event is live (B11).
+    events: sceneEvents(v.events),
   };
 };
 
@@ -444,11 +475,16 @@ export default async function miscRoutes(app) {
       reveal: z.enum(SCENE_REVEALS).optional(),
       glow: z.number().min(0).max(1).optional(),
       twinkles: z.number().int().min(0).max(240).optional(),
+      // A map of event id → partial scene override. Sanitised (scenePartial) on store, so a
+      // client that posts junk cannot poison the config every visitor reads.
+      events: z.record(z.any()).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = sceneConfig(await p.adminSetting.findUnique({ where: { key: SCENE_KEY } }));
     const value = { ...cur, ...b.data };
+    // Re-sanitise the map (cur.events is already clean; a new b.data.events is not).
+    value.events = sceneEvents(value.events);
     await p.adminSetting.upsert({ where: { key: SCENE_KEY }, create: { key: SCENE_KEY, value }, update: { value } });
     await logAudit(p, req.user.uid, 'site.scene',
       value.enabled === false ? 'off' : `shape=${value.shape} detail=${value.detail} surface=${value.surface}`);

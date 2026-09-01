@@ -11927,7 +11927,69 @@ function SceneEditor() {
           <span className="block text-[11px] text-[var(--muted)] mt-2">{t('scn.reload', 'Reload the page to see it behind you — the backdrop is built once, when a page loads.')}</span>
         </div>
       </div>
+      <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
     </Card>
+  );
+}
+
+// Per-event scene overrides (B11). Each configured event can carry its own shape / halo /
+// speed, applied client-side only while it is live AND only when the scene above is on — the
+// map is stored under `site.scene.events[eventId]` and saved with the rest of the scene.
+function SceneEventScenes({ cfg, set, shapes, names }) {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/admin/events'), []);
+  const events = data?.events || [];
+  const map = cfg.events || {};
+  const setEvent = (id, patch) => set({ events: { ...map, [id]: { ...(map[id] || {}), ...patch } } });
+  const toggle = (id, on) => {
+    const next = { ...map };
+    if (on) next[id] = next[id] || { shape: cfg.shape };
+    else delete next[id];
+    set({ events: next });
+  };
+  return (
+    <div className="mt-6 pt-5 border-t border-[var(--line)]">
+      <div className="text-[13px] font-medium mb-1">{t('scn.ev.title', 'Per-event scenes')}</div>
+      <p className="text-[11px] text-[var(--muted)] leading-snug mb-3 max-w-2xl">
+        {t('scn.ev.d', 'Give an event its own look — a different shape or a brighter halo while it runs. Applied only while the event is live, and only when the scene above is on: switching the scene off is always final.')}
+      </p>
+      {!events.length ? (
+        <p className="text-[11px] text-[var(--faint)]">{t('scn.ev.none', 'No events yet — create one under Events to give it a scene.')}</p>
+      ) : (
+        <div className="space-y-2">
+          {events.map((ev) => {
+            const ov = map[ev.id];
+            return (
+              <div key={ev.id} className="rounded-lg border border-[var(--line)] p-3">
+                <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
+                  <input type="checkbox" className="accent-[var(--primary)]" checked={!!ov} onChange={(e) => toggle(ev.id, e.target.checked)} />
+                  <span className="font-medium">{ev.name}</span>
+                  {ev.active ? <Badge tone="green">{t('scn.ev.live', 'active')}</Badge> : null}
+                </label>
+                {ov && (
+                  <div className={`grid sm:grid-cols-3 gap-3 mt-3 ${cfg.enabled === false ? 'opacity-45' : ''}`}>
+                    <div>
+                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.ev.shape', 'Shape')}</div>
+                      <Select value={ov.shape || cfg.shape} onChange={(e) => setEvent(ev.id, { shape: e.target.value })}>
+                        {shapes.map((s) => <option key={s} value={s}>{names[s]?.[0] || s}</option>)}
+                      </Select>
+                    </div>
+                    <label className="block">
+                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.glow', 'Halo')} · {Math.round((ov.glow ?? cfg.glow) * 100)}%</div>
+                      <input type="range" min="0" max="1" step="0.05" value={ov.glow ?? cfg.glow} onChange={(e) => setEvent(ev.id, { glow: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
+                    </label>
+                    <label className="block">
+                      <div className="text-[11px] text-[var(--muted)] mb-1">{t('scn.speed', 'Speed')} · {ov.speed ?? cfg.speed}</div>
+                      <input type="range" min="0" max="3" step="0.1" value={ov.speed ?? cfg.speed} onChange={(e) => setEvent(ev.id, { speed: Number(e.target.value) })} className="w-full accent-[var(--primary)]" />
+                    </label>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
