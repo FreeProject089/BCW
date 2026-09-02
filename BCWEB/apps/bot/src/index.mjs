@@ -6,7 +6,7 @@ import './logbuffer.mjs'; // patch console first so all startup logs are capture
 import { Client, GatewayIntentBits, Partials, Events, REST, Routes, PermissionsBitField } from 'discord.js';
 import { recentLogs } from './logbuffer.mjs';
 import { api } from './api.mjs';
-import { config } from './config.mjs';
+import { config, guildBan } from './config.mjs';
 import { commandData, handleInteraction } from './commands.mjs';
 import { onVoiceStateUpdate } from './features/joinToCreate.mjs';
 import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
@@ -124,6 +124,13 @@ function buildClient() {
   c.on(Events.GuildMemberAdd, guard(async (m) => { await onMemberAdd(m); await checkGating(m); }));
   c.on(Events.GuildMemberRemove, guard(onMemberRemove));
   c.on(Events.MessageCreate, guard(onMessage));
+  // Invited to a server that is banned from the bot? Leave at once (unless the ban is the
+  // softer 'disable' mode, which keeps the bot present but inert). The 20s sweep in tick()
+  // is the backstop; this is the immediate response.
+  c.on(Events.GuildCreate, guard(async (g) => {
+    const ban = guildBan(await config(), g.id);
+    if (ban && ban.mode !== 'disable') { console.log(`[bot] joined a banned guild (${g.id}) — leaving.`); await g.leave().catch(() => {}); }
+  }));
   return c;
 }
 
@@ -179,6 +186,17 @@ async function tick() {
       console.log('[bot] reconnect requested from the dashboard.');
       await disconnect();
       backoffUntil = 0; lastTriedToken = null; // a deliberate reconnect is not a retry
+    }
+  }
+  // Leave any 'leave'-banned server the bot is currently in — the backstop for a ban added
+  // while the bot was already present (GuildCreate only fires on a fresh join). Runs on the
+  // fresh config every 20s, so a new ban takes effect within one tick.
+  if (client && cfg && Array.isArray(cfg.bannedGuilds)) {
+    for (const b of cfg.bannedGuilds) {
+      if (b && b.guildId && b.mode !== 'disable' && client.guilds?.cache?.has(b.guildId)) {
+        console.log(`[bot] leaving banned guild ${b.guildId}.`);
+        await client.guilds.cache.get(b.guildId)?.leave().catch(() => {});
+      }
     }
   }
   const token = enabled ? await resolveToken() : null;

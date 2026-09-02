@@ -6,6 +6,7 @@ import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
 import { checkGating } from './features/gating.mjs';
 import { handleGiveawayButton } from './features/giveaways.mjs';
 import { handleRolePanelInteraction } from './features/rolepanel.mjs';
+import { config, guildBan } from './config.mjs';
 
 // Every bot response is an embed (brand-colored card) rather than bare text —
 // consistent look across alerts/blog/tips/commands. Shared with panel.mjs.
@@ -36,10 +37,20 @@ export const commandData = [
     .addIntegerOption((o) => o.setName('minutes').setDescription('How long it runs (minutes)').setMinValue(1).setMaxValue(86400).setRequired(true))
     .addIntegerOption((o) => o.setName('winners').setDescription('Number of winners (default 1)').setMinValue(1).setMaxValue(50))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  // Always available — even in a banned server, since finding the appeal reference is the one
+  // thing a moderator of a banned server needs the bot to still do.
+  new SlashCommandBuilder().setName('appeal').setDescription('If this server is blocked from the bot, get your appeal reference and how to contest it'),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
   if (i.isChatInputCommand()) {
+    // A banned server: /appeal still answers (that is its whole point), everything else is
+    // inert here. The ban is enforced regardless of a command's own permission gate.
+    if (i.commandName === 'appeal') return cmdAppeal(i);
+    if (i.guildId) {
+      const ban = guildBan(await config(), i.guildId);
+      if (ban) return eReply(i, 'This bot is not active in this server. Use `/appeal` to get your reference and how to contest it.', { title: 'Unavailable here' });
+    }
     if (i.commandName === 'link') return cmdLink(i);
     if (i.commandName === 'verify' || i.commandName === 'refreshroles') return cmdVerify(i);
     if (i.commandName === 'voice') return sendPanel(i);
@@ -59,6 +70,22 @@ export async function handleInteraction(i) {
   // not a fork somebody has to keep in sync.
   if (await handleRolePanelInteraction(i)) return;
   if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
+}
+
+async function cmdAppeal(i) {
+  const ban = i.guildId ? guildBan(await config(), i.guildId) : null;
+  if (!ban) return eReply(i, 'Good news — this server is not blocked from the bot. Everything works normally here.', { title: '✅ Appeal' });
+  const ref = ban.banId || i.guildId;
+  const lines = [
+    'This server is blocked from the bot.',
+    '',
+    `**Reference:** \`${ref}\``,
+    ...(ban.reason ? [`**Reason:** ${ban.reason}`] : []),
+    '',
+    'To contest it, contact us and quote the reference above:',
+    `${SITE_URL}/contact`,
+  ];
+  return eReply(i, lines.join('\n'), { title: '📝 Appeal' });
 }
 
 async function cmdWarn(i) {

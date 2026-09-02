@@ -12758,20 +12758,37 @@ function BotSectionNav({ isCustomized }) {
       ['sec-gating', t('db.mod.gating', 'Gated access'), KeyRound],
     ] },
   ];
+  const shown = groups.filter((g) => g.show);
   return (
-    <nav className="hidden xl:block sticky top-16 self-start text-sm">
-      {groups.filter((g) => g.show).map((g) => (
-        <div key={g.label} className="mb-3">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] px-2 mb-1">{g.label}</div>
-          {g.items.map(([id, label, Icon]) => (
+    <>
+      {/* Desktop (xl+): a sticky sidebar of jump links. */}
+      <nav className="hidden xl:block sticky top-16 self-start text-sm">
+        {shown.map((g) => (
+          <div key={g.label} className="mb-3">
+            <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] px-2 mb-1">{g.label}</div>
+            {g.items.map(([id, label, Icon]) => (
+              <button key={id} type="button" onClick={() => go(id)}
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60 transition">
+                <Icon size={14} className="shrink-0 text-[var(--faint)]" /> <span className="truncate">{label}</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      {/* Mobile/tablet (< xl): the SAME jumps as a sticky, sideways-scrolling chip strip — the
+          navigation the phone layout never had, so a config this long is reachable without a
+          minute of scrolling. Sits just under the sticky header. */}
+      <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 bg-[var(--bg)]/90 backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 min-w-max">
+          {shown.flatMap((g) => g.items).map(([id, label, Icon]) => (
             <button key={id} type="button" onClick={() => go(id)}
-              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60 transition">
-              <Icon size={14} className="shrink-0 text-[var(--faint)]" /> <span className="truncate">{label}</span>
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] text-xs text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] whitespace-nowrap shrink-0 transition">
+              <Icon size={13} className="text-[var(--faint)]" /> {label}
             </button>
           ))}
         </div>
-      ))}
-    </nav>
+      </nav>
+    </>
   );
 }
 
@@ -13505,6 +13522,12 @@ function AdminBot() {
   const jtcLobbies = scopeObj.joinToCreate?.lobbies || (scopeObj.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: scopeObj.joinToCreate.lobbyChannelId, categoryId: scopeObj.joinToCreate.categoryId, tempCategoryName: scopeObj.joinToCreate.tempCategoryName }] : []);
   const purgeChans = scopeObj.moderation?.purgeChannelIds || (scopeObj.moderation?.purgeChannelId ? [scopeObj.moderation.purgeChannelId] : []);
   const scopeName = scope ? (guildList.find((gg) => gg.id === scope)?.name || scope) : t('db.scope.global', 'Global defaults');
+  // Server ban (item: block the bot from a server). Stored in cfg.bannedGuilds; the bot reads
+  // it and either leaves-and-never-rejoins ('leave') or stays-but-ignores-everything ('disable').
+  // A random banId is what /appeal quotes. Changes apply on Save, like the rest of the config.
+  const bannedForScope = (cfg.bannedGuilds || []).find((b) => b.guildId === scope);
+  const banServer = (mode) => setCfg((c) => ({ ...c, bannedGuilds: [...(c.bannedGuilds || []).filter((b) => b.guildId !== scope), { guildId: scope, mode, reason: '', banId: `BAN-${(Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6)).toUpperCase()}`, at: Date.now() }] }));
+  const unbanServer = () => setCfg((c) => ({ ...c, bannedGuilds: (c.bannedGuilds || []).filter((b) => b.guildId !== scope) }));
 
   const SectionTitle = ({ icon: I, title, sub }) => (
     <div className="flex items-center gap-2.5 mt-6 mb-3">
@@ -13784,6 +13807,27 @@ function AdminBot() {
           ? <Button size="sm" variant="ghost" className="!text-error" onClick={resetServer}><Trash2 size={13} /> {t('db.scope.reset', 'Reset to defaults')}</Button>
           : <Button size="sm" variant="primary" onClick={customizeServer}><Plus size={13} /> {t('db.scope.customize', 'Customize this server')}</Button>)}
       </div>
+
+      {/* Block the bot from this server. Two strengths: leave-and-never-rejoin, or stay-but-inert.
+          Either takes effect on Save; /appeal in the server returns the reference shown here. */}
+      {scope && (
+        <div className="mb-3 rounded-lg border border-[var(--line)] px-3 py-2.5 flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 min-w-0">
+            <Ban size={13} className={bannedForScope ? 'text-error shrink-0' : 'text-[var(--faint)] shrink-0'} />
+            {bannedForScope
+              ? <span className="truncate">{t('db.ban.is', 'Blocked')} · {bannedForScope.mode === 'disable' ? t('db.ban.disable.s', 'the bot stays but ignores every command here') : t('db.ban.leave.s', 'the bot leaves and will not rejoin')}{bannedForScope.banId ? ` · ${bannedForScope.banId}` : ''}</span>
+              : <span className="truncate">{t('db.ban.not', 'Not blocked — the bot works normally here.')}</span>}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {bannedForScope
+              ? <Button size="sm" variant="ghost" onClick={unbanServer}><ShieldCheck size={13} /> {t('db.ban.unblock', 'Unblock')}</Button>
+              : <>
+                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => banServer('leave')} title={t('db.ban.leave.t', 'The bot leaves this server and never rejoins')}><Ban size={13} /> {t('db.ban.leave', 'Block & leave')}</Button>
+                  <Button size="sm" variant="ghost" onClick={() => banServer('disable')} title={t('db.ban.disable.t', 'The bot stays in the server but every command is inert')}>{t('db.ban.disable', 'Just disable')}</Button>
+                </>}
+          </div>
+        </div>
+      )}
 
       {scope && !isCustomized ? (
         <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">

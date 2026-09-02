@@ -90,6 +90,11 @@ const DEFAULT_BOT_CONFIG = {
   // gating? }. A feature present here REPLACES the top-level default for that guild;
   // absent → the top-level config applies (so single-server setups need no changes).
   guilds: {},
+  // Servers the bot is banned from. Each: { guildId, mode: 'leave'|'disable', reason, banId, at }.
+  //   'leave'   → the bot leaves the server and refuses to rejoin (leaves again on invite).
+  //   'disable' → the bot stays but every command/feature is inert there.
+  // Enforced bot-side; `/appeal` returns the banId + a link to the contact page.
+  bannedGuilds: [],
 };
 
 /**

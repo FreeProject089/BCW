@@ -32,3 +32,14 @@ export function resolveGuildConfig(cfg, guildId) {
 export async function guildConfig(guildId, force = false) {
   return resolveGuildConfig(await config(force), guildId);
 }
+
+// The ban entry for one guild, or null. Set by an admin in the dashboard; each is
+// { guildId, mode: 'leave'|'disable', reason, banId, at }. 'leave' means the bot leaves and
+// refuses to rejoin; 'disable' means it stays but every command/feature is inert there.
+export function guildBan(cfg, guildId) {
+  if (!cfg || !Array.isArray(cfg.bannedGuilds)) return null;
+  return cfg.bannedGuilds.find((b) => b && b.guildId === guildId) || null;
+}
+export async function bannedGuild(guildId, force = false) {
+  return guildBan(await config(force), guildId);
+}
