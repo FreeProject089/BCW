@@ -137,23 +137,44 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
-      // A Community Charity gift (B14). Credit the month's pot with the paid amount — get-or-
-      // create the pot, then record the contribution keyed on the SESSION id so a retried
-      // webhook credits it exactly once (the unique index turns a double-fire into a no-op).
-      // A gift is kept as a separate stream from BetterCommunity's own share; both sum in the pot.
+      // A Community Charity gift (B14). Credit the month's pot with what actually REACHES it —
+      // the amount paid minus the card-processing fee Stripe keeps — get-or-create the pot, then
+      // record the contribution keyed on the SESSION id so a retried webhook credits it exactly
+      // once (the unique index turns a double-fire into a no-op). A gift is a separate stream
+      // from BetterCommunity's own share; both sum in the pot.
       if (meta.type === 'charity' && meta.month) {
         const month = meta.month;
-        const amountCents = s.amount_total ?? (Number(meta.amountCents) || 0);
-        if (amountCents > 0) {
+        const gross = s.amount_total ?? (Number(meta.amountCents) || 0);
+        // The processing fee, from Stripe's own balance transaction — the exact number, not an
+        // estimate. If it cannot be read (an API hiccup, a payment method with no fee row yet),
+        // fall back to crediting the GROSS: over-crediting the association by a few cents is the
+        // safe direction, under-crediting it is not.
+        let net = gross;
+        try {
+          if (gross > 0 && s.payment_intent) {
+            const pi = typeof s.payment_intent === 'string'
+              ? await stripe.paymentIntents.retrieve(s.payment_intent, { expand: ['latest_charge.balance_transaction'] })
+              : s.payment_intent;
+            const fee = pi?.latest_charge?.balance_transaction?.fee;
+            if (typeof fee === 'number' && fee >= 0) net = Math.max(0, gross - fee);
+          }
+        } catch (e) { req.log?.warn?.({ err: e?.message }, 'charity fee lookup failed — crediting gross'); }
+        if (net > 0) {
           const pot = await p.charityPot.upsert({
             where: { month }, update: {}, create: { month, currency: s.currency || 'chf' },
           });
           try {
             await p.charityContribution.create({ data: {
-              potId: pot.id, userId: meta.userId || null, amountCents,
+              potId: pot.id, userId: meta.userId || null, amountCents: net,
               currency: s.currency || pot.currency, source: 'stripe', sessionId: s.id,
             } });
-            if (meta.userId) await notify(p, meta.userId, 'account', `Thank you — your ${(amountCents / 100).toFixed(2)} ${(s.currency || pot.currency).toUpperCase()} gift was added to this month's community charity pot.`).catch(() => {});
+            if (meta.userId) {
+              const cur = (s.currency || pot.currency).toUpperCase();
+              const note = net < gross
+                ? `Thank you — your ${(gross / 100).toFixed(2)} ${cur} gift added ${(net / 100).toFixed(2)} ${cur} to this month's community charity pot (the rest is the card-processing fee).`
+                : `Thank you — your ${(net / 100).toFixed(2)} ${cur} gift was added to this month's community charity pot.`;
+              await notify(p, meta.userId, 'account', note).catch(() => {});
+            }
           } catch (e) {
             // Unique-violation on sessionId = the webhook already credited this session. Anything
             // else is a real error worth surfacing to Stripe for a retry.

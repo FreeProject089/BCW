@@ -19122,6 +19122,12 @@ function CharityAdminCard() {
   const toast = useToast();
   const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/charity'), []);
+  // The polls, so the month's vote is PICKED from a list rather than pasted as an id nobody
+  // can copy — the whole "search the id" pain. Failure is silent: the picker falls back to a
+  // plain input so a polls-permission gap never blocks saving the pot.
+  const pollsQ = useAsync(() => api.get('/admin/polls').then((d) => d.polls || []).catch(() => []), []);
+  const polls = pollsQ.data || [];
+  const pollLabel = (pl) => pl.question || pl.title || pl.questions?.[0]?.text || pl.questions?.[0]?.question || `${t('chc.poll.untitled', 'Untitled poll')} · ${pl.id.slice(0, 8)}`;
   const [cfg, setCfg] = useState(null);
   const [pot, setPot] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -19175,7 +19181,22 @@ function CharityAdminCard() {
           <h3 className="font-medium mb-2 flex items-center gap-2"><Vote size={15} /> {t('chc.pot', 'This month’s pot')} · {pot.month}</h3>
           <div className="text-sm text-[var(--muted)] mb-3">{t('chc.total', 'Total')}: <b className="text-[var(--text)] tabular-nums">{money(pot.totalCents)}</b> <span className="text-[var(--faint)]">({money(pot.orgContribCents)} + {money(pot.communityCents)})</span></div>
           <div className="grid gap-2 sm:grid-cols-3">
-            <Field label={t('chc.poll', 'Linked vote (poll ID)')}><Input placeholder={t('chc.poll.ph', 'Poll id of the association vote')} value={pot.pollId} onChange={(e) => setPot((x) => ({ ...x, pollId: e.target.value }))} /></Field>
+            <Field label={t('chc.poll', 'Linked vote')}>
+              {/* Pick the association vote straight from the poll list. A pot pointing at a
+                  poll that no longer exists keeps that id as its own option so saving never
+                  silently drops it; if the poll list could not load at all, fall back to a
+                  plain id box rather than an empty picker. */}
+              {pollsQ.loading || polls.length || pot.pollId ? (
+                <Dropdown value={pot.pollId || ''} onChange={(v) => setPot((x) => ({ ...x, pollId: v || null }))}
+                  options={[
+                    { value: '', label: t('chc.poll.none', '— No linked vote —') },
+                    ...polls.map((pl) => ({ value: pl.id, label: pollLabel(pl) })),
+                    ...(pot.pollId && !polls.some((pl) => pl.id === pot.pollId) ? [{ value: pot.pollId, label: `${t('chc.poll.missing', 'Removed poll')} · ${String(pot.pollId).slice(0, 8)}` }] : []),
+                  ]} />
+              ) : (
+                <Input placeholder={t('chc.poll.ph', 'Poll id of the association vote')} value={pot.pollId || ''} onChange={(e) => setPot((x) => ({ ...x, pollId: e.target.value }))} />
+              )}
+            </Field>
             <Field label={t('chc.assoc', 'Chosen association')}><Input placeholder={t('chc.assoc.ph', 'Association name')} value={pot.association} onChange={(e) => setPot((x) => ({ ...x, association: e.target.value }))} /></Field>
             <Field label={t('chc.status', 'Status')}><Dropdown value={pot.status} onChange={(v) => setPot((x) => ({ ...x, status: v }))} options={[
               { value: 'open', label: t('chc.status.open', 'Open') },

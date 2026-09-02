@@ -32,6 +32,13 @@ function ContributeModal({ pot, onClose }) {
   // A typed custom amount (in whole currency units) wins over the selected preset.
   const customCents = custom.trim() ? Math.round(parseFloat(custom.replace(',', '.')) * 100) : null;
   const finalCents = Number.isFinite(customCents) && customCents > 0 ? customCents : amount;
+  // What actually reaches the pot: the gift minus the card-processing fee. Estimated here with
+  // Stripe's standard rate (the pot is credited with the EXACT fee from Stripe once paid), so a
+  // giver sees why a little less than they give lands in the pot. Config can override the rate.
+  const feePct = Number.isFinite(pot.feePercent) ? pot.feePercent : 2.9;
+  const feeFixed = Number.isFinite(pot.feeFixedCents) ? pot.feeFixedCents : 30;
+  const feeCents = finalCents > 0 ? Math.round(finalCents * feePct / 100) + feeFixed : 0;
+  const netCents = Math.max(0, finalCents - feeCents);
   const go = async () => {
     if (!(finalCents >= 100)) { toast.error(t('ch.min', 'The minimum gift is 1.00.')); return; }
     setBusy(true);
@@ -61,15 +68,21 @@ function ContributeModal({ pot, onClose }) {
           <label className="text-xs text-[var(--faint)]">{t('ch.custom', 'Or a custom amount')} ({(pot.currency || 'chf').toUpperCase()})</label>
           <Input inputMode="decimal" placeholder="—" value={custom} onChange={(e) => setCustom(e.target.value)} />
         </div>
-        <div className="flex items-center justify-between rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm">
-          <span className="text-[var(--muted)]">{t('ch.total', 'You give')}</span>
-          <span className="font-semibold tabular-nums">{money(finalCents, pot.currency)}</span>
+        <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2.5 text-sm space-y-1.5">
+          <div className="flex items-center justify-between"><span className="text-[var(--muted)]">{t('ch.total', 'You give')}</span><span className="font-semibold tabular-nums">{money(finalCents, pot.currency)}</span></div>
+          <div className="flex items-center justify-between text-[13px]"><span className="text-[var(--faint)]">{t('ch.fee', 'Estimated card fee')}</span><span className="tabular-nums text-[var(--faint)]">− {money(feeCents, pot.currency)}</span></div>
+          <div className="flex items-center justify-between border-t border-[var(--line)] pt-1.5"><span className="text-[var(--muted)]">{t('ch.net', 'Reaches the pot')}</span><span className="font-semibold tabular-nums text-[var(--primary-2)]">{money(netCents, pot.currency)}</span></div>
         </div>
+        {/* Why a little less lands in the pot, and that a gift is final. Both are the questions a
+            first-time giver actually has, answered before they pay rather than after. */}
+        <p className="text-[11px] text-[var(--faint)] leading-snug">
+          {t('ch.feewhy', 'Card processing (Stripe) keeps about {p}% + {f} of each gift, so slightly less than you give reaches the pot — the pot is credited with the exact fee once paid, which may differ by a cent or two from this estimate.').replace('{p}', String(feePct)).replace('{f}', money(feeFixed, pot.currency))}
+        </p>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button variant="primary" loading={busy} onClick={go}><Heart size={15} /> {t('ch.confirm', 'Confirm & pay')}</Button>
         </div>
-        <p className="text-[11px] text-[var(--faint)] text-center">{t('ch.securenote', 'You’ll confirm on a secure payment page. Nothing is charged until you do.')}</p>
+        <p className="text-[11px] text-[var(--faint)] text-center">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do — and gifts are final: donations are not refundable.')}</p>
       </div>
     </Modal>
   );
