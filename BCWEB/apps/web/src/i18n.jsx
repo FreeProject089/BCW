@@ -2429,6 +2429,8 @@ const DICT = {
     'an.ret.errors': 'Erreurs', 'an.ret.replays': 'Rejeux de session',
     'db.f.bgimg': 'Image de fond personnalisée',
     'db.f.bgimg.h': 'Optionnelle, et elle remplace la couleur ci-dessus. Envoyez l’image depuis la page Fichiers puis collez son lien /api/media/… ici. La bannière assombrit le côté gauche pour que le texte reste lisible quelle que soit l’image.',
+    'db.f.bgimg.h2': 'Optionnelle, et elle remplace la couleur ci-dessus. Envoyez-en une ici (ou collez un lien /api/media/…) — elle est stockée sur le site, donc modérable et supprimable comme tout autre envoi. La bannière assombrit le côté gauche pour que le texte reste lisible quelle que soit l’image.',
+    'db.f.bgimg.upload': 'Envoyer',
     'db.f.bgimg.see': 'Aperçu',
     'db.f.bgimg.bad': 'Ce n’est pas un lien de fichier envoyé. Il doit commencer par /api/media/blog/ — la couleur sera utilisée à la place.',
     'common.remove': 'Retirer',

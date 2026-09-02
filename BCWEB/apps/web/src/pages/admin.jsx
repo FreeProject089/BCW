@@ -13528,6 +13528,18 @@ function AdminBot() {
   const bannedForScope = (cfg.bannedGuilds || []).find((b) => b.guildId === scope);
   const banServer = (mode) => setCfg((c) => ({ ...c, bannedGuilds: [...(c.bannedGuilds || []).filter((b) => b.guildId !== scope), { guildId: scope, mode, reason: '', banId: `BAN-${(Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6)).toUpperCase()}`, at: Date.now() }] }));
   const unbanServer = () => setCfg((c) => ({ ...c, bannedGuilds: (c.bannedGuilds || []).filter((b) => b.guildId !== scope) }));
+  // Upload a welcome/bye background right here — no trip to the Uploads page. It goes through
+  // the same media store, so the result is a moderatable /api/media/ path (never an arbitrary
+  // URL, which is why both the API and the bot can fetch it server-side safely).
+  const pickWelcomeBg = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async () => {
+      const file = inp.files?.[0]; if (!file) return;
+      try { toast.info(t('be.uploading', 'Uploading…')); const url = await uploadImage(file); sset('welcome.bgImage', url); setPreviewNonce((n) => n + 1); }
+      catch { toast.error(t('be.uploadfail', 'Upload failed.')); }
+    };
+    inp.click();
+  };
 
   const SectionTitle = ({ icon: I, title, sub }) => (
     <div className="flex items-center gap-2.5 mt-6 mb-3">
@@ -13880,8 +13892,9 @@ function AdminBot() {
                   would be handing an admin-editable field a request from inside the network.
                   Upload on the Uploads page, copy the link, paste it here. */}
               <Field className="mt-2.5" label={t('db.f.bgimg', 'Custom background image')}
-                hint={t('db.f.bgimg.h', 'Optional, and it replaces the colour above. Upload the image on the Uploads page and paste its /api/media/… link. The banner darkens the left side so the text stays readable whatever the picture is.')}>
+                hint={t('db.f.bgimg.h2', 'Optional, and it replaces the colour above. Upload one here (or paste an /api/media/… link) — it is stored on the site, so it can be reviewed and removed like any other upload. The banner darkens the left side so the text stays readable whatever the picture is.')}>
                 <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="ghost" onClick={pickWelcomeBg}><UploadIcon size={12} /> {t('db.f.bgimg.upload', 'Upload')}</Button>
                   <Input value={sg('welcome.bgImage')} onChange={(e) => sset('welcome.bgImage', e.target.value)}
                     placeholder="/api/media/blog/…" />
                   {sg('welcome.bgImage') && (
