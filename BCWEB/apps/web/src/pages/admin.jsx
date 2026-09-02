@@ -53,6 +53,7 @@ import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { AdminReactions } from './admin-reactions.jsx';
+import AdminGuide from './admin-guide.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
@@ -177,6 +178,9 @@ export function Admin() {
   // Headings say what the section is FOR rather than naming a noun-pile: a moderator scanning
   // for where to answer a report is helped more by "Waiting on you" than by "Moderation".
   const raw = [
+    { heading: t('adm.h.help', 'Reference') },
+    isMod && { id: 'guide', label: t('adm.tab.guide', 'Admin guide'), icon: BookOpen },
+
     { heading: t('adm.h.queues', 'Waiting on you') },
     // No badge, deliberately. This tab is a DIGEST of the six queues below, and every one of
     // them carries its own badge (Submissions, Reports, Messages, Sanctions, Commissions,
@@ -410,6 +414,7 @@ export function Admin() {
         {s === 'reviews' && <AdminReviews />}
         {s === 'navui' && <AdminNav />}
         {s === 'footer' && <AdminFooter />}
+        {s === 'guide' && <AdminGuide />}
         {s === 'settings' && <AdminSettings />}
         {s === 'sitetheme' && <AdminSiteTheme />}
       </>)}
