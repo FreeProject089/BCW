@@ -12451,7 +12451,7 @@ function HomePageEditor() {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="font-semibold mb-1 flex items-center gap-2"><LayoutGrid size={16} /> {t('hp.title', 'Home page')}</h2>
-          <p className="text-xs text-[var(--muted)] max-w-xl">{t('hp.desc2', 'Every line of the public home page, grouped by the section it appears in. Switch a section off, or rewrite any line — an empty box keeps the wording the site ships with.')}</p>
+          <p className="text-xs text-[var(--muted)] max-w-xl">{t('hp.desc3', 'The home page LAYOUT: which landing variant it opens with, which sections it draws, and the suite row. The words on it are edited in the Languages editor, with every other string on the site.')}</p>
         </div>
         {/* An editor for a public page with no way to go and look at it asks you to keep
             the result in your head. */}
@@ -12644,81 +12644,29 @@ function HomePageEditor() {
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-          {FILTERS.map(([v, label, n]) => (
-            <button key={v} type="button" onClick={() => setFilter(v)}
-              aria-current={filter === v ? 'true' : undefined}
-              className={`px-3 py-1.5 text-xs flex items-center gap-1.5 transition ${filter === v ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              {label} <span className="text-[var(--faint)] tabular-nums">{n}</span>
-            </button>
+      {/* Sections on/off. The per-line wording that used to fill this screen moved to the
+          Languages editor (one place for every string, both base languages and any added one).
+          What remains here is the LAYOUT: which blocks the chosen variant draws. */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-1"><LayoutGrid size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('hp.sections', 'Sections shown')}</span></div>
+        <p className="text-[11px] text-[var(--muted)] mb-3">{t('hp.sections.d', 'Which blocks this page draws. Blocks the chosen variant does not use are not listed here.')}</p>
+        <div className="space-y-1.5">
+          {grouped.filter((g) => !g.always && inVariant(g.id)).map((g) => (
+            <label key={g.id} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] px-3 py-2 cursor-pointer">
+              <span className="text-sm">{g.label}</span>
+              <input type="checkbox" className="accent-[var(--primary)]" checked={sections[g.id] !== false}
+                onChange={(e) => setSections((x) => ({ ...x, [g.id]: e.target.checked }))} />
+            </label>
           ))}
+          {!grouped.some((g) => !g.always && inVariant(g.id)) && <p className="text-[12px] text-[var(--faint)]">{t('hp.sections.none', 'This variant draws only the always-on blocks.')}</p>}
         </div>
-        <div className="relative flex-1 min-w-[180px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
-          <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('hp.search', 'Search the page text…')} />
-        </div>
+      </Card>
+
+      {/* Text lives in one place now. */}
+      <div className="rounded-xl border border-[var(--line)] border-dashed p-4 flex items-start gap-3">
+        <Languages size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+        <div className="text-sm text-[var(--muted)]">{t('hp.textmoved', 'To edit the words on this page — in English, French, or any other language — use the Languages editor. It edits every string on the site, applies live, and reverts to the shipped wording when you clear a field.')}</div>
       </div>
-
-      {!visible.length && (
-        <Card className="p-6 text-center text-sm text-[var(--muted)]">{t('hp.nomatch', 'No line matches that.')}</Card>
-      )}
-
-      {visible.map((g) => {
-        const off = !g.always && sections[g.id] === false;
-        // Open by default while searching or filtering: a fold that hides the thing you just
-        // searched for is a search that looks broken.
-        const open = openGroups[g.id] ?? (!!needle || filter !== 'all' || !off);
-        const nChanged = g.keys.filter(isChanged).length;
-        return (
-          <Card key={g.id} className={`p-0 overflow-hidden ${off ? 'opacity-70' : ''}`}>
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--line)]">
-              <button type="button" onClick={() => setOpenGroups((o) => ({ ...o, [g.id]: !open }))}
-                aria-expanded={open} className="flex-1 min-w-0 flex items-center gap-2 text-start">
-                <ChevronDown size={15} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? '' : '-rotate-90'}`} />
-                <span className="font-medium text-sm truncate">{g.label}</span>
-                <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
-                {nChanged > 0 && <Badge tone="green" className="shrink-0">{t('hp.g.rewritten', '{n} rewritten').replace('{n}', String(nChanged))}</Badge>}
-                {off && <Badge className="shrink-0">{t('hp.g.hidden', 'hidden')}</Badge>}
-              </button>
-              {/* The section switch lives ON its group. It used to be in a separate card, so
-                  turning a section off and finding its wording were two different places. */}
-              {!g.always ? (
-                <label className="flex items-center gap-2 text-xs text-[var(--muted)] cursor-pointer shrink-0">
-                  <input type="checkbox" checked={sections[g.id] !== false}
-                    onChange={(e) => setSections((x) => ({ ...x, [g.id]: e.target.checked }))} />
-                  {t('hp.g.show', 'Show')}
-                </label>
-              ) : (
-                /* No switch on purpose: a landing page with no headline is not a
-                   configuration, it is a broken page. */
-                <span className="text-[11px] text-[var(--faint)] shrink-0">{t('hp.g.always.h', 'always on')}</span>
-              )}
-            </div>
-
-            {open && (
-              <div className="p-3 space-y-2.5">
-                {g.keys.map((k) => (
-                  <div key={k} className="grid sm:grid-cols-2 gap-1.5 pb-2.5 border-b border-[var(--line)] last:border-0 last:pb-0">
-                    <div className="sm:col-span-2 flex items-center gap-2">
-                      <span className="text-[11px] text-[var(--faint)] font-mono truncate" title={k}>{k}</span>
-                      {isChanged(k) && (
-                        <button type="button" onClick={() => resetLine(k)}
-                          className="text-[11px] text-[var(--muted)] hover:text-[var(--error)] inline-flex items-center gap-1 shrink-0 ms-auto"
-                          title={t('hp.reset.h', 'Put this line back to the wording the site ships with')}>
-                          <RotateCcw size={11} /> {t('hp.reset', 'Reset')}
-                        </button>
-                      )}
-                    </div>
-                    <Input value={form[k]?.en || ''} onChange={(e) => setText(k, 'en', e.target.value)} placeholder={shipped[k].en || k} />
-                    <Input value={form[k]?.fr || ''} onChange={(e) => setText(k, 'fr', e.target.value)} placeholder={shipped[k].fr} />
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        );
-      })}
 
       {/* Sticky: Save used to sit under a 60vh scroller, and it is the one control you need
           from wherever you happen to be on the page. */}
@@ -19065,7 +19013,10 @@ const CORE_I18N_PREFIXES = ['nav.', 'home.', 'foot.', 'common.', 'docs.', 'auth.
 function LocaleStringEditor({ locale, core, allKeys, onClose }) {
   const { t } = useI18n();
   const toast = useToast();
-  const { data, loading } = useAsync(() => api.get(`/admin/locales/${locale.code}`), [locale.code]);
+  // A base language (en/fr) edits its OVERRIDE layer through a separate endpoint; every other
+  // locale edits its own row. The rest of the editor is identical.
+  const apiPath = locale.base ? `/admin/locales/base/${locale.code}` : `/admin/locales/${locale.code}`;
+  const { data, loading } = useAsync(() => api.get(apiPath), [locale.code]);
   const [draft, setDraft] = useState({});
   const [q, setQ] = useState('');
   const [scope, setScope] = useState('core'); // 'core' (curated) | 'all' (~7k keys)
@@ -19092,7 +19043,7 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
     for (const k of Object.keys(draft)) if (draft[k] !== (current[k] ?? '')) patch[k] = draft[k];
     if (!Object.keys(patch).length) { onClose(); return; }
     setBusy(true);
-    try { await api.put(`/admin/locales/${locale.code}`, { patch }); toast.success(t('lc.saved', 'Translations saved.')); onClose(); }
+    try { await api.put(apiPath, { patch }); toast.success(t('lc.saved', 'Translations saved.')); onClose(); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   // Export the locale's current strings (saved + edited) as a { key: value } JSON file.
@@ -19296,7 +19247,22 @@ function LanguagesCard() {
   return (
     <Card className="mt-6 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Languages size={16} className="text-[var(--primary-2)]" /> {t('lc.title', 'Languages')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('lc.sub', 'English and French are built in. Add more here — a new language starts empty and shows English until you translate it.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('lc.sub2', 'Edit every site string, in any language. English and French are the built-in base — edit them as an override; add more languages below. Saving applies live for everyone, and clearing a field falls back to the built-in text.')}</p>
+
+      {/* Built-in en/fr — editable override layer. This is the general text editor that
+          replaced the old home-page-only text editor: any string, both base languages. */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('lc.base', 'Built-in languages')}</div>
+        <div className="flex flex-wrap gap-2">
+          {[['en', 'English'], ['fr', 'Français']].map(([code, name]) => (
+            <button key={code} type="button" onClick={() => setEditing({ code, nativeName: name, rtl: false, base: true })}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] text-sm transition">
+              <PenSquare size={13} className="text-[var(--primary-2)]" /> {t('lc.editbase', 'Edit {x}').replace('{x}', name)}
+              {data?.baseCounts?.[code] > 0 && <Badge tone="primary">{t('lc.overridden', '{n} changed').replace('{n}', data.baseCounts[code])}</Badge>}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Add a language */}
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4 grid gap-2 sm:grid-cols-[7rem_1fr_1fr_auto] items-end">
@@ -19332,7 +19298,7 @@ function LanguagesCard() {
         </div>
       ) : <EmptyState icon={Languages} title={t('lc.none', 'No extra languages yet')} sub={t('lc.none.s', 'Add one above to translate the site beyond English and French.')} />}
 
-      <p className="text-[11px] text-[var(--faint)] mt-3">{t('lc.editornote', 'The translator covers the {n} most-visible strings; a full-dictionary editor and the right-to-left layout pass come later.').replace('{n}', coreCount)}</p>
+      <p className="text-[11px] text-[var(--faint)] mt-3">{t('lc.editornote2', 'The editor opens on the {n} most-visible strings; switch to “All strings” inside it to reach the full dictionary. Right-to-left languages set their reading direction with the RTL toggle.').replace('{n}', coreCount)}</p>
       {editing && <LocaleStringEditor locale={editing} core={core} allKeys={allKeys} onClose={() => { setEditing(null); reload(); }} />}
     </Card>
   );

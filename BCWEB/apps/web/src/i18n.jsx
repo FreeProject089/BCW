@@ -2978,6 +2978,10 @@ const DICT = {
     'hp.failed': 'Impossible de charger le texte de la page d’accueil',
     'hp.failed.s': 'Les réglages de la page ne sont pas revenus. Rien n’a été modifié — réessayez, et vérifiez que l’API répond.',
     'hp.desc2': 'Chaque ligne de la page d’accueil publique, groupée par la section où elle apparaît. Désactivez une section, ou réécrivez une ligne — un champ vide garde le texte livré avec le site.',
+    'hp.desc3': 'La MISE EN PAGE de l’accueil : quelle variante il ouvre, quelles sections il affiche, et la rangée de la suite. Les textes se modifient dans l’éditeur de Langues, avec toutes les autres chaînes du site.',
+    'hp.sections.d': 'Quels blocs cette page affiche. Les blocs que la variante choisie n’utilise pas ne sont pas listés ici.',
+    'hp.sections.none': 'Cette variante n’affiche que les blocs toujours actifs.',
+    'hp.textmoved': 'Pour modifier les textes de cette page — en anglais, en français ou dans une autre langue — utilise l’éditeur de Langues. Il modifie chaque chaîne du site, s’applique en direct, et revient au texte livré quand tu vides un champ.',
     'hp.v1': 'La longue',
     'hp.wire.hero': 'ACCUEIL',
     'hp.wire.none': 'aucune section',
@@ -3102,6 +3106,9 @@ const DICT = {
     'cmdk.doc': 'Docs', 'cmdk.action': 'Action', 'cmdk.page': 'Page', 'cmdk.onpage': 'Sur cette page', 'cmdk.navigate': 'naviguer', 'cmdk.open': 'ouvrir',
     'cmdk.switchLang': 'Changer de langue', 'cmdk.kofi': 'Soutenir sur Ko-fi',
     'lc.title': 'Langues', 'lc.sub': 'L’anglais et le français sont intégrés. Ajoutez-en d’autres ici — une nouvelle langue démarre vide et affiche l’anglais jusqu’à ce que vous la traduisiez.',
+    'lc.sub2': 'Modifie chaque chaîne du site, dans n’importe quelle langue. L’anglais et le français sont la base intégrée — modifiables comme une surcharge ; ajoute d’autres langues ci-dessous. Enregistrer applique en direct pour tout le monde, et vider un champ revient au texte intégré.',
+    'lc.base': 'Langues intégrées', 'lc.editbase': 'Modifier {x}', 'lc.overridden': '{n} modifiée(s)',
+    'lc.editornote2': 'L’éditeur s’ouvre sur les {n} chaînes les plus visibles ; passe à « Toutes les chaînes » à l’intérieur pour atteindre le dictionnaire complet. Les langues de droite à gauche définissent leur sens de lecture avec l’interrupteur RTL.',
     'lc.code': 'Code', 'lc.native': 'Nom natif', 'lc.english': 'Nom anglais', 'lc.rtl': 'RTL', 'lc.add': 'Ajouter',
     'lc.added': 'Langue ajoutée.', 'lc.exists': 'Cette langue existe déjà.', 'lc.reserved': 'L’anglais et le français sont intégrés.',
     'lc.badcode': 'Code de langue invalide (ex. « ru », « zh-Hans »).', 'lc.saved': 'Traductions enregistrées.',
@@ -5379,12 +5386,13 @@ export function I18nProvider({ children }) {
     return () => { live = false; };
   }, []);
 
-  // The current runtime locale's strings — a flat { key: value } map fetched only for a
-  // language that is NOT one of the compiled base dictionaries. Partial by design: any key it
-  // lacks falls through to English below. A base language (en/fr) clears it.
+  // The current language's runtime override strings — a flat { key: value } map. For an EXTRA
+  // language it is the (partial) translation with English fallback; for the compiled base en/fr
+  // it is the base-OVERRIDE layer (typo fixes / rewording an admin or translator saved), empty
+  // on a site that never touched it. Either way it layers over the compiled dictionary in t(),
+  // so a missing key falls through to English and nothing here can blank a line.
   const [localeStrings, setLocaleStrings] = useState({});
   useEffect(() => {
-    if (lang === 'en' || lang === 'fr') { setLocaleStrings({}); return undefined; }
     let live = true;
     fetch(`/api/site/i18n/${encodeURIComponent(lang)}`)
       .then((r) => (r.ok ? r.json() : null))
