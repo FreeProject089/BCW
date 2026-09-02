@@ -6177,8 +6177,30 @@ function StaffNotes({ userId }) {
 //
 // `from` matters because revoking means editing a different thing in each case: the role,
 // an individual grant, or a bundle that may be assigned to other people too.
-function UserPermissionsCard({ user }) {
+function UserPermissionsCard({ user, onChange }) {
   const { t, lang } = useI18n();
+  const { user: me } = useAuth();
+  const toast = useToast();
+  const canManage = me?.role === 'SUPERADMIN';
+  const isSelf = me?.id === user.id;
+  const [editing, setEditing] = useState(false);
+  const [roles, setRoles] = useState(null); // full custom-role catalogue, lazy-loaded on edit
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (editing && roles === null) api.get('/admin/custom-roles').then((d) => setRoles(d.roles || [])).catch(() => setRoles([]));
+  }, [editing, roles]);
+  const setRole = async (role) => {
+    setBusy(true);
+    try { await api.put(`/admin/users/${user.id}/role`, { role }); toast.success(t('up.rolesaved', 'Role updated.')); onChange?.(); }
+    catch (e) { toast.error(e.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const toggleBundle = async (rid) => {
+    const cur = user.customRoleIds || [];
+    const next = cur.includes(rid) ? cur.filter((x) => x !== rid) : [...cur, rid];
+    setBusy(true);
+    try { await api.put(`/admin/users/${user.id}/custom-roles`, { customRoleIds: next }); toast.success(t('up.bundlesaved', 'Bundles updated.')); onChange?.(); }
+    catch (e) { toast.error(e.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
   const caps = user?.capabilities || [];
   const held = caps.filter((c) => c.held);
   const byId = Object.fromEntries(ADMIN_CAPS.map((c) => [c.id, c]));
@@ -6241,6 +6263,46 @@ function UserPermissionsCard({ user }) {
           {(user.permissions || []).filter((x) => !ADMIN_CAPS.some((c) => c.id === x)).join(', ')}
         </div>
       )}
+
+      {/* Manage the permissions right here, instead of leaving this account to go and find it
+          in Roles & permissions. SUPERADMIN only, because assigning a role tier or a bundle
+          is an escalation — the same tier the endpoints require. You can never change your own. */}
+      {canManage && (
+        <div className="mt-3 pt-3 border-t border-[var(--line)]">
+          {!editing ? (
+            <button type="button" onClick={() => setEditing(true)} className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5"><PenSquare size={12} /> {t('up.manage', 'Manage permissions')}</button>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-medium">{t('up.roletier', 'Role tier')}</span>
+                <Select className="!w-auto" value={user.role} disabled={busy || isSelf} onChange={(e) => setRole(e.target.value)}>
+                  {['USER', 'MOD', 'ADMIN', 'SUPERADMIN'].map((r) => <option key={r} value={r}>{r}</option>)}
+                </Select>
+                {isSelf && <span className="text-[11px] text-[var(--faint)]">{t('up.notself', 'You can’t change your own access.')}</span>}
+              </div>
+              <div>
+                <div className="text-xs font-medium mb-1.5">{t('up.assignbundles', 'Capability bundles')}</div>
+                {roles === null ? <Spinner /> : roles.length === 0 ? (
+                  <span className="text-[11px] text-[var(--faint)]">{t('up.nobundles', 'No bundles defined yet — create them in Roles & permissions.')}</span>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5">
+                    {roles.map((r) => {
+                      const has = (user.customRoleIds || []).includes(r.id);
+                      return (
+                        <button key={r.id} type="button" disabled={busy || isSelf} onClick={() => toggleBundle(r.id)}
+                          className={`text-xs px-2 py-1 rounded-lg border transition disabled:opacity-50 ${has ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                          {r.name} <span className="text-[var(--faint)]">({(r.capabilities || []).length})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => setEditing(false)} className="text-xs text-[var(--faint)] hover:text-[var(--text)]">{t('common.done', 'Done')}</button>
+            </div>
+          )}
+        </div>
+      )}
     </Card>
   );
 }
@@ -6253,7 +6315,11 @@ function UserDetailModal({ id, onClose }) {
   // AccountEndActions opens it. Reset when the modal moves to another user, or the next
   // account inherits a half-typed reason meant for this one.
   const [closureForm, setClosureForm] = useState(null);
-  useEffect(() => { setClosureForm(null); }, [id]);
+  // "Laisser chill": the modal used to render ~20 stacked sections at once. The primary ones
+  // stay; the heavy tail (devices, billing, hosted content, account actions) folds behind
+  // one toggle, collapsed by default, so the screen opens calm and you expand what you need.
+  const [showMore, setShowMore] = useState(false);
+  useEffect(() => { setClosureForm(null); setShowMore(false); }, [id]);
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
   const fdate = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -6297,7 +6363,7 @@ function UserDetailModal({ id, onClose }) {
 
           <UserModerationCard user={u} onChange={reload} />
 
-          <UserPermissionsCard user={u} />
+          <UserPermissionsCard user={u} onChange={reload} />
 
           <UserTwoFactorCard user={u} onChange={reload} />
           <UserPasswordCard user={u} />
@@ -6339,6 +6405,15 @@ function UserDetailModal({ id, onClose }) {
             </div>
           )}
 
+          {/* One line between the everyday half and the rest. Collapsed, the screen is the
+              account and how to moderate it; expanded, it is the full dossier. */}
+          <button type="button" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--line)] border-dashed text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
+            {showMore ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            {showMore ? t('ud.less', 'Show less') : t('ud.more', 'Devices, billing, content & account actions')}
+          </button>
+
+          {showMore && (<>
           {/* API keys. The endpoint returns null for a non-SUPERADMIN caller and [] for a
               SUPERADMIN looking at an account with none — two different facts, so the
               section renders only when it is actually allowed to say something. Hiding
@@ -6461,6 +6536,7 @@ function UserDetailModal({ id, onClose }) {
           </div>
 
           <UserExtras userId={u.id} />
+          </>)}
         </div>
       )}
     </Modal>
