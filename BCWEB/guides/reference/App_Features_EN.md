@@ -113,7 +113,16 @@
   no cron), cancellable.
 - **Discord bot** — multi-role gated access with per-role requirements + `/refreshroles`,
   Ko-fi tip announcements, server-perf alerts, moderation, welcome, join-to-create
-  voice, blog announcements. Every message is an embed.
+  voice, blog announcements. Every message is an embed. Per-server settings are edited under a
+  server picker that shows which servers the bot is in, and the section navigation works on
+  phones. An admin can **block a server** — the bot leaves and never rejoins, or stays but
+  every command is inert there — and an `/appeal` command (which still answers in a blocked
+  server) returns the block's reference plus a link to the contact page. Welcome/bye banners
+  take a **custom background** uploaded on the spot, kept as a site-hosted (moderatable) image.
+- **Community Charity** — each month a share of eligible revenue goes to a community-chosen
+  association, paid manually. The month's vote is picked from the poll list rather than a
+  pasted id, and a gift credits the pot **net of the card-processing fee** (the exact fee read
+  from Stripe); the giver is shown the fee and told donations are final before paying.
 - **Ko-fi** — a funding-goal widget pinned at the bottom of the homepage, donor-linked
   25% hosting discount.
 
@@ -133,6 +142,20 @@
   `manage_newsletter` / `manage_faq` / `manage_catalogs`) — the dashboard then shows only
   their sections and the API enforces each action; grants take effect without re-login and
   a missing permission surfaces an explicit toast.
+- **Admin guide** — a searchable, bilingual reference **inside the dashboard** that explains
+  every admin screen, grouped exactly like the sidebar (what it does, who sees the result, and
+  the traps worth knowing). Visible to any staff member.
+- **Languages & translation** — a Languages editor edits **every UI string live**: the
+  built-in English and French as an override layer (clear a field to fall back to the shipped
+  wording), plus any language you add — including **right-to-left** ones, which set their
+  reading direction on the page. Three **translator capabilities** (`translate_site`,
+  `translate_blog`, `translate_docs`) let someone translate without being handed admin, and the
+  Languages tab shows for anyone holding `translate_site`. Saving applies for everyone within a
+  minute (public strings are cached). This replaced the old home-page-only text editor, which is
+  now the page **layout** (variant + which sections show + the suite row).
+- **Inline permissions** — a SUPERADMIN sets a user's role tier and toggles their capability
+  bundles straight from the user-details modal, which also folds its heavy sections (devices,
+  billing, hosted content, account actions) behind one "Show more" so it opens calm.
 - **Community catalogs** (cap `manage_catalogs`) — moderate owner-hosted catalogs: search,
   **suspend** (hidden from everyone), **unlist** (out of the public browser, URL still
   works), and the reverse.
@@ -247,6 +270,19 @@
   **Settings**.
 - **i18n** EN/FR everywhere; language switcher is a one-tap toggle at 2 languages and
   an automatic dropdown beyond that, plus a footer switcher (desktop + mobile).
+- **Site theme** (SUPERADMIN) — an accent gradient, per-mode page colours, a full token
+  catalogue and glow-geometry editor, a composed live preview — and **export/import** of a
+  whole look as a JSON file.
+- **Mobile bottom bar** — the phone tab bar is configurable: **icon-only / text-only / both**,
+  and a custom set of up to five buttons (each an icon, an FR/EN name and a path) that replaces
+  the auto-derived set.
+- **Loading skeletons** — list and grid pages (repos, catalogue, blog, the dashboard) show
+  placeholder cards shaped like their content while loading, instead of a centred spinner.
+- **Project pages** — the Overview carries **highlights** (featured updates, videos, live
+  streams and announcements — YouTube/Twitch/mp4 embed inline) and an optional **headline
+  counter**, above the media frame and progress tracker; the Activity tab shows contributor
+  **avatars** and a commit calendar you can **tap for a day's detail**, and timeline notes
+  render as Markdown.
 - **Legal** — Privacy, Terms, Cookies, **About**, **Payments & Refunds** (EN/FR).
 
 ## Abuse & safety

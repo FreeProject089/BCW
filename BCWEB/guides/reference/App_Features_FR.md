@@ -127,7 +127,18 @@
   date/heure future (paresseux, sans cron), annulable.
 - **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
-  vocal, annonces de blog. Chaque message est un embed.
+  vocal, annonces de blog. Chaque message est un embed. Les réglages par serveur s'éditent
+  sous un sélecteur qui montre dans quels serveurs le bot se trouve, et la navigation par
+  sections marche sur téléphone. Un admin peut **bloquer un serveur** — le bot le quitte et
+  n'y revient jamais, ou y reste mais toutes ses commandes sont inertes — et une commande
+  `/appeal` (qui répond même dans un serveur bloqué) renvoie la référence du blocage plus un
+  lien vers la page de contact. Les bannières de bienvenue/au revoir acceptent un **fond
+  personnalisé** envoyé sur place, conservé comme image hébergée sur le site (modérable).
+- **Community Charity** — chaque mois une part des revenus éligibles va à une association
+  choisie par la communauté, payée manuellement. Le vote du mois se choisit dans la liste des
+  sondages plutôt qu'en collant un id, et un don crédite la cagnotte **net des frais de carte**
+  (le montant exact des frais lu depuis Stripe) ; le donateur voit les frais et est prévenu que
+  les dons sont définitifs avant de payer.
 - **Ko-fi** — un widget d'objectif de financement épinglé en bas de la home, discount
   d'hébergement de 25% lié aux dons.
 
@@ -148,6 +159,20 @@
   `manage_analytics` / `manage_newsletter` / `manage_faq` / `manage_catalogs`) — le
   dashboard n'affiche alors que ses sections et l'API vérifie chaque action ; les grants
   prennent effet sans reconnexion et une permission manquante s'affiche en toast explicite.
+- **Guide admin** — une référence bilingue et cherchable **dans le tableau de bord** qui
+  explique chaque écran admin, groupée comme la barre latérale (ce qu'il fait, qui en voit le
+  résultat, et les pièges à connaître). Visible par tout membre du staff.
+- **Langues & traduction** — un éditeur de Langues modifie **chaque texte de l'interface en
+  direct** : l'anglais et le français intégrés comme couche de surcharge (vide un champ pour
+  revenir au texte livré), plus toute langue ajoutée — y compris **de droite à gauche**, qui
+  définissent leur sens de lecture sur la page. Trois **capacités de traducteur**
+  (`translate_site`, `translate_blog`, `translate_docs`) permettent de traduire sans donner
+  l'admin, et l'onglet Langues s'affiche pour qui détient `translate_site`. Enregistrer applique
+  pour tout le monde en une minute (les textes publics sont mis en cache). Cela a remplacé
+  l'ancien éditeur de texte limité à la page d'accueil, qui est désormais la **mise en page**.
+- **Permissions en ligne** — un SUPERADMIN définit le niveau de rôle d'un utilisateur et active
+  ses lots de capacités directement depuis la fiche utilisateur, qui replie aussi ses sections
+  lourdes (appareils, facturation, contenu, actions) derrière un « Afficher plus ».
 - **Catalogues communautaires** (cap `manage_catalogs`) — modérer les catalogues hébergés
   par les membres : recherche, **suspendre** (masqué à tous), **délister** (retiré du
   navigateur public, l'URL marche encore), et l'inverse.
@@ -271,6 +296,20 @@
   dans les **Réglages**.
 - **i18n** EN/FR partout ; le sélecteur de langue est une bascule à 2 langues et un
   dropdown automatique au-delà, plus un sélecteur dans le footer (desktop + mobile).
+- **Thème du site** (SUPERADMIN) — un dégradé d'accent, des couleurs de page par mode, un
+  catalogue de tokens complet et un éditeur de géométrie des halos, un aperçu composé en direct
+  — et **export/import** d'un thème entier en fichier JSON.
+- **Barre du bas mobile** — la barre d'onglets du téléphone est configurable : **icônes seules
+  / texte seul / les deux**, et un jeu personnalisé jusqu'à cinq boutons (icône, nom FR/EN,
+  chemin) qui remplace le jeu auto-dérivé.
+- **Squelettes de chargement** — les pages en liste/grille (dépôts, catalogue, blog, tableau de
+  bord) affichent des cartes fantômes de la forme du contenu pendant le chargement, au lieu
+  d'un spinner centré.
+- **Pages projet** — l'aperçu porte des **mises en avant** (updates, vidéos, directs et annonces
+  — embed YouTube/Twitch/mp4) et un **compteur en tête** optionnel, au-dessus du média et du
+  suivi d'avancement ; l'onglet Activité montre les **avatars** des contributeurs et un
+  calendrier de commits **cliquable pour le détail d'un jour**, et les notes de chronologie
+  s'affichent en Markdown.
 - **Légal** — Confidentialité, CGU, Cookies, **À propos**, **Paiements & Remboursements**
   (EN/FR).
 
