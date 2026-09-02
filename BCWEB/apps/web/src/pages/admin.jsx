@@ -16716,17 +16716,32 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
             nothing when the admin turned it off. This is the part the old preview never showed. */}
         {downbar
           ? (() => {
-              // Custom buttons if the admin set any, otherwise home + the leading nav links.
-              const clean = (downbarItems || []).filter((it) => it.label && String(it.to || '').startsWith('/')).slice(0, 5);
-              const barItems = clean.length ? clean.map((it) => ({ icon: it.icon, label: it, custom: true })) : [{ home: true }, ...validLeaves];
+              // Mirror the real bar (App.jsx MobileTabBar): a link/primary needs an internal
+              // path, a dropup needs at least one valid child. Empty custom set → home + leaves.
+              const clean = (downbarItems || [])
+                .filter((it) => (it.kind === 'dropup' ? (it.children || []).some((c) => c && c.label && String(c.to || '').startsWith('/')) : String(it.to || '').startsWith('/')))
+                .slice(0, 5)
+                .map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', icon: it.icon, label: it, custom: true }));
+              const barItems = clean.length ? clean : [{ home: true }, ...validLeaves];
+              const showI = downbarDisplay !== 'text';
+              const showT = downbarDisplay !== 'icon';
               return (
                 <div className="mt-2 rounded-2xl border border-[var(--line)] topbar flex items-stretch px-1 py-1">
-                  {barItems.map((n, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
-                      {downbarDisplay !== 'text' && <span className="grid place-items-center w-8 h-6"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} /></span>}
-                      {downbarDisplay !== 'icon' && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]">{n.home ? t('nav.home', 'Home') : (n.custom ? pvLabel(n.label, lang) : pvLabel(n, lang))}</span>}
-                    </div>
-                  ))}
+                  {barItems.map((n, i) => {
+                    const lbl = n.home ? t('nav.home', 'Home') : (n.custom ? pvLabel(n.label, lang) : pvLabel(n, lang));
+                    if (n.kind === 'primary') return (
+                      <div key={i} className="flex-1 flex flex-col items-center justify-start">
+                        <span className="-mt-4 grid place-items-center w-9 h-9 rounded-full text-white shadow ring-4 ring-[var(--bg)]" style={{ background: 'var(--primary)' }}><NavPvIcon name={n.icon} size={16} /></span>
+                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px] text-[var(--muted)]">{lbl}</span>}
+                      </div>
+                    );
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
+                        {showI && <span className="grid place-items-center w-8 h-6 relative"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} />{n.kind === 'dropup' && <ChevronUp size={9} className="absolute -top-1 right-0" />}</span>}
+                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]">{lbl}</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })()
@@ -16870,7 +16885,7 @@ function AdminNav() {
     setProjectsMode(n.projectsMode === 'dropdown' ? 'dropdown' : 'inline');
     setDownbarEnabled(n.downbar?.enabled !== false);
     setDownbarDisplay(n.downbar?.display === 'icon' || n.downbar?.display === 'text' ? n.downbar.display : 'both');
-    setDownbarItems(Array.isArray(n.downbar?.items) ? n.downbar.items.map((it) => ({ label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes' })) : []);
+    setDownbarItems(Array.isArray(n.downbar?.items) ? n.downbar.items.map((it) => ({ kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link', label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes', children: (it.children || []).map((c) => ({ label: c.label || '', labelFr: c.labelFr || '', to: c.to || '/', icon: c.icon || 'Boxes' })) })) : []);
     setLayout(readLayout(n.layout));
   }, [loaded.data]);
 
@@ -16915,10 +16930,18 @@ function AdminNav() {
         out.push({ type: 'link', label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '', children: [] });
       }
     }
-    // Custom bottom-bar buttons: same trim/drop rule as the nav (a label + an internal path).
+    // Custom bottom-bar buttons. A link/primary needs an internal path; a dropup needs at
+    // least one valid child (its own path is optional). Label is optional — an icon-only bar
+    // has none — so we keep a button as long as it can actually go somewhere.
     const dbItems = downbarItems
-      .map((it) => ({ label: it.label.trim(), labelFr: (it.labelFr || '').trim(), to: it.to.trim(), icon: it.icon || '' }))
-      .filter((it) => it.label && it.to.startsWith('/'))
+      .map((it) => {
+        const kind = it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link';
+        const children = kind === 'dropup'
+          ? (it.children || []).map((c) => ({ label: (c.label || '').trim(), labelFr: (c.labelFr || '').trim(), to: (c.to || '').trim(), icon: c.icon || '' })).filter((c) => c.label && c.to.startsWith('/')).slice(0, 6)
+          : [];
+        return { kind, label: (it.label || '').trim(), labelFr: (it.labelFr || '').trim(), to: (it.to || '').trim(), icon: it.icon || '', children };
+      })
+      .filter((it) => (it.kind === 'dropup' ? it.children.length > 0 : it.to.startsWith('/')))
       .slice(0, 5);
     return { enabled, items: out, utility, projectsMode, downbar: { enabled: downbarEnabled, display: downbarDisplay, items: dbItems }, layout };
   };
@@ -17070,24 +17093,50 @@ function AdminNav() {
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
               <div className="min-w-0">
                 <div className="font-medium text-sm">{t('nav.downbar.custom', 'Custom buttons')}</div>
-                <div className="text-xs text-[var(--faint)]">{downbarItems.length ? t('nav.downbar.custom.on', 'These exact buttons, in order — icon, name, and where each one goes.') : t('nav.downbar.custom.off', 'Empty — the bar follows your nav items (home + the first few links).')}</div>
+                <div className="text-xs text-[var(--faint)]">{downbarItems.length ? t('nav.downbar.custom.on', 'These exact buttons, in order. Each is a plain link, the raised centre button, or a menu that opens upward.') : t('nav.downbar.custom.off', 'Empty — the bar follows your nav items (home + the first few links).')}</div>
               </div>
-              {downbarItems.length < 5 && <Button size="sm" variant="ghost" onClick={() => setDownbarItems((s) => [...s, { label: '', labelFr: '', to: '/', icon: 'Boxes' }])}><Plus size={13} /> {t('nav.downbar.add', 'Add button')}</Button>}
+              {downbarItems.length < 5 && <Button size="sm" variant="ghost" onClick={() => setDownbarItems((s) => [...s, { kind: 'link', label: '', labelFr: '', to: '/', icon: 'Boxes', children: [] }])}><Plus size={13} /> {t('nav.downbar.add', 'Add button')}</Button>}
             </div>
             <div className="space-y-2">
-              {downbarItems.map((it, i) => (
-                <div key={i} className="flex items-center gap-1.5 flex-wrap rounded-lg border border-[var(--line)] p-2 bg-[var(--surface-2)]/40">
-                  <IconSelect value={it.icon} onChange={(v) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, icon: v } : x))} />
-                  <Input className="flex-1 min-w-[80px]" value={it.label} placeholder={t('nav.downbar.lbl', 'Label')} onChange={(e) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, label: e.target.value } : x))} />
-                  <Input className="flex-1 min-w-[80px]" value={it.labelFr} placeholder={t('nav.downbar.lblfr', 'Label (FR)')} onChange={(e) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, labelFr: e.target.value } : x))} />
-                  <Input className="flex-1 min-w-[80px] font-mono text-xs" value={it.to} placeholder="/path" onChange={(e) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, to: e.target.value } : x))} />
-                  <div className="flex items-center shrink-0">
-                    <button type="button" disabled={i === 0} onClick={() => setDownbarItems((s) => moveIn(s, i, -1))} className="p-1.5 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30" title={t('common.moveup', 'Move up')}><ChevronUp size={14} /></button>
-                    <button type="button" disabled={i === downbarItems.length - 1} onClick={() => setDownbarItems((s) => moveIn(s, i, 1))} className="p-1.5 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30" title={t('common.movedown', 'Move down')}><ChevronDown size={14} /></button>
-                    <button type="button" onClick={() => setDownbarItems((s) => s.filter((_, k) => k !== i))} className="p-1.5 text-[var(--muted)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={14} /></button>
+              {downbarItems.map((it, i) => {
+                const kind = it.kind || 'link';
+                const patch = (p) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, ...p } : x));
+                const patchKid = (j, p) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, children: (x.children || []).map((c, m) => m === j ? { ...c, ...p } : c) } : x));
+                return (
+                <div key={i} className="rounded-lg border border-[var(--line)] p-2 bg-[var(--surface-2)]/40 space-y-2">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Kind picker — plain link, the raised centre button, or an upward menu. */}
+                    <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0 text-[11px]">
+                      {[['link', t('nav.downbar.kind.link', 'Link')], ['primary', t('nav.downbar.kind.primary', 'Centre')], ['dropup', t('nav.downbar.kind.dropup', 'Menu')]].map(([v, lbl]) =>
+                        <button key={v} type="button" onClick={() => patch({ kind: v })} className={`px-2 py-1.5 ${kind === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+                    </div>
+                    <IconSelect value={it.icon} onChange={(v) => patch({ icon: v })} />
+                    <Input className="flex-1 min-w-[80px]" value={it.label} placeholder={t('nav.downbar.lbl', 'Label')} onChange={(e) => patch({ label: e.target.value })} />
+                    <Input className="flex-1 min-w-[80px]" value={it.labelFr} placeholder={t('nav.downbar.lblfr', 'Label (FR)')} onChange={(e) => patch({ labelFr: e.target.value })} />
+                    {kind !== 'dropup' && <Input className="flex-1 min-w-[80px] font-mono text-xs" value={it.to} placeholder="/path" onChange={(e) => patch({ to: e.target.value })} />}
+                    <div className="flex items-center shrink-0">
+                      <button type="button" disabled={i === 0} onClick={() => setDownbarItems((s) => moveIn(s, i, -1))} className="p-1.5 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30" title={t('common.moveup', 'Move up')}><ChevronUp size={14} /></button>
+                      <button type="button" disabled={i === downbarItems.length - 1} onClick={() => setDownbarItems((s) => moveIn(s, i, 1))} className="p-1.5 text-[var(--muted)] hover:text-[var(--text)] disabled:opacity-30" title={t('common.movedown', 'Move down')}><ChevronDown size={14} /></button>
+                      <button type="button" onClick={() => setDownbarItems((s) => s.filter((_, k) => k !== i))} className="p-1.5 text-[var(--muted)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={14} /></button>
+                    </div>
                   </div>
+                  {/* A dropup edits its own list of destinations. */}
+                  {kind === 'dropup' && (
+                    <div className="ps-3 ms-1 border-s-2 border-[var(--line)] space-y-1.5">
+                      {(it.children || []).map((c, j) => (
+                        <div key={j} className="flex items-center gap-1.5 flex-wrap">
+                          <IconSelect value={c.icon} onChange={(v) => patchKid(j, { icon: v })} />
+                          <Input className="flex-1 min-w-[70px]" value={c.label} placeholder={t('nav.downbar.lbl', 'Label')} onChange={(e) => patchKid(j, { label: e.target.value })} />
+                          <Input className="flex-1 min-w-[70px]" value={c.labelFr} placeholder={t('nav.downbar.lblfr', 'Label (FR)')} onChange={(e) => patchKid(j, { labelFr: e.target.value })} />
+                          <Input className="flex-1 min-w-[70px] font-mono text-xs" value={c.to} placeholder="/path" onChange={(e) => patchKid(j, { to: e.target.value })} />
+                          <button type="button" onClick={() => patch({ children: (it.children || []).filter((_, m) => m !== j) })} className="p-1.5 text-[var(--muted)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                        </div>
+                      ))}
+                      {(it.children || []).length < 6 && <Button size="sm" variant="ghost" onClick={() => patch({ children: [...(it.children || []), { label: '', labelFr: '', to: '/', icon: 'Boxes' }] })}><Plus size={12} /> {t('nav.downbar.addlink', 'Add menu link')}</Button>}
+                    </div>
+                  )}
                 </div>
-              ))}
+              ); })}
             </div>
           </div>
         </div>

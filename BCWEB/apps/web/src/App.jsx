@@ -824,6 +824,7 @@ function MobileTabBar() {
   const { t, lang } = useI18n();
   const navCfg = useNavConfig();
   const [showLabels, setShowLabels] = useState(true);
+  const [openUp, setOpenUp] = useState(null); // index of the open dropup sheet, or null
   useEffect(() => {
     let tmr;
     const onScroll = () => { setShowLabels(false); clearTimeout(tmr); tmr = setTimeout(() => setShowLabels(true), 220); };
@@ -836,28 +837,84 @@ function MobileTabBar() {
   const db = navCfg?.downbar || {};
   if (db.enabled === false) return null;
   const display = db.display === 'icon' || db.display === 'text' ? db.display : 'both';
+  // A custom button carries a `kind`: a plain 'link', a raised 'primary' centre button, or a
+  // 'dropup' that opens an upward sheet of children. A dropup keeps its slot even without a
+  // `to` (it has children); a link/primary needs an internal path. Label is optional here so
+  // an icon-only bar doesn't get silently dropped for lacking one.
   const custom = Array.isArray(db.items) && db.items.length
-    ? db.items.filter((it) => it && it.to).slice(0, 5).map((it) => ({ to: it.to, icon: it.icon, label: it.label, labelFr: it.labelFr, exact: it.to === '/' }))
+    ? db.items
+        .filter((it) => it && (String(it.to || '').startsWith('/') || (it.kind === 'dropup' && (it.children || []).some((c) => c && String(c.to || '').startsWith('/')))))
+        .slice(0, 5)
+        .map((it) => ({
+          kind: it.kind === 'primary' || it.kind === 'dropup' ? it.kind : 'link',
+          to: it.to, icon: it.icon, label: it.label, labelFr: it.labelFr, exact: it.to === '/',
+          children: (it.children || []).filter((c) => c && String(c.to || '').startsWith('/')),
+        }))
     : null;
-  const items = custom || (navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM);
+  const items = custom || (navCfg?.items?.length ? deriveDownbar(navCfg.items) : BOTTOM).map((n) => ({ ...n, kind: 'link' }));
   const label = (n) => (n.k ? t(n.k) : navLabel(n, t, lang));
   const showIcon = display !== 'text';
   const showText = display !== 'icon';
   // In 'both', labels collapse while scrolling (the app-style reveal). In 'text' they are
   // the only thing on the bar, so they never collapse.
   const labelVisible = display === 'text' || showLabels;
+  const txt = (n) => showText && <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${display === 'text' ? 'font-medium max-w-full truncate px-1' : ''} ${labelVisible ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>;
   const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`;
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--line)] topbar flex items-stretch px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      {items.map((n) => (
-        <NavLink key={n.to} to={n.to} end={n.exact} className={tab} title={label(n)} aria-label={label(n)}>
-          {({ isActive }) => <>
-            {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
-            {showText && <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${display === 'text' ? 'font-medium max-w-full truncate px-1' : ''} ${labelVisible ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>}
-          </>}
-        </NavLink>
-      ))}
-    </nav>
+    <>
+      {/* An invisible catcher so a tap anywhere else closes an open dropup. Below the nav in
+          the stack (nav is rendered after), above the page. */}
+      {openUp != null && <div className="md:hidden fixed inset-0 z-40" onClick={() => setOpenUp(null)} aria-hidden />}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-[var(--line)] topbar flex items-stretch px-1" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {items.map((n, i) => {
+          // The raised main action. A filled circle that overhangs the top edge, ringed in the
+          // page colour so it reads as sitting proud of the bar — the one button that matters.
+          if (n.kind === 'primary') {
+            return (
+              <NavLink key={i} to={n.to || '/'} end={n.exact} className="flex-1 flex flex-col items-center justify-start pt-0.5" title={label(n)} aria-label={label(n)}>
+                {({ isActive }) => <>
+                  <span className={`-mt-5 grid place-items-center w-12 h-12 rounded-full text-white shadow-lg ring-4 ring-[var(--bg)] transition ${isActive ? 'bg-[var(--primary)] scale-105' : 'bg-[color-mix(in_srgb,var(--primary)_92%,black)]'}`}><NavIcon item={n} size={22} /></span>
+                  {txt(n)}
+                </>}
+              </NavLink>
+            );
+          }
+          // A dropup: tap to raise a small sheet of links above the bar.
+          if (n.kind === 'dropup') {
+            const open = openUp === i;
+            const kids = n.children || [];
+            return (
+              <div key={i} className="flex-1 relative flex">
+                {open && (
+                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 min-w-[11rem] max-w-[80vw] rounded-2xl border border-[var(--line)] shadow-xl p-1.5 z-50" style={{ background: 'var(--bg-solid)' }}>
+                    {kids.length === 0
+                      ? <div className="px-3 py-2 text-xs text-[var(--faint)]">—</div>
+                      : kids.map((c, j) => (
+                        <NavLink key={j} to={c.to} onClick={() => setOpenUp(null)} className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm ${isActive ? 'text-[var(--primary)] bg-[var(--surface-2)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                          <NavIcon item={c} size={16} /> <span className="truncate">{label(c)}</span>
+                        </NavLink>
+                      ))}
+                  </div>
+                )}
+                <button type="button" onClick={() => setOpenUp(open ? null : i)} aria-expanded={open} title={label(n)} aria-label={label(n)}
+                  className={`flex-1 flex flex-col items-center justify-center py-1.5 ${open ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>
+                  {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${open ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
+                  {txt(n)}
+                </button>
+              </div>
+            );
+          }
+          return (
+            <NavLink key={i} to={n.to} end={n.exact} className={tab} title={label(n)} aria-label={label(n)}>
+              {({ isActive }) => <>
+                {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${isActive ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
+                {txt(n)}
+              </>}
+            </NavLink>
+          );
+        })}
+      </nav>
+    </>
   );
 }
 

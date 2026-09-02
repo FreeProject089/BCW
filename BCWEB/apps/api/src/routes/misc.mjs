@@ -3033,11 +3033,21 @@ export default async function miscRoutes(app) {
     downbar: z.object({
       enabled: z.boolean().optional().default(true),
       display: z.enum(['icon', 'text', 'both']).optional().default('both'),
+      // A button is a plain 'link', a raised centre 'primary', or a 'dropup' that opens an
+      // upward sheet of `children`. label + to are optional (an icon-only bar needs no label;
+      // a dropup has children instead of its own path). Children are always internal links.
       items: z.array(z.object({
-        label: z.string().max(24),
+        kind: z.enum(['link', 'primary', 'dropup']).optional().default('link'),
+        label: z.string().max(24).optional().default(''),
         labelFr: z.string().max(24).optional().default(''),
-        to: z.string().max(200).startsWith('/'),
+        to: z.string().max(200).optional().default(''),
         icon: z.string().max(60).optional().default(''),
+        children: z.array(z.object({
+          label: z.string().max(24),
+          labelFr: z.string().max(24).optional().default(''),
+          to: z.string().max(200).startsWith('/'),
+          icon: z.string().max(60).optional().default(''),
+        })).max(6).optional().default([]),
       })).max(5).optional().default([]),
     }).optional().default({ enabled: true }),
     // Desktop topbar layout. align = where the nav sits; density = spacing; labels = whether

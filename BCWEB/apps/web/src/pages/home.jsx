@@ -506,11 +506,10 @@ export function Home({ draft = null }) {
               Two tracks, then, and the second one is not weaker for being honest — "anyone can
               publish, everyone can report, we suspend" is a real answer, and it is the one the
               code implements. */}
+          {/* No glow disc. The blurred coloured bloom that used to sit in this card's corner was
+              the "sort d'hover vrm moche" flagged again — the same complaint that killed the
+              product-card glow. The Card's own hover lift is the only affordance now. */}
           <Card hover className="p-6 group relative overflow-hidden">
-            {/* A blurred disc INSIDE the card, not a gradient clipped by its corner — see the
-                note in git history: a gradient here left a hard edge at the rounded corner and
-                faded through grey, because `transparent` is transparent BLACK. */}
-            <div aria-hidden className="absolute bottom-0 right-0 w-40 h-40 rounded-full pointer-events-none blur-3xl opacity-25 group-hover:opacity-45 transition-opacity duration-500 motion-reduce:transition-none" style={{ background: 'var(--primary)' }} />
             <div className="relative">
               <div className="flex items-start gap-4 flex-wrap">
                 <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40 shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
@@ -564,8 +563,8 @@ export function Home({ draft = null }) {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
             {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
               [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
-              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into BMM through bmm:// deeplinks — no manual downloads.')],
-              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers — anonymous first-party analytics, and only with your consent.')]].map(([I, title, d]) => (
+              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks — no manual downloads, no hunting for files.')],
+              [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.')]].map(([I, title, d]) => (
               // A rule instead of a border. Four bordered boxes under a bordered card is five
               // rectangles competing for the same attention; a 2px accent reads as "four of
               // these" without asking for any.
