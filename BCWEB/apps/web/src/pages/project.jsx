@@ -368,7 +368,7 @@ export default function ProjectPage() {
       </div>
 
       {tab === 'overview' && <Overview c={c} pkey={key} />}
-      {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} timeline={c.timeline} />}
+      {tab === 'activity' && <ProjectActivity endpoint={`/projects/${key}/activity`} timeline={c.timeline} githubUrl={c.links?.github} />}
       {tab === 'releases' && <Releases pkey={key} />}
       {tab === 'community' && <Community c={c} communityUrl={contribUrlOf(c) ? `/projects/${key}/community` : null} />}
       {tab === 'stack' && (
@@ -481,9 +481,13 @@ function buildTimeline(manual, gitMarkers) {
   return [...norm, ...git].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 }
 
-function ProjectActivity({ endpoint, timeline }) {
+function ProjectActivity({ endpoint, timeline, githubUrl }) {
   const { t } = useI18n();
   const [messages, setMessages] = useState(false);
+  // A tapped heatmap day. The hover title answers "how many commits" on desktop; a phone has
+  // no hover, so tapping a cell shows the same detail in a line below — and links out to that
+  // day on GitHub when the repo is known.
+  const [selDay, setSelDay] = useState(null);
   const { data, loading, err } = useFetch(() => api.get(`${endpoint}${messages ? '?messages=1' : ''}`), [endpoint, messages]);
   const manual = Array.isArray(timeline) ? timeline : [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
@@ -532,13 +536,27 @@ function ProjectActivity({ endpoint, timeline }) {
             {weeks.map((wk, wi) => (
               <div key={wi} className="flex flex-col gap-[3px]">
                 {wk.map((d) => (
-                  <span key={d.date} title={`${d.date}: ${d.count} ${t('act.commitsl', 'commit(s)')}`}
-                    className="w-3 h-3 rounded-sm" style={{ backgroundColor: heatColor(d.count) }} />
+                  <button key={d.date} type="button" title={`${d.date}: ${d.count} ${t('act.commitsl', 'commit(s)')}`}
+                    onClick={() => setSelDay((s) => (s?.date === d.date ? null : d))}
+                    aria-label={`${d.date}: ${d.count}`}
+                    className={`w-3 h-3 rounded-sm transition ${selDay?.date === d.date ? 'ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--surface-1)]' : ''}`}
+                    style={{ backgroundColor: heatColor(d.count) }} />
                 ))}
               </div>
             ))}
           </div>
-          {a.busiestDay ? <div className="text-[11px] text-[var(--muted)] mt-3">{t('act.busiest', 'Busiest day')}: {a.busiestDay.date} — {a.busiestDay.count} {t('act.commitsl', 'commit(s)')}</div> : null}
+          {/* The tapped day, in words — the detail a phone can't get from a hover title. */}
+          {selDay ? (
+            <div className="text-xs text-[var(--muted)] mt-3 flex items-center gap-2 flex-wrap">
+              <b className="text-[var(--text)]">{selDay.date}</b> — {selDay.count} {t('act.commitsl', 'commit(s)')}
+              {githubUrl && /github\.com\//.test(githubUrl) && (
+                <a href={`${githubUrl.replace(/\/+$/, '')}/commits?since=${selDay.date}&until=${selDay.date}`} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline">
+                  <Github size={11} /> {t('act.viewday', 'View that day on GitHub')}
+                </a>
+              )}
+            </div>
+          ) : a.busiestDay ? <div className="text-[11px] text-[var(--muted)] mt-3">{t('act.busiest', 'Busiest day')}: {a.busiestDay.date} — {a.busiestDay.count} {t('act.commitsl', 'commit(s)')} · <span className="text-[var(--faint)]">{t('act.tapday', 'tap any day for details')}</span></div> : null}
         </Card>
       )}
 
@@ -546,15 +564,24 @@ function ProjectActivity({ endpoint, timeline }) {
         <Card className="p-5">
           <div className="text-sm font-semibold mb-3">{t('act.contributors', 'Contributors')}</div>
           <div className="space-y-2">
-            {a.contributors.slice(0, 20).map((c) => (
-              <div key={c.name} className="flex items-center gap-3">
-                <div className="w-32 shrink-0 truncate text-sm">{c.name}</div>
-                <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
+            {a.contributors.slice(0, 20).map((c) => {
+              // A real face beside the name. The avatar + name link to the GitHub profile when
+              // we have it; otherwise it's a plain row (a monogram fallback if there's no photo).
+              const Name = c.url ? 'a' : 'div';
+              const nameProps = c.url ? { href: c.url, target: '_blank', rel: 'noreferrer' } : {};
+              return (
+                <div key={c.name} className="flex items-center gap-3">
+                  {c.avatar
+                    ? <img src={c.avatar} alt="" loading="lazy" className="w-7 h-7 rounded-full shrink-0 border border-[var(--line)] bg-[var(--surface-2)]" />
+                    : <span className="w-7 h-7 rounded-full shrink-0 grid place-items-center bg-[var(--surface-2)] border border-[var(--line)] text-[11px] font-semibold text-[var(--muted)]">{String(c.name || '?').slice(0, 1).toUpperCase()}</span>}
+                  <Name {...nameProps} className={`w-28 sm:w-32 shrink-0 truncate text-sm ${c.url ? 'hover:text-[var(--primary-2)] hover:underline' : ''}`}>{c.name}</Name>
+                  <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
+                  </div>
+                  <div className="w-12 text-end text-xs tabular-nums text-[var(--muted)]">{c.commits}</div>
                 </div>
-                <div className="w-12 text-end text-xs tabular-nums text-[var(--muted)]">{c.commits}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}
@@ -588,7 +615,9 @@ function TimelineCard({ tl, showBody, onToggleBody, t }) {
                 : <span className="text-sm font-medium">{m.title}</span>) : null}
               <span className="text-[11px] text-[var(--faint)] ms-auto">{m.date}</span>
             </div>
-            {showBody && m.body ? <p className="text-[12px] text-[var(--muted)] mt-2 whitespace-pre-wrap leading-relaxed">{m.body}</p> : null}
+            {/* Notes render as Markdown now (a release body or a hand-written event both read
+                better with headings, lists and links than as one pre-wrapped block). */}
+            {showBody && m.body ? <div className="text-[12px] text-[var(--muted)] mt-2 leading-relaxed prose-sm"><Markdown>{m.body}</Markdown></div> : null}
           </div>
         ))}
       </div>

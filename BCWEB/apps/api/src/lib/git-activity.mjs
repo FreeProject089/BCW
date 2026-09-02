@@ -36,7 +36,9 @@ export function computeActivity(commitActivity, contributors) {
   // ── All-time contributors + span, from contributors ──
   const rows = Array.isArray(contributors) ? contributors : [];
   const contribList = rows
-    .map((c) => ({ name: c?.author?.login || 'unknown', commits: Number(c?.total) || 0 }))
+    // Carry the avatar + profile link straight from GitHub's stats payload — the page shows a
+    // real face beside each contributor instead of a bare login.
+    .map((c) => ({ name: c?.author?.login || 'unknown', commits: Number(c?.total) || 0, avatar: c?.author?.avatar_url || null, url: c?.author?.html_url || null }))
     .filter((c) => c.commits > 0)
     .sort((a, b) => b.commits - a.commits);
   const totalCommits = contribList.reduce((s, c) => s + c.commits, 0);
