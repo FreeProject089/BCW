@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast } from '../ui/ui.jsx';
@@ -44,6 +44,20 @@ function CapacityBar({ cap }) {
   );
 }
 
+// Welcome banner background presets (mirrors the admin editor's palette).
+const WBG = [['dark', '#0e0c09'], ['midnight', '#0a0f1e'], ['plum', '#140a1e'], ['forest', '#08160f'], ['rose', '#1a0a12'], ['slate', '#0f1115']];
+// Normalise a stored welcome object to the exact editable shape, so dirty-checking is a plain
+// JSON compare and every field is always a defined primitive.
+const normWelcome = (w = {}) => ({
+  enabled: !!w.enabled,
+  channelId: w.channelId || '',
+  joinMessage: w.joinMessage || '',
+  leaveMessage: w.leaveMessage || '',
+  gifBg: WBG.some(([k]) => k === w.gifBg) ? w.gifBg : 'dark',
+  bgImage: w.bgImage || '',
+});
+const isMediaPath = (s) => /^\/api\/media\/[A-Za-z0-9._/-]+$/.test(s);
+
 // One server's editable config. Fetches its own detail so a save reflects immediately.
 function GuildConfig({ guildId, onSaved }) {
   const { t, lang } = useI18n();
@@ -51,7 +65,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -59,13 +73,15 @@ function GuildConfig({ guildId, onSaved }) {
   const name = (m) => (lang === 'fr' ? m.labelFr : m.label);
   const desc = (m) => (lang === 'fr' ? m.descFr : m.desc);
   const needsChannel = draft.memberMode === 'moderation' && !draft.logChannelId.trim();
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs;
+  const welcomeDirty = JSON.stringify(draft.welcome) !== JSON.stringify(normWelcome(data.welcome));
+  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty;
+  const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs });
-      setData((d) => ({ ...d, guild: r.guild }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -110,6 +126,49 @@ function GuildConfig({ guildId, onSaved }) {
           <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h', 'Off = actions are posted to Discord only. On = a searchable copy is kept here and counts against your storage.')}</p>
         </div>
       )}
+
+      {/* Welcome / bye — owner-editable per-server banner & messages (was admin-only). */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+          <input type="checkbox" checked={draft.welcome.enabled} onChange={(e) => setW({ enabled: e.target.checked })} />
+          <Sparkles size={15} className="text-[var(--primary-2)]" /> {t('ds.wc', 'Welcome & bye banner')}
+        </label>
+        <p className="text-[11px] text-[var(--faint)] ps-6 mt-0.5">{t('ds.wc.h', 'A banner + message the bot posts when someone joins or leaves your server.')}</p>
+        {draft.welcome.enabled && (
+          <div className="space-y-3 mt-3">
+            <Field label={t('ds.wc.channel', 'Channel ID')} hint={t('ds.wc.channel.h', 'Where the banner is posted. Right-click a Discord channel → Copy Channel ID (Developer Mode on).')}>
+              <Input value={draft.welcome.channelId} onChange={(e) => setW({ channelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder="123456789012345678" />
+            </Field>
+            <Field label={t('ds.wc.join', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}">
+              <Input value={draft.welcome.joinMessage} onChange={(e) => setW({ joinMessage: e.target.value.slice(0, 500) })} placeholder={t('ds.wc.join.ph', 'Welcome {user} to {servername}!')} />
+            </Field>
+            <Field label={t('ds.wc.leave', 'Leave message')}>
+              <Input value={draft.welcome.leaveMessage} onChange={(e) => setW({ leaveMessage: e.target.value.slice(0, 500) })} placeholder={t('ds.wc.leave.ph', '{username} has left.')} />
+            </Field>
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('ds.wc.bg', 'Banner background')}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {WBG.map(([k, col]) => (
+                  <button key={k} type="button" onClick={() => setW({ gifBg: k })} title={k}
+                    className={`w-8 h-8 rounded-lg border-2 transition ${draft.welcome.gifBg === k ? 'border-[var(--primary)] scale-105' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} style={{ background: col }} />
+                ))}
+              </div>
+              <Field className="mt-2.5" label={t('ds.wc.bgimg', 'Custom background (optional)')}
+                hint={t('ds.wc.bgimg.h', 'Replaces the colour. Upload an image on the Uploads page, then paste its /api/media/… link here — it is stored on the site so it can be reviewed and removed.')}>
+                <div className="flex items-center gap-1.5">
+                  <ImageIcon size={14} className="text-[var(--faint)] shrink-0" />
+                  <Input value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
+                  {draft.welcome.bgImage && <button type="button" onClick={() => setW({ bgImage: '' })} className="px-1.5 rounded-lg text-error hover:bg-error-bg shrink-0" title={t('common.remove', 'Remove')}>×</button>}
+                </div>
+              </Field>
+              {draft.welcome.bgImage && !isMediaPath(draft.welcome.bgImage) && (
+                <div className="text-[11px] text-warning flex items-center gap-1 mt-1"><AlertTriangle size={11} /> {t('ds.wc.bgimg.bad', 'Not an uploaded-media link — it must start with /api/media/. The colour will be used instead.')}</div>
+              )}
+              <Link to="/uploads" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1 mt-1">{t('ds.wc.uploads', 'Open the Uploads page')} →</Link>
+            </div>
+          </div>
+        )}
+      </div>
 
       {showBudget && <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>}
 
