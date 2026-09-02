@@ -74,6 +74,54 @@ const normGating = (gt = {}) => ({
   })),
 });
 
+// The guild's stored members — read-only, searchable, paginated. Only rendered for a pool-mode
+// guild (the only mode that stores members). Strictly this one server: the endpoint pins the
+// query to the guild id, so it can never show another server's roster.
+function GuildMembers({ guildId }) {
+  const { t } = useI18n();
+  const [q, setQ] = useState('');
+  const [data, setData] = useState(null);
+  const [skip, setSkip] = useState(0);
+  const TAKE = 20;
+  useEffect(() => { setSkip(0); }, [q]);
+  useEffect(() => {
+    let alive = true;
+    api.get(`/me/discord/guilds/${guildId}/members?q=${encodeURIComponent(q)}&take=${TAKE}&skip=${skip}`)
+      .then((r) => { if (alive) setData(r); }).catch(() => { if (alive) setData({ members: [], total: 0 }); });
+    return () => { alive = false; };
+  }, [guildId, q, skip]);
+  if (!data) return <div className="py-4 flex justify-center"><Spinner /></div>;
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ds.mem.search', 'Search a member…')} className="flex-1" />
+        <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{data.total}</span>
+      </div>
+      {data.members.length === 0 ? <div className="text-[11px] text-[var(--faint)] py-2">{t('ds.mem.none', 'No members stored yet.')}</div> : (
+        <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] max-h-72 overflow-y-auto">
+          {data.members.map((m) => (
+            <div key={m.discordId} className="px-3 py-2 flex items-center gap-2.5 text-xs">
+              {m.avatar ? <img src={m.avatar} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{m.nickname || m.username || m.discordId}</div>
+                {m.roles?.length > 0 && <div className="truncate text-[10px] text-[var(--faint)]">{m.roles.slice(0, 5).join(' · ')}</div>}
+              </div>
+              {m.guildJoinedAt && <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(m.guildJoinedAt).toLocaleDateString()}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+      {data.total > TAKE && (
+        <div className="flex items-center justify-between mt-2">
+          <Button size="sm" variant="ghost" disabled={skip === 0} onClick={() => setSkip((s) => Math.max(0, s - TAKE))}>{t('common.prev', 'Prev')}</Button>
+          <span className="text-[11px] text-[var(--faint)] tabular-nums">{skip + 1}–{Math.min(skip + TAKE, data.total)}</span>
+          <Button size="sm" variant="ghost" disabled={skip + TAKE >= data.total} onClick={() => setSkip((s) => s + TAKE)}>{t('common.next', 'Next')}</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One server's editable config. Fetches its own detail so a save reflects immediately.
 function GuildConfig({ guildId, onSaved }) {
   const { t, lang } = useI18n();
@@ -262,6 +310,15 @@ function GuildConfig({ guildId, onSaved }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* The guild's stored roster — only when it's actually in pool mode (the only mode that
+          stores members), and only your own server's members, never another's. */}
+      {g.memberMode === 'pool' && (
+        <div className="mb-4">
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Users size={12} /> {t('ds.mem', 'Your members')}</div>
+          <GuildMembers guildId={guildId} />
         </div>
       )}
 

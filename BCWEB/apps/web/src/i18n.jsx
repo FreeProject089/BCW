@@ -2364,6 +2364,8 @@ const DICT = {
     'ds.gate.roleid': 'ID du rôle', 'ds.gate.label': 'Libellé (pour les messages)', 'ds.gate.labelph': 'Vérifié / Créateur…',
     'ds.gate.reqdiscord': 'Discord lié', 'ds.gate.reqbcweb': 'Compte BCWEB', 'ds.gate.reqbmm': 'ID créateur BMM',
     'ds.gate.add': 'Ajouter une règle de rôle',
+    'ds.mem': 'Tes membres', 'ds.mem.search': 'Rechercher un membre…', 'ds.mem.none': 'Aucun membre stocké pour l’instant.',
+    'common.prev': 'Préc.', 'common.next': 'Suiv.',
     'ds.saved': 'Enregistré.', 'ds.needchannel': 'Définis d’abord un salon de logs.',
     'ds.nolink': 'Lie ton compte Discord',
     'ds.nolink.s': 'Connecte Discord à ton compte, puis les serveurs que tu possèdes ou gères apparaissent ici.',

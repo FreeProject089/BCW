@@ -1508,6 +1508,28 @@ export default async function botRoutes(app) {
     return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {} };
   });
 
+  // The guild's stored members, for its OWNER — read-only, and STRICTLY scoped to this one
+  // guild (never inter-server: the where clause is pinned to g.guildId). Only meaningful for a
+  // `pool`-mode guild, which is the only mode that stores members at all.
+  app.get('/me/discord/guilds/:id/members', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const g = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    const take = Math.min(Number(req.query?.take) || 30, 100);
+    const skip = Math.max(0, Number(req.query?.skip) || 0);
+    const q = String(req.query?.q || '').trim();
+    const where = {
+      guildId: g.guildId, // the pin that makes this per-server, never cross-guild
+      ...(q ? { OR: [{ username: { contains: q, mode: 'insensitive' } }, { nickname: { contains: q, mode: 'insensitive' } }, { discordId: { contains: q } }] } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      p.discordActivity.findMany({ where, orderBy: { updatedAt: 'desc' }, take, skip, select: { discordId: true, username: true, avatar: true, nickname: true, roles: true, guildJoinedAt: true, lastMessageAt: true } }),
+      p.discordActivity.count({ where }),
+    ]);
+    return { members: rows, total, mode: g.memberMode };
+  });
+
   app.put('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
       memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
