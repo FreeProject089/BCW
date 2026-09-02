@@ -6190,7 +6190,14 @@ function UserPermissionsCard({ user, onChange }) {
   const { t, lang } = useI18n();
   const { user: me } = useAuth();
   const toast = useToast();
-  const canManage = me?.role === 'SUPERADMIN';
+  // Two tiers of change, matching what the endpoints require. Assigning a role tier or a
+  // bundle is an escalation → SUPERADMIN (PUT /role, /custom-roles). Granting a single
+  // capability layers on top of the role and can't self-escalate → ADMIN (PUT /permissions).
+  // The old card gated the whole panel behind SUPERADMIN and offered no fine-grained grants,
+  // so an ADMIN opened it and found nothing to manage.
+  const canTier = me?.role === 'SUPERADMIN';
+  const canGrant = me?.role === 'ADMIN' || me?.role === 'SUPERADMIN';
+  const canManage = canTier || canGrant;
   const isSelf = me?.id === user.id;
   const [editing, setEditing] = useState(false);
   const [roles, setRoles] = useState(null); // full custom-role catalogue, lazy-loaded on edit
@@ -6208,6 +6215,16 @@ function UserPermissionsCard({ user, onChange }) {
     const next = cur.includes(rid) ? cur.filter((x) => x !== rid) : [...cur, rid];
     setBusy(true);
     try { await api.put(`/admin/users/${user.id}/custom-roles`, { customRoleIds: next }); toast.success(t('up.bundlesaved', 'Bundles updated.')); onChange?.(); }
+    catch (e) { toast.error(e.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const setCap = async (cap, on) => {
+    const base = user.permissions || [];
+    // Only ever send capabilities this build knows — /permissions validates against the
+    // server enum, so an unknown cap (shown above as "enforced nowhere") would 400 the whole
+    // save. Normalising them away here is the cleanup the card already advertises.
+    const next = [...new Set(on ? [...base, cap] : base.filter((x) => x !== cap))].filter((x) => ADMIN_CAPS.some((c) => c.id === x));
+    setBusy(true);
+    try { await api.put(`/admin/users/${user.id}/permissions`, { permissions: next }); toast.success(t('up.capsaved', 'Capabilities updated.')); onChange?.(); }
     catch (e) { toast.error(e.data?.error || t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const caps = user?.capabilities || [];
@@ -6281,32 +6298,70 @@ function UserPermissionsCard({ user, onChange }) {
           {!editing ? (
             <button type="button" onClick={() => setEditing(true)} className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5"><PenSquare size={12} /> {t('up.manage', 'Manage permissions')}</button>
           ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-medium">{t('up.roletier', 'Role tier')}</span>
-                <Select className="!w-auto" value={user.role} disabled={busy || isSelf} onChange={(e) => setRole(e.target.value)}>
-                  {['USER', 'MOD', 'ADMIN', 'SUPERADMIN'].map((r) => <option key={r} value={r}>{r}</option>)}
-                </Select>
-                {isSelf && <span className="text-[11px] text-[var(--faint)]">{t('up.notself', 'You can’t change your own access.')}</span>}
-              </div>
-              <div>
-                <div className="text-xs font-medium mb-1.5">{t('up.assignbundles', 'Capability bundles')}</div>
-                {roles === null ? <Spinner /> : roles.length === 0 ? (
-                  <span className="text-[11px] text-[var(--faint)]">{t('up.nobundles', 'No bundles defined yet — create them in Roles & permissions.')}</span>
-                ) : (
-                  <div className="flex flex-wrap gap-1.5">
-                    {roles.map((r) => {
-                      const has = (user.customRoleIds || []).includes(r.id);
-                      return (
-                        <button key={r.id} type="button" disabled={busy || isSelf} onClick={() => toggleBundle(r.id)}
-                          className={`text-xs px-2 py-1 rounded-lg border transition disabled:opacity-50 ${has ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
-                          {r.name} <span className="text-[var(--faint)]">({(r.capabilities || []).length})</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+            <div className="space-y-4">
+              {canTier && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium">{t('up.roletier', 'Role tier')}</span>
+                  <Select className="!w-auto" value={user.role} disabled={busy || isSelf} onChange={(e) => setRole(e.target.value)}>
+                    {['USER', 'MOD', 'ADMIN', 'SUPERADMIN'].map((r) => <option key={r} value={r}>{r}</option>)}
+                  </Select>
+                  {isSelf && <span className="text-[11px] text-[var(--faint)]">{t('up.notself', 'You can’t change your own access.')}</span>}
+                </div>
+              )}
+              {canTier && (
+                <div>
+                  <div className="text-xs font-medium mb-1.5">{t('up.assignbundles', 'Capability bundles')}</div>
+                  {roles === null ? <Spinner /> : roles.length === 0 ? (
+                    <span className="text-[11px] text-[var(--faint)]">{t('up.nobundles', 'No bundles defined yet — create them in Roles & permissions.')}</span>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {roles.map((r) => {
+                        const has = (user.customRoleIds || []).includes(r.id);
+                        return (
+                          <button key={r.id} type="button" disabled={busy || isSelf} onClick={() => toggleBundle(r.id)}
+                            className={`text-xs px-2 py-1 rounded-lg border transition disabled:opacity-50 ${has ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                            {r.name} <span className="text-[var(--faint)]">({(r.capabilities || []).length})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* Fine-grained individual grants (ADMIN+), layered on the role. An admin-tier
+                  account already holds everything, so grants are moot there — say so. */}
+              {canGrant && (
+                <div>
+                  <div className="text-xs font-medium mb-1.5">{t('up.grants', 'Individual capabilities')}</div>
+                  {(user.role === 'ADMIN' || user.role === 'SUPERADMIN') ? (
+                    <span className="text-[11px] text-[var(--faint)]">{t('up.grantsmoot', 'This tier already holds every capability — grants change nothing.')}</span>
+                  ) : (
+                    <div className="space-y-2">
+                      {CAP_CATEGORIES.map((cat) => {
+                        const cCaps = ADMIN_CAPS.filter((c) => c.cat === cat.id);
+                        if (!cCaps.length) return null;
+                        return (
+                          <div key={cat.id}>
+                            <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mb-1">{lang === 'fr' ? cat.labelFr : cat.label}</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {cCaps.map((c) => {
+                                const granted = (user.permissions || []).includes(c.id);
+                                const Icon = c.icon || KeyRound;
+                                return (
+                                  <button key={c.id} type="button" disabled={busy || isSelf} title={lang === 'fr' ? c.descFr : c.desc} onClick={() => setCap(c.id, !granted)}
+                                    className={`text-xs px-2 py-1 rounded-lg border inline-flex items-center gap-1.5 transition disabled:opacity-50 ${granted ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                                    <Icon size={11} /> {lang === 'fr' ? c.labelFr : c.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               <button type="button" onClick={() => setEditing(false)} className="text-xs text-[var(--faint)] hover:text-[var(--text)]">{t('common.done', 'Done')}</button>
             </div>
           )}
