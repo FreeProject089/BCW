@@ -124,7 +124,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? t('apoll.edit', 'Edit poll') : t('apoll.new', 'New poll')}>
+    <Modal open={open} onClose={onClose} width="max-w-3xl" title={editing ? t('apoll.edit', 'Edit poll') : t('apoll.new', 'New poll')}>
       <div className="space-y-3">
         {/* Only when editing: a poll that has not been saved has no id and no share key, and a
             copy button that yields a link to nothing is worse than no button. */}
