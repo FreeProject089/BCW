@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner, Select } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -546,6 +546,56 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         <MediaField label={t('pce.video', "Video (mp4/webm)")} value={ov.video} onChange={(v) => setIn('overview', { video: v })} accept="video/mp4,video/webm" preview="video" />
         <MediaField label="rrweb replay JSON" hint="Upload an rrweb recording (.json) or paste its URL — plays as a live in-app preview." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" />
         <MediaField label="rrweb page URL (alternative)" value={ov.rrwebUrl} onChange={(v) => setIn('overview', { rrwebUrl: v })} accept="application/json,.json" />
+      </Section>
+
+      {/* Highlights — a headline counter + featured cards (update / video / live / announcement).
+          This is the "more than a roadmap" part of the Overview. All stored in the free-form
+          project config, so no schema change. */}
+      <Section icon={Sparkles} title={t('pce.featured', 'Highlights')} desc="A headline number and featured cards on the Overview — updates, videos, live streams, announcements.">
+        <div className="rounded-lg border border-[var(--line)] p-3">
+          <label className="flex items-center gap-2 text-sm font-medium mb-2 cursor-pointer select-none">
+            <input type="checkbox" className="accent-[var(--primary)]" checked={!!c.counter}
+              onChange={(e) => set({ counter: e.target.checked ? { enabled: true, value: c.counter?.value || '', label: c.counter?.label || '', sub: c.counter?.sub || '' } : undefined })} />
+            {t('pce.counter', 'Headline counter')}
+          </label>
+          {c.counter ? (
+            <div className="grid sm:grid-cols-3 gap-2">
+              <Field label={t('pce.counter.value', 'Big number / text')}><Input value={c.counter.value || ''} onChange={(e) => set({ counter: { ...c.counter, value: e.target.value } })} placeholder="1,024" /></Field>
+              <Field label={t('pce.counter.label', 'Label')}><Input value={c.counter.label || ''} onChange={(e) => set({ counter: { ...c.counter, label: e.target.value } })} placeholder="downloads" /></Field>
+              <Field label={t('pce.counter.sub', 'Sub-line (optional)')}><Input value={c.counter.sub || ''} onChange={(e) => set({ counter: { ...c.counter, sub: e.target.value } })} placeholder="and counting" /></Field>
+            </div>
+          ) : <p className="text-[11px] text-[var(--faint)]">{t('pce.counter.off', 'Off — a big headline number the Overview opens with (downloads, members, a version…).')}</p>}
+        </div>
+
+        <div className="space-y-2">
+          {(c.featured || []).map((f, i) => {
+            const patch = (d) => set({ featured: (c.featured || []).map((x, n) => (n === i ? { ...x, ...d } : x)) });
+            return (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-3 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Select className="!w-auto" value={f.kind || 'update'} onChange={(e) => patch({ kind: e.target.value })}>
+                    <option value="update">{t('pce.feat.k.update', 'Update')}</option>
+                    <option value="video">{t('pce.feat.k.video', 'Video')}</option>
+                    <option value="live">{t('pce.feat.k.live', 'Live')}</option>
+                    <option value="message">{t('pce.feat.k.message', 'Announcement')}</option>
+                  </Select>
+                  <Input className="flex-1 min-w-[140px]" value={f.title || ''} onChange={(e) => patch({ title: e.target.value })} placeholder={t('pce.feat.title', 'Title')} />
+                  <button type="button" onClick={() => set({ featured: (c.featured || []).filter((_, n) => n !== i) })} className="p-1.5 rounded-lg text-error hover:bg-error-bg" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                </div>
+                {(f.kind === 'video' || f.kind === 'live') && (
+                  <Input value={f.url || ''} onChange={(e) => patch({ url: e.target.value })}
+                    placeholder={f.kind === 'live' ? 'https://twitch.tv/channel or a YouTube live URL' : 'YouTube URL, or an /api/media/… .mp4 link'} />
+                )}
+                <Textarea rows={2} value={f.body || ''} onChange={(e) => patch({ body: e.target.value })} placeholder={t('pce.feat.body', 'Body — Markdown, optional')} />
+              </div>
+            );
+          })}
+          {(c.featured || []).length < 8 && (
+            <Button type="button" size="sm" variant="ghost" onClick={() => set({ featured: [...(c.featured || []), { kind: 'update', title: '', body: '', url: '' }] })}>
+              <Plus size={13} /> {t('pce.feat.add', 'Add highlight')}
+            </Button>
+          )}
+        </div>
       </Section>
 
       {/* Progress tracker */}

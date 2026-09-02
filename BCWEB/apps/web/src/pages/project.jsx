@@ -4,6 +4,7 @@ import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
+  Play, Radio, Megaphone,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
@@ -625,19 +626,94 @@ function TimelineCard({ tl, showBody, onToggleBody, t }) {
   );
 }
 
+// A YouTube / Twitch / direct-media URL, resolved to how it should be shown. Twitch needs the
+// host as its `parent`, which is why it is read from location here rather than baked in.
+function embedFor(url) {
+  const u = String(url || '').trim();
+  if (!u) return null;
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|live\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (yt) return { type: 'iframe', src: `https://www.youtube.com/embed/${yt[1]}` };
+  const host = typeof location !== 'undefined' ? location.hostname : 'localhost';
+  const tvVid = u.match(/twitch\.tv\/videos\/(\d+)/);
+  if (tvVid) return { type: 'iframe', src: `https://player.twitch.tv/?video=${tvVid[1]}&parent=${host}&autoplay=false` };
+  const tvCh = u.match(/twitch\.tv\/([A-Za-z0-9_]+)/);
+  if (tvCh) return { type: 'iframe', src: `https://player.twitch.tv/?channel=${tvCh[1]}&parent=${host}&autoplay=false` };
+  if (/\.(mp4|webm|ogg)(\?|$)/i.test(u)) return { type: 'video', src: u };
+  return { type: 'link', src: u };
+}
+
+const FEAT_META = {
+  update: { icon: Rocket, tone: 'primary', label: 'Update' },
+  video: { icon: Play, tone: '', label: 'Video' },
+  live: { icon: Radio, tone: 'red', label: 'Live' },
+  message: { icon: Megaphone, tone: 'amber', label: 'Announcement' },
+};
+
+function FeaturedCard({ f, t }) {
+  const meta = FEAT_META[f.kind] || FEAT_META.update;
+  const Icon = meta.icon;
+  const embed = (f.kind === 'video' || f.kind === 'live') ? embedFor(f.url) : null;
+  return (
+    <Card className="p-0 overflow-hidden flex flex-col">
+      {embed?.type === 'iframe' && (
+        <div className="relative w-full" style={{ paddingTop: '56.25%' }}>
+          <iframe title={f.title || meta.label} src={embed.src} className="absolute inset-0 w-full h-full" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen loading="lazy" />
+        </div>
+      )}
+      {embed?.type === 'video' && <video src={embed.src} controls preload="metadata" className="w-full max-h-72 bg-black" />}
+      <div className="p-4 flex-1">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <Badge tone={meta.tone}>{f.kind === 'live' && <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse me-1 inline-block" />}<Icon size={11} /> {t(`proj.feat.${f.kind}`, meta.label)}</Badge>
+          {f.title && <span className="font-semibold text-sm">{f.title}</span>}
+        </div>
+        {f.body && <div className="text-[13px] text-[var(--muted)] leading-relaxed prose-sm"><Markdown>{f.body}</Markdown></div>}
+        {embed?.type === 'link' && f.url && <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--primary-2)] hover:underline mt-2">{t('proj.feat.open', 'Open')} <ExternalLink size={11} /></a>}
+      </div>
+    </Card>
+  );
+}
+
 function Overview({ c, pkey, progressUrl }) {
   const { t, lang } = useI18n();
   // Progress comes from a dedicated endpoint (remote source or inline config).
   const url = progressUrl || `/projects/${pkey}/progress`;
   const { data, loading } = useFetch(() => api.get(url).catch(() => null), [url]);
   const prog = data?.progress;
+  const featured = (Array.isArray(c.featured) ? c.featured : []).filter((f) => f && (f.title || f.url || f.body)).slice(0, 8);
+  const counter = c.counter && c.counter.enabled !== false && (c.counter.value || c.counter.label) ? c.counter : null;
+  const hasAnything = c.media || c.replayUrl || featured.length || counter || prog;
   return (
     <div className="space-y-8">
       {c.media && <MediaFrame media={c.media} pkey={pkey} />}
       {!c.media && c.replayUrl && <AppPreview pkey={pkey} replayUrl={c.replayUrl} />}
+
+      {/* A headline number the project wants front and centre — downloads, members, a version,
+          a countdown — whatever the admin sets. */}
+      {counter && (
+        <div className="rounded-2xl border border-[var(--line)] bg-gradient-to-br from-[var(--primary)]/[0.06] to-transparent p-6 text-center">
+          <div className="text-4xl sm:text-5xl font-extrabold tabular-nums gradient-text">{counter.value}</div>
+          {counter.label && <div className="text-sm text-[var(--muted)] mt-1">{counter.label}</div>}
+          {counter.sub && <div className="text-xs text-[var(--faint)] mt-0.5">{counter.sub}</div>}
+        </div>
+      )}
+
+      {/* Highlights — updates, videos, live streams, announcements — the "more than a roadmap"
+          part of the overview. */}
+      {featured.length > 0 && (
+        <div>
+          <h2 className="font-semibold mb-3 flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('proj.featured', 'Highlights')}</h2>
+          <div className="grid sm:grid-cols-2 gap-4">
+            {featured.map((f, i) => <FeaturedCard key={i} f={f} t={t} />)}
+          </div>
+        </div>
+      )}
+
       {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading')}</div>
         : prog ? <ProgressTracker data={prog} title={t('proj.progress')} lang={lang} />
-        : <EmptyState icon={ListTodo} title={t('proj.noprogress')} sub="The progress tracker will appear here once configured." />}
+        : !hasAnything ? (
+          <EmptyState icon={Sparkles} title={t('proj.overview.empty.t', 'This page is just getting started')}
+            sub={t('proj.overview.empty.s', 'Highlights, a progress tracker, and the latest updates will appear here as the project takes shape. Check the other tabs for more.')} />
+        ) : null}
     </div>
   );
 }
