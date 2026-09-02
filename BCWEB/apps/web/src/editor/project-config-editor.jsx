@@ -566,13 +566,30 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               onChange={(e) => set({ counter: e.target.checked ? { enabled: true, value: c.counter?.value || '', label: c.counter?.label || '', sub: c.counter?.sub || '' } : undefined })} />
             {t('pce.counter', 'Headline counter')}
           </label>
-          {c.counter ? (
-            <div className="grid sm:grid-cols-3 gap-2">
-              <Field label={t('pce.counter.value', 'Big number / text')}><Input value={c.counter.value || ''} onChange={(e) => set({ counter: { ...c.counter, value: e.target.value } })} placeholder="1,024" /></Field>
-              <Field label={t('pce.counter.label', 'Label')}><Input value={c.counter.label || ''} onChange={(e) => set({ counter: { ...c.counter, label: e.target.value } })} placeholder="downloads" /></Field>
-              <Field label={t('pce.counter.sub', 'Sub-line (optional)')}><Input value={c.counter.sub || ''} onChange={(e) => set({ counter: { ...c.counter, sub: e.target.value } })} placeholder="and counting" /></Field>
-            </div>
-          ) : <p className="text-[11px] text-[var(--faint)]">{t('pce.counter.off', 'Off — a big headline number the Overview opens with (downloads, members, a version…).')}</p>}
+          {c.counter ? (() => {
+            const kind = c.counter.kind === 'countdown' || c.counter.kind === 'live' ? c.counter.kind : 'static';
+            const setC = (patch) => set({ counter: { ...c.counter, ...patch } });
+            return (
+              <div className="space-y-2">
+                {/* What KIND of counter: a fixed number, a live countdown to a date, or a number
+                    pulled from a URL (downloads total, hosting stats — anything numeric). */}
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit text-xs">
+                  {[['static', t('pce.counter.k.static', 'Fixed')], ['countdown', t('pce.counter.k.countdown', 'Countdown')], ['live', t('pce.counter.k.live', 'Live URL')]].map(([v, lbl]) =>
+                    <button key={v} type="button" onClick={() => setC({ kind: v })} className={`px-3 py-1.5 ${kind === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
+                </div>
+                <div className="grid sm:grid-cols-3 gap-2">
+                  {kind === 'static' && <Field label={t('pce.counter.value', 'Big number / text')}><Input value={c.counter.value || ''} onChange={(e) => setC({ value: e.target.value })} placeholder="1,024" /></Field>}
+                  {kind === 'countdown' && <Field label={t('pce.counter.target', 'Counts down to')}><Input type="datetime-local" value={c.counter.target || ''} onChange={(e) => setC({ target: e.target.value })} /></Field>}
+                  {kind === 'countdown' && <Field label={t('pce.counter.done', 'When it reaches zero')}><Input value={c.counter.doneLabel || ''} onChange={(e) => setC({ doneLabel: e.target.value })} placeholder="🎉 It’s live!" /></Field>}
+                  {kind === 'live' && <Field label={t('pce.counter.source', 'Number source (URL)')}><Input value={c.counter.source || ''} onChange={(e) => setC({ source: e.target.value })} placeholder="https://…/count.json or /projects/…" /></Field>}
+                  {kind === 'live' && <Field label={t('pce.counter.fallback', 'Fallback while loading')}><Input value={c.counter.value || ''} onChange={(e) => setC({ value: e.target.value })} placeholder="—" /></Field>}
+                  <Field label={t('pce.counter.label', 'Label')}><Input value={c.counter.label || ''} onChange={(e) => setC({ label: e.target.value })} placeholder="downloads" /></Field>
+                  <Field label={t('pce.counter.sub', 'Sub-line (optional)')}><Input value={c.counter.sub || ''} onChange={(e) => setC({ sub: e.target.value })} placeholder="and counting" /></Field>
+                </div>
+                {kind === 'live' && <p className="text-[10px] text-[var(--faint)]">{t('pce.counter.live.h', 'The URL should return a number, or JSON with a value / count / downloads / total field. Refreshed every minute.')}</p>}
+              </div>
+            );
+          })() : <p className="text-[11px] text-[var(--faint)]">{t('pce.counter.off', 'Off — a big headline number the Overview opens with (downloads, members, a live countdown…).')}</p>}
         </div>
 
         <div className="space-y-2">

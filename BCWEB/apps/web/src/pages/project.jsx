@@ -694,6 +694,67 @@ function FeaturedCard({ f, t }) {
   );
 }
 
+// A configurable headline counter. Three kinds:
+//   static    — a fixed number the admin types (downloads, members, a version…).
+//   countdown — ticks down to a target date/time, live, then shows a done label.
+//   live      — pulls a number from a source URL (a GitHub-releases download total, a hosting
+//               stats endpoint, anything that returns a number or {value|count|downloads}),
+//               refreshing on a light interval. This is the "download counter from the page,
+//               or anything else" case, without hardcoding one source.
+function useCountdown(target) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!target) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [target]);
+  const ms = target ? new Date(target).getTime() - now : 0;
+  return ms;
+}
+function useLiveNumber(source) {
+  const [n, setN] = useState(null);
+  useEffect(() => {
+    if (!source) return;
+    let alive = true;
+    const pull = async () => {
+      try {
+        const r = source.startsWith('/') ? await api.get(source) : await fetch(source).then((x) => x.json());
+        const v = typeof r === 'number' ? r : (r?.value ?? r?.count ?? r?.downloads ?? r?.total);
+        if (alive && typeof v === 'number' && Number.isFinite(v)) setN(v);
+      } catch { /* keep the last good value, or the static fallback below */ }
+    };
+    pull();
+    const id = setInterval(pull, 60000);
+    return () => { alive = false; clearInterval(id); };
+  }, [source]);
+  return n;
+}
+function Counter({ cnt }) {
+  const { t } = useI18n();
+  const kind = cnt.kind === 'countdown' || cnt.kind === 'live' ? cnt.kind : 'static';
+  const ms = useCountdown(kind === 'countdown' ? cnt.target : null);
+  const live = useLiveNumber(kind === 'live' ? cnt.source : null);
+  let value = cnt.value;
+  if (kind === 'live') value = (live != null ? live.toLocaleString() : (cnt.value || '—'));
+  if (kind === 'countdown') {
+    if (!cnt.target) return null;
+    if (ms <= 0) value = cnt.doneLabel || cnt.value || '🎉';
+    else {
+      const s = Math.floor(ms / 1000);
+      const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      const pad = (x) => String(x).padStart(2, '0');
+      value = d > 0 ? `${d}${t('proj.cnt.d', 'd')} ${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(h)}:${pad(m)}:${pad(sec)}`;
+    }
+  }
+  return (
+    <div className="rounded-2xl border border-[var(--line)] bg-gradient-to-br from-[var(--primary)]/[0.06] to-transparent p-6 text-center">
+      <div className="text-4xl sm:text-5xl font-extrabold tabular-nums gradient-text">{value}</div>
+      {cnt.label && <div className="text-sm text-[var(--muted)] mt-1">{cnt.label}</div>}
+      {cnt.sub && <div className="text-xs text-[var(--faint)] mt-0.5">{cnt.sub}</div>}
+    </div>
+  );
+}
+
 function Overview({ c, pkey, progressUrl }) {
   const { t, lang } = useI18n();
   // Progress comes from a dedicated endpoint (remote source or inline config).
@@ -701,7 +762,10 @@ function Overview({ c, pkey, progressUrl }) {
   const { data, loading } = useFetch(() => api.get(url).catch(() => null), [url]);
   const prog = data?.progress;
   const featured = (Array.isArray(c.featured) ? c.featured : []).filter((f) => f && (f.title || f.url || f.body)).slice(0, 8);
-  const counter = c.counter && c.counter.enabled !== false && (c.counter.value || c.counter.label) ? c.counter : null;
+  // A counter is worth showing when it can actually render something: a value/label (static),
+  // a target (countdown), or a source (live).
+  const cc = c.counter;
+  const counter = cc && cc.enabled !== false && (cc.value || cc.label || (cc.kind === 'countdown' && cc.target) || (cc.kind === 'live' && cc.source)) ? cc : null;
   const hasAnything = c.media || c.replayUrl || featured.length || counter || prog;
   return (
     <div className="space-y-8">
@@ -709,14 +773,8 @@ function Overview({ c, pkey, progressUrl }) {
       {!c.media && c.replayUrl && <AppPreview pkey={pkey} replayUrl={c.replayUrl} />}
 
       {/* A headline number the project wants front and centre — downloads, members, a version,
-          a countdown — whatever the admin sets. */}
-      {counter && (
-        <div className="rounded-2xl border border-[var(--line)] bg-gradient-to-br from-[var(--primary)]/[0.06] to-transparent p-6 text-center">
-          <div className="text-4xl sm:text-5xl font-extrabold tabular-nums gradient-text">{counter.value}</div>
-          {counter.label && <div className="text-sm text-[var(--muted)] mt-1">{counter.label}</div>}
-          {counter.sub && <div className="text-xs text-[var(--faint)] mt-0.5">{counter.sub}</div>}
-        </div>
-      )}
+          a live countdown — whatever the admin sets. */}
+      {counter && <Counter cnt={counter} />}
 
       {/* Highlights — updates, videos, live streams, announcements — the "more than a roadmap"
           part of the overview. */}
