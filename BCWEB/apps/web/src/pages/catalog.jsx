@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import {
   Boxes, Download, Search, XCircle, Package, Inbox, Tag, FileJson, Eye, Lock, Users, Copy, BadgeCheck,
 } from 'lucide-react';
-import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Select, PageHeader, EmptyState, Modal, useToast, SkeletonGrid } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { markCatalogSeen } from '../lib/prefs.js';
@@ -80,7 +80,7 @@ export function Catalog() {
           <Button size="sm" variant="ghost" onClick={() => setSel(new Set())}>{t('cat.clear', 'Clear')}</Button>
         </div>
       )}
-      {loading ? <Loading /> : (items.length ? (
+      {loading ? <SkeletonGrid count={6} /> : (items.length ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((it) => { const I = KIND_ICON[it.kind] || Package; const checked = sel.has(it.slug); return (
             <div key={it.id} className="relative">

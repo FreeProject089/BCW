@@ -9,7 +9,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar, SkeletonGrid } from '../ui/ui.jsx';
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -138,7 +138,7 @@ export function ReposPage() {
         </div>
       )}
 
-      {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>
+      {loading ? <SkeletonGrid count={4} className="grid md:grid-cols-2 gap-4" />
         : !repos.length ? <EmptyState icon={Server} title={t('repos.empty.t', 'No repos listed yet')} sub={t('repos.empty.s', 'Verified public repositories will appear here.')} />
         : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />
         : (

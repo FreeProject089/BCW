@@ -22,7 +22,7 @@ import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
 import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, SkeletonGrid } from '../ui/ui.jsx';
 
 // Pick the reader's language version of a post. EN is the base (always present);
 // FR is optional — when it's missing the reader sees the base marked "not translated".
@@ -110,7 +110,7 @@ export function BlogList() {
     <div>
       <PageHeader icon={Newspaper} title={t('blog.title', 'Blog')} subtitle={t('blog.sub', 'News and updates across every project.')}
         actions={canWrite && <Button variant="primary" onClick={() => setEditing({})}><PenSquare size={16} /> {t('blog.write', 'Write a post')}</Button>} />
-      {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>
+      {loading ? <SkeletonGrid count={6} className="grid md:grid-cols-2 lg:grid-cols-3 gap-5" />
         : posts.length ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
             {posts.map((p) => { const v = pickLang(p, lang); return (

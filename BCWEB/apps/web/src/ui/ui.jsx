@@ -265,6 +265,33 @@ export function Dropdown({ value, options, onChange, className = '', size, place
 }
 export const Spinner = ({ className = '' }) => <Loader2 className={`animate-spin ${className}`} size={18} />;
 
+// Loading placeholders. A skeleton says "content is coming and it will look roughly like this",
+// which a spinner cannot — so list/grid/card loads use these instead of a centred spinner.
+// `animate-pulse` is a plain keyframe (opacity), deliberately NOT gated on prefers-reduced-motion
+// — index.css explains why this project never gates motion (Windows enables it behind users' backs).
+export const Skeleton = ({ className = '' }) => (
+  <div className={`animate-pulse rounded-md bg-[var(--surface-2)] ${className}`} aria-hidden="true" />
+);
+export const SkeletonText = ({ lines = 3, className = '' }) => (
+  <div className={`space-y-2 ${className}`} aria-hidden="true">
+    {Array.from({ length: lines }).map((_, i) => (
+      <div key={i} className={`animate-pulse h-3.5 rounded bg-[var(--surface-2)] ${i === lines - 1 ? 'w-2/3' : 'w-full'}`} />
+    ))}
+  </div>
+);
+// A card-shaped skeleton: a title line, two body lines, in a bordered surface. `count` of them
+// in a responsive grid is the usual "a list is loading" placeholder.
+export const SkeletonCard = ({ className = '' }) => (
+  <div className={`rounded-xl border border-[var(--line)] p-4 ${className}`} aria-hidden="true">
+    <div className="animate-pulse h-4 w-1/2 rounded bg-[var(--surface-2)] mb-3" />
+    <div className="animate-pulse h-3 w-full rounded bg-[var(--surface-2)] mb-2" />
+    <div className="animate-pulse h-3 w-3/4 rounded bg-[var(--surface-2)]" />
+  </div>
+);
+export const SkeletonGrid = ({ count = 6, className = 'grid sm:grid-cols-2 lg:grid-cols-3 gap-4' }) => (
+  <div className={className} aria-hidden="true">{Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}</div>
+);
+
 export function Field({ label, hint, children }) {
   return <label className="block"><div className="text-xs font-medium text-[var(--muted)] mb-1.5">{label}</div>{children}{hint && <div className="text-xs text-[var(--faint)] mt-1">{hint}</div>}</label>;
 }
