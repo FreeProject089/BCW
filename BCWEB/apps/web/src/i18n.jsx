@@ -2487,7 +2487,7 @@ const DICT = {
     'db.rp.label': 'Libellé', 'db.rp.emoji': 'Émoji', 'db.rp.desc': 'Description',
     'db.rp.addrole': 'Ajouter un rôle', 'db.rp.add': 'Ajouter un panneau',
     'db.nav.global': 'Global', 'db.nav.perserver': 'Par serveur',
-    'db.rp.preview': 'Aperçu', 'db.rp.role': 'rôle',
+    'db.rp.preview': 'Aperçu', 'db.rp.preview.as': 'tel que les membres le voient', 'db.rp.role': 'rôle',
     'db.rp.prev.nobody': '(pas encore de message)', 'db.rp.prev.noroles': 'Ajoute un rôle pour voir les boutons.',
     'db.rp.prev.select': 'Choisir {n} rôle(s)…',
     'db.rp.cap': 'Discord en affiche 25 au maximum — les autres ne sont pas publiés.',

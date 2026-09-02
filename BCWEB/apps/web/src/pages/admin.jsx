@@ -12691,42 +12691,54 @@ function RolePanelPreview({ panel }) {
   const { t } = useI18n();
   const roles = (panel.roles || []).filter((r) => r.roleId || r.label).slice(0, 25);
   const label = (r, i) => r.label || r.roleId || `${t('db.rp.role', 'role')} ${i + 1}`;
+  const embedOrMsg = panel.asEmbed ? (
+    <div className="rounded-md overflow-hidden flex bg-[var(--surface-2)]/60 border border-[var(--line)] max-w-md">
+      <div className="w-1 shrink-0" style={{ background: panel.color || '#f59e0b' }} />
+      <div className="p-3 min-w-0">
+        {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
+        <div className="text-xs text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
+      </div>
+    </div>
+  ) : (
+    <div className="text-sm break-words">
+      {panel.title && <div className="font-semibold mb-0.5 break-words">{panel.title}</div>}
+      <div className="text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
+    </div>
+  );
   return (
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-3">
-      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={11} /> {t('db.rp.preview', 'Preview')}</div>
-      {/* The message itself — an embed (colour bar + title) or a plain message. */}
-      {panel.asEmbed ? (
-        <div className="rounded-md overflow-hidden flex bg-[var(--bg-solid)] border border-[var(--line)]">
-          <div className="w-1 shrink-0" style={{ background: panel.color || '#f59e0b' }} />
-          <div className="p-3 min-w-0">
-            {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
-            <div className="text-xs text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={11} /> {t('db.rp.preview', 'Preview')} <span className="normal-case font-normal text-[var(--faint)]">· {t('db.rp.preview.as', 'as members see it')}</span></div>
+      {/* A real Discord message — the bot's avatar, its name + BOT tag and a timestamp — so the
+          panel is judged in the place it actually lands, not as a bare box on a settings page. */}
+      <div className="rounded-md bg-[var(--bg-solid)] border border-[var(--line)] p-3 flex items-start gap-2.5">
+        <img src="/logo.png" alt="" className="w-9 h-9 rounded-full shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="font-semibold text-sm text-[var(--text)]">BetterCommunity</span>
+            <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#5865F2] text-white uppercase leading-none">Bot</span>
+            <span className="text-[10px] text-[var(--faint)]">{t('db.today', 'Today')}</span>
+          </div>
+          {embedOrMsg}
+          {/* The controls, exactly as members meet them: coloured buttons, or a dropdown. */}
+          <div className="mt-2">
+            {roles.length === 0 ? (
+              <div className="text-[11px] text-[var(--faint)] italic">{t('db.rp.prev.noroles', 'Add a role to see the buttons.')}</div>
+            ) : panel.mode === 'dropdown' ? (
+              <div className="rounded-md border border-[var(--line)] bg-[var(--surface-2)]/60 px-3 py-2 text-xs text-[var(--muted)] flex items-center justify-between max-w-sm">
+                <span>{roles.length === 1 ? label(roles[0], 0) : t('db.rp.prev.select', 'Select {n} role(s)…').replace('{n}', panel.multi !== false ? '' : '1').trim()}</span>
+                <ChevronDown size={14} />
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {roles.map((r, i) => (
+                  <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white" style={{ background: DISCORD_BTN[r.style] || DISCORD_BTN.secondary }}>
+                    {r.emoji && <span>{r.emoji}</span>}{label(r, i)}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      ) : (
-        <div className="rounded-md bg-[var(--bg-solid)] border border-[var(--line)] p-3">
-          {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
-          <div className="text-xs text-[var(--muted)] whitespace-pre-wrap break-words">{panel.body || <span className="text-[var(--faint)] italic">{t('db.rp.prev.nobody', '(no message yet)')}</span>}</div>
-        </div>
-      )}
-      {/* The controls, exactly as members meet them: coloured buttons, or a dropdown. */}
-      <div className="mt-2">
-        {roles.length === 0 ? (
-          <div className="text-[11px] text-[var(--faint)] italic">{t('db.rp.prev.noroles', 'Add a role to see the buttons.')}</div>
-        ) : panel.mode === 'dropdown' ? (
-          <div className="rounded-md border border-[var(--line)] bg-[var(--bg-solid)] px-3 py-2 text-xs text-[var(--muted)] flex items-center justify-between max-w-sm">
-            <span>{roles.length === 1 ? label(roles[0], 0) : t('db.rp.prev.select', 'Select {n} role(s)…').replace('{n}', panel.multi !== false ? '' : '1').trim()}</span>
-            <ChevronDown size={14} />
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {roles.map((r, i) => (
-              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium text-white" style={{ background: DISCORD_BTN[r.style] || DISCORD_BTN.secondary }}>
-                {r.emoji && <span>{r.emoji}</span>}{label(r, i)}
-              </span>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
