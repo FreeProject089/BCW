@@ -9,6 +9,7 @@ import { useI18n } from '../i18n.jsx';
 import { api, uploadMedia } from '../lib/api.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
+import RrwebPreview from '../hero/RrwebPreview.jsx';
 import { ProgressTracker } from '../pages/project.jsx';
 import StackMap from '../ui/stack-map.jsx';
 import { stackSwitchOn, STACK_KINDS } from '../lib/stack-layout.js';
@@ -65,6 +66,13 @@ function MediaField({ label, hint, value, onChange, accept, preview }) {
       </div>
       {value && preview === 'image' && <img src={value} alt="" className="mt-2 max-h-32 rounded-lg border border-[var(--line)]" />}
       {value && preview === 'video' && <video src={value} controls className="mt-2 max-h-40 rounded-lg border border-[var(--line)]" />}
+      {/* Replay (rrweb / BMM) — plays the real recording right in the editor, so a broken or
+          wrong file is caught here instead of on the live page. Same player the Overview uses. */}
+      {value && preview === 'replay' && (
+        <div className="mt-2 rounded-lg border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
+          <RrwebPreview url={value} />
+        </div>
+      )}
     </Field>
   );
 }
@@ -544,7 +552,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       <Section icon={ImageIcon} title={t('pce.media', "Overview media")} desc="Shown at the top of the Overview tab. Use one — a video/replay wins over a still image.">
         <MediaField label={t('pce.cover', "Cover image")} value={ov.image} onChange={(v) => setIn('overview', { image: v })} accept="image/*" preview="image" />
         <MediaField label={t('pce.video', "Video (mp4/webm)")} value={ov.video} onChange={(v) => setIn('overview', { video: v })} accept="video/mp4,video/webm" preview="video" />
-        <MediaField label="rrweb replay JSON" hint="Upload an rrweb recording (.json) or paste its URL — plays as a live in-app preview." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" />
+        <MediaField label="rrweb / BMM replay JSON" hint="Upload an rrweb or BMM recording (.json) or paste its URL — plays as a live in-app preview, shown right below." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" preview="replay" />
         <MediaField label="rrweb page URL (alternative)" value={ov.rrwebUrl} onChange={(v) => setIn('overview', { rrwebUrl: v })} accept="application/json,.json" />
       </Section>
 
