@@ -283,6 +283,10 @@ export function Admin() {
         { id: 'footer', label: t('adm.tab.footer', 'Footer'), icon: PanelTop },
         { id: 'homepage', label: t('adm.tab.homepage', 'Home page'), icon: LayoutGrid },
       ] },
+    // Languages is its own tab so a TRANSLATOR (who is not an admin) can reach it — the whole
+    // Navigation & footer group above is admin-only, and the site-string editor is exactly
+    // what the translate_site capability is for.
+    can('translate_site') && { id: 'languages', label: t('adm.tab.languages', 'Languages'), icon: Languages },
     // Site theme changes what EVERY visitor sees, so it sits a tier above the per-project
     // settings an ADMIN manages.
     isSuperAdmin && { id: 'sitetheme', label: t('adm.tab.sitetheme', 'Site theme'), icon: Palette },
@@ -293,7 +297,8 @@ export function Admin() {
   return (
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
-        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><CharityAdminCard /><LanguagesCard /></>}
+        {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><CharityAdminCard /></>}
+        {s === 'languages' && <LanguagesCard />}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -4322,6 +4327,9 @@ const ADMIN_CAPS = [
   { id: 'manage_polls', cat: 'content', icon: BarChart3, label: 'Manage polls', labelFr: 'Gérer les sondages', desc: 'Create polls, read the results and who answered.', descFr: 'Créer des sondages, lire les résultats et qui a répondu.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
+  { id: 'translate_site', cat: 'translation', icon: Languages, label: 'Translate the site', labelFr: 'Traduire le site', desc: 'Open the language editor: add languages and translate every UI string.', descFr: 'Ouvrir l’éditeur de langues : ajouter des langues et traduire chaque texte de l’interface.' },
+  { id: 'translate_blog', cat: 'translation', icon: Newspaper, label: 'Translate the blog', labelFr: 'Traduire le blog', desc: 'Add and edit the French (or other-language) version of blog posts.', descFr: 'Ajouter et modifier la version française (ou autre langue) des articles.' },
+  { id: 'translate_docs', cat: 'translation', icon: BookOpen, label: 'Translate the docs', labelFr: 'Traduire la doc', desc: 'Add and edit the translated version of documentation pages.', descFr: 'Ajouter et modifier la version traduite des pages de documentation.' },
 ];
 // Category display order + labels for the role editor's grouping.
 const CAP_CATEGORIES = [
@@ -4330,6 +4338,7 @@ const CAP_CATEGORIES = [
   { id: 'growth', label: 'Growth', labelFr: 'Croissance' },
   { id: 'insight', label: 'Insight', labelFr: 'Analyse' },
   { id: 'ops', label: 'Operations', labelFr: 'Opérations' },
+  { id: 'translation', label: 'Translation', labelFr: 'Traduction' },
 ];
 
 /**

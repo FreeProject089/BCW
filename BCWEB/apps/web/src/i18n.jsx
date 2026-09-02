@@ -3384,6 +3384,7 @@ const DICT = {
     'pce.video': 'Vidéo (mp4/webm)',
     'pce.whsecret': 'Secret du webhook',
     'adm.tab.homepage': 'Page d’accueil',
+    'adm.tab.languages': 'Langues',
     // ── The markdown kit (/dev/markdown) ──
     'devmd.dl': 'Prends-le',
     'devmd.dl.1': 'Décoche ce que tu ne veux pas et le code part avec — les imports et les lignes qui s’en servaient sont retirés à l’empaquetage, pas mis en commentaire.',

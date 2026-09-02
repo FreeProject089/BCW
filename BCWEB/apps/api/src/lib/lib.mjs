@@ -364,6 +364,9 @@ export const CAPABILITIES = [
   'manage_events', 'manage_promotions',
   // Services
   'manage_myo', 'manage_api', 'manage_polls',
+  // Translators — scoped to what they may translate, not to admin power. `translate_site`
+  // opens the runtime-locale editor (site strings); the other two scope blog/docs translation.
+  'translate_site', 'translate_blog', 'translate_docs',
 ];
 // Default capabilities a MOD holds without explicit grants.
 const MOD_DEFAULT_CAPS = ['manage_users'];

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, logAudit } from '../lib/lib.mjs';
+import { db, requireCap, logAudit } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
 import {
   RESERVED_CODES, isValidLocaleCode, normalizeCode, publicLocaleList, sanitizeStrings,
@@ -35,7 +35,7 @@ export default async function localeRoutes(app) {
   });
 
   // ── Admin ───────────────────────────────────────────────────────────────────
-  app.get('/admin/locales', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/locales', { preHandler: requireCap('translate_site') }, async () => {
     const p = await db();
     const rows = await p.siteLocale.findMany({ orderBy: [{ order: 'asc' }, { code: 'asc' }] });
     // Report the key count rather than shipping every dictionary to the list screen.
@@ -50,7 +50,7 @@ export default async function localeRoutes(app) {
   });
 
   // The full dictionary for one locale — for the admin editor.
-  app.get('/admin/locales/:code', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/locales/:code', { preHandler: requireCap('translate_site') }, async (req, reply) => {
     const p = await db();
     const row = await p.siteLocale.findUnique({ where: { code: normalizeCode(req.params.code) } });
     if (!row) return reply.code(404).send({ error: 'not_found' });
@@ -60,7 +60,7 @@ export default async function localeRoutes(app) {
     };
   });
 
-  app.post('/admin/locales', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/locales', { preHandler: requireCap('translate_site') }, async (req, reply) => {
     const body = z.object({
       code: z.string(), nativeName: z.string().min(1).max(80),
       englishName: z.string().max(80).optional(), rtl: z.boolean().optional(),
@@ -85,7 +85,7 @@ export default async function localeRoutes(app) {
 
   // Update meta / enabled / rtl / order, and/or the strings. `strings` REPLACES the map when a
   // full object is sent; `patch` merges a partial set of keys (empty value deletes a key).
-  app.put('/admin/locales/:code', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/locales/:code', { preHandler: requireCap('translate_site') }, async (req, reply) => {
     const code = normalizeCode(req.params.code);
     if (RESERVED_CODES.has(code)) return reply.code(400).send({ error: 'reserved_code' });
     const body = z.object({
@@ -122,7 +122,7 @@ export default async function localeRoutes(app) {
     return { ok: true, code: next.code, translatedKeys: Object.keys(sanitizeStrings(next.strings)).length };
   });
 
-  app.delete('/admin/locales/:code', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/locales/:code', { preHandler: requireCap('translate_site') }, async (req, reply) => {
     const code = normalizeCode(req.params.code);
     if (RESERVED_CODES.has(code)) return reply.code(400).send({ error: 'reserved_code' });
     const p = await db();
