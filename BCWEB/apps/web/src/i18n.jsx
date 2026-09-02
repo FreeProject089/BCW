@@ -2633,6 +2633,7 @@ const DICT = {
 
     // ── Admin : Réglages d'hébergement ──
     'hs.title': 'Réglages d’hébergement', 'hs.saveall': 'Tout enregistrer', 'hs.save': 'Enregistrer', 'hs.saved': 'Enregistré.',
+    'hs.guide': 'Explications complètes dans le guide admin',
     'hs.savefail': 'Échec de l’enregistrement.', 'hs.savepartial': 'Certaines modifications n’ont pas pu être enregistrées.',
     'hs.dcap.title': 'Stockage des membres (bot Discord)', 'hs.dcap.saved': 'Enregistré sur le bot Discord.', 'hs.dcap.fail': 'Échec de l’enregistrement.',
     'hs.dcap.f': 'Plafond de la base membres', 'hs.dcap.sub': 'Taille totale que le bot Discord peut utiliser pour l’activité des membres + les journaux de modération, tous serveurs confondus ; les membres inactifs les plus anciens sont élagués une fois dépassé. La part de ce budget par serveur se règle sur la page du bot Discord.',

@@ -19551,6 +19551,10 @@ function AdminSettings() {
           there are unsaved edits, so pinning the header isn't needed. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('hs.title', 'Hosting settings')}</h2>
+        {/* The fields below carry a one-line description each; the long "what does this actually
+            do, and when would I change it" lives in the Admin guide so this screen stays a
+            control panel, not a manual. */}
+        <Link to="?s=guide" className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
       </div>
       {dirtyKeys.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">
