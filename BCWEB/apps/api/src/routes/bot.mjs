@@ -1501,11 +1501,11 @@ export default async function botRoutes(app) {
     // Only a guild that keeps logs has any to show; a moderation guild without storeLogs
     // logs to Discord only, so there is nothing in our DB to read.
     const logs = g.storeLogs ? await p.moderationLog.findMany({ where: { guildId: g.guildId }, orderBy: { createdAt: 'desc' }, take: 50 }) : [];
-    // The guild's welcome/bye config, so its OWNER can edit it from their own dashboard — it
-    // lives in the free-form bot.config.guilds[guildId] blob (admin-only until now).
+    // The guild's per-server feature config, so its OWNER can edit it from their own dashboard
+    // — it lives in the free-form bot.config.guilds[guildId] blob (admin-only until now).
     const cfg = await getBotConfig(p);
-    const welcome = (cfg.guilds && cfg.guilds[g.guildId] && cfg.guilds[g.guildId].welcome) || {};
-    return { guild: serGuildUser(g, stored, ids), logs, welcome };
+    const gc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
+    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {} };
   });
 
   app.put('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
@@ -1523,6 +1523,16 @@ export default async function botRoutes(app) {
         gifBg: z.enum(['dark', 'midnight', 'plum', 'forest', 'rose', 'slate']).optional(),
         bgImage: z.string().max(300).optional(),
       }).optional(),
+      // Join-to-create voice: an enable flag + a list of lobbies (each a voice channel that
+      // spawns a temp room). Same bounded-subset guarantee as welcome.
+      joinToCreate: z.object({
+        enabled: z.boolean().optional(),
+        lobbies: z.array(z.object({
+          lobbyChannelId: z.string().max(32).optional().default(''),
+          categoryId: z.string().max(32).optional().default(''),
+          tempCategoryName: z.string().max(100).optional().default(''),
+        })).max(20).optional(),
+      }).optional(),
       // Deliberately NOT accepted here: hostingGroupId + storageQuotaBytes. Those are the
       // storage budget and stay on the admin path — the zod strip drops them silently, which
       // is the intended guard, not a bug.
@@ -1532,31 +1542,40 @@ export default async function botRoutes(app) {
     const ids = await myDiscordIds(p, req.user.uid);
     const cur = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
     if (!cur) return reply.code(404).send({ error: 'not_found' });
-    // Welcome rides in the same body but lives in a different store (the config blob, not the
-    // BotGuild row), so split it out — passing it to botGuild.update would be an unknown column.
-    const { welcome, ...guildData } = b.data;
+    // The feature subtrees ride in the same body but live in a different store (the config
+    // blob, not the BotGuild row), so split them out — passing them to botGuild.update would be
+    // unknown columns.
+    const { welcome, joinToCreate, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
     const g = await p.botGuild.update({ where: { guildId: cur.guildId }, data: guildData });
-    // Merge welcome into bot.config.guilds[guildId].welcome. Read the RAW stored value (not the
-    // defaults-merged one) so we never persist DEFAULT_BOT_CONFIG into the row, and touch only
-    // this one guild's welcome subtree — an admin editing the rest of the config is untouched.
+    // Merge the given feature subtrees into bot.config.guilds[guildId]. Read the RAW stored
+    // value (not the defaults-merged one) so we never persist DEFAULT_BOT_CONFIG into the row,
+    // and touch ONLY this guild's given subtrees — an admin editing the rest is untouched.
+    const featurePatch = {};
     if (welcome) {
       const w = { ...welcome };
       // Same guard the admin editor documents: a background must be an uploaded-media path, or
       // both renderers silently ignore it. Drop anything else rather than store a dead link.
       if (w.bgImage && !/^\/api\/media\/[A-Za-z0-9._/-]+$/.test(w.bgImage)) w.bgImage = '';
+      featurePatch.welcome = w;
+    }
+    if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
+    if (Object.keys(featurePatch).length) {
       const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
       const guilds = { ...(raw.guilds || {}) };
-      guilds[cur.guildId] = { ...(guilds[cur.guildId] || {}), welcome: { ...((guilds[cur.guildId] || {}).welcome || {}), ...w } };
+      const gc = { ...(guilds[cur.guildId] || {}) };
+      for (const [k, v] of Object.entries(featurePatch)) gc[k] = { ...(gc[k] || {}), ...v };
+      guilds[cur.guildId] = gc;
       const nextCfg = { ...raw, guilds };
       await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: nextCfg }, update: { value: nextCfg } });
     }
-    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${welcome ? ' +welcome' : ''}`);
+    const changed = Object.keys(featurePatch);
+    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}`);
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     const cfg = await getBotConfig(p);
-    const outWelcome = (cfg.guilds && cfg.guilds[g.guildId] && cfg.guilds[g.guildId].welcome) || {};
-    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outWelcome };
+    const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
+    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {} };
   });
 }

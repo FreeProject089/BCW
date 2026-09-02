@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast } from '../ui/ui.jsx';
@@ -57,6 +57,13 @@ const normWelcome = (w = {}) => ({
   bgImage: w.bgImage || '',
 });
 const isMediaPath = (s) => /^\/api\/media\/[A-Za-z0-9._/-]+$/.test(s);
+// Join-to-create: an enable flag + a list of lobby voice channels.
+const normJtc = (j = {}) => ({
+  enabled: !!j.enabled,
+  lobbies: (Array.isArray(j.lobbies) ? j.lobbies : []).map((l) => ({
+    lobbyChannelId: l.lobbyChannelId || '', categoryId: l.categoryId || '', tempCategoryName: l.tempCategoryName || '',
+  })),
+});
 
 // One server's editable config. Fetches its own detail so a save reflects immediately.
 function GuildConfig({ guildId, onSaved }) {
@@ -65,7 +72,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome) }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -74,14 +81,16 @@ function GuildConfig({ guildId, onSaved }) {
   const desc = (m) => (lang === 'fr' ? m.descFr : m.desc);
   const needsChannel = draft.memberMode === 'moderation' && !draft.logChannelId.trim();
   const welcomeDirty = JSON.stringify(draft.welcome) !== JSON.stringify(normWelcome(data.welcome));
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty;
+  const jtcDirty = JSON.stringify(draft.jtc) !== JSON.stringify(normJtc(data.joinToCreate));
+  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
+  const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome });
-      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome) });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -166,6 +175,32 @@ function GuildConfig({ guildId, onSaved }) {
               )}
               <Link to="/uploads" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1 mt-1">{t('ds.wc.uploads', 'Open the Uploads page')} →</Link>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Join-to-create voice — owner-editable per-server (was admin-only). */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+          <input type="checkbox" checked={draft.jtc.enabled} onChange={(e) => setJ({ enabled: e.target.checked })} />
+          <Mic size={15} className="text-[var(--primary-2)]" /> {t('ds.jtc', 'Join-to-create voice')}
+        </label>
+        <p className="text-[11px] text-[var(--faint)] ps-6 mt-0.5">{t('ds.jtc.h', 'Joining a lobby voice channel spawns a personal temporary room for that member.')}</p>
+        {draft.jtc.enabled && (
+          <div className="space-y-2 mt-3">
+            {draft.jtc.lobbies.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.jtc.none', 'No lobbies yet — add one. Joining that voice channel spawns a temp room in its category.')}</div>}
+            {draft.jtc.lobbies.map((lb, i) => (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                <button type="button" onClick={() => setJ({ lobbies: draft.jtc.lobbies.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ds.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
+                <Input value={lb.lobbyChannelId} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) } : x) })} placeholder={t('ds.jtc.lobbych', 'Lobby voice channel ID')} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Input value={lb.categoryId} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) } : x) })} placeholder={t('ds.jtc.catid', 'Category ID (auto if empty)')} />
+                  <Input value={lb.tempCategoryName} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value.slice(0, 100) } : x) })} placeholder={t('ds.jtc.tempcat', 'Temp category name')} />
+                </div>
+              </div>
+            ))}
+            {draft.jtc.lobbies.length < 20 && <Button size="sm" variant="ghost" onClick={() => setJ({ lobbies: [...draft.jtc.lobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }] })}><Plus size={13} /> {t('ds.jtc.add', 'Add lobby')}</Button>}
           </div>
         )}
       </div>
