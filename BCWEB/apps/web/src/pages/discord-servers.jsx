@@ -64,6 +64,15 @@ const normJtc = (j = {}) => ({
     lobbyChannelId: l.lobbyChannelId || '', categoryId: l.categoryId || '', tempCategoryName: l.tempCategoryName || '',
   })),
 });
+// Gated access: an enable flag + role-grant rules (each grants ONE role to members meeting its
+// link requirements).
+const normGating = (gt = {}) => ({
+  enabled: !!gt.enabled,
+  rules: (Array.isArray(gt.rules) ? gt.rules : []).map((r) => ({
+    roleId: r.roleId || '', label: r.label || '',
+    requireDiscord: r.requireDiscord !== false, requireBcweb: r.requireBcweb !== false, requireBmm: !!r.requireBmm,
+  })),
+});
 
 // One server's editable config. Fetches its own detail so a save reflects immediately.
 function GuildConfig({ guildId, onSaved }) {
@@ -72,7 +81,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate) }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -82,15 +91,17 @@ function GuildConfig({ guildId, onSaved }) {
   const needsChannel = draft.memberMode === 'moderation' && !draft.logChannelId.trim();
   const welcomeDirty = JSON.stringify(draft.welcome) !== JSON.stringify(normWelcome(data.welcome));
   const jtcDirty = JSON.stringify(draft.jtc) !== JSON.stringify(normJtc(data.joinToCreate));
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty;
+  const gatingDirty = JSON.stringify(draft.gating) !== JSON.stringify(normGating(data.gating));
+  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
+  const setG = (patch) => setDraft((d) => ({ ...d, gating: { ...d.gating, ...patch } }));
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc });
-      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate) });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -201,6 +212,38 @@ function GuildConfig({ guildId, onSaved }) {
               </div>
             ))}
             {draft.jtc.lobbies.length < 20 && <Button size="sm" variant="ghost" onClick={() => setJ({ lobbies: [...draft.jtc.lobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }] })}><Plus size={13} /> {t('ds.jtc.add', 'Add lobby')}</Button>}
+          </div>
+        )}
+      </div>
+
+      {/* Gated access — owner-editable per-server role grants (was admin-only). */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+          <input type="checkbox" checked={draft.gating.enabled} onChange={(e) => setG({ enabled: e.target.checked })} />
+          <Shield size={15} className="text-[var(--primary-2)]" /> {t('ds.gate', 'Gated access (auto roles)')}
+        </label>
+        <p className="text-[11px] text-[var(--faint)] ps-6 mt-0.5">{t('ds.gate.h', 'Each rule grants ONE Discord role to members who meet its link requirements. Re-checked every ~5 min; members can run /refreshroles to sync instantly.')}</p>
+        {draft.gating.enabled && (
+          <div className="space-y-2 mt-3">
+            {draft.gating.rules.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.gate.none', 'No role rules yet — add one to start gating.')}</div>}
+            {draft.gating.rules.map((r, i) => {
+              const updRule = (patch) => setG({ rules: draft.gating.rules.map((x, k) => k === i ? { ...x, ...patch } : x) });
+              return (
+                <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                  <button type="button" onClick={() => setG({ rules: draft.gating.rules.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pe-6">
+                    <Field label={t('ds.gate.roleid', 'Role ID')}><Input value={r.roleId} onChange={(e) => updRule({ roleId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder="123456789012345678" /></Field>
+                    <Field label={t('ds.gate.label', 'Label (for messages)')}><Input value={r.label} onChange={(e) => updRule({ label: e.target.value.slice(0, 60) })} placeholder={t('ds.gate.labelph', 'Verified / Creator…')} /></Field>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={r.requireDiscord} onChange={(e) => updRule({ requireDiscord: e.target.checked })} /> {t('ds.gate.reqdiscord', 'Linked Discord')}</label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={r.requireBcweb} onChange={(e) => updRule({ requireBcweb: e.target.checked })} /> {t('ds.gate.reqbcweb', 'BCWEB account')}</label>
+                    <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={r.requireBmm} onChange={(e) => updRule({ requireBmm: e.target.checked })} /> {t('ds.gate.reqbmm', 'BMM creator id')}</label>
+                  </div>
+                </div>
+              );
+            })}
+            {draft.gating.rules.length < 30 && <Button size="sm" variant="ghost" onClick={() => setG({ rules: [...draft.gating.rules, { roleId: '', label: '', requireDiscord: true, requireBcweb: true, requireBmm: false }] })}><Plus size={13} /> {t('ds.gate.add', 'Add role rule')}</Button>}
           </div>
         )}
       </div>

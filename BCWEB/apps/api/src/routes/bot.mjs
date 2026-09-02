@@ -1505,7 +1505,7 @@ export default async function botRoutes(app) {
     // — it lives in the free-form bot.config.guilds[guildId] blob (admin-only until now).
     const cfg = await getBotConfig(p);
     const gc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
-    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {} };
+    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {} };
   });
 
   app.put('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
@@ -1533,6 +1533,18 @@ export default async function botRoutes(app) {
           tempCategoryName: z.string().max(100).optional().default(''),
         })).max(20).optional(),
       }).optional(),
+      // Gated access: an enable flag + a list of role-grant rules. Each rule grants ONE Discord
+      // role to members who meet its link requirements. Same bounded-subset guarantee.
+      gating: z.object({
+        enabled: z.boolean().optional(),
+        rules: z.array(z.object({
+          roleId: z.string().max(32).optional().default(''),
+          label: z.string().max(60).optional().default(''),
+          requireDiscord: z.boolean().optional().default(true),
+          requireBcweb: z.boolean().optional().default(true),
+          requireBmm: z.boolean().optional().default(false),
+        })).max(30).optional(),
+      }).optional(),
       // Deliberately NOT accepted here: hostingGroupId + storageQuotaBytes. Those are the
       // storage budget and stay on the admin path — the zod strip drops them silently, which
       // is the intended guard, not a bug.
@@ -1545,7 +1557,7 @@ export default async function botRoutes(app) {
     // The feature subtrees ride in the same body but live in a different store (the config
     // blob, not the BotGuild row), so split them out — passing them to botGuild.update would be
     // unknown columns.
-    const { welcome, joinToCreate, ...guildData } = b.data;
+    const { welcome, joinToCreate, gating, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
@@ -1562,6 +1574,7 @@ export default async function botRoutes(app) {
       featurePatch.welcome = w;
     }
     if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
+    if (gating) featurePatch.gating = gating;
     if (Object.keys(featurePatch).length) {
       const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
       const guilds = { ...(raw.guilds || {}) };
@@ -1576,6 +1589,6 @@ export default async function botRoutes(app) {
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     const cfg = await getBotConfig(p);
     const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
-    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {} };
+    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {} };
   });
 }
