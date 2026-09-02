@@ -1530,6 +1530,44 @@ export default async function botRoutes(app) {
     return { members: rows, total, mode: g.memberMode };
   });
 
+  // Owner-side moderation: queue a ban/kick/timeout (or its undo) against a member of THIS
+  // guild. Two guarantees make it safe for a non-admin server owner: the guild id is taken from
+  // the owned guild (never the body), and the target must already be a stored member of that
+  // exact guild — so an owner can act only on their own server, never inter-server, and never on
+  // an arbitrary snowflake. The action is QUEUED (BotAction) exactly like the admin path.
+  app.post('/me/discord/guilds/:id/actions', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(ACTIONS),
+      discordId: z.string().min(1).max(32),
+      reason: z.string().trim().max(500).optional(),
+      minutes: z.number().int().min(1).max(60 * 24 * 28).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const { kind, discordId, minutes } = b.data;
+    const reason = (b.data.reason || '').trim();
+    if (['ban', 'kick', 'timeout'].includes(kind) && !reason) return reply.code(400).send({ error: 'reason_required' });
+    if (kind === 'timeout' && !minutes) return reply.code(400).send({ error: 'minutes_required' });
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const g = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    // You cannot moderate yourself through this, and the target must be a member of THIS guild.
+    if (ids.includes(discordId)) return reply.code(400).send({ error: 'cannot_moderate_self' });
+    const member = await p.discordActivity.findUnique({ where: { guildId_discordId: { guildId: g.guildId, discordId } }, select: { username: true } });
+    if (!member) return reply.code(404).send({ error: 'member_not_found' });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, email: true } });
+    const action = await p.botAction.create({
+      data: {
+        kind, discordId, guildId: g.guildId, minutes: minutes ?? null, reason,
+        targetLabel: member.username || discordId,
+        requestedById: req.user.uid,
+        requestedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · ').slice(0, 200),
+      },
+    });
+    await logAudit(p, req.user.uid, `bot.self.${kind}`, `${g.guildId}: ${member.username || discordId}${reason ? ` — ${reason}` : ''}`, req.ip).catch(() => {});
+    return { ok: true, action };
+  });
+
   app.put('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
       memberMode: z.enum(['none', 'moderation', 'pool']).optional(),

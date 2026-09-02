@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2 } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast } from '../ui/ui.jsx';
+import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog } from '../ui/ui.jsx';
 
 // B10 — the user-facing copy of the per-server Discord dashboard. A logged-in user who owns
 // (or holds Manage-Server on) a Discord server the bot is in configures it here: no admin
@@ -79,10 +79,37 @@ const normGating = (gt = {}) => ({
 // query to the guild id, so it can never show another server's roster.
 function GuildMembers({ guildId }) {
   const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [skip, setSkip] = useState(0);
   const TAKE = 20;
+  // Queue a moderation action against one member of THIS server. The server re-checks that the
+  // target is really a member of this guild, so the worst a crafted request can do is fail.
+  const moderate = async (m, kind) => {
+    let reason = '';
+    if (kind !== 'untimeout' && kind !== 'unban') {
+      const typed = await dialog.prompt({ title: t('ds.mod.why', 'Reason?'), message: t('ds.mod.whym', 'Sent to Discord with the action and kept with your name.'), danger: kind === 'ban' || kind === 'kick' });
+      if (!typed || !String(typed).trim()) return;
+      reason = String(typed).trim();
+    }
+    let minutes;
+    if (kind === 'timeout') {
+      const typed = await dialog.prompt({ title: t('ds.mod.mins', 'How many minutes?'), message: t('ds.mod.minsm', 'Discord allows up to 28 days (40320 minutes).') });
+      minutes = Number(String(typed || '').trim());
+      if (!Number.isFinite(minutes) || minutes < 1) return;
+    }
+    try {
+      await api.post(`/me/discord/guilds/${guildId}/actions`, { kind, discordId: m.discordId, reason: reason || undefined, minutes });
+      toast.success(t('ds.mod.queued', 'Queued — the bot carries it out shortly.'));
+    } catch (x) {
+      toast.error(x?.data?.error === 'cannot_moderate_self' ? t('ds.mod.self', 'You can’t moderate yourself.')
+        : x?.data?.error === 'member_not_found' ? t('ds.mod.gone', 'That member is no longer in your server.')
+        : x?.data?.error === 'reason_required' ? t('ds.mod.needreason', 'A reason is required.')
+        : t('common.failed', 'Failed.'));
+    }
+  };
   useEffect(() => { setSkip(0); }, [q]);
   useEffect(() => {
     let alive = true;
@@ -100,11 +127,18 @@ function GuildMembers({ guildId }) {
       {data.members.length === 0 ? <div className="text-[11px] text-[var(--faint)] py-2">{t('ds.mem.none', 'No members stored yet.')}</div> : (
         <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] max-h-72 overflow-y-auto">
           {data.members.map((m) => (
-            <div key={m.discordId} className="px-3 py-2 flex items-center gap-2.5 text-xs">
+            <div key={m.discordId} className="group px-3 py-2 flex items-center gap-2.5 text-xs">
               {m.avatar ? <img src={m.avatar} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{m.nickname || m.username || m.discordId}</div>
                 {m.roles?.length > 0 && <div className="truncate text-[10px] text-[var(--faint)]">{m.roles.slice(0, 5).join(' · ')}</div>}
+              </div>
+              {/* Moderation, this server only. Hidden until you hover the row so the list stays a
+                  list; each opens a reason (and, for a timeout, a duration) prompt first. */}
+              <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                <button type="button" onClick={() => moderate(m, 'timeout')} title={t('ds.mod.timeout', 'Time out')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-warning hover:bg-[var(--surface-2)]"><Clock size={13} /></button>
+                <button type="button" onClick={() => moderate(m, 'kick')} title={t('ds.mod.kick', 'Kick')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><UserMinus size={13} /></button>
+                <button type="button" onClick={() => moderate(m, 'ban')} title={t('ds.mod.ban', 'Ban')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><Ban size={13} /></button>
               </div>
               {m.guildJoinedAt && <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(m.guildJoinedAt).toLocaleDateString()}</span>}
             </div>
