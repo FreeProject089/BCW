@@ -420,7 +420,7 @@ export function Dashboard() {
     // goes down as you use it, rather than one that only ever grows and stops meaning anything.
     { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
-    { id: 'reports', label: t('dash.reports', 'Reports & contact'), icon: MessageSquare },
+    { id: 'reports', label: t('dash.reports', 'Messages & reports'), icon: MessageSquare },
     { id: 'data', label: t('dash.mydata', 'Your data'), icon: HardDriveDownload },
   ];
   return (

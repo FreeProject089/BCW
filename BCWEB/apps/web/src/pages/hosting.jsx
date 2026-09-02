@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Rocket, Upload, CheckCircle2, XCircle, ShieldCheck, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, Building2, ShoppingCart, Save,
+  Rocket, Upload, CheckCircle2, XCircle, ShieldCheck, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, Building2, ShoppingCart, Save, MessageSquare,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -383,14 +383,24 @@ export function Hosting() {
         <Button variant="default" disabled={soldOut} onClick={() => setCustomOpen(true)}><Sliders size={16} /> {soldOut ? t('hosting.soldout.short', 'Sold out') : t('hosting.custom.cta', 'Build custom plan')}</Button>
       </Card>
 
-      {/* Enterprise / bespoke — no fixed price, contact us for a tailored quote. */}
-      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
-        <Building2 size={26} className="text-[var(--primary-2)] shrink-0" />
+      {/* Enterprise / bespoke — no fixed price, contact us for a tailored quote. Two ways in:
+          the contact page (email, works signed-out) or, signed in, the same form becomes a
+          tracked thread you follow in your dashboard → Reports. */}
+      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-start gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
+        <Building2 size={26} className="text-[var(--primary-2)] shrink-0 mt-1" />
         <div className="flex-1 text-center sm:text-start">
-          <div className="font-semibold text-lg">{t('hosting.enterprise.title', 'Enterprise / bespoke')}</div>
-          <div className="text-sm text-[var(--muted)]">{t('hosting.enterprise.sub', "Bigger needs — high storage/bandwidth, dedicated resources, an SLA, custom terms. No fixed price: tell us what you need and we'll tailor a plan.")}</div>
+          <div className="font-semibold text-lg">{t('hosting.enterprise.title', 'Something bigger, or different')}</div>
+          <div className="text-sm text-[var(--muted)]">{t('hosting.enterprise.sub', "Bigger or different needs — lots of storage and bandwidth, dedicated resources, an SLA, or hosting for something other than a repo (your own site, a service, custom terms). No fixed price: tell us what you need and we'll tailor it.")}</div>
+          <div className="text-xs text-[var(--faint)] mt-2">
+            {user
+              ? t('hosting.enterprise.msg', "You're signed in — send it as a message and we'll reply in your dashboard → Reports, so the whole conversation stays in one place.")
+              : t('hosting.enterprise.signin', 'You can email us right away, or sign in first to send it as a message and track the reply in your dashboard.')}
+          </div>
         </div>
-        <Button variant="default" onClick={() => nav('/contact?topic=enterprise-hosting')}><Mail size={16} /> {t('hosting.enterprise.cta', 'Contact us')}</Button>
+        <div className="flex flex-col gap-2 shrink-0 w-full sm:w-auto">
+          <Button variant="default" onClick={() => nav('/contact?topic=enterprise-hosting')}><Mail size={16} /> {t('hosting.enterprise.cta', 'Contact us')}</Button>
+          {!user && <Button variant="ghost" size="sm" onClick={() => nav('/login?next=' + encodeURIComponent('/contact?topic=enterprise-hosting'))}><MessageSquare size={14} /> {t('hosting.enterprise.signincta', 'Sign in to message')}</Button>}
+        </div>
       </Card>
 
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}

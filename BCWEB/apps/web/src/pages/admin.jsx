@@ -17925,7 +17925,7 @@ export function MyReports() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Reports & contact')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Messages & reports')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
         </div>
         <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
