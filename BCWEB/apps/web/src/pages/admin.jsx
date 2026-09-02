@@ -19441,7 +19441,21 @@ function LanguagesCard() {
   return (
     <Card className="mt-6 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Languages size={16} className="text-[var(--primary-2)]" /> {t('lc.title', 'Languages')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('lc.sub2', 'Edit every site string, in any language. English and French are the built-in base — edit them as an override; add more languages below. Saving applies live for everyone, and clearing a field falls back to the built-in text.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('lc.sub2', 'Edit every site string, in any language. English and French are the built-in base — edit them as an override; add more languages below. Saving applies live for everyone, and clearing a field falls back to the built-in text.')}</p>
+
+      {/* A plain three-step so a translator knows where to start without reading the paragraph. */}
+      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-4 text-[12px] text-[var(--muted)] space-y-1.5">
+        {[
+          t('lc.step1', 'Add a language below — or edit English / French, the built-in base.'),
+          t('lc.step2', 'Click Translate to open the editor: search a key, or use “Next missing” to jump straight to the gaps.'),
+          t('lc.step3', 'Type the translation — it applies live for everyone. Leave a field empty to fall back to the built-in text.'),
+        ].map((s, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className="grid place-items-center w-5 h-5 rounded-full bg-[var(--primary)]/15 text-[var(--primary-2)] text-[10px] font-bold shrink-0">{i + 1}</span>
+            <span>{s}</span>
+          </div>
+        ))}
+      </div>
 
       {/* Built-in en/fr — editable override layer. This is the general text editor that
           replaced the old home-page-only text editor: any string, both base languages. */}
