@@ -18449,6 +18449,7 @@ function AdminSiteTheme() {
   // Which set of tokens is on screen. 'shared' holds the accent (light and dark use the same
   // one); 'light'/'dark' hold everything the two modes define differently.
   const [scope, setScope] = useState('shared');
+  const themeFileRef = useRef(null); // import-theme file input (hook must precede the early return)
   // The token catalogue carries its own {en,fr} strings rather than i18n keys: they describe
   // what a token PAINTS, they live next to the token list, and adding a token should not mean
   // remembering to add two dictionary entries somewhere else.
@@ -18564,6 +18565,34 @@ function AdminSiteTheme() {
   // Clear every override in the scope on screen, without touching the other two.
   const clearScope = () => setF({ ...f, [scope]: null });
 
+  // Portability: a whole look — accent pair, default mode, and every token/glow override —
+  // as one JSON file. The one thing the editor could not do was carry a theme somewhere
+  // else (a staging site, a teammate, a backup before experimenting). Import loads it into
+  // the form for review; nothing goes live until Apply, so a bad file can never repaint the
+  // site on its own.
+  const exportTheme = () => {
+    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null };
+    const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bcweb-theme-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
+  };
+  const importTheme = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
+    try {
+      const j = JSON.parse(await file.text());
+      if (!j || !/^#[0-9a-fA-F]{3,8}$/.test(String(j.accent || ''))) throw new Error('bad');
+      setF({
+        accent: j.accent,
+        accent2: /^#[0-9a-fA-F]{3,8}$/.test(String(j.accent2 || '')) ? j.accent2 : j.accent,
+        mode: j.mode === 'dark' ? 'dark' : 'light',
+        preset: typeof j.preset === 'string' ? j.preset : '',
+        light: j.light && typeof j.light === 'object' ? j.light : null,
+        dark: j.dark && typeof j.dark === 'object' ? j.dark : null,
+        shared: j.shared && typeof j.shared === 'object' ? j.shared : null,
+      });
+      toast.success(t('st.imported', 'Theme loaded — review it, then Apply.'));
+    } catch { toast.error(t('st.importbad', 'Not a valid theme file.')); }
+  };
+
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
@@ -18611,6 +18640,12 @@ function AdminSiteTheme() {
               survives it, which is why resetting used to bring the old custom colours back.
               This clears all three bags as well, and saves immediately. */}
           <Button variant="ghost" disabled={busy} onClick={resetAll}><RotateCcw size={14} /> {t('st.resetall', 'Reset to the built-in theme')}</Button>
+          {/* Portability, on the same row as Apply/Reset — export the current look or load one
+              from a file (into the form; Apply still has to be pressed). */}
+          <span className="w-px self-stretch bg-[var(--line)] mx-0.5 hidden sm:block" />
+          <input ref={themeFileRef} type="file" accept="application/json,.json" className="hidden" onChange={importTheme} />
+          <Button variant="ghost" disabled={busy} onClick={() => themeFileRef.current?.click()}><UploadIcon size={14} /> {t('st.import', 'Import')}</Button>
+          <Button variant="ghost" disabled={busy} onClick={exportTheme}><Download size={14} /> {t('st.export', 'Export')}</Button>
         </div>
       </Card>
 
