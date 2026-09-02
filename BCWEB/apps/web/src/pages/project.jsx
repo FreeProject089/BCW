@@ -561,6 +561,27 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
         </Card>
       )}
 
+      {/* Commits by year — the whole history, one bar per year, so a project's life can be
+          compared year to year (not just the trailing 12 months the heatmap shows). Only when
+          there is more than one year to compare. */}
+      {(a.perYear || []).length > 1 && (() => {
+        const maxY = Math.max(1, ...a.perYear.map((y) => y.commits));
+        return (
+          <Card className="p-5">
+            <div className="text-sm font-semibold mb-3">{t('act.byyear', 'Commits by year')} <span className="text-[var(--faint)] font-normal">· {t('act.byyear.all', 'all time')}</span></div>
+            <div className="space-y-2">
+              {a.perYear.map((y) => (
+                <div key={y.year} className="flex items-center gap-3">
+                  <div className="w-12 shrink-0 text-sm tabular-nums font-medium">{y.year}</div>
+                  <div className="flex-1 h-4 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: `${(y.commits / maxY) * 100}%`, backgroundColor: 'var(--primary)' }} /></div>
+                  <div className="w-14 text-end text-xs tabular-nums text-[var(--muted)]">{y.commits}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
+
       {!!(a.contributors || []).length && (
         <Card className="p-5">
           <div className="text-sm font-semibold mb-3">{t('act.contributors', 'Contributors')}</div>

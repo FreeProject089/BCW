@@ -45,14 +45,23 @@ export function computeActivity(commitActivity, contributors) {
 
   let firstWeek = Infinity;
   let lastWeek = 0;
+  // Commits per calendar year, summed across every contributor's ALL-TIME weekly buckets — so
+  // a project's whole history can be compared year by year, not just the trailing 12 months the
+  // daily heatmap covers. Free: the weeks are already in hand for the span below.
+  const byYear = {};
   for (const c of rows) {
     for (const w of Array.isArray(c?.weeks) ? c.weeks : []) {
-      if ((Number(w?.c) || 0) > 0) {
+      const n = Number(w?.c) || 0;
+      if (n > 0) {
         firstWeek = Math.min(firstWeek, w.w);
         lastWeek = Math.max(lastWeek, w.w);
+        const y = new Date(w.w * 1000).getUTCFullYear();
+        byYear[y] = (byYear[y] || 0) + n;
       }
     }
   }
+  // As a sorted [{ year, commits }] list — the shape the page charts directly.
+  const perYear = Object.keys(byYear).map((y) => ({ year: Number(y), commits: byYear[y] })).sort((a, b) => a.year - b.year);
   const hasSpan = firstWeek !== Infinity && lastWeek > 0;
   // +7: a week's `w` is its start, so the last active week runs six days past its own stamp.
   const spanDays = hasSpan ? Math.round((lastWeek - firstWeek) / DAY) + 7 : 0;
@@ -63,6 +72,7 @@ export function computeActivity(commitActivity, contributors) {
     activeDays,
     busiestDay: busiest.date ? busiest : null,
     totalCommits,
+    perYear,
     contributors: contribList,
     firstCommit: hasSpan ? iso(firstWeek) : null,
     lastCommit: hasSpan ? iso(lastWeek) : null,

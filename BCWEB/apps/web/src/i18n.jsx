@@ -1327,6 +1327,7 @@ const DICT = {
     'act.span': 'Travaillé sur', 'act.contributors': 'Contributeurs', 'act.heatmap': 'Commits par jour',
     'act.less': 'Moins', 'act.more': 'Plus', 'act.commitsl': 'commit(s)', 'act.busiest': 'Jour le plus actif',
     'act.viewday': 'Voir ce jour sur GitHub', 'act.tapday': 'touchez un jour pour les détails',
+    'act.byyear': 'Commits par année', 'act.byyear.all': 'tout l’historique',
     'act.releases': 'Versions', 'act.shownotes': 'Afficher les notes',
     'act.timeline': 'Chronologie',
     'tl.kind.release': 'Version', 'tl.kind.prerelease': 'Pré-version', 'tl.kind.update': 'Mise à jour', 'tl.kind.announcement': 'Annonce', 'tl.kind.message': 'Message', 'tl.kind.custom': 'Événement',
