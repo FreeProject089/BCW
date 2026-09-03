@@ -3193,6 +3193,7 @@ const DICT = {
     'lc.badcode': 'Code de langue invalide (ex. « ru », « zh-Hans »).', 'lc.saved': 'Traductions enregistrées.',
     'lc.edit': 'Traduire', 'lc.translate': 'Traduire', 'lc.searchkeys': 'Rechercher dans les chaînes principales…',
     'lc.hint': 'Seules les chaînes les plus visibles sont affichées ici. Ce qui reste vide retombe sur l’anglais.',
+    'lc.showing': 'affichage de {a} sur {b}', 'lc.keepvars': 'à garder :', 'lc.loadmore': 'Charger plus',
     'lc.nokeys': 'Aucune chaîne correspondante', 'lc.count': '{n} traduites',
     'lc.enabled': 'Publique', 'lc.enabled.h': 'Afficher cette langue dans le sélecteur public',
     'lc.del.t': 'Retirer la langue', 'lc.del.m': 'Retirer {x} ? Ses traductions sont supprimées ; les visiteurs retombent sur l’anglais.', 'lc.del.ok': 'Retirer', 'lc.removed': 'Langue retirée.',

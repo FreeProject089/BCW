@@ -19503,13 +19503,18 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
   const current = data?.strings || {};
   const dict = scope === 'all' ? allKeys : core;
   const valOf = (k) => (k in draft ? draft[k] : (current[k] ?? ''));
-  const keys = useMemo(() => {
+  // Paginated with a "Load more" button — you can walk the whole dictionary top to bottom
+  // without being forced to search first. The window resets when the filter changes.
+  const [limit, setLimit] = useState(80);
+  useEffect(() => { setLimit(80); }, [q, scope, untransOnly]);
+  const matching = useMemo(() => {
     const needle = q.trim().toLowerCase();
     let ks = Object.keys(dict);
     if (needle) ks = ks.filter((k) => (k + ' ' + (dict[k]?.en || '') + ' ' + (dict[k]?.fr || '')).toLowerCase().includes(needle));
     if (untransOnly) ks = ks.filter((k) => !(k in draft ? draft[k] : current[k]));
-    return ks.slice(0, 400);
+    return ks;
   }, [dict, q, untransOnly, draft, current]);
+  const keys = matching.slice(0, limit);
   const totalKeys = Object.keys(dict).length;
   const translatedCount = Object.keys(dict).filter((k) => (k in draft ? draft[k] : current[k])).length;
 
@@ -19567,17 +19572,35 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
           )}
           <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!ps-9" placeholder={scope === 'all' ? t('lc.searchall', 'Search all strings…') : t('lc.searchkeys', 'Search the core strings…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <p className="text-xs text-[var(--faint)]">{scope === 'all' ? t('lc.hint.all', 'Every string in the app. Anything left blank falls back to English.') : t('lc.hint', 'The most visible strings. Anything left blank falls back to English.')}{keys.length >= 400 ? ` · ${t('lc.capped', 'showing first 400 — search to narrow')}` : ''}</p>
+          <p className="text-xs text-[var(--faint)]">{scope === 'all' ? t('lc.hint.all', 'Every string in the app. Anything left blank falls back to English.') : t('lc.hint', 'The most visible strings. Anything left blank falls back to English.')} · {t('lc.showing', 'showing {a} of {b}').replace('{a}', keys.length).replace('{b}', matching.length)}</p>
           <div className="max-h-[48vh] overflow-auto space-y-2.5 pe-1">
-            {keys.map((k) => (
+            {keys.map((k) => {
+              // Placeholders like {n} / {name} are substituted at runtime — a translation that
+              // drops or renames one breaks the sentence. List them so a translator keeps them.
+              const vars = [...new Set((dict[k]?.en || '').match(/\{[^}\s]+\}/g) || [])];
+              return (
               <div key={k} className="rounded-lg border border-[var(--line)] p-2.5">
                 <code className="text-[11px] text-[var(--faint)]">{k}</code>
                 <div className="text-[13px] text-[var(--muted)] mb-1.5 line-clamp-2">{dict[k]?.en || ''}{dict[k]?.fr ? <span className="text-[var(--faint)]"> · FR: {dict[k].fr}</span> : ''}</div>
+                {vars.length > 0 && (
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1.5 text-[10px] text-[var(--faint)]">
+                    <span>{t('lc.keepvars', 'keep:')}</span>
+                    {vars.map((v) => <code key={v} className="px-1 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]">{v}</code>)}
+                  </div>
+                )}
                 <Input dir={locale.rtl ? 'rtl' : 'ltr'} value={valOf(k)} placeholder={dict[k]?.en || ''}
                   onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
               </div>
-            ))}
+              );
+            })}
             {!keys.length && <EmptyState icon={Languages} title={t('lc.nokeys', 'No matching strings')} />}
+            {matching.length > limit && (
+              <div className="pt-1 text-center">
+                <Button variant="ghost" onClick={() => setLimit((n) => n + 120)}>
+                  <ChevronDown size={14} /> {t('lc.loadmore', 'Load more').replace('{n}', matching.length - limit)} ({matching.length - limit})
+                </Button>
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
