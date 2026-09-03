@@ -13132,6 +13132,7 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
  * back when it is switched on.
  */
 function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children, id }) {
+  const { t } = useI18n();
   const off = enabled === false;
   const key = `bcw.bot.card.${id || String(title)}`;
   const [open, setOpen] = useState(() => {
@@ -13144,20 +13145,26 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
     });
   };
   const collapsible = !!children && !off;
+  // A module with a switch reads its state at a glance — a real bot dashboard shows "on/off"
+  // per module, not just a toggle you have to look at twice. Discord blurple when live, to
+  // match the dashboard's identity; the theme accent stays for switch-less info cards.
+  const live = onToggle ? !off : true;
   return (
-    // id also lands on the DOM as a scroll anchor (B10 Phase 4 section nav), with scroll-mt
-    // so a jump clears the sticky page header. Was previously used only for the storage key.
-    <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-75' : ''}`}>
+    // id also lands on the DOM as a scroll anchor, with scroll-mt so a jump clears the sticky
+    // page header. The enabled card gets a hairline blurple top edge so a page of modules reads
+    // as "these are on, those are off" without hunting for the switch.
+    <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-70' : ''} ${onToggle && live ? 'border-t-2 border-t-[#5865F2]/60' : ''}`}>
       <div className="flex items-start gap-3 p-4">
-        <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
+        <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
         {/* The heading is the fold control. The switch is NOT: turning a module off and
             hiding its settings are different intentions, and one click must not do both. */}
         <button type="button" onClick={collapsible ? toggleOpen : undefined}
           className={`flex-1 min-w-0 text-start ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
           aria-expanded={collapsible ? open : undefined}>
-          <div className="font-semibold text-sm flex items-center gap-1.5">
+          <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
             {collapsible && <ChevronDown size={14} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />}
             {title}
+            {onToggle && <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${off ? 'bg-[var(--surface-2)] text-[var(--faint)]' : 'bg-success-bg text-success'}`}>{off ? t('db.mod.off', 'Off') : t('db.mod.on', 'On')}</span>}
           </div>
           {desc && <div className="text-[11px] text-[var(--faint)] mt-0.5 leading-snug">{desc}</div>}
         </button>

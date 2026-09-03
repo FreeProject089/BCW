@@ -5366,6 +5366,7 @@ const DICT = {
     'db.sec.perserver': 'Configuration par serveur', 'db.sec.perserver.sub': 'Modération, bienvenue, vocal à la demande et rôles réservés — configurés indépendamment pour chaque serveur où est le bot.',
     'db.page.overview': 'Vue d’ensemble', 'db.page.announcements': 'Annonces', 'db.page.community': 'Règles, panneaux & MP', 'db.page.servers': 'Par serveur', 'db.page.members': 'Membres', 'db.page.limits': 'Limites',
     'db.sec.community': 'Règles, panneaux de rôles & MP aux membres', 'db.sec.community.sub': 'Orienté vers les personnes plutôt que vers un salon.',
+    'db.mod.on': 'Activé', 'db.mod.off': 'Inactif',
     'db.ms.title': 'Stockage des membres', 'db.ms.sub': 'Comment le bot construit sa base de membres sur chaque serveur où il se trouve.',
     'db.ms.managed': 'Par serveur (recommandé)', 'db.ms.managed.d': 'Chaque serveur choisit lui-même — un pool payant qui stocke les membres, ou seulement les logs de modération — avec son propre budget en octets. Rien n’est stocké tant qu’un serveur ne l’active pas.',
     'db.ms.free': 'Gratuit — chaque serveur', 'db.ms.free.d': 'Stocke les membres de chaque serveur où est le bot, gratuitement. Choisis qui ci-dessous. Ça peut grossir vite.',
