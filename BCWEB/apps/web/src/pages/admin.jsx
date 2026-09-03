@@ -68,8 +68,10 @@ import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSav
 // `none`. The preview would then show a bare colour for every unconfigured theme while the
 // real page shows three glows — a preview that lies in the default case, which is the case
 // most people look at it in.
-function previewGlowCss(f) {
-  const active = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+function previewGlowCss(f, mode) {
+  // Explicit mode wins (the side-by-side preview asks for light AND dark at once); falling
+  // back to the admin's own theme keeps any older single-mode caller correct.
+  const active = mode || (document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
   const list = Array.isArray(f?.[active]?.glows) ? f[active].glows : DEFAULT_GLOWS(active);
   if (!list.length) return 'none'; // an explicit empty list IS a flat background
   return list
@@ -19086,50 +19088,63 @@ function AdminSiteTheme() {
         })}
       </Card>
 
-      {/* The preview applies the real themeCss to a scoped container. */}
+      {/* Live preview — BOTH modes at once. The old preview showed only the admin's own
+          current theme, so editing the Dark scope in a light session previewed nothing you
+          were changing. Now light and dark render side by side, each with the real themeCss
+          scoped to its own container, and the pane matching the scope you're editing is
+          highlighted. */}
       <Card className="p-4">
-        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.preview', 'Preview')}</div>
-        {/* Every selector themeCss emits is rewritten to the preview container, so the page
-            colours are previewed as well as the accent — a preview that showed only half of
-            what Apply does would be worse than none. */}
-        <style>{(() => {
-          // Only the mode currently on screen is emitted. Rewriting BOTH page blocks onto the
-          // same container would let the dark one win (it comes last), so a light preview
-          // would have silently shown dark colours.
-          const active = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
-          const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, [active]: f[active] };
-          return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, '#st-preview');
-        })()}</style>
-        {/* The preview paints the real page background — flat --bg plus the configured
-            glow stack — instead of sitting on the admin's own surface. Editing the
-            background was otherwise the one thing you could not see the result of, which
-            is exactly the case a preview exists for. */}
-        <div id="st-preview" className="rounded-xl border border-[var(--line)] p-4 space-y-3"
-          style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f), color: 'var(--text)' }}>
-          <div className="flex flex-wrap items-center gap-3">
-            <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
-            <button className="btn btn-danger btn-sm">{t('st.sampledanger', 'Delete')}</button>
-            <button className="btn btn-ghost btn-sm">{t('st.sampleghost', 'Cancel')}</button>
-            <span className="gradient-text text-lg font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
-            <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
-          </div>
-          {/* A surface, so --surface / --line / the text ramp are all on screen at once. */}
-          <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
-            <div className="font-semibold text-sm">{t('st.samplecard', 'A card on a surface')}</div>
-            <div className="text-sm" style={{ color: 'var(--muted)' }}>{t('st.samplemuted', 'Secondary text, the muted ramp.')}</div>
-            <div className="text-xs" style={{ color: 'var(--faint)' }}>{t('st.samplefaint', 'Faint text — captions and hints.')}</div>
-            <input readOnly value={t('st.sampleinput', 'An input field')}
-              className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
-              style={{ background: 'var(--bg-solid)', border: '1px solid var(--control-border, var(--line))', color: 'var(--text)' }} />
-            <div className="pt-1" style={{ borderTop: '1px solid var(--line-strong)' }} />
-            <div className="flex flex-wrap gap-1.5">
-              {[['info', t('st.st.info', 'Info')], ['success', t('st.st.success', 'Saved')],
-                ['warning', t('st.st.warning', 'Careful')], ['error', t('st.st.error', 'Failed')]].map(([k, label]) => (
-                <span key={k} className="px-2 py-0.5 rounded-md text-xs font-medium"
-                  style={{ background: `var(--${k}-bg)`, color: `var(--${k})`, border: `1px solid var(--${k}-border)` }}>{label}</span>
-              ))}
-            </div>
-          </div>
+        <div className="flex items-center gap-2 flex-wrap mb-2.5">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('st.preview', 'Preview')}</div>
+          <span className="text-[11px] text-[var(--faint)]">{t('st.preview.both', 'Both modes, updating as you edit.')}</span>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {['light', 'dark'].map((m) => {
+            const editing = scope === m || (scope === 'shared' && f.mode === m);
+            return (
+              <div key={m}>
+                {/* Every selector themeCss emits is rewritten to THIS pane's container, so each
+                    pane paints its own mode independently — no cascade fight between the two. */}
+                <style>{(() => {
+                  const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, [m]: f[m] };
+                  return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, `#st-preview-${m}`);
+                })()}</style>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
+                    {m === 'dark' ? <Moon size={12} /> : <Sun size={12} />} {m === 'dark' ? t('st.dark', 'Dark') : t('st.light', 'Light')}
+                  </span>
+                  {editing && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium">{t('st.editing', 'editing')}</span>}
+                </div>
+                <div id={`st-preview-${m}`} className={`rounded-xl border p-3.5 space-y-3 transition ${editing ? 'border-[var(--primary)]/40 ring-1 ring-[var(--primary)]/20' : 'border-[var(--line)]'}`}
+                  style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f, m), color: 'var(--text)' }}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
+                    <button className="btn btn-danger btn-sm">{t('st.sampledanger', 'Delete')}</button>
+                    <button className="btn btn-ghost btn-sm">{t('st.sampleghost', 'Cancel')}</button>
+                    <span className="gradient-text text-base font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
+                    <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
+                  </div>
+                  {/* A surface, so --surface / --line / the text ramp are all on screen at once. */}
+                  <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
+                    <div className="font-semibold text-sm">{t('st.samplecard', 'A card on a surface')}</div>
+                    <div className="text-sm" style={{ color: 'var(--muted)' }}>{t('st.samplemuted', 'Secondary text, the muted ramp.')}</div>
+                    <div className="text-xs" style={{ color: 'var(--faint)' }}>{t('st.samplefaint', 'Faint text — captions and hints.')}</div>
+                    <input readOnly value={t('st.sampleinput', 'An input field')}
+                      className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
+                      style={{ background: 'var(--bg-solid)', border: '1px solid var(--control-border, var(--line))', color: 'var(--text)' }} />
+                    <div className="pt-1" style={{ borderTop: '1px solid var(--line-strong)' }} />
+                    <div className="flex flex-wrap gap-1.5">
+                      {[['info', t('st.st.info', 'Info')], ['success', t('st.st.success', 'Saved')],
+                        ['warning', t('st.st.warning', 'Careful')], ['error', t('st.st.error', 'Failed')]].map(([k, label]) => (
+                        <span key={k} className="px-2 py-0.5 rounded-md text-xs font-medium"
+                          style={{ background: `var(--${k}-bg)`, color: `var(--${k})`, border: `1px solid var(--${k}-border)` }}>{label}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-success' : 'text-warning'}`}>
           {ratio >= 4.5

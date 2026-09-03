@@ -2978,6 +2978,7 @@ const DICT = {
     'st.reset.ok': 'Réinitialiser', 'st.resetdone': 'Retour au thème d’origine.',
     'st.saved': 'Thème du site mis à jour pour tout le monde.',
     'st.preview': 'Aperçu', 'st.samplebtn': 'Bouton principal', 'st.sampletext': 'Titre en dégradé',
+    'st.preview.both': 'Les deux modes, mis à jour pendant que tu édites.', 'st.editing': 'en cours',
     'st.pantonenote': 'Les noms Pantone servent uniquement d’étiquettes — ces valeurs hexadécimales sont les approximations largement publiées de chaque couleur de l’année, pas des données Pantone sous licence. Pour tout usage critique en couleur, réfère-toi à un vrai nuancier Pantone.',
     'st.contrastok': 'Contraste du texte du bouton {n}:1 — conforme WCAG AA (4,5:1).',
     'st.contrastlow': 'Contraste du texte du bouton {n}:1 — sous WCAG AA (4,5:1). L’encre a déjà basculé vers sa meilleure option ; cet accent est simplement difficile à écrire dessus.',
