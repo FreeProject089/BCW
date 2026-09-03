@@ -273,7 +273,11 @@ export default async function ogRoutes(app) {
     const id = String(req.params.id || '').replace(/\.(png|webp|jpe?g)$/i, '');
     if (!id) return reply.redirect(LOGO());
     const p = await db();
-    const u = await p.user.findUnique({ where: { id }, select: { displayName: true, avatar: true, profilePublic: true } }).catch(() => null);
+    const u = await p.user.findUnique({ where: { id }, select: {
+      displayName: true, avatar: true, profilePublic: true, role: true,
+      economy: { select: { level: true } },
+      badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } }, take: 3 },
+    } }).catch(() => null);
     if (!u || !u.profilePublic) return reply.redirect(LOGO());
     try {
       const [{ createCanvas, loadImage }, { OG_BANNER_DATA_URI }] = await Promise.all([
@@ -299,7 +303,27 @@ export default async function ogRoutes(app) {
       }
       x.strokeStyle = 'rgba(255,255,255,0.92)'; x.lineWidth = 7; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
       // Text is best-effort: a font-less container must not blank the whole card.
-      try { x.fillStyle = '#fff'; x.font = 'bold 66px sans-serif'; x.fillText(String(u.displayName || 'Member').slice(0, 24), 380, cy - 6); x.fillStyle = 'rgba(255,255,255,0.82)'; x.font = '500 34px sans-serif'; x.fillText('BetterCommunity', 380, cy + 46); } catch { /* no font */ }
+      try {
+        x.fillStyle = '#fff'; x.font = 'bold 66px sans-serif'; x.fillText(String(u.displayName || 'Member').slice(0, 22), 380, cy - 40);
+        x.fillStyle = 'rgba(255,255,255,0.82)'; x.font = '500 32px sans-serif'; x.fillText('BetterCommunity', 380, cy + 6);
+        // A row of chips under the name: level, role, then top badge names.
+        const chip = (tx, label, bg, fg) => {
+          x.font = 'bold 26px sans-serif'; const tw = x.measureText(label).width; const pad = 18, h = 44, w = tw + pad * 2;
+          x.fillStyle = bg; x.beginPath();
+          const rr = 12, yy = cy + 34;
+          x.moveTo(tx + rr, yy); x.arcTo(tx + w, yy, tx + w, yy + h, rr); x.arcTo(tx + w, yy + h, tx, yy + h, rr); x.arcTo(tx, yy + h, tx, yy, rr); x.arcTo(tx, yy, tx + w, yy, rr); x.closePath(); x.fill();
+          x.fillStyle = fg; x.fillText(label, tx + pad, yy + h - 14);
+          return tx + w + 12;
+        };
+        let tx = 380;
+        const lvl = u.economy?.level || 0;
+        if (lvl > 0) tx = chip(tx, `Lv ${lvl}`, '#f59e0b', '#1a1206');
+        if (u.role && u.role !== 'USER') tx = chip(tx, String(u.role), 'rgba(88,101,242,0.9)', '#fff');
+        for (const b of (u.badges || [])) {
+          if (tx > W - 160) break;
+          tx = chip(tx, String(b.badge?.name || '').slice(0, 14), 'rgba(255,255,255,0.16)', '#fff');
+        }
+      } catch { /* no font */ }
       const png = await c.encode('png');
       return reply.header('Content-Type', 'image/png').header('Cache-Control', 'public, max-age=3600').header('X-Robots-Tag', 'noindex').send(png);
     } catch { return reply.redirect(LOGO()); }
