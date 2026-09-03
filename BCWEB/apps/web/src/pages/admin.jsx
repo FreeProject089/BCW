@@ -19785,7 +19785,10 @@ function AdminSettings() {
                       <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : saveLabel}</Button>
                     </div>
                   )}
-                  <div className="text-[11px] text-[var(--faint)] mt-1.5">{D}</div>
+                  {/* The gist stays on the control; the full explanation lives in the Admin guide,
+                      so a setting reads as a control, not a manual (clamp + a "learn more" link). */}
+                  <div className="text-[11px] text-[var(--faint)] mt-1.5 line-clamp-2">{D}</div>
+                  <Link to="?s=guide" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
                   {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
