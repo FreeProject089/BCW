@@ -2373,6 +2373,8 @@ const DICT = {
     'ds.rp.chan': 'ID du salon', 'ds.rp.title': 'Titre', 'ds.rp.body': 'Message (markdown Discord — les règles ici)',
     'ds.rp.embed': 'Encart', 'ds.rp.color': 'Couleur', 'ds.rp.buttons': 'Boutons', 'ds.rp.dropdown': 'Menu', 'ds.rp.multi': 'Plusieurs à la fois',
     'ds.rp.roleid': 'ID du rôle', 'ds.rp.label': 'Libellé', 'ds.rp.emoji': 'Emoji', 'ds.rp.addrole': 'Ajouter un rôle', 'ds.rp.add': 'Ajouter un panneau',
+    'ds.sec.storage': 'Membres & stockage', 'ds.sec.welcome': 'Accueil', 'ds.sec.voice': 'Vocal', 'ds.sec.roles': 'Rôles auto', 'ds.sec.panels': 'Panneaux', 'ds.sec.blog': 'Blog', 'ds.sec.members': 'Membres',
+    'ds.unsaved': 'Modifications non enregistrées',
     'ds.mem': 'Tes membres', 'ds.mem.search': 'Rechercher un membre…', 'ds.mem.none': 'Aucun membre stocké pour l’instant.',
     'ds.mod.timeout': 'Exclure temporairement', 'ds.mod.kick': 'Expulser', 'ds.mod.ban': 'Bannir',
     'ds.mod.why': 'Raison ?', 'ds.mod.whym': 'Envoyée à Discord avec l’action et conservée avec ton nom.',

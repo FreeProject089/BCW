@@ -177,6 +177,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [section, setSection] = useState('storage'); // which config section is shown
   const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
@@ -211,15 +212,41 @@ function GuildConfig({ guildId, onSaved }) {
     } finally { setBusy(false); }
   };
   const showBudget = draft.memberMode === 'pool' || (draft.memberMode === 'moderation' && draft.storeLogs);
+  // The dashboard is a set of SECTIONS you switch between, not one long scroll — you pick the
+  // area you want to configure. The Members list only exists in pool mode (the only mode that
+  // stores members). Each carries its own unsaved-changes dot so nothing hides behind a tab.
+  const SECTIONS = [
+    { id: 'storage', icon: Database, label: t('ds.sec.storage', 'Members & storage'), dirty: draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs },
+    { id: 'welcome', icon: Sparkles, label: t('ds.sec.welcome', 'Welcome'), dirty: welcomeDirty },
+    { id: 'voice', icon: Mic, label: t('ds.sec.voice', 'Voice'), dirty: jtcDirty },
+    { id: 'roles', icon: Shield, label: t('ds.sec.roles', 'Auto-roles'), dirty: gatingDirty },
+    { id: 'panels', icon: ScrollText, label: t('ds.sec.panels', 'Panels'), dirty: rpDirty },
+    { id: 'blog', icon: Newspaper, label: t('ds.sec.blog', 'Blog'), dirty: blogDirty },
+    ...(g.memberMode === 'pool' ? [{ id: 'members', icon: Users, label: t('ds.sec.members', 'Members'), dirty: false }] : []),
+  ];
   return (
     <div>
-      <div className="flex items-center gap-2 mb-1">
-        <Server size={16} className="text-[var(--primary-2)]" />
-        <span className="font-semibold">{g.name || guildId}</span>
-        <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge>
+      {/* Server header */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Server size={18} className="text-[var(--primary-2)]" /></span>
+        <div className="min-w-0">
+          <div className="font-semibold flex items-center gap-2 flex-wrap">{g.name || guildId} <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
+          <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Users size={12} /> {t('ds.members', '{n} members').replace('{n}', (g.memberCount ?? 0).toLocaleString())}</div>
+        </div>
       </div>
-      <div className="text-xs text-[var(--muted)] mb-4 flex items-center gap-1.5"><Users size={13} /> {t('ds.members', '{n} members').replace('{n}', (g.memberCount ?? 0).toLocaleString())}</div>
 
+      {/* Section nav — pick one area instead of scrolling the whole config. */}
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar mb-4 pb-1 -mx-1 px-1">
+        {SECTIONS.map((s) => (
+          <button key={s.id} type="button" onClick={() => setSection(s.id)}
+            className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition ${section === s.id ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]/40'}`}>
+            <s.icon size={14} className={section === s.id ? 'text-[var(--primary-2)]' : ''} /> {s.label}
+            {s.dirty && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('ds.unsaved', 'Unsaved changes')} />}
+          </button>
+        ))}
+      </div>
+
+      {section === 'storage' && <>
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('ds.mode', 'How the bot handles your members')}</div>
       <div className="grid sm:grid-cols-3 gap-2 mb-4">
         {MODES.map((m) => {
@@ -246,8 +273,25 @@ function GuildConfig({ guildId, onSaved }) {
           <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h', 'Off = actions are posted to Discord only. On = a searchable copy is kept here and counts against your storage.')}</p>
         </div>
       )}
+      {showBudget && <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>}
+      {data.logs?.length > 0 && (
+        <div className="mb-4">
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><ScrollText size={12} /> {t('ds.recentlogs', 'Recent moderation')}</div>
+          <div className="rounded-xl border border-[var(--line)] max-h-56 overflow-y-auto divide-y divide-[var(--line)]">
+            {data.logs.map((l) => (
+              <div key={l.id} className="px-3 py-2 flex items-baseline gap-2 text-xs">
+                <Badge tone="blue">{l.action}</Badge>
+                <span className="truncate flex-1 text-[var(--muted)]">{l.reason || l.targetTag || l.targetId}</span>
+                <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(l.createdAt).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      </>}
 
       {/* Welcome / bye — owner-editable per-server banner & messages (was admin-only). */}
+      {section === 'welcome' && (
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
         <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
           <input type="checkbox" checked={draft.welcome.enabled} onChange={(e) => setW({ enabled: e.target.checked })} />
@@ -289,8 +333,10 @@ function GuildConfig({ guildId, onSaved }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Join-to-create voice — owner-editable per-server (was admin-only). */}
+      {section === 'voice' && (
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
         <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
           <input type="checkbox" checked={draft.jtc.enabled} onChange={(e) => setJ({ enabled: e.target.checked })} />
@@ -315,8 +361,10 @@ function GuildConfig({ guildId, onSaved }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Gated access — owner-editable per-server role grants (was admin-only). */}
+      {section === 'roles' && (
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
         <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
           <input type="checkbox" checked={draft.gating.enabled} onChange={(e) => setG({ enabled: e.target.checked })} />
@@ -347,26 +395,11 @@ function GuildConfig({ guildId, onSaved }) {
           </div>
         )}
       </div>
-
-      {showBudget && <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>}
-
-      {data.logs?.length > 0 && (
-        <div className="mb-4">
-          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><ScrollText size={12} /> {t('ds.recentlogs', 'Recent moderation')}</div>
-          <div className="rounded-xl border border-[var(--line)] max-h-56 overflow-y-auto divide-y divide-[var(--line)]">
-            {data.logs.map((l) => (
-              <div key={l.id} className="px-3 py-2 flex items-baseline gap-2 text-xs">
-                <Badge tone="blue">{l.action}</Badge>
-                <span className="truncate flex-1 text-[var(--muted)]">{l.reason || l.targetTag || l.targetId}</span>
-                <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(l.createdAt).toLocaleDateString()}</span>
-              </div>
-            ))}
-          </div>
-        </div>
       )}
 
       {/* Rule & role panels — owner-editable for THIS server. A posted message with role buttons
           or a dropdown; roles are entered by id (like every other id here). */}
+      {section === 'panels' && (
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
         <div className="flex items-center gap-2.5 text-sm font-medium"><ScrollText size={15} className="text-[var(--primary-2)]" /> {t('ds.rp', 'Rule & role panels')}</div>
         <p className="text-[11px] text-[var(--faint)] mt-0.5">{t('ds.rp.h', 'A posted message with self-assign role buttons or a dropdown. Saving publishes it; the bot edits it in place when you change it.')}</p>
@@ -410,9 +443,11 @@ function GuildConfig({ guildId, onSaved }) {
           {draft.rp.length < 20 && <Button size="sm" variant="ghost" onClick={() => setRp([...draft.rp, { id: '', channelId: '', title: '', body: '', asEmbed: true, color: '#f59e0b', mode: 'buttons', multi: true, roles: [] }])}><Plus size={13} /> {t('ds.rp.add', 'Add a panel')}</Button>}
         </div>
       </div>
+      )}
 
       {/* Blog announcements — owner-editable routes for THIS server only. Each posts the chosen
           blogs to a channel. A route with no channel is dropped on save. */}
+      {section === 'blog' && (
       <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
         <div className="flex items-center gap-2.5 text-sm font-medium"><Newspaper size={15} className="text-[var(--primary-2)]" /> {t('ds.blog', 'Blog announcements')}</div>
         <p className="text-[11px] text-[var(--faint)] mt-0.5">{t('ds.blog.h', 'Post new blog posts to a channel in your server — pick which blogs feed each channel.')}</p>
@@ -446,10 +481,11 @@ function GuildConfig({ guildId, onSaved }) {
           {draft.blog.routes.length < 10 && <Button size="sm" variant="ghost" onClick={() => setB([...draft.blog.routes, { channelId: '', sources: ['*'] }])}><Plus size={13} /> {t('ds.blog.add', 'Add channel')}</Button>}
         </div>
       </div>
+      )}
 
-      {/* The guild's stored roster — only when it's actually in pool mode (the only mode that
-          stores members), and only your own server's members, never another's. */}
-      {g.memberMode === 'pool' && (
+      {/* The guild's stored roster — only in pool mode (the only mode that stores members), and
+          only your own server's members, never another's. */}
+      {section === 'members' && (
         <div className="mb-4">
           <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Users size={12} /> {t('ds.mem', 'Your members')}</div>
           <GuildMembers guildId={guildId} />
