@@ -1563,7 +1563,7 @@ const DICT = {
     'sh.e.logo': 'Logo / icône', 'sh.e.logohint': 'Pastille de barre + en-tête de page + miniature de blog par défaut. Choisis une icône lucide/marque, importe un svg/png, ou colle une URL de logo.',
     'sh.e.pick': 'Choisir', 'sh.e.uploading': 'Import…', 'sh.e.uploadfail': 'Échec de l’import.', 'sh.e.upload': 'Importer', 'sh.e.clear': 'Effacer',
     'sh.e.pickicon': 'Choisis une icône de projet', 'sh.e.subtabs': 'Sous-onglets', 'sh.e.overview': 'Aperçu (toujours)',
-    'sh.e.releases': 'Notes de version', 'sh.e.community': 'Communauté', 'sh.e.legal': 'Légal', 'sh.e.stack': 'Comment ça tourne', 'sh.e.details': 'Détails (JSON)', 'sh.e.template': 'Modèle',
+    'sh.e.releases': 'Notes de version', 'sh.e.community': 'Communauté', 'sh.e.legal': 'Légal', 'sh.e.stack': 'Comment ça tourne', 'sh.e.details': 'Détails (JSON)', 'sh.e.details2': 'Contenu du projet', 'sh.e.template': 'Modèle',
     'sh.e.detailshint': 'liens (github/source/discord/kofi/site/personnalisé), downloads[], média d’aperçu (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, cartes légales.',
     'sh.e.published': 'Publié (visible sur /projects)', 'sh.e.pin': 'Épingler comme sa propre pastille de barre (pas seulement la grille /projects)',
 

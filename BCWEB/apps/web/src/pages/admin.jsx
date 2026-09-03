@@ -16228,6 +16228,10 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   });
   const [iconPick, setIconPick] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Parity with the main project editor: edit the content in the SAME visual ProjectConfigEditor
+  // (with a JSON fallback), not a raw JSON box. 'form' = visual, 'json' = the textarea.
+  const [editMode, setEditMode] = useState('form');
+  const detailsValid = useMemo(() => { try { JSON.parse(details || '{}'); return true; } catch { return false; } }, [details]);
   const undoSave = useUndoableSave();
   const save = () => {
     if (name.trim().length < 2) return toast.error(t('sh.e.namereq', 'Name is required.'));
@@ -16254,7 +16258,7 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
   };
   const Toggle = ({ k, label }) => <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={tabs[k]} onChange={(e) => setTabs({ ...tabs, [k]: e.target.checked })} /> {label}</label>;
   return (
-    <Modal open onClose={onClose} title={isNew ? t('sh.new', 'New project') : t('sh.e.edit', 'Edit {name}').replace('{name}', project.name)} icon={Sparkles} width="max-w-lg"
+    <Modal open onClose={onClose} title={isNew ? t('sh.new', 'New project') : t('sh.e.edit', 'Edit {name}').replace('{name}', project.name)} icon={Sparkles} width="max-w-2xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
       <div className="grid grid-cols-[1fr_110px] gap-3">
         <Field label={t('sh.e.pname', 'Project name')}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('adm2.ph.bettersomething', "Better Something")} /></Field>
@@ -16284,12 +16288,29 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
         </div>
       </div>
       <div className="mt-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sh.e.details', 'Details (JSON)')}</label>
-          <button type="button" onClick={() => setDetails(JSON.stringify(SHOWCASE_TEMPLATE, null, 2))} className="btn btn-sm"><Wand2 size={13} /> {t('sh.e.template', 'Template')}</button>
+        <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+          <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sh.e.details2', 'Project content')}</label>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setDetails(JSON.stringify(SHOWCASE_TEMPLATE, null, 2))} className="btn btn-sm"><Wand2 size={13} /> {t('sh.e.template', 'Template')}</button>
+            {/* Same Visual/JSON switch as the main project editor — the parity this screen lacked. */}
+            <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+              {[['form', t('su.visual', 'Visual')], ['json', 'JSON']].map(([m, label]) => (
+                <button key={m} type="button" onClick={() => setEditMode(m)} disabled={m === 'form' && !detailsValid}
+                  className={`px-2.5 py-1 rounded-md ${editMode === m ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)]'} ${m === 'form' && !detailsValid ? 'opacity-40 cursor-not-allowed' : ''}`}>{label}</button>
+              ))}
+            </div>
+          </div>
         </div>
-        <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('sh.e.detailshint', 'links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.')}</p>
-        <JsonEditor value={details} onChange={setDetails} minH={220} />
+        {editMode === 'form'
+          ? (detailsValid
+              ? <div className="rounded-xl border border-[var(--line)] p-3 max-h-[46vh] overflow-auto bg-[var(--bg-solid)]">
+                  <ProjectConfigEditor value={JSON.parse(details || '{}')} onChange={(cfg) => setDetails(JSON.stringify(cfg, null, 2))} slug={(project?.short || 'project').toLowerCase()} isShowcase />
+                </div>
+              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON — switch to the JSON tab to fix it.')}</div>)
+          : <>
+              <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('sh.e.detailshint', 'links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.')}</p>
+              <JsonEditor value={details} onChange={setDetails} minH={220} />
+            </>}
       </div>
       {canManage ? (<>
         <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> {t('sh.e.published', 'Published (visible on /projects)')}</label>
