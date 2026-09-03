@@ -1102,4 +1102,30 @@ export default async function projectRoutes(app) {
     const row = await p.adminSetting.findUnique({ where: { key: 'project.dlclicks' } });
     return { value: Number(row?.value?.[key]) || 0 };
   });
+
+  // Import a repo's GitHub releases as editable timeline entries. A read-only helper for the
+  // config editor: it takes the GitHub URL the editor already holds (in the unsaved draft) and
+  // returns {kind,date,title,body,url} events, which the editor appends to config.timeline. The
+  // Activity tab already merges live release MARKERS on its own; this is for turning them into
+  // entries you can annotate or reorder.
+  app.post('/admin/projects/github-timeline', { preHandler: requireCap('manage_projects', 'ADMIN') }, async (req, reply) => {
+    const url = String(req.body?.github || '').trim();
+    const m = url.match(GH_REPO_RE);
+    if (!m) return reply.code(400).send({ error: 'no_github' });
+    const owner = m[1], repo = m[2].replace(/\.git$/, '');
+    try {
+      const releases = await gh(`https://api.github.com/repos/${owner}/${repo}/releases?per_page=100`).catch(() => []);
+      const events = (Array.isArray(releases) ? releases : [])
+        .filter((r) => r && !r.draft && (r.published_at || r.created_at))
+        .map((r) => ({
+          kind: r.prerelease ? 'update' : 'release',
+          date: String(r.published_at || r.created_at).slice(0, 10),
+          title: r.name || r.tag_name || '',
+          body: r.body ? String(r.body).slice(0, 1000) : '',
+          url: r.html_url || '',
+        }))
+        .sort((a, b) => (a.date < b.date ? 1 : -1)); // newest first
+      return { events };
+    } catch (e) { return reply.code(502).send({ error: 'github_unreachable', detail: String(e.message) }); }
+  });
 }

@@ -3407,6 +3407,8 @@ const DICT = {
     'pce.featured': 'À la une',
     'pce.counter': 'Compteur en tête', 'pce.counter.value': 'Grand nombre / texte', 'pce.counter.label': 'Libellé', 'pce.counter.sub': 'Sous-ligne (optionnel)',
     'pce.counter.off': 'Désactivé — un grand nombre en tête d’aperçu (téléchargements, membres, un décompte live…).',
+    'pce.tl.import': 'Importer les releases GitHub', 'pce.tl.needgh': 'Renseigne d’abord le lien GitHub plus haut.',
+    'pce.tl.none': 'Aucune nouvelle release à importer.', 'pce.tl.imported': '{n} release(s) importée(s).',
     'pce.counter.k.static': 'Fixe', 'pce.counter.k.countdown': 'Décompte', 'pce.counter.k.live': 'URL live', 'pce.counter.k.downloads': 'Téléchargements',
     'pce.counter.dl.h': 'Compte les vrais clics sur le(s) bouton(s) de téléchargement de cette page. Part de 0 et monte à chaque téléchargement.',
     'pce.counter.target': 'Décompte jusqu’à', 'pce.counter.done': 'À l’arrivée à zéro',

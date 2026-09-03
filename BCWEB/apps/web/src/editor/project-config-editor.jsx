@@ -903,6 +903,24 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           Activity tab. Shown for every project kind. */}
       <Section icon={CalendarDays} title={t('pce.timeline', "Timeline")} badge={(c.timeline?.length) || null}
         desc="Dated events shown on the Activity tab, newest first, merged with GitHub releases. Use it for updates, announcements, milestones — anything not a git release.">
+        {/* Pull the repo's GitHub releases in as editable entries (uses the GitHub link above).
+            The Activity tab merges live release markers anyway; this is for annotating them. */}
+        <div className="flex items-center justify-end mb-2">
+          <Button size="sm" variant="ghost" disabled={!c.links?.github} title={!c.links?.github ? t('pce.tl.needgh', 'Set the GitHub link above first.') : undefined}
+            onClick={async () => {
+              try {
+                const r = await api.post('/admin/projects/github-timeline', { github: c.links?.github });
+                const existing = c.timeline || [];
+                const have = new Set(existing.map((e) => `${e.date}|${(e.title || '').toLowerCase()}`));
+                const add = (r.events || []).filter((e) => !have.has(`${e.date}|${(e.title || '').toLowerCase()}`));
+                if (!add.length) { toast.success(t('pce.tl.none', 'No new releases to import.')); return; }
+                set({ timeline: [...add, ...existing] });
+                toast.success(t('pce.tl.imported', 'Imported {n} release(s).').replace('{n}', add.length));
+              } catch (x) { toast.error(x?.data?.error === 'no_github' ? t('pce.tl.needgh', 'Set the GitHub link above first.') : t('common.failed', 'Failed.')); }
+            }}>
+            <Github size={13} /> {t('pce.tl.import', 'Import GitHub releases')}
+          </Button>
+        </div>
         <Repeatable items={c.timeline || []} onChange={(v) => set({ timeline: v })} addLabel="Add event" empty="No timeline events yet."
           add={() => ({ kind: 'update', date: '', title: '', body: '', url: '' })}
           render={(it, patch) => (
