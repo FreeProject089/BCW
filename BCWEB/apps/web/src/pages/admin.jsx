@@ -14186,6 +14186,7 @@ function AdminBot() {
           </ModuleCard>
 
           {/* Welcome / bye */}
+          <div className="md:col-span-2">
           <ModuleCard id="sec-welcome" icon={Sparkles} title={t('db.mod.welcome', 'Welcome / bye')} desc={t('db.mod.welcome.d', 'Animated banner + message when members join or leave.')} enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
             <Field label={t('db.f.welcomech', 'Welcome channel id')}><AdminChanPicker guild={scopeGuild} value={sg('welcome.channelId')} onChange={(v) => sset('welcome.channelId', v)} /></Field>
             <Field label={t('db.f.joinmsg', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
@@ -14244,6 +14245,7 @@ function AdminBot() {
               </div>
             </div>
           </ModuleCard>
+          </div>
 
           {/* Gated access */}
           <ModuleCard id="sec-gating" icon={KeyRound} title={t('db.mod.gating', 'Gated access')} desc={t('db.mod.gating.d', 'Grant roles automatically to members who link their account.')} enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
