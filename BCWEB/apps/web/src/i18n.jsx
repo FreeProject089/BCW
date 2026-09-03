@@ -2394,6 +2394,7 @@ const DICT = {
     'ds.mod.needreason': 'Une raison est requise.',
     'common.prev': 'Préc.', 'common.next': 'Suiv.',
     'ds.saved': 'Enregistré.', 'ds.needchannel': 'Définis d’abord un salon de logs.',
+    'ds.pick.none': '— aucun —', 'ds.pick.chanph': 'ID du salon', 'ds.pick.roleph': 'ID du rôle',
     'ds.nolink': 'Lie ton compte Discord',
     'ds.nolink.s2': 'Lance', 'ds.nolink.s3': 'dans un serveur où est le bot pour obtenir un code, puis colle-le ici — sans quitter la page. Les serveurs que tu possèdes ou gères apparaissent ensuite ici.',
     'ds.nolink.notin': 'Le bot n’est pas encore sur ton serveur ?',

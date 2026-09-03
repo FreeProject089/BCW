@@ -82,6 +82,13 @@ function buildClient() {
           .sort((a, b) => b.position - a.position)
           .slice(0, 100)
           .map((r) => ({ id: r.id, name: String(r.name || '').slice(0, 100), color: r.hexColor || null, position: r.position })),
+        // Channels, so the dashboards can offer a PICKER instead of a box to paste a snowflake
+        // into. type: 0=text, 2=voice, 4=category, 5=announcement, 15=forum — enough to filter
+        // "a text channel to post in" from "a voice lobby". Capped like roles.
+        channels: [...g.channels.cache.values()]
+          .filter((ch) => [0, 2, 4, 5, 15].includes(ch.type))
+          .slice(0, 200)
+          .map((ch) => ({ id: ch.id, name: String(ch.name || '').slice(0, 100), type: ch.type, parentId: ch.parentId || null })),
       })),
       ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats }, logs: recentLogs(60),
     });

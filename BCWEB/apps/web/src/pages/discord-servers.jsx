@@ -45,6 +45,31 @@ function CapacityBar({ cap }) {
   );
 }
 
+// Pick a channel / role from the server's live list (sent by the bot's heartbeat) instead of
+// pasting a snowflake. Falls back to the plain id input when the list is unavailable (bot
+// offline, or an old heartbeat) so nothing is ever un-editable.
+function ChannelPicker({ channels, value, onChange, types = [0, 5], placeholder }) {
+  const { t } = useI18n();
+  const list = (channels || []).filter((c) => types.includes(c.type));
+  if (!list.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('ds.pick.chanph', 'Channel ID')} />;
+  return (
+    <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{t('ds.pick.none', '— none —')}</option>
+      {list.map((c) => <option key={c.id} value={c.id}>{c.type === 2 ? '🔊 ' : '# '}{c.name}</option>)}
+    </Select>
+  );
+}
+function RolePicker({ roles, value, onChange, placeholder }) {
+  const { t } = useI18n();
+  if (!roles?.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('ds.pick.roleph', 'Role ID')} />;
+  return (
+    <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{t('ds.pick.none', '— none —')}</option>
+      {roles.map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
+    </Select>
+  );
+}
+
 // Welcome banner background presets (mirrors the admin editor's palette).
 const WBG = [['dark', '#0e0c09'], ['midnight', '#0a0f1e'], ['plum', '#140a1e'], ['forest', '#08160f'], ['rose', '#1a0a12'], ['slate', '#0f1115']];
 // Normalise a stored welcome object to the exact editable shape, so dirty-checking is a plain
@@ -288,7 +313,7 @@ function GuildConfig({ guildId, onSaved }) {
       {draft.memberMode === 'moderation' && (
         <div className="space-y-3 mb-4">
           <Field label={t('ds.logchannel', 'Log channel ID')} hint={t('ds.logchannel.h', 'The Discord channel the bot posts moderation actions to. Right-click a channel in Discord → Copy Channel ID (Developer Mode on).')}>
-            <Input value={draft.logChannelId} onChange={(e) => setDraft({ ...draft, logChannelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder="123456789012345678" />
+            <ChannelPicker channels={data.channels} value={draft.logChannelId} onChange={(v) => setDraft({ ...draft, logChannelId: v })} />
           </Field>
           <label className="flex items-center gap-2.5 text-sm cursor-pointer">
             <input type="checkbox" checked={draft.storeLogs} onChange={(e) => setDraft({ ...draft, storeLogs: e.target.checked })} />
@@ -343,7 +368,7 @@ function GuildConfig({ guildId, onSaved }) {
         {draft.welcome.enabled && (
           <div className="space-y-3 mt-3">
             <Field label={t('ds.wc.channel', 'Channel ID')} hint={t('ds.wc.channel.h', 'Where the banner is posted. Right-click a Discord channel → Copy Channel ID (Developer Mode on).')}>
-              <Input value={draft.welcome.channelId} onChange={(e) => setW({ channelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder="123456789012345678" />
+              <ChannelPicker channels={data.channels} value={draft.welcome.channelId} onChange={(v) => setW({ channelId: v })} />
             </Field>
             <Field label={t('ds.wc.join', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}">
               <Input value={draft.welcome.joinMessage} onChange={(e) => setW({ joinMessage: e.target.value.slice(0, 500) })} placeholder={t('ds.wc.join.ph', 'Welcome {user} to {servername}!')} />
@@ -391,9 +416,9 @@ function GuildConfig({ guildId, onSaved }) {
               <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
                 <button type="button" onClick={() => setJ({ lobbies: draft.jtc.lobbies.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ds.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
-                <Input value={lb.lobbyChannelId} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) } : x) })} placeholder={t('ds.jtc.lobbych', 'Lobby voice channel ID')} />
+                <ChannelPicker channels={data.channels} types={[2]} value={lb.lobbyChannelId} placeholder={t('ds.jtc.lobbych', 'Lobby voice channel ID')} onChange={(v) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: v } : x) })} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Input value={lb.categoryId} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) } : x) })} placeholder={t('ds.jtc.catid', 'Category ID (auto if empty)')} />
+                  <ChannelPicker channels={data.channels} types={[4]} value={lb.categoryId} placeholder={t('ds.jtc.catid', 'Category ID (auto if empty)')} onChange={(v) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, categoryId: v } : x) })} />
                   <Input value={lb.tempCategoryName} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value.slice(0, 100) } : x) })} placeholder={t('ds.jtc.tempcat', 'Temp category name')} />
                 </div>
               </div>
@@ -421,7 +446,7 @@ function GuildConfig({ guildId, onSaved }) {
                 <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
                   <button type="button" onClick={() => setG({ rules: draft.gating.rules.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pe-6">
-                    <Field label={t('ds.gate.roleid', 'Role ID')}><Input value={r.roleId} onChange={(e) => updRule({ roleId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder="123456789012345678" /></Field>
+                    <Field label={t('ds.gate.roleid', 'Role ID')}><RolePicker roles={data.roles} value={r.roleId} onChange={(v) => updRule({ roleId: v })} /></Field>
                     <Field label={t('ds.gate.label', 'Label (for messages)')}><Input value={r.label} onChange={(e) => updRule({ label: e.target.value.slice(0, 60) })} placeholder={t('ds.gate.labelph', 'Verified / Creator…')} /></Field>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -470,7 +495,7 @@ function GuildConfig({ guildId, onSaved }) {
                 <div className="ps-2 ms-1 border-s-2 border-[var(--line)] space-y-1.5">
                   {pnl.roles.map((r, ri) => (
                     <div key={ri} className="flex flex-wrap items-center gap-1.5">
-                      <Input value={r.roleId} onChange={(e) => setRole(ri, { roleId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder={t('ds.rp.roleid', 'Role ID')} className="!w-40" />
+                      <span className="!w-40 inline-block"><RolePicker roles={data.roles} value={r.roleId} onChange={(v) => setRole(ri, { roleId: v })} placeholder={t('ds.rp.roleid', 'Role ID')} /></span>
                       <Input value={r.label} onChange={(e) => setRole(ri, { label: e.target.value.slice(0, 80) })} placeholder={t('ds.rp.label', 'Label')} className="!w-32" />
                       <Input value={r.emoji} onChange={(e) => setRole(ri, { emoji: e.target.value.slice(0, 40) })} placeholder={t('ds.rp.emoji', 'Emoji')} className="!w-16" />
                       <button type="button" onClick={() => setP({ roles: pnl.roles.filter((_, k) => k !== ri) })} className="p-1.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>

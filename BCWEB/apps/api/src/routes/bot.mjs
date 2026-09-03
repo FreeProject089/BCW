@@ -1116,6 +1116,12 @@ export default async function botRoutes(app) {
           id: z.string().max(32), name: z.string().max(100),
           color: z.string().max(16).nullable().optional(), position: z.number().optional(),
         })).max(100).optional(),
+        // Channels for the dashboard pickers (text/voice/category/…). Zod strips unknown keys,
+        // so this MUST be declared or the whole channel list vanishes before it is stored.
+        channels: z.array(z.object({
+          id: z.string().max(32), name: z.string().max(100),
+          type: z.number().optional(), parentId: z.string().max(32).nullable().optional(),
+        })).max(200).optional(),
       })).max(200).optional(),
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
@@ -1791,7 +1797,16 @@ export default async function botRoutes(app) {
     // The GLOBAL member-storage strategy (set by an admin). When it is 'free' or 'unified', the
     // bot stores members regardless of this server's own per-server choice — so the owner's
     // dashboard can say the choice is overridden rather than looking broken.
-    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels, globalStorage: { mode: cfg.memberStorage?.mode || 'managed' } };
+    // This server's live roles + channels (from the bot's last heartbeat) so the owner can PICK
+    // a channel/role instead of pasting a snowflake. Absent (bot offline / old heartbeat) → the
+    // dashboard falls back to the id inputs it already had.
+    const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+    const gEntry = (status?.guildList || []).find((x) => x.id === g.guildId) || null;
+    return {
+      guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
+      globalStorage: { mode: cfg.memberStorage?.mode || 'managed' },
+      roles: gEntry?.roles || [], channels: gEntry?.channels || [],
+    };
   });
 
   // The guild's stored members, for its OWNER — read-only, and STRICTLY scoped to this one
