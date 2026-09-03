@@ -573,16 +573,17 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             {t('pce.counter', 'Headline counter')}
           </label>
           {c.counter ? (() => {
-            const kind = c.counter.kind === 'countdown' || c.counter.kind === 'live' ? c.counter.kind : 'static';
+            const kind = ['countdown', 'live', 'downloads'].includes(c.counter.kind) ? c.counter.kind : 'static';
             const setC = (patch) => set({ counter: { ...c.counter, ...patch } });
             return (
               <div className="space-y-2">
-                {/* What KIND of counter: a fixed number, a live countdown to a date, or a number
-                    pulled from a URL (downloads total, hosting stats — anything numeric). */}
-                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit text-xs">
-                  {[['static', t('pce.counter.k.static', 'Fixed')], ['countdown', t('pce.counter.k.countdown', 'Countdown')], ['live', t('pce.counter.k.live', 'Live URL')]].map(([v, lbl]) =>
+                {/* What KIND of counter: a fixed number, a live countdown to a date, a number
+                    pulled from a URL, or the REAL count of download-button clicks on this page. */}
+                <div className="flex flex-wrap rounded-lg border border-[var(--line)] overflow-hidden w-fit text-xs">
+                  {[['static', t('pce.counter.k.static', 'Fixed')], ['countdown', t('pce.counter.k.countdown', 'Countdown')], ['live', t('pce.counter.k.live', 'Live URL')], ['downloads', t('pce.counter.k.downloads', 'Downloads')]].map(([v, lbl]) =>
                     <button key={v} type="button" onClick={() => setC({ kind: v })} className={`px-3 py-1.5 ${kind === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{lbl}</button>)}
                 </div>
+                {kind === 'downloads' && <p className="text-[10px] text-[var(--faint)]">{t('pce.counter.dl.h', 'Counts real clicks on this page’s download button(s). Starts at 0 and climbs as people download.')}</p>}
                 <div className="grid sm:grid-cols-3 gap-2">
                   {kind === 'static' && <Field label={t('pce.counter.value', 'Big number / text')}><Input value={c.counter.value || ''} onChange={(e) => setC({ value: e.target.value })} placeholder="1,024" /></Field>}
                   {kind === 'countdown' && <Field label={t('pce.counter.target', 'Counts down to')}><Input type="datetime-local" value={c.counter.target || ''} onChange={(e) => setC({ target: e.target.value })} /></Field>}

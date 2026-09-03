@@ -1081,4 +1081,25 @@ export default async function projectRoutes(app) {
     try { return { data: await gh(await versionedRawUrl(url)) }; }
     catch (e) { return reply.code(502).send({ error: 'community_unreachable', detail: String(e.message) }); }
   });
+
+  // Real download counter. The download button pings /click; the headline counter (kind
+  // 'downloads') reads /count. Stored as ONE AdminSetting JSON map (project key → count) —
+  // best-effort (a read-modify-write can undercount by a click or two under a burst), which is
+  // fine for a display figure and avoids a schema migration for a number nobody audits.
+  app.post('/projects/:key/downloads/click', async (req) => {
+    const key = String(req.params.key || '').slice(0, 60);
+    if (!key) return { ok: false };
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'project.dlclicks' } });
+    const map = (row?.value && typeof row.value === 'object' && !Array.isArray(row.value)) ? { ...row.value } : {};
+    map[key] = (Number(map[key]) || 0) + 1;
+    await p.adminSetting.upsert({ where: { key: 'project.dlclicks' }, create: { key: 'project.dlclicks', value: map }, update: { value: map } });
+    return { ok: true };
+  });
+  app.get('/projects/:key/downloads/count', async (req) => {
+    const key = String(req.params.key || '').slice(0, 60);
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'project.dlclicks' } });
+    return { value: Number(row?.value?.[key]) || 0 };
+  });
 }

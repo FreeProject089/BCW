@@ -99,11 +99,15 @@ function useFetch(fn, deps) {
 // entries (installer + portable + source code…) = the primary option as the
 // main button plus a chevron dropdown listing every choice with its label —
 // instead of a cluttered row of look-alike buttons.
-function DownloadMenu({ downloads = [], children }) {
+function DownloadMenu({ downloads = [], children, pkey }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const closeTimer = useRef(null);
+  // Count a real download click (fire-and-forget) so the headline counter can show it. Only when
+  // a project key is known — the version-history modal has none, and a click there isn't a fresh
+  // download of the current build.
+  const fireDl = () => { if (pkey) { try { api.post(`/projects/${pkey}/downloads/click`).catch(() => {}); } catch { /* ignore */ } } };
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', onDoc);
@@ -123,7 +127,7 @@ function DownloadMenu({ downloads = [], children }) {
     : (/^source|code|src/i.test(d.label || '') ? <FolderGit2 size={size} className={cls} /> : <Download size={size} className={cls} />);
   if (list.length === 1) {
     return (<>
-      <a href={primary.url} download rel="noreferrer"><Button variant="primary">{dlIcon(primary)} {primary.label}</Button></a>
+      <a href={primary.url} download rel="noreferrer" onClick={fireDl}><Button variant="primary">{dlIcon(primary)} {primary.label}</Button></a>
       {children}
     </>);
   }
@@ -136,7 +140,7 @@ function DownloadMenu({ downloads = [], children }) {
           now transparent (`!bg-none`) and this one surface shows through both. */}
       <div className="inline-flex rounded-[10px] overflow-hidden"
         style={{ background: 'linear-gradient(120deg, var(--primary), var(--primary-2))', boxShadow: '0 6px 20px -8px var(--primary-glow)' }}>
-        <a href={primary.url} download rel="noreferrer" className="inline-flex">
+        <a href={primary.url} download rel="noreferrer" className="inline-flex" onClick={fireDl}>
           <Button variant="primary" className="!bg-none !rounded-none !shadow-none">{dlIcon(primary)} {primary.label}</Button>
         </a>
         {/* The divider was `border-white/25` — invisible the moment the accent is a pastel,
@@ -158,7 +162,7 @@ function DownloadMenu({ downloads = [], children }) {
           {list.map((d) => {
             const isPrimary = d === primary;
             return (
-              <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => setOpen(false)}
+              <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => { setOpen(false); fireDl(); }}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors">
                 <span className={`shrink-0 ${isPrimary ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
                 <span className="min-w-0 flex-1 truncate">{d.label}</span>
@@ -331,7 +335,7 @@ export default function ProjectPage() {
           <p className="text-[var(--muted)] mt-1">{c.tagline}</p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
-          <DownloadMenu downloads={c.downloads} />
+          <DownloadMenu downloads={c.downloads} pkey={key} />
           {hasCatalog && <Link to={`/catalog?project=${key}`}><Button><Boxes size={16} /> {t('proj.browse')}</Button></Link>}
           {/* The way BACK to the editor, for somebody who may edit this page.
               The config has always been editable — in an admin section, reached from a menu,
@@ -731,13 +735,15 @@ function useLiveNumber(source) {
   }, [source]);
   return n;
 }
-function Counter({ cnt }) {
+function Counter({ cnt, pkey }) {
   const { t } = useI18n();
-  const kind = cnt.kind === 'countdown' || cnt.kind === 'live' ? cnt.kind : 'static';
+  const kind = ['countdown', 'live', 'downloads'].includes(cnt.kind) ? cnt.kind : 'static';
   const ms = useCountdownMs(kind === 'countdown' ? cnt.target : null);
-  const live = useLiveNumber(kind === 'live' ? cnt.source : null);
+  // 'downloads' reads the real click count for this project; 'live' reads an arbitrary URL.
+  const liveSrc = kind === 'live' ? cnt.source : (kind === 'downloads' && pkey ? `/projects/${pkey}/downloads/count` : null);
+  const live = useLiveNumber(liveSrc);
   let value = cnt.value;
-  if (kind === 'live') value = (live != null ? live.toLocaleString() : (cnt.value || '—'));
+  if (kind === 'live' || kind === 'downloads') value = (live != null ? live.toLocaleString() : (cnt.value || '—'));
   if (kind === 'countdown') {
     if (!cnt.target) return null;
     if (ms <= 0) value = cnt.doneLabel || cnt.value || '🎉';
@@ -767,7 +773,7 @@ function Overview({ c, pkey, progressUrl }) {
   // A counter is worth showing when it can actually render something: a value/label (static),
   // a target (countdown), or a source (live).
   const cc = c.counter;
-  const counter = cc && cc.enabled !== false && (cc.value || cc.label || (cc.kind === 'countdown' && cc.target) || (cc.kind === 'live' && cc.source)) ? cc : null;
+  const counter = cc && cc.enabled !== false && (cc.value || cc.label || (cc.kind === 'countdown' && cc.target) || (cc.kind === 'live' && cc.source) || cc.kind === 'downloads') ? cc : null;
   const hasAnything = c.media || c.replayUrl || featured.length || counter || prog;
   return (
     <div className="space-y-8">
@@ -776,7 +782,7 @@ function Overview({ c, pkey, progressUrl }) {
 
       {/* A headline number the project wants front and centre — downloads, members, a version,
           a live countdown — whatever the admin sets. */}
-      {counter && <Counter cnt={counter} />}
+      {counter && <Counter cnt={counter} pkey={pkey} />}
 
       {/* Highlights — updates, videos, live streams, announcements — the "more than a roadmap"
           part of the overview. */}
