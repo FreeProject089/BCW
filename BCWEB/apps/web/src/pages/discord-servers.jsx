@@ -495,9 +495,9 @@ function GuildConfig({ guildId, onSaved }) {
                 <div className="ps-2 ms-1 border-s-2 border-[var(--line)] space-y-1.5">
                   {pnl.roles.map((r, ri) => (
                     <div key={ri} className="flex flex-wrap items-center gap-1.5">
-                      <span className="!w-40 inline-block"><RolePicker roles={data.roles} value={r.roleId} onChange={(v) => setRole(ri, { roleId: v })} placeholder={t('ds.rp.roleid', 'Role ID')} /></span>
-                      <Input value={r.label} onChange={(e) => setRole(ri, { label: e.target.value.slice(0, 80) })} placeholder={t('ds.rp.label', 'Label')} className="!w-32" />
-                      <Input value={r.emoji} onChange={(e) => setRole(ri, { emoji: e.target.value.slice(0, 40) })} placeholder={t('ds.rp.emoji', 'Emoji')} className="!w-16" />
+                      <span className="flex-1 min-w-[130px] inline-block"><RolePicker roles={data.roles} value={r.roleId} onChange={(v) => setRole(ri, { roleId: v })} placeholder={t('ds.rp.roleid', 'Role ID')} /></span>
+                      <Input value={r.label} onChange={(e) => setRole(ri, { label: e.target.value.slice(0, 80) })} placeholder={t('ds.rp.label', 'Label')} className="flex-1 !min-w-[100px]" />
+                      <Input value={r.emoji} onChange={(e) => setRole(ri, { emoji: e.target.value.slice(0, 40) })} placeholder={t('ds.rp.emoji', 'Emoji')} className="!w-16 shrink-0" />
                       <button type="button" onClick={() => setP({ roles: pnl.roles.filter((_, k) => k !== ri) })} className="p-1.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
                     </div>
                   ))}
