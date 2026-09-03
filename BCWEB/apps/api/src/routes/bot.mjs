@@ -77,6 +77,19 @@ const DEFAULT_BOT_CONFIG = {
   // (Payment rows + bot.refundEvents).
   payments: { enabled: false, channelId: '', refundChannelId: '', channelIds: [], refundChannelIds: [] },
   limits: { maxTempChannels: 50, storageMB: 200 },
+  // How the bot builds its member database — a GLOBAL strategy the bot reads to decide what
+  // it stores across every server:
+  //   mode 'free'    → store members of every server for free. `scope` narrows WHO:
+  //                    'linked' (only members who linked a site account), 'active' (only
+  //                    members the bot has seen act), or 'all' (every member).
+  //   mode 'managed' → the paid, per-server model: each server opts into 'pool' (store
+  //                    members) or 'moderation' (Discord logs only) with its own byte budget
+  //                    (the BotGuild.memberMode rows + the per-server storage card).
+  //   mode 'unified' → store every member once, keyed by the person, with the list of the
+  //                    servers they share with the bot — instead of one row per server.
+  // 'managed' is the default: it is the only one that already has per-server budgets and
+  // does not grow the database by every member of every server the day it is turned on.
+  memberStorage: { mode: 'managed', scope: 'linked' },
   // Self-serve role panels — a rules post, or a "pick your pings" post, with the roles
   // attached to it as buttons or as a dropdown. Each entry:
   //   { id, channelId, title, body, asEmbed, color, mode: 'buttons'|'dropdown',

@@ -13796,6 +13796,55 @@ function AdminBot() {
         )}
       </div>
 
+      {/* Global member-storage strategy — how the bot builds its database across every
+          server. The three modes are mutually exclusive; 'free' reveals a WHO sub-choice. */}
+      <Card className="p-4 mb-4">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
+          <span className="font-medium text-sm">{t('db.ms.title', 'Member storage')}</span>
+        </div>
+        <p className="text-[11px] text-[var(--muted)] mb-3">{t('db.ms.sub', 'How the bot builds its member database across every server it is in.')}</p>
+        <div className="grid sm:grid-cols-3 gap-2">
+          {[
+            ['managed', Server, t('db.ms.managed', 'Per-server (recommended)'), t('db.ms.managed.d', 'Each server opts in on its own — a paid pool that stores members, or moderation logs only — with its own byte budget. Nothing is stored until a server turns it on.')],
+            ['free', Users, t('db.ms.free', 'Free — every server'), t('db.ms.free.d', 'Store members of every server the bot is in, for free. Choose who below. This can grow the database fast.')],
+            ['unified', Layers, t('db.ms.unified', 'Unified per person'), t('db.ms.unified.d', 'Store each person once, with the list of servers they share with the bot — instead of one row per server.')],
+          ].map(([mode, Icon, label, desc]) => {
+            const on = (cfg.memberStorage?.mode || 'managed') === mode;
+            return (
+              <button key={mode} type="button" onClick={() => set('memberStorage.mode', mode)}
+                className={`text-start rounded-xl border p-3 transition ${on ? 'border-[#5865F2] bg-[#5865F2]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon size={15} className={on ? 'text-[#5865F2]' : 'text-[var(--faint)]'} />
+                  <span className="text-sm font-medium">{label}</span>
+                  {on && <Check size={14} className="text-[#5865F2] ms-auto" />}
+                </div>
+                <p className="text-[11px] text-[var(--muted)] leading-snug">{desc}</p>
+              </button>
+            );
+          })}
+        </div>
+        {(cfg.memberStorage?.mode || 'managed') === 'free' && (
+          <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('db.ms.whotitle', 'Who to store')}</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['linked', t('db.ms.linked', 'Linked accounts only'), t('db.ms.linked.d', 'Only members who linked a site account.')],
+                ['active', t('db.ms.active', 'Active members'), t('db.ms.active.d', 'Only members the bot has seen do something.')],
+                ['all', t('db.ms.all', 'Everyone'), t('db.ms.all.d', 'Every member of every server.')],
+              ].map(([scope, label, desc]) => {
+                const on = (cfg.memberStorage?.scope || 'linked') === scope;
+                return (
+                  <button key={scope} type="button" onClick={() => set('memberStorage.scope', scope)} title={desc}
+                    className={`px-3 py-1.5 rounded-lg border text-xs transition ${on ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-warning flex items-center gap-1.5 mt-2"><AlertTriangle size={11} /> {t('db.ms.warn', 'Storing everyone across every server can grow the database quickly — the member-DB cap (Limits) still prunes the oldest inactive rows once full.')}</p>
+          </div>
+        )}
+      </Card>
+
       <BotGuildStorageCard />
       <BotLogsCard />
       <BotDMCard />
