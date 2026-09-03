@@ -90,6 +90,29 @@ const DEFAULT_BOT_CONFIG = {
   // 'managed' is the default: it is the only one that already has per-server budgets and
   // does not grow the database by every member of every server the day it is turned on.
   memberStorage: { mode: 'managed', scope: 'linked' },
+  // ── Economy / levelling (B-econ) ──────────────────────────────────────────
+  // A points + XP system the bot runs across every server: messages, reactions and voice time
+  // earn XP, XP earns levels (each level harder than the last), and levels hand out points that
+  // are spent in a bot shop or a casino. XP only accrues for people who have LINKED their
+  // Discord to a BCWEB account (or made one via Discord) — so a level maps to a real profile.
+  // All of it is off until enabled, and every rate/name/emoji is configured here. The per-user
+  // balances live in a real table (next phase); this is the configuration the bot reads.
+  economy: {
+    enabled: false,
+    currencyName: 'points',   // what one unit is called ("coins", "gems", …)
+    currencyEmoji: '',        // a Discord custom emoji <:name:id> or a unicode emoji; empty → image
+    currencyImage: '',        // fallback picture for the currency when no emoji is set
+    xpPerMessage: 5,
+    xpPerReaction: 1,
+    xpPerVoiceMinute: 3,
+    curveBase: 100,           // XP to clear level 1
+    curveFactor: 1.18,        // each level needs curveFactor× the previous — higher = slower
+    pointsEveryLevels: 5,     // grant points every N levels reached
+    pointsPerGrant: 10,       // how many points each grant is worth
+    statsPublic: true,        // are the voice/message/reaction counts public by default
+    shop: [],                 // [{ id, name, desc, cost, kind, payload }]
+    casino: { enabled: false, minBet: 1, maxBet: 100, houseEdgePct: 5 },
+  },
   // Self-serve role panels — a rules post, or a "pick your pings" post, with the roles
   // attached to it as buttons or as a dropdown. Each entry:
   //   { id, channelId, title, body, asEmbed, color, mode: 'buttons'|'dropdown',

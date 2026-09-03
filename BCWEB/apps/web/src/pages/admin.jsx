@@ -12870,6 +12870,7 @@ const BOT_PAGES = [
   ['community', 'Rules, panels & DMs', ShieldCheck],
   ['servers', 'Per-server', Server],
   ['members', 'Members', Users],
+  ['economy', 'Levels & economy', Sparkles],
   ['limits', 'Limits', Sliders],
 ];
 function BotModuleRail({ page, setPage }) {
@@ -13985,6 +13986,78 @@ function AdminBot() {
         </ModuleCard>
       </div>
       </>)}
+
+      {page === 'economy' && (() => {
+        const eco = cfg.economy || {};
+        const num = (path, def) => { const v = eco[path]; return v == null || v === '' ? def : v; };
+        // Preview the level curve so an admin sees how hard each level is before saving.
+        const base = Number(num('curveBase', 100)) || 100, factor = Number(num('curveFactor', 1.18)) || 1.18;
+        const xpFor = (lvl) => Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
+        return (<>
+        <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend. Only accrues for members who linked a BCWEB account.')} />
+        <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system — off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
+          {/* Currency */}
+          <div className="grid sm:grid-cols-3 gap-2">
+            <Field label={t('db.eco.curname', 'Currency name')}><Input value={g('economy.currencyName') || 'points'} onChange={(e) => set('economy.currencyName', e.target.value)} placeholder="points" /></Field>
+            <Field label={t('db.eco.curemoji', 'Currency emoji')} hint={t('db.eco.curemoji.h', 'A Discord custom emoji <:name:id> or a unicode emoji. Used in the bot’s messages.')}><Input value={g('economy.currencyEmoji')} onChange={(e) => set('economy.currencyEmoji', e.target.value)} placeholder="<:points:123…> or 💠" /></Field>
+            <Field label={t('db.eco.curimg', 'Currency image (fallback)')}><Input value={g('economy.currencyImage')} onChange={(e) => set('economy.currencyImage', e.target.value)} placeholder="/api/media/… or https://…" /></Field>
+          </div>
+          {/* XP rates */}
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-1">{t('db.eco.xp', 'XP rates')}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Field label={t('db.eco.xpmsg', 'XP per message')}><Input type="number" value={num('xpPerMessage', 5)} onChange={(e) => set('economy.xpPerMessage', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.xpreact', 'XP per reaction')}><Input type="number" value={num('xpPerReaction', 1)} onChange={(e) => set('economy.xpPerReaction', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.xpvoice', 'XP per voice minute')}><Input type="number" value={num('xpPerVoiceMinute', 3)} onChange={(e) => set('economy.xpPerVoiceMinute', Number(e.target.value))} /></Field>
+          </div>
+          {/* Level curve */}
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-1">{t('db.eco.curve', 'Level curve — higher factor = slower levelling')}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Field label={t('db.eco.base', 'XP for level 1')}><Input type="number" value={num('curveBase', 100)} onChange={(e) => set('economy.curveBase', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.factor', 'Curve factor (×/level)')}><Input type="number" step="0.01" value={num('curveFactor', 1.18)} onChange={(e) => set('economy.curveFactor', Number(e.target.value))} /></Field>
+          </div>
+          <div className="text-[11px] text-[var(--faint)] flex flex-wrap gap-x-3 gap-y-0.5">
+            {[1, 5, 10, 25, 50].map((lv) => <span key={lv}>{t('db.eco.lv', 'Lv {n}').replace('{n}', lv)}: <b className="text-[var(--muted)] tabular-nums">{xpFor(lv).toLocaleString()}</b> XP</span>)}
+          </div>
+          {/* Points */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+            <Field label={t('db.eco.ptsevery', 'Grant points every N levels')}><Input type="number" value={num('pointsEveryLevels', 5)} onChange={(e) => set('economy.pointsEveryLevels', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.ptsper', 'Points per grant')}><Input type="number" value={num('pointsPerGrant', 10)} onChange={(e) => set('economy.pointsPerGrant', Number(e.target.value))} /></Field>
+          </div>
+          <label className="flex items-center gap-2.5 text-sm cursor-pointer mt-1"><BotSwitch checked={eco.statsPublic !== false} onChange={(v) => set('economy.statsPublic', v)} /> <span>{t('db.eco.statspub', 'Voice / message / reaction stats are public by default')}</span></label>
+          <p className="text-[11px] text-[var(--faint)]">{t('db.eco.lvlpub', 'Levels are always public — they show on the member’s BCWEB profile and via /profile.')}</p>
+        </ModuleCard>
+
+        {/* Casino */}
+        <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d', 'Let members gamble points in solo/multi games. Configurable bet limits and house edge.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Field label={t('db.eco.minbet', 'Min bet')}><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.maxbet', 'Max bet')}><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.edge', 'House edge %')}><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
+          </div>
+        </ModuleCard>
+
+        {/* Shop */}
+        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d', 'What members can buy with points — promo codes, roles, and more.')} onToggle={null}
+          action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...(Array.isArray(eco.shop) ? eco.shop : []), { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'promo' }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
+          {(!Array.isArray(eco.shop) || eco.shop.length === 0) && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
+          {(Array.isArray(eco.shop) ? eco.shop : []).map((it, i) => (
+            <div key={it.id || i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+              <button onClick={() => set('economy.shop', eco.shop.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem] gap-2">
+                <Input value={it.name || ''} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, name: e.target.value } : x))} placeholder={t('db.eco.itemname', 'Item name')} />
+                <Input type="number" value={it.cost ?? 0} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, cost: Number(e.target.value) } : x))} placeholder={t('db.eco.cost', 'Cost')} />
+                <Select value={it.kind || 'promo'} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, kind: e.target.value } : x))}>
+                  <option value="promo">{t('db.eco.kind.promo', 'Promo code')}</option>
+                  <option value="role">{t('db.eco.kind.role', 'Discord role')}</option>
+                  <option value="custom">{t('db.eco.kind.custom', 'Custom')}</option>
+                </Select>
+              </div>
+              <Input value={it.desc || ''} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, desc: e.target.value } : x))} placeholder={t('db.eco.itemdesc', 'Short description')} />
+            </div>
+          ))}
+        </ModuleCard>
+        </>);
+      })()}
 
       {page === 'limits' && (<>
       <SectionTitle icon={Sliders} title={t('db.sec.limits', "Limits")} />
