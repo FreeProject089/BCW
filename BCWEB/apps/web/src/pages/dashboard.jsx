@@ -424,7 +424,10 @@ export function Dashboard() {
     { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined },
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
     { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
-    ...(discordGuilds ? [{ id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds }] : []),
+    // Always shown, not only when the user already has servers: the tab is also how someone
+    // with zero servers reaches the "Invite the bot" screen in the first place. The badge is
+    // the guild count when there is one.
+    { id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds || undefined },
     { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
     // The badge counts what is still WAITING, not what has been answered — a number that
     // goes down as you use it, rather than one that only ever grows and stops meaning anything.

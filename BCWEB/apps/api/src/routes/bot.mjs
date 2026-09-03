@@ -424,6 +424,19 @@ export default async function botRoutes(app) {
     return { config: await getBotConfig(p), restartAt: row?.value?.at || null };
   });
 
+  // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
+  // a secret — it is in every invite link — so the landing page and the user nav can offer an
+  // "Invite the bot" button without any auth-gated data. Null until the bot has sent at least
+  // one heartbeat (which carries its appId). The permission integer is the curated set the
+  // dashboard already uses, NOT Administrator.
+  app.get('/bot/invite', async (req, reply) => {
+    const p = await db();
+    const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+    const appId = status?.appId || null;
+    reply.header('Cache-Control', 'public, max-age=120');
+    return { appId, url: appId ? `https://discord.com/oauth2/authorize?client_id=${appId}&permissions=1099796925462&scope=bot%20applications.commands` : null };
+  });
+
   /**
    * The role panels that need posting or editing.
    *

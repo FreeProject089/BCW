@@ -2331,6 +2331,7 @@ const DICT = {
     // Starred repos & catalogs (star.*) + its dashboard tab
     'dash.starred': 'Favoris',
     'dash.discord': 'Serveurs Discord',
+    'home.botinvite': 'Ajoute notre bot Discord à ton serveur',
     // B10 — My Discord servers (user-facing per-server dashboard)
     'ds.title': 'Mes serveurs Discord', 'ds.invite': 'Inviter le bot',
     'ds.capacity': 'Stockage utilisé', 'ds.left': 'restant',

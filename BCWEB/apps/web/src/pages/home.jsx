@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 import { Link } from 'react-router-dom';
 import {
-  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban,
+  Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus,
 } from 'lucide-react';
 import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -402,6 +402,9 @@ export function Home({ draft = null }) {
           {heroNote(user, t) && (
             <p className="anim-slide text-[13px] text-[var(--faint)] mt-3.5" style={{ animationDelay: '280ms' }}>{heroNote(user, t)}</p>
           )}
+          {/* A Discord community runs alongside the site; the bot is how a server owner plugs
+              their own server into it. Only rendered once the bot is live (has an appId). */}
+          <div className="anim-slide mt-5" style={{ animationDelay: '300ms' }}><BotInviteButton /></div>
           {/* The projects, moving, under the one line that names the site. This is what the
               page opens with now: a paragraph is what a site says about itself, and what a
               visitor is deciding is whether the thing looks like something they want. */}
@@ -921,6 +924,23 @@ export function HomeCustomSections({ cfg, position }) {
         </section>
       ))}
     </>
+  );
+}
+
+// "Add our Discord bot" — a Discord-blurple button that deep-links to the bot's invite. The
+// URL comes from the public GET /bot/invite (built from the bot's own non-secret client_id);
+// it renders nothing until the bot is live, so a site whose bot has never come online does not
+// show a dead button.
+export function BotInviteButton({ className = '' }) {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/bot/invite').catch(() => null), []);
+  const url = data?.url;
+  if (!url) return null;
+  return (
+    <a href={url} target="_blank" rel="noreferrer"
+      className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#5865F2] hover:opacity-90 transition ${className}`}>
+      <MessageSquare size={16} /> {t('home.botinvite', 'Add our Discord bot to your server')} <Plus size={14} className="opacity-80" />
+    </a>
   );
 }
 
