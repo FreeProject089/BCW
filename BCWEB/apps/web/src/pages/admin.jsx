@@ -13909,14 +13909,16 @@ function AdminBot() {
       <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel — what you send by hand, where it lands, and the sources that post on their own.")} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
-        {/* Where each kind of announcement lands. Empty means the general channel, which is
-            what every existing install already does — so this whole card changes nothing until
-            somebody fills a box in. */}
+        {/* The composer is the tall card here; spanning it full-width stops the 2-col grid from
+            leaving a big empty gap beside it on wide screens, and gives its own fields more room.
+            The shorter cards below then fill the two columns cleanly. */}
+        <div className="md:col-span-2">
         <ModuleCard id="sec-announce" icon={Send} title={t('db.mod.announce', 'Write an announcement')}
           desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
           onToggle={null}>
           <AnnounceComposer guildList={guildList} />
         </ModuleCard>
+        </div>
 
         <ModuleCard id="sec-route" icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
           desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
