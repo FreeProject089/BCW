@@ -93,6 +93,13 @@
 		respond 404
 	}
 
+	# The API's own /og/* assets (e.g. the composed /og/profile/<id>.png card image) — served
+	# DIRECTLY by the API for everyone, never through the unfurl rewrite below. Must come before
+	# @unfurl so a crawler fetching the image gets the PNG, not the meta-tag HTML shell.
+	handle /og/* {
+		import api_upstream
+	}
+
 	# -- Link-unfurl prerender --
 	# Social/link-preview crawlers (Discord, Twitter/X, Slack, Telegram, WhatsApp,
 	# Facebook, …) don't run our SPA's JS, so a shared URL would only ever show the
@@ -104,7 +111,7 @@
 		# Link-unfurl bots ONLY — deliberately NOT search engines (Googlebot/Bingbot
 		# render JS and must get the indexable SPA, not this noindex redirect shell).
 		header_regexp User-Agent (?i)(discordbot|twitterbot|facebookexternalhit|facebot|slackbot|slack-imgproxy|telegrambot|whatsapp|linkedinbot|embedly|redditbot|pinterest|vkshare|skypeuripreview|nuzzel|bitlybot|iframely|mastodon|snapchat)
-		path / /blog/* /project/* /p/* /item/* /catalog /repos /hosting /projects
+		path / /blog/* /project/* /p/* /item/* /catalog /repos /hosting /projects /u/*
 	}
 	handle @unfurl {
 		rewrite * /og?u={uri}

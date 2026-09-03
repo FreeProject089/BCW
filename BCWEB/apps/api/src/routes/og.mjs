@@ -151,7 +151,9 @@ export async function metaForPath(path, lang = 'en') {
       select: { displayName: true, bio: true, profilePublic: true },
     }).catch(() => null);
     if (u && u.profilePublic) {
-      return { title: `${u.displayName} — BetterCommunity`, description: u.bio || `${u.displayName} on BetterCommunity.`, image: LOGO(), url, type: 'profile' };
+      // A composed card (banner + this member's avatar) rather than the bare site logo, so a
+      // shared profile unfurls as that person. Rendered by GET /og/profile/:id.png below.
+      return { title: `${u.displayName} — BetterCommunity`, description: u.bio || `${u.displayName} on BetterCommunity.`, image: `${SITE()}/og/profile/${encodeURIComponent(m[1])}.png`, url, type: 'profile' };
     }
   }
   // Known static pages get a tailored title but the shared site image.
@@ -261,5 +263,45 @@ export default async function ogRoutes(app) {
       .header('Cache-Control', 'public, max-age=300')
       .header('X-Robots-Tag', 'noindex') // this shell is for unfurlers, not search indexing
       .send(renderOgHtml(meta, lang));
+  });
+
+  // The composed profile card image (banner + this member's avatar + name), 1200x630 PNG. Only
+  // for a PUBLIC profile — a private one never renders a name/face, it just bounces to the logo.
+  // Rendered with @napi-rs/canvas, dynamically imported so a missing lib degrades ONLY this image
+  // (falls back to the site logo) instead of breaking the whole OG route.
+  app.get('/og/profile/:id', async (req, reply) => {
+    const id = String(req.params.id || '').replace(/\.(png|webp|jpe?g)$/i, '');
+    if (!id) return reply.redirect(LOGO());
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id }, select: { displayName: true, avatar: true, profilePublic: true } }).catch(() => null);
+    if (!u || !u.profilePublic) return reply.redirect(LOGO());
+    try {
+      const [{ createCanvas, loadImage }, { OG_BANNER_DATA_URI }] = await Promise.all([
+        import('@napi-rs/canvas'), import('../lib/og-banner-data.mjs'),
+      ]);
+      const W = 1200, H = 630;
+      const c = createCanvas(W, H); const x = c.getContext('2d');
+      try { const bg = await loadImage(OG_BANNER_DATA_URI); const s = Math.max(W / bg.width, H / bg.height); const bw = bg.width * s, bh = bg.height * s; x.drawImage(bg, (W - bw) / 2, (H - bh) / 2, bw, bh); } catch { x.fillStyle = '#0a0f1e'; x.fillRect(0, 0, W, H); }
+      const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, 'rgba(8,11,18,0.80)'); g.addColorStop(0.55, 'rgba(8,11,18,0.32)'); g.addColorStop(1, 'rgba(8,11,18,0.06)'); x.fillStyle = g; x.fillRect(0, 0, W, H);
+      const cx = 210, cy = H / 2, r = 120;
+      let drew = false;
+      if (u.avatar) { try { const src = /^(https?:|data:)/.test(u.avatar) ? u.avatar : `${SITE()}${u.avatar}`; const av = await loadImage(src); x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip(); x.drawImage(av, cx - r, cy - r, 2 * r, 2 * r); x.restore(); drew = true; } catch { /* fall through to boring avatar */ } }
+      if (!drew) {
+        let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+        const pal = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899']; const pick = (k) => pal[(h >> (k * 3)) % pal.length];
+        x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip();
+        x.fillStyle = pick(0); x.fillRect(cx - r, cy - r, 2 * r, 2 * r);
+        x.fillStyle = pick(1); x.beginPath(); x.arc(cx - 34, cy + 46, r * 0.95, 0, Math.PI * 2); x.fill();
+        x.fillStyle = pick(2); x.beginPath(); x.arc(cx + 58, cy - 34, r * 0.62, 0, Math.PI * 2); x.fill();
+        x.fillStyle = '#fff'; x.beginPath(); x.arc(cx - 26, cy - 12, 11, 0, Math.PI * 2); x.arc(cx + 26, cy - 12, 11, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = '#fff'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.arc(cx, cy + 12, 34, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+        x.restore();
+      }
+      x.strokeStyle = 'rgba(255,255,255,0.92)'; x.lineWidth = 7; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
+      // Text is best-effort: a font-less container must not blank the whole card.
+      try { x.fillStyle = '#fff'; x.font = 'bold 66px sans-serif'; x.fillText(String(u.displayName || 'Member').slice(0, 24), 380, cy - 6); x.fillStyle = 'rgba(255,255,255,0.82)'; x.font = '500 34px sans-serif'; x.fillText('BetterCommunity', 380, cy + 46); } catch { /* no font */ }
+      const png = await c.encode('png');
+      return reply.header('Content-Type', 'image/png').header('Cache-Control', 'public, max-age=3600').header('X-Robots-Tag', 'noindex').send(png);
+    } catch { return reply.redirect(LOGO()); }
   });
 }
