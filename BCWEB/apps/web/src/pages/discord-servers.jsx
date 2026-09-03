@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog } from '../ui/ui.jsx';
+import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select } from '../ui/ui.jsx';
 
 // B10 — the user-facing copy of the per-server Discord dashboard. A logged-in user who owns
 // (or holds Manage-Server on) a Discord server the bot is in configures it here: no admin
@@ -80,6 +80,13 @@ const normBlog = (bl = {}) => ({
     channelId: r.channelId || '', sources: (r.sources && r.sources.length ? r.sources : ['*']),
   })),
 });
+// Rule & role panels: a posted message with role buttons/dropdown. Roles are entered by id here
+// (like every other id in this dashboard) rather than picked, so no guild role list is needed.
+const normRp = (panels) => (Array.isArray(panels) ? panels : []).map((p) => ({
+  id: p.id || '', channelId: p.channelId || '', title: p.title || '', body: p.body || '',
+  asEmbed: p.asEmbed !== false, color: p.color || '#f59e0b', mode: p.mode === 'dropdown' ? 'dropdown' : 'buttons', multi: p.multi !== false,
+  roles: (Array.isArray(p.roles) ? p.roles : []).map((r) => ({ roleId: r.roleId || '', label: r.label || '', emoji: r.emoji || '', style: r.style || 'secondary', description: r.description || '' })),
+}));
 
 // The guild's stored members — read-only, searchable, paginated. Only rendered for a pool-mode
 // guild (the only mode that stores members). Strictly this one server: the endpoint pins the
@@ -170,7 +177,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog) }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -182,17 +189,19 @@ function GuildConfig({ guildId, onSaved }) {
   const jtcDirty = JSON.stringify(draft.jtc) !== JSON.stringify(normJtc(data.joinToCreate));
   const gatingDirty = JSON.stringify(draft.gating) !== JSON.stringify(normGating(data.gating));
   const blogDirty = JSON.stringify(draft.blog) !== JSON.stringify(normBlog(data.blog));
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty;
+  const rpDirty = JSON.stringify(draft.rp) !== JSON.stringify(normRp(data.rolePanels));
+  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   const setG = (patch) => setDraft((d) => ({ ...d, gating: { ...d.gating, ...patch } }));
   const setB = (routes) => setDraft((d) => ({ ...d, blog: { routes } }));
+  const setRp = (panels) => setDraft((d) => ({ ...d, rp: panels }));
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog });
-      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog) });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog, rolePanels: draft.rp });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog, rolePanels: r.rolePanels }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -355,6 +364,52 @@ function GuildConfig({ guildId, onSaved }) {
           </div>
         </div>
       )}
+
+      {/* Rule & role panels — owner-editable for THIS server. A posted message with role buttons
+          or a dropdown; roles are entered by id (like every other id here). */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <div className="flex items-center gap-2.5 text-sm font-medium"><ScrollText size={15} className="text-[var(--primary-2)]" /> {t('ds.rp', 'Rule & role panels')}</div>
+        <p className="text-[11px] text-[var(--faint)] mt-0.5">{t('ds.rp.h', 'A posted message with self-assign role buttons or a dropdown. Saving publishes it; the bot edits it in place when you change it.')}</p>
+        <div className="space-y-2 mt-3">
+          {draft.rp.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.rp.none', 'No panels yet — add one.')}</div>}
+          {draft.rp.map((pnl, i) => {
+            const setP = (patch) => setRp(draft.rp.map((x, k) => k === i ? { ...x, ...patch } : x));
+            const setRole = (ri, patch) => setP({ roles: pnl.roles.map((x, k) => k === ri ? { ...x, ...patch } : x) });
+            return (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                <button type="button" onClick={() => setRp(draft.rp.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] pe-6">{pnl.title || t('ds.rp.untitled', '(untitled panel)')} · {pnl.roles.length} {t('ds.rp.roles', 'roles')}</div>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <Input value={pnl.channelId} onChange={(e) => setP({ channelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder={t('ds.rp.chan', 'Channel ID')} />
+                  <Input value={pnl.title} onChange={(e) => setP({ title: e.target.value.slice(0, 256) })} placeholder={t('ds.rp.title', 'Title')} />
+                </div>
+                <Textarea rows={3} value={pnl.body} onChange={(e) => setP({ body: e.target.value.slice(0, 3800) })} placeholder={t('ds.rp.body', 'Message (Discord markdown — the rules go here)')} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={pnl.asEmbed} onChange={(e) => setP({ asEmbed: e.target.checked })} /> {t('ds.rp.embed', 'Embed')}</label>
+                  {pnl.asEmbed && <input type="color" value={pnl.color} onChange={(e) => setP({ color: e.target.value })} className="w-8 h-7 rounded border border-[var(--line)] bg-transparent p-0.5 cursor-pointer" title={t('ds.rp.color', 'Colour')} />}
+                  <Select className="!w-auto !py-1.5 text-xs" value={pnl.mode} onChange={(e) => setP({ mode: e.target.value })}>
+                    <option value="buttons">{t('ds.rp.buttons', 'Buttons')}</option>
+                    <option value="dropdown">{t('ds.rp.dropdown', 'Dropdown')}</option>
+                  </Select>
+                  {pnl.mode === 'dropdown' && <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={pnl.multi} onChange={(e) => setP({ multi: e.target.checked })} /> {t('ds.rp.multi', 'Several at once')}</label>}
+                </div>
+                <div className="ps-2 ms-1 border-s-2 border-[var(--line)] space-y-1.5">
+                  {pnl.roles.map((r, ri) => (
+                    <div key={ri} className="flex flex-wrap items-center gap-1.5">
+                      <Input value={r.roleId} onChange={(e) => setRole(ri, { roleId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) })} placeholder={t('ds.rp.roleid', 'Role ID')} className="!w-40" />
+                      <Input value={r.label} onChange={(e) => setRole(ri, { label: e.target.value.slice(0, 80) })} placeholder={t('ds.rp.label', 'Label')} className="!w-32" />
+                      <Input value={r.emoji} onChange={(e) => setRole(ri, { emoji: e.target.value.slice(0, 40) })} placeholder={t('ds.rp.emoji', 'Emoji')} className="!w-16" />
+                      <button type="button" onClick={() => setP({ roles: pnl.roles.filter((_, k) => k !== ri) })} className="p-1.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                  {pnl.roles.length < 25 && <Button size="sm" variant="ghost" onClick={() => setP({ roles: [...pnl.roles, { roleId: '', label: '', emoji: '', style: 'secondary', description: '' }] })}><Plus size={12} /> {t('ds.rp.addrole', 'Add a role')}</Button>}
+                </div>
+              </div>
+            );
+          })}
+          {draft.rp.length < 20 && <Button size="sm" variant="ghost" onClick={() => setRp([...draft.rp, { id: '', channelId: '', title: '', body: '', asEmbed: true, color: '#f59e0b', mode: 'buttons', multi: true, roles: [] }])}><Plus size={13} /> {t('ds.rp.add', 'Add a panel')}</Button>}
+        </div>
+      </div>
 
       {/* Blog announcements — owner-editable routes for THIS server only. Each posts the chosen
           blogs to a channel. A route with no channel is dropped on save. */}

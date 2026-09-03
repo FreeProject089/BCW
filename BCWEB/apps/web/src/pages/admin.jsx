@@ -12868,7 +12868,7 @@ function RolePanels({ panels, onChange, guildList }) {
     // randomUUID, not an index or the title: this id is how the bot remembers which posted
     // message belongs to this panel, so reordering or renaming must not change it.
     const id = (crypto.randomUUID?.() || String(Date.now()));
-    onChange([...panels, { id, channelId: '', title: '', body: '', asEmbed: true, color: '#f59e0b', mode: 'buttons', multi: true, roles: [] }]);
+    onChange([...panels, { id, guildId: '', channelId: '', title: '', body: '', asEmbed: true, color: '#f59e0b', mode: 'buttons', multi: true, roles: [] }]);
     setOpenId(id);
   };
   // Roles from every server the bot is in, deduplicated. A panel names a channel and the
@@ -12909,6 +12909,16 @@ function RolePanels({ panels, onChange, guildList }) {
                   <Field label={t('db.rp.channel', 'Channel id')}><Input value={p.channelId || ''} onChange={(e) => set(i, { channelId: e.target.value })} placeholder={t('db.f.chanid', 'Channel ID')} /></Field>
                   <Field label={t('db.rp.title', 'Title')}><Input value={p.title || ''} onChange={(e) => set(i, { title: e.target.value })} maxLength={256} /></Field>
                 </div>
+                {/* Assign the panel to a server so ITS owner can manage it from their own
+                    dashboard. Unassigned panels stay admin-only. */}
+                {guildList.length > 0 && (
+                  <Field label={t('db.rp.server', 'Server')} hint={t('db.rp.server.h', 'Set this so the server’s owner can edit this panel from their own dashboard. Leave unassigned to keep it admin-only.')}>
+                    <Select value={p.guildId || ''} onChange={(e) => set(i, { guildId: e.target.value })}>
+                      <option value="">{t('db.rp.server.none', 'Unassigned (admin-managed)')}</option>
+                      {guildList.map((gg) => <option key={gg.id} value={gg.id}>{gg.name}</option>)}
+                    </Select>
+                  </Field>
+                )}
                 <Field label={t('db.rp.body', 'Message')} hint={t('db.rp.body.h', 'Discord markdown. The rules themselves go here.')}>
                   <Textarea rows={5} value={p.body || ''} onChange={(e) => set(i, { body: e.target.value })} maxLength={3800} />
                 </Field>

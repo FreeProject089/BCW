@@ -1508,7 +1508,10 @@ export default async function botRoutes(app) {
     // Blog-announcement routes are a GLOBAL list, but each route already carries a guildId — so
     // an owner sees and edits only the routes stamped to THIS guild, never another server's.
     const blogRoutes = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
-    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes } };
+    // Role panels are global too, but each carries a guildId (admins assign it) — so an owner
+    // sees and edits only the panels assigned to THIS guild.
+    const rolePanels = (Array.isArray(cfg.rolePanels) ? cfg.rolePanels : []).filter((pnl) => pnl.guildId === g.guildId);
+    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels };
   });
 
   // The guild's stored members, for its OWNER — read-only, and STRICTLY scoped to this one
@@ -1616,6 +1619,24 @@ export default async function botRoutes(app) {
           sources: z.array(z.string().max(24)).max(12).optional().default(['*']),
         })).max(20).optional(),
       }).optional(),
+      // Rule & role panels for THIS guild. Same global-list-with-guildId merge as blog.
+      rolePanels: z.array(z.object({
+        id: z.string().max(64).optional(),
+        channelId: z.string().max(32).optional().default(''),
+        title: z.string().max(256).optional().default(''),
+        body: z.string().max(3800).optional().default(''),
+        asEmbed: z.boolean().optional().default(true),
+        color: z.string().max(9).optional().default('#f59e0b'),
+        mode: z.enum(['buttons', 'dropdown']).optional().default('buttons'),
+        multi: z.boolean().optional().default(true),
+        roles: z.array(z.object({
+          roleId: z.string().max(32).optional().default(''),
+          label: z.string().max(80).optional().default(''),
+          emoji: z.string().max(40).optional().default(''),
+          style: z.enum(['secondary', 'primary', 'success', 'danger']).optional(),
+          description: z.string().max(100).optional(),
+        })).max(30).optional().default([]),
+      })).max(20).optional(),
       // Deliberately NOT accepted here: hostingGroupId + storageQuotaBytes. Those are the
       // storage budget and stay on the admin path — the zod strip drops them silently, which
       // is the intended guard, not a bug.
@@ -1628,7 +1649,7 @@ export default async function botRoutes(app) {
     // The feature subtrees ride in the same body but live in a different store (the config
     // blob, not the BotGuild row), so split them out — passing them to botGuild.update would be
     // unknown columns.
-    const { welcome, joinToCreate, gating, blog, ...guildData } = b.data;
+    const { welcome, joinToCreate, gating, blog, rolePanels, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
@@ -1647,7 +1668,7 @@ export default async function botRoutes(app) {
     if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
     if (gating) featurePatch.gating = gating;
     const changed = Object.keys(featurePatch);
-    if (changed.length || blog) {
+    if (changed.length || blog || rolePanels) {
       const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
       const nextCfg = { ...raw };
       if (changed.length) {
@@ -1667,13 +1688,26 @@ export default async function botRoutes(app) {
           .filter((r) => r.channelId);
         nextCfg.blog = { ...(raw.blog || {}), routes: [...keep, ...mine] };
       }
+      if (rolePanels) {
+        // Same global-list-with-guildId merge as blog. Keep panels for other guilds / the admin's
+        // own un-assigned ones; replace this guild's with the owner's. Each panel keeps a stable
+        // id (the bot uses it to remember which posted message is this panel) — generate one if
+        // missing. A panel with no channel is dropped.
+        const existing = Array.isArray(raw.rolePanels) ? raw.rolePanels : [];
+        const keep = existing.filter((pnl) => pnl.guildId !== cur.guildId);
+        const mine = (rolePanels || [])
+          .filter((pnl) => (pnl.channelId || '').trim())
+          .map((pnl) => ({ ...pnl, id: pnl.id || (crypto.randomUUID?.() || String(Date.now()) + Math.random().toString(36).slice(2, 8)), channelId: pnl.channelId.trim(), guildId: cur.guildId }));
+        nextCfg.rolePanels = [...keep, ...mine];
+      }
       await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: nextCfg }, update: { value: nextCfg } });
     }
-    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}${blog ? ' +blog' : ''}`);
+    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}${blog ? ' +blog' : ''}${rolePanels ? ' +panels' : ''}`);
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     const cfg = await getBotConfig(p);
     const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
     const outBlog = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
-    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog } };
+    const outPanels = (Array.isArray(cfg.rolePanels) ? cfg.rolePanels : []).filter((pnl) => pnl.guildId === g.guildId);
+    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog }, rolePanels: outPanels };
   });
 }
