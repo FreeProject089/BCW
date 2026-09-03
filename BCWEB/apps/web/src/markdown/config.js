@@ -30,7 +30,7 @@ export const MarkdownConfig = createContext({
 
 const DEFAULTS = {
   /** `app:<key>` → an image URL. */
-  appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.png', installer: '/icons/bi.png', bc: '/logo.png' },
+  appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.svg', installer: '/icons/bi.svg', bc: '/logo.png' },
   /**
    * Where an icon that is not bundled comes from.
    *
