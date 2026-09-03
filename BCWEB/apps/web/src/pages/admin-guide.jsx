@@ -9,14 +9,24 @@
 // lives and changes as one block, and turning ~200 sentences into ~200 dictionary entries
 // somewhere else would make it harder to keep true, not easier. Rendered by the active lang,
 // the same pattern the site-theme token catalogue uses.
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
+  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown,
 } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
-import { Card, Input } from '../ui/ui.jsx';
+import { useAuth } from './auth.jsx';
+import { Card, Input, Button, Spinner, useToast } from '../ui/ui.jsx';
+import { api } from '../lib/api.js';
+import Markdown from '../ui/md.jsx';
+import { MarkdownEditor } from './blog.jsx';
+
+// Icons an admin can pick for a custom section (name → component), so a saved string maps
+// back to a glyph. Kept small and relevant to documentation.
+const GUIDE_ICONS = { FileText, BookOpen, Server, Shield, Settings2, CreditCard, Megaphone, Sparkles, KeyRound, HardDrive, Users, Boxes, Palette, Navigation };
+const iconOf = (name) => GUIDE_ICONS[name] || FileText;
 
 // One documented screen. `points` are the specific controls, rules and traps — the things a
 // tooltip is too small to hold.
@@ -220,34 +230,70 @@ const GUIDE = [
 
 export default function AdminGuide() {
   const { t, lang } = useI18n();
+  const { user } = useAuth();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(() => new Set());
-  const L = (o) => (lang === 'fr' ? o.fr : o.en);
+  const [expandAll, setExpandAll] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [custom, setCustom] = useState(null); // admin-authored Markdown sections
+  const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+  // Only ADMIN/SUPERADMIN reach this screen, but the Edit affordance is theirs specifically.
+  const canEdit = !!user && (user.role === 'ADMIN' || user.role === 'SUPERADMIN');
+
+  useEffect(() => {
+    api.get('/admin/settings')
+      .then((d) => setCustom(Array.isArray(d?.settings?.['guide.custom']) ? d.settings['guide.custom'] : []))
+      .catch(() => setCustom([]));
+  }, []);
+
+  // Custom sections join the built-in guide as one more group at the end, so a search and the
+  // expand-all control cover them too. Each carries Markdown bodies rendered by <Markdown>.
+  const merged = useMemo(() => {
+    const base = GUIDE.map((g) => ({ ...g, items: g.items.map((it) => ({ ...it, kind: 'builtin' })) }));
+    if (custom && custom.length) {
+      base.push({
+        heading: { en: 'Added by your team', fr: 'Ajouté par ton équipe' },
+        items: custom.map((c) => ({ ...c, icon: iconOf(c.icon), kind: 'custom' })),
+      });
+    }
+    return base;
+  }, [custom]);
 
   const query = q.trim().toLowerCase();
-  // Filter by title + body + points, keeping a group only if something in it matched.
   const groups = useMemo(() => {
-    if (!query) return GUIDE;
-    return GUIDE.map((g) => ({
+    if (!query) return merged;
+    return merged.map((g) => ({
       ...g,
       items: g.items.filter((it) => {
-        const hay = `${it.title.en} ${it.title.fr} ${it.body.en} ${it.body.fr} ${it.points.map((p) => p.en + ' ' + p.fr).join(' ')}`.toLowerCase();
+        const pts = it.kind === 'custom' ? '' : it.points.map((p) => p.en + ' ' + p.fr).join(' ');
+        const bodies = it.kind === 'custom' ? `${it.body?.en || ''} ${it.body?.fr || ''}` : `${it.body.en} ${it.body.fr}`;
+        const hay = `${it.title.en} ${it.title.fr} ${bodies} ${pts}`.toLowerCase();
         return hay.includes(query);
       }),
     })).filter((g) => g.items.length);
-  }, [query]);
+  }, [query, merged]);
 
   const toggle = (id) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allOpen = query.length > 0; // a search auto-expands what it found
+  const allOpen = query.length > 0 || expandAll; // a search auto-expands what it found
+
+  if (editing) return <GuideEditor initial={custom || []} onClose={() => setEditing(false)} onSaved={(v) => { setCustom(v); setEditing(false); }} />;
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><BookOpen size={16} className="text-[var(--primary-2)]" /> {t('ag.title', 'Admin guide')}</h2>
+      <div className="flex items-start gap-3 flex-wrap mb-1">
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><BookOpen size={16} className="text-[var(--primary-2)]" /> {t('ag.title', 'Admin guide')}</h2>
+        {canEdit && <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><Pencil size={13} /> {t('ag.edit', 'Edit guide')}</Button>}
+      </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('ag.sub', 'What every admin screen does, who sees the result, and the traps worth knowing — grouped like the sidebar.')}</p>
 
-      <div className="relative mb-4 max-w-md">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-        <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ag.search', 'Search the guide…')} />
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[220px] max-w-md">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ag.search', 'Search the guide…')} />
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setExpandAll((v) => !v)}>
+          {expandAll ? <><ChevronsDownUp size={13} /> {t('ag.collapse', 'Collapse all')}</> : <><ChevronsUpDown size={13} /> {t('ag.expand', 'Expand all')}</>}
+        </Button>
       </div>
 
       {groups.length === 0 && <Card className="p-6 text-sm text-[var(--muted)]">{t('ag.none', 'Nothing matches that.')}</Card>}
@@ -260,22 +306,33 @@ export default function AdminGuide() {
               {g.items.map((it) => {
                 const isOpen = allOpen || open.has(it.id);
                 const Icon = it.icon;
+                const count = it.kind === 'custom' ? 0 : it.points.length;
                 return (
                   <Card key={it.id} className="overflow-hidden">
                     <button type="button" onClick={() => toggle(it.id)} aria-expanded={isOpen}
                       className="w-full text-start p-3.5 flex items-start gap-3 hover:bg-[var(--surface-2)]/50 transition">
                       <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><Icon size={17} /></span>
                       <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-sm">{L(it.title)}</span>
-                        <span className="block text-[13px] text-[var(--muted)] leading-relaxed mt-0.5">{L(it.body)}</span>
+                        <span className="flex items-center gap-2">
+                          <span className="block font-semibold text-sm">{L(it.title)}</span>
+                          {it.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)]">{t('ag.customtag', 'custom')}</span>}
+                          {count > 0 && !isOpen && <span className="text-[10px] text-[var(--faint)]">· {t('ag.npoints', '{n} points').replace('{n}', count)}</span>}
+                        </span>
+                        <span className="block text-[13px] text-[var(--muted)] leading-relaxed mt-0.5">{it.kind === 'custom' ? '' : L(it.body)}</span>
                       </span>
+                      <ChevronDown size={16} className={`text-[var(--faint)] shrink-0 mt-1 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                     </button>
-                    {isOpen && it.points.length > 0 && (
+                    {isOpen && it.kind === 'builtin' && it.points.length > 0 && (
                       <ul className="px-3.5 pb-3.5 ps-[62px] space-y-1.5">
                         {it.points.map((p, i) => (
                           <li key={i} className="text-[13px] text-[var(--muted)] leading-relaxed list-disc marker:text-[var(--primary-2)]">{L(p)}</li>
                         ))}
                       </ul>
+                    )}
+                    {isOpen && it.kind === 'custom' && (
+                      <div className="px-3.5 pb-3.5 ps-[62px] prose-sm max-w-none text-[13px] text-[var(--muted)] leading-relaxed">
+                        <Markdown>{L(it.body) || '*—*'}</Markdown>
+                      </div>
                     )}
                   </Card>
                 );
@@ -284,6 +341,81 @@ export default function AdminGuide() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// The editor for custom Markdown sections. Kept in this file (next to what it edits) and only
+// reachable by an ADMIN. Bilingual title + body per section, reorderable, saved as one blob to
+// AdminSetting 'guide.custom' — the same list the guide reads and the API validates.
+function GuideEditor({ initial, onClose, onSaved }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [rows, setRows] = useState(() => initial.map((r) => ({ ...r })));
+  const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState('en');
+
+  const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
+  const setLoc = (i, field, locpatch) => set(i, { [field]: { ...(rows[i][field] || {}), ...locpatch } });
+  const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; const n = [...rows]; [n[i], n[j]] = [n[j], n[i]]; setRows(n); };
+  const add = () => setRows([...rows, { id: `sec-${Date.now().toString(36)}`, icon: 'FileText', heading: { en: 'Added by your team', fr: 'Ajouté par ton équipe' }, title: { en: '', fr: '' }, body: { en: '', fr: '' } }]);
+
+  const save = async () => {
+    // A section with no title is noise in the guide; drop empties rather than store them.
+    const clean = rows
+      .map((r) => ({ id: String(r.id || `sec-${Math.random().toString(36).slice(2)}`).slice(0, 60), icon: r.icon || 'FileText', heading: r.heading || { en: '', fr: '' }, title: r.title || { en: '', fr: '' }, body: r.body || { en: '', fr: '' } }))
+      .filter((r) => (r.title.en || r.title.fr || '').trim());
+    setBusy(true);
+    try {
+      await api.put('/admin/settings/guide.custom', { value: clean });
+      toast.success(t('ag.saved', 'Guide saved.'));
+      onSaved(clean);
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 flex-wrap mb-1">
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><Pencil size={16} className="text-[var(--primary-2)]" /> {t('ag.edit.title', 'Edit the admin guide')}</h2>
+        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+          {[['en', 'EN'], ['fr', 'FR']].map(([k, lbl]) => (
+            <button key={k} type="button" onClick={() => setTab(k)} className={`px-2.5 py-1 rounded-md ${tab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>
+          ))}
+        </div>
+        <Button size="sm" variant="ghost" onClick={onClose}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
+        <Button size="sm" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('ag.edit.sub', 'Extra sections written in Markdown, on top of the built-in guide. They show under “Added by your team”. Both languages — an empty FR falls back to EN.')}</p>
+
+      <div className="space-y-3">
+        {rows.map((r, i) => (
+          <Card key={i} className="p-3.5">
+            <div className="flex items-center gap-2 mb-2.5">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{(() => { const I = iconOf(r.icon); return <I size={15} />; })()}</span>
+              <Input className="!w-full flex-1" value={(r.title || {})[tab] || ''} onChange={(e) => setLoc(i, 'title', { [tab]: e.target.value })} placeholder={tab === 'fr' ? 'Titre de la section' : 'Section title'} />
+              <div className="flex items-center gap-0.5">
+                <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30"><ChevronUp size={14} /></button>
+                <button onClick={() => move(i, 1)} disabled={i === rows.length - 1} className="p-1.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30"><ChevronDown size={14} /></button>
+                <button onClick={() => setRows(rows.filter((_, n) => n !== i))} className="p-1.5 rounded text-error hover:bg-error-bg"><Trash2 size={14} /></button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[11px] text-[var(--faint)]">{t('ag.icon', 'Icon')}</span>
+              <div className="flex flex-wrap gap-1">
+                {Object.keys(GUIDE_ICONS).map((name) => { const I = GUIDE_ICONS[name]; return (
+                  <button key={name} type="button" onClick={() => set(i, { icon: name })} title={name}
+                    className={`p-1.5 rounded-lg border ${r.icon === name ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}><I size={14} /></button>
+                ); })}
+              </div>
+            </div>
+            <MarkdownEditor value={(r.body || {})[tab] || ''} onChange={(v) => setLoc(i, 'body', { [tab]: v })} minHeight={160}
+              placeholder={tab === 'fr' ? 'Écris la section en **markdown**…' : 'Write the section in **markdown**…'} />
+          </Card>
+        ))}
+      </div>
+
+      <Button variant="ghost" className="mt-3" onClick={add}><Plus size={14} /> {t('ag.addsection', 'Add a section')}</Button>
     </div>
   );
 }

@@ -2982,6 +2982,25 @@ export default async function miscRoutes(app) {
       await p.adminSetting.upsert({ where: { key: 'seo.pages' }, create: { key: 'seo.pages', value: parsed.data }, update: { value: parsed.data } });
       return { ok: true };
     }
+    // Custom admin-guide sections — extra bilingual, Markdown-bodied documentation an admin
+    // writes on top of the built-in guide. A LIST built by hand, so it is validated: bounded
+    // counts and lengths keep a runaway paste from bloating the settings blob, and every field
+    // is a plain string the guide renders through the same Markdown component as the blog.
+    if (req.params.key === 'guide.custom') {
+      const loc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
+      const secSchema = z.array(z.object({
+        id: z.string().trim().min(1).max(60),
+        icon: z.string().trim().max(40).optional().default(''),
+        heading: loc,
+        title: loc,
+        body: loc,
+      })).max(80);
+      const parsed = secSchema.safeParse(value);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
+      await p.adminSetting.upsert({ where: { key: 'guide.custom' }, create: { key: 'guide.custom', value: parsed.data }, update: { value: parsed.data } });
+      await logAudit(p, req.user.uid, 'guide.custom', `sections=${parsed.data.length}`);
+      return { ok: true };
+    }
     if (req.params.key === 'seo.gtmId' && value) {
       if (!/^(GTM-[A-Z0-9]{4,12}|G-[A-Z0-9]{6,14})$/i.test(String(value).trim())) {
         return reply.code(400).send({ error: 'bad_gtm_id' });
