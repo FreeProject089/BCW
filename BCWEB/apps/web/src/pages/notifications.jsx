@@ -123,9 +123,15 @@ export default function NotificationCentre() {
   const shown = (items || []).filter((n) => (filter === 'unread' ? !n.readAt : true));
   const unread = (items || []).filter((n) => !n.readAt).length;
 
-  const markAll = async () => {
+  const markAll = () => {
+    const prev = items;
     setItems((s) => s.map((x) => ({ ...x, readAt: x.readAt || new Date().toISOString() })));
-    try { await markAllNotifsRead(); } catch { load(); }
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: t('notif.markedall', 'Marked all read.'),
+      onCommit: async () => { try { await markAllNotifsRead(); } catch { load(); } },
+      onCancel: () => setItems(prev),
+    });
   };
   const remove = (n) => {
     // Optimistic hide, deferred delete. The row vanished immediately before this change too;

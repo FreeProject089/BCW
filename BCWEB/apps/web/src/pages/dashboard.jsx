@@ -46,6 +46,7 @@ function NotificationsPanel() {
   const { t } = useI18n();
   const nav = useNavigate();
   const dialog = useDialog();
+  const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/me/notifications'), []);
   // The list is held locally so an action shows IMMEDIATELY. It used to fire the request and
   // then refetch, which meant marking one read left it looking unread until the page was
@@ -62,9 +63,18 @@ function NotificationsPanel() {
   const list = items || [];
   const unread = list.filter((n) => !n.readAt).length;
   const stamp = () => new Date().toISOString();
-  const markAll = async () => {
+  // Deferred + undoable: the rows go read immediately (and vanish from the unread filter), but
+  // the write only fires when the undo window closes — so "Undo" is a plain restore, nothing to
+  // reverse server-side. The bell/centre update live when the commit broadcasts.
+  const markAll = () => {
+    const prev = items;
     setItems((s) => (s || []).map((x) => ({ ...x, readAt: x.readAt || stamp() })));
-    try { await markAllNotifsRead(); } catch { reload(); }
+    toast.action({
+      tone: 'success', cancelLabel: t('common.undo', 'Undo'),
+      msg: t('dash.notif.markedAll', 'Marked all read.'),
+      onCommit: async () => { try { await markAllNotifsRead(); } catch { reload(); } },
+      onCancel: () => setItems(prev),
+    });
   };
   // Marking read AND going where it points. Read-only rows made every notification a dead end:
   // the one telling you an ownership transfer is waiting could not take you to it.

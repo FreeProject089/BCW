@@ -1121,7 +1121,7 @@ const DICT = {
     'proj.legal.noneSub': 'Licence / CGU / Confidentialité / README se règlent dans le tableau de bord admin.',
     'proj.list.none': 'Aucun projet pour le moment',
     'proj.list.noneSub': 'Les projets mis en avant apparaîtront ici.',
-    'dash.notif.markAll': 'Tout marquer comme lu',
+    'dash.notif.markAll': 'Tout marquer comme lu', 'dash.notif.markedAll': 'Tout marqué comme lu.',
     'dash.notif.caughtUp': 'Tout est à jour',
     'dash.notif.caughtUpSub': "Tu n'as aucune notification.",
     'docs.comments.showReaders': 'Afficher le fil de commentaires aux lecteurs sur la page publiée',
@@ -1216,7 +1216,7 @@ const DICT = {
     'set.privacy.more': 'En savoir plus dans la', 'set.and': 'et la', 'set.saved': 'Enregistré.',
     'projects.sub': 'Plus depuis l’écosystème Better*.',
     'nav.signin': 'Connexion', 'nav.signout': 'Déconnexion', 'nav.notifications': 'Notifications',
-    'notif.none': 'Aucune notification', 'notif.markall': 'Tout marquer comme lu', 'notif.open': 'Ouvrir le tableau de bord', 'notif.justnow': "à l'instant",
+    'notif.none': 'Aucune notification', 'notif.markall': 'Tout marquer comme lu', 'notif.markedall': 'Tout marqué comme lu.', 'notif.open': 'Ouvrir le tableau de bord', 'notif.justnow': "à l'instant",
     'notif.clear': 'Effacer', 'notif.clearmenu.hint': 'Efface juste ce menu — elles reviendront la prochaine fois.', 'notif.clearall': 'Tout effacer', 'notif.clearall.confirm.t': 'Effacer toutes les notifications', 'notif.clearall.confirm.m': 'Ceci supprime définitivement toutes tes notifications. Continuer ?',
 
     'home.badge': 'BetterCommunity',
