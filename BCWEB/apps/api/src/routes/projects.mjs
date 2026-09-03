@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
-import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
+import { computeActivity, computeActivityFromCommits, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
@@ -37,10 +37,13 @@ async function getConfig(p, key) {
 const GH_REPO_RE = /github\.com\/([^/]+)\/([^/?#]+)/i;
 export function repoOf(cfg) {
   const rn = cfg?.releaseNotes;
-  if (rn?.owner && rn?.repo) return { owner: rn.owner, repo: String(rn.repo).replace(/\.git$/, '') };
+  // An optional branch for the activity heatmap. Empty ⇒ the default branch (the efficient
+  // /stats/* path); set ⇒ that branch, read via /commits (see the activity route).
+  const branch = String(cfg?.activity?.branch || '').trim() || null;
+  if (rn?.owner && rn?.repo) return { owner: rn.owner, repo: String(rn.repo).replace(/\.git$/, ''), branch };
   const url = cfg?.links?.github || cfg?.github || cfg?.community?.github || '';
   const m = String(url).match(GH_REPO_RE);
-  return m ? { owner: m[1], repo: m[2].replace(/\.git$/, '') } : null;
+  return m ? { owner: m[1], repo: m[2].replace(/\.git$/, ''), branch } : null;
 }
 
 /** Record a project-page snapshot under the config's own `version` string.
@@ -1018,6 +1021,27 @@ export default async function projectRoutes(app) {
     // The "include commit messages" toggle the feature asks for — applied to release notes.
     const includeMessages = req.query?.messages === '1' || req.query?.messages === 'true';
     try {
+      // A pinned branch can't use the /stats/* endpoints (default-branch only), so read it from
+      // /commits instead — paged back ~a year, capped at 10 pages so a busy repo can't turn one
+      // heatmap into a thousand API calls. Windowed totals, but it's the only way to see a branch.
+      if (src.branch) {
+        const sinceIso = new Date(Date.now() - 372 * 86400 * 1000).toISOString();
+        const base = `https://api.github.com/repos/${src.owner}/${src.repo}/commits?sha=${encodeURIComponent(src.branch)}&since=${sinceIso}&per_page=100`;
+        const commits = [];
+        for (let page = 1; page <= 10; page++) {
+          const batch = await gh(`${base}&page=${page}`).catch(() => []);
+          if (!Array.isArray(batch) || !batch.length) break;
+          commits.push(...batch);
+          if (batch.length < 100) break;
+        }
+        const releases = await gh(`https://api.github.com/repos/${src.owner}/${src.repo}/releases?per_page=100`).catch(() => []);
+        return {
+          source: { owner: src.owner, repo: src.repo, branch: src.branch },
+          computing: false,
+          ...computeActivityFromCommits(commits),
+          markers: releaseMarkers(releases, { includeMessages }),
+        };
+      }
       const [ca, cb, releases] = await Promise.all([
         ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/commit_activity`).catch(() => ({ data: [] })),
         ghStats(`https://api.github.com/repos/${src.owner}/${src.repo}/stats/contributors`).catch(() => ({ data: [] })),

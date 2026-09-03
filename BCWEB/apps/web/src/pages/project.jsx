@@ -4,7 +4,7 @@ import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
-  Play, Radio, Megaphone,
+  Play, Radio, Megaphone, GitBranch,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
@@ -526,7 +526,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
       {!!weeks.length && (
         <Card className="p-5 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <div className="text-sm font-semibold">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span></div>
+            <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span>{a.source?.branch && <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]" title={t('act.branch.h', 'This project pins a branch; the activity is read from its commits (a rolling year).')}><GitBranch size={10} /> {a.source.branch}</span>}</div>
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
               {t('act.less', 'Less')}
               {[0, 2, 4, 8, 13].map((n) => <span key={n} className="w-3 h-3 rounded-sm border border-[var(--line)]" style={{ backgroundColor: heatColor(n) }} />)}

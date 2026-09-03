@@ -494,6 +494,9 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
             ))}
           </div>
+          <Field label={t('pce.actbranch', 'Activity branch (optional)')} hint={t('pce.actbranch.h', 'The activity heatmap reads the repo’s default branch unless you name one here (e.g. dev). A pinned branch is read from its commits, so it shows a rolling ~year rather than all-time totals.')}>
+            <Input value={c.activity?.branch || ''} onChange={(e) => setIn('activity', { branch: e.target.value.trim() })} placeholder="main" />
+          </Field>
         </Section>
       </div>
     );
@@ -514,6 +517,9 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             <Field key={k} label={label}><Input value={links[k] || ''} onChange={(e) => setIn('links', { [k]: e.target.value })} placeholder="https://…" /></Field>
           ))}
         </div>
+        <Field label={t('pce.actbranch', 'Activity branch (optional)')} hint={t('pce.actbranch.h', 'The activity heatmap reads the repo’s default branch unless you name one here (e.g. dev). A pinned branch is read from its commits, so it shows a rolling ~year rather than all-time totals.')}>
+          <Input value={c.activity?.branch || ''} onChange={(e) => setIn('activity', { branch: e.target.value.trim() })} placeholder="main" />
+        </Field>
         {/* Custom links — as many as you want, each its own button with a chosen
             icon (lucide / simple:brand) + label. (The old single customLabel/
             customUrl pair is auto-migrated into this list on first edit.) */}

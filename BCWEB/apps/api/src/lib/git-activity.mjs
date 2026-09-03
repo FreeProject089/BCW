@@ -83,6 +83,72 @@ export function computeActivity(commitActivity, contributors) {
 }
 
 /**
+ * The BRANCH case. GitHub's /stats/* endpoints only ever describe the DEFAULT branch, so when a
+ * project pins a specific branch we build the same activity shape from /commits?sha=<branch>
+ * instead. It is a WINDOWED view — only the commits actually fetched (typically the trailing
+ * year the caller pages back to) — rather than the all-time totals the stats path gives, which
+ * is the honest trade for being able to see a non-default branch at all.
+ *
+ * @param commits GitHub /commits: [{ sha, commit:{author:{date},committer:{date}},
+ *                                     author:{login,avatar_url,html_url}|null }]
+ */
+export function computeActivityFromCommits(commits) {
+  const list = Array.isArray(commits) ? commits : [];
+  const dayCount = new Map();   // 'YYYY-MM-DD' → count
+  const byAuthor = new Map();   // login/name → { name, commits, avatar, url }
+  const byYear = {};
+  let firstTs = Infinity, lastTs = 0;
+  for (const c of list) {
+    const dateStr = c?.commit?.author?.date || c?.commit?.committer?.date;
+    if (!dateStr) continue;
+    const ts = Math.floor(new Date(dateStr).getTime() / 1000);
+    if (!Number.isFinite(ts)) continue;
+    firstTs = Math.min(firstTs, ts); lastTs = Math.max(lastTs, ts);
+    const d = iso(ts);
+    dayCount.set(d, (dayCount.get(d) || 0) + 1);
+    const y = new Date(ts * 1000).getUTCFullYear();
+    byYear[y] = (byYear[y] || 0) + 1;
+    // Prefer the GitHub login (carries an avatar + profile link); fall back to the raw commit
+    // author name for commits by an address not linked to a GitHub account.
+    const login = c?.author?.login;
+    const key = login || c?.commit?.author?.name || 'unknown';
+    const cur = byAuthor.get(key) || { name: login || c?.commit?.author?.name || 'unknown', commits: 0, avatar: c?.author?.avatar_url || null, url: c?.author?.html_url || null };
+    cur.commits += 1;
+    if (!cur.avatar && c?.author?.avatar_url) cur.avatar = c.author.avatar_url;
+    if (!cur.url && c?.author?.html_url) cur.url = c.author.html_url;
+    byAuthor.set(key, cur);
+  }
+  // Daily heatmap for the last 52 weeks, Sunday-aligned like /stats/commit_activity — so the
+  // page renders it identically whichever path produced it.
+  const heatmap = [];
+  let yearCommits = 0, activeDays = 0, busiest = { date: null, count: 0 };
+  const now = new Date();
+  const todaySec = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000;
+  const dow = new Date(todaySec * 1000).getUTCDay();
+  const startWeek = todaySec - dow * DAY - 51 * 7 * DAY;
+  for (let i = 0; i < 52 * 7; i++) {
+    const date = iso(startWeek + i * DAY);
+    const count = dayCount.get(date) || 0;
+    heatmap.push({ date, count });
+    yearCommits += count;
+    if (count > 0) activeDays += 1;
+    if (count > busiest.count) busiest = { date, count };
+  }
+  const contribList = [...byAuthor.values()].filter((c) => c.commits > 0).sort((a, b) => b.commits - a.commits);
+  const totalCommits = contribList.reduce((s, c) => s + c.commits, 0);
+  const perYear = Object.keys(byYear).map((y) => ({ year: Number(y), commits: byYear[y] })).sort((a, b) => a.year - b.year);
+  const hasSpan = firstTs !== Infinity && lastTs > 0;
+  const spanDays = hasSpan ? Math.round((lastTs - firstTs) / DAY) + 1 : 0;
+  return {
+    heatmap, yearCommits, activeDays, busiestDay: busiest.date ? busiest : null,
+    totalCommits, perYear, contributors: contribList,
+    firstCommit: hasSpan ? iso(firstTs) : null, lastCommit: hasSpan ? iso(lastTs) : null,
+    spanDays, spanMonths: Math.round(spanDays / 30.44), spanYears: spanDays ? +(spanDays / 365.25).toFixed(1) : 0,
+    windowed: true, // the page can note these are branch-window totals, not all-time
+  };
+}
+
+/**
  * Dated markers to pin on the timeline, from GitHub /releases. `includeMessages` decides
  * whether the release body travels (the "include commit messages" toggle the feature asks
  * for, applied to release notes here).
