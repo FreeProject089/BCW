@@ -13718,8 +13718,9 @@ function AdminBot() {
       {/* Token + member DB usage, side by side */}
       <div className="grid md:grid-cols-2 gap-4 mb-2">
         <Card className="p-4">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Lock size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('db.token', 'Bot token')}</span>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Lock size={13} className="text-[var(--primary-2)]" /></span>
+            <span className="font-medium text-sm">{t('db.token', 'Bot token')}</span>
             {data?.hasToken ? <Badge tone="green"><CheckCircle2 size={10} /> {t('db.set', 'Set')}</Badge> : <Badge tone="amber">{t('db.notset', 'Not set')}</Badge>}
           </div>
           {data?.tokenFromEnv ? (
@@ -13752,8 +13753,8 @@ function AdminBot() {
 
         {data?.storage && (
           <Card className="p-4">
-            <div className="flex items-center justify-between mb-1.5"><span className="font-medium text-sm flex items-center gap-2"><HardDrive size={14} className="text-[var(--primary-2)]" /> {t('db.memberdb', 'Member database')}</span>
-              <span className="text-xs text-[var(--muted)]">{data.storage.memberCount} {t('db.tracked', 'tracked')}</span></div>
+            <div className="flex items-center justify-between mb-2 gap-2"><span className="font-medium text-sm flex items-center gap-2"><span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><HardDrive size={13} className="text-[var(--primary-2)]" /></span> {t('db.memberdb', 'Member database')}</span>
+              <span className="text-xs text-[var(--muted)] shrink-0">{data.storage.memberCount} {t('db.tracked', 'tracked')}</span></div>
             {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
               <>
                 <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
