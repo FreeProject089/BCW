@@ -8,13 +8,23 @@ import { api } from '../api.mjs';
 const CHUNK = 500;
 
 export async function scanAllMembers(client) {
+  // The GLOBAL member-storage strategy decides which guilds are worth a full roster fetch.
+  const cfg = await api.getConfig().catch(() => ({}));
+  const ms = cfg?.memberStorage || { mode: 'managed', scope: 'linked' };
   let total = 0;
   for (const guild of client.guilds.cache.values()) {
-    // B4: only guilds the admin opted into `pool` store members. Check the mode BEFORE the
-    // (expensive, privileged) full-roster fetch — this is what stops the bot pulling a million
-    // members for a server that stores nothing. `none`/`moderation` guilds are skipped entirely.
-    const mode = await api.guildMode(guild.id);
-    if (mode !== 'pool') continue;
+    if (ms.mode === 'free') {
+      // 'active' means "only members the bot has seen act" — a full roster scan would store
+      // inactive members too, so skip it and let activity/event writes populate the DB. 'all'
+      // and 'linked' full-scan every guild; the API applies the who-filter on sync.
+      if (ms.scope === 'active') continue;
+    } else {
+      // 'managed' (and, for now, 'unified'): only guilds the admin opted into `pool` store
+      // members. Check the mode BEFORE the (expensive, privileged) full-roster fetch — this is
+      // what stops the bot pulling a million members for a server that stores nothing.
+      const mode = await api.guildMode(guild.id);
+      if (mode !== 'pool') continue;
+    }
     let members;
     try { members = await guild.members.fetch(); } catch (e) { console.warn(`[bot] member scan failed for ${guild.name}:`, e.message); continue; }
     const roster = [];

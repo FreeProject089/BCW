@@ -1429,16 +1429,36 @@ export default async function botRoutes(app) {
     // big the server actually is, and a `none` guild still reports its size to the dashboard.
     if (b.data.memberCount != null) await p.botGuild.update({ where: { guildId: g.guildId }, data: { memberCount: b.data.memberCount } }).catch(() => {});
 
-    const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
-    const gate = admitMembers(g.memberMode, stored, memberCapacity(g.storageQuotaBytes), b.data.members.length);
+    // The GLOBAL member-storage strategy overrides the per-guild gate. 'managed' (default) is
+    // the per-server model — a guild stores only when opted into `pool`, against its own budget.
+    // 'free' stores in EVERY guild against the shared limits.storageMB budget, narrowed by scope
+    // ('linked' keeps only members who linked a site account). 'unified' is not wired on the data
+    // model yet, so it falls back to the managed per-guild behaviour.
+    const cfg = await getBotConfig(p);
+    const ms = cfg.memberStorage || { mode: 'managed', scope: 'linked' };
+    let members = b.data.members;
+    let effMode = g.memberMode, stored, capacity;
+    if (ms.mode === 'free') {
+      effMode = 'pool';
+      if (ms.scope === 'linked') {
+        const linked = new Set((await p.discordLink.findMany({ where: { discordId: { in: members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
+        members = members.filter((m) => linked.has(m.discordId));
+      }
+      stored = await p.discordActivity.count(); // one shared budget across every guild
+      capacity = memberCapacity((Number(cfg.limits?.storageMB) || 0) * 1024 * 1024);
+    } else {
+      stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
+      capacity = memberCapacity(g.storageQuotaBytes);
+    }
+    const gate = admitMembers(effMode, stored, capacity, members.length);
     if (!gate.store) return { ok: true, stored: false, reason: gate.reason, mode: g.memberMode };
 
     let synced = 0;
     // Update rows we already hold FIRST (they cost no new budget), then admit new ones only
     // while there is room — so a full guild keeps its existing members fresh but stops growing.
-    const existing = new Set((await p.discordActivity.findMany({ where: { guildId: g.guildId, discordId: { in: b.data.members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
+    const existing = new Set((await p.discordActivity.findMany({ where: { guildId: g.guildId, discordId: { in: members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
     let room = gate.room;
-    for (const m of b.data.members) {
+    for (const m of members) {
       const isNew = !existing.has(m.discordId);
       if (isNew && room !== Infinity && room <= 0) continue; // budget full — count real size, store no more
       const joinedAt = m.joinedAt ? new Date(m.joinedAt) : null;
