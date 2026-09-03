@@ -13657,15 +13657,24 @@ function AdminBot() {
             </span>
             <span className="text-sm font-medium">{cfg.enabled !== false ? t('db.enabled', 'Bot enabled') : t('db.disabled', 'Bot disabled')} <span className="text-[var(--faint)] font-normal">· {t('db.master', 'master switch')}</span></span>
           </label>
-          <div className="flex items-center gap-4 text-xs text-[var(--muted)] flex-wrap">
-            <span><b className="text-[var(--text)]">{status?.guilds ?? '—'}</b> {t('db.servers', 'servers')}</span>
-            <span><b className="text-[var(--text)]">{status?.users ?? '—'}</b> {t('db.users', 'users')}</span>
-            <span><b className="text-[var(--text)]">{status?.tempChannels ?? 0}</b> {t('db.tempvoice', 'temp voice')}</span>
-            {online ? <>
-              <span><b className="text-[var(--text)]">{status?.ping != null ? `${status.ping}ms` : '—'}</b> {t('db.ping', 'ping')}</span>
-              <span><b className="text-[var(--text)]">{status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—'}</b> {t('db.uptime', 'uptime')}</span>
-            </> : (
-              <span className="flex items-center gap-1 text-[var(--faint)]"><Clock size={11} /> {lastSeen ? t('db.lastseen', 'last seen {t} ago').replace('{t}', lastSeen) : t('db.neverseen', 'never connected')}</span>
+          {/* Live stats as clean tiles — a proper dashboard readout rather than a run-on line. */}
+          <div className="flex items-stretch gap-1.5 flex-wrap">
+            {[
+              [status?.guilds ?? '—', t('db.servers', 'servers')],
+              [status?.users ?? '—', t('db.users', 'users')],
+              [status?.tempChannels ?? 0, t('db.tempvoice', 'temp voice')],
+              ...(online ? [
+                [status?.ping != null ? `${status.ping}ms` : '—', t('db.ping', 'ping')],
+                [status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—', t('db.uptime', 'uptime')],
+              ] : []),
+            ].map(([v, l], i) => (
+              <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-1.5 text-center min-w-[62px]">
+                <div className="text-base font-bold tabular-nums leading-none text-[var(--text)]">{v}</div>
+                <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">{l}</div>
+              </div>
+            ))}
+            {!online && (
+              <div className="rounded-lg border border-[var(--line)] px-3 py-1.5 flex items-center gap-1.5 text-xs text-[var(--faint)]"><Clock size={12} /> {lastSeen ? t('db.lastseen', 'last seen {t} ago').replace('{t}', lastSeen) : t('db.neverseen', 'never connected')}</div>
             )}
           </div>
         </div>
