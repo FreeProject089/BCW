@@ -2355,6 +2355,8 @@ const DICT = {
     'ds.wc.bgimg.h2': 'Remplace la couleur. Téléverse une image directement ici — elle est stockée sur le site (un lien /api/media/…), donc contrôlable et supprimable.',
     'ds.wc.bgimg.upload': 'Téléverser',
     'ds.nopool.t': 'Aucune pool de stockage assignée', 'ds.nopool.s': 'Ce mode stocke les membres, mais ce serveur n’a pas encore d’allocation de stockage — donc rien n’est réellement conservé. Demande à un admin d’assigner une pool à ce serveur, ou passe en « logs de modération seulement ».',
+    'ds.gstore.unified': 'Les membres sont stockés à l’échelle du site (une entrée par personne, unifiée entre serveurs) par un réglage admin — le choix ci-dessous n’est pas utilisé pour le stockage sur ce serveur.',
+    'ds.gstore.free': 'Les membres sont stockés à l’échelle du site par un réglage admin — le choix ci-dessous n’est pas utilisé pour le stockage sur ce serveur. Les logs de modération le suivent quand même.',
     'ds.wc.bgimg.bad': 'Ce n’est pas un lien média téléversé — il doit commencer par /api/media/. La couleur sera utilisée à la place.',
     'ds.wc.uploads': 'Ouvrir la page Téléversements',
     'ds.jtc': 'Vocal « rejoindre pour créer »',

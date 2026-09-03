@@ -1580,7 +1580,10 @@ export default async function botRoutes(app) {
     // Role panels are global too, but each carries a guildId (admins assign it) — so an owner
     // sees and edits only the panels assigned to THIS guild.
     const rolePanels = (Array.isArray(cfg.rolePanels) ? cfg.rolePanels : []).filter((pnl) => pnl.guildId === g.guildId);
-    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels };
+    // The GLOBAL member-storage strategy (set by an admin). When it is 'free' or 'unified', the
+    // bot stores members regardless of this server's own per-server choice — so the owner's
+    // dashboard can say the choice is overridden rather than looking broken.
+    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels, globalStorage: { mode: cfg.memberStorage?.mode || 'managed' } };
   });
 
   // The guild's stored members, for its OWNER — read-only, and STRICTLY scoped to this one

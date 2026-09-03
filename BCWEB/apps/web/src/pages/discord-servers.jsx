@@ -259,6 +259,18 @@ function GuildConfig({ guildId, onSaved }) {
       </div>
 
       {section === 'storage' && <>
+      {/* When the admin has chosen a global storage strategy, it overrides this per-server
+          choice — so say so instead of letting the selector look like it decides. */}
+      {(data.globalStorage?.mode === 'free' || data.globalStorage?.mode === 'unified') && (
+        <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-3 flex items-start gap-2.5">
+          <Database size={15} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+          <div className="text-xs text-[var(--muted)]">
+            {data.globalStorage.mode === 'unified'
+              ? t('ds.gstore.unified', 'Members are stored site-wide (one entry per person, unified across servers) by an admin setting — the choice below is not used for storage on this server.')
+              : t('ds.gstore.free', 'Members are stored site-wide by an admin setting — the choice below is not used for storage on this server. Moderation logs still follow it.')}
+          </div>
+        </div>
+      )}
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('ds.mode', 'How the bot handles your members')}</div>
       <div className="grid sm:grid-cols-3 gap-2 mb-4">
         {MODES.map((m) => {
