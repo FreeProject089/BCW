@@ -302,11 +302,17 @@ function GuildConfig({ guildId, onSaved }) {
       {showBudget && (
         (g.capacity && (g.capacity.unlimited || g.capacity.cap))
           ? <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>
-          : <div className="mb-4 rounded-xl border border-warning-border bg-warning/[0.08] p-3 flex items-start gap-2.5">
-              <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
-              <div className="text-xs text-[var(--muted)] min-w-0">
-                <div className="text-sm font-medium text-warning">{t('ds.nopool.t', 'No storage pool assigned')}</div>
-                {t('ds.nopool.s', 'This mode stores members, but this server has no storage allowance yet — so nothing is actually kept. Ask an admin to assign a storage pool to this server, or switch to “moderation logs only”.')}
+          : <div className="mb-4 rounded-xl border border-warning-border bg-warning/[0.08] p-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
+                <div className="text-xs text-[var(--muted)] min-w-0">
+                  <div className="text-sm font-medium text-warning">{t('ds.nopool.t', 'No storage pool assigned')}</div>
+                  {t('ds.nopool.s2', 'This mode stores members, but this server has no storage pool yet — so nothing is actually kept. Get a storage pool to hold them, or switch to “moderation logs only”.')}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mt-2.5 ps-[26px]">
+                <Link to="/hosting"><Button size="sm" variant="primary"><Gauge size={13} /> {t('ds.nopool.buy', 'Get a storage pool')}</Button></Link>
+                <span className="text-[11px] text-[var(--faint)]">{t('ds.nopool.or', 'or ask an admin to assign one to this server')}</span>
               </div>
             </div>
       )}

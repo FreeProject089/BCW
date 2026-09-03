@@ -16516,7 +16516,7 @@ function OgPreviewCard() {
     : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))', ...style }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>);
 
   return (
-    <Card className="p-4 mt-3">
+    <Card className="p-4 mt-3 mb-4">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('ogp.prev.title', 'Link preview')}</div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub2', 'The same tags, rendered the way each platform actually shows them. Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
 
@@ -16611,6 +16611,7 @@ function SeoPagesCard() {
     finally { setBusy(false); }
   };
 
+  const host = (typeof window !== 'undefined' && window.location?.host) || 'bettercommunity.ch';
   if (!rows) return <Card className="p-4 mb-4"><Spinner /></Card>;
   return (
     <Card className="p-4 mb-4">
@@ -16652,6 +16653,18 @@ function SeoPagesCard() {
                   ? <span className="text-warning">{t('ogp.long', 'Over ~160 characters is cut off in most previews.')}</span>
                   : t('ogp.count', '{n} / ~160 characters').replace('{n}', String(Math.max((r.description || '').length, (r.descriptionFr || '').length)))}
               </div>
+              {/* A live preview of THIS page's card, so an override is seen the way it unfurls
+                  rather than only as form fields. Discord-style chrome, hardcoded greys. */}
+              {(r.title || r.titleFr || r.description || r.descriptionFr || r.image) && (
+                <div className="mt-2 w-full max-w-[380px] rounded-md overflow-hidden" style={{ background: '#2b2d31', border: '1px solid #1e1f22', borderLeft: '4px solid #5865F2' }}>
+                  <div className="p-2.5">
+                    <div className="text-[10px] truncate" style={{ color: '#b5bac1' }}>{host}{r.path || ''}</div>
+                    <div className="text-xs font-semibold mt-0.5" style={{ color: '#00a8fc' }}>{r.title || r.titleFr || 'BetterCommunity'}</div>
+                    {(r.description || r.descriptionFr) && <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: '#dbdee1' }}>{r.description || r.descriptionFr}</div>}
+                    {r.image && <img src={r.image} alt="" className="mt-1.5 w-full rounded" style={{ aspectRatio: '1200 / 630', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>}
