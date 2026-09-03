@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -39,6 +39,50 @@ const SUBMIT_INIT = { projectKey: 'bmm', kind: 'PLUGIN', name: '', description: 
 import { NOTIF, NOTIF_FALLBACK } from '../ui/notif.js';
 import { lazyNamed } from '../lib/lazy-chunk.js';
 export { NOTIF, NOTIF_FALLBACK };
+
+// The member's Discord level, XP progress and spendable points — from /me/economy. Renders
+// nothing until the economy is enabled and they've earned some XP (so it never shows an empty
+// "Level 0" to someone who has never used Discord).
+function EconomyWidget() {
+  const { t } = useI18n();
+  const [d, setD] = useState(null);
+  useEffect(() => { api.get('/me/economy').then(setD).catch(() => setD({ enabled: false })); }, []);
+  if (!d || !d.enabled || (d.level === 0 && d.xp === 0)) return null;
+  const cur = d.currency?.name || 'points';
+  const pct = d.xpForNext > 0 ? Math.min(100, Math.round((d.xpThisLevel / d.xpForNext) * 100)) : 0;
+  const stats = d.stats || {};
+  const toggleStats = async () => {
+    const next = !stats.public;
+    setD((v) => ({ ...v, stats: { ...v.stats, public: next } }));
+    try { await api.put('/me/economy/stats-public', { public: next }); } catch { setD((v) => ({ ...v, stats: { ...v.stats, public: !next } })); }
+  };
+  return (
+    <Card className="p-4 mb-6">
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white text-lg font-bold shrink-0">{d.level}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold flex items-center gap-2"><Sparkles size={14} className="text-[var(--primary-2)]" /> {t('eco.w.level', 'Level {n}').replace('{n}', d.level)}
+            <span className="text-xs text-[var(--faint)] font-normal">· {(d.points || 0).toLocaleString()} {cur}</span>
+          </div>
+          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5">
+            <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="text-[11px] text-[var(--faint)] mt-1 tabular-nums">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP {t('eco.w.next', 'to next level')}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-wrap mt-3 pt-3 border-t border-[var(--line)] text-[12px] text-[var(--muted)]">
+        <span className="flex items-center gap-1.5"><MessageSquare size={13} className="text-[var(--faint)]" /> {(stats.messages || 0).toLocaleString()}</span>
+        <span className="flex items-center gap-1.5"><Sparkles size={13} className="text-[var(--faint)]" /> {(stats.reactions || 0).toLocaleString()}</span>
+        <span className="flex items-center gap-1.5"><Mic size={13} className="text-[var(--faint)]" /> {Math.floor((stats.voiceSeconds || 0) / 3600)}h</span>
+        <div className="flex-1" />
+        <label className="flex items-center gap-1.5 text-[11px] cursor-pointer select-none" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
+          <input type="checkbox" className="accent-[var(--primary)]" checked={stats.public !== false} onChange={toggleStats} /> {t('eco.w.pub', 'Stats public')}
+        </label>
+      </div>
+    </Card>
+  );
+}
+
 function NotificationsPanel() {
   // Wrapping two strings in t() last pass put a call into a scope that had never needed the
   // hook — the page crashed on render with "t is not defined", and the build said nothing:
@@ -472,6 +516,7 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
+            <EconomyWidget />
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
               {stats.map((st) => <Card key={st.label} className="p-5"><st.icon size={18} className={st.tone || 'text-[var(--primary-2)]'} />
                 <div className="text-3xl font-bold mt-3">{st.value}</div><div className="text-xs text-[var(--muted)] mt-0.5">{st.label}</div></Card>)}

@@ -2274,6 +2274,7 @@ const DICT = {
     'pp.shared': 'Lien du profil copié.', 'pp.privatebadge': 'privé', 'pp.joined': 'Inscrit·e en', 'pp.share': 'Partager',
     'pp.badges': 'Badges', 'pp.repos': 'Repos publics', 'pp.norepos': 'Aucun repo public.',
     'pp.level': 'Niveau {n}', 'pp.discord': 'Activité Discord', 'pp.eco.level': 'niveau', 'pp.eco.msgs': 'messages', 'pp.eco.reacts': 'réactions', 'pp.eco.voice': 'en vocal',
+    'eco.w.level': 'Niveau {n}', 'eco.w.next': 'jusqu’au niveau suivant', 'eco.w.pub': 'Stats publiques', 'eco.w.pub.h': 'Afficher ces stats sur ton profil public (ton niveau est toujours public).',
     'pp.catalogs': 'Catalogues publics', 'pp.nocatalogs': 'Aucun catalogue public.',
     // Recherche de membres
     'us.title': 'Trouver des membres', 'us.sub': 'Cherche des membres BetterCommunity par nom et ouvre leur profil public.',
