@@ -76,6 +76,10 @@ export const api = {
   // B-econ: report buffered activity deltas (messages / reactions / voice seconds) so the API can
   // turn them into XP + levels. Best-effort — a dropped batch just means that minute's XP is lost.
   accrueEconomy: (events) => call('POST', '/bot/economy/accrue', { events }).catch(() => ({})),
+  economyConfig: () => call('GET', '/bot/economy/config').then((r) => r.economy || {}).catch(() => ({})),
+  economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
+  economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
+  economyCasino: (discordId, bet, multiplier) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier }).catch(() => ({ ok: false, error: 'network' })),
 
   // Warnings go through the site so the count, the ladder and the record are in one place —
   // a bot keeping its own tally would disagree with the admin screen the first time either

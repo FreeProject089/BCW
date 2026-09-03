@@ -40,6 +40,13 @@ export const commandData = [
   // Always available — even in a banned server, since finding the appeal reference is the one
   // thing a moderator of a banned server needs the bot to still do.
   new SlashCommandBuilder().setName('appeal').setDescription('If this server is blocked from the bot, get your appeal reference and how to contest it'),
+  // B-econ: levelling / economy commands.
+  new SlashCommandBuilder().setName('level').setDescription('Show your level, XP and points'),
+  new SlashCommandBuilder().setName('profile').setDescription('Show a member’s BetterCommunity profile')
+    .addUserOption((o) => o.setName('member').setDescription('The member (defaults to you)')),
+  new SlashCommandBuilder().setName('shop').setDescription('Browse the points shop'),
+  new SlashCommandBuilder().setName('casino').setDescription('Bet points on a coin flip')
+    .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet').setRequired(true).setMinValue(1)),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
@@ -62,6 +69,10 @@ export async function handleInteraction(i) {
     if (i.commandName === 'warn') return cmdWarn(i);
     if (i.commandName === 'warnings') return cmdWarnings(i);
     if (i.commandName === 'giveaway') return cmdGiveaway(i);
+    if (i.commandName === 'level') return cmdLevel(i);
+    if (i.commandName === 'profile') return cmdProfile(i);
+    if (i.commandName === 'shop') return cmdShop(i);
+    if (i.commandName === 'casino') return cmdCasino(i);
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
@@ -70,6 +81,56 @@ export async function handleInteraction(i) {
   // not a fork somebody has to keep in sync.
   if (await handleRolePanelInteraction(i)) return;
   if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
+}
+
+// ── B-econ: levelling / economy commands ─────────────────────────────────────
+const curLabel = (c) => c?.emoji || c?.name || 'points';
+
+async function cmdLevel(i) {
+  const e = await api.economyUser(i.user.id);
+  if (!e.linked) return eReply(i, 'Link your BetterCommunity account first — run **/link**.', { title: 'Not linked' });
+  const cur = curLabel(e.currency);
+  return eReply(i, `**Level ${e.level}** — ${Number(e.xpThisLevel).toLocaleString()} / ${Number(e.xpForNext).toLocaleString()} XP to next\n**${Number(e.points).toLocaleString()}** ${cur}`, { title: `⭐ ${e.displayName}` });
+}
+
+async function cmdProfile(i) {
+  const target = i.options.getUser('member') || i.user;
+  const e = await api.economyUser(target.id);
+  if (!e.linked) return eReply(i, `${target.username} hasn't linked a BetterCommunity account.`, { title: 'No profile' });
+  const url = `${SITE_URL}/u/${e.userId}`;
+  const cur = curLabel(e.currency);
+  const body = `**Level ${e.level}** · **${Number(e.points).toLocaleString()}** ${cur}\n`
+    + `${e.stats.messages} messages · ${e.stats.reactions} reactions · ${Math.floor((e.stats.voiceSeconds || 0) / 3600)}h in voice\n\n`
+    + `[View full profile →](${url})`;
+  return eReply(i, body, { title: `👤 ${e.displayName}`, ephemeral: false });
+}
+
+async function cmdShop(i) {
+  const eco = await api.economyConfig();
+  if (!eco.enabled) return eReply(i, 'The economy is currently off.', { title: '🛒 Shop' });
+  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name);
+  if (!items.length) return eReply(i, 'The shop is empty for now.', { title: '🛒 Shop' });
+  const cur = eco.currencyEmoji || eco.currencyName || 'points';
+  const lines = items.map((x) => `**${x.name}** — ${Number(x.cost).toLocaleString()} ${cur}${x.desc ? `\n${x.desc}` : ''}`).join('\n\n');
+  return eReply(i, lines, { title: '🛒 Points shop' });
+}
+
+async function cmdCasino(i) {
+  const bet = i.options.getInteger('bet');
+  const win = Math.random() < 0.5;
+  // The bot rolls the outcome (a 2× coin flip); the API prices in the house edge and settles.
+  const r = await api.economyCasino(i.user.id, bet, win ? 2 : 0);
+  if (!r.ok) {
+    const msg = r.error === 'casino_off' ? 'The casino is off.'
+      : r.error === 'not_linked' ? 'Link your account first — **/link**.'
+      : r.error === 'insufficient' ? "You don't have enough points for that bet."
+      : r.error === 'bad_bet' ? `Your bet must be between ${r.min} and ${r.max}.`
+      : 'Could not place that bet.';
+    return eReply(i, msg, { title: '🎰 Casino' });
+  }
+  return win
+    ? eReply(i, `🎉 It landed! You won **+${Number(r.delta).toLocaleString()}** — balance **${Number(r.points).toLocaleString()}**.`, { title: '🎰 You win!', color: 0x248046, ephemeral: false })
+    : eReply(i, `💀 Bad luck — you lost **${Number(bet).toLocaleString()}**. Balance **${Number(r.points).toLocaleString()}**.`, { title: '🎰 You lose', color: 0xda373c, ephemeral: false });
 }
 
 async function cmdAppeal(i) {

@@ -1592,6 +1592,25 @@ export default async function botRoutes(app) {
     return { economy: eco };
   });
 
+  // A member's economy by Discord id — for the bot's /level and /profile commands.
+  app.get('/bot/economy/user/:discordId', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const link = await p.discordLink.findUnique({ where: { discordId: req.params.discordId }, select: { userId: true, user: { select: { displayName: true } } } });
+    if (!link) return { linked: false };
+    const e = await p.userEconomy.findUnique({ where: { userId: link.userId } });
+    const eco = (await getBotConfig(p)).economy || {};
+    const level = e?.level || 0, xp = e?.xp || 0;
+    return {
+      linked: true, userId: link.userId, displayName: link.user.displayName,
+      level, xp, points: e?.points || 0,
+      xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+      xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+      stats: { voiceSeconds: e?.voiceSeconds || 0, messages: e?.messages || 0, reactions: e?.reactions || 0 },
+      currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '' },
+    };
+  });
+
   // A member's own level, points and stats — for their dashboard / profile.
   app.get('/me/economy', { preHandler: requireRole() }, async (req) => {
     const p = await db();
