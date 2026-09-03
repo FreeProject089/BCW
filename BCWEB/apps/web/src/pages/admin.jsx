@@ -13619,7 +13619,7 @@ function AdminBot() {
   };
 
   const SectionTitle = ({ icon: I, title, sub }) => (
-    <div className="flex items-center gap-2.5 mt-6 mb-3">
+    <div className="flex items-center gap-2.5 mt-7 mb-3 pb-2 border-b border-[var(--line)]">
       <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><I size={15} className="text-[var(--primary-2)]" /></span>
       <div><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
     </div>
@@ -13627,12 +13627,15 @@ function AdminBot() {
 
   return (
     <div>
-      {/* ── Header ── a defined solid rounded toolbar (its own Card surface) so the
-          page's background art never bleeds around the title / Save button. */}
+      {/* ── Header ── a Discord-branded toolbar on its own solid Card surface so the page's
+          background art never bleeds around the title / Save button. */}
       <div className="sticky top-0 z-20 mb-4">
-        <Card className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5">
-          <h2 className="font-semibold flex items-center gap-2 text-base"><DiscordIcon size={18} className="text-[#5865F2]" /> {t('db.title', 'Discord bot')}</h2>
-          <div className="flex items-center gap-2.5">
+        <Card className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gradient-to-r from-[#5865F2]/10 to-transparent">
+          <h2 className="font-bold flex items-center gap-2.5 text-base min-w-0">
+            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[#5865F2]/15 border border-[#5865F2]/25 shrink-0"><DiscordIcon size={17} className="text-[#5865F2]" /></span>
+            <span className="truncate">{t('db.title', 'Discord bot')}</span>
+          </h2>
+          <div className="flex items-center gap-2.5 shrink-0">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-success border-success-border bg-success-bg' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
             <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
           </div>
