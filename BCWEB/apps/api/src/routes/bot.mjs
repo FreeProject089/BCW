@@ -1526,6 +1526,98 @@ export default async function botRoutes(app) {
     return { linked: true, userId: link.user.id, displayName: link.user.displayName, creatorIds: link.user.creatorLinks.map((c) => c.creatorId), hasBmm: link.user.creatorLinks.length > 0 };
   });
 
+  // ── B-econ: levelling / economy ───────────────────────────────────────────
+  // The level a cumulative XP total maps to, using the configured curve. The cost to go from
+  // level k to k+1 is base·factor^k, so reaching level L costs base·(factor^L−1)/(factor−1) —
+  // the exact curve the admin preview draws. Higher factor = each level is harder.
+  const economyLevelFor = (xp, base, factor) => {
+    base = Number(base) || 100; factor = Number(factor) || 1.18; xp = Math.max(0, Number(xp) || 0);
+    let lvl = 0, cum = 0;
+    while (lvl < 100000) { const step = base * factor ** lvl; if (cum + step > xp) break; cum += step; lvl++; }
+    return lvl;
+  };
+  const economyXpForLevel = (lvl, base, factor) => {
+    base = Number(base) || 100; factor = Number(factor) || 1.18;
+    return Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
+  };
+  // Total points a member has EARNED by reaching a level (floored to the grant interval). The
+  // spendable balance adds the delta of this on level-up, so points are never double-granted.
+  const economyPointsEarned = (level, everyN, perGrant) => Math.floor(Math.max(0, level) / Math.max(1, Number(everyN) || 5)) * (Number(perGrant) || 0);
+
+  // The bot reports raw activity deltas here; the API turns them into XP (server-authoritative
+  // rates), a level, and points. XP accrues ONLY for a discordId linked to a BCWEB account — an
+  // unlinked member is skipped, so every level maps to a real profile.
+  app.post('/bot/economy/accrue', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      events: z.array(z.object({
+        discordId: z.string().min(1).max(32),
+        messages: z.number().int().min(0).max(100000).optional(),
+        reactions: z.number().int().min(0).max(100000).optional(),
+        voiceSeconds: z.number().int().min(0).max(86400).optional(),
+      })).max(500),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    if (!eco.enabled) return { ok: true, disabled: true };
+    const rMsg = Number(eco.xpPerMessage) || 0, rReact = Number(eco.xpPerReaction) || 0, rVoice = Number(eco.xpPerVoiceMinute) || 0;
+    const ids = [...new Set(b.data.events.map((e) => e.discordId))];
+    const links = await p.discordLink.findMany({ where: { discordId: { in: ids } }, select: { discordId: true, userId: true } });
+    const userByDiscord = Object.fromEntries(links.map((l) => [l.discordId, l.userId]));
+    let updated = 0;
+    for (const ev of b.data.events) {
+      const userId = userByDiscord[ev.discordId];
+      if (!userId) continue;
+      const msgs = ev.messages || 0, reacts = ev.reactions || 0, vsec = ev.voiceSeconds || 0;
+      const xpDelta = msgs * rMsg + reacts * rReact + Math.floor(vsec / 60) * rVoice;
+      const cur = await p.userEconomy.findUnique({ where: { userId } });
+      const oldXp = cur?.xp || 0, oldLevel = cur?.level || 0;
+      const newXp = oldXp + xpDelta;
+      const newLevel = economyLevelFor(newXp, eco.curveBase, eco.curveFactor);
+      const pointsDelta = Math.max(0, economyPointsEarned(newLevel, eco.pointsEveryLevels, eco.pointsPerGrant) - economyPointsEarned(oldLevel, eco.pointsEveryLevels, eco.pointsPerGrant));
+      await p.userEconomy.upsert({
+        where: { userId },
+        create: { userId, xp: newXp, level: newLevel, points: pointsDelta, voiceSeconds: vsec, messages: msgs, reactions: reacts },
+        update: { xp: newXp, level: newLevel, points: { increment: pointsDelta }, voiceSeconds: { increment: vsec }, messages: { increment: msgs }, reactions: { increment: reacts } },
+      }).then(() => { updated++; }).catch(() => {});
+    }
+    return { ok: true, updated };
+  });
+
+  // Read the current economy config (currency + curve) — the bot needs it for /profile, /shop.
+  app.get('/bot/economy/config', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const eco = (await getBotConfig(await db())).economy || {};
+    return { economy: eco };
+  });
+
+  // A member's own level, points and stats — for their dashboard / profile.
+  app.get('/me/economy', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const e = await p.userEconomy.findUnique({ where: { userId: req.user.uid } });
+    const eco = (await getBotConfig(p)).economy || {};
+    const level = e?.level || 0;
+    const xp = e?.xp || 0;
+    return {
+      enabled: !!eco.enabled,
+      currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '', image: eco.currencyImage || '' },
+      level, xp, points: e?.points || 0,
+      xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+      xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+      stats: { voiceSeconds: e?.voiceSeconds || 0, messages: e?.messages || 0, reactions: e?.reactions || 0, public: e?.statsPublic ?? (eco.statsPublic !== false) },
+    };
+  });
+
+  // Toggle whether the member's activity stats are public (level itself is always public).
+  app.put('/me/economy/stats-public', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ public: z.boolean() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.userEconomy.upsert({ where: { userId: req.user.uid }, create: { userId: req.user.uid, statsPublic: b.data.public }, update: { statsPublic: b.data.public } });
+    return { ok: true };
+  });
+
   // ── Website side: redeem / list / unlink Discord links ──
   app.get('/me/discord/links', { preHandler: requireRole() }, async (req) => {
     const p = await db();

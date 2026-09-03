@@ -2273,6 +2273,7 @@ const DICT = {
     'pp.404.t': 'Profil introuvable', 'pp.404.s': 'Cet utilisateur n’existe pas ou n’est plus disponible.',
     'pp.shared': 'Lien du profil copié.', 'pp.privatebadge': 'privé', 'pp.joined': 'Inscrit·e en', 'pp.share': 'Partager',
     'pp.badges': 'Badges', 'pp.repos': 'Repos publics', 'pp.norepos': 'Aucun repo public.',
+    'pp.level': 'Niveau {n}', 'pp.discord': 'Activité Discord', 'pp.eco.level': 'niveau', 'pp.eco.msgs': 'messages', 'pp.eco.reacts': 'réactions', 'pp.eco.voice': 'en vocal',
     'pp.catalogs': 'Catalogues publics', 'pp.nocatalogs': 'Aucun catalogue public.',
     // Recherche de membres
     'us.title': 'Trouver des membres', 'us.sub': 'Cherche des membres BetterCommunity par nom et ouvre leur profil public.',

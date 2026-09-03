@@ -110,6 +110,7 @@ model User {
   legalPublished   LegalVersion[] @relation("LegalPublisher")
   expenses         Expense[]      @relation("ExpenseAuthor")
   sessions         Session[]
+  economy          UserEconomy?
   createdAt        DateTime       @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -3549,4 +3550,28 @@ model SiteLocale {
   updatedAt   DateTime @updatedAt
 
   @@index([enabled])
+}
+
+// ── B-econ: per-user levelling / economy ──────────────────────────────────────
+// The XP, level and points a member has earned, keyed to their BCWEB account (XP only accrues
+// once a Discord is linked, so a level always maps to a real profile). The bot reports raw
+// activity deltas (messages / reactions / voice seconds) to /bot/economy/accrue; the API turns
+// XP into a level with the configured curve and grants points on level-up. `points` is the
+// spendable balance (shop + casino). Settings (rates, currency, curve) live in bot.config.economy,
+// not here — this table is the balances only.
+model UserEconomy {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  xp           Int      @default(0)
+  level        Int      @default(0)
+  points       Int      @default(0)
+  voiceSeconds Int      @default(0)
+  messages     Int      @default(0)
+  reactions    Int      @default(0)
+  // Per-user override of the global "stats public" default (null = follow the global setting).
+  statsPublic  Boolean?
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([level])
 }

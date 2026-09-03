@@ -73,6 +73,9 @@ export const api = {
   // A guild's member-storage mode, so the bot can skip the expensive full-roster fetch for a
   // guild that stores nothing. Defaults to `none` on any failure — the safe, no-storage side.
   guildMode: (guildId) => call('GET', `/bot/guilds/${guildId}`).then((r) => r?.memberMode || 'none').catch(() => 'none'),
+  // B-econ: report buffered activity deltas (messages / reactions / voice seconds) so the API can
+  // turn them into XP + levels. Best-effort — a dropped batch just means that minute's XP is lost.
+  accrueEconomy: (events) => call('POST', '/bot/economy/accrue', { events }).catch(() => ({})),
 
   // Warnings go through the site so the count, the ladder and the record are in one place —
   // a bot keeping its own tally would disagree with the admin screen the first time either

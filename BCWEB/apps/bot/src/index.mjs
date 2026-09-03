@@ -13,6 +13,7 @@ import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
 import { scanAllMembers } from './features/scanMembers.mjs';
+import { wireEconomy, flushEconomy } from './features/economy.mjs';
 import { startModQueue } from './features/modqueue.mjs';
 import { startAnnouncer } from './features/announce.mjs';
 import { pollBlog } from './features/blog.mjs';
@@ -37,8 +38,11 @@ function buildClient() {
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.GuildMessages,
       GatewayIntentBits.MessageContent,
+      // B-econ: reactions earn XP. Not a privileged intent.
+      GatewayIntentBits.GuildMessageReactions,
     ],
-    partials: [Partials.Channel],
+    // Reaction partials so a reaction on an uncached (older) message still fires the event.
+    partials: [Partials.Channel, Partials.Message, Partials.Reaction],
   });
   const guard = (fn) => (...a) => fn(...a).catch((e) => console.warn('[bot] handler error:', e.message));
   c.once(Events.ClientReady, async (ready) => {
@@ -83,6 +87,9 @@ function buildClient() {
     });
     beat();
     timers.push(setInterval(beat, 60_000));
+    // B-econ: track messages / reactions / voice for XP, and flush the buffer every minute.
+    wireEconomy(c);
+    timers.push(setInterval(() => flushEconomy().catch(() => {}), 60_000));
     // Full member scan: populate the member database with the ENTIRE roster now, then
     // refresh every 30 min (names/avatars change, people join). Independent of gating.
     scanAllMembers(c).catch(() => {});

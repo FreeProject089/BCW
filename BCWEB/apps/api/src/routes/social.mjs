@@ -96,10 +96,16 @@ export async function buildPublicProfile(p, id, viewer) {
     if (!u.profilePublic && !isSelf && !isStaff) return { error: 'private_profile', code: 403 };
 
     // Public content owned by this user.
-    const [repos, catalogs] = await Promise.all([
+    const [repos, catalogs, eco] = await Promise.all([
       p.serverRepo.findMany({ where: { ownerId: u.id, listed: true, verified: true, pendingReview: false }, select: { id: true, name: true, description: true, _count: { select: { favorites: true } } }, take: 30, orderBy: { createdAt: 'desc' } }),
       p.communityCatalog.findMany({ where: { ownerId: u.id, status: 'ACTIVE', visibility: 'public', listed: true }, select: { slug: true, name: true, downloads: true, _count: { select: { items: true } } }, take: 30, orderBy: { createdAt: 'desc' } }),
+      p.userEconomy.findUnique({ where: { userId: u.id } }).catch(() => null),
     ]);
+    // The Discord level is always public; the activity stats follow the member's own toggle
+    // (null = the community default, which is public). Only surfaced once they've earned a level.
+    const economy = (eco && (eco.level > 0 || eco.xp > 0))
+      ? { level: eco.level, xp: eco.xp, ...(eco.statsPublic !== false ? { voiceSeconds: eco.voiceSeconds, messages: eco.messages, reactions: eco.reactions } : {}) }
+      : null;
 
     // Only the connections the owner chose to surface (never emails).
     const show = new Set(u.showConnections || []);
@@ -120,6 +126,7 @@ export async function buildPublicProfile(p, id, viewer) {
         id: u.id, displayName: u.displayName, role: u.role, avatar: u.avatar, bio: u.bio,
         joinedAt: u.createdAt, private: !u.profilePublic,
         badges: u.badges.map(pubBadge),
+        economy,
         connections,
         repos: repos.map((r) => ({ id: r.id, name: r.name, description: r.description, favorites: r._count.favorites })),
         catalogs: catalogs.map((c) => ({ slug: c.slug, name: c.name, downloads: c.downloads, items: c._count.items })),
