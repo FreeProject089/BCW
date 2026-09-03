@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper } from 'lucide-react';
 import { DiscordIcon } from '../ui/brand.jsx';
-import { api } from '../lib/api.js';
+import { api, uploadImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select } from '../ui/ui.jsx';
 
@@ -195,6 +195,17 @@ function GuildConfig({ guildId, onSaved }) {
   const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
+  // Upload a welcome banner background in place — no trip to another page. Goes through the
+  // same media store as everywhere else, so the result is a moderatable /api/media/ path.
+  const pickWelcomeBg = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async () => {
+      const file = inp.files?.[0]; if (!file) return;
+      try { toast.info(t('be.uploading', 'Uploading…')); const url = await uploadImage(file); setW({ bgImage: url }); }
+      catch { toast.error(t('be.uploadfail', 'Upload failed.')); }
+    };
+    inp.click();
+  };
   const setG = (patch) => setDraft((d) => ({ ...d, gating: { ...d.gating, ...patch } }));
   const setB = (routes) => setDraft((d) => ({ ...d, blog: { routes } }));
   const setRp = (panels) => setDraft((d) => ({ ...d, rp: panels }));
@@ -274,7 +285,19 @@ function GuildConfig({ guildId, onSaved }) {
           <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h', 'Off = actions are posted to Discord only. On = a searchable copy is kept here and counts against your storage.')}</p>
         </div>
       )}
-      {showBudget && <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>}
+      {/* Storing members needs a storage allowance (a pool an admin assigns). With none, the
+          bot has nowhere to put them — so warn plainly instead of silently storing nothing. */}
+      {showBudget && (
+        (g.capacity && (g.capacity.unlimited || g.capacity.cap))
+          ? <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>
+          : <div className="mb-4 rounded-xl border border-warning-border bg-warning/[0.08] p-3 flex items-start gap-2.5">
+              <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
+              <div className="text-xs text-[var(--muted)] min-w-0">
+                <div className="text-sm font-medium text-warning">{t('ds.nopool.t', 'No storage pool assigned')}</div>
+                {t('ds.nopool.s', 'This mode stores members, but this server has no storage allowance yet — so nothing is actually kept. Ask an admin to assign a storage pool to this server, or switch to “moderation logs only”.')}
+              </div>
+            </div>
+      )}
       {data.logs?.length > 0 && (
         <div className="mb-4">
           <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><ScrollText size={12} /> {t('ds.recentlogs', 'Recent moderation')}</div>
@@ -319,17 +342,16 @@ function GuildConfig({ guildId, onSaved }) {
                 ))}
               </div>
               <Field className="mt-2.5" label={t('ds.wc.bgimg', 'Custom background (optional)')}
-                hint={t('ds.wc.bgimg.h', 'Replaces the colour. Upload an image on the Uploads page, then paste its /api/media/… link here — it is stored on the site so it can be reviewed and removed.')}>
-                <div className="flex items-center gap-1.5">
-                  <ImageIcon size={14} className="text-[var(--faint)] shrink-0" />
-                  <Input value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
+                hint={t('ds.wc.bgimg.h2', 'Replaces the colour. Upload an image right here — it is stored on the site (a /api/media/… link) so it can be reviewed and removed.')}>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <Button size="sm" variant="ghost" onClick={pickWelcomeBg}><ImageIcon size={13} /> {t('ds.wc.bgimg.upload', 'Upload')}</Button>
+                  <Input className="flex-1 min-w-[140px]" value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
                   {draft.welcome.bgImage && <button type="button" onClick={() => setW({ bgImage: '' })} className="px-1.5 rounded-lg text-error hover:bg-error-bg shrink-0" title={t('common.remove', 'Remove')}>×</button>}
                 </div>
               </Field>
               {draft.welcome.bgImage && !isMediaPath(draft.welcome.bgImage) && (
                 <div className="text-[11px] text-warning flex items-center gap-1 mt-1"><AlertTriangle size={11} /> {t('ds.wc.bgimg.bad', 'Not an uploaded-media link — it must start with /api/media/. The colour will be used instead.')}</div>
               )}
-              <Link to="/uploads" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1 mt-1">{t('ds.wc.uploads', 'Open the Uploads page')} →</Link>
             </div>
           </div>
         )}
