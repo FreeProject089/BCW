@@ -1033,6 +1033,7 @@ export default async function botRoutes(app) {
   app.post('/bot/heartbeat', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
+      appId: z.string().max(32).optional(), // the bot's application/client id, for the invite URL
       uptimeSec: z.number().optional(), guilds: z.number().optional(), users: z.number().optional(), tempChannels: z.number().optional(), version: z.string().optional(), online: z.boolean().optional(), error: z.string().max(300).optional(),
       // The servers the bot is currently in (id + name) — lets the admin pick a
       // target server when configuring per-server blog routes.
@@ -1485,11 +1486,15 @@ export default async function botRoutes(app) {
   app.get('/me/discord/guilds', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const ids = await myDiscordIds(p, req.user.uid);
-    if (!ids.length) return { linked: false, guilds: [] };
+    // The bot's application id (from its heartbeat) → an "invite the bot" OAuth2 URL the user
+    // dashboard can offer. Returned even when the user has no linked guilds yet, so someone who
+    // just wants to ADD the bot to their server can, before it has ever joined.
+    const appId = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.appId || null;
+    if (!ids.length) return { linked: false, guilds: [], appId };
     const guilds = await p.botGuild.findMany({ where: manageableWhere(ids), orderBy: { memberCount: 'desc' } });
     const counts = guilds.length ? await p.discordActivity.groupBy({ by: ['guildId'], _count: { _all: true }, where: { guildId: { in: guilds.map((g) => g.guildId) } } }) : [];
     const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
-    return { linked: true, guilds: guilds.map((g) => serGuildUser(g, storedBy[g.guildId] || 0, ids)) };
+    return { linked: true, guilds: guilds.map((g) => serGuildUser(g, storedBy[g.guildId] || 0, ids)), appId };
   });
 
   app.get('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {

@@ -50,6 +50,9 @@ function buildClient() {
     } catch (e) { console.warn('[bot] command registration failed:', e.message); }
 
     const beat = () => api.heartbeat({
+      // The bot's own id === the application (client) id — what an "invite the bot" OAuth2 URL
+      // needs, so the user dashboard can build that link without anyone pasting a client id.
+      appId: ready.user.id,
       uptimeSec: Math.round(process.uptime()), guilds: ready.guilds.cache.size,
       users: ready.users.cache.size, tempChannels: temp.size, version: '0.1.0',
       // The servers the bot is in — id + name + icon + member count — so the

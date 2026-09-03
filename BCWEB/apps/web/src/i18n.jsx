@@ -2332,7 +2332,7 @@ const DICT = {
     'dash.starred': 'Favoris',
     'dash.discord': 'Serveurs Discord',
     // B10 — My Discord servers (user-facing per-server dashboard)
-    'ds.title': 'Mes serveurs Discord',
+    'ds.title': 'Mes serveurs Discord', 'ds.invite': 'Inviter le bot',
     'ds.capacity': 'Stockage utilisé', 'ds.left': 'restant',
     'ds.full': 'Capacité atteinte — les nouveaux membres ne sont plus stockés. Un admin peut augmenter ton allocation.',
     'ds.gone': 'Tu ne peux plus gérer ce serveur', 'ds.gone.s': 'Ton accès a peut-être changé sur Discord.',

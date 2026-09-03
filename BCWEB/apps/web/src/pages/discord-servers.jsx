@@ -507,19 +507,31 @@ export function MyDiscordServers() {
   const load = () => api.get('/me/discord/guilds').then((r) => { setState(r); setSel((s) => s || r.guilds?.[0]?.guildId || null); }).catch(() => setState({ linked: false, guilds: [] }));
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   if (!state) return <div className="py-10 flex justify-center"><Spinner /></div>;
+  // The bot's OAuth2 invite URL, built from its application id. A curated permission set (manage
+  // roles/channels, kick/ban/timeout, move members, send/embed/history/view) — not Administrator.
+  const inviteUrl = state.appId ? `https://discord.com/oauth2/authorize?client_id=${state.appId}&permissions=1099796925462&scope=bot%20applications.commands` : null;
+  const InviteBtn = inviteUrl ? <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><Plus size={15} /> {t('ds.invite', 'Invite the bot')}</a> : null;
   if (!state.linked) {
     return <EmptyState icon={Link2} title={t('ds.nolink', 'Link your Discord account')}
       sub={t('ds.nolink.s', 'Connect Discord to your account, then the servers you own or manage appear here.')}>
-      <Link to="/profile"><Button size="sm"><Link2 size={14} /> {t('ds.connect', 'Connect Discord')}</Button></Link>
+      <div className="flex items-center gap-2 flex-wrap justify-center">
+        <Link to="/profile"><Button size="sm"><Link2 size={14} /> {t('ds.connect', 'Connect Discord')}</Button></Link>
+        {InviteBtn}
+      </div>
     </EmptyState>;
   }
   if (!state.guilds.length) {
     return <EmptyState icon={MessageSquare} title={t('ds.noguilds', 'No servers to manage yet')}
-      sub={t('ds.noguilds.s', 'You’ll see a server here once our Discord bot is in a server you own or have Manage Server on.')} />;
+      sub={t('ds.noguilds.s', 'You’ll see a server here once our Discord bot is in a server you own or have Manage Server on. Add it below.')}>
+      {InviteBtn}
+    </EmptyState>;
   }
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4"><MessageSquare size={16} className="text-[var(--primary-2)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2></div>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <MessageSquare size={16} className="text-[var(--primary-2)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
+        {inviteUrl && <a href={inviteUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><Plus size={14} /> {t('ds.invite', 'Invite the bot')}</a>}
+      </div>
       <div className="grid md:grid-cols-[minmax(0,240px)_1fr] gap-4">
         {/* Server picker — a column on desktop, a scrolling row on mobile. */}
         <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible pb-1 md:pb-0">
