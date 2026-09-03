@@ -12380,7 +12380,10 @@ function HomePageEditor() {
   const [preview, setPreview] = useState(false);
   // The suite row: how it is drawn, and the rows an admin added by hand.
   const [suite, setSuite] = useState({ style: 'grid', extra: [] });
-  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); setSuite({ style: data.suite?.style || 'grid', extra: data.suite?.extra || [] }); } }, [data]);
+  // Admin-authored Markdown blocks the home page draws in addition to the built-in ones.
+  const [custom, setCustom] = useState([]);
+  const [ctab, setCtab] = useState('en'); // which language the custom-section editors show
+  useEffect(() => { if (data) { setForm(data.text || {}); setSections(data.sections || {}); setVariant(data.variant || 'v1'); setSuite({ style: data.suite?.style || 'grid', extra: data.suite?.extra || [] }); setCustom(Array.isArray(data.customSections) ? data.customSections : []); } }, [data]);
   // ABOVE the early return below. Placed after it this was a conditional hook: React counted
   // three hooks on the loading render and four once the data arrived, which is error #310 and
   // a blank page. The same mistake this file already warns about in AdminBot, made anyway.
@@ -12474,10 +12477,20 @@ function HomePageEditor() {
     .filter((g) => g.keys.length && (g.always || inVariant(g.id))
       && (filter !== 'off' || (!g.always && sections[g.id] === false)));
 
+  // Drop sections with no title in either language — an untitled block is noise on the page.
+  const cleanCustom = () => custom
+    .map((c) => ({ id: String(c.id || `sec-${Math.random().toString(36).slice(2, 8)}`).slice(0, 60), enabled: c.enabled !== false, position: c.position === 'bottom' ? 'bottom' : 'top', title: c.title || { en: '', fr: '' }, body: c.body || { en: '', fr: '' } }))
+    .filter((c) => (c.title.en || c.title.fr || '').trim());
+
+  const setC = (i, patch) => setCustom(custom.map((c, n) => (n === i ? { ...c, ...patch } : c)));
+  const setCLoc = (i, field, locpatch) => setC(i, { [field]: { ...(custom[i][field] || {}), ...locpatch } });
+  const moveC = (i, d) => { const j = i + d; if (j < 0 || j >= custom.length) return; const n = [...custom]; [n[i], n[j]] = [n[j], n[i]]; setCustom(n); };
+  const addC = () => setCustom([...custom, { id: `sec-${Date.now().toString(36)}`, enabled: true, position: 'top', title: { en: '', fr: '' }, body: { en: '', fr: '' } }]);
+
   const save = async () => {
     setBusy(true);
     try {
-      await api.put('/admin/site/home', { text: form, sections, variant, suite });
+      await api.put('/admin/site/home', { text: form, sections, variant, suite, customSections: cleanCustom() });
       toast.success(t('hp.saved', 'Home page saved. Visitors see it within a minute (the page is cached).'));
       reload();
     } catch { toast.error(t('common.failed', 'Failed.')); }
@@ -12717,6 +12730,48 @@ function HomePageEditor() {
           ))}
           {!grouped.some((g) => !g.always && inVariant(g.id)) && <p className="text-[12px] text-[var(--faint)]">{t('hp.sections.none', 'This variant draws only the always-on blocks.')}</p>}
         </div>
+      </Card>
+
+      {/* Custom sections — blocks an admin builds from scratch, in Markdown, on top of the
+          built-in ones. Reorderable, per-block on/off, placed under the hero or above the
+          support block. They draw on every landing variant. */}
+      <Card className="p-4">
+        <div className="flex items-center gap-2 flex-wrap mb-1">
+          <LayoutGrid size={15} className="text-[var(--primary-2)]" />
+          <span className="font-medium text-sm flex-1">{t('hp.custom', 'Custom sections')}</span>
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+            {[['en', 'EN'], ['fr', 'FR']].map(([k, lbl]) => (
+              <button key={k} type="button" onClick={() => setCtab(k)} className={`px-2.5 py-1 rounded-md ${ctab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-[var(--muted)] mb-3">{t('hp.custom.d', 'Your own blocks, written in Markdown, drawn in addition to the built-in ones. Reorder them, switch each on or off, and choose where it sits. An empty FR falls back to EN.')}</p>
+        <div className="space-y-3">
+          {custom.map((c, i) => (
+            <div key={i} className="rounded-lg border border-[var(--line)] p-3">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <Input className="!flex-1 !min-w-[160px]" value={(c.title || {})[ctab] || ''} onChange={(e) => setCLoc(i, 'title', { [ctab]: e.target.value })} placeholder={ctab === 'fr' ? 'Titre de la section' : 'Section title'} />
+                <Select className="!w-auto !text-xs" value={c.position || 'top'} onChange={(e) => setC(i, { position: e.target.value })}>
+                  <option value="top">{t('hp.custom.top', 'Under the hero')}</option>
+                  <option value="bottom">{t('hp.custom.bottom', 'Above support')}</option>
+                </Select>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--muted)]">
+                  <input type="checkbox" className="accent-[var(--primary)]" checked={c.enabled !== false} onChange={(e) => setC(i, { enabled: e.target.checked })} />
+                  {t('hp.custom.on', 'Shown')}
+                </label>
+                <div className="flex items-center gap-0.5">
+                  <button onClick={() => moveC(i, -1)} disabled={i === 0} className="p-1.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30"><ChevronUp size={14} /></button>
+                  <button onClick={() => moveC(i, 1)} disabled={i === custom.length - 1} className="p-1.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30"><ChevronDown size={14} /></button>
+                  <button onClick={() => setCustom(custom.filter((_, n) => n !== i))} className="p-1.5 rounded text-error hover:bg-error-bg"><Trash2 size={14} /></button>
+                </div>
+              </div>
+              <MarkdownEditor value={(c.body || {})[ctab] || ''} onChange={(v) => setCLoc(i, 'body', { [ctab]: v })} minHeight={140}
+                placeholder={ctab === 'fr' ? 'Écris la section en **markdown**…' : 'Write the section in **markdown**…'} />
+            </div>
+          ))}
+          {custom.length === 0 && <p className="text-[12px] text-[var(--faint)]">{t('hp.custom.none', 'No custom sections yet.')}</p>}
+        </div>
+        <Button variant="ghost" size="sm" className="mt-3" onClick={addC}><Plus size={14} /> {t('hp.custom.add', 'Add a section')}</Button>
       </Card>
 
       {/* Text lives in one place now. */}

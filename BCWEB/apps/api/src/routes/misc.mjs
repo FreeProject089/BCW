@@ -259,7 +259,17 @@ const homeConfig = (row) => {
       img: String(e?.img || '').slice(0, 400),
     })).filter((e) => e.id && e.name),
   };
-  return { text: v.text || {}, sections, variant, suite };
+  // Admin-authored blocks the home page draws in addition to the built-in ones. Each is a
+  // bilingual Markdown card with a placement (top = under the hero, bottom = above the
+  // footer) and its own on/off switch, so a section can be drafted before it goes live.
+  const customSections = (Array.isArray(v.customSections) ? v.customSections : []).slice(0, 40).map((c) => ({
+    id: String(c?.id || '').slice(0, 60) || `sec-${Math.random().toString(36).slice(2, 8)}`,
+    enabled: c?.enabled !== false,
+    position: c?.position === 'bottom' ? 'bottom' : 'top',
+    title: { en: String(c?.title?.en || '').slice(0, 200), fr: String(c?.title?.fr || '').slice(0, 200) },
+    body: { en: String(c?.body?.en || '').slice(0, 8000), fr: String(c?.body?.fr || '').slice(0, 8000) },
+  }));
+  return { text: v.text || {}, sections, variant, suite, customSections };
 };
 
 
@@ -611,6 +621,15 @@ export default async function miscRoutes(app) {
             { message: 'must be a site path (/x) or an http(s) URL' }).default(''),
         })).max(SUITE_MAX).optional(),
       }).optional(),
+      // Admin-authored Markdown blocks. Bounded like the suite: a hand-built list whose bad
+      // input would otherwise land on the public front page.
+      customSections: z.array(z.object({
+        id: z.string().min(1).max(60),
+        enabled: z.boolean().optional().default(true),
+        position: z.enum(['top', 'bottom']).optional().default('top'),
+        title: z.object({ en: z.string().max(200).optional().default(''), fr: z.string().max(200).optional().default('') }).optional().default({}),
+        body: z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') }).optional().default({}),
+      })).max(40).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -629,6 +648,8 @@ export default async function miscRoutes(app) {
       sections: { ...current.sections, ...(b.data.sections || {}) },
       variant: b.data.variant || current.variant,
       suite: { ...current.suite, ...(b.data.suite || {}) },
+      // Replaced wholesale when provided (it is edited as one list), kept otherwise.
+      customSections: b.data.customSections != null ? b.data.customSections : current.customSections,
     };
     await p.adminSetting.upsert({ where: { key: HOME_KEY }, create: { key: HOME_KEY, value }, update: { value } });
     // The variant is in the audit line because it is the largest change this endpoint can

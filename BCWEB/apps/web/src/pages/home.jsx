@@ -10,7 +10,7 @@ import { Button, Card, Badge } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { productCards } from '../lib/home-products.js';
 import { CATALOG_SEEN } from '../lib/prefs.js';
-import { IconGlyph } from '../ui/md.jsx';
+import Markdown, { IconGlyph } from '../ui/md.jsx';
 // Drawn only during an incident — see status-banner.jsx.
 import StatusBanner from './status-banner.jsx';
 import { thumb } from '../lib/img.js';
@@ -360,8 +360,18 @@ export function Home({ draft = null }) {
   const step2done = browsed || !!progress?.published;
 
   const ctx = { data, stats, myo, reviewsData, pollData, homeCfg, showcase, show, user, t, lang, products, posts: data?.posts || [] };
-  if (homeCfg?.variant === 'v2') return <HomeV2 {...ctx} />;
-  if (homeCfg?.variant === 'v3') return <HomeV3 {...ctx} />;
+  // Custom sections wrap the alternate variants from OUT here (rather than inside each), so
+  // one placement covers v2 and v3 without a home ⇄ home-variants import cycle.
+  if (homeCfg?.variant === 'v2' || homeCfg?.variant === 'v3') {
+    const Variant = homeCfg.variant === 'v2' ? HomeV2 : HomeV3;
+    return (
+      <div ref={root} className="space-y-16">
+        <HomeCustomSections cfg={homeCfg} position="top" />
+        <Variant {...ctx} />
+        <HomeCustomSections cfg={homeCfg} position="bottom" />
+      </div>
+    );
+  }
 
   return (
     // Generous vertical rhythm on purpose: the scroll is long, so sections (and
@@ -411,6 +421,8 @@ export function Home({ draft = null }) {
       {/* Only when something is actually wrong. A permanent "all systems operational"
           strip is the fastest way to teach a reader to stop reading a strip: it is green
           every day they visit, so on the one day it is not, it is furniture. */}
+      <HomeCustomSections cfg={homeCfg} position="top" />
+
       {show('status') && <section className="-mt-32 md:-mt-48"><StatusBanner /></section>}
 
       {/* products */}
@@ -873,6 +885,8 @@ export function Home({ draft = null }) {
         </Card>
       </section>
 
+      <HomeCustomSections cfg={homeCfg} position="bottom" />
+
       {/* Community Charity — a card beside the support block. Renders only when an admin has
           turned the programme on (GET /charity/current → { enabled:false } otherwise). */}
       <CharityWidget />
@@ -881,6 +895,32 @@ export function Home({ draft = null }) {
           page (only renders when an admin has set a goal). */}
       <KofiGoalWidget />
     </div>
+  );
+}
+
+// Admin-authored Markdown blocks, drawn in addition to the built-in sections. Shared by all
+// three home variants (each calls it with the same config), so a custom section an admin
+// writes appears wherever they've placed it regardless of which landing page is live.
+// `position` picks top (under the hero) or bottom (above the support block); disabled ones and
+// empties are skipped, so a drafted section never shows until it is turned on.
+export function HomeCustomSections({ cfg, position }) {
+  const { lang } = useI18n();
+  const L = (o) => (lang === 'fr' ? (o?.fr || o?.en) : (o?.en || o?.fr)) || '';
+  const list = (cfg?.customSections || [])
+    .filter((c) => c.enabled !== false && (c.position || 'top') === position)
+    .filter((c) => (L(c.title) || L(c.body)).trim());
+  if (!list.length) return null;
+  return (
+    <>
+      {list.map((c) => (
+        <section key={c.id} className="reveal-on-scroll">
+          <Card className="p-6 md:p-8 max-w-4xl mx-auto reveal-stagger">
+            {L(c.title) && <h2 className="text-2xl md:text-3xl font-bold mb-3 gradient-text inline-block">{L(c.title)}</h2>}
+            <div className="prose-sm max-w-none text-[var(--muted)] leading-relaxed break-words"><Markdown>{L(c.body)}</Markdown></div>
+          </Card>
+        </section>
+      ))}
+    </>
   );
 }
 
