@@ -16374,6 +16374,36 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
  * title and cover). This is for the ones worth saying something better about, so an empty
  * field keeps whatever was derived rather than blanking it.
  */
+// A live preview of the site's link card — how a shared BetterCommunity link unfurls on
+// Discord / X / Slack, built from the seo.* settings. Discord/X/Slack all read the same OG
+// tags (Twitter cards mirror og:*), so ONE preview covers them. Reads the SAVED values; it
+// refreshes on the next load after a Save.
+function OgPreviewCard() {
+  const { t, lang } = useI18n();
+  const { data } = useAsync(() => api.get('/admin/settings').catch(() => ({ settings: {} })), []);
+  const s = data?.settings || {};
+  const desc = (lang === 'fr' ? s['seo.descriptionFr'] : s['seo.description']) || s['seo.description']
+    || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
+  const img = s['seo.ogImage'] || '';
+  const domain = (typeof window !== 'undefined' && window.location?.host) || 'bettercommunity.ch';
+  return (
+    <Card className="p-4 mt-3">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('ogp.prev.title', 'Link preview')}</div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub', 'How a shared link looks on Discord, X, Slack and the rest — they all read the same tags. Set the description and image in Search & discoverability below, then Save to refresh this.')}</p>
+      <div className="max-w-md rounded-lg overflow-hidden border-s-4 border-[#5865F2]" style={{ background: 'var(--surface-2)' }}>
+        <div className="p-3">
+          <div className="text-[11px] text-[var(--faint)] uppercase tracking-wide truncate">{domain}</div>
+          <div className="text-sm font-semibold text-[var(--primary-2)] mt-0.5">BetterCommunity</div>
+          <div className="text-xs text-[var(--muted)] mt-1 line-clamp-3">{desc}</div>
+        </div>
+        {img
+          ? <img src={img} alt="" className="w-full object-cover" style={{ aspectRatio: '1200 / 630' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          : <div className="w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center" style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))' }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>}
+      </div>
+    </Card>
+  );
+}
+
 function SeoPagesCard() {
   const { t } = useI18n();
   const toast = useToast();
@@ -19764,6 +19794,8 @@ function AdminSettings() {
           </div>
         ))}
       </div>
+      {/* A live preview of how the whole site unfurls, from the seo.* values above. */}
+      <OgPreviewCard />
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
           value, so it cannot be a key/label/type entry like the rest. */}
       <SeoPagesCard />
