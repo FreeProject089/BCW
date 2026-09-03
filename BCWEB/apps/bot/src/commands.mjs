@@ -45,8 +45,14 @@ export const commandData = [
   new SlashCommandBuilder().setName('profile').setDescription('Show a member’s BetterCommunity profile')
     .addUserOption((o) => o.setName('member').setDescription('The member (defaults to you)')),
   new SlashCommandBuilder().setName('shop').setDescription('Browse the points shop'),
-  new SlashCommandBuilder().setName('casino').setDescription('Bet points on a coin flip')
-    .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet').setRequired(true).setMinValue(1)),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by level'),
+  new SlashCommandBuilder().setName('casino').setDescription('Bet points on a game of chance')
+    .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet').setRequired(true).setMinValue(1))
+    .addStringOption((o) => o.setName('game').setDescription('Which game (default: coin flip)').addChoices(
+      { name: 'Coin flip (2×, 50%)', value: 'coinflip' },
+      { name: 'Dice — roll 4-6 to win (2×)', value: 'dice' },
+      { name: 'Slots — match to win big', value: 'slots' },
+    )),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
@@ -72,6 +78,7 @@ export async function handleInteraction(i) {
     if (i.commandName === 'level') return cmdLevel(i);
     if (i.commandName === 'profile') return cmdProfile(i);
     if (i.commandName === 'shop') return cmdShop(i);
+    if (i.commandName === 'leaderboard') return cmdLeaderboard(i);
     if (i.commandName === 'casino') return cmdCasino(i);
     return;
   }
@@ -115,11 +122,38 @@ async function cmdShop(i) {
   return eReply(i, lines, { title: '🛒 Points shop' });
 }
 
+async function cmdLeaderboard(i) {
+  const r = await api.economyLeaderboard();
+  const rows = (r.members || []).slice(0, 10);
+  if (!rows.length) return eReply(i, 'Nobody has earned XP yet.', { title: '🏆 Leaderboard' });
+  const medal = (n) => n === 0 ? '🥇' : n === 1 ? '🥈' : n === 2 ? '🥉' : `**${n + 1}.**`;
+  const body = rows.map((m, n) => `${medal(n)} ${m.displayName} — Lv **${m.level}** · ${Number(m.points).toLocaleString()} pts`).join('\n');
+  return eReply(i, body, { title: '🏆 Leaderboard', ephemeral: false });
+}
+
+// The bot rolls each game and hands the API the multiplier; the API prices the house edge and
+// settles the balance. Different games = different odds/payouts, but the ledger is one place.
 async function cmdCasino(i) {
   const bet = i.options.getInteger('bet');
-  const win = Math.random() < 0.5;
-  // The bot rolls the outcome (a 2× coin flip); the API prices in the house edge and settles.
-  const r = await api.economyCasino(i.user.id, bet, win ? 2 : 0);
+  const game = i.options.getString('game') || 'coinflip';
+  let mult = 0, detail = '';
+  if (game === 'dice') {
+    const roll = 1 + Math.floor(Math.random() * 6);
+    mult = roll >= 4 ? 2 : 0;
+    detail = `🎲 You rolled a **${roll}** (win on 4-6).`;
+  } else if (game === 'slots') {
+    const S = ['🍒', '🍋', '🔔', '⭐', '💎'];
+    const reels = [0, 1, 2].map(() => S[Math.floor(Math.random() * S.length)]);
+    mult = reels[0] === reels[1] && reels[1] === reels[2] ? 8         // three of a kind
+      : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5 // a pair
+      : 0;
+    detail = `${reels.join(' ')}`;
+  } else {
+    const heads = Math.random() < 0.5;
+    mult = heads ? 2 : 0;
+    detail = heads ? '🪙 Heads!' : '🪙 Tails.';
+  }
+  const r = await api.economyCasino(i.user.id, bet, mult);
   if (!r.ok) {
     const msg = r.error === 'casino_off' ? 'The casino is off.'
       : r.error === 'not_linked' ? 'Link your account first — **/link**.'
@@ -128,9 +162,11 @@ async function cmdCasino(i) {
       : 'Could not place that bet.';
     return eReply(i, msg, { title: '🎰 Casino' });
   }
-  return win
-    ? eReply(i, `🎉 It landed! You won **+${Number(r.delta).toLocaleString()}** — balance **${Number(r.points).toLocaleString()}**.`, { title: '🎰 You win!', color: 0x248046, ephemeral: false })
-    : eReply(i, `💀 Bad luck — you lost **${Number(bet).toLocaleString()}**. Balance **${Number(r.points).toLocaleString()}**.`, { title: '🎰 You lose', color: 0xda373c, ephemeral: false });
+  const won = r.delta > 0;
+  const line = won
+    ? `${detail}\n🎉 You won **+${Number(r.delta).toLocaleString()}** — balance **${Number(r.points).toLocaleString()}**.`
+    : `${detail}\n💀 You lost **${Number(bet).toLocaleString()}**. Balance **${Number(r.points).toLocaleString()}**.`;
+  return eReply(i, line, { title: won ? '🎰 You win!' : '🎰 You lose', color: won ? 0x248046 : 0xda373c, ephemeral: false });
 }
 
 async function cmdAppeal(i) {

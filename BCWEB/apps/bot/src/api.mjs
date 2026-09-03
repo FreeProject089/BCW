@@ -80,6 +80,7 @@ export const api = {
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
   economyCasino: (discordId, bet, multiplier) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier }).catch(() => ({ ok: false, error: 'network' })),
+  economyLeaderboard: () => call('GET', '/bot/economy/leaderboard').catch(() => ({ members: [] })),
 
   // Warnings go through the site so the count, the ladder and the record are in one place —
   // a bot keeping its own tally would disagree with the admin screen the first time either

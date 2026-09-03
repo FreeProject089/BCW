@@ -1598,6 +1598,14 @@ export default async function botRoutes(app) {
     return { economy: eco };
   });
 
+  // Top members by level/points — for the bot's /leaderboard command.
+  app.get('/bot/economy/leaderboard', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const rows = await p.userEconomy.findMany({ where: { level: { gt: 0 } }, include: { user: { select: { displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
+    return { members: rows.map((r) => ({ displayName: r.user.displayName, level: r.level, points: r.points })) };
+  });
+
   // A member's economy by Discord id — for the bot's /level and /profile commands.
   app.get('/bot/economy/user/:discordId', async (req, reply) => {
     if (!botAuth(req, reply)) return;
