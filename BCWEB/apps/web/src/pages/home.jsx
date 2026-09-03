@@ -939,7 +939,7 @@ export function BotInviteButton({ className = '' }) {
   return (
     <a href={url} target="_blank" rel="noreferrer"
       className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold text-white bg-[#5865F2] hover:opacity-90 transition ${className}`}>
-      <MessageSquare size={16} /> {t('home.botinvite', 'Add our Discord bot to your server')} <Plus size={14} className="opacity-80" />
+      <DiscordIcon size={17} className="text-white" /> {t('home.botinvite', 'Add our Discord bot to your server')} <Plus size={14} className="opacity-80" />
     </a>
   );
 }

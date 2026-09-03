@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper } from 'lucide-react';
+import { DiscordIcon } from '../ui/brand.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select } from '../ui/ui.jsx';
@@ -500,6 +501,35 @@ function GuildConfig({ guildId, onSaved }) {
   );
 }
 
+// Inline Discord account linking — the same code-redeem the profile page uses, so a server
+// owner can link without leaving the dashboard. Calls onLinked() so the parent re-fetches
+// its guild list once the account is attached.
+function DiscordLinkInline({ onLinked }) {
+  const { t } = useI18n();
+  const [code, setCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const link = async () => {
+    if (!code.trim()) return;
+    setBusy(true); setMsg('');
+    try { await api.post('/me/discord/redeem', { code: code.trim() }); setCode(''); setMsg('linked'); onLinked?.(); }
+    catch (x) { setMsg(x.data?.error === 'already_linked' ? 'taken' : x.data?.error === 'invalid_or_expired' ? 'bad' : 'error'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="text-start">
+      <div className="flex gap-2">
+        <Input value={code} maxLength={9} onChange={(e) => { const s = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8); setCode(s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s); }} placeholder={t('disl.ph', 'Code from /link (e.g. K7P39QMX)')} onKeyDown={(e) => e.key === 'Enter' && link()} />
+        <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
+      </div>
+      {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('disl.ok', 'Discord linked.')}</div>}
+      {msg === 'taken' && <div className="text-sm text-error mt-2">{t('disl.taken', 'That Discord account is already linked.')}</div>}
+      {msg === 'bad' && <div className="text-sm text-error mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
+      {msg === 'error' && <div className="text-sm text-error mt-2">{t('cl.error', 'Something went wrong.')}</div>}
+    </div>
+  );
+}
+
 export function MyDiscordServers() {
   const { t } = useI18n();
   const [state, setState] = useState(null); // { linked, guilds }
@@ -510,15 +540,22 @@ export function MyDiscordServers() {
   // The bot's OAuth2 invite URL, built from its application id. A curated permission set (manage
   // roles/channels, kick/ban/timeout, move members, send/embed/history/view) — not Administrator.
   const inviteUrl = state.appId ? `https://discord.com/oauth2/authorize?client_id=${state.appId}&permissions=1099796925462&scope=bot%20applications.commands` : null;
-  const InviteBtn = inviteUrl ? <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><Plus size={15} /> {t('ds.invite', 'Invite the bot')}</a> : null;
+  const InviteBtn = inviteUrl ? <a href={inviteUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={16} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a> : null;
   if (!state.linked) {
-    return <EmptyState icon={Link2} title={t('ds.nolink', 'Link your Discord account')}
-      sub={t('ds.nolink.s', 'Connect Discord to your account, then the servers you own or manage appear here.')}>
-      <div className="flex items-center gap-2 flex-wrap justify-center">
-        <Link to="/profile"><Button size="sm"><Link2 size={14} /> {t('ds.connect', 'Connect Discord')}</Button></Link>
-        {InviteBtn}
+    return (
+      <div className="max-w-md mx-auto text-center py-8">
+        <span className="grid place-items-center w-14 h-14 rounded-2xl bg-[#5865F2]/10 mx-auto mb-3"><DiscordIcon size={26} className="text-[#5865F2]" /></span>
+        <h2 className="font-semibold text-lg">{t('ds.nolink', 'Link your Discord account')}</h2>
+        <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('ds.nolink.s2', 'Run')} <code className="px-1 rounded bg-[var(--surface-2)]">/link</code> {t('ds.nolink.s3', 'in any server the bot is in to get a code, then paste it here — no need to leave this page. The servers you own or manage then appear here.')}</p>
+        {/* Link right here rather than bouncing to the profile page — this IS where someone
+            arrives wanting to manage their server. Same redeem flow. */}
+        <DiscordLinkInline onLinked={load} />
+        <div className="mt-4 pt-4 border-t border-[var(--line)] flex items-center justify-center gap-2 flex-wrap">
+          <span className="text-xs text-[var(--faint)]">{t('ds.nolink.notin', 'Bot not in your server yet?')}</span>
+          {InviteBtn}
+        </div>
       </div>
-    </EmptyState>;
+    );
   }
   if (!state.guilds.length) {
     return <EmptyState icon={MessageSquare} title={t('ds.noguilds', 'No servers to manage yet')}
@@ -530,7 +567,7 @@ export function MyDiscordServers() {
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <MessageSquare size={16} className="text-[var(--primary-2)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
-        {inviteUrl && <a href={inviteUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><Plus size={14} /> {t('ds.invite', 'Invite the bot')}</a>}
+        {inviteUrl && <a href={inviteUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={15} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a>}
       </div>
       <div className="grid md:grid-cols-[minmax(0,240px)_1fr] gap-4">
         {/* Server picker — a column on desktop, a scrolling row on mobile. */}

@@ -2386,6 +2386,8 @@ const DICT = {
     'common.prev': 'Préc.', 'common.next': 'Suiv.',
     'ds.saved': 'Enregistré.', 'ds.needchannel': 'Définis d’abord un salon de logs.',
     'ds.nolink': 'Lie ton compte Discord',
+    'ds.nolink.s2': 'Lance', 'ds.nolink.s3': 'dans un serveur où est le bot pour obtenir un code, puis colle-le ici — sans quitter la page. Les serveurs que tu possèdes ou gères apparaissent ensuite ici.',
+    'ds.nolink.notin': 'Le bot n’est pas encore sur ton serveur ?',
     'ds.nolink.s': 'Connecte Discord à ton compte, puis les serveurs que tu possèdes ou gères apparaissent ici.',
     'ds.connect': 'Connecter Discord',
     'ds.noguilds': 'Aucun serveur à gérer pour l’instant',

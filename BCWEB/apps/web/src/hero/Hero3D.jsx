@@ -618,7 +618,7 @@ export default function Hero3D() {
       {showOverlay && (
         <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center pointer-events-none">
           <div ref={logoRef} className="flex flex-col items-center gap-3 pointer-events-none">
-            <img src="/logo.png" alt="BetterCommunity" className="w-14 h-14 rounded-2xl shadow-lg" />
+            <img src="/logo-white.webp" alt="BetterCommunity" className="w-16 h-16 rounded-2xl shadow-lg" />
             <div className="font-extrabold text-lg tracking-tight text-[var(--text)]">{t('intro.brand', 'BetterCommunity')}</div>
             <div ref={barRef} className="w-32 h-[2px] rounded-full overflow-hidden bg-[var(--surface-2)] relative mt-1">
               <div className="absolute inset-y-0 w-1/3 rounded-full anim-intro-shimmer" style={{ background: 'linear-gradient(90deg, var(--primary), var(--primary-2))' }} />
