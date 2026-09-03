@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog } from '../ui/ui.jsx';
@@ -71,6 +71,13 @@ const normGating = (gt = {}) => ({
   rules: (Array.isArray(gt.rules) ? gt.rules : []).map((r) => ({
     roleId: r.roleId || '', label: r.label || '',
     requireDiscord: r.requireDiscord !== false, requireBcweb: r.requireBcweb !== false, requireBmm: !!r.requireBmm,
+  })),
+});
+// Blog-announcement routes for this server: a channel + which blogs feed it.
+const BLOG_SRC = [['*', 'All'], ['bmm', 'BMM'], ['bsm', 'BSM'], ['community', 'Community'], ['installer', 'Installer'], ['developers', 'Developers'], ['showcase', 'Other projects']];
+const normBlog = (bl = {}) => ({
+  routes: (Array.isArray(bl.routes) ? bl.routes : []).map((r) => ({
+    channelId: r.channelId || '', sources: (r.sources && r.sources.length ? r.sources : ['*']),
   })),
 });
 
@@ -163,7 +170,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
-  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating) }); }).catch(() => setData({ error: true }));
+  const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
@@ -174,16 +181,18 @@ function GuildConfig({ guildId, onSaved }) {
   const welcomeDirty = JSON.stringify(draft.welcome) !== JSON.stringify(normWelcome(data.welcome));
   const jtcDirty = JSON.stringify(draft.jtc) !== JSON.stringify(normJtc(data.joinToCreate));
   const gatingDirty = JSON.stringify(draft.gating) !== JSON.stringify(normGating(data.gating));
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty;
+  const blogDirty = JSON.stringify(draft.blog) !== JSON.stringify(normBlog(data.blog));
+  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   const setG = (patch) => setDraft((d) => ({ ...d, gating: { ...d.gating, ...patch } }));
+  const setB = (routes) => setDraft((d) => ({ ...d, blog: { routes } }));
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating });
-      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating }));
-      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating) });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog });
+      setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog }));
+      setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog) });
       toast.success(t('ds.saved', 'Saved.'));
       onSaved?.();
     } catch (x) {
@@ -346,6 +355,42 @@ function GuildConfig({ guildId, onSaved }) {
           </div>
         </div>
       )}
+
+      {/* Blog announcements — owner-editable routes for THIS server only. Each posts the chosen
+          blogs to a channel. A route with no channel is dropped on save. */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-4">
+        <div className="flex items-center gap-2.5 text-sm font-medium"><Newspaper size={15} className="text-[var(--primary-2)]" /> {t('ds.blog', 'Blog announcements')}</div>
+        <p className="text-[11px] text-[var(--faint)] mt-0.5">{t('ds.blog.h', 'Post new blog posts to a channel in your server — pick which blogs feed each channel.')}</p>
+        <div className="space-y-2 mt-3">
+          {draft.blog.routes.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.blog.none', 'No routes yet — add one to announce blog posts in your server.')}</div>}
+          {draft.blog.routes.map((r, i) => {
+            const toggleSrc = (key) => {
+              const cur = r.sources || ['*'];
+              let nextS;
+              if (key === '*') nextS = ['*'];
+              else { nextS = cur.includes('*') ? [key] : cur.includes(key) ? cur.filter((s) => s !== key) : [...cur, key]; if (!nextS.length) nextS = ['*']; }
+              setB(draft.blog.routes.map((x, k) => k === i ? { ...x, sources: nextS } : x));
+            };
+            return (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                <button type="button" onClick={() => setB(draft.blog.routes.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ds.blog.routen', 'Channel {n}').replace('{n}', i + 1)}</div>
+                <Input value={r.channelId} onChange={(e) => setB(draft.blog.routes.map((x, k) => k === i ? { ...x, channelId: e.target.value.replace(/[^0-9]/g, '').slice(0, 32) } : x))} placeholder={t('ds.blog.chan', 'Channel ID')} />
+                <div className="flex flex-wrap gap-1.5 pe-6">
+                  {BLOG_SRC.map(([key, label]) => {
+                    const on = (r.sources || ['*']).includes(key);
+                    return (
+                      <button key={key} type="button" onClick={() => toggleSrc(key)}
+                        className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          {draft.blog.routes.length < 10 && <Button size="sm" variant="ghost" onClick={() => setB([...draft.blog.routes, { channelId: '', sources: ['*'] }])}><Plus size={13} /> {t('ds.blog.add', 'Add channel')}</Button>}
+        </div>
+      </div>
 
       {/* The guild's stored roster — only when it's actually in pool mode (the only mode that
           stores members), and only your own server's members, never another's. */}

@@ -1505,7 +1505,10 @@ export default async function botRoutes(app) {
     // — it lives in the free-form bot.config.guilds[guildId] blob (admin-only until now).
     const cfg = await getBotConfig(p);
     const gc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
-    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {} };
+    // Blog-announcement routes are a GLOBAL list, but each route already carries a guildId — so
+    // an owner sees and edits only the routes stamped to THIS guild, never another server's.
+    const blogRoutes = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
+    return { guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes } };
   });
 
   // The guild's stored members, for its OWNER — read-only, and STRICTLY scoped to this one
@@ -1605,6 +1608,14 @@ export default async function botRoutes(app) {
           requireBmm: z.boolean().optional().default(false),
         })).max(30).optional(),
       }).optional(),
+      // Blog-announcement routes for THIS guild. Merged into the global cfg.blog.routes list,
+      // preserving every route that belongs to another guild (or to no guild = admin's own).
+      blog: z.object({
+        routes: z.array(z.object({
+          channelId: z.string().max(32).optional().default(''),
+          sources: z.array(z.string().max(24)).max(12).optional().default(['*']),
+        })).max(20).optional(),
+      }).optional(),
       // Deliberately NOT accepted here: hostingGroupId + storageQuotaBytes. Those are the
       // storage budget and stay on the admin path — the zod strip drops them silently, which
       // is the intended guard, not a bug.
@@ -1617,14 +1628,14 @@ export default async function botRoutes(app) {
     // The feature subtrees ride in the same body but live in a different store (the config
     // blob, not the BotGuild row), so split them out — passing them to botGuild.update would be
     // unknown columns.
-    const { welcome, joinToCreate, gating, ...guildData } = b.data;
+    const { welcome, joinToCreate, gating, blog, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
     const g = await p.botGuild.update({ where: { guildId: cur.guildId }, data: guildData });
-    // Merge the given feature subtrees into bot.config.guilds[guildId]. Read the RAW stored
-    // value (not the defaults-merged one) so we never persist DEFAULT_BOT_CONFIG into the row,
-    // and touch ONLY this guild's given subtrees — an admin editing the rest is untouched.
+    // Merge the given config into bot.config. Read the RAW stored value (not the defaults-merged
+    // one) so we never persist DEFAULT_BOT_CONFIG into the row, and touch ONLY what this owner is
+    // allowed to: their guild's feature subtrees, and their guild's blog routes.
     const featurePatch = {};
     if (welcome) {
       const w = { ...welcome };
@@ -1635,20 +1646,34 @@ export default async function botRoutes(app) {
     }
     if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
     if (gating) featurePatch.gating = gating;
-    if (Object.keys(featurePatch).length) {
+    const changed = Object.keys(featurePatch);
+    if (changed.length || blog) {
       const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
-      const guilds = { ...(raw.guilds || {}) };
-      const gc = { ...(guilds[cur.guildId] || {}) };
-      for (const [k, v] of Object.entries(featurePatch)) gc[k] = { ...(gc[k] || {}), ...v };
-      guilds[cur.guildId] = gc;
-      const nextCfg = { ...raw, guilds };
+      const nextCfg = { ...raw };
+      if (changed.length) {
+        const guilds = { ...(raw.guilds || {}) };
+        const gc = { ...(guilds[cur.guildId] || {}) };
+        for (const [k, v] of Object.entries(featurePatch)) gc[k] = { ...(gc[k] || {}), ...v };
+        guilds[cur.guildId] = gc;
+        nextCfg.guilds = guilds;
+      }
+      if (blog) {
+        // Rebuild the GLOBAL route list = every route NOT for this guild (other servers + the
+        // admin's own un-stamped routes), plus this owner's routes re-stamped to their guild.
+        const existing = Array.isArray(raw.blog?.routes) ? raw.blog.routes : [];
+        const keep = existing.filter((r) => r.guildId !== cur.guildId);
+        const mine = (blog.routes || [])
+          .map((r) => ({ channelId: (r.channelId || '').trim(), sources: (r.sources && r.sources.length ? r.sources : ['*']), guildId: cur.guildId }))
+          .filter((r) => r.channelId);
+        nextCfg.blog = { ...(raw.blog || {}), routes: [...keep, ...mine] };
+      }
       await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: nextCfg }, update: { value: nextCfg } });
     }
-    const changed = Object.keys(featurePatch);
-    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}`);
+    await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}${blog ? ' +blog' : ''}`);
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     const cfg = await getBotConfig(p);
     const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
-    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {} };
+    const outBlog = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
+    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog } };
   });
 }
