@@ -701,7 +701,9 @@ function FeaturedCard({ f, t }) {
 //               stats endpoint, anything that returns a number or {value|count|downloads}),
 //               refreshing on a light interval. This is the "download counter from the page,
 //               or anything else" case, without hardcoding one source.
-function useCountdown(target) {
+// Milliseconds-to-target countdown (distinct from the object-returning useCountdown above,
+// which the announcement banner uses). The headline Counter needs the raw ms to format itself.
+function useCountdownMs(target) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!target) return;
@@ -732,7 +734,7 @@ function useLiveNumber(source) {
 function Counter({ cnt }) {
   const { t } = useI18n();
   const kind = cnt.kind === 'countdown' || cnt.kind === 'live' ? cnt.kind : 'static';
-  const ms = useCountdown(kind === 'countdown' ? cnt.target : null);
+  const ms = useCountdownMs(kind === 'countdown' ? cnt.target : null);
   const live = useLiveNumber(kind === 'live' ? cnt.source : null);
   let value = cnt.value;
   if (kind === 'live') value = (live != null ? live.toLocaleString() : (cnt.value || '—'));
