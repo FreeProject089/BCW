@@ -13,11 +13,12 @@ export async function scanAllMembers(client) {
   const ms = cfg?.memberStorage || { mode: 'managed', scope: 'linked' };
   let total = 0;
   for (const guild of client.guilds.cache.values()) {
-    if (ms.mode === 'free') {
-      // 'active' means "only members the bot has seen act" — a full roster scan would store
-      // inactive members too, so skip it and let activity/event writes populate the DB. 'all'
-      // and 'linked' full-scan every guild; the API applies the who-filter on sync.
-      if (ms.scope === 'active') continue;
+    if (ms.mode === 'free' || ms.mode === 'unified') {
+      // Both store across every server (unified just collapses to one row per person in the
+      // view). 'active' scope (free only) means "members the bot has seen act" — a full roster
+      // scan would store inactive members too, so skip it and let activity/event writes populate
+      // the DB. Everything else full-scans every guild; the API applies the who-filter on sync.
+      if (ms.mode === 'free' && ms.scope === 'active') continue;
     } else {
       // 'managed' (and, for now, 'unified'): only guilds the admin opted into `pool` store
       // members. Check the mode BEFORE the (expensive, privileged) full-roster fetch — this is

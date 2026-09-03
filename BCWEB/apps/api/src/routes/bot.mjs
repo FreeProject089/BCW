@@ -311,12 +311,27 @@ export default async function botRoutes(app) {
       ...(link === 'linked' ? { discordId: { in: linkedIds } } : link === 'unlinked' ? { discordId: { notIn: linkedIds } } : {}),
       ...(role ? { roles: { has: role } } : {}),
     };
+    // 'unified' member-storage mode presents ONE row per person (with the list of servers they
+    // share with the bot), rather than one row per (server, person). Rows are still stored per
+    // guild — the collapse is a view: `distinct: discordId` keeps the most-recent row per person,
+    // and their servers are attached below. Counts are distinct-person counts to match.
+    const cfg = await getBotConfig(p);
+    const unified = cfg.memberStorage?.mode === 'unified';
+    const distinctLen = (w) => p.discordActivity.findMany({ where: w, distinct: ['discordId'], select: { discordId: true } }).then((a) => a.length);
     const [rows, total, allTotal, linkedTotal] = await Promise.all([
-      p.discordActivity.findMany({ where, orderBy: SORTS[sort], take, skip }),
-      p.discordActivity.count({ where }),
-      p.discordActivity.count(),
-      p.discordActivity.count({ where: { discordId: { in: linkedIds } } }),
+      p.discordActivity.findMany({ where, orderBy: SORTS[sort], take, skip, ...(unified ? { distinct: ['discordId'] } : {}) }),
+      unified ? distinctLen(where) : p.discordActivity.count({ where }),
+      unified ? distinctLen({}) : p.discordActivity.count(),
+      unified ? distinctLen({ discordId: { in: linkedIds } }) : p.discordActivity.count({ where: { discordId: { in: linkedIds } } }),
     ]);
+    // Attach the servers each shown person is in (unified view only).
+    let serversByPerson = {};
+    if (unified && rows.length) {
+      const ids = rows.map((r) => r.discordId);
+      const allRows = await p.discordActivity.findMany({ where: { discordId: { in: ids } }, select: { discordId: true, guildId: true } });
+      const gnames = Object.fromEntries((await p.botGuild.findMany({ where: { guildId: { in: [...new Set(allRows.map((r) => r.guildId))] } }, select: { guildId: true, name: true } })).map((g) => [g.guildId, g.name]));
+      for (const r of allRows) (serversByPerson[r.discordId] ||= []).push({ guildId: r.guildId, name: gnames[r.guildId] || r.guildId });
+    }
     // Distinct role names across the roster. Capped: a server with thousands of roles
     // should slow nothing down, and a picker past a few hundred entries is unusable anyway.
     const roleRows = await p.discordActivity.findMany({ select: { roles: true }, take: 5000 });
@@ -324,8 +339,8 @@ export default async function botRoutes(app) {
     const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, include: { user: { select: { id: true, displayName: true, email: true } } } });
     const linkByDiscordId = Object.fromEntries(links.map((l) => [l.discordId, l.user]));
     return {
-      members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null })),
-      total, hasMore: skip + rows.length < total,
+      members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null, ...(unified ? { servers: serversByPerson[r.discordId] || [] } : {}) })),
+      total, hasMore: skip + rows.length < total, unified,
       counts: { all: allTotal, linked: linkedTotal, unlinked: allTotal - linkedTotal },
       // Every role the bot has seen, so the filter is a list to pick from rather than a
       // name to remember. Built from the rows the scan holds, which is the only place this
@@ -1438,9 +1453,12 @@ export default async function botRoutes(app) {
     const ms = cfg.memberStorage || { mode: 'managed', scope: 'linked' };
     let members = b.data.members;
     let effMode = g.memberMode, stored, capacity;
-    if (ms.mode === 'free') {
+    if (ms.mode === 'free' || ms.mode === 'unified') {
+      // Store in every server against one shared budget. 'free' + 'linked' narrows to members
+      // who linked a site account; 'unified' stores everyone (it is collapsed to one row per
+      // person in the members VIEW, not at write time).
       effMode = 'pool';
-      if (ms.scope === 'linked') {
+      if (ms.mode === 'free' && ms.scope === 'linked') {
         const linked = new Set((await p.discordLink.findMany({ where: { discordId: { in: members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
         members = members.filter((m) => linked.has(m.discordId));
       }

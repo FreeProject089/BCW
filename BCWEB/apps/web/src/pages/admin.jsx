@@ -14363,6 +14363,17 @@ function AdminBotMembers() {
                     {m.roles.length > 8 && <span className="text-[10px] text-[var(--faint)]">+{m.roles.length - 8}</span>}
                   </div>
                 )}
+                {/* Unified mode: this is ONE row per person, so show every server they share
+                    with the bot rather than repeating the person once per server. */}
+                {m.servers?.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                    <Server size={11} className="text-[var(--faint)]" />
+                    {m.servers.slice(0, 6).map((s) => (
+                      <span key={s.guildId} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#5865F2]/10 text-[var(--primary-2)]">{s.name}</span>
+                    ))}
+                    {m.servers.length > 6 && <span className="text-[10px] text-[var(--faint)]">+{m.servers.length - 6}</span>}
+                  </div>
+                )}
               </div>
               <BotModerate member={m} />
             </Card>
