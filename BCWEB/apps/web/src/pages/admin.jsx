@@ -12805,6 +12805,7 @@ function RolePanelPreview({ panel }) {
 // render (isCustomized) — otherwise its links would scroll to nothing.
 function BotSectionNav({ isCustomized }) {
   const { t } = useI18n();
+  const [active, setActive] = useState(null);
   const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const groups = [
     { label: t('db.nav.global', 'Server-wide'), show: true, items: [
@@ -12826,19 +12827,36 @@ function BotSectionNav({ isCustomized }) {
     ] },
   ];
   const shown = groups.filter((g) => g.show);
+  const allIds = shown.flatMap((g) => g.items.map(([id]) => id));
+  // Scroll-spy: highlight the section currently in view, so the rail tracks where you are as you
+  // scroll (and after a jump), not just where you last clicked.
+  useEffect(() => {
+    const els = allIds.map((id) => document.getElementById(id)).filter(Boolean);
+    if (!els.length) return;
+    const obs = new IntersectionObserver((entries) => {
+      const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+      if (vis[0]) setActive(vis[0].target.id);
+    }, { rootMargin: '-90px 0px -70% 0px', threshold: 0 });
+    els.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allIds.join(',')]);
   return (
     <>
-      {/* Desktop (xl+): a sticky sidebar of jump links. */}
-      <nav className="hidden xl:block sticky top-16 self-start text-sm">
+      {/* Desktop (xl+): a sticky sidebar of jump links, the current section highlighted. */}
+      <nav className="hidden xl:block sticky top-16 self-start text-sm border-s-2 border-[var(--line)] ps-1">
         {shown.map((g) => (
           <div key={g.label} className="mb-3">
             <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] px-2 mb-1">{g.label}</div>
-            {g.items.map(([id, label, Icon]) => (
-              <button key={id} type="button" onClick={() => go(id)}
-                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60 transition">
-                <Icon size={14} className="shrink-0 text-[var(--faint)]" /> <span className="truncate">{label}</span>
-              </button>
-            ))}
+            {g.items.map(([id, label, Icon]) => {
+              const on = active === id;
+              return (
+                <button key={id} type="button" onClick={() => go(id)} aria-current={on ? 'true' : undefined}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start transition ${on ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
+                  <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} /> <span className="truncate">{label}</span>
+                </button>
+              );
+            })}
           </div>
         ))}
       </nav>
@@ -12847,12 +12865,15 @@ function BotSectionNav({ isCustomized }) {
           minute of scrolling. Sits just under the sticky header. */}
       <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 bg-[var(--bg)]/90 backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         <div className="flex gap-1.5 min-w-max">
-          {shown.flatMap((g) => g.items).map(([id, label, Icon]) => (
-            <button key={id} type="button" onClick={() => go(id)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border border-[var(--line)] bg-[var(--bg-solid)] text-xs text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)] whitespace-nowrap shrink-0 transition">
-              <Icon size={13} className="text-[var(--faint)]" /> {label}
-            </button>
-          ))}
+          {shown.flatMap((g) => g.items).map(([id, label, Icon]) => {
+            const on = active === id;
+            return (
+              <button key={id} type="button" onClick={() => go(id)} aria-current={on ? 'true' : undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs whitespace-nowrap shrink-0 transition ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--bg-solid)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'}`}>
+                <Icon size={13} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} /> {label}
+              </button>
+            );
+          })}
         </div>
       </nav>
     </>
