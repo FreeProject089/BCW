@@ -11389,7 +11389,7 @@ function AdminOAuthClients() {
 // Editor for the bot's gated-role rules. Each rule = one Discord role granted to
 // members meeting its own requirements (Discord link / BCWEB account / BMM
 // creator id). Add as many as you like.
-function GatingRules({ rules, onChange }) {
+function GatingRules({ rules, onChange, guild }) {
   const { t } = useI18n();
   const upd = (i, patch) => onChange(rules.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   const add = () => onChange([...rules, { roleId: '', label: '', requireDiscord: true, requireBcweb: true, requireBmm: false }]);
@@ -11403,7 +11403,7 @@ function GatingRules({ rules, onChange }) {
       {rules.map((r, i) => (
         <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 space-y-2">
           <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
-            <Field label={t('db.gr.roleid', 'Role ID')}><Input value={r.roleId || ''} onChange={(e) => upd(i, { roleId: e.target.value.trim() })} placeholder="123456789012345678" /></Field>
+            <Field label={t('db.gr.roleid', 'Role ID')}><AdminRolePicker guild={guild} value={r.roleId} onChange={(v) => upd(i, { roleId: v })} /></Field>
             <Field label={t('db.gr.label', 'Label (for messages)')}><Input value={r.label || ''} onChange={(e) => upd(i, { label: e.target.value })} placeholder={t('db.gr.labelph', 'Verified / Creator…')} /></Field>
             <Button size="sm" variant="ghost" className="!text-error mb-0.5" onClick={() => rm(i)} title={t('db.gr.remove', 'Remove rule')}><Trash2 size={14} /></Button>
           </div>
@@ -13132,6 +13132,30 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
  * A card with its switch OFF stays collapsed as it always did: its values persist and come
  * back when it is switched on.
  */
+// Pick a channel / role from the scoped server's live list (heartbeat) instead of pasting an
+// id. Falls back to a plain id input on Global or when the bot hasn't reported the list yet.
+function AdminChanPicker({ guild, value, onChange, types = [0, 5], placeholder }) {
+  const { t } = useI18n();
+  const list = (guild?.channels || []).filter((c) => types.includes(c.type));
+  if (!list.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('db.f.chanid', 'Channel ID')} />;
+  return (
+    <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{t('ds.pick.none', '— none —')}</option>
+      {list.map((c) => <option key={c.id} value={c.id}>{c.type === 2 ? '🔊 ' : '# '}{c.name}</option>)}
+    </Select>
+  );
+}
+function AdminRolePicker({ guild, value, onChange, placeholder }) {
+  const { t } = useI18n();
+  if (!guild?.roles?.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('db.f.roleid', 'Role ID')} />;
+  return (
+    <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
+      <option value="">{t('ds.pick.none', '— none —')}</option>
+      {guild.roles.map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
+    </Select>
+  );
+}
+
 function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children, id }) {
   const { t } = useI18n();
   const off = enabled === false;
@@ -13643,6 +13667,9 @@ function AdminBot() {
   // every server without its own config), or a guild id = that server's override in
   // cfg.guilds[id]. Blog/alerts/kofi/limits/token stay global.
   const scopeObj = scope ? (cfg.guilds?.[scope] || {}) : cfg;   // where the 4 features live for the current scope
+  // The scoped server's live roles + channels (from the heartbeat) so per-server config can PICK
+  // instead of paste an id. Null on Global (no single server) → the pickers fall back to inputs.
+  const scopeGuild = scope ? (guildList.find((gg) => gg.id === scope) || null) : null;
   const base = scope ? `guilds.${scope}.` : '';
   const isCustomized = scope ? !!cfg.guilds?.[scope] : true;
   const sg = (p) => (base + p).split('.').reduce((o, k) => o?.[k], cfg) ?? '';
@@ -14147,9 +14174,9 @@ function AdminBot() {
               <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
                 <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
-                <Input value={lb.lobbyChannelId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: e.target.value } : x))} placeholder={t('db.jtc.lobbych', 'Lobby voice channel ID')} />
+                <AdminChanPicker guild={scopeGuild} types={[2]} value={lb.lobbyChannelId} placeholder={t('db.jtc.lobbych', 'Lobby voice channel ID')} onChange={(v) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: v } : x))} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Input value={lb.categoryId || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, categoryId: e.target.value } : x))} placeholder={t('db.jtc.catid', 'Category id (auto if empty)')} />
+                  <AdminChanPicker guild={scopeGuild} types={[4]} value={lb.categoryId} placeholder={t('db.jtc.catid', 'Category id (auto if empty)')} onChange={(v) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, categoryId: v } : x))} />
                   <Input value={lb.tempCategoryName || ''} onChange={(e) => sset('joinToCreate.lobbies', jtcLobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value } : x))} placeholder={t('db.jtc.tempcat', 'Temp category name')} />
                 </div>
               </div>
@@ -14158,7 +14185,7 @@ function AdminBot() {
 
           {/* Welcome / bye */}
           <ModuleCard id="sec-welcome" icon={Sparkles} title={t('db.mod.welcome', 'Welcome / bye')} desc={t('db.mod.welcome.d', 'Animated banner + message when members join or leave.')} enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
-            <Field label={t('db.f.welcomech', 'Welcome channel id')}><Input value={sg('welcome.channelId')} onChange={(e) => sset('welcome.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} /></Field>
+            <Field label={t('db.f.welcomech', 'Welcome channel id')}><AdminChanPicker guild={scopeGuild} value={sg('welcome.channelId')} onChange={(v) => sset('welcome.channelId', v)} /></Field>
             <Field label={t('db.f.joinmsg', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
             <Field label={t('db.f.leavemsg', 'Leave message')}><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>
             {/* Background style for the banner. */}
@@ -14219,7 +14246,7 @@ function AdminBot() {
           {/* Gated access */}
           <ModuleCard id="sec-gating" icon={KeyRound} title={t('db.mod.gating', 'Gated access')} desc={t('db.mod.gating.d', 'Grant roles automatically to members who link their account.')} enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
             <p className="text-xs text-[var(--muted)]">{t('db.gating.desc', 'Each rule grants ONE Discord role to members who meet its requirements. Re-checked every ~5 min (granting AND removing); members can run /refreshroles to sync instantly after linking on the site.')}</p>
-            <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} />
+            <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} guild={scopeGuild} />
           </ModuleCard>
         </div>
       )}
