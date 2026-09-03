@@ -10,6 +10,7 @@
 // somewhere else would make it harder to keep true, not easier. Rendered by the active lang,
 // the same pattern the site-theme token catalogue uses.
 import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
@@ -175,12 +176,14 @@ const GUIDE = [
         'Clés d’API et portées pour les programmes agissant contre BetterCommunity. La landing /dev et /dev/tools en sont la face développeur.',
         []),
       G('bot', MessageSquare, 'Discord bot', 'Bot Discord',
-        'The connection-manager bot: which servers it is in, per-server settings, gating, welcome/bye, giveaways, Ko-fi posts, and moderation. Users manage their own server from their user dashboard.',
-        'Le bot gestionnaire de connexions : dans quels serveurs il est, réglages par serveur, gating, bienvenue/au revoir, tirages, posts Ko-fi, et modération. Les utilisateurs gèrent leur propre serveur depuis leur tableau de bord.',
+        'The connection-manager bot. There are TWO dashboards: this admin one (you, the bot dev — global config across every server), and the user one (a server owner manages the bot on their OWN server, from their dashboard → Discord servers). The admin dashboard is organised as a left module rail — Overview, Announcements, Rules/panels/DMs, Per-server, Members, Limits — one module at a time.',
+        'Le bot gestionnaire de connexions. Il y a DEUX tableaux de bord : celui-ci, admin (toi, le dev du bot — config globale sur tous les serveurs), et celui utilisateur (un propriétaire de serveur gère le bot sur SON serveur, depuis son tableau de bord → Serveurs Discord). Le dashboard admin est organisé en un rail de modules à gauche — Vue d’ensemble, Annonces, Règles/panneaux/MP, Par serveur, Membres, Limites — un module à la fois.',
         [
-          { en: 'The token is set/rotated here (when the bot is disabled); a DISCORD_TOKEN in the environment wins. Privileged intents are required.', fr: 'Le jeton se définit/tourne ici (quand le bot est désactivé) ; un DISCORD_TOKEN dans l’environnement l’emporte. Les intents privilégiés sont requis.' },
-          { en: 'A server can be banned (the bot leaves and never rejoins, or all its commands stop there); an /appeal command returns the ban id and a link to the contact page.', fr: 'Un serveur peut être banni (le bot le quitte et n’y revient jamais, ou toutes ses commandes s’y arrêtent) ; une commande /appeal renvoie l’id du ban et un lien vers la page de contact.' },
-          { en: 'Welcome/bye images can use a custom background by URL, and are moderatable in case one breaks the rules.', fr: 'Les images de bienvenue/au revoir peuvent utiliser un fond personnalisé par URL, et sont modérables au cas où l’une enfreint les règles.' },
+          { en: 'The token is set/rotated here (when the bot is disabled); a DISCORD_TOKEN in the environment wins. Privileged intents are required. "Reconnect bot" drops and re-opens the Discord connection (it does NOT deploy new code).', fr: 'Le jeton se définit/tourne ici (quand le bot est désactivé) ; un DISCORD_TOKEN dans l’environnement l’emporte. Les intents privilégiés sont requis. « Reconnecter » coupe et rouvre la connexion Discord (ça ne déploie PAS de nouveau code).' },
+          { en: 'Member storage (Overview) is a global choice of how the bot builds its database: "Per-server" (default — each server opts into a paid pool or moderation-logs-only with its own budget; nothing stored until it opts in), "Free — every server" (store everyone, with a who sub-choice: linked accounts only / active members / everyone), or "Unified per person" (one row per person with their shared servers, not one per server).', fr: 'Le stockage des membres (Vue d’ensemble) est un choix global de comment le bot construit sa base : « Par serveur » (défaut — chaque serveur choisit un pool payant ou logs-de-modération seulement avec son budget ; rien tant qu’il n’active pas), « Gratuit — chaque serveur » (stocke tout le monde, avec un sous-choix : comptes liés / actifs / tous), ou « Unifié par personne » (une ligne par personne avec ses serveurs partagés, pas une par serveur).' },
+          { en: 'Per-server config (moderation, welcome/bye, join-to-create voice, gated roles) is set independently for each server via the server picker; a server with no config of its own uses the Global defaults. A server can be banned (the bot leaves and never rejoins, or all its commands stop there); /appeal returns the ban id and a contact link.', fr: 'La config par serveur (modération, bienvenue/au revoir, vocal à la demande, rôles réservés) se règle indépendamment pour chaque serveur via le sélecteur ; un serveur sans config propre utilise les défauts globaux. Un serveur peut être banni (le bot le quitte et n’y revient jamais, ou toutes ses commandes s’y arrêtent) ; /appeal renvoie l’id du ban et un lien de contact.' },
+          { en: 'Announcements route by kind (commissions, incidents, legal, "needs attention", events, promos) — each to its own channel with an optional urgent-only ping. Blog posts, alerts, Ko-fi tips and Stripe payments/refunds each post to their configured channels. "Message every member" DMs everyone the bot has seen (slow on purpose — Discord treats DM bursts as spam).', fr: 'Les annonces sont routées par type (commandes, incidents, légal, « à traiter », événements, promos) — chacune vers son salon avec un ping urgent optionnel. Articles de blog, alertes, pourboires Ko-fi et paiements/remboursements Stripe postent chacun vers leurs salons. « Message à chaque membre » envoie un MP à tous ceux que le bot a vus (lent exprès — Discord traite les rafales de MP comme du spam).' },
+          { en: 'Users link their Discord in-place from their dashboard (run /link in a server to get a code, paste it), then the servers they own or have Manage Server on appear for them to configure. Welcome/bye images can use a custom uploaded background, and are moderatable.', fr: 'Les utilisateurs lient leur Discord directement depuis leur tableau de bord (lance /link dans un serveur pour un code, colle-le), puis les serveurs qu’ils possèdent ou gèrent apparaissent à configurer. Les images de bienvenue/au revoir peuvent utiliser un fond téléversé, et sont modérables.' },
         ]),
     ],
   },
@@ -236,6 +239,8 @@ export default function AdminGuide() {
   const [expandAll, setExpandAll] = useState(false);
   const [editing, setEditing] = useState(false);
   const [custom, setCustom] = useState(null); // admin-authored Markdown sections
+  const [sp] = useSearchParams();
+  const deep = sp.get('g'); // a "Learn more →" link deep-links to one entry by id
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
   // Only ADMIN/SUPERADMIN reach this screen, but the Edit affordance is theirs specifically.
   const canEdit = !!user && (user.role === 'ADMIN' || user.role === 'SUPERADMIN');
@@ -245,6 +250,15 @@ export default function AdminGuide() {
       .then((d) => setCustom(Array.isArray(d?.settings?.['guide.custom']) ? d.settings['guide.custom'] : []))
       .catch(() => setCustom([]));
   }, []);
+
+  // Deep link: a "Learn more →" from another screen arrives as ?g=<entry id>. Open that entry
+  // and scroll it into view (the timeout lets the accordion paint first). Highlighted below.
+  useEffect(() => {
+    if (!deep) return;
+    setOpen((s) => new Set(s).add(deep));
+    const el = document.getElementById(`guide-${deep}`);
+    if (el) { const id = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); return () => clearTimeout(id); }
+  }, [deep]);
 
   // Custom sections join the built-in guide as one more group at the end, so a search and the
   // expand-all control cover them too. Each carries Markdown bodies rendered by <Markdown>.
@@ -308,7 +322,7 @@ export default function AdminGuide() {
                 const Icon = it.icon;
                 const count = it.kind === 'custom' ? 0 : it.points.length;
                 return (
-                  <Card key={it.id} className="overflow-hidden">
+                  <Card key={it.id} id={`guide-${it.id}`} className={`overflow-hidden scroll-mt-24 transition ${deep === it.id ? 'ring-2 ring-[var(--primary)]/50' : ''}`}>
                     <button type="button" onClick={() => toggle(it.id)} aria-expanded={isOpen}
                       className="w-full text-start p-3.5 flex items-start gap-3 hover:bg-[var(--surface-2)]/50 transition">
                       <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><Icon size={17} /></span>

@@ -19838,7 +19838,7 @@ function AdminSettings() {
         {/* The fields below carry a one-line description each; the long "what does this actually
             do, and when would I change it" lives in the Admin guide so this screen stays a
             control panel, not a manual. */}
-        <Link to="?s=guide" className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
+        <Link to="?s=guide&g=hostingsettings" className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
       </div>
       {dirtyKeys.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">
@@ -19963,7 +19963,7 @@ function AdminSettings() {
                   {/* The gist stays on the control; the full explanation lives in the Admin guide,
                       so a setting reads as a control, not a manual (clamp + a "learn more" link). */}
                   <div className="text-[11px] text-[var(--faint)] mt-1.5 line-clamp-2">{D}</div>
-                  <Link to="?s=guide" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
+                  <Link to="?s=guide&g=hostingsettings" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
                   {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
