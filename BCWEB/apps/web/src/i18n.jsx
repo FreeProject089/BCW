@@ -2840,6 +2840,8 @@ const DICT = {
     'ogp.prev.title': 'Aperçu du lien', 'ogp.prev.sub': 'À quoi ressemble un lien partagé sur Discord, X, Slack et les autres — ils lisent tous les mêmes balises. Règle la description et l’image dans « Recherche & découvrabilité » plus bas, puis Enregistre pour rafraîchir.',
     'ogp.prev.defdesc': 'Le foyer de tous les projets Better* — catalogues, hébergement, comptes et plus.',
     'ogp.prev.noimg': 'Aucune image d’aperçu — un lien partagé s’affiche en texte brut. Renseigne « URL de l’image d’aperçu » plus bas (1200×630).',
+    'ogp.prev.sub2': 'Les mêmes balises, rendues comme chaque plateforme les affiche réellement. Règle le titre, la description et l’image dans « Recherche & découvrabilité » plus bas, puis Enregistre pour rafraîchir.',
+    'ogp.prev.note': 'Google ignore l’image d’aperçu pour la plupart des résultats et montre le titre + l’extrait ; les trois autres commencent par l’image, donc le 1200×630 compte surtout là.',
     'rl.title': "Vous avez construit quelque chose ? Demandez à figurer ici.",
     'sq.title': "Demandes d'inscription",
     'sq.sub': "Approuver crée la page non publiée et non listée — ça ne met rien devant personne. Une demande PAYÉE n'a pas plus de droits qu'une gratuite : le paiement a acheté une place dans cette file.",

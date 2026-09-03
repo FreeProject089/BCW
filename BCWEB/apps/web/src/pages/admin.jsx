@@ -16380,28 +16380,99 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
 // Discord / X / Slack, built from the seo.* settings. Discord/X/Slack all read the same OG
 // tags (Twitter cards mirror og:*), so ONE preview covers them. Reads the SAVED values; it
 // refreshes on the next load after a Save.
+// The four consumers each read the SAME OG/Twitter tags but paint them very differently,
+// so a single card was misleading — "looks fine on Discord" says nothing about the Google
+// result or the bare-text X card. This shows the real unfurl per platform, switchable.
+const OGP_PLATFORMS = [
+  ['discord', 'Discord', '#5865F2'],
+  ['x', 'X', '#000000'],
+  ['facebook', 'Facebook', '#1877F2'],
+  ['google', 'Google', '#4285F4'],
+];
+
 function OgPreviewCard() {
   const { t, lang } = useI18n();
   const { data } = useAsync(() => api.get('/admin/settings').catch(() => ({ settings: {} })), []);
+  const [plat, setPlat] = useState('discord');
   const s = data?.settings || {};
+  const title = (lang === 'fr' ? s['seo.titleFr'] : s['seo.title']) || s['seo.title'] || 'BetterCommunity';
   const desc = (lang === 'fr' ? s['seo.descriptionFr'] : s['seo.description']) || s['seo.description']
     || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
   const img = s['seo.ogImage'] || '';
-  const domain = (typeof window !== 'undefined' && window.location?.host) || 'bettercommunity.ch';
+  const host = (typeof window !== 'undefined' && window.location?.host) || 'bettercommunity.ch';
+  const url = `https://${host}`;
+
+  // A shared image, reused by every platform pane. Falls back to a labelled placeholder so
+  // "no image set" is itself visible — that's the state most admins forget to fix.
+  const Img = ({ className = '', style = {} }) => (img
+    ? <img src={img} alt="" className={`w-full object-cover ${className}`} style={{ aspectRatio: '1200 / 630', ...style }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+    : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))', ...style }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>);
+
   return (
     <Card className="p-4 mt-3">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('ogp.prev.title', 'Link preview')}</div>
-      <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub', 'How a shared link looks on Discord, X, Slack and the rest — they all read the same tags. Set the description and image in Search & discoverability below, then Save to refresh this.')}</p>
-      <div className="max-w-md rounded-lg overflow-hidden border-s-4 border-[#5865F2]" style={{ background: 'var(--surface-2)' }}>
-        <div className="p-3">
-          <div className="text-[11px] text-[var(--faint)] uppercase tracking-wide truncate">{domain}</div>
-          <div className="text-sm font-semibold text-[var(--primary-2)] mt-0.5">BetterCommunity</div>
-          <div className="text-xs text-[var(--muted)] mt-1 line-clamp-3">{desc}</div>
-        </div>
-        {img
-          ? <img src={img} alt="" className="w-full object-cover" style={{ aspectRatio: '1200 / 630' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-          : <div className="w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center" style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))' }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>}
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub2', 'The same tags, rendered the way each platform actually shows them. Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
+
+      {/* Platform switcher — each chip in its brand colour when active. */}
+      <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 mb-3 flex-wrap">
+        {OGP_PLATFORMS.map(([id, label, color]) => (
+          <button key={id} type="button" onClick={() => setPlat(id)}
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${plat === id ? 'text-white' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}
+            style={plat === id ? { background: color } : undefined}>{label}</button>
+        ))}
       </div>
+
+      {/* Each pane is a faithful-enough mock of that platform's card. Neutral greys/whites are
+          hardcoded on purpose: these emulate Discord/Google chrome, not our own theme, and
+          must read the same in the admin's light or dark mode. */}
+      <div className="flex justify-center">
+        {plat === 'discord' && (
+          <div className="w-full max-w-[440px] rounded-lg overflow-hidden" style={{ background: '#2b2d31', border: '1px solid #1e1f22', borderLeft: '4px solid #5865F2' }}>
+            <div className="p-3">
+              <div className="text-[11px] mt-0.5" style={{ color: '#b5bac1' }}>{title}</div>
+              <div className="text-sm font-semibold mt-0.5" style={{ color: '#00a8fc' }}>{title}</div>
+              <div className="text-xs mt-1 line-clamp-3" style={{ color: '#dbdee1' }}>{desc}</div>
+              <div className="mt-2 rounded overflow-hidden"><Img /></div>
+            </div>
+          </div>
+        )}
+        {plat === 'x' && (
+          <div className="w-full max-w-[440px] rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #cfd9de' }}>
+            <Img />
+            <div className="px-3 py-2" style={{ borderTop: '1px solid #eff3f4' }}>
+              <div className="text-[13px] leading-tight" style={{ color: '#0f1419' }}>{title}</div>
+              <div className="text-[13px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#536471' }}>{desc}</div>
+              <div className="text-[13px] mt-1" style={{ color: '#536471' }}>🔗 {host}</div>
+            </div>
+          </div>
+        )}
+        {plat === 'facebook' && (
+          <div className="w-full max-w-[440px] overflow-hidden" style={{ background: '#fff', border: '1px solid #dddfe2', borderRadius: 8 }}>
+            <Img />
+            <div className="px-3 py-2.5" style={{ background: '#f2f3f5', borderTop: '1px solid #dddfe2' }}>
+              <div className="text-[11px] uppercase tracking-wide truncate" style={{ color: '#606770' }}>{host}</div>
+              <div className="text-[15px] font-semibold leading-tight mt-1 line-clamp-2" style={{ color: '#1d2129' }}>{title}</div>
+              <div className="text-[13px] mt-1 line-clamp-1" style={{ color: '#606770' }}>{desc}</div>
+            </div>
+          </div>
+        )}
+        {plat === 'google' && (
+          <div className="w-full max-w-[540px] px-1 py-2" style={{ background: '#fff', borderRadius: 8, border: '1px solid #ebebeb' }}>
+            <div className="px-3 py-1">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0" style={{ background: '#f97316' }}>{title.slice(0, 1)}</div>
+                <div className="min-w-0">
+                  <div className="text-[14px] leading-none truncate" style={{ color: '#202124' }}>{title}</div>
+                  <div className="text-[12px] leading-tight truncate" style={{ color: '#4d5156' }}>{url}</div>
+                </div>
+              </div>
+              <div className="text-[20px] leading-snug hover:underline cursor-default line-clamp-1" style={{ color: '#1a0dab' }}>{title}</div>
+              <div className="text-[14px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#4d5156' }}>{desc}</div>
+            </div>
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mt-3">{t('ogp.prev.note', 'Google ignores the preview image for most results and shows the title + snippet; the other three lead with the image, so 1200×630 matters most there.')}</p>
     </Card>
   );
 }
