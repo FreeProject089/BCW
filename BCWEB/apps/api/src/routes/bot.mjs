@@ -1618,6 +1618,80 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // Admin: the economy leaderboard + totals, for the dashboard's check/give tools.
+  app.get('/admin/economy', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const where = q ? { user: { OR: [{ displayName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } } : {};
+    const [rows, agg] = await Promise.all([
+      p.userEconomy.findMany({ where, include: { user: { select: { id: true, displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 50 }),
+      p.userEconomy.aggregate({ _sum: { xp: true, points: true }, _count: true }),
+    ]);
+    return {
+      members: rows.map((r) => ({ userId: r.userId, displayName: r.user.displayName, level: r.level, xp: r.xp, points: r.points, messages: r.messages, reactions: r.reactions, voiceSeconds: r.voiceSeconds })),
+      totals: { members: agg._count, xp: agg._sum.xp || 0, points: agg._sum.points || 0 },
+    };
+  });
+
+  // Admin: grant (positive) or take (negative) points from a member. Points never go below 0.
+  app.post('/admin/economy/grant', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ userId: z.string().min(1).max(64), points: z.number().int().min(-1000000).max(1000000), reason: z.string().max(200).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const cur = await p.userEconomy.findUnique({ where: { userId: b.data.userId } });
+    const newPts = Math.max(0, (cur?.points || 0) + b.data.points);
+    await p.userEconomy.upsert({ where: { userId: b.data.userId }, create: { userId: b.data.userId, points: newPts }, update: { points: newPts } });
+    await logAudit(p, req.user.uid, 'economy.grant', `user=${b.data.userId} delta=${b.data.points} → ${newPts}${b.data.reason ? ` (${b.data.reason})` : ''}`);
+    return { ok: true, points: newPts };
+  });
+
+  // A member spends points in the bot shop. The bot posts this on a /shop purchase; the API
+  // debits the balance atomically (refusing when short) and returns the item so the bot can
+  // deliver it (mint a promo code, assign a role, …). Kept server-authoritative so a client
+  // can never set its own price.
+  app.post('/bot/economy/buy', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordId: z.string().min(1).max(32), itemId: z.string().min(1).max(60) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const item = (Array.isArray(eco.shop) ? eco.shop : []).find((i) => i.id === b.data.itemId);
+    if (!item) return { ok: false, error: 'no_such_item' };
+    const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
+    if (!link) return { ok: false, error: 'not_linked' };
+    const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
+    const cost = Math.max(0, Number(item.cost) || 0);
+    if ((cur?.points || 0) < cost) return { ok: false, error: 'insufficient', points: cur?.points || 0, cost };
+    await p.userEconomy.update({ where: { userId: link.userId }, data: { points: { decrement: cost } } });
+    await logAudit(p, 'system', 'economy.buy', `user=${link.userId} item=${item.id} cost=${cost}`);
+    return { ok: true, item: { id: item.id, name: item.name, kind: item.kind, payload: item.payload || null }, points: (cur?.points || 0) - cost };
+  });
+
+  // A member gambles points in the casino. The bot posts the bet + outcome multiplier it rolled;
+  // the API validates the bet against the configured limits, applies the house edge to the
+  // payout, and settles the balance. The RNG lives on the bot (per game) — the API is the ledger.
+  app.post('/bot/economy/casino', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(1000000), multiplier: z.number().min(0).max(1000) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    if (!eco.casino?.enabled) return { ok: false, error: 'casino_off' };
+    const min = Number(eco.casino.minBet) || 1, max = Number(eco.casino.maxBet) || 100;
+    if (b.data.bet < min || b.data.bet > max) return { ok: false, error: 'bad_bet', min, max };
+    const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
+    if (!link) return { ok: false, error: 'not_linked' };
+    const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
+    if ((cur?.points || 0) < b.data.bet) return { ok: false, error: 'insufficient', points: cur?.points || 0 };
+    const edge = 1 - (Number(eco.casino.houseEdgePct) || 0) / 100;
+    // Net delta = payout − bet. Payout = bet · multiplier · edge (edge already prices the house in).
+    const payout = Math.floor(b.data.bet * b.data.multiplier * edge);
+    const delta = payout - b.data.bet;
+    const newPts = Math.max(0, (cur?.points || 0) + delta);
+    await p.userEconomy.upsert({ where: { userId: link.userId }, create: { userId: link.userId, points: newPts }, update: { points: newPts } });
+    return { ok: true, delta, payout, points: newPts };
+  });
+
   // ── Website side: redeem / list / unlink Discord links ──
   app.get('/me/discord/links', { preHandler: requireRole() }, async (req) => {
     const p = await db();

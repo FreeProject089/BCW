@@ -14056,6 +14056,8 @@ function AdminBot() {
             </div>
           ))}
         </ModuleCard>
+
+        <EconomyLedger currency={g('economy.currencyName') || 'points'} />
         </>);
       })()}
 
@@ -14455,6 +14457,59 @@ function AdminBotMembers() {
         </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')} sub={link ? t('bm.trother', 'Try another filter.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")} />}
       </>}
     </div>
+  );
+}
+
+// Admin: the economy leaderboard + a check/give-points tool. Live from /admin/economy.
+function EconomyLedger({ currency }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const [q, setQ] = useState('');
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState('');
+  const load = (query = '') => api.get(`/admin/economy?q=${encodeURIComponent(query)}`).then(setData).catch(() => setData({ members: [], totals: {} }));
+  useEffect(() => { load(); }, []);
+  const grant = async (m, delta) => {
+    const raw = window.prompt(t('db.eco.grant.p', 'Points to give {name} (negative to take):').replace('{name}', m.displayName), String(delta || 100));
+    if (raw == null) return;
+    const points = Math.round(Number(raw));
+    if (!Number.isFinite(points) || points === 0) return;
+    setBusy(m.userId);
+    try { const r = await api.post('/admin/economy/grant', { userId: m.userId, points }); toast.success(t('db.eco.grant.ok', 'Balance updated → {n}').replace('{n}', r.points)); load(q); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
+  };
+  const fmtH = (s) => `${Math.floor((s || 0) / 3600)}h`;
+  return (
+    <ModuleCard id="sec-eco-ledger" icon={TrendingUp} title={t('db.eco.ledger', 'Balances & leaderboard')} desc={t('db.eco.ledger.d', 'Every member’s level and points — check them, and give or take points.')} onToggle={null}>
+      {data && (
+        <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--faint)] mb-1">
+          <span>{t('db.eco.tot.members', '{n} members').replace('{n}', data.totals?.members || 0)}</span>
+          <span>· {(data.totals?.xp || 0).toLocaleString()} XP</span>
+          <span>· {(data.totals?.points || 0).toLocaleString()} {currency}</span>
+        </div>
+      )}
+      <div className="relative mb-2">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(q)} placeholder={t('db.eco.search', 'Search a member…')} />
+      </div>
+      {!data ? <Spinner /> : data.members.length === 0 ? (
+        <div className="text-xs text-[var(--faint)]">{t('db.eco.nomembers', 'Nobody has earned XP yet.')}</div>
+      ) : (
+        <div className="space-y-1.5 max-h-[46vh] overflow-auto pe-1">
+          {data.members.map((m) => (
+            <div key={m.userId} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2">
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 text-[var(--primary-2)] text-xs font-bold shrink-0">{m.level}</span>
+              <div className="flex-1 min-w-0">
+                <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--primary-2)] block">{m.displayName}</Link>
+                <div className="text-[11px] text-[var(--faint)] tabular-nums">{m.xp.toLocaleString()} XP · {m.messages} msg · {m.reactions} react · {fmtH(m.voiceSeconds)}</div>
+              </div>
+              <span className="text-sm font-semibold tabular-nums shrink-0">{(m.points || 0).toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{currency}</span></span>
+              <Button size="sm" variant="ghost" disabled={busy === m.userId} onClick={() => grant(m, 100)}>{busy === m.userId ? <Spinner /> : <><Gift size={13} /> {t('db.eco.give', 'Give')}</>}</Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </ModuleCard>
   );
 }
 
