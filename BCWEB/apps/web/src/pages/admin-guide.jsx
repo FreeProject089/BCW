@@ -235,10 +235,9 @@ export default function AdminGuide() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const [q, setQ] = useState('');
-  const [open, setOpen] = useState(() => new Set());
-  const [expandAll, setExpandAll] = useState(false);
   const [editing, setEditing] = useState(false);
   const [custom, setCustom] = useState(null); // admin-authored Markdown sections
+  const [active, setActive] = useState(null);  // the entry shown in the reading pane (docs layout)
   const [sp] = useSearchParams();
   const deep = sp.get('g'); // a "Learn more →" link deep-links to one entry by id
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
@@ -253,12 +252,8 @@ export default function AdminGuide() {
 
   // Deep link: a "Learn more →" from another screen arrives as ?g=<entry id>. Open that entry
   // and scroll it into view (the timeout lets the accordion paint first). Highlighted below.
-  useEffect(() => {
-    if (!deep) return;
-    setOpen((s) => new Set(s).add(deep));
-    const el = document.getElementById(`guide-${deep}`);
-    if (el) { const id = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); return () => clearTimeout(id); }
-  }, [deep]);
+  // A "Learn more →" deep link (?g=<id>) selects that entry in the reading pane.
+  useEffect(() => { if (deep) setActive(deep); }, [deep]);
 
   // Custom sections join the built-in guide as one more group at the end, so a search and the
   // expand-all control cover them too. Each carries Markdown bodies rendered by <Markdown>.
@@ -287,8 +282,9 @@ export default function AdminGuide() {
     })).filter((g) => g.items.length);
   }, [query, merged]);
 
-  const toggle = (id) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allOpen = query.length > 0 || expandAll; // a search auto-expands what it found
+  // Flat list of every visible entry (for the reading pane + resolving the active one).
+  const flat = useMemo(() => groups.flatMap((g) => g.items.map((it) => ({ ...it, _heading: g.heading }))), [groups]);
+  const activeItem = flat.find((it) => it.id === active) || flat[0] || null;
 
   if (editing) return <GuideEditor initial={custom || []} onClose={() => setEditing(false)} onSaved={(v) => { setCustom(v); setEditing(false); }} />;
 
@@ -300,60 +296,74 @@ export default function AdminGuide() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('ag.sub', 'What every admin screen does, who sees the result, and the traps worth knowing — grouped like the sidebar.')}</p>
 
-      <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <div className="relative flex-1 min-w-[220px] max-w-md">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ag.search', 'Search the guide…')} />
-        </div>
-        <Button size="sm" variant="ghost" onClick={() => setExpandAll((v) => !v)}>
-          {expandAll ? <><ChevronsDownUp size={13} /> {t('ag.collapse', 'Collapse all')}</> : <><ChevronsUpDown size={13} /> {t('ag.expand', 'Expand all')}</>}
-        </Button>
-      </div>
-
-      {groups.length === 0 && <Card className="p-6 text-sm text-[var(--muted)]">{t('ag.none', 'Nothing matches that.')}</Card>}
-
-      <div className="space-y-5">
-        {groups.map((g) => (
-          <div key={g.heading.en}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{L(g.heading)}</div>
-            <div className="space-y-2">
-              {g.items.map((it) => {
-                const isOpen = allOpen || open.has(it.id);
-                const Icon = it.icon;
-                const count = it.kind === 'custom' ? 0 : it.points.length;
-                return (
-                  <Card key={it.id} id={`guide-${it.id}`} className={`overflow-hidden scroll-mt-24 transition ${deep === it.id ? 'ring-2 ring-[var(--primary)]/50' : ''}`}>
-                    <button type="button" onClick={() => toggle(it.id)} aria-expanded={isOpen}
-                      className="w-full text-start p-3.5 flex items-start gap-3 hover:bg-[var(--surface-2)]/50 transition">
-                      <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><Icon size={17} /></span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="block font-semibold text-sm">{L(it.title)}</span>
-                          {it.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)]">{t('ag.customtag', 'custom')}</span>}
-                          {count > 0 && !isOpen && <span className="text-[10px] text-[var(--faint)]">· {t('ag.npoints', '{n} points').replace('{n}', count)}</span>}
-                        </span>
-                        <span className="block text-[13px] text-[var(--muted)] leading-relaxed mt-0.5">{it.kind === 'custom' ? '' : L(it.body)}</span>
-                      </span>
-                      <ChevronDown size={16} className={`text-[var(--faint)] shrink-0 mt-1 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-                    </button>
-                    {isOpen && it.kind === 'builtin' && it.points.length > 0 && (
-                      <ul className="px-3.5 pb-3.5 ps-[62px] space-y-1.5">
-                        {it.points.map((p, i) => (
-                          <li key={i} className="text-[13px] text-[var(--muted)] leading-relaxed list-disc marker:text-[var(--primary-2)]">{L(p)}</li>
-                        ))}
-                      </ul>
-                    )}
-                    {isOpen && it.kind === 'custom' && (
-                      <div className="px-3.5 pb-3.5 ps-[62px] prose-sm max-w-none text-[13px] text-[var(--muted)] leading-relaxed">
-                        <Markdown>{L(it.body) || '*—*'}</Markdown>
-                      </div>
-                    )}
-                  </Card>
-                );
-              })}
-            </div>
+      {/* A docs layout, not an FAQ: a section index on the left, one page open on the right.
+          On mobile the index becomes a scrolling strip above the page. */}
+      <div className="lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-6 lg:items-start">
+        <div className="lg:sticky lg:top-4 mb-4 lg:mb-0">
+          <div className="relative mb-3">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ag.search', 'Search the guide…')} />
           </div>
-        ))}
+          {/* The index. A horizontal chip rail on phones, a vertical list on desktop. */}
+          <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible no-scrollbar lg:max-h-[70vh] lg:overflow-y-auto pb-1 lg:pb-0 lg:pe-1">
+            {groups.length === 0 && <span className="text-xs text-[var(--faint)] px-1">{t('ag.none', 'Nothing matches that.')}</span>}
+            {groups.map((g) => (
+              <div key={g.heading.en} className="shrink-0 lg:shrink lg:mb-1">
+                <div className="hidden lg:block text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] px-2 mt-2 mb-1">{L(g.heading)}</div>
+                <div className="flex lg:flex-col gap-1">
+                  {g.items.map((it) => {
+                    const on = activeItem?.id === it.id;
+                    const Icon = it.icon;
+                    return (
+                      <button key={it.id} type="button" onClick={() => setActive(it.id)}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 transition text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
+                        <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
+                        <span className="truncate">{L(it.title)}</span>
+                        {it.kind === 'custom' && <span className="hidden lg:inline text-[9px] px-1 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] ms-auto">{t('ag.customtag', 'custom')}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </div>
+
+        {/* The reading pane — one entry, fully open, like a docs page. */}
+        <div className="min-w-0">
+          {!activeItem ? (
+            <Card className="p-6 text-sm text-[var(--muted)]">{t('ag.none', 'Nothing matches that.')}</Card>
+          ) : (
+            <Card className="p-5 lg:p-6">
+              <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[var(--line)]">
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{(() => { const I = activeItem.icon; return <I size={20} />; })()}</span>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{L(activeItem._heading)}</div>
+                  <h3 className="text-lg font-bold leading-tight flex items-center gap-2 flex-wrap">{L(activeItem.title)}
+                    {activeItem.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium">{t('ag.customtag', 'custom')}</span>}
+                  </h3>
+                </div>
+              </div>
+              {activeItem.kind === 'builtin' && (
+                <>
+                  <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{L(activeItem.body)}</p>
+                  {activeItem.points.length > 0 && (
+                    <ul className="space-y-2">
+                      {activeItem.points.map((p, i) => (
+                        <li key={i} className="text-[13.5px] text-[var(--muted)] leading-relaxed list-disc ms-5 marker:text-[var(--primary-2)]">{L(p)}</li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+              {activeItem.kind === 'custom' && (
+                <div className="prose-sm max-w-none text-sm text-[var(--muted)] leading-relaxed break-words">
+                  <Markdown>{L(activeItem.body) || '*—*'}</Markdown>
+                </div>
+              )}
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );
