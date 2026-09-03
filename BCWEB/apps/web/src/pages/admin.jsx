@@ -12860,74 +12860,45 @@ function RolePanelPreview({ panel }) {
 // ModuleCard by its id (scrollIntoView, guarded so a missing per-server section no-ops).
 // Server-wide sections are always present; the per-server group only when those sections
 // render (isCustomized) — otherwise its links would scroll to nothing.
-function BotSectionNav({ isCustomized }) {
+// The bot dashboard's module rail — a classic Discord-bot-dashboard left menu. Each row is a
+// PAGE of the dashboard (not a scroll anchor): clicking it swaps the content column to that
+// module, so the admin sees one module at a time instead of a single long scroll. The active
+// page is highlighted. Desktop = sticky sidebar; below xl = a sticky sideways chip strip.
+const BOT_PAGES = [
+  ['overview', 'Overview', Cpu],
+  ['announcements', 'Announcements', Megaphone],
+  ['community', 'Rules, panels & DMs', ShieldCheck],
+  ['servers', 'Per-server', Server],
+  ['members', 'Members', Users],
+  ['limits', 'Limits', Sliders],
+];
+function BotModuleRail({ page, setPage }) {
   const { t } = useI18n();
-  const [active, setActive] = useState(null);
-  const go = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  const groups = [
-    { label: t('db.nav.global', 'Server-wide'), show: true, items: [
-      ['sec-announce', t('db.mod.announce', 'Write an announcement'), Send],
-      ['sec-route', t('db.mod.route', 'Where announcements go'), Megaphone],
-      ['sec-blog', t('db.mod.blog', 'Blog announcements'), Newspaper],
-      ['sec-alerts', t('db.mod.alerts', 'Alerts'), AlertTriangle],
-      ['sec-kofi', t('db.mod.kofi', 'Ko-fi tips'), Heart],
-      ['sec-pay', t('db.mod.pay', 'Payments & refunds'), Receipt],
-      ['sec-rp', t('db.mod.rp', 'Rules & role panels'), ShieldCheck],
-      ['sec-dma', t('db.mod.dma', 'Message every member'), Mail],
-      ['sec-limits', t('db.mod.limits', 'Limits'), Sliders],
-    ] },
-    { label: t('db.nav.perserver', 'Per-server'), show: isCustomized, items: [
-      ['sec-moderation', t('db.mod.moderation', 'Moderation'), Shield],
-      ['sec-jtc', t('db.mod.jtc', 'Join-to-create voice'), Mic],
-      ['sec-welcome', t('db.mod.welcome', 'Welcome / bye'), Sparkles],
-      ['sec-gating', t('db.mod.gating', 'Gated access'), KeyRound],
-    ] },
-  ];
-  const shown = groups.filter((g) => g.show);
-  const allIds = shown.flatMap((g) => g.items.map(([id]) => id));
-  // Scroll-spy: highlight the section currently in view, so the rail tracks where you are as you
-  // scroll (and after a jump), not just where you last clicked.
-  useEffect(() => {
-    const els = allIds.map((id) => document.getElementById(id)).filter(Boolean);
-    if (!els.length) return;
-    const obs = new IntersectionObserver((entries) => {
-      const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-      if (vis[0]) setActive(vis[0].target.id);
-    }, { rootMargin: '-90px 0px -70% 0px', threshold: 0 });
-    els.forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allIds.join(',')]);
+  const label = (id, fb) => t(`db.page.${id}`, fb);
   return (
     <>
-      {/* Desktop (xl+): a sticky sidebar of jump links, the current section highlighted. */}
-      <nav className="hidden xl:block sticky top-16 self-start text-sm border-s-2 border-[var(--line)] ps-1">
-        {shown.map((g) => (
-          <div key={g.label} className="mb-3">
-            <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] px-2 mb-1">{g.label}</div>
-            {g.items.map(([id, label, Icon]) => {
-              const on = active === id;
-              return (
-                <button key={id} type="button" onClick={() => go(id)} aria-current={on ? 'true' : undefined}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-start transition ${on ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
-                  <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} /> <span className="truncate">{label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
+      {/* Desktop (xl+): a sticky sidebar; the current module highlighted with an accent bar. */}
+      <nav className="hidden xl:block sticky top-16 self-start text-sm space-y-1">
+        {BOT_PAGES.map(([id, fb, Icon]) => {
+          const on = page === id;
+          return (
+            <button key={id} type="button" onClick={() => setPage(id)} aria-current={on ? 'true' : undefined}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-start transition relative ${on ? 'bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
+              {on && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-[#5865F2]" />}
+              <Icon size={15} className={`shrink-0 ${on ? 'text-[#5865F2]' : 'text-[var(--faint)]'}`} /> <span className="truncate">{label(id, fb)}</span>
+            </button>
+          );
+        })}
       </nav>
-      {/* Mobile/tablet (< xl): the SAME jumps as a sticky, sideways-scrolling chip strip — the
-          navigation the phone layout never had, so a config this long is reachable without a
-          minute of scrolling. Sits just under the sticky header. */}
+      {/* Mobile/tablet (< xl): the same pages as a sticky, sideways-scrolling chip strip. */}
       <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 bg-[var(--bg)]/90 backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         <div className="flex gap-1.5 min-w-max">
-          {shown.flatMap((g) => g.items).map(([id, label, Icon]) => {
-            const on = active === id;
+          {BOT_PAGES.map(([id, fb, Icon]) => {
+            const on = page === id;
             return (
-              <button key={id} type="button" onClick={() => go(id)} aria-current={on ? 'true' : undefined}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full border text-xs whitespace-nowrap shrink-0 transition ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--bg-solid)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'}`}>
-                <Icon size={13} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} /> {label}
+              <button key={id} type="button" onClick={() => setPage(id)} aria-current={on ? 'true' : undefined}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs whitespace-nowrap shrink-0 transition ${on ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--bg-solid)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[#5865F2]'}`}>
+                <Icon size={13} className={on ? 'text-[#5865F2]' : 'text-[var(--faint)]'} /> {label(id, fb)}
               </button>
             );
           })}
@@ -13598,6 +13569,7 @@ function AdminBot() {
   const [previewNonce, setPreviewNonce] = useState(0);
   const [tokenInput, setTokenInput] = useState('');
   const [scope, setScope] = useState(''); // '' = global defaults, else a guild id (per-server config)
+  const [page, setPage] = useState('overview'); // which module page the left rail has selected
   useEffect(() => { if (data?.config) setCfg(data.config); }, [data]);
   // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
   // below meant one hook count on the loading render and a larger one once the data
@@ -13769,9 +13741,11 @@ function AdminBot() {
       {/* B10 Phase 4: side layout — a sticky section nav on the left (xl+), the whole
           config in the content column. Stacks (nav hidden) below xl. The nav + content are
           the two grid cells; nothing inside the content column is restructured. */}
-      <div className="xl:grid xl:grid-cols-[220px_minmax(0,1fr)] xl:gap-6 xl:items-start">
-        <BotSectionNav isCustomized={isCustomized} />
+      <div className="xl:grid xl:grid-cols-[230px_minmax(0,1fr)] xl:gap-6 xl:items-start">
+        <BotModuleRail page={page} setPage={setPage} />
         <div className="min-w-0">
+
+      {page === 'overview' && (<>
       {/* Token + member DB usage, side by side */}
       <div className="grid md:grid-cols-2 gap-4 mb-2">
         <Card className="p-4">
@@ -13826,7 +13800,9 @@ function AdminBot() {
       <BotLogsCard />
       <BotDMCard />
       <BotGiveawaysCard />
+      </>)}
 
+      {page === 'announcements' && (<>
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
       {/* Masonry columns (not a 2-col grid): the expanded Payments card is much
@@ -13930,7 +13906,10 @@ function AdminBot() {
         </ModuleCard>
       </div>
 
-      <SectionTitle icon={Users} title={t('db.sec.members', "Members")} sub={t('db.sec.members.sub', "Aimed at people rather than at a channel.")} />
+      </>)}
+
+      {page === 'community' && (<>
+      <SectionTitle icon={ShieldCheck} title={t('db.sec.community', 'Rules, role panels & member DMs')} sub={t('db.sec.community.sub', 'Aimed at people rather than at a channel.')} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
         {/* No enable toggle of its own: an empty panel list already means "off", and a
@@ -13949,7 +13928,9 @@ function AdminBot() {
           <DmBroadcast />
         </ModuleCard>
       </div>
+      </>)}
 
+      {page === 'limits' && (<>
       <SectionTitle icon={Sliders} title={t('db.sec.limits', "Limits")} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
@@ -13961,6 +13942,9 @@ function AdminBot() {
         </ModuleCard>
       </div>
 
+      </>)}
+
+      {page === 'servers' && (<>
       {/* ═══════════ PER-SERVER ═══════════ */}
       <SectionTitle icon={Server} title={t('db.sec.perserver', 'Per-server configuration')} sub={t('db.sec.perserver.sub', 'Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in.')} />
       {/* Scope selector — a bot-dashboard server picker (avatars + custom-config dot) */}
@@ -14108,11 +14092,12 @@ function AdminBot() {
           </ModuleCard>
         </div>
       )}
+      </>)}
+
+      {page === 'members' && <AdminBotMembers />}
 
         </div>
       </div>
-
-      <AdminBotMembers />
     </div>
   );
 }

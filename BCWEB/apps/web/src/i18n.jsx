@@ -5359,6 +5359,8 @@ const DICT = {
     'sg.done': 'Script de seed téléchargé.', 'sg.download': 'Télécharger le script de seed',
     'db.sec.global': 'Global — s’applique à tous les serveurs', 'db.sec.global.sub': 'Les annonces sont routées par salon (fonctionnent dans n’importe quel serveur) ; les limites sont partagées.',
     'db.sec.perserver': 'Configuration par serveur', 'db.sec.perserver.sub': 'Modération, bienvenue, vocal à la demande et rôles réservés — configurés indépendamment pour chaque serveur où est le bot.',
+    'db.page.overview': 'Vue d’ensemble', 'db.page.announcements': 'Annonces', 'db.page.community': 'Règles, panneaux & MP', 'db.page.servers': 'Par serveur', 'db.page.members': 'Membres', 'db.page.limits': 'Limites',
+    'db.sec.community': 'Règles, panneaux de rôles & MP aux membres', 'db.sec.community.sub': 'Orienté vers les personnes plutôt que vers un salon.',
     'db.mod.blog': 'Annonces de blog', 'db.mod.blog.d': 'Publie les nouveaux articles dans n’importe quel salon — filtre chaque route par projet.',
     'db.mod.alerts': 'Alertes', 'db.mod.alerts.d': 'Publie les alertes au fil de l’eau — les performances dans un salon, les incidents dans un autre.',
     'db.mod.kofi': 'Dons Ko-fi', 'db.mod.kofi.d': 'Remercie automatiquement les donateurs avec un total cumulé.',
