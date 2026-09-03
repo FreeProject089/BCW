@@ -107,13 +107,13 @@ export function ShowcaseIcon({ icon, size = 16, className = '', rounded = 4, fal
 // Standalone icon glyph by name (used by the icon picker + reaction-style UIs).
 export function IconGlyph({ name, size = 18, className = '' }) {
   const app = String(name || '').match(/^app:(.+)$/);
-  // App marks sit on a white rounded chip (hairline border + padding) so a transparent logo
-  // reads on any surface and doesn't look brute — matching the BMM icon picker.
+  // App marks sit on a plain white rounded background (like a 512px app icon, ~22% radius) so a
+  // transparent logo reads on any surface — matching the BMM icon picker. No border, clean.
   if (app && appIcon(app[1])) {
-    const r = Math.max(3, Math.round(size * 0.24));
-    const pad = Math.max(1, Math.round(size * 0.12));
+    const r = Math.max(3, Math.round(size * 0.22));
+    const pad = Math.max(1, Math.round(size * 0.11));
     return (
-      <span className={`inline-flex items-center justify-center ${className}`} style={{ width: size + 2, height: size + 2, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', borderRadius: r, padding: pad, boxSizing: 'border-box', verticalAlign: 'middle' }}>
+      <span className={`inline-flex items-center justify-center ${className}`} style={{ width: size + 2, height: size + 2, background: '#fff', borderRadius: r, padding: pad, boxSizing: 'border-box', verticalAlign: 'middle' }}>
         <img src={appIcon(app[1])} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
       </span>
     );
