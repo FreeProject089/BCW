@@ -16702,6 +16702,8 @@ const SETTINGS_GROUPS = [
     ['seo.gtmId', 'Google Tag id', 'GTM-XXXXXXX for a Tag Manager container, or G-XXXXXXXXXX for a GA4 measurement id. Both are accepted and loaded the right way — feeding a G- id to the container script fails silently, which is why it is checked on save.', 'text'],
     ['seo.googleVerify', 'Google Search Console token', 'The verification string Google gives you (the content of its meta tag, not the whole tag). Until this is set the property cannot be verified, so the sitemap cannot be submitted and nothing about indexing can be seen. This is step one of being in Google.', 'text'],
     ['seo.bingVerify', 'Bing Webmaster token', 'Same idea for Bing — which is also where DuckDuckGo gets its results.', 'text'],
+    ['seo.title', 'Site title (EN)', 'The bold title of a search result and every shared link. Empty keeps the built-in name. Shown in the link-preview card below.', 'text'],
+    ['seo.titleFr', 'Site title (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
     ['seo.description', 'Site description (EN)', 'The sentence a search result and every shared link show. Around 150 characters is what gets displayed; longer is cut mid-word. Empty keeps the built-in text.', 'text'],
     ['seo.descriptionFr', 'Site description (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
     ['seo.ogImage', 'Link preview image URL', 'The picture shown when the site is shared on Discord, X or anywhere else. 1200x630 is the size everything crops to. Empty = no image, which renders as a plain text link.', 'text'],
@@ -19962,8 +19964,11 @@ function AdminSettings() {
                       </div>
                     );
                   })() : (
+                    // Text fields (SEO title/description, tag ids, tokens, image URL) were all
+                    // rendered as a number input by this fallback branch — so they silently would
+                    // not accept text. Honour the declared kind.
                     <div className="flex items-end gap-3">
-                      <div className="flex-1"><Field label={L}><Input type="number" value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></Field></div>
+                      <div className="flex-1"><Field label={L}><Input type={kind === 'text' ? 'text' : 'number'} value={draft[k] ?? ''} onChange={(e) => setDraft({ ...draft, [k]: e.target.value })} /></Field></div>
                       <Button size="sm" disabled={busy === k} onClick={() => save(k, kind)}>{busy === k ? <Spinner /> : saveLabel}</Button>
                     </div>
                   )}
