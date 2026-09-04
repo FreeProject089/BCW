@@ -3684,6 +3684,7 @@ const DICT = {
     'nav.children': 'Liens du déroulant', 'nav.children.none': 'Ajoute au moins un lien — un groupe vide est retiré à l’enregistrement.',
     'nav.sub.en': 'Sous-texte (EN, optionnel)', 'nav.sub.fr': 'Sous-texte (FR, optionnel)',
     'nav.addchild': 'Ajouter un lien au déroulant', 'nav.addlink': 'Ajouter un lien', 'nav.addgroup': 'Ajouter un déroulant', 'nav.seed': 'Partir de la navigation par défaut',
+    'nav.item.untitled': 'Sans titre', 'nav.expand': 'Déplier', 'nav.collapse': 'Replier',
     'nav.save': 'Enregistrer la navigation', 'nav.saved': 'Navigation enregistrée.',
     'nav.pickicon': 'Choisir une icône de menu',
     'nav.pv.title': 'Aperçu en direct', 'nav.pv.desktop': 'Bureau', 'nav.pv.mobile': 'Mobile',

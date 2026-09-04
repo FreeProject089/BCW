@@ -17430,6 +17430,10 @@ function AdminNav() {
   const [dragIdx, setDragIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const onDrop = () => { if (dragIdx != null && overIdx != null) setItems((s) => moveTo(s, dragIdx, overIdx)); setDragIdx(null); setOverIdx(null); };
+  // Each item card folds to its header (label + type), so a menu of ten links is a short list
+  // you scan, not ten open forms you scroll. Collapsed by position; default is open.
+  const [foldedItems, setFoldedItems] = useState(new Set());
+  const toggleFold = (i) => setFoldedItems((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
   const removeItem = (i) => setItems((s) => s.filter((_, k) => k !== i));
   const addItem = (type) => setItems((s) => [...s, blankItem(type)]);
   const patchChild = (i, j, patch) => setItems((s) => s.map((it, k) => k === i ? { ...it, children: it.children.map((c, m) => m === j ? { ...c, ...patch } : c) } : it));
@@ -17748,11 +17752,18 @@ function AdminNav() {
                 <GripVertical size={15} />
               </button>
               <Badge tone={it.type === 'group' ? 'primary' : ''}>{it.type === 'group' ? <><Layers size={11} /> {t('nav.group', 'Dropdown')}</> : <><Link2 size={11} /> {t('nav.link', 'Link')}</>}</Badge>
+              {/* The label + target, so a folded card still says which item it is. */}
+              <button type="button" onClick={() => toggleFold(i)} className="min-w-0 flex items-center gap-1.5 text-start hover:opacity-80">
+                <span className="text-sm font-medium truncate">{(lang === 'fr' ? it.labelFr : it.label) || it.label || t('nav.item.untitled', 'Untitled')}</span>
+                {it.type === 'link' && it.to && <code className="text-[10px] text-[var(--faint)] truncate hidden sm:inline">{it.to}</code>}
+              </button>
               <div className="flex-1" />
               <button className="nav-icon-btn p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === 0} onClick={() => moveItem(i, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={14} className="rotate-180" /></button>
               <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === items.length - 1} onClick={() => moveItem(i, 1)} title={t('nav.down', 'Move down')}><ChevronDown size={14} /></button>
               <button className="p-1.5 rounded-lg border border-[var(--line)] text-error hover:bg-error-bg" onClick={() => removeItem(i)} title={t('nav.remove', 'Remove')}><Trash2 size={14} /></button>
+              <button className="p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)]" onClick={() => toggleFold(i)} title={foldedItems.has(i) ? t('nav.expand', 'Expand') : t('nav.collapse', 'Collapse')} aria-expanded={!foldedItems.has(i)}><ChevronDown size={14} className={foldedItems.has(i) ? '-rotate-90' : ''} /></button>
             </div>
+            {!foldedItems.has(i) && <>
             <div className="grid sm:grid-cols-2 gap-2.5">
               <Field label={t('nav.label.en', 'Label (EN)')}><Input value={it.label} onChange={(e) => patchItem(i, { label: e.target.value })} placeholder="Apps" /></Field>
               <Field label={t('nav.label.fr', 'Label (FR)')}><Input value={it.labelFr} onChange={(e) => patchItem(i, { labelFr: e.target.value })} placeholder={t('adm2.ph.applications', "Applications")} /></Field>
@@ -17785,6 +17796,7 @@ function AdminNav() {
               ))}
               <Button size="sm" variant="ghost" onClick={() => addChild(i)}><Plus size={13} /> {t('nav.addchild', 'Add dropdown link')}</Button>
             </div>}
+            </>}
           </Card>
         ))}
       </div>)}
