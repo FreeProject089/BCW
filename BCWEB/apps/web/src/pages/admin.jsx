@@ -14091,6 +14091,42 @@ function AdminBot() {
             <Field label={t('db.eco.maxbet', 'Max bet')}><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
             <Field label={t('db.eco.edge', 'House edge %')}><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
           </div>
+          {/* Payout preview — computed exactly like the bot rolls + the API prices it, so the
+              admin sees what the house edge actually does per game before saving. */}
+          {(() => {
+            const edge = 1 - (Number(eco.casino?.houseEdgePct) || 0) / 100;
+            const bet = Math.max(1, Number(eco.casino?.maxBet) || 100);
+            // base RTP (return to player) before the edge: coinflip/dice pay 2× on a 50% win;
+            // slots pay 8× on three-of-a-kind (4%) and 1.5× on a pair (48%) → 1.04.
+            const GAMES = [
+              ['🪙', t('db.eco.game.coin', 'Coin flip'), 1.0, `2× · ${Math.round(50)}%`],
+              ['🎲', t('db.eco.game.dice', 'Dice'), 1.0, `2× · ${Math.round(50)}%`],
+              ['🎰', t('db.eco.game.slots', 'Slots'), 1.04, '8× / 1.5×'],
+            ];
+            return (
+              <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('db.eco.payoutprev', 'Payout preview (at max bet {b})').replace('{b}', bet.toLocaleString())}</div>
+                <div className="space-y-1.5">
+                  {GAMES.map(([emoji, name, rtp, odds]) => {
+                    const eff = rtp * edge;              // effective return to player
+                    const houseTake = 1 - eff;           // + = house wins long-term, − = players do
+                    return (
+                      <div key={name} className="flex items-center gap-2 text-xs">
+                        <span className="w-5 text-center">{emoji}</span>
+                        <span className="font-medium w-20 shrink-0">{name}</span>
+                        <span className="text-[var(--faint)] w-24 shrink-0 tabular-nums">{odds}</span>
+                        <span className="text-[var(--muted)] tabular-nums">{t('db.eco.rtp', 'RTP')} <b className="text-[var(--text)]">{(eff * 100).toFixed(1)}%</b></span>
+                        <span className={`ms-auto tabular-nums text-[11px] px-1.5 py-0.5 rounded ${houseTake >= 0 ? 'bg-success-bg text-success' : 'bg-warning/15 text-warning'}`}>
+                          {houseTake >= 0 ? t('db.eco.housewins', 'house +{p}%').replace('{p}', (houseTake * 100).toFixed(1)) : t('db.eco.playerwins', 'players +{p}%').replace('{p}', (-houseTake * 100).toFixed(1))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote', 'RTP = share of a bet paid back on average. Above 100% (house negative) means players win long-term — slots pays 104% before the edge, so a low edge makes it player-favourable.')}</p>
+              </div>
+            );
+          })()}
         </ModuleCard>
 
         {/* Shop */}
