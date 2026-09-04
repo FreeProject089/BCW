@@ -13878,6 +13878,16 @@ function AdminBot() {
             <p className="text-[11px] text-warning flex items-center gap-1.5 mt-2"><AlertTriangle size={11} /> {t('db.ms.warn', 'Storing everyone across every server can grow the database quickly — the member-DB cap (Limits) still prunes the oldest inactive rows once full.')}</p>
           </div>
         )}
+        {(cfg.memberStorage?.mode || 'managed') === 'managed' && (
+          <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={cfg.memberStorage?.requirePool !== false}
+              onChange={(e) => set('memberStorage.requirePool', e.target.checked)} />
+            <div>
+              <div className="text-sm font-medium">{t('db.ms.reqpool', 'Require a paid pool to store members')}</div>
+              <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{t('db.ms.reqpool.d', 'On: a server needs a purchased storage pool before it can switch to member storage. Off: every server can store members for free — the bot stops gating member storage behind a purchase, while keeping each server’s own byte budget.')}</p>
+            </div>
+          </label>
+        )}
       </Card>
 
       <BotGuildStorageCard />
@@ -14098,6 +14108,31 @@ function AdminBot() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Field label={t('db.f.maxtemp', 'Max temp channels')}><Input type="number" value={g('limits.maxTempChannels')} onChange={(e) => set('limits.maxTempChannels', Number(e.target.value))} /></Field>
             <Field label={t('db.f.dbcap', 'Member DB cap')} hint={t('db.f.dbcap.h', 'Oldest inactive members are pruned once over.')}><ByteSize value={(Number(g('limits.storageMB')) || 0) * (1024 ** 2)} onChange={(bytes) => set('limits.storageMB', Math.round(bytes / (1024 ** 2)))} /></Field>
+          </div>
+        </ModuleCard>
+
+        <ModuleCard id="sec-retention" icon={LinkIcon} title={t('db.mod.retention', 'Linked-account retention')}>
+          <p className="text-[11px] text-[var(--muted)] mb-3">{t('db.ret.sub', 'What the storage sweeper is allowed to do to members who linked a BCWEB account when a limit is reached.')}</p>
+          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer mb-2">
+            <input type="checkbox" className="mt-0.5" checked={cfg.limits?.keepLinked !== false}
+              onChange={(e) => set('limits.keepLinked', e.target.checked)} />
+            <div>
+              <div className="text-sm font-medium">{t('db.ret.keep', 'Never purge linked members')}</div>
+              <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{t('db.ret.keep.d', 'When the cap is hit, prune anonymous rows first and keep every member who linked a site account — so a limit can’t silently delete the tie between a Discord id and a BCWEB profile.')}</p>
+            </div>
+          </label>
+          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={cfg.limits?.purgeUnlinks !== false}
+              onChange={(e) => set('limits.purgeUnlinks', e.target.checked)} />
+            <div>
+              <div className="text-sm font-medium">{t('db.ret.unlink', 'If purged anyway, unlink instead of dropping silently')}</div>
+              <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{t('db.ret.unlink.d', 'If a linked member is pruned (cap reached, no anonymous rows left), sever the site link so the person is asked to re-link — rather than looking still-linked to a record that no longer exists.')}</p>
+            </div>
+          </label>
+          <div className="mt-3">
+            <Field label={t('db.ret.relink', 'Force re-link every (days)')} hint={t('db.ret.relink.h', '0 = never. A link older than this is marked stale and the member is prompted to re-authorise Discord ↔ BCWEB.')}>
+              <Input type="number" min="0" value={g('limits.relinkDays')} onChange={(e) => set('limits.relinkDays', Math.max(0, Number(e.target.value) || 0))} />
+            </Field>
           </div>
         </ModuleCard>
       </div>
@@ -19756,7 +19791,7 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
             {matching.length > limit && (
               <div className="pt-1 text-center">
                 <Button variant="ghost" onClick={() => setLimit((n) => n + 120)}>
-                  <ChevronDown size={14} /> {t('lc.loadmore', 'Load more').replace('{n}', matching.length - limit)} ({matching.length - limit})
+                  <ChevronDown size={14} /> {t('lc.loadmoreN', 'Load {n} more').replace('{n}', (matching.length - limit).toLocaleString())}
                 </Button>
               </div>
             )}

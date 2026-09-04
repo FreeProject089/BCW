@@ -76,7 +76,20 @@ const DEFAULT_BOT_CONFIG = {
   // payment channels when no refund channels are set. Fed by the Stripe webhook
   // (Payment rows + bot.refundEvents).
   payments: { enabled: false, channelId: '', refundChannelId: '', channelIds: [], refundChannelIds: [] },
-  limits: { maxTempChannels: 50, storageMB: 200 },
+  // Storage & retention guardrails.
+  //   maxTempChannels / storageMB → the byte + channel budgets.
+  //   keepLinked   → members with a LINKED site account are exempt from the storage
+  //                  sweeper: hitting a limit prunes anonymous rows first and never
+  //                  drops a linked person's record (so a limit can't silently delete
+  //                  the tie between a Discord id and a BCWEB account).
+  //   purgeUnlinks → if a linked member IS pruned anyway (limit reached, no anon rows
+  //                  left), sever the site link instead of deleting silently, so the
+  //                  person is asked to re-link rather than looking still-linked to a
+  //                  record that no longer exists.
+  //   relinkDays   → force a re-link every N days (0 = never): a link older than this
+  //                  is marked stale and the member is prompted to re-authorise Discord
+  //                  ↔ BCWEB, so a dashboard link can't outlive the Discord account.
+  limits: { maxTempChannels: 50, storageMB: 200, keepLinked: true, purgeUnlinks: true, relinkDays: 0 },
   // How the bot builds its member database — a GLOBAL strategy the bot reads to decide what
   // it stores across every server:
   //   mode 'free'    → store members of every server for free. `scope` narrows WHO:
@@ -89,7 +102,11 @@ const DEFAULT_BOT_CONFIG = {
   //                    servers they share with the bot — instead of one row per server.
   // 'managed' is the default: it is the only one that already has per-server budgets and
   // does not grow the database by every member of every server the day it is turned on.
-  memberStorage: { mode: 'managed', scope: 'linked' },
+  // requirePool → in 'managed' mode, whether a server must own a PAID storage pool to
+  //   switch its memberMode to 'pool'. Turn it off to let every server store members for
+  //   free (the bot stops gating member storage behind a purchase) without leaving the
+  //   per-server budget model.
+  memberStorage: { mode: 'managed', scope: 'linked', requirePool: true },
   // ── Economy / levelling (B-econ) ──────────────────────────────────────────
   // A points + XP system the bot runs across every server: messages, reactions and voice time
   // earn XP, XP earns levels (each level harder than the last), and levels hand out points that
