@@ -281,7 +281,7 @@ export default async function ogRoutes(app) {
     const win = outcome.startsWith('win');
     const detail = String(req.query?.d || '').slice(0, 40);
     const amount = String(req.query?.a || '').replace(/[^0-9,. -]/g, '').slice(0, 16);
-    if (!['coinflip', 'dice', 'slots', 'roulette'].includes(game)) return reply.code(404).send({ error: 'not_found' });
+    if (!['coinflip', 'dice', 'slots', 'roulette', 'wheel', 'plinko'].includes(game)) return reply.code(404).send({ error: 'not_found' });
     // Animated: the spin that ends on this outcome, seeded per play (?s=) so it differs each
     // time; encoded once and cached five minutes. Falls through to the still card on failure.
     if (/.gif$/i.test(outcome)) {

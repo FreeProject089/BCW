@@ -52,8 +52,17 @@ export const commandData = [
       { name: 'Coin flip (2×, 50%)', value: 'coinflip' },
       { name: 'Dice — roll 4-6 to win (2×)', value: 'dice' },
       { name: 'Slots — match to win big', value: 'slots' },
-      { name: 'Roulette — red or black (2×)', value: 'roulette' },
-    )),
+      { name: 'Roulette — colour, green or a number', value: 'roulette' },
+      { name: 'Wheel — pick a multiplier, thinner slice the bigger it is', value: 'wheel' },
+      { name: 'Plinko — a ball drops into a multiplier bucket', value: 'plinko' },
+    ))
+    .addStringOption((o) => o.setName('bet_on').setDescription('Roulette: what you bet on (default red)').addChoices(
+      { name: 'Red (2×)', value: 'red' }, { name: 'Black (2×)', value: 'black' }, { name: 'Green / zero (14×)', value: 'green' }, { name: 'A number (35×)', value: 'number' }))
+    .addIntegerOption((o) => o.setName('number').setDescription('Roulette: the number, 0–36 (with bet_on = number)').setMinValue(0).setMaxValue(36))
+    .addIntegerOption((o) => o.setName('target').setDescription('Wheel: the multiplier you go for (default 2)').addChoices(
+      { name: '2× (45%)', value: 2 }, { name: '3× (24%)', value: 3 }, { name: '5× (16%)', value: 5 }, { name: '10× (9%)', value: 10 }, { name: '20× (4%)', value: 20 }, { name: '50× (2%)', value: 50 }))
+    .addStringOption((o) => o.setName('risk').setDescription('Plinko: bucket table (default medium)').addChoices(
+      { name: 'Low — 0.5× to 5×', value: 'low' }, { name: 'Medium — 0.3× to 13×', value: 'medium' }, { name: 'High — 0.2× to 50×', value: 'high' })),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
@@ -184,15 +193,45 @@ async function cmdCasino(i) {
   const game = i.options.getString('game') || 'coinflip';
   let mult = 0, detail = '', card = ''; // card = the ?d= detail the result image draws
   if (game === 'roulette') {
-    // European wheel: 0 is green (house), 1–36 alternate red/black. You bet a colour; a hit pays
-    // 2×. Zero beats both colours — that is the whole edge of the game before the house edge.
+    // European wheel: 0 is green, 1–36 alternate red/black. Bets: a colour (2×), green (14×),
+    // or an exact number (35×). The zero beating both colours is the game's own edge, before
+    // the house edge the API prices on top.
     const pocket = Math.floor(Math.random() * 37);
     const reds = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
     const colour = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black';
-    const pick = Math.random() < 0.5 ? 'red' : 'black'; // the bot picks for you; /casino has no colour arg
-    mult = colour === pick ? 2 : 0;
-    detail = `🎡 You bet **${pick}** — the ball landed on **${pocket} ${colour}**.`;
-    card = `${pocket} ${colour}`;
+    const betOn = i.options.getString('bet_on') || 'red';
+    const num = i.options.getInteger('number');
+    if (betOn === 'number') {
+      if (num == null) return eReply(i, 'Pick the number too: /casino game:roulette bet_on:number number:17', { title: '🎡 Roulette' });
+      mult = pocket === num ? 35 : 0;
+      detail = `🎡 You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`;
+    } else if (betOn === 'green') {
+      mult = pocket === 0 ? 14 : 0;
+      detail = `🎡 You bet on **green** — the ball landed on **${pocket} ${colour}**.`;
+    } else {
+      mult = colour === betOn ? 2 : 0;
+      detail = `🎡 You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`;
+    }
+    card = String(pocket);
+  } else if (game === 'wheel') {
+    // Six multipliers on one wheel; the bigger the multiplier the thinner its slice. You name
+    // a target and win target× only if the wheel stops on it.
+    const SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]];
+    const target = i.options.getInteger('target') || 2;
+    let roll = Math.random() * 100, landed = 2;
+    for (const [m, w] of SLICES) { if (roll < w) { landed = m; break; } roll -= w; }
+    mult = landed === target ? target : 0;
+    detail = `🎯 You went for **${target}×** — the wheel stopped on **${landed}×**.`;
+    card = `${landed}|${target}`;
+  } else if (game === 'plinko') {
+    // Ten peg rows: each bounce goes left or right; the bucket is how many went right.
+    const TABLES = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
+    const risk = TABLES[i.options.getString('risk')] ? i.options.getString('risk') : 'medium';
+    let path = '', rights = 0;
+    for (let k = 0; k < 10; k++) { const rgt = Math.random() < 0.5; path += rgt ? 'R' : 'L'; if (rgt) rights++; }
+    mult = TABLES[risk][rights];
+    detail = `🟡 Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
+    card = `${risk}|${path}|${rights}`;
   } else if (game === 'dice') {
     const roll = 1 + Math.floor(Math.random() * 6);
     mult = roll >= 4 ? 2 : 0;
@@ -203,7 +242,9 @@ async function cmdCasino(i) {
     mult = reels[0] === reels[1] && reels[1] === reels[2] ? 8         // three of a kind
       : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5 // a pair
       : 0;
-    detail = `${reels.join(' ')}`; card = reels.join(' ');
+    detail = `${reels.join(' ')}`;
+    const NAMES = { '🍒': 'cherry', '🍋': 'lemon', '🔔': 'bell', '⭐': 'star', '💎': 'diamond' };
+    card = reels.map((e) => NAMES[e] || 'cherry').join(' '); // names: the renderer draws vectors
   } else {
     const heads = Math.random() < 0.5;
     mult = heads ? 2 : 0;
@@ -218,7 +259,7 @@ async function cmdCasino(i) {
       : 'Could not place that bet.';
     return eReply(i, msg, { title: '🎰 Casino' });
   }
-  const won = r.delta > 0;
+  const won = r.delta > 0; // a 0.3× plinko bucket returns part of the bet — still a loss
   const line = won
     ? `${detail}\n🎉 You won **+${Number(r.delta).toLocaleString()}** — balance **${Number(r.points).toLocaleString()}**.`
     : `${detail}\n💀 You lost **${Number(bet).toLocaleString()}**. Balance **${Number(r.points).toLocaleString()}**.`;
