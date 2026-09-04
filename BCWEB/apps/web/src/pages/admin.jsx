@@ -12879,8 +12879,14 @@ function BotModuleRail({ page, setPage }) {
   const label = (id, fb) => t(`db.page.${id}`, fb);
   return (
     <>
-      {/* Desktop (xl+): a sticky sidebar; the current module highlighted with an accent bar. */}
-      <nav className="hidden xl:block sticky top-16 self-start text-sm space-y-1">
+      {/* Desktop (xl+): a sticky sidebar — a small header tile then the modules, the way a
+          bot dashboard's left column reads; the current module carries a blurple bar. */}
+      <nav className="hidden xl:block sticky top-24 self-start text-sm">
+        <div className="flex items-center gap-2 px-3 pb-2 mb-1 border-b border-[var(--line)]">
+          <span className="grid place-items-center w-6 h-6 rounded-md bg-[#5865F2]/15 border border-[#5865F2]/25"><DiscordIcon size={13} className="text-[#5865F2]" /></span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.rail.modules', 'Modules')}</span>
+        </div>
+        <div className="space-y-0.5">
         {BOT_PAGES.map(([id, fb, Icon]) => {
           const on = page === id;
           return (
@@ -12891,6 +12897,7 @@ function BotModuleRail({ page, setPage }) {
             </button>
           );
         })}
+        </div>
       </nav>
       {/* Mobile/tablet (< xl): the same pages as a sticky, sideways-scrolling chip strip. */}
       <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 bg-[var(--bg)]/90 backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
@@ -13717,18 +13724,62 @@ function AdminBot() {
 
   return (
     <div>
-      {/* ── Header ── a Discord-branded toolbar on its own solid Card surface so the page's
-          background art never bleeds around the title / Save button. */}
-      <div className="sticky top-0 z-20 mb-4">
-        <Card className="flex items-center justify-between flex-wrap gap-2 px-4 py-2.5 bg-gradient-to-r from-[#5865F2]/10 to-transparent">
-          <h2 className="font-bold flex items-center gap-2.5 text-base min-w-0">
-            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[#5865F2]/15 border border-[#5865F2]/25 shrink-0"><DiscordIcon size={17} className="text-[#5865F2]" /></span>
-            <span className="truncate">{t('db.title', 'Discord bot')}</span>
-          </h2>
-          <div className="flex items-center gap-2.5 shrink-0">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${online ? 'text-success border-success-border bg-success-bg' : 'text-[var(--faint)] border-[var(--line)]'}`}><span className={`w-2 h-2 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
-            <Button size="sm" variant="primary" onClick={save}><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
+      {/* ── Status hero ── the one card a bot dashboard opens on (the Probot / Draftbot idiom):
+          the bot's identity on the left with its live state, the master switch, then a row of
+          stat tiles, and Save on the right. Sticky, so Save is always in reach. It replaces
+          what used to be two stacked cards (a title bar + a switch/stats card). */}
+      <div className="sticky top-0 z-20 mb-5">
+        <Card className="p-0 overflow-hidden border-[#5865F2]/30">
+          <div className="h-1 bg-gradient-to-r from-[#5865F2] via-[#5865F2]/60 to-transparent" />
+          <div className="px-4 py-3.5 flex items-center gap-4 flex-wrap">
+            {/* Identity + live state */}
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0">
+                <DiscordIcon size={24} className="text-[#5865F2]" />
+                <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-solid)] ${online ? 'bg-success' : 'bg-[var(--line-strong)]'}`} title={online ? t('db.online', 'Online') : t('db.offline', 'Offline')} />
+              </span>
+              <div className="min-w-0">
+                <div className="font-bold text-base leading-tight truncate">{t('db.title', 'Discord bot')}</div>
+                <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 mt-0.5 flex-wrap">
+                  <span className={`inline-flex items-center gap-1 font-medium ${online ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${online ? 'bg-success animate-pulse' : 'bg-[var(--line-strong)]'}`} /> {online ? t('db.online', 'Online') : t('db.offline', 'Offline')}</span>
+                  {!online && <span className="text-[var(--faint)]">· {lastSeen ? t('db.lastseen', 'last seen {t} ago').replace('{t}', lastSeen) : t('db.neverseen', 'never connected')}</span>}
+                  {online && status?.ping != null && <span className="text-[var(--faint)]">· {status.ping} ms</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Master switch — its own pill so it never reads as one of the stats. */}
+            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] bg-[var(--surface-2)]/40'}`}>
+              <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-3,var(--line))]'}`}>
+                <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition ${cfg.enabled !== false ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
+              </span>
+              <span className="text-xs font-semibold">{cfg.enabled !== false ? t('db.enabled', 'Bot enabled') : t('db.disabled', 'Bot disabled')}</span>
+            </label>
+
+            {/* Stat tiles */}
+            <div className="flex items-stretch gap-1.5 flex-wrap ms-auto">
+              {[
+                [status?.guilds ?? '—', t('db.servers', 'servers'), Server],
+                [status?.users ?? '—', t('db.users', 'users'), Users],
+                [status?.tempChannels ?? 0, t('db.tempvoice', 'temp voice'), Mic],
+                ...(online && status?.uptimeSec != null ? [[`${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m`, t('db.uptime', 'uptime'), Clock]] : []),
+              ].map(([v, l, I], i) => (
+                <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-1.5 min-w-[74px]">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--faint)]"><I size={11} /> {l}</div>
+                  <div className="text-[15px] font-bold tabular-nums leading-tight text-[var(--text)] mt-0.5">{v}</div>
+                </div>
+              ))}
+            </div>
+
+            <Button size="sm" variant="primary" onClick={save} className="shrink-0"><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
           </div>
+          {(status?.mod && (status.mod.kicks || status.mod.timeouts || status.mod.purged)) ? (
+            <div className="flex items-center gap-4 text-[11px] text-[var(--faint)] px-4 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]/30">
+              <Shield size={12} className="text-[var(--faint)]" />
+              <span>{status.mod.kicks ?? 0} {t('db.kicked', 'kicked')}</span><span>{status.mod.timeouts ?? 0} {t('db.timedout', 'timed out')}</span><span>{status.mod.purged ?? 0} {t('db.purged', 'purged')}</span><span>{t('db.session', '(this session)')}</span>
+            </div>
+          ) : null}
         </Card>
       </div>
 
@@ -13739,44 +13790,6 @@ function AdminBot() {
           <div className="min-w-0"><div className="text-sm font-medium text-error">{t('db.cantconnect', 'Bot can’t connect')}</div><div className="text-xs text-error mt-0.5 break-words">{data.error}</div></div>
         </div>
       )}
-
-      {/* Master switch + live stats in one hero row */}
-      <Card className="p-4 mb-4">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
-              <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
-              <span className={`inline-block h-4 w-4 rounded-full bg-white transition ${cfg.enabled !== false ? 'translate-x-6' : 'translate-x-1'}`} />
-            </span>
-            <span className="text-sm font-medium">{cfg.enabled !== false ? t('db.enabled', 'Bot enabled') : t('db.disabled', 'Bot disabled')} <span className="text-[var(--faint)] font-normal">· {t('db.master', 'master switch')}</span></span>
-          </label>
-          {/* Live stats as clean tiles — a proper dashboard readout rather than a run-on line. */}
-          <div className="flex items-stretch gap-1.5 flex-wrap">
-            {[
-              [status?.guilds ?? '—', t('db.servers', 'servers')],
-              [status?.users ?? '—', t('db.users', 'users')],
-              [status?.tempChannels ?? 0, t('db.tempvoice', 'temp voice')],
-              ...(online ? [
-                [status?.ping != null ? `${status.ping}ms` : '—', t('db.ping', 'ping')],
-                [status?.uptimeSec != null ? `${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m` : '—', t('db.uptime', 'uptime')],
-              ] : []),
-            ].map(([v, l], i) => (
-              <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-1.5 text-center min-w-[62px]">
-                <div className="text-base font-bold tabular-nums leading-none text-[var(--text)]">{v}</div>
-                <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">{l}</div>
-              </div>
-            ))}
-            {!online && (
-              <div className="rounded-lg border border-[var(--line)] px-3 py-1.5 flex items-center gap-1.5 text-xs text-[var(--faint)]"><Clock size={12} /> {lastSeen ? t('db.lastseen', 'last seen {t} ago').replace('{t}', lastSeen) : t('db.neverseen', 'never connected')}</div>
-            )}
-          </div>
-        </div>
-        {(status?.mod && (status.mod.kicks || status.mod.timeouts || status.mod.purged)) ? (
-          <div className="flex items-center gap-4 text-[11px] text-[var(--faint)] mt-2.5 pt-2.5 border-t border-[var(--line)]">
-            <span>{status.mod.kicks ?? 0} {t('db.kicked', 'kicked')}</span><span>{status.mod.timeouts ?? 0} {t('db.timedout', 'timed out')}</span><span>{status.mod.purged ?? 0} {t('db.purged', 'purged')}</span><span className="text-[var(--faint)]">{t('db.session', '(this session)')}</span>
-          </div>
-        ) : null}
-      </Card>
 
       {/* B10 Phase 4: side layout — a sticky section nav on the left (xl+), the whole
           config in the content column. Stacks (nav hidden) below xl. The nav + content are

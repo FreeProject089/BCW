@@ -15,7 +15,7 @@ import {
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
-  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info,
+  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle,
 } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -252,6 +252,305 @@ const GUIDE = [
   },
 ];
 
+// Per-screen depth, beyond the summary + bullet points: a numbered "how to" and the rules and
+// traps that bite. Keyed by the entry id above. This is where the explanations that used to
+// crowd the screens themselves now live — the screen keeps the control, the guide keeps the
+// manual. Every entry has both lists, so no page of the guide is a title and two lines.
+const GUIDE_MORE = {
+  needs: {
+    steps: [
+      { en: 'Open it first thing: each row is one queue with a count of what is waiting.', fr: 'Ouvre-le en premier : chaque ligne est une file avec le nombre d’éléments en attente.' },
+      { en: 'Click a row — it takes you to the screen where that work is actually done (Submissions, Reports, Sanctions, Commissions, Server → Performance).', fr: 'Clique une ligne — elle t’amène à l’écran où ce travail se fait vraiment (Soumissions, Signalements, Sanctions, Commandes, Serveur → Performance).' },
+      { en: 'Come back when the counts read zero; that is the definition of “caught up”.', fr: 'Reviens quand les compteurs sont à zéro ; c’est la définition d’« à jour ».' },
+    ],
+    traps: [
+      { en: 'The Discord bot can post this digest to a channel (bot → Announcements → “Needs attention” route) so you hear about a queue without opening the dashboard.', fr: 'Le bot Discord peut poster ce résumé dans un salon (bot → Annonces → route « À traiter ») pour être prévenu sans ouvrir le tableau de bord.' },
+    ],
+  },
+  moderation: {
+    steps: [
+      { en: 'Submissions: open one, check the payload (size, structure, closed-source proof if claimed), then Approve or Reject with a reason the author will read.', fr: 'Soumissions : ouvre-en une, vérifie la charge (taille, structure, preuve propriétaire si revendiquée), puis Approuve ou Refuse avec une raison que l’auteur lira.' },
+      { en: 'Approving creates the page UNPUBLISHED. Go to the catalogue/project and publish when it is ready — two deliberate steps.', fr: 'Approuver crée la page NON publiée. Va dans le catalogue/projet et publie quand c’est prêt — deux étapes volontaires.' },
+      { en: 'Reports: read the reported content in context, then dismiss, warn, or open Sanctions to suspend. Messages: reply from the thread; the sender is notified.', fr: 'Signalements : lis le contenu signalé dans son contexte, puis classe, avertis, ou ouvre Sanctions pour suspendre. Messages : réponds depuis le fil ; l’expéditeur est prévenu.' },
+      { en: 'Sanctions: every suspension has a duration and an appeal. Review appeals here; lifting one is logged.', fr: 'Sanctions : chaque suspension a une durée et un appel. Traite les appels ici ; lever une sanction est journalisé.' },
+    ],
+    traps: [
+      { en: 'A rejected submission keeps its uploaded file for the “rejected-payload grace” (Hosting settings) so the author can fix and resubmit — after that the sweeper purges it.', fr: 'Une soumission refusée garde son fichier pendant le « délai après refus » (Réglages d’hébergement) pour que l’auteur corrige et renvoie — ensuite le nettoyeur le purge.' },
+      { en: 'Moderator rank matters: a MOD cannot sanction an account above their own rank, and staff actions land in the tamper-evident Security log.', fr: 'Le rang compte : un MOD ne peut pas sanctionner un compte d’un rang supérieur au sien, et les actions du staff finissent dans le Journal de sécurité infalsifiable.' },
+      { en: 'Legal notices identify their sender. They never leave the dashboard — the bot only posts a heads-up + link, and only if the Legal route has a channel.', fr: 'Les avis légaux identifient leur expéditeur. Ils ne sortent jamais du tableau de bord — le bot ne poste qu’un rappel + lien, et seulement si la route Légal a un salon.' },
+    ],
+  },
+  users: {
+    steps: [
+      { en: 'Search by pseudo, e-mail or id; open the account panel.', fr: 'Cherche par pseudo, e-mail ou id ; ouvre la fiche du compte.' },
+      { en: 'Roles & permissions tab: tick a built-in tier or a custom role, or grant a single capability — it applies on Save and shows in the user’s /me immediately.', fr: 'Onglet Rôles & permissions : coche un palier intégré ou un rôle personnalisé, ou accorde une capacité seule — appliqué à l’enregistrement et visible dans le /me de l’utilisateur aussitôt.' },
+      { en: 'Moderate: Suspend (time-boxed, reversible) or Ban (until lifted). Both ask for a reason and are appealable from the user’s side.', fr: 'Modérer : Suspendre (limité dans le temps, réversible) ou Bannir (jusqu’à levée). Les deux demandent une raison et sont contestables côté utilisateur.' },
+      { en: 'Linked logins: see GitHub/Discord links; unlink one if the user asks. A Discord unlink also stops the bot crediting them XP.', fr: 'Connexions liées : vois les liens GitHub/Discord ; délie-en un si l’utilisateur le demande. Délier Discord arrête aussi le crédit d’XP par le bot.' },
+    ],
+    traps: [
+      { en: 'Free vs paid is derived from live subscriptions, not a flag you set — a lapsed plan moves the account back to “free” by itself.', fr: '« Gratuit vs payant » découle des abonnements en cours, pas d’un drapeau — une offre échue rebascule le compte en « gratuit » toute seule.' },
+      { en: 'Deleting an account cascades: repos, catalogs, badges, economy balance and Discord links go with it. Prefer Ban when in doubt.', fr: 'Supprimer un compte est en cascade : dépôts, catalogues, badges, solde d’économie et liens Discord partent avec. Préfère Bannir en cas de doute.' },
+    ],
+  },
+  access: {
+    steps: [
+      { en: 'Create a custom role: name it, tick the capabilities it bundles (manage_repos, manage_myo, manage_analytics, translator roles…).', fr: 'Crée un rôle personnalisé : nomme-le, coche les capacités qu’il regroupe (manage_repos, manage_myo, manage_analytics, rôles de traducteur…).' },
+      { en: 'Assign it from the account panel (Accounts → user → Roles). Effective permissions = the union of every role held.', fr: 'Attribue-le depuis la fiche du compte (Comptes → utilisateur → Rôles). Permissions effectives = l’union de tous les rôles détenus.' },
+      { en: 'Per-project grants (Projects → a project → Permissions) scope a capability to ONE project — for a contributor who should edit one blog and nothing else.', fr: 'Les droits par projet (Projets → un projet → Permissions) limitent une capacité à UN projet — pour un contributeur qui doit éditer un blog et rien d’autre.' },
+    ],
+    traps: [
+      { en: 'SUPERADMIN bypasses every check implicitly and is the only tier that can edit the site theme or read the audit chain’s verify report.', fr: 'SUPERADMIN contourne toute vérification implicitement et est le seul palier qui peut éditer le thème du site ou lire le rapport de vérification de la chaîne d’audit.' },
+      { en: 'Editor-level actions require 2FA on the acting account — an admin without 2FA gets 403 with “2fa_required”, which is the guard working, not a bug.', fr: 'Les actions de niveau éditeur exigent la 2FA sur le compte qui agit — un admin sans 2FA reçoit 403 « 2fa_required », c’est la protection qui marche, pas un bug.' },
+      { en: '“manage_server” is a real capability (admin-only, ungrantable) — it is NOT the gate for the Advanced server tab.', fr: '« manage_server » est une vraie capacité (admin seul, non attribuable) — ce n’est PAS la porte de l’onglet Serveur avancé.' },
+    ],
+  },
+  security: {
+    steps: [
+      { en: 'Security log: filter by actor, action or date; open an entry to see the full before/after.', fr: 'Journal de sécurité : filtre par acteur, action ou date ; ouvre une entrée pour voir l’avant/après complet.' },
+      { en: 'Run Verify chain when something looks off — it recomputes every HMAC link and names the first broken one.', fr: 'Lance Vérifier la chaîne quand quelque chose semble louche — elle recalcule chaque maillon HMAC et nomme le premier rompu.' },
+      { en: 'Logins: the recent sign-ins per account, with IP and device, to spot a takeover.', fr: 'Connexions : les dernières connexions par compte, avec IP et appareil, pour repérer une prise de contrôle.' },
+    ],
+    traps: [
+      { en: 'Retention (Hosting settings → Security & audit logs) prunes old entries; that pruning is the only sanctioned deletion — anything else breaks the chain and Verify will say so.', fr: 'La rétention (Réglages d’hébergement → Sécurité & journaux) élague les vieilles entrées ; cet élagage est la seule suppression autorisée — tout autre casse la chaîne et Vérifier le dira.' },
+      { en: 'A broken link alerts every SUPERADMIN by notification. Treat it as an incident, not a glitch.', fr: 'Un maillon rompu alerte chaque SUPERADMIN par notification. Traite-le comme un incident, pas un pépin.' },
+    ],
+  },
+  projects: {
+    steps: [
+      { en: 'Pick a project → Overview: title, tagline, description (EN/FR), hero media.', fr: 'Choisis un projet → Aperçu : titre, accroche, description (EN/FR), média de tête.' },
+      { en: 'Presentation: add images, video, rrweb or .bmmreplay embeds — each previews live before you save.', fr: 'Présentation : ajoute images, vidéo, rrweb ou embeds .bmmreplay — chacun se prévisualise en direct avant l’enregistrement.' },
+      { en: 'Timeline: paste a GitHub repo URL (or drop a .git) to import commits, contributors and per-day activity; write milestones in Markdown.', fr: 'Chronologie : colle l’URL d’un dépôt GitHub (ou dépose un .git) pour importer commits, contributeurs et activité par jour ; rédige les jalons en Markdown.' },
+      { en: 'Visibility: per page (public / signed-in / staff), plus an optional countdown teaser and a scheduled content swap.', fr: 'Visibilité : par page (public / connecté / staff), plus un compte à rebours optionnel et un échange de contenu programmé.' },
+    ],
+    traps: [
+      { en: 'Featured (boosted) projects are ranked by a REAL download counter — not a number you type. Flush the GitHub cache from here if imported stats look stale.', fr: 'Les projets mis en avant (boostés) sont classés par un VRAI compteur de téléchargements — pas un nombre saisi. Vide le cache GitHub d’ici si les stats importées semblent figées.' },
+      { en: 'Blog scope: a project blog only shows posts tagged to that project; “home news” is a separate toggle per post.', fr: 'Portée du blog : un blog de projet ne montre que les articles rattachés à ce projet ; « actu d’accueil » est un réglage séparé par article.' },
+    ],
+  },
+  catalogs: {
+    steps: [
+      { en: 'Official: add an entry (app / plugin / theme / preset), upload or link its payload, set version + changelog, publish. BMM reads this feed as trusted.', fr: 'Officiel : ajoute une entrée (appli / plugin / thème / preset), téléverse ou lie sa charge, fixe version + changelog, publie. BMM lit ce flux comme fiable.' },
+      { en: 'Community: entries arrive via Submissions; here you can hide, feature or take one down after publication.', fr: 'Communauté : les entrées arrivent via Soumissions ; ici tu peux masquer, mettre en avant ou retirer une entrée après publication.' },
+      { en: 'Downloads & assets: the installers and files the platform hosts (PlatformAsset) — upload a new build and links.json updates for BMM’s auto-update.', fr: 'Téléchargements & assets : les installeurs et fichiers hébergés par la plateforme (PlatformAsset) — téléverse un nouveau build et links.json se met à jour pour l’auto-update de BMM.' },
+    ],
+    traps: [
+      { en: 'Our-hosted payloads above the free size are billed to non-staff submitters as a recurring Stripe subscription — see Hosting settings → Pricing.', fr: 'Les charges hébergées chez nous au-delà de la taille gratuite sont facturées aux soumissionnaires non-staff comme un abonnement Stripe récurrent — voir Réglages d’hébergement → Tarifs.' },
+      { en: 'Every catalogue kind can require a signed ed25519 key from the downloader (key-auth). Turning it on hides the catalogue behind an access screen in BMM.', fr: 'Chaque type de catalogue peut exiger une clé ed25519 signée du téléchargeur (key-auth). L’activer masque le catalogue derrière un écran d’accès dans BMM.' },
+      { en: 'A private catalogue is shared by link (?k=<shareKey>). That key is a secret — never paste it in a public channel.', fr: 'Un catalogue privé se partage par lien (?k=<shareKey>). Cette clé est un secret — ne la colle jamais dans un salon public.' },
+    ],
+  },
+  editorial: {
+    steps: [
+      { en: 'Announcements: write once in EN + FR, pick the scope (site or a project), publish. Toggle “home news” to pin it on the landing.', fr: 'Annonces : rédige une fois en EN + FR, choisis la portée (site ou un projet), publie. Active « actu d’accueil » pour l’épingler sur la landing.' },
+      { en: 'Newsletter: compose, choose audience (all / EN / FR / hand-picked), SEND A TEST to yourself, then send. Blog posts can auto-announce once.', fr: 'Newsletter : rédige, choisis l’audience (tous / EN / FR / sélection), ENVOIE UN TEST à toi-même, puis envoie. Les articles peuvent s’annoncer automatiquement une fois.' },
+      { en: 'FAQ: entries in Markdown with categories; Reviews: approve or hide user reviews before they show on a page.', fr: 'FAQ : entrées en Markdown avec catégories ; Avis : approuve ou masque les avis d’utilisateurs avant qu’ils s’affichent.' },
+      { en: 'Mail delivery: SMTP host, sender name, and the “from” address — a wrong sender lands every newsletter in spam.', fr: 'Envoi d’e-mails : hôte SMTP, nom d’expéditeur et adresse « from » — un mauvais expéditeur envoie chaque newsletter en spam.' },
+    ],
+    traps: [
+      { en: 'Blog and docs have size + count caps (Hosting settings → Blog, docs & history) and edit history keeps the last N revisions — an edit that grows a post past the cap is refused.', fr: 'Blog et docs ont des plafonds de taille + nombre (Réglages → Blog, docs & historique) et l’historique garde les N dernières révisions — une édition qui fait dépasser le plafond est refusée.' },
+      { en: 'Newsletter recipients are double-opt-in; a subscriber’s language is the one they signed up in, not the site’s current language.', fr: 'Les destinataires de la newsletter sont en double opt-in ; la langue d’un abonné est celle de son inscription, pas la langue actuelle du site.' },
+    ],
+  },
+  badges: {
+    steps: [
+      { en: 'Create: name, description, icon (a lucide name, a brand slug or an uploaded image), colour, and how it is earned — manual, easter-egg, or an automatic rule.', fr: 'Créer : nom, description, icône (nom lucide, slug de marque ou image téléversée), couleur, et comment il se gagne — manuel, easter-egg, ou règle automatique.' },
+      { en: 'Award manually from Accounts → user → Badges, or let the rule do it (every Nth signup, signed up before a date, matched Ko-fi donor).', fr: 'Attribue manuellement depuis Comptes → utilisateur → Badges, ou laisse la règle le faire (chaque Nième inscription, inscrit avant une date, donateur Ko-fi apparié).' },
+      { en: 'Priority orders badges next to the name on profiles and in the OG share card; inactive badges stay on holders but stop being awarded.', fr: 'La priorité ordonne les badges à côté du nom sur les profils et dans la carte OG de partage ; un badge inactif reste aux détenteurs mais n’est plus attribué.' },
+    ],
+    traps: [
+      { en: 'The Discord bot shop can SELL a badge for points (bot → Levels & economy → Shop, kind “BCWEB badge”). It awards the real UserBadge — pick the badge, or the item cannot be bought.', fr: 'La boutique du bot Discord peut VENDRE un badge contre des points (bot → Niveaux & économie → Boutique, type « Badge BCWEB »). Elle attribue le vrai UserBadge — choisis le badge, sinon l’article n’est pas achetable.' },
+      { en: 'The footer easter-egg (5 clicks) grants its badge once per account; the “earn message” is what that person sees.', fr: 'L’easter-egg du pied de page (5 clics) accorde son badge une fois par compte ; le « message de gain » est ce que la personne voit.' },
+    ],
+  },
+  repos: {
+    steps: [
+      { en: 'Repos: open one to see its owner, pool, size, verification state and access policy (whitelist / password / key). Verify to list it in the public index.', fr: 'Dépôts : ouvre-en un pour voir propriétaire, pool, taille, état de vérification et politique d’accès (liste blanche / mot de passe / clé). Vérifie pour le lister dans l’index public.' },
+      { en: 'Pools: a purchase provisions an EMPTY pool. Assign repos/catalogs into it; merge two pools; grant a free pool from here for a partner.', fr: 'Pools : un achat provisionne un pool VIDE. Affecte-lui dépôts/catalogues ; fusionne deux pools ; accorde un pool gratuit d’ici pour un partenaire.' },
+      { en: 'Ownership transfers: the receiver accepts from their dashboard; nothing moves until they do.', fr: 'Transferts de propriété : le receveur accepte depuis son tableau de bord ; rien ne bouge avant.' },
+    ],
+    traps: [
+      { en: 'A lapse SUSPENDS (read-only) for the grace window, never deletes on day one — the owner can still download, move or renew. See Hosting settings → Hosting lifecycle.', fr: 'Une échéance SUSPEND (lecture seule) pendant le délai de grâce, ne supprime jamais le jour même — le propriétaire peut encore télécharger, déplacer ou renouveler. Voir Réglages → Cycle de vie.' },
+      { en: 'Global access policy (whitelist/ban by creator id) sits ABOVE per-repo rules and is account-based via X-Creator-ID — BMM sends no extra header.', fr: 'La politique d’accès globale (liste blanche/ban par id créateur) est AU-DESSUS des règles par dépôt et s’appuie sur le compte via X-Creator-ID — BMM n’envoie aucun en-tête en plus.' },
+      { en: 'Free tier: one free repo AND one free catalogue per account (a FreeTierClaim that survives unlinking the creator id). The pool caps in Hosting settings can make the free plan “sold out”.', fr: 'Offre gratuite : un dépôt ET un catalogue gratuits par compte (un FreeTierClaim qui survit au déliage de l’id créateur). Les plafonds de pool dans Réglages peuvent rendre l’offre gratuite « épuisée ».' },
+    ],
+  },
+  plans: {
+    steps: [
+      { en: 'Add a plan: name, storage, upload speed, monthly price (or leave the price empty to inherit the per-GB rate from Hosting settings → Pricing).', fr: 'Ajoute une offre : nom, stockage, débit, prix mensuel (ou laisse le prix vide pour hériter du tarif au Go de Réglages → Tarifs).' },
+      { en: 'Order them: the public /hosting page lists plans in this order; mark one as recommended.', fr: 'Ordonne-les : la page publique /hosting les liste dans cet ordre ; marque-en une comme recommandée.' },
+      { en: 'Disable rather than delete a plan people still hold — existing subscriptions keep their terms.', fr: 'Désactive plutôt que supprimer une offre encore détenue — les abonnements existants gardent leurs conditions.' },
+    ],
+    traps: [
+      { en: 'Repo hosting is a PREPAID term; catalogue hosting above the free size is a RECURRING Stripe subscription. Renewal and lapse behave differently for the two.', fr: 'L’hébergement de dépôt est un terme PRÉPAYÉ ; l’hébergement de catalogue au-delà du gratuit est un abonnement Stripe RÉCURRENT. Renouvellement et échéance se comportent différemment.' },
+      { en: 'Payments off (Feature flags) blocks NEW checkouts only; the Stripe webhook keeps recording renewals and cancellations for the customers you already have.', fr: 'Paiements désactivés (Interrupteurs) bloque seulement les NOUVEAUX paiements ; le webhook Stripe continue d’enregistrer renouvellements et annulations des clients existants.' },
+    ],
+  },
+  promotions: {
+    steps: [
+      { en: 'Codes: pick a kind (percent off / free months / free hosting GB / free pool / free boost), a code or auto-generated, limits (max uses, per user, expiry), and optionally assign it to specific accounts/e-mails/Discord ids.', fr: 'Codes : choisis un type (% de réduction / mois offerts / Go d’hébergement / pool / boost gratuits), un code ou auto-généré, des limites (usages max, par personne, expiration), et éventuellement assigne-le à des comptes/e-mails/ids Discord.' },
+      { en: 'Campaigns: a time window + a badge + a banner shown site-wide; the badge is awarded to everyone who acts during the window.', fr: 'Campagnes : une fenêtre + un badge + une bannière affichée sur tout le site ; le badge est attribué à quiconque agit pendant la fenêtre.' },
+      { en: 'Who redeemed: open a code to see the accounts that used it and when.', fr: 'Qui a utilisé : ouvre un code pour voir les comptes qui l’ont utilisé et quand.' },
+    ],
+    traps: [
+      { en: 'Grant kinds (free hosting / pool / boost) are applied by the site itself and are tested. The Stripe DISCOUNT coupling is the part to check on a real charge before a launch.', fr: 'Les types d’attribution (hébergement / pool / boost gratuits) sont appliqués par le site et testés. Le couplage RÉDUCTION Stripe est la partie à vérifier sur un vrai paiement avant un lancement.' },
+      { en: 'The bot shop mints single-use promo codes on purchase (pool / boost / hosting items) — they appear here, assigned to the buyer, noted “Shop purchase”.', fr: 'La boutique du bot frappe des codes promo à usage unique à l’achat (articles pool / boost / hébergement) — ils apparaissent ici, assignés à l’acheteur, notés « Shop purchase ».' },
+    ],
+  },
+  events: {
+    steps: [
+      { en: 'Create an event with a start and end; pick what it changes for the window (a banner, a theme accent, a promo tie-in).', fr: 'Crée un événement avec début et fin ; choisis ce qu’il change pendant la fenêtre (une bannière, un accent de thème, un lien promo).' },
+      { en: 'Preview it before the start date; outside the window it is inert, so it can be prepared weeks ahead.', fr: 'Prévisualise-le avant la date de début ; hors fenêtre il est inerte, donc il se prépare des semaines à l’avance.' },
+    ],
+    traps: [
+      { en: 'The heavier presentation/theming engine was removed on purpose after three attempts; what remains is deliberately small. Use Promotions for a discount or a badge, Events only for a time-boxed change.', fr: 'Le moteur de présentation/habillage plus lourd a été retiré exprès après trois tentatives ; ce qui reste est volontairement petit. Utilise Promotions pour une réduction ou un badge, Événements seulement pour un changement limité dans le temps.' },
+    ],
+  },
+  myo: {
+    steps: [
+      { en: 'A request arrives with a description and the paid consultation fee. Open the thread, ask questions, then send a QUOTE.', fr: 'Une demande arrive avec une description et les frais de consultation payés. Ouvre le fil, pose tes questions, puis envoie un DEVIS.' },
+      { en: 'The client approves and pays the quote (second Stripe step). Only then does building start — the status moves to “in progress”.', fr: 'Le client accepte et paie le devis (second passage Stripe). Seulement alors la construction démarre — le statut passe à « en cours ».' },
+      { en: 'Deliver from the builder tab (files + notes); the client downloads from their dashboard. Archive when done.', fr: 'Livre depuis l’onglet constructeur (fichiers + notes) ; le client télécharge depuis son tableau de bord. Archive une fois terminé.' },
+    ],
+    traps: [
+      { en: 'Paid reviews are non-refundable and the client is told so before paying; a rejected paid request may still owe a refund of the FEE if you never reviewed it.', fr: 'Les revues payées ne sont pas remboursables et le client en est informé avant de payer ; une demande payante refusée peut quand même devoir le remboursement des FRAIS si tu ne l’as jamais examinée.' },
+      { en: 'Unpaid requests older than the configured age auto-archive. The bot can post each new commission to a channel (Announcements → Commissions route).', fr: 'Les demandes non payées plus vieilles que l’âge configuré s’archivent seules. Le bot peut poster chaque nouvelle commande dans un salon (Annonces → route Commandes).' },
+    ],
+  },
+  kofi: {
+    steps: [
+      { en: 'Copy the webhook URL and the secret token shown here into Ko-fi → Settings → Webhooks.', fr: 'Copie l’URL du webhook et le jeton secret affichés ici dans Ko-fi → Réglages → Webhooks.' },
+      { en: 'Set a funding goal (amount + currency) to show the progress widget on the home page; clear it to hide the widget while totals keep accumulating.', fr: 'Fixe un objectif (montant + devise) pour afficher le widget de progression sur l’accueil ; efface-le pour masquer le widget pendant que les totaux continuent.' },
+      { en: 'Turn on the bot’s Ko-fi module to thank each tip in a channel with a running total.', fr: 'Active le module Ko-fi du bot pour remercier chaque pourboire dans un salon avec le total courant.' },
+    ],
+    traps: [
+      { en: 'A donor is matched by e-mail to a BetterCommunity account — a different e-mail on Ko-fi means no discount code and no “Ko-fi donor” badge.', fr: 'Un donateur est apparié par e-mail à un compte BetterCommunity — un e-mail différent sur Ko-fi = pas de code de réduction ni de badge « donateur Ko-fi ».' },
+      { en: 'Incoming webhooks can be switched off site-wide (Feature flags) — then Ko-fi tips are refused with 503 until it is back on.', fr: 'Les webhooks entrants peuvent être coupés pour tout le site (Interrupteurs) — alors les pourboires Ko-fi sont refusés en 503 jusqu’à réactivation.' },
+    ],
+  },
+  sso: {
+    steps: [
+      { en: 'Login providers (GitHub / Discord / Google): set each client id + secret in the environment, then enable “Sign in with…” in Feature flags.', fr: 'Fournisseurs de connexion (GitHub / Discord / Google) : mets chaque client id + secret dans l’environnement, puis active « Se connecter avec… » dans Interrupteurs.' },
+      { en: 'Provider side: register a client app (name, redirect URIs, scopes). It gets its own id/secret to sign users in with a BetterCommunity account.', fr: 'Côté fournisseur : enregistre une appli cliente (nom, URI de redirection, portées). Elle reçoit son id/secret pour connecter des utilisateurs avec un compte BetterCommunity.' },
+      { en: 'Test with the /oauth2/authorize URL the row shows; a wrong redirect URI is the usual first failure.', fr: 'Teste avec l’URL /oauth2/authorize affichée sur la ligne ; une mauvaise URI de redirection est l’échec habituel.' },
+    ],
+    traps: [
+      { en: 'Two different switches: “Sign in with GitHub/Discord/Google” is US using them; “Single sign-on (we are the provider)” is other apps using US. Turning one off does not touch the other.', fr: 'Deux interrupteurs différents : « Se connecter avec GitHub/Discord/Google » = NOUS qui les utilisons ; « SSO (nous sommes le fournisseur) » = d’autres applis qui NOUS utilisent. Couper l’un ne touche pas l’autre.' },
+      { en: 'Password sign-in is never gated by these — so you can never lock yourself out of the admin by flipping them.', fr: 'La connexion par mot de passe n’est jamais conditionnée par ça — donc tu ne peux jamais te verrouiller hors de l’admin en les basculant.' },
+    ],
+  },
+  api: {
+    steps: [
+      { en: 'A user creates keys from their dashboard (Developer). Here you see every key, its scopes, last use, and can revoke one.', fr: 'Un utilisateur crée ses clés depuis son tableau de bord (Développeur). Ici tu vois chaque clé, ses portées, sa dernière utilisation, et peux en révoquer une.' },
+      { en: 'Scopes are the whole permission model: a key can only do what its scopes allow, never more than its owner.', fr: 'Les portées sont tout le modèle de permission : une clé ne peut faire que ce que ses portées autorisent, jamais plus que son propriétaire.' },
+      { en: 'Point developers at /dev/tools — the endpoint reference, a request builder and webhook testers live there.', fr: 'Renvoie les développeurs vers /dev/tools — la référence des endpoints, un constructeur de requête et des testeurs de webhook y sont.' },
+    ],
+    traps: [
+      { en: 'Keys are stored hashed and shown ONCE. A lost key is re-issued, never recovered. Revocation is instant and permanent.', fr: 'Les clés sont stockées hachées et montrées UNE fois. Une clé perdue se réémet, ne se récupère jamais. La révocation est immédiate et définitive.' },
+      { en: 'Public API off (Feature flags) makes every /v1 route answer 503, read-only ones included; the website itself is unaffected.', fr: 'API publique désactivée (Interrupteurs) fait répondre 503 à toute route /v1, lecture seule incluse ; le site lui-même n’est pas touché.' },
+    ],
+  },
+  bot: {
+    steps: [
+      { en: 'Overview: paste the token (bot must be OFF to change it), flip the master switch, Save. It connects within ~20 s; the header pill goes Online.', fr: 'Vue d’ensemble : colle le jeton (le bot doit être OFF pour le changer), bascule l’interrupteur principal, Enregistre. Il se connecte en ~20 s ; la pastille d’en-tête passe En ligne.' },
+      { en: 'Choose the member-storage strategy (Per-server / Free / Unified) and, in Limits, the byte cap + linked-account retention rules.', fr: 'Choisis la stratégie de stockage des membres (Par serveur / Gratuit / Unifié) et, dans Limites, le plafond d’octets + les règles de rétention des comptes liés.' },
+      { en: 'Announcements: give each route a channel (and an urgent-only role). Turn on Blog / Alerts / Ko-fi / Payments and point each at a channel; “Send test” proves the bot can post there.', fr: 'Annonces : donne un salon à chaque route (et un rôle « urgent » optionnel). Active Blog / Alertes / Ko-fi / Paiements et pointe chacun vers un salon ; « Envoyer un test » prouve que le bot peut y poster.' },
+      { en: 'Per-server: pick a server, “Customize this server”, then set Moderation / Welcome / Join-to-create / Gated roles for it alone. Anything left untouched follows Global defaults.', fr: 'Par serveur : choisis un serveur, « Personnaliser ce serveur », puis règle Modération / Bienvenue / Vocal à la demande / Rôles gatés pour lui seul. Ce qui n’est pas touché suit les défauts globaux.' },
+      { en: 'Community: rules & role panels (buttons or dropdown), giveaways, and “Message every member”.', fr: 'Communauté : règles & panneaux de rôles (boutons ou menu), giveaways, et « Message à chaque membre ».' },
+    ],
+    traps: [
+      { en: 'A DISCORD_TOKEN in the environment wins over the dashboard token. Privileged intents (members, message content, presence) must be enabled on the Discord developer portal or the bot cannot connect.', fr: 'Un DISCORD_TOKEN dans l’environnement l’emporte sur le jeton du tableau de bord. Les intents privilégiés (membres, contenu des messages, présence) doivent être activés sur le portail développeur Discord sinon le bot ne se connecte pas.' },
+      { en: '“Reconnect bot” only re-opens the Discord connection. It does NOT deploy new code — that is a container restart.', fr: '« Reconnecter » ne fait que rouvrir la connexion Discord. Ça ne déploie PAS de nouveau code — c’est un redémarrage de conteneur.' },
+      { en: 'Limits → “Never purge linked members” keeps every linked person when the cap is hit (anonymous rows go first); “If purged anyway, unlink” makes sure nobody looks linked to a record that no longer exists; “Force re-link every N days” expires stale links.', fr: 'Limites → « Ne jamais purger les membres liés » garde chaque personne liée quand le plafond est atteint (les lignes anonymes partent d’abord) ; « Si purgé quand même, délier » évite qu’on paraisse lié à une fiche disparue ; « Forcer une reliaison tous les N jours » périme les liens anciens.' },
+      { en: 'Storage → “Require a paid pool to store members” OFF lets every server store members for free while keeping per-server byte budgets.', fr: 'Stockage → « Exiger une pool payante » OFF laisse chaque serveur stocker ses membres gratuitement en gardant les budgets d’octets par serveur.' },
+      { en: 'Users manage their OWN servers from Dashboard → Discord servers (owner or Manage Server on the guild, proven by the bot’s heartbeat). Their storage pool stays admin-assigned — they cannot self-grant capacity.', fr: 'Les utilisateurs gèrent LEURS serveurs depuis Tableau de bord → Serveurs Discord (propriétaire ou Gérer le serveur, prouvé par le heartbeat du bot). Leur pool de stockage reste attribuée par un admin — ils ne peuvent pas s’auto-accorder de capacité.' },
+    ],
+  },
+  economy: {
+    steps: [
+      { en: 'Turn the Economy card on. Name the currency and give it an emoji (a Discord custom emoji <:name:id> or a unicode one) or a fallback image.', fr: 'Active la carte Économie. Nomme la devise et donne-lui un emoji (emoji Discord personnalisé <:nom:id> ou unicode) ou une image de repli.' },
+      { en: 'Set XP rates (per message / reaction / voice minute) and the level curve; the live “Lv 1 / 5 / 10 / 25 / 50” preview shows how hard each level is before you save.', fr: 'Fixe les taux d’XP (par message / réaction / minute vocale) et la courbe de niveaux ; l’aperçu « Nv 1 / 5 / 10 / 25 / 50 » montre la difficulté de chaque niveau avant enregistrement.' },
+      { en: 'Points: how many levels between grants and how many points per grant. This is the only faucet — the shop and casino only move points around.', fr: 'Points : combien de niveaux entre deux dons et combien de points par don. C’est le seul robinet — la boutique et le casino ne font que déplacer des points.' },
+      { en: 'Casino: min/max bet and house edge; the payout preview prices each game so you see who wins long term. Shop: add items — BCWEB badge, storage pool, catalog boost, hosting, Discord role, promo code, or a custom reward.', fr: 'Casino : mise min/max et avantage maison ; l’aperçu des gains chiffre chaque jeu pour voir qui gagne sur la durée. Boutique : ajoute des articles — badge BCWEB, pool de stockage, boost de catalogue, hébergement, rôle Discord, code promo, ou récompense personnalisée.' },
+      { en: 'Balances & leaderboard: search a member, give or take points with a reason (audited).', fr: 'Soldes & classement : cherche un membre, donne ou retire des points avec une raison (journalisé).' },
+    ],
+    traps: [
+      { en: 'XP only accrues for members who LINKED a BetterCommunity account. Unlinked members earn nothing until they run /link.', fr: 'L’XP ne s’accumule que pour les membres ayant LIÉ un compte BetterCommunity. Les non-liés ne gagnent rien avant d’avoir lancé /link.' },
+      { en: 'Badge / pool / boost / hosting shop items are fulfilled BY THE SITE before the points are taken — a badge is awarded directly; a pool/boost/hosting item mints a single-use promo code the buyer redeems. A failed grant never charges.', fr: 'Les articles badge / pool / boost / hébergement sont honorés PAR LE SITE avant le débit — un badge est attribué directement ; un pool/boost/hébergement frappe un code promo à usage unique que l’acheteur utilise. Un échec ne débite jamais.' },
+      { en: 'Slots pay 104% before the edge (8× three-of-a-kind, 1.5× a pair). At a low house edge it is player-favourable — read the payout preview before setting 1–3%.', fr: 'La machine à sous rend 104 % avant l’avantage (8× triple, 1,5× paire). Avec un avantage faible elle favorise les joueurs — lis l’aperçu des gains avant de mettre 1–3 %.' },
+      { en: 'Levels are always public (profile, OG card, /profile); the message/reaction/voice counts follow each member’s own “stats public” toggle.', fr: 'Les niveaux sont toujours publics (profil, carte OG, /profile) ; les compteurs messages/réactions/vocal suivent le réglage « stats publiques » de chaque membre.' },
+    ],
+  },
+  serverperf: {
+    steps: [
+      { en: 'Performance: live CPU / RAM / disk / service probes per host, with thresholds you set; a breach becomes an alert (and a Discord post if the Alerts module is on).', fr: 'Performance : sondes CPU / RAM / disque / services en direct par hôte, avec des seuils que tu fixes ; un dépassement devient une alerte (et un message Discord si le module Alertes est actif).' },
+      { en: 'Storage: what hosted content, uploads, analytics/replays and the bot’s member database each consume against the caps in Hosting settings.', fr: 'Stockage : ce que consomment le contenu hébergé, les uploads, analytics/replays et la base de membres du bot par rapport aux plafonds des Réglages.' },
+      { en: 'Status page: incidents the probes recorded appear here — write the human account (what broke, what you did) so the public status page tells the story.', fr: 'Page Statut : les incidents enregistrés par les sondes apparaissent ici — rédige le récit humain (ce qui a cassé, ce que tu as fait) pour que la page publique raconte l’histoire.' },
+      { en: 'Advanced: graceful restart, dependency versions, and the elevated actions that need a fresh 2FA code.', fr: 'Avancé : redémarrage propre, versions des dépendances, et les actions élevées qui exigent un code 2FA frais.' },
+    ],
+    traps: [
+      { en: 'Acknowledging an alert is what turns the log into a queue — the tab badge counts unacknowledged alerts, not all of them.', fr: 'Acquitter une alerte est ce qui transforme le journal en file — la pastille de l’onglet compte les alertes non acquittées, pas toutes.' },
+      { en: 'The API host port moves on every compose restart (3000–3009). If every page renders its offline fallback in dev, that is the proxy pointing at the old port, not broken code.', fr: 'Le port hôte de l’API bouge à chaque redémarrage compose (3000–3009). Si chaque page affiche son repli hors-ligne en dev, c’est le proxy qui vise l’ancien port, pas du code cassé.' },
+    ],
+  },
+  analytics: {
+    steps: [
+      { en: 'Traffic: pageviews, sessions, OS/browser split, geo (region/city + flag map), Web Vitals and sparklines — all first-party, no third-party script.', fr: 'Trafic : pages vues, sessions, répartition OS/navigateur, géo (région/ville + carte à drapeaux), Web Vitals et sparklines — tout en première partie, sans script tiers.' },
+      { en: 'Goals: define a conversion (a route, a click event) and watch its funnel.', fr: 'Objectifs : définis une conversion (une route, un événement de clic) et suis son entonnoir.' },
+      { en: 'Replays: session recordings, with a size cap and retention (Hosting settings → Capacity → Analytics & replay storage cap). Errors: client-side exceptions with stack + route.', fr: 'Replays : enregistrements de session, avec plafond de taille et rétention (Réglages → Capacité → plafond Analytics & replays). Erreurs : exceptions côté client avec pile + route.' },
+    ],
+    traps: [
+      { en: 'Loopback IPs (dev) produce empty geo — not a bug. The Google Tag (if enabled) still loads only after the visitor accepts the Analytics cookie category.', fr: 'Les IP loopback (dev) donnent une géo vide — ce n’est pas un bug. Le Google Tag (si activé) ne se charge qu’après acceptation de la catégorie de cookies Analytics.' },
+      { en: 'Error events are readable with manage_analytics, which grants NO access to private repos — so raw request URLs (with ?k= share secrets) must never be logged.', fr: 'Les événements d’erreur sont lisibles avec manage_analytics, qui ne donne AUCUN accès aux dépôts privés — donc les URL brutes (avec secrets ?k=) ne doivent jamais être journalisées.' },
+    ],
+  },
+  settings: {
+    steps: [
+      { en: 'Undo window: on = deferred saves (blog, docs, nav, theme) commit after a grace period with an Undo toast; off = they commit immediately.', fr: 'Fenêtre d’annulation : activée = les enregistrements différés (blog, docs, nav, thème) s’appliquent après un délai avec un toast Annuler ; désactivée = ils s’appliquent immédiatement.' },
+      { en: 'Translucent surfaces: the site-wide glass look. Popups stay opaque regardless so text never sits over a card behind it.', fr: 'Surfaces translucides : le rendu verre de tout le site. Les popups restent opaques quoi qu’il arrive pour que le texte ne soit jamais sur une carte derrière.' },
+      { en: 'Anti-abuse: proof-of-work on forms, rate limits, and the edge (Caddy) anti-bot rules — tune when something is hammering the site.', fr: 'Anti-abus : preuve de travail sur les formulaires, limites de débit, et règles anti-bot du bord (Caddy) — ajuste quand quelque chose martèle le site.' },
+      { en: 'Runtime locales: add a language (RTL included) and translate it in the i18n editor; missing keys fall back to English.', fr: 'Langues d’exécution : ajoute une langue (RTL inclus) et traduis-la dans l’éditeur i18n ; les clés manquantes retombent sur l’anglais.' },
+    ],
+    traps: [
+      { en: 'Capacity, retention and pricing caps are NOT here — they live in Hosting settings, one screen for every cap.', fr: 'Capacité, rétention et tarifs ne sont PAS ici — ils sont dans Réglages d’hébergement, un seul écran pour tous les plafonds.' },
+    ],
+  },
+  navui: {
+    steps: [
+      { en: 'Menu: add links and dropdown groups, each with EN/FR labels and an icon; drag to reorder; fold an item to its header when you are not editing it. Start from the built-in navigation if the list is empty.', fr: 'Menu : ajoute liens et groupes déroulants, chacun avec libellés EN/FR et icône ; glisse pour réordonner ; replie un item sur son en-tête quand tu ne l’édites pas. Pars de la navigation intégrée si la liste est vide.' },
+      { en: 'Buttons: show/hide and reorder the built-in topbar utilities (search, language, theme, notifications, account).', fr: 'Boutons : affiche/masque et réordonne les utilitaires intégrés de la barre (recherche, langue, thème, notifications, compte).' },
+      { en: 'Layout: alignment, density, labels (icon / text / both), and the mobile bottom bar — on/off, display mode, up to five custom buttons.', fr: 'Mise en page : alignement, densité, libellés (icône / texte / les deux), et la barre du bas mobile — on/off, mode d’affichage, jusqu’à cinq boutons personnalisés.' },
+      { en: 'Footer: load the built-in footer, edit its columns/links/brand/bottom row, Save. “Back to built-in” discards the custom one and follows future built-in changes.', fr: 'Pied de page : charge le pied intégré, édite colonnes/liens/marque/ligne du bas, Enregistre. « Revenir à l’intégré » abandonne le personnalisé et suit les futures évolutions.' },
+      { en: 'Home page: per-section on/off and wording (EN/FR), the products grid, pinned poll, custom Markdown sections, and a live preview.', fr: 'Page d’accueil : par section on/off et textes (EN/FR), la grille produits, le sondage épinglé, des sections Markdown personnalisées, et un aperçu en direct.' },
+    ],
+    traps: [
+      { en: 'Pinned showcase projects show in the topbar inline or as one “Projects” dropdown — the preview here renders them exactly as the live bar will.', fr: 'Les projets épinglés apparaissent dans la barre en ligne ou dans un seul menu « Projets » — l’aperçu ici les rend exactement comme la vraie barre.' },
+      { en: 'An empty dropdown group is dropped on save; a link must start with /.', fr: 'Un groupe déroulant vide est supprimé à l’enregistrement ; un lien doit commencer par /.' },
+    ],
+  },
+  sitetheme: {
+    steps: [
+      { en: 'Pick a preset or set the accent pair (light + dark); everything else derives from it.', fr: 'Choisis un preset ou fixe la paire d’accent (clair + sombre) ; tout le reste en dérive.' },
+      { en: 'Fine-tune per-mode page colours and the token catalogue; the glow-geometry editor shapes the hero backdrop.', fr: 'Affine les couleurs de page par mode et le catalogue de tokens ; l’éditeur de géométrie des halos façonne l’arrière-plan du hero.' },
+      { en: 'Watch the live preview, Apply, and export the whole look as a file you can re-import later or on another install.', fr: 'Regarde l’aperçu en direct, Applique, et exporte tout le thème en fichier réimportable plus tard ou sur une autre installation.' },
+    ],
+    traps: [
+      { en: 'Picking a preset CLEARS your token overrides (undoably) so the preset renders as designed. Apply writes immediately; Undo is a second real write.', fr: 'Choisir un preset EFFACE tes surcharges de tokens (annulable) pour que le preset s’affiche comme prévu. Appliquer écrit immédiatement ; Annuler est une seconde vraie écriture.' },
+      { en: 'SUPERADMIN only — an ADMIN sees the screen read-only.', fr: 'SUPERADMIN uniquement — un ADMIN voit l’écran en lecture seule.' },
+    ],
+  },
+  hostingsettings: {
+    steps: [
+      { en: 'Each group folds — open only the one you came to change. Every control has a Save of its own; nothing else on the screen is touched.', fr: 'Chaque groupe se replie — ouvre seulement celui que tu viens changer. Chaque contrôle a son propre Enregistrer ; rien d’autre n’est touché.' },
+      { en: 'Sizes accept MB / GB / TB in the unit picker — the stored value stays in its native unit.', fr: 'Les tailles acceptent Mo / Go / To dans le sélecteur d’unité — la valeur stockée reste dans son unité native.' },
+      { en: 'Link previews: pick a platform once (Discord / X / Facebook / Google) and both the whole-site card and every per-page override render in it; add an override by page type or custom path.', fr: 'Aperçus de liens : choisis une plateforme une fois (Discord / X / Facebook / Google) et la carte du site entier comme chaque surcharge par page s’y affichent ; ajoute une surcharge par type de page ou chemin.' },
+    ],
+    traps: [
+      { en: 'Total capacity can never exceed the machine’s real free disk (shown under the field). Free-tier pool caps make the free plan “sold out” — paid plans never count against them.', fr: 'La capacité totale ne peut jamais dépasser l’espace disque réel (affiché sous le champ). Les plafonds de pool gratuite rendent l’offre gratuite « épuisée » — les offres payantes n’y comptent jamais.' },
+      { en: 'The full text of every control is in the reference just below — the cards on the Hosting screen show two lines and link here.', fr: 'Le texte complet de chaque contrôle est dans la référence juste en dessous — les cartes de l’écran Hébergement affichent deux lignes et renvoient ici.' },
+    ],
+  },
+};
+
 // The complete hosting-settings reference — every group, every control, spelled out in full
 // from the SAME catalog the live screen renders (lib/hosting-settings.js), so it is complete
 // by construction and can't fall behind the controls. A "Learn more →" carries the setting key
@@ -437,6 +736,33 @@ export default function AdminGuide() {
                         <li key={i} className="text-[13.5px] text-[var(--muted)] leading-relaxed list-disc ms-5 marker:text-[var(--primary-2)]">{L(p)}</li>
                       ))}
                     </ul>
+                  )}
+                  {/* Depth: a numbered how-to and the rules/traps for this screen. */}
+                  {GUIDE_MORE[activeItem.id] && (
+                    <div className="grid md:grid-cols-2 gap-4 mt-5 pt-4 border-t border-[var(--line)]">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2">{t('ag.steps', 'Step by step')}</div>
+                        <ol className="space-y-2">
+                          {GUIDE_MORE[activeItem.id].steps.map((s, i) => (
+                            <li key={i} className="flex gap-2.5 text-[13px] text-[var(--muted)] leading-relaxed">
+                              <span className="grid place-items-center w-5 h-5 rounded shrink-0 mt-0.5 bg-[var(--primary)]/10 text-[var(--primary-2)] text-[10px] font-bold">{i + 1}</span>
+                              <span>{L(s)}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wider text-warning mb-2">{t('ag.traps', 'Rules & traps')}</div>
+                        <ul className="space-y-2">
+                          {GUIDE_MORE[activeItem.id].traps.map((p, i) => (
+                            <li key={i} className="flex gap-2.5 text-[13px] text-[var(--muted)] leading-relaxed">
+                              <AlertTriangle size={13} className="text-warning shrink-0 mt-1" />
+                              <span>{L(p)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
                   )}
                   {/* The hosting screen keeps its cards terse and links here; THIS is where every
                       setting is spelled out in full — one entry per control, nothing clamped. */}
