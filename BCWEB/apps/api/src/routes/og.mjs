@@ -9,6 +9,7 @@
 // Everything else on the page is a courtesy redirect to the real SPA URL, so if a
 // human ever lands here they bounce straight to the app.
 import { db } from '../lib/lib.mjs';
+import { renderCasinoGif } from '../lib/casino-gif.mjs';
 
 const SITE = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const LOGO = () => `${SITE()}/logo.png`;
@@ -276,10 +277,21 @@ export default async function ogRoutes(app) {
   //   /og/casino/<coinflip|dice|slots|roulette>/<win|lose>.png?d=<detail>&a=<amount>
   app.get('/og/casino/:game/:outcome', async (req, reply) => {
     const game = String(req.params.game || '').replace(/[^a-z]/g, '');
-    const win = String(req.params.outcome || '').startsWith('win');
+    const outcome = String(req.params.outcome || '');
+    const win = outcome.startsWith('win');
     const detail = String(req.query?.d || '').slice(0, 40);
     const amount = String(req.query?.a || '').replace(/[^0-9,. -]/g, '').slice(0, 16);
     if (!['coinflip', 'dice', 'slots', 'roulette'].includes(game)) return reply.code(404).send({ error: 'not_found' });
+    // Animated: the spin that ends on this outcome, seeded per play (?s=) so it differs each
+    // time; encoded once and cached five minutes. Falls through to the still card on failure.
+    if (/.gif$/i.test(outcome)) {
+      try {
+        const seed = (parseInt(String(req.query?.s || ''), 10) || Date.now()) >>> 0;
+        const buf = await renderCasinoGif({ game, win, detail, amount, seed });
+        reply.header('content-type', 'image/gif'); reply.header('cache-control', 'public, max-age=300');
+        return reply.send(buf);
+      } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino gif failed, serving still'); }
+    }
     try {
       const { createCanvas } = await import('@napi-rs/canvas');
       const W = 900, H = 420;

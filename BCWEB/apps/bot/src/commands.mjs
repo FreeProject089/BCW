@@ -196,7 +196,7 @@ async function cmdCasino(i) {
   } else if (game === 'dice') {
     const roll = 1 + Math.floor(Math.random() * 6);
     mult = roll >= 4 ? 2 : 0;
-    detail = `🎲 You rolled a **${roll}** (win on 4-6).`; card = ['⚀','⚁','⚂','⚃','⚄','⚅'][roll - 1];
+    detail = `🎲 You rolled a **${roll}** (win on 4-6).`; card = String(roll);
   } else if (game === 'slots') {
     const S = ['🍒', '🍋', '🔔', '⭐', '💎'];
     const reels = [0, 1, 2].map(() => S[Math.floor(Math.random() * S.length)]);
@@ -225,7 +225,9 @@ async function cmdCasino(i) {
   // A picture of the play, rendered by the site (see /og/casino on the API): big reels / coin /
   // die / roulette pocket and a WIN/LOSE banner — a result you can see, not a line of emoji.
   const amt = Number(won ? r.delta : bet).toLocaleString();
-  const img = `${SITE_URL}/og/casino/${encodeURIComponent(game)}/${won ? 'win' : 'lose'}.png?d=${encodeURIComponent(card)}&a=${encodeURIComponent(amt)}&n=${Date.now()}`;
+  // Animated GIF of the spin, seeded per play so every roll looks different; the site falls
+  // back to a still card if encoding ever fails.
+  const img = `${SITE_URL}/og/casino/${encodeURIComponent(game)}/${won ? 'win' : 'lose'}.gif?d=${encodeURIComponent(card)}&a=${encodeURIComponent(amt)}&s=${Math.floor(Math.random() * 4294967295)}`;
   const emb = new EmbedBuilder().setColor(won ? 0x248046 : 0xda373c).setTitle(won ? '🎰 You win!' : '🎰 You lose').setDescription(line).setImage(img).setThumbnail(i.user.displayAvatarURL?.({ size: 128 }) || null);
   return i.reply({ embeds: [emb] });
 }
