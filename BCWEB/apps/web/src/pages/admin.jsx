@@ -14119,6 +14119,10 @@ function AdminBot() {
               ['🪙', t('db.eco.game.coin', 'Coin flip'), 1.0, `2× · ${Math.round(50)}%`],
               ['🎲', t('db.eco.game.dice', 'Dice'), 1.0, `2× · ${Math.round(50)}%`],
               ['🎰', t('db.eco.game.slots', 'Slots'), 1.04, '8× / 1.5×'],
+              ['🎯', t('db.eco.game.wheel', 'Wheel'), 0.9, t('db.eco.game.wheel.o', 'best target 50× → 1.00, worst 3× → 0.72')],
+              ...(() => { const C = [1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]; const T = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
+                const rtp = (k) => T[k].reduce((acc, m, i) => acc + (C[i] / 1024) * m, 0);
+                return [['🟡', t('db.eco.game.plinko', 'Plinko'), rtp('medium'), t('db.eco.game.plinko.o', 'low {l} · medium {m} · high {h}').replace('{l}', rtp('low').toFixed(2)).replace('{m}', rtp('medium').toFixed(2)).replace('{h}', rtp('high').toFixed(2))]]; })(),
             ];
             return (
               <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">

@@ -1,0 +1,124 @@
+// Every OTHER admin screen, section by section, control by control — the reference the Admin
+// guide renders under each entry (hosting and the Discord bot have their own richer ones).
+// Hand-written from the screens themselves, EN + FR. Keyed by the guide entry id.
+//
+// Shape: { [entryId]: [{ id, name: {en,fr}, what: {en,fr}, controls: [{ label, what }] }] }
+
+const c = (en, fr) => ({ en, fr });
+
+export const ADMIN_SCREENS_REF = {
+  needs: [
+    { id: 'digest', name: c('Queues digest', 'Résumé des files'), what: c('One row per queue with its waiting count; each row is a link to the screen where the work is done. No badge of its own — the queues already carry theirs.', 'Une ligne par file avec son nombre en attente ; chaque ligne mène à l’écran où le travail se fait. Pas de pastille propre — les files ont déjà la leur.'), controls: [] },
+  ],
+  moderation: [
+    { id: 'submissions', name: c('Submissions', 'Soumissions'), what: c('New catalogue / repo / project requests. Open one, inspect the payload and proof, Approve (creates the page UNPUBLISHED) or Reject with a reason the author reads.', 'Nouvelles demandes catalogue / dépôt / projet. Ouvre, inspecte la charge et la preuve, Approuve (crée la page NON publiée) ou Refuse avec une raison lue par l’auteur.'),
+      controls: [
+        { label: c('Filters: kind · type · status · sort', 'Filtres : genre · type · statut · tri'), what: c('Narrow to apps / plugins / themes / presets, free vs paid, pending vs decided. A paid request buys a queue slot, nothing else.', 'Restreins à applis / plugins / thèmes / presets, gratuit vs payant, en attente vs décidé. Une demande payante achète une place, rien d’autre.') },
+        { label: c('Rejected-payload grace', 'Délai des charges refusées'), what: c('A rejected upload keeps its file for the days set in Hosting settings so the author can fix and resubmit; then the sweeper purges it.', 'Un envoi refusé garde son fichier le nombre de jours fixé dans Réglages d’hébergement pour que l’auteur corrige et renvoie ; ensuite le nettoyeur le purge.') },
+      ] },
+    { id: 'reports', name: c('Reports & messages', 'Signalements & messages'), what: c('What users send you. A report shows the reported content in context; a message is a thread you answer from here and the sender is notified.', 'Ce que les utilisateurs t’envoient. Un signalement montre le contenu dans son contexte ; un message est un fil auquel tu réponds d’ici, l’expéditeur est prévenu.'), controls: [] },
+    { id: 'legal', name: c('Legal', 'Légal'), what: c('Takedown and rights claims. They identify their sender, so they never leave the dashboard — the bot can only post a heads-up + link, and only to a Legal route that has a channel.', 'Retraits et revendications de droits. Ils identifient l’expéditeur, donc ne sortent jamais du tableau de bord — le bot ne peut poster qu’un rappel + lien, et seulement vers une route Légal qui a un salon.'), controls: [] },
+    { id: 'sanctions', name: c('Sanctions', 'Sanctions'), what: c('Every suspension and ban with its reason, duration and appeal. Lifting one is logged in the Security log. A MOD cannot sanction above their own rank.', 'Chaque suspension et ban avec raison, durée et appel. Lever une sanction est journalisé dans le Journal de sécurité. Un MOD ne peut pas sanctionner au-dessus de son rang.'), controls: [] },
+  ],
+  users: [
+    { id: 'panel', name: c('Account panel', 'Fiche du compte'), what: c('Search by pseudo / e-mail / id, then one panel per account.', 'Cherche par pseudo / e-mail / id, puis une fiche par compte.'),
+      controls: [
+        { label: c('Roles & permissions', 'Rôles & permissions'), what: c('Tick a built-in tier, a custom role, or a single capability; effective permissions are the union. Applies on Save.', 'Coche un palier intégré, un rôle personnalisé, ou une capacité seule ; les permissions effectives sont l’union. Appliqué à l’enregistrement.') },
+        { label: c('Suspend / Ban', 'Suspendre / Bannir'), what: c('Suspend is time-boxed and reversible; Ban holds until lifted. Both ask a reason, both are appealable.', 'Suspendre est limité et réversible ; Bannir tient jusqu’à levée. Les deux demandent une raison, les deux sont contestables.') },
+        { label: c('Linked logins', 'Connexions liées'), what: c('GitHub / Discord / Google links. Unlinking Discord also stops the bot crediting XP to that person.', 'Liens GitHub / Discord / Google. Délier Discord arrête aussi le crédit d’XP par le bot.') },
+        { label: c('Free vs paid', 'Gratuit vs payant'), what: c('Derived from live subscriptions — a lapsed plan moves the account back to free by itself.', 'Déduit des abonnements en cours — une offre échue rebascule le compte en gratuit tout seul.') },
+      ] },
+  ],
+  access: [
+    { id: 'roles', name: c('Custom roles', 'Rôles personnalisés'), what: c('Name a role and tick the capabilities it bundles (manage_repos, manage_myo, manage_analytics, translator…). Assign it from the account panel.', 'Nomme un rôle et coche les capacités regroupées (manage_repos, manage_myo, manage_analytics, traducteur…). Attribue-le depuis la fiche du compte.'),
+      controls: [
+        { label: c('Per-project grants', 'Droits par projet'), what: c('Projects → a project → Permissions scopes a capability to ONE project (a contributor who edits one blog and nothing else).', 'Projets → un projet → Permissions limite une capacité à UN projet (un contributeur qui édite un blog et rien d’autre).') },
+        { label: c('SUPERADMIN', 'SUPERADMIN'), what: c('Bypasses every check implicitly; the only tier that edits the site theme or reads the audit-chain verify report. Editor-level actions need 2FA on the acting account.', 'Contourne toute vérification ; seul palier qui édite le thème du site ou lit le rapport de vérification de la chaîne d’audit. Les actions de niveau éditeur exigent la 2FA sur le compte agissant.') },
+      ] },
+  ],
+  security: [
+    { id: 'log', name: c('Security log', 'Journal de sécurité'), what: c('Staff actions as an HMAC hash chain. Filter by actor / action / date; open an entry for the full before/after.', 'Actions du staff en chaîne de hachage HMAC. Filtre par acteur / action / date ; ouvre une entrée pour l’avant/après complet.'),
+      controls: [
+        { label: c('Verify chain', 'Vérifier la chaîne'), what: c('Recomputes every link and names the first broken one; a break notifies every SUPERADMIN — treat it as an incident.', 'Recalcule chaque maillon et nomme le premier rompu ; une rupture notifie chaque SUPERADMIN — à traiter comme un incident.') },
+        { label: c('Retention', 'Rétention'), what: c('Set in Hosting settings → Security & audit logs; pruning by that rule is the only sanctioned deletion.', 'Réglée dans Réglages d’hébergement → Sécurité & journaux ; l’élagage par cette règle est la seule suppression autorisée.') },
+      ] },
+    { id: 'logins', name: c('Logins', 'Connexions'), what: c('Recent sign-ins per account with IP and device, to spot a takeover.', 'Dernières connexions par compte avec IP et appareil, pour repérer une prise de contrôle.'), controls: [] },
+  ],
+  projects: [
+    { id: 'overview', name: c('Overview', 'Aperçu'), what: c('Title, tagline, description (EN/FR), hero media. This is the project page’s head.', 'Titre, accroche, description (EN/FR), média de tête. C’est la tête de la page projet.'), controls: [] },
+    { id: 'presentation', name: c('Presentation media', 'Médias de présentation'), what: c('Images, video, rrweb and .bmmreplay embeds, each with a live preview before Save.', 'Images, vidéo, embeds rrweb et .bmmreplay, chacun avec un aperçu en direct avant enregistrement.'), controls: [] },
+    { id: 'timeline', name: c('Timeline & release notes', 'Chronologie & notes de version'), what: c('Paste a GitHub repo (or drop a .git) to import commits, contributors and per-day activity; milestones and notes render Markdown. Flush the GitHub cache here if stats look stale.', 'Colle un dépôt GitHub (ou dépose un .git) pour importer commits, contributeurs et activité ; jalons et notes rendent le Markdown. Vide le cache GitHub ici si les stats semblent figées.'), controls: [] },
+    { id: 'visibility', name: c('Page visibility', 'Visibilité des pages'), what: c('Per page: public / signed-in / staff, plus an optional countdown teaser and a scheduled content swap.', 'Par page : public / connecté / staff, plus un compte à rebours optionnel et un échange de contenu programmé.'), controls: [] },
+    { id: 'blog', name: c('Blog scope', 'Portée du blog'), what: c('A project blog shows only posts tagged to it; “home news” is a separate per-post toggle.', 'Un blog de projet ne montre que les articles rattachés ; « actu d’accueil » est un réglage séparé par article.'), controls: [] },
+  ],
+  catalogs: [
+    { id: 'official', name: c('Official', 'Officiel'), what: c('Entries you curate (app / plugin / theme / preset): payload, version, changelog, publish. BMM reads this feed as trusted.', 'Entrées que tu cures (appli / plugin / thème / preset) : charge, version, changelog, publication. BMM lit ce flux comme fiable.'), controls: [] },
+    { id: 'community', name: c('Community', 'Communauté'), what: c('Entries that arrived via Submissions; hide, feature or take one down after publication. Marked unverified to visitors.', 'Entrées arrivées via Soumissions ; masque, mets en avant ou retire après publication. Marquées non vérifiées pour les visiteurs.'), controls: [] },
+    { id: 'assets', name: c('Downloads & assets', 'Téléchargements & assets'), what: c('The installers and files the platform hosts; uploading a new build updates links.json for BMM’s auto-update.', 'Les installeurs et fichiers hébergés ; téléverser un nouveau build met à jour links.json pour l’auto-update de BMM.'),
+      controls: [
+        { label: c('Key-auth', 'Key-auth'), what: c('Any catalogue kind can require a signed ed25519 key from the downloader; on, the catalogue sits behind an access screen in BMM. A private catalogue is shared by ?k= link — that key is a secret.', 'Tout type de catalogue peut exiger une clé ed25519 signée ; activé, le catalogue est derrière un écran d’accès dans BMM. Un catalogue privé se partage par lien ?k= — cette clé est un secret.') },
+      ] },
+  ],
+  editorial: [
+    { id: 'announcements', name: c('Announcements', 'Annonces'), what: c('EN + FR, site-wide or per project; “home news” pins it on the landing.', 'EN + FR, pour tout le site ou par projet ; « actu d’accueil » l’épingle sur la landing.'), controls: [] },
+    { id: 'newsletter', name: c('Newsletter', 'Newsletter'), what: c('Compose, pick the audience (all / EN / FR / hand-picked), send a test to yourself, send. Blog posts can auto-announce once. Subscribers are double opt-in and keep the language they signed up in.', 'Rédige, choisis l’audience (tous / EN / FR / sélection), envoie un test, envoie. Les articles peuvent s’annoncer une fois. Abonnés en double opt-in, langue de l’inscription.'), controls: [] },
+    { id: 'faq', name: c('FAQ · Reviews · Mail', 'FAQ · Avis · E-mail'), what: c('FAQ entries in Markdown with categories; approve or hide user reviews; SMTP host, sender name and from-address — a wrong sender lands every send in spam.', 'Entrées FAQ en Markdown avec catégories ; approuve ou masque les avis ; hôte SMTP, nom et adresse d’expéditeur — un mauvais expéditeur envoie tout en spam.'), controls: [] },
+  ],
+  badges: [
+    { id: 'crud', name: c('Badges', 'Badges'), what: c('Name, description, icon (lucide / brand / uploaded image), colour, how it is earned (manual, easter-egg, automatic rule), priority, active.', 'Nom, description, icône (lucide / marque / image), couleur, mode d’obtention (manuel, easter-egg, règle automatique), priorité, actif.'),
+      controls: [
+        { label: c('Automatic rules', 'Règles automatiques'), what: c('Every Nth signup, signed up before a date, matched Ko-fi donor.', 'Chaque Nième inscription, inscrit avant une date, donateur Ko-fi apparié.') },
+        { label: c('Sold in the bot shop', 'Vendu dans la boutique du bot'), what: c('A shop item of kind “BCWEB badge” awards the real UserBadge on purchase.', 'Un article de type « Badge BCWEB » attribue le vrai UserBadge à l’achat.') },
+      ] },
+  ],
+  repos: [
+    { id: 'repos', name: c('Server repos', 'Dépôts serveur'), what: c('Owner, pool, size, verification, access policy (whitelist / password / key). Verify to list in the public index.', 'Propriétaire, pool, taille, vérification, politique d’accès (liste blanche / mot de passe / clé). Vérifie pour lister dans l’index public.'), controls: [] },
+    { id: 'pools', name: c('Storage pools', 'Pools de stockage'), what: c('A purchase provisions an EMPTY pool; assign repos and catalogues into it, merge pools, grant a free pool. A lapse suspends (read-only) for the grace window, never deletes on day one.', 'Un achat provisionne un pool VIDE ; affecte-lui dépôts et catalogues, fusionne, accorde un pool gratuit. Une échéance suspend (lecture seule) pendant le délai de grâce, ne supprime jamais le jour même.'), controls: [] },
+    { id: 'transfers', name: c('Ownership transfers · Free grants', 'Transferts · Attributions gratuites'), what: c('The receiver accepts from their dashboard; nothing moves before. Free tier: one free repo AND one free catalogue per account.', 'Le receveur accepte depuis son tableau de bord ; rien ne bouge avant. Offre gratuite : un dépôt ET un catalogue gratuits par compte.'), controls: [] },
+  ],
+  plans: [
+    { id: 'plans', name: c('Hosting plans', 'Offres d’hébergement'), what: c('Name, storage, upload speed, monthly price (empty = inherit the per-GB rate), order, recommended. Disable rather than delete a plan people still hold.', 'Nom, stockage, débit, prix mensuel (vide = hérite du tarif au Go), ordre, recommandée. Désactive plutôt que supprimer une offre encore détenue.'),
+      controls: [ { label: c('Prepaid vs recurring', 'Prépayé vs récurrent'), what: c('Repo hosting is a prepaid term; catalogue hosting above the free size is a recurring Stripe subscription.', 'L’hébergement de dépôt est un terme prépayé ; celui de catalogue au-delà du gratuit est un abonnement Stripe récurrent.') } ] },
+  ],
+  promotions: [
+    { id: 'codes', name: c('Promo codes', 'Codes promo'), what: c('Kind (percent off / free months / free hosting GB / free pool / free boost), code or auto, limits (max uses, per user, expiry), optional assignment to accounts / e-mails / Discord ids. “Who redeemed” per code.', 'Type (% / mois offerts / Go d’hébergement / pool / boost), code ou auto, limites (usages, par personne, expiration), assignation optionnelle. « Qui a utilisé » par code.'), controls: [] },
+    { id: 'campaigns', name: c('Campaigns', 'Campagnes'), what: c('A time window + a badge + a site-wide banner; the badge goes to everyone who acts during the window.', 'Une fenêtre + un badge + une bannière ; le badge va à quiconque agit pendant la fenêtre.'), controls: [] },
+  ],
+  events: [
+    { id: 'events', name: c('Events', 'Événements'), what: c('Start, end, and what changes for the window; inert outside it, so prepare ahead. Kept deliberately small.', 'Début, fin, et ce qui change pendant la fenêtre ; inerte en dehors, donc à préparer à l’avance. Volontairement petit.'), controls: [] },
+  ],
+  myo: [
+    { id: 'pipeline', name: c('Requests pipeline', 'Pipeline des demandes'), what: c('Request (fee paid) → thread → QUOTE → client pays → in progress → deliver from the builder tab → archive. Unpaid requests older than the set age auto-archive.', 'Demande (frais payés) → fil → DEVIS → paiement → en cours → livraison depuis l’onglet constructeur → archive. Les demandes non payées trop vieilles s’archivent seules.'), controls: [] },
+  ],
+  kofi: [
+    { id: 'webhook', name: c('Webhook & goal', 'Webhook & objectif'), what: c('Copy the URL + secret token into Ko-fi; a donor matched by e-mail gets a discount code and a badge. Set a funding goal to show the home widget; the bot can thank each tip in a channel.', 'Copie l’URL + le jeton dans Ko-fi ; un donateur apparié par e-mail reçoit un code et un badge. Fixe un objectif pour le widget d’accueil ; le bot peut remercier chaque don.'), controls: [] },
+  ],
+  sso: [
+    { id: 'providers', name: c('Login providers', 'Fournisseurs de connexion'), what: c('GitHub / Discord / Google: client id + secret in the environment, then the Feature flag. Password sign-in is never gated.', 'GitHub / Discord / Google : client id + secret dans l’environnement, puis l’interrupteur. La connexion par mot de passe n’est jamais conditionnée.'), controls: [] },
+    { id: 'provider', name: c('BetterCommunity as provider', 'BetterCommunity fournisseur'), what: c('Register a client app (name, redirect URIs, scopes) and it can sign users in with a BetterCommunity account. A wrong redirect URI is the usual first failure.', 'Enregistre une appli cliente (nom, URI de redirection, portées) et elle connecte des utilisateurs via BetterCommunity. Une mauvaise URI de redirection est l’échec habituel.'), controls: [] },
+  ],
+  api: [
+    { id: 'keys', name: c('API keys', 'Clés d’API'), what: c('Every key with scopes, last use, revoke. Shown once at creation, stored hashed — a lost key is re-issued. Public API off = every /v1 route answers 503.', 'Chaque clé avec portées, dernière utilisation, révocation. Montrée une fois, stockée hachée — une clé perdue se réémet. API publique off = toute route /v1 répond 503.'), controls: [] },
+  ],
+  serverperf: [
+    { id: 'perf', name: c('Performance', 'Performance'), what: c('Live CPU / RAM / disk / service probes per host with thresholds; a breach is an alert (and a Discord post if the bot’s Alerts module is on). Acknowledging is what empties the badge.', 'Sondes CPU / RAM / disque / services par hôte avec seuils ; un dépassement est une alerte (et un message Discord si le module Alertes est actif). Acquitter vide la pastille.'), controls: [] },
+    { id: 'storage', name: c('Storage', 'Stockage'), what: c('What hosted content, uploads, analytics/replays and the bot’s member database consume against the caps in Hosting settings.', 'Ce que consomment contenu hébergé, uploads, analytics/replays et la base de membres du bot par rapport aux plafonds.'), controls: [] },
+    { id: 'status', name: c('Status page · Advanced', 'Page Statut · Avancé'), what: c('Write the human account of an incident the probes recorded; graceful restart, dependency versions, elevated actions behind a fresh 2FA code.', 'Rédige le récit humain d’un incident enregistré ; redémarrage propre, versions des dépendances, actions élevées derrière un code 2FA frais.'), controls: [] },
+  ],
+  analytics: [
+    { id: 'traffic', name: c('Traffic · Goals · Replays · Errors', 'Trafic · Objectifs · Replays · Erreurs'), what: c('First-party: pageviews, sessions, OS/browser, geo with a flag map, Web Vitals, goals with funnels, session replays under a size cap, client errors with stack + route. Loopback IPs show empty geo in dev.', 'Première partie : pages vues, sessions, OS/navigateur, géo avec carte, Web Vitals, objectifs avec entonnoirs, replays sous plafond, erreurs client avec pile + route. Les IP loopback donnent une géo vide en dev.'), controls: [] },
+  ],
+  settings: [
+    { id: 'behaviour', name: c('Site behaviour', 'Comportement du site'), what: c('Undo window (deferred saves commit after a grace period with Undo, or immediately), translucent surfaces (popups stay opaque regardless), anti-abuse (proof-of-work, rate limits, edge anti-bot), runtime locales (add a language, RTL included; missing keys fall back to English).', 'Fenêtre d’annulation (enregistrements différés avec Annuler, ou immédiats), surfaces translucides (les popups restent opaques), anti-abus (preuve de travail, limites, anti-bot), langues d’exécution (ajoute une langue, RTL inclus ; repli anglais).'),
+      controls: [ { label: c('Not here', 'Pas ici'), what: c('Capacity, retention and pricing caps live in Hosting settings.', 'Capacité, rétention et tarifs sont dans Réglages d’hébergement.') } ] },
+  ],
+  navui: [
+    { id: 'menu', name: c('Topbar → Menu', 'Barre → Menu'), what: c('Links and dropdown groups with EN/FR labels and icons; drag to reorder; each item folds to its header. Start from the built-in navigation if empty. An empty group is dropped on save; a link must start with /.', 'Liens et groupes déroulants avec libellés EN/FR et icônes ; glisser pour réordonner ; chaque item se replie. Pars de la navigation intégrée si vide. Un groupe vide est supprimé ; un lien commence par /.'), controls: [] },
+    { id: 'buttons', name: c('Topbar → Buttons · Layout', 'Barre → Boutons · Mise en page'), what: c('Show / hide / reorder the built-in utilities (search, language, theme, notifications, account); alignment, density, labels; the mobile bottom bar (on/off, icon/text/both, up to five custom buttons).', 'Affiche / masque / réordonne les utilitaires intégrés ; alignement, densité, libellés ; la barre du bas mobile (on/off, icône/texte/les deux, jusqu’à cinq boutons).'), controls: [] },
+    { id: 'footer', name: c('Footer', 'Pied de page'), what: c('Load the built-in footer, edit columns / links / brand / bottom row, Save. “Back to built-in” discards the custom one and follows future built-in changes.', 'Charge le pied intégré, édite colonnes / liens / marque / ligne du bas, Enregistre. « Revenir à l’intégré » abandonne le personnalisé et suit les évolutions.'), controls: [] },
+    { id: 'home', name: c('Home page', 'Page d’accueil'), what: c('Per-section on/off and wording (EN/FR), products grid style, pinned poll, custom Markdown sections, live preview. Sections fold.', 'Par section on/off et textes (EN/FR), style de la grille produits, sondage épinglé, sections Markdown, aperçu en direct. Les sections se replient.'), controls: [] },
+  ],
+  sitetheme: [
+    { id: 'theme', name: c('Theme', 'Thème'), what: c('Presets or the accent pair (light + dark); everything derives from it. Per-mode page colours, token catalogue, glow geometry, live preview, export/import. Picking a preset clears token overrides (undoably). SUPERADMIN only.', 'Presets ou paire d’accent (clair + sombre) ; tout en dérive. Couleurs par mode, catalogue de tokens, géométrie des halos, aperçu, export/import. Choisir un preset efface les surcharges (annulable). SUPERADMIN seulement.'), controls: [] },
+  ],
+};

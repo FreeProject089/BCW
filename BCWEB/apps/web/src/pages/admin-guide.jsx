@@ -25,6 +25,7 @@ import Markdown from '../ui/md.jsx';
 import { MarkdownEditor } from './blog.jsx';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
 import { BOT_DASHBOARD_REF } from '../lib/bot-dashboard-ref.js';
+import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 
 // Icons an admin can pick for a custom section (name → component), so a saved string maps
 // back to a glyph. Kept small and relevant to documentation.
@@ -552,6 +553,34 @@ const GUIDE_MORE = {
   },
 };
 
+// Every other screen: its sections and controls, from lib/admin-screens-ref.js.
+function ScreenReference({ sections }) {
+  const { t, lang } = useI18n();
+  const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+  if (!sections?.length) return null;
+  return (
+    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+      <div className="text-[13px] font-bold mb-1">{t('ag.screen.ref', 'On this screen')}</div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">{t('ag.screen.refsub', 'Section by section: what each control does, and what it does not.')}</p>
+      <div className="space-y-2">
+        {sections.map((m) => (
+          <div key={m.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
+            <div className="text-[13px] font-semibold text-[var(--text)]">{L(m.name)}</div>
+            <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">{L(m.what)}</p>
+            {m.controls.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {m.controls.map((ctl, i) => (
+                  <li key={i} className="text-[12px] leading-relaxed"><b className="text-[var(--text)]">{L(ctl.label)}</b> <span className="text-[var(--muted)]">— {L(ctl.what)}</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // The Discord bot dashboard, page by page, module by module, control by control — the same
 // idea as the hosting reference: the screens keep their controls terse, THIS is the manual.
 function BotDashboardReference({ only }) {
@@ -806,6 +835,7 @@ export default function AdminGuide() {
                   {activeItem.id === 'hostingsettings' && <HostingSettingsReference highlight={kParam} />}
                   {activeItem.id === 'bot' && <BotDashboardReference />}
                   {activeItem.id === 'economy' && <BotDashboardReference only={['economy', 'members']} />}
+                  {ADMIN_SCREENS_REF[activeItem.id] && <ScreenReference sections={ADMIN_SCREENS_REF[activeItem.id]} />}
                 </>
               )}
               {activeItem.kind === 'custom' && (
