@@ -70,10 +70,42 @@ function EconomyWidget() {
           <div className="text-[11px] text-[var(--faint)] mt-1 tabular-nums">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP {t('eco.w.next', 'to next level')}</div>
         </div>
       </div>
+      {/* Where the XP came from — a real breakdown from the member's counts × the configured
+          rates. A single stacked bar + a legend, so it reads at a glance without a chart lib. */}
+      {(() => {
+        const r = d.rates || { message: 5, reaction: 1, voiceMinute: 3 };
+        const src = [
+          { key: 'msg', label: t('eco.w.src.msg', 'Messages'), xp: (stats.messages || 0) * r.message, color: 'var(--primary)', Icon: MessageSquare, count: stats.messages || 0 },
+          { key: 'rea', label: t('eco.w.src.rea', 'Reactions'), xp: (stats.reactions || 0) * r.reaction, color: 'var(--primary-2)', Icon: Sparkles, count: stats.reactions || 0 },
+          { key: 'voi', label: t('eco.w.src.voi', 'Voice'), xp: Math.floor((stats.voiceSeconds || 0) / 60) * r.voiceMinute, color: '#22c55e', Icon: Mic, count: Math.floor((stats.voiceSeconds || 0) / 3600) },
+        ];
+        const total = src.reduce((s, x) => s + x.xp, 0);
+        return (
+          <div className="mt-3 pt-3 border-t border-[var(--line)]">
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('eco.w.srctitle', 'XP by source')}</div>
+              <div className="text-[11px] text-[var(--faint)] tabular-nums">{total.toLocaleString()} XP {t('eco.w.total', 'total')}</div>
+            </div>
+            <div className="flex h-2.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="img"
+              aria-label={src.map((s) => `${s.label}: ${s.xp} XP`).join(', ')}>
+              {total > 0 && src.map((s) => s.xp > 0 && (
+                <div key={s.key} style={{ width: `${(s.xp / total) * 100}%`, background: s.color }} title={`${s.label}: ${s.xp.toLocaleString()} XP`} />
+              ))}
+            </div>
+            <div className="flex items-center gap-x-4 gap-y-1 flex-wrap mt-2 text-[12px] text-[var(--muted)]">
+              {src.map((s) => (
+                <span key={s.key} className="flex items-center gap-1.5" title={`${s.xp.toLocaleString()} XP`}>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
+                  <s.Icon size={12} className="text-[var(--faint)]" /> {s.label}
+                  <b className="tabular-nums text-[var(--text)]">{s.key === 'voi' ? `${s.count}h` : s.count.toLocaleString()}</b>
+                  <span className="text-[var(--faint)] tabular-nums">· {total > 0 ? Math.round((s.xp / total) * 100) : 0}%</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
       <div className="flex items-center gap-3 flex-wrap mt-3 pt-3 border-t border-[var(--line)] text-[12px] text-[var(--muted)]">
-        <span className="flex items-center gap-1.5"><MessageSquare size={13} className="text-[var(--faint)]" /> {(stats.messages || 0).toLocaleString()}</span>
-        <span className="flex items-center gap-1.5"><Sparkles size={13} className="text-[var(--faint)]" /> {(stats.reactions || 0).toLocaleString()}</span>
-        <span className="flex items-center gap-1.5"><Mic size={13} className="text-[var(--faint)]" /> {Math.floor((stats.voiceSeconds || 0) / 3600)}h</span>
         <div className="flex-1" />
         <label className="flex items-center gap-1.5 text-[11px] cursor-pointer select-none" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
           <input type="checkbox" className="accent-[var(--primary)]" checked={stats.public !== false} onChange={toggleStats} /> {t('eco.w.pub', 'Stats public')}

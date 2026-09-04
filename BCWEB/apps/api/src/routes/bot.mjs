@@ -127,7 +127,10 @@ const DEFAULT_BOT_CONFIG = {
     pointsEveryLevels: 5,     // grant points every N levels reached
     pointsPerGrant: 10,       // how many points each grant is worth
     statsPublic: true,        // are the voice/message/reaction counts public by default
-    shop: [],                 // [{ id, name, desc, cost, kind, payload }]
+    // [{ id, name, desc, cost, kind, ref?, amount? }] — kind ∈ badge | role | pool | boost |
+    // hosting | promo | custom. badge/pool/boost/hosting are fulfilled site-side on /buy
+    // (award a badge, mint an assigned promo code); ref = badge/role id, amount = GB or days.
+    shop: [],
     casino: { enabled: false, minBet: 1, maxBet: 100, houseEdgePct: 5 },
   },
   // Self-serve role panels — a rules post, or a "pick your pings" post, with the roles
@@ -1656,6 +1659,9 @@ export default async function botRoutes(app) {
       xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
       xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
       stats: { voiceSeconds: e?.voiceSeconds || 0, messages: e?.messages || 0, reactions: e?.reactions || 0, public: e?.statsPublic ?? (eco.statsPublic !== false) },
+      // The XP rates, so the dashboard can show where a member's XP came from (message vs
+      // reaction vs voice) without a second request.
+      rates: { message: Number(eco.xpPerMessage ?? 5), reaction: Number(eco.xpPerReaction ?? 1), voiceMinute: Number(eco.xpPerVoiceMinute ?? 3) },
     };
   });
 
@@ -1712,9 +1718,43 @@ export default async function botRoutes(app) {
     const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     const cost = Math.max(0, Number(item.cost) || 0);
     if ((cur?.points || 0) < cost) return { ok: false, error: 'insufficient', points: cur?.points || 0, cost };
+    // Fulfil what the API itself can grant BEFORE debiting, so a failed grant never charges
+    // the member. `role`/`promo`/`custom` are delivered by the BOT (it has the guild + can DM a
+    // code); `badge` and the site-perk kinds (pool/boost/hosting) are granted here, on the site.
+    let delivery = { kind: item.kind };
+    try {
+      if (item.kind === 'badge' && item.ref) {
+        const badge = await p.badge.findUnique({ where: { id: item.ref }, select: { id: true, name: true, active: true } });
+        if (!badge || !badge.active) return { ok: false, error: 'badge_unavailable' };
+        // Idempotent: a member who already holds it can't spend points for nothing.
+        if (await p.userBadge.findUnique({ where: { userId_badgeId: { userId: link.userId, badgeId: badge.id } } }))
+          return { ok: false, error: 'already_owned' };
+        await p.userBadge.create({ data: { userId: link.userId, badgeId: badge.id, grantedBy: 'system' } });
+        delivery = { kind: 'badge', badge: badge.name };
+      } else if (item.kind === 'pool' || item.kind === 'boost' || item.kind === 'hosting') {
+        // Mint a real single-use promo code assigned to the buyer and DM it — reusing the promo
+        // infra so redemption, limits and lifecycle are the platform's, not a bespoke path.
+        const promoKind = item.kind === 'pool' ? 'free_pool' : item.kind === 'boost' ? 'free_boost' : 'free_hosting';
+        const amount = Math.max(1, Number(item.amount) || 1);
+        let code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
+        for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
+        await p.promoCode.create({ data: {
+          code, kind: promoKind,
+          storageGB: (item.kind === 'pool' || item.kind === 'hosting') ? amount : null,
+          boostDays: item.kind === 'boost' ? amount : null,
+          hostMonths: item.kind === 'hosting' ? 1 : null,
+          maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [link.userId],
+          note: `Shop purchase: ${item.name || item.id}`,
+        } });
+        delivery = { kind: item.kind, code, amount };
+      }
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'economy buy fulfil failed');
+      return { ok: false, error: 'fulfil_failed' };
+    }
     await p.userEconomy.update({ where: { userId: link.userId }, data: { points: { decrement: cost } } });
-    await logAudit(p, 'system', 'economy.buy', `user=${link.userId} item=${item.id} cost=${cost}`);
-    return { ok: true, item: { id: item.id, name: item.name, kind: item.kind, payload: item.payload || null }, points: (cur?.points || 0) - cost };
+    await logAudit(p, 'system', 'economy.buy', `user=${link.userId} item=${item.id} kind=${item.kind} cost=${cost}`);
+    return { ok: true, item: { id: item.id, name: item.name, kind: item.kind, payload: item.payload || null, ref: item.ref || null }, delivery, points: (cur?.points || 0) - cost };
   });
 
   // A member gambles points in the casino. The bot posts the bet + outcome multiplier it rolled;

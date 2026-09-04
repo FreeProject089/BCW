@@ -13607,6 +13607,10 @@ function AdminBot() {
   // below meant one hook count on the loading render and a larger one once the data
   // arrived — React error #310. Found by check-undefined-jsx, not by anyone using it.
   const undoSave = useUndoableSave(reload);
+  // Badges the shop can sell (kind='badge'). Fetched once, unconditionally — a hook below the
+  // loading guard would change the hook count between renders (React #310).
+  const badgesAsync = useAsync(() => api.get('/admin/badges').catch(() => ({ badges: [] })), []);
+  const shopBadges = (badgesAsync.data?.badges || []).filter((b) => b.active);
   if (loading || !cfg) return <Loading />;
   const status = data?.status;
   const online = status?.online && status?.at && (Date.now() - new Date(status.at).getTime() < 180000);
@@ -13893,7 +13897,6 @@ function AdminBot() {
       <BotGuildStorageCard />
       <BotLogsCard />
       <BotDMCard />
-      <BotGiveawaysCard />
       </>)}
 
       {page === 'announcements' && (<>
@@ -14024,6 +14027,10 @@ function AdminBot() {
           <DmBroadcast />
         </ModuleCard>
       </div>
+
+      {/* Giveaways — an engagement tool aimed at the community, not a health metric, so it
+          lives here rather than on the Overview. */}
+      <div className="mt-4"><BotGiveawaysCard /></div>
       </>)}
 
       {page === 'economy' && (() => {
@@ -14076,25 +14083,68 @@ function AdminBot() {
         </ModuleCard>
 
         {/* Shop */}
-        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d', 'What members can buy with points — promo codes, roles, and more.')} onToggle={null}
-          action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...(Array.isArray(eco.shop) ? eco.shop : []), { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'promo' }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
-          {(!Array.isArray(eco.shop) || eco.shop.length === 0) && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
-          {(Array.isArray(eco.shop) ? eco.shop : []).map((it, i) => (
-            <div key={it.id || i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
-              <button onClick={() => set('economy.shop', eco.shop.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_7rem_9rem] gap-2">
-                <Input value={it.name || ''} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, name: e.target.value } : x))} placeholder={t('db.eco.itemname', 'Item name')} />
-                <Input type="number" value={it.cost ?? 0} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, cost: Number(e.target.value) } : x))} placeholder={t('db.eco.cost', 'Cost')} />
-                <Select value={it.kind || 'promo'} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, kind: e.target.value } : x))}>
-                  <option value="promo">{t('db.eco.kind.promo', 'Promo code')}</option>
-                  <option value="role">{t('db.eco.kind.role', 'Discord role')}</option>
-                  <option value="custom">{t('db.eco.kind.custom', 'Custom')}</option>
-                </Select>
+        {(() => {
+          const shop = Array.isArray(eco.shop) ? eco.shop : [];
+          const upd = (i, patch) => set('economy.shop', shop.map((x, k) => k === i ? { ...x, ...patch } : x));
+          // Every kind the shop sells, with the icon + hint shown on the row. Kinds marked
+          // site-fulfilled are granted by the API on purchase (badge / pool / boost / hosting);
+          // role & promo are delivered by the bot; custom is a manual/roleplay reward.
+          const KINDS = [
+            ['badge', BadgeCheck, t('db.eco.kind.badge', 'BCWEB badge')],
+            ['role', Shield, t('db.eco.kind.role', 'Discord role')],
+            ['pool', HardDrive, t('db.eco.kind.pool', 'Storage pool (GB)')],
+            ['boost', Rocket, t('db.eco.kind.boost', 'Catalog boost (days)')],
+            ['hosting', Server, t('db.eco.kind.hosting', 'Free hosting (GB)')],
+            ['promo', Ticket, t('db.eco.kind.promo', 'Promo code')],
+            ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual')],
+          ];
+          return (
+        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d', 'What members buy with points — BCWEB badges, storage pools, catalog boosts, Discord roles, promo codes and more. Badges and site perks are granted automatically on purchase.')} onToggle={null}
+          action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge' }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
+          {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
+          <div className="space-y-2">
+          {shop.map((it, i) => {
+            const kind = it.kind || 'badge';
+            return (
+            <div key={it.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-2.5 relative">
+              <button onClick={() => set('economy.shop', shop.filter((_, k) => k !== i))} className="absolute top-2.5 right-2.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_6rem] gap-2 pr-6">
+                <Input value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
+                <Field label={t('db.eco.cost', 'Cost')} className="!mb-0"><Input type="number" value={it.cost ?? 0} onChange={(e) => upd(i, { cost: Number(e.target.value) })} /></Field>
               </div>
-              <Input value={it.desc || ''} onChange={(e) => set('economy.shop', eco.shop.map((x, k) => k === i ? { ...x, desc: e.target.value } : x))} placeholder={t('db.eco.itemdesc', 'Short description')} />
+              {/* Kind picker — chips, so all seven choices are visible at a glance. */}
+              <div className="flex flex-wrap gap-1.5">
+                {KINDS.map(([k, Icon, label]) => (
+                  <button key={k} type="button" onClick={() => upd(i, { kind: k })}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition ${kind === k ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    <Icon size={12} /> {label}
+                  </button>
+                ))}
+              </div>
+              {/* Per-kind target field. */}
+              {kind === 'badge' && (
+                <Select value={it.ref || ''} onChange={(e) => upd(i, { ref: e.target.value })}>
+                  <option value="">{t('db.eco.pickbadge', 'Pick a badge…')}</option>
+                  {shopBadges.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </Select>
+              )}
+              {kind === 'role' && (
+                <AdminRolePicker guild={null} value={it.ref || ''} placeholder={t('db.eco.roleid', 'Discord role id')} onChange={(v) => upd(i, { ref: v })} />
+              )}
+              {(kind === 'pool' || kind === 'hosting') && (
+                <Field label={t('db.eco.gb', 'Storage granted (GB)')} className="!mb-0"><Input type="number" min="1" value={it.amount ?? 1} onChange={(e) => upd(i, { amount: Math.max(1, Number(e.target.value) || 1) })} /></Field>
+              )}
+              {kind === 'boost' && (
+                <Field label={t('db.eco.days', 'Boost length (days)')} className="!mb-0"><Input type="number" min="1" value={it.amount ?? 7} onChange={(e) => upd(i, { amount: Math.max(1, Number(e.target.value) || 1) })} /></Field>
+              )}
+              <Input value={it.desc || ''} onChange={(e) => upd(i, { desc: e.target.value })} placeholder={t('db.eco.itemdesc', 'Short description')} />
+              {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Choose which badge this grants, or it can’t be bought.')}</p>}
             </div>
-          ))}
+          ); })}
+          </div>
         </ModuleCard>
+          );
+        })()}
 
         <EconomyLedger currency={g('economy.currencyName') || 'points'} />
         </>);

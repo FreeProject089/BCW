@@ -1,5 +1,5 @@
 // Slash commands + interaction routing.
-import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -83,6 +83,7 @@ export async function handleInteraction(i) {
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
+  if (i.isButton() && i.customId.startsWith('shop:buy:')) return handleShopBuy(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
   // It returns false when the custom id is not one of its own, so this stays a filter and
   // not a fork somebody has to keep in sync.
@@ -112,14 +113,53 @@ async function cmdProfile(i) {
   return eReply(i, body, { title: `👤 ${e.displayName}`, ephemeral: false });
 }
 
+// What each shop kind hands over, phrased for the buyer.
+const SHOP_KIND_LABEL = {
+  badge: '🏅 BCWEB badge', role: '🎭 Discord role', pool: '💾 storage pool',
+  boost: '🚀 catalog boost', hosting: '🖥️ free hosting', promo: '🎟️ promo code', custom: '🎁 reward',
+};
+
 async function cmdShop(i) {
   const eco = await api.economyConfig();
   if (!eco.enabled) return eReply(i, 'The economy is currently off.', { title: '🛒 Shop' });
-  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name);
+  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && !(x.kind === 'badge' && !x.ref));
   if (!items.length) return eReply(i, 'The shop is empty for now.', { title: '🛒 Shop' });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
-  const lines = items.map((x) => `**${x.name}** — ${Number(x.cost).toLocaleString()} ${cur}${x.desc ? `\n${x.desc}` : ''}`).join('\n\n');
-  return eReply(i, lines, { title: '🛒 Points shop' });
+  const lines = items.map((x) => `**${x.name}** — ${Number(x.cost).toLocaleString()} ${cur} · ${SHOP_KIND_LABEL[x.kind] || '🎁 reward'}${x.desc ? `\n${x.desc}` : ''}`).join('\n\n');
+  // One Buy button per item (Discord: ≤5 per row, ≤5 rows = 25). Buttons carry the item id.
+  const rows = [];
+  for (let n = 0; n < items.length && n < 25; n += 5) {
+    const row = new ActionRowBuilder();
+    for (const x of items.slice(n, n + 5)) {
+      row.addComponents(new ButtonBuilder().setCustomId(`shop:buy:${x.id}`).setLabel(`Buy: ${x.name}`.slice(0, 80)).setStyle(ButtonStyle.Secondary));
+    }
+    rows.push(row);
+  }
+  return i.reply({ embeds: [new EmbedBuilder().setColor(BRAND).setTitle('🛒 Points shop').setDescription(lines)], components: rows, flags: MessageFlags.Ephemeral });
+}
+
+// A Buy button was pressed. The API is authoritative — it re-reads the price, debits atomically,
+// and fulfils badge/pool/boost/hosting itself (returning a code to DM); role/promo/custom are
+// handed back for the admin/bot to deliver. We only translate the result into a message.
+async function handleShopBuy(i) {
+  const itemId = i.customId.slice('shop:buy:'.length);
+  const r = await api.economyBuy(i.user.id, itemId);
+  if (r.ok) {
+    const d = r.delivery || {};
+    let msg = `You bought **${r.item?.name || 'item'}**. Balance: **${Number(r.points).toLocaleString()}**.`;
+    if (d.kind === 'badge') msg += `\n🏅 The **${d.badge}** badge is now on your BCWEB profile.`;
+    else if (d.code) msg += `\n🎟️ Redeem this on the site: **${d.code}**${d.amount ? ` (${d.amount})` : ''}`;
+    else if (r.item?.kind === 'role') msg += `\n🎭 An admin will assign your role shortly.`;
+    else msg += `\n🎁 An admin has been notified to deliver it.`;
+    return eReply(i, msg, { title: '✅ Purchase complete' });
+  }
+  const why = r.error === 'not_linked' ? 'Link your BetterCommunity account first — run **/link**.'
+    : r.error === 'insufficient' ? `You need **${Number(r.cost || 0).toLocaleString()}** points — you have ${Number(r.points || 0).toLocaleString()}.`
+    : r.error === 'already_owned' ? 'You already own that badge.'
+    : r.error === 'badge_unavailable' ? 'That badge is no longer available.'
+    : r.error === 'no_such_item' ? 'That item is gone from the shop.'
+    : 'That purchase could not be completed.';
+  return eReply(i, why, { title: '🛒 Shop' });
 }
 
 async function cmdLeaderboard(i) {
