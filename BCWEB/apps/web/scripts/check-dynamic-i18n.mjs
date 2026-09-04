@@ -56,8 +56,10 @@ function arrayAfter(src, name) {
 const FAMILIES = [
   {
     what: 'admin settings rows',
-    file: 'src/pages/admin.jsx',
-    array: 'SETTINGS_GROUPS',
+    // The catalog moved to a shared module so the live screen and the Admin guide render from
+    // one source; the rows (and their hs.l./hs.d. keys) live here now.
+    file: 'src/lib/hosting-settings.js',
+    array: 'HOSTING_SETTINGS_GROUPS',
     // A row is `['group.key', 'Label', 'Description', 'kind']`.
     ids: (block) => block
       .split('\n')

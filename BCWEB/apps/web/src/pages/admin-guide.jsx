@@ -23,6 +23,7 @@ import { Card, Input, Button, Spinner, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
 import { MarkdownEditor } from './blog.jsx';
+import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
 
 // Icons an admin can pick for a custom section (name → component), so a saved string maps
 // back to a glyph. Kept small and relevant to documentation.
@@ -251,6 +252,51 @@ const GUIDE = [
   },
 ];
 
+// The complete hosting-settings reference — every group, every control, spelled out in full
+// from the SAME catalog the live screen renders (lib/hosting-settings.js), so it is complete
+// by construction and can't fall behind the controls. A "Learn more →" carries the setting key
+// (?k=), which scrolls this list to that control and rings it.
+const HS_KIND_LABEL = { gbmb: 'size', number: 'number', bool: 'on / off', text: 'text' };
+function HostingSettingsReference({ highlight }) {
+  const { t } = useI18n();
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!highlight) return;
+    const el = document.getElementById(`hs-${highlight}`);
+    if (el) { const id = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); return () => clearTimeout(id); }
+  }, [highlight]);
+  return (
+    <div ref={ref} className="mt-5 pt-4 border-t border-[var(--line)]">
+      <div className="text-[13px] font-bold mb-1">{t('ag.hs.ref', 'Every hosting setting, in full')}</div>
+      <p className="text-[12px] text-[var(--muted)] mb-4">{t('ag.hs.refsub', 'One entry per control on the Hosting screen — the same text the “Learn more” links point at, never truncated.')}</p>
+      <div className="space-y-5">
+        {HOSTING_SETTINGS_GROUPS.map((g) => (
+          <div key={g.gk}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-1">{t(`hs.g.${g.gk}`, g.title)}</div>
+            <div className="text-[11.5px] text-[var(--faint)] mb-2.5 leading-snug">{t(`hs.gd.${g.gk}`, HOSTING_GROUP_DESC[g.title] || '')}</div>
+            <div className="space-y-2">
+              {g.keys.map(([key, label, desc, kind]) => {
+                const on = highlight === key;
+                return (
+                  <div key={key} id={`hs-${key}`}
+                    className={`rounded-lg border p-3 transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5 ring-2 ring-[var(--primary)]/30' : 'border-[var(--line)] bg-[var(--surface-2)]/30'}`}>
+                    <div className="flex items-baseline gap-2 flex-wrap mb-1">
+                      <span className="text-[13px] font-semibold text-[var(--text)]">{t(`hs.l.${key}`, label)}</span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--surface-3,var(--line))] text-[var(--faint)]">{HS_KIND_LABEL[kind] || kind}</span>
+                      <code className="text-[10px] text-[var(--faint)] ms-auto">{key}</code>
+                    </div>
+                    <p className="text-[12.5px] text-[var(--muted)] leading-relaxed">{t(`hs.d.${key}`, desc)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminGuide() {
   const { t, lang } = useI18n();
   const { user } = useAuth();
@@ -392,6 +438,9 @@ export default function AdminGuide() {
                       ))}
                     </ul>
                   )}
+                  {/* The hosting screen keeps its cards terse and links here; THIS is where every
+                      setting is spelled out in full — one entry per control, nothing clamped. */}
+                  {activeItem.id === 'hostingsettings' && <HostingSettingsReference highlight={kParam} />}
                 </>
               )}
               {activeItem.kind === 'custom' && (

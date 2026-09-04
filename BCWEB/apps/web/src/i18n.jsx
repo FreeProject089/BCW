@@ -4614,6 +4614,7 @@ const DICT = {
     'ag.edit': 'Éditer le guide', 'ag.expand': 'Tout déplier', 'ag.collapse': 'Tout replier',
     'ag.customtag': 'perso', 'ag.npoints': '{n} points', 'ag.saved': 'Guide enregistré.',
     'ag.jumpfrom': 'Tu as ouvert ceci depuis le réglage', 'ag.jumpfrom2': '.',
+    'ag.hs.ref': 'Chaque réglage d’hébergement, en détail', 'ag.hs.refsub': 'Une entrée par contrôle de l’écran Hébergement — le même texte que pointent les liens « En savoir plus », jamais tronqué.',
     'ag.edit.title': 'Éditer le guide admin', 'ag.edit.sub': 'Des sections en plus, écrites en Markdown, par-dessus le guide intégré. Elles apparaissent sous « Ajouté par ton équipe ». Les deux langues — un FR vide retombe sur l’EN.',
     'ag.save': 'Enregistrer', 'ag.icon': 'Icône', 'ag.addsection': 'Ajouter une section',
     'adm.h.people': "Personnes",
