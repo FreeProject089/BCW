@@ -267,12 +267,36 @@ function GuildConfig({ guildId, onSaved }) {
   ];
   return (
     <div>
-      {/* Server header */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
-        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Server size={18} className="text-[var(--primary-2)]" /></span>
-        <div className="min-w-0">
-          <div className="font-semibold flex items-center gap-2 flex-wrap">{g.name || guildId} <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
-          <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Users size={12} /> {t('ds.members', '{n} members').replace('{n}', (g.memberCount ?? 0).toLocaleString())}</div>
+      {/* Server hero — the same idiom as the admin bot dashboard: identity tile with a live
+          dot, what you are here, then stat tiles. One card that says "this server, this bot,
+          this state" before any control. */}
+      <div className="rounded-xl border border-[#5865F2]/30 overflow-hidden mb-4 bg-[var(--surface-2)]/30">
+        <div className="h-1 bg-gradient-to-r from-[#5865F2] via-[#5865F2]/60 to-transparent" />
+        <div className="px-4 py-3.5 flex items-center gap-4 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0">
+              <Server size={22} className="text-[#5865F2]" />
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-solid)] ${g.memberMode !== 'none' ? 'bg-success' : 'bg-[var(--line-strong)]'}`} title={g.memberMode !== 'none' ? t('ds.hero.active', 'Bot active here') : t('ds.hero.idle', 'Bot idle here')} />
+            </span>
+            <div className="min-w-0">
+              <div className="font-bold text-base leading-tight flex items-center gap-2 flex-wrap"><span className="truncate">{g.name || guildId}</span> <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
+              <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5">
+                <span className={`inline-flex items-center gap-1 font-medium ${g.memberMode !== 'none' ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${g.memberMode !== 'none' ? 'bg-success' : 'bg-[var(--line-strong)]'}`} /> {g.memberMode === 'pool' ? t('ds.hero.pool', 'Member database on') : g.memberMode === 'moderation' ? t('ds.hero.mod', 'Moderation on') : t('ds.hero.none', 'Nothing stored')}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-stretch gap-1.5 flex-wrap ms-auto">
+            {[
+              [(g.memberCount ?? 0).toLocaleString(), t('ds.membersshort', 'members'), Users],
+              ...(g.memberMode === 'pool' ? [[(g.storedMembers ?? g.capacity?.stored ?? 0).toLocaleString(), t('ds.hero.stored', 'stored'), Database]] : []),
+              ...(data.logs?.length ? [[data.logs.length, t('ds.hero.logs', 'recent logs'), ScrollText]] : []),
+            ].map(([v, l, I], i) => (
+              <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--bg-solid)]/60 px-3 py-1.5 min-w-[74px]">
+                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--faint)]"><I size={11} /> {l}</div>
+                <div className="text-[15px] font-bold tabular-nums leading-tight text-[var(--text)] mt-0.5">{v}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

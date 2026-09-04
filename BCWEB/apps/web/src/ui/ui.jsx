@@ -292,8 +292,30 @@ export const SkeletonGrid = ({ count = 6, className = 'grid sm:grid-cols-2 lg:gr
   <div className={className} aria-hidden="true">{Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)}</div>
 );
 
-export function Field({ label, hint, children }) {
-  return <label className="block"><div className="text-xs font-medium text-[var(--muted)] mb-1.5">{label}</div>{children}{hint && <div className="text-xs text-[var(--faint)] mt-1">{hint}</div>}</label>;
+// A long hint (a paragraph of caveats under one input) folds to two lines with a "more"
+// toggle, so a form reads as a form and not as a manual — the full text is one click away
+// and the Admin guide carries the same explanation in full. Short hints render as before.
+const LONG_HINT = 150;
+export function Field({ label, hint, children, className = '' }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const long = typeof hint === 'string' && hint.length >= LONG_HINT;
+  return (
+    <label className={`block ${className}`}>
+      <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{label}</div>
+      {children}
+      {hint && (
+        <div className="text-xs text-[var(--faint)] mt-1">
+          <span className={long && !open ? 'line-clamp-2' : ''} style={long && !open ? { display: '-webkit-box' } : undefined}>{hint}</span>
+          {long && (
+            <button type="button" onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }} className="text-[var(--primary-2)] hover:underline font-medium ms-1">
+              {open ? t('common.less', 'less') : t('common.more', 'more')}
+            </button>
+          )}
+        </div>
+      )}
+    </label>
+  );
 }
 
 // ── Storage sizes: store BYTES, display units ────────────────────────────────
