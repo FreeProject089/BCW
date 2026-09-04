@@ -13903,22 +13903,15 @@ function AdminBot() {
       {page === 'announcements' && (<>
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
-      {/* Masonry columns (not a 2-col grid): the expanded Payments card is much
-          taller than the collapsed ones, so a grid left a big empty gap beside it.
-      {/* ═══════════ GLOBAL — cross-server ═══════════ */}
       {/*
-          Three groups, not one heap. These nine cards sat in the order they were written,
-          which put "Write an announcement" four cards away from "Where announcements go"
-          and "Message every member" between two things about channels.
+          A GRID whose cells change span, not CSS columns and not a fixed 2-col grid — both of
+          those broke on toggle. Columns reflowed every sibling into the other column when one
+          card expanded; a fixed grid left a jagged gap beside a short neighbour of a tall card.
 
-          A GRID, not CSS columns — changed after you said things move when you toggle one.
-          Measured, both layouts with the real classes: expanding one card in the masonry
-          moved all five siblings and pushed four of them into the OTHER column. The grid
-          moves only the rows BELOW it, and nothing ever changes column, so the card you
-          just clicked and the one beside it stay where they were.
-
-          The cost is a gap under a tall card. That is the right trade and I had it
-          backwards: tight packing is worth nothing if you lose what you were looking at.
+          Here a card that is ON spans the FULL row (its fields get the width, and it is the tall
+          one) and a card that is OFF packs two-per-row. Turning one on pushes only the rows
+          BELOW it and never leaves a gap or moves a sibling across columns — the card you
+          clicked and its neighbour stay put.
       */}
       <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel — what you send by hand, where it lands, and the sources that post on their own.")} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
@@ -13934,6 +13927,7 @@ function AdminBot() {
         </ModuleCard>
         </div>
 
+        <div className="md:col-span-2">
         <ModuleCard id="sec-route" icon={Megaphone} title={t('db.mod.route', 'Where announcements go')}
           desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
           enabled onToggle={null}>
@@ -13969,11 +13963,21 @@ function AdminBot() {
             </div>
           ))}
         </ModuleCard>
+        </div>
+
+        {/* A toggleable card takes the FULL row when it is ON (its fields need the room and it
+            is the tall one), and packs two-per-row when OFF. So turning one on never leaves a
+            jagged gap beside a short neighbour, and never shoves a sibling into the other
+            column — the two failure modes of a plain grid and of masonry. */}
+        <div className={cfg.blog?.enabled ? 'md:col-span-2' : ''}>
         <ModuleCard id="sec-blog" icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
         </ModuleCard>
+        </div>
 
+        <div className={cfg.alerts?.enabled ? 'md:col-span-2' : ''}>
         <ModuleCard id="sec-alerts" icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
+          <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
@@ -13983,14 +13987,19 @@ function AdminBot() {
           <Field label={t('db.f.alertch2', 'Incidents channel id (optional)')} hint={t('db.f.alertch2.h', 'A service going unreachable, error bursts, and any future alert type. Leave empty to send everything to the performance channel.')}>
             <Input value={g('alerts.generalChannelId')} onChange={(e) => set('alerts.generalChannelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
+          </div>
         </ModuleCard>
+        </div>
 
+        <div className={cfg.kofi?.enabled ? 'md:col-span-2' : ''}>
         <ModuleCard id="sec-kofi" icon={Heart} title={t('db.mod.kofi', 'Ko-fi tips')} desc={t('db.mod.kofi.d', 'Thank supporters automatically with a running total.')} enabled={!!cfg.kofi?.enabled} onToggle={(v) => set('kofi.enabled', v)}>
           <Field label={t('db.f.tipsch', 'Tips channel id')} hint={t('db.f.tipsch.h', 'Each new tip is posted as a thank-you embed. Old tips are never re-posted.')}>
             <Input value={g('kofi.channelId')} onChange={(e) => set('kofi.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
         </ModuleCard>
+        </div>
 
+        <div className={cfg.payments?.enabled ? 'md:col-span-2' : ''}>
         <ModuleCard id="sec-pay" icon={Receipt} title={t('db.mod.pay', 'Payments & refunds')} desc={t('db.mod.pay.d', 'Post each successful Stripe payment and each refund to the chosen channels.')} enabled={!!cfg.payments?.enabled} onToggle={(v) => set('payments.enabled', v)}>
           <Field label={t('db.f.paych', 'Payments channels')} hint={t('db.f.paych.h', 'Every successful payment (hosting, boost…) is posted to each of these channels.')}>
             <MultiChannelInput value={cfg.payments?.channelIds?.length ? cfg.payments.channelIds : (cfg.payments?.channelId ? [cfg.payments.channelId] : [])} onChange={(v) => set('payments.channelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
@@ -14004,6 +14013,7 @@ function AdminBot() {
             <PaymentsDiag />
           </div>
         </ModuleCard>
+        </div>
       </div>
 
       </>)}
