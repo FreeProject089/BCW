@@ -2852,6 +2852,7 @@ const DICT = {
     'afoot.custom': 'Personnalisé…',
     'ogp.title': "Aperçus de liens, page par page",
     'ogp.prev.wholesite': 'Site entier (carte par défaut)', 'ogp.overrides': 'Surcharges page par page', 'ogp.custompath': 'Chemin personnalisé…',
+    'ogp.previewIn': 'Aperçu sur', 'ogp.wholesite': 'Site entier (défaut)', 'ogp.wholesite.note': 'Définissez le titre, la description et l’image dans « Recherche & découvrabilité » ci-dessous, puis enregistrez pour rafraîchir.',
     'ogp.prev.title': 'Aperçu du lien', 'ogp.prev.sub': 'À quoi ressemble un lien partagé sur Discord, X, Slack et les autres — ils lisent tous les mêmes balises. Règle la description et l’image dans « Recherche & découvrabilité » plus bas, puis Enregistre pour rafraîchir.',
     'ogp.prev.defdesc': 'Le foyer de tous les projets Better* — catalogues, hébergement, comptes et plus.',
     'ogp.prev.noimg': 'Aucune image d’aperçu — un lien partagé s’affiche en texte brut. Renseigne « URL de l’image d’aperçu » plus bas (1200×630).',

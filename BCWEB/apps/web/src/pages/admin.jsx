@@ -16741,91 +16741,70 @@ const OGP_PLATFORMS = [
   ['google', 'Google', '#4285F4'],
 ];
 
-function OgPreviewCard({ embedded = false }) {
-  const { t, lang } = useI18n();
-  const { data } = useAsync(() => api.get('/admin/settings').catch(() => ({ settings: {} })), []);
-  const [plat, setPlat] = useState('discord');
-  const s = data?.settings || {};
-  const title = (lang === 'fr' ? s['seo.titleFr'] : s['seo.title']) || s['seo.title'] || 'BetterCommunity';
-  const desc = (lang === 'fr' ? s['seo.descriptionFr'] : s['seo.description']) || s['seo.description']
-    || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
-  const img = s['seo.ogImage'] || '';
-  const host = (typeof window !== 'undefined' && window.location?.host) || 'bettercommunity.ch';
+// One unfurl card, rendered the way a single platform paints it. Neutral greys/whites are
+// hardcoded on purpose: these emulate Discord/Google/X/Facebook chrome, not our own theme,
+// so they must read the same in the admin's light or dark mode. Shared by the whole-site
+// default and every per-page override so there is ONE preview implementation, not two.
+function UnfurlPreview({ plat, title, desc, img, host, noImgHint }) {
+  const { t } = useI18n();
   const url = `https://${host}`;
-
-  // A shared image, reused by every platform pane. Falls back to a labelled placeholder so
-  // "no image set" is itself visible — that's the state most admins forget to fix.
-  const Img = ({ className = '', style = {} }) => (img
-    ? <img src={img} alt="" className={`w-full object-cover ${className}`} style={{ aspectRatio: '1200 / 630', ...style }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
-    : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))', ...style }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>);
-
-  const Wrap = embedded ? 'div' : Card;
+  const Img = ({ className = '' }) => (img
+    ? <img src={img} alt="" className={`w-full object-cover ${className}`} style={{ aspectRatio: '1200 / 630' }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+    : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))' }}>{noImgHint || t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set a 1200×630 image.')}</div>);
+  if (plat === 'x') return (
+    <div className="w-full max-w-[440px] rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #cfd9de' }}>
+      <Img />
+      <div className="px-3 py-2" style={{ borderTop: '1px solid #eff3f4' }}>
+        <div className="text-[13px] leading-tight" style={{ color: '#0f1419' }}>{title}</div>
+        <div className="text-[13px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#536471' }}>{desc}</div>
+        <div className="text-[13px] mt-1" style={{ color: '#536471' }}>🔗 {host}</div>
+      </div>
+    </div>);
+  if (plat === 'facebook') return (
+    <div className="w-full max-w-[440px] overflow-hidden" style={{ background: '#fff', border: '1px solid #dddfe2', borderRadius: 8 }}>
+      <Img />
+      <div className="px-3 py-2.5" style={{ background: '#f2f3f5', borderTop: '1px solid #dddfe2' }}>
+        <div className="text-[11px] uppercase tracking-wide truncate" style={{ color: '#606770' }}>{host}</div>
+        <div className="text-[15px] font-semibold leading-tight mt-1 line-clamp-2" style={{ color: '#1d2129' }}>{title}</div>
+        <div className="text-[13px] mt-1 line-clamp-1" style={{ color: '#606770' }}>{desc}</div>
+      </div>
+    </div>);
+  if (plat === 'google') return (
+    <div className="w-full max-w-[540px] px-1 py-2" style={{ background: '#fff', borderRadius: 8, border: '1px solid #ebebeb' }}>
+      <div className="px-3 py-1">
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0" style={{ background: '#f97316' }}>{(title || 'B').slice(0, 1)}</div>
+          <div className="min-w-0">
+            <div className="text-[14px] leading-none truncate" style={{ color: '#202124' }}>{title}</div>
+            <div className="text-[12px] leading-tight truncate" style={{ color: '#4d5156' }}>{url}</div>
+          </div>
+        </div>
+        <div className="text-[20px] leading-snug hover:underline cursor-default line-clamp-1" style={{ color: '#1a0dab' }}>{title}</div>
+        <div className="text-[14px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#4d5156' }}>{desc}</div>
+      </div>
+    </div>);
+  // default: Discord
   return (
-    <Wrap className={embedded ? '' : 'p-4 mt-3 mb-4'}>
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {embedded ? t('ogp.prev.wholesite', 'Whole site (default card)') : t('ogp.prev.title', 'Link preview')}</div>
-      <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub2', 'The same tags, rendered the way each platform actually shows them. Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
-
-      {/* Platform switcher — each chip in its brand colour when active. */}
-      <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 mb-3 flex-wrap">
-        {OGP_PLATFORMS.map(([id, label, color]) => (
-          <button key={id} type="button" onClick={() => setPlat(id)}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${plat === id ? 'text-white' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}
-            style={plat === id ? { background: color } : undefined}>{label}</button>
-        ))}
+    <div className="w-full max-w-[440px] rounded-lg overflow-hidden" style={{ background: '#2b2d31', border: '1px solid #1e1f22', borderLeft: '4px solid #5865F2' }}>
+      <div className="p-3">
+        <div className="text-[11px] mt-0.5" style={{ color: '#b5bac1' }}>{host}</div>
+        <div className="text-sm font-semibold mt-0.5" style={{ color: '#00a8fc' }}>{title}</div>
+        <div className="text-xs mt-1 line-clamp-3" style={{ color: '#dbdee1' }}>{desc}</div>
+        <div className="mt-2 rounded overflow-hidden"><Img /></div>
       </div>
+    </div>);
+}
 
-      {/* Each pane is a faithful-enough mock of that platform's card. Neutral greys/whites are
-          hardcoded on purpose: these emulate Discord/Google chrome, not our own theme, and
-          must read the same in the admin's light or dark mode. */}
-      <div className="flex justify-center">
-        {plat === 'discord' && (
-          <div className="w-full max-w-[440px] rounded-lg overflow-hidden" style={{ background: '#2b2d31', border: '1px solid #1e1f22', borderLeft: '4px solid #5865F2' }}>
-            <div className="p-3">
-              <div className="text-[11px] mt-0.5" style={{ color: '#b5bac1' }}>{title}</div>
-              <div className="text-sm font-semibold mt-0.5" style={{ color: '#00a8fc' }}>{title}</div>
-              <div className="text-xs mt-1 line-clamp-3" style={{ color: '#dbdee1' }}>{desc}</div>
-              <div className="mt-2 rounded overflow-hidden"><Img /></div>
-            </div>
-          </div>
-        )}
-        {plat === 'x' && (
-          <div className="w-full max-w-[440px] rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #cfd9de' }}>
-            <Img />
-            <div className="px-3 py-2" style={{ borderTop: '1px solid #eff3f4' }}>
-              <div className="text-[13px] leading-tight" style={{ color: '#0f1419' }}>{title}</div>
-              <div className="text-[13px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#536471' }}>{desc}</div>
-              <div className="text-[13px] mt-1" style={{ color: '#536471' }}>🔗 {host}</div>
-            </div>
-          </div>
-        )}
-        {plat === 'facebook' && (
-          <div className="w-full max-w-[440px] overflow-hidden" style={{ background: '#fff', border: '1px solid #dddfe2', borderRadius: 8 }}>
-            <Img />
-            <div className="px-3 py-2.5" style={{ background: '#f2f3f5', borderTop: '1px solid #dddfe2' }}>
-              <div className="text-[11px] uppercase tracking-wide truncate" style={{ color: '#606770' }}>{host}</div>
-              <div className="text-[15px] font-semibold leading-tight mt-1 line-clamp-2" style={{ color: '#1d2129' }}>{title}</div>
-              <div className="text-[13px] mt-1 line-clamp-1" style={{ color: '#606770' }}>{desc}</div>
-            </div>
-          </div>
-        )}
-        {plat === 'google' && (
-          <div className="w-full max-w-[540px] px-1 py-2" style={{ background: '#fff', borderRadius: 8, border: '1px solid #ebebeb' }}>
-            <div className="px-3 py-1">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0" style={{ background: '#f97316' }}>{title.slice(0, 1)}</div>
-                <div className="min-w-0">
-                  <div className="text-[14px] leading-none truncate" style={{ color: '#202124' }}>{title}</div>
-                  <div className="text-[12px] leading-tight truncate" style={{ color: '#4d5156' }}>{url}</div>
-                </div>
-              </div>
-              <div className="text-[20px] leading-snug hover:underline cursor-default line-clamp-1" style={{ color: '#1a0dab' }}>{title}</div>
-              <div className="text-[14px] leading-snug mt-0.5 line-clamp-2" style={{ color: '#4d5156' }}>{desc}</div>
-            </div>
-          </div>
-        )}
-      </div>
-      <p className="text-[11px] text-[var(--faint)] mt-3">{t('ogp.prev.note', 'Google ignores the preview image for most results and shows the title + snippet; the other three lead with the image, so 1200×630 matters most there.')}</p>
-    </Wrap>
+// Platform switcher — each chip in its brand colour when active. Shared control.
+function PlatformSwitcher({ plat, setPlat }) {
+  return (
+    <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 flex-wrap">
+      {OGP_PLATFORMS.map(([id, label, color]) => (
+        <button key={id} type="button" onClick={() => setPlat(id)}
+          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${plat === id ? 'text-white' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}
+          style={plat === id ? { background: color } : undefined}>{label}</button>
+      ))}
+    </div>
   );
 }
 
@@ -16836,15 +16815,17 @@ const OGP_PAGE_TYPES = [
 ];
 
 function SeoPagesCard() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const toast = useToast();
   const [rows, setRows] = useState(null);
+  const [settings, setSettings] = useState({});
   const [busy, setBusy] = useState(false);
+  const [plat, setPlat] = useState('discord'); // ONE switcher drives every preview in this card
 
   useEffect(() => {
     api.get('/admin/settings')
-      .then((d) => setRows(Array.isArray(d?.settings?.['seo.pages']) ? d.settings['seo.pages'] : []))
-      .catch(() => setRows([]));
+      .then((d) => { setSettings(d?.settings || {}); setRows(Array.isArray(d?.settings?.['seo.pages']) ? d.settings['seo.pages'] : []); })
+      .catch(() => { setSettings({}); setRows([]); });
   }, []);
 
   const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
@@ -16878,17 +16859,36 @@ function SeoPagesCard() {
       <p className="text-[11px] text-[var(--faint)] mb-3">
         {t('ogp.sub', 'What Discord, X and Slack show when a link is pasted. Every page already has a card built from what it is — a blog post uses its own title and cover — so leave a field empty to keep that. Exact paths only: no wildcards, so nothing is covered that you did not list.')}
       </p>
-      {/* The whole-site default card lives here now, above the per-page overrides — the general
-          case first, the exceptions under it, in one place. */}
-      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3 mb-4">
-        <OgPreviewCard embedded />
+
+      {/* ONE preview control for the whole card: pick a platform once, and both the site
+          default and every per-page override render in it. */}
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ogp.previewIn', 'Preview in')}</span>
+        <PlatformSwitcher plat={plat} setPlat={setPlat} />
       </div>
+
+      {/* The whole-site default (from the seo.* settings), shown in the chosen platform. */}
+      {(() => {
+        const sTitle = (lang === 'fr' ? settings['seo.titleFr'] : settings['seo.title']) || settings['seo.title'] || 'BetterCommunity';
+        const sDesc = (lang === 'fr' ? settings['seo.descriptionFr'] : settings['seo.description']) || settings['seo.description']
+          || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
+        return (
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3 mb-4">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</div>
+            <div className="flex justify-center"><UnfurlPreview plat={plat} title={sTitle} desc={sDesc} img={settings['seo.ogImage'] || ''} host={host} /></div>
+            <p className="text-[10px] text-[var(--faint)] mt-2">{t('ogp.wholesite.note', 'Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
+          </div>
+        );
+      })()}
+
       <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('ogp.overrides', 'Per-page overrides')}</div>
       {rows.length === 0
-        ? <div className="text-xs text-[var(--faint)]">{t('ogp.none', 'No overrides — every page uses its built-in card.')}</div>
+        ? <div className="text-xs text-[var(--faint)] rounded-lg border border-dashed border-[var(--line)] p-4 text-center">{t('ogp.none', 'No overrides — every page uses its built-in card. Add one to say something better about a specific page.')}</div>
         : <div className="space-y-3">
           {rows.map((r, i) => {
             const known = OGP_PAGE_TYPES.find(([p]) => p === r.path);
+            const pTitle = (lang === 'fr' ? (r.titleFr || r.title) : (r.title || r.titleFr)) || 'BetterCommunity';
+            const pDesc = (lang === 'fr' ? (r.descriptionFr || r.description) : (r.description || r.descriptionFr)) || '';
             return (
             <div key={i} className="rounded-lg border border-[var(--line)] p-3">
               <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -16903,32 +16903,24 @@ function SeoPagesCard() {
                 <button onClick={() => setRows(rows.filter((_, n) => n !== i))}
                   className="p-1 rounded text-error hover:bg-error-bg"><Trash2 size={13} /></button>
               </div>
-              <div className="grid sm:grid-cols-2 gap-2">
-                <Input className="!text-xs" value={r.title || ''} onChange={(e) => set(i, { title: e.target.value })} placeholder={t('ogp.titleEn', 'Title (EN)')} />
-                <Input className="!text-xs" value={r.titleFr || ''} onChange={(e) => set(i, { titleFr: e.target.value })} placeholder={t('ogp.titleFr', 'Title (FR)')} />
-                <Input className="!text-xs" value={r.description || ''} onChange={(e) => set(i, { description: e.target.value })} placeholder={t('ogp.descEn', 'Description (EN)')} />
-                <Input className="!text-xs" value={r.descriptionFr || ''} onChange={(e) => set(i, { descriptionFr: e.target.value })} placeholder={t('ogp.descFr', 'Description (FR)')} />
-                <Input className="sm:col-span-2 !text-xs font-mono" value={r.image || ''} onChange={(e) => set(i, { image: e.target.value })} placeholder={t('ogp.img', 'Image URL — absolute, 1200×630')} />
-              </div>
-              {/* Two lines are all a preview gets, and going over does not wrap: it is cut,
-                  usually mid-word. Counted while typing rather than discovered on Discord. */}
-              <div className="text-[10px] text-[var(--faint)] mt-1.5">
-                {(r.description || '').length > 160 || (r.descriptionFr || '').length > 160
-                  ? <span className="text-warning">{t('ogp.long', 'Over ~160 characters is cut off in most previews.')}</span>
-                  : t('ogp.count', '{n} / ~160 characters').replace('{n}', String(Math.max((r.description || '').length, (r.descriptionFr || '').length)))}
-              </div>
-              {/* A live preview of THIS page's card, so an override is seen the way it unfurls
-                  rather than only as form fields. Discord-style chrome, hardcoded greys. */}
-              {(r.title || r.titleFr || r.description || r.descriptionFr || r.image) && (
-                <div className="mt-2 w-full max-w-[380px] rounded-md overflow-hidden" style={{ background: '#2b2d31', border: '1px solid #1e1f22', borderLeft: '4px solid #5865F2' }}>
-                  <div className="p-2.5">
-                    <div className="text-[10px] truncate" style={{ color: '#b5bac1' }}>{host}{r.path || ''}</div>
-                    <div className="text-xs font-semibold mt-0.5" style={{ color: '#00a8fc' }}>{r.title || r.titleFr || 'BetterCommunity'}</div>
-                    {(r.description || r.descriptionFr) && <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: '#dbdee1' }}>{r.description || r.descriptionFr}</div>}
-                    {r.image && <img src={r.image} alt="" className="mt-1.5 w-full rounded" style={{ aspectRatio: '1200 / 630', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />}
+              <div className="grid lg:grid-cols-[1fr_auto] gap-3 items-start">
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <Input className="!text-xs" value={r.title || ''} onChange={(e) => set(i, { title: e.target.value })} placeholder={t('ogp.titleEn', 'Title (EN)')} />
+                  <Input className="!text-xs" value={r.titleFr || ''} onChange={(e) => set(i, { titleFr: e.target.value })} placeholder={t('ogp.titleFr', 'Title (FR)')} />
+                  <Input className="!text-xs" value={r.description || ''} onChange={(e) => set(i, { description: e.target.value })} placeholder={t('ogp.descEn', 'Description (EN)')} />
+                  <Input className="!text-xs" value={r.descriptionFr || ''} onChange={(e) => set(i, { descriptionFr: e.target.value })} placeholder={t('ogp.descFr', 'Description (FR)')} />
+                  <Input className="sm:col-span-2 !text-xs font-mono" value={r.image || ''} onChange={(e) => set(i, { image: e.target.value })} placeholder={t('ogp.img', 'Image URL — absolute, 1200×630')} />
+                  {/* Two lines are all a preview gets, and going over does not wrap: it is cut,
+                      usually mid-word. Counted while typing rather than discovered on Discord. */}
+                  <div className="sm:col-span-2 text-[10px] text-[var(--faint)]">
+                    {(r.description || '').length > 160 || (r.descriptionFr || '').length > 160
+                      ? <span className="text-warning">{t('ogp.long', 'Over ~160 characters is cut off in most previews.')}</span>
+                      : t('ogp.count', '{n} / ~160 characters').replace('{n}', String(Math.max((r.description || '').length, (r.descriptionFr || '').length)))}
                   </div>
                 </div>
-              )}
+                {/* This page's card in the SAME platform the switcher is on — no longer Discord-only. */}
+                <div className="lg:w-[300px] shrink-0"><UnfurlPreview plat={plat} title={pTitle} desc={pDesc} img={r.image || ''} host={`${host}${r.path || ''}`} /></div>
+              </div>
             </div>
           ); })}
         </div>}
