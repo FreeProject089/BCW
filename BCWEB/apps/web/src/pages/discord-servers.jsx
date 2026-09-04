@@ -249,6 +249,10 @@ function GuildConfig({ guildId, onSaved }) {
     } finally { setBusy(false); }
   };
   const showBudget = draft.memberMode === 'pool' || (draft.memberMode === 'moderation' && draft.storeLogs);
+  // A pool is "usable" only if it is unlimited or has a cap ABOVE zero — a zero-cap pool holds
+  // nothing, and treating it as present is what made this area look empty (a 0/0 bar, or a
+  // warning that never fired). This drives the storage panel so it is never blank.
+  const hasUsablePool = !!(g.capacity && (g.capacity.unlimited || Number(g.capacity.cap) > 0));
   // The dashboard is a set of SECTIONS you switch between, not one long scroll — you pick the
   // area you want to configure. The Members list only exists in pool mode (the only mode that
   // stores members). Each carries its own unsaved-changes dot so nothing hides behind a tab.
@@ -322,10 +326,21 @@ function GuildConfig({ guildId, onSaved }) {
           <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h', 'Off = actions are posted to Discord only. On = a searchable copy is kept here and counts against your storage.')}</p>
         </div>
       )}
+      {/* 'none' mode stores nothing — say so plainly instead of leaving the panel blank, so
+          the area always explains the current choice rather than looking broken. */}
+      {draft.memberMode === 'none' && (
+        <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 flex items-start gap-2.5">
+          <Shield size={16} className="text-[var(--faint)] shrink-0 mt-0.5" />
+          <div className="text-xs text-[var(--muted)]">
+            <div className="text-sm font-medium text-[var(--text)]">{t('ds.none.t', 'Nothing is stored')}</div>
+            {t('ds.none.s', 'The bot stays in your server and answers commands, but keeps no member data and no logs here. Pick “Moderation only” to log actions, or “Member database” to power a member list and role gating.')}
+          </div>
+        </div>
+      )}
       {/* Storing members needs a storage allowance (a pool an admin assigns). With none, the
           bot has nowhere to put them — so warn plainly instead of silently storing nothing. */}
       {showBudget && (
-        (g.capacity && (g.capacity.unlimited || g.capacity.cap))
+        hasUsablePool
           ? <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>
           : <div className="mb-4 rounded-xl border border-warning-border bg-warning/[0.08] p-3">
               <div className="flex items-start gap-2.5">

@@ -2357,6 +2357,7 @@ const DICT = {
     'ds.wc.bgimg': 'Fond personnalisé (optionnel)', 'ds.wc.bgimg.h': 'Remplace la couleur. Téléverse une image sur la page Téléversements, puis colle son lien /api/media/… ici — elle est stockée sur le site, donc contrôlable et supprimable.',
     'ds.wc.bgimg.h2': 'Remplace la couleur. Téléverse une image directement ici — elle est stockée sur le site (un lien /api/media/…), donc contrôlable et supprimable.',
     'ds.wc.bgimg.upload': 'Téléverser',
+    'ds.none.t': 'Rien n’est stocké', 'ds.none.s': 'Le bot reste dans ton serveur et répond aux commandes, mais ne garde ici aucune donnée de membre ni aucun log. Choisis « Modération seule » pour journaliser les actions, ou « Base de membres » pour alimenter une liste de membres et le contrôle par rôle.',
     'ds.nopool.t': 'Aucune pool de stockage assignée', 'ds.nopool.s': 'Ce mode stocke les membres, mais ce serveur n’a pas encore d’allocation de stockage — donc rien n’est réellement conservé. Demande à un admin d’assigner une pool à ce serveur, ou passe en « logs de modération seulement ».',
     'ds.nopool.s2': 'Ce mode stocke les membres, mais ce serveur n’a pas encore de pool de stockage — donc rien n’est réellement conservé. Prends une pool pour les héberger, ou passe en « logs de modération seulement ».',
     'ds.nopool.buy': 'Obtenir une pool de stockage', 'ds.nopool.or': 'ou demande à un admin d’en assigner une à ce serveur',
