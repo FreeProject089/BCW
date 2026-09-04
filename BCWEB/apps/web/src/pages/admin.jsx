@@ -20034,6 +20034,16 @@ function AdminSettings() {
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(null);
   const [unit, setUnit] = useState({}); // settingKey -> 'MB' | 'GB' (display unit only)
+  // Each settings group collapses independently (remembered per group), so a long screen of
+  // eight groups can be folded down to the one you came to change.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('bcw.hs.collapsed') || '[]')); } catch { return new Set(); }
+  });
+  const toggleGroup = (gk) => setCollapsed((prev) => {
+    const next = new Set(prev); next.has(gk) ? next.delete(gk) : next.add(gk);
+    try { localStorage.setItem('bcw.hs.collapsed', JSON.stringify([...next])); } catch { /* private mode */ }
+    return next;
+  });
   const [freePoolOpen, setFreePoolOpen] = useState(false);
   const [tempOpen, setTempOpen] = useState(false);
   useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
@@ -20170,12 +20180,18 @@ function AdminSettings() {
           though it lives in the bot.config blob rather than a flat AdminSetting. */}
       <DiscordStorageCapCard />
       <div className="space-y-5">
-        {SETTINGS_GROUPS.map((g) => (
+        {SETTINGS_GROUPS.map((g) => {
+          const isOpen = !collapsed.has(g.gk);
+          return (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
-            <div className="flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)]">
+            <button type="button" onClick={() => toggleGroup(g.gk)} aria-expanded={isOpen}
+              className="w-full flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)] text-start hover:bg-[var(--surface-2)]/70 transition">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
-              <div className="min-w-0"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
-            </div>
+              <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
+              <span className="text-[10px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
+              <ChevronDown size={16} className={`text-[var(--faint)] shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+            </button>
+            {isOpen && (
             <div className="p-3 grid md:grid-cols-2 gap-3">
               {g.keys.map(([k, label, desc, kind, nativeUnit]) => {
                 const L = t(`hs.l.${k}`, label);
@@ -20216,8 +20232,10 @@ function AdminSettings() {
                 );
               })}
             </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
           value, so it cannot be a key/label/type entry like the rest. The whole-site
