@@ -46,6 +46,10 @@ export async function scanAllMembers(client) {
       const r = await api.syncMembers(guild.id, guild.name, guild.memberCount, roster.slice(i, i + CHUNK));
       total += r?.synced || 0;
       if (r && r.stored === false) break; // guild not storing (mode changed mid-scan) — stop
+      // The API admits new rows only while the guild's byte budget has room and reports `full`
+      // once it does not. Stop pushing chunks then: the rest of the roster would be fetched,
+      // serialised and posted for nothing. The owner's dashboard shows the capacity bar.
+      if (r && r.full) { console.log(`[bot] member scan: ${guild.name} storage budget full — stopping at ${total}`); break; }
     }
   }
   if (total) console.log(`[bot] member scan: synced ${total} member(s) to the database`);

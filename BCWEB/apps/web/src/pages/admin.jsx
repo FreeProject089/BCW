@@ -14563,6 +14563,21 @@ function AdminBotMembers() {
   const pickRole = (v) => { setRole(v); load(false, { role: v }); };
   const since = (d) => d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
   const tabs = [['', t('bm.all', 'All'), counts?.all], ['linked', t('bm.linked', 'Linked'), counts?.linked], ['unlinked', t('bm.notlinked', 'Not linked'), counts?.unlinked]];
+  // Give XP or points to a linked member without leaving the roster. The API recomputes the
+  // level from the curve when XP moves, and the row updates in place from its answer.
+  const toast = useToast();
+  const [giving, setGiving] = useState(null); // discordId of the row with the give form open
+  const [giveKind, setGiveKind] = useState('points');
+  const [giveAmt, setGiveAmt] = useState(100);
+  const give = async (m) => {
+    const amt = Math.round(Number(giveAmt)); if (!Number.isFinite(amt) || amt === 0 || !m.linkedUser?.id) return;
+    try {
+      const r = await api.post('/admin/economy/grant', { userId: m.linkedUser.id, [giveKind]: amt, reason: 'members page' });
+      setRows((rs) => (rs || []).map((x) => x.discordId === m.discordId ? { ...x, linkedUser: { ...x.linkedUser, economy: { level: r.level, xp: r.xp, points: r.points } } } : x));
+      toast.success(t('bm.give.ok', 'Done — Lv {l} · {p} points').replace('{l}', r.level).replace('{p}', r.points));
+      setGiving(null);
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
   return (
     <div className="mt-6">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
@@ -14610,11 +14625,30 @@ function AdminBotMembers() {
             <Card key={m.discordId} className="p-3 flex items-center gap-3">
               {m.avatar ? <img src={m.avatar} alt="" className="w-9 h-9 rounded-full shrink-0" /> : <div className="w-9 h-9 rounded-full bg-[var(--surface-2)] grid place-items-center shrink-0"><DiscordIcon size={16} className="text-[#5865F2]" /></div>}
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2">{m.username || m.discordId}
+                <div className="font-medium truncate flex items-center gap-2 flex-wrap">{m.username || m.discordId}
                   {m.linkedUser
                     ? <Badge tone="green"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
                     : <Badge><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</Badge>}
+                  {m.linkedUser?.economy && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] tabular-nums" title={`${(m.linkedUser.economy.xp || 0).toLocaleString()} XP`}>
+                      <Sparkles size={10} /> Lv {m.linkedUser.economy.level || 0} · {(m.linkedUser.economy.points || 0).toLocaleString()}
+                    </span>
+                  )}
+                  {m.linkedUser && (
+                    <button type="button" onClick={() => { setGiving(giving === m.discordId ? null : m.discordId); }} className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]/40 inline-flex items-center gap-1"><Gift size={10} /> {t('bm.give', 'Give')}</button>
+                  )}
                 </div>
+                {giving === m.discordId && (
+                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                    <Select className="!w-auto !py-1 !text-xs" value={giveKind} onChange={(e) => setGiveKind(e.target.value)}>
+                      <option value="points">{t('bm.give.points', 'Points')}</option>
+                      <option value="xp">XP</option>
+                    </Select>
+                    <Input type="number" className="!w-24 !py-1 !text-xs" value={giveAmt} onChange={(e) => setGiveAmt(e.target.value)} />
+                    <Button size="sm" variant="primary" onClick={() => give(m)}>{t('bm.give.go', 'Apply')}</Button>
+                    <span className="text-[10px] text-[var(--faint)]">{t('bm.give.h', 'Negative takes away. XP moves the level.')}</span>
+                  </div>
+                )}
                 <div className="text-xs text-[var(--faint)] truncate">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)} · {t('bm.lastvoice', 'last voice')} {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
                 {/* What they ARE, before deciding what to do about them. @everyone is stripped
                     by the scan — every member has it, so it says nothing. */}
@@ -14657,13 +14691,13 @@ function EconomyLedger({ currency }) {
   const [busy, setBusy] = useState('');
   const load = (query = '') => api.get(`/admin/economy?q=${encodeURIComponent(query)}`).then(setData).catch(() => setData({ members: [], totals: {} }));
   useEffect(() => { load(); }, []);
-  const grant = async (m, delta) => {
-    const raw = window.prompt(t('db.eco.grant.p', 'Points to give {name} (negative to take):').replace('{name}', m.displayName), String(delta || 100));
+  const grant = async (m, delta, kind = 'points') => {
+    const raw = window.prompt((kind === 'xp' ? t('db.eco.grantxp.p', 'XP to give {name} (negative to take — the level follows the curve):') : t('db.eco.grant.p', 'Points to give {name} (negative to take):')).replace('{name}', m.displayName), String(delta || 100));
     if (raw == null) return;
-    const points = Math.round(Number(raw));
-    if (!Number.isFinite(points) || points === 0) return;
+    const amount = Math.round(Number(raw));
+    if (!Number.isFinite(amount) || amount === 0) return;
     setBusy(m.userId);
-    try { const r = await api.post('/admin/economy/grant', { userId: m.userId, points }); toast.success(t('db.eco.grant.ok', 'Balance updated → {n}').replace('{n}', r.points)); load(q); }
+    try { const r = await api.post('/admin/economy/grant', { userId: m.userId, [kind]: amount }); toast.success(t('db.eco.grant.ok', 'Balance updated → {n}').replace('{n}', r.points)); load(q); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
   };
   const fmtH = (s) => `${Math.floor((s || 0) / 3600)}h`;
@@ -14692,6 +14726,7 @@ function EconomyLedger({ currency }) {
                 <div className="text-[11px] text-[var(--faint)] tabular-nums">{m.xp.toLocaleString()} XP · {m.messages} msg · {m.reactions} react · {fmtH(m.voiceSeconds)}</div>
               </div>
               <span className="text-sm font-semibold tabular-nums shrink-0">{(m.points || 0).toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{currency}</span></span>
+              <Button size="sm" variant="ghost" disabled={busy === m.userId} title={t('db.eco.givexp', 'Give XP')} onClick={() => grant(m, 500, 'xp')}><Sparkles size={13} /> XP</Button>
               <Button size="sm" variant="ghost" disabled={busy === m.userId} onClick={() => grant(m, 100)}>{busy === m.userId ? <Spinner /> : <><Gift size={13} /> {t('db.eco.give', 'Give')}</>}</Button>
             </div>
           ))}

@@ -2359,6 +2359,7 @@ const DICT = {
     'ds.wc.bgimg.upload': 'Téléverser',
     'ds.hero.active': 'Bot actif ici', 'ds.hero.idle': 'Bot inactif ici', 'ds.hero.pool': 'Base de membres active', 'ds.hero.mod': 'Modération active', 'ds.hero.none': 'Rien n’est stocké', 'ds.hero.stored': 'stockés', 'ds.hero.logs': 'logs récents',
     'common.more': 'plus', 'common.less': 'moins',
+    'bm.give': 'Donner', 'bm.give.ok': 'Fait — Nv {l} · {p} points', 'bm.give.points': 'Points', 'bm.give.go': 'Appliquer', 'bm.give.h': 'Négatif = retirer. L’XP fait bouger le niveau.', 'db.eco.grantxp.p': 'XP à donner à {name} (négatif pour retirer — le niveau suit la courbe) :', 'db.eco.givexp': 'Donner de l’XP',
     'ds.none.t': 'Rien n’est stocké', 'ds.none.s': 'Le bot reste dans ton serveur et répond aux commandes, mais ne garde ici aucune donnée de membre ni aucun log. Choisis « Modération seule » pour journaliser les actions, ou « Base de membres » pour alimenter une liste de membres et le contrôle par rôle.',
     'ds.nopool.t': 'Aucune pool de stockage assignée', 'ds.nopool.s': 'Ce mode stocke les membres, mais ce serveur n’a pas encore d’allocation de stockage — donc rien n’est réellement conservé. Demande à un admin d’assigner une pool à ce serveur, ou passe en « logs de modération seulement ».',
     'ds.nopool.s2': 'Ce mode stocke les membres, mais ce serveur n’a pas encore de pool de stockage — donc rien n’est réellement conservé. Prends une pool pour les héberger, ou passe en « logs de modération seulement ».',

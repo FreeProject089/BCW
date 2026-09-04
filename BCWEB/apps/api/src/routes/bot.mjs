@@ -379,7 +379,7 @@ export default async function botRoutes(app) {
     // should slow nothing down, and a picker past a few hundred entries is unusable anyway.
     const roleRows = await p.discordActivity.findMany({ select: { roles: true }, take: 5000 });
     const allRoles = [...new Set(roleRows.flatMap((r) => r.roles || []))].sort((a, b) => a.localeCompare(b)).slice(0, 200);
-    const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, include: { user: { select: { id: true, displayName: true, email: true } } } });
+    const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, include: { user: { select: { id: true, displayName: true, email: true, economy: { select: { level: true, xp: true, points: true } } } } } });
     const linkByDiscordId = Object.fromEntries(links.map((l) => [l.discordId, l.user]));
     return {
       members: rows.map((r) => ({ ...r, linkedUser: linkByDiscordId[r.discordId] || null, ...(unified ? { servers: serversByPerson[r.discordId] || [] } : {}) })),
@@ -1691,14 +1691,18 @@ export default async function botRoutes(app) {
 
   // Admin: grant (positive) or take (negative) points from a member. Points never go below 0.
   app.post('/admin/economy/grant', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const b = z.object({ userId: z.string().min(1).max(64), points: z.number().int().min(-1000000).max(1000000), reason: z.string().max(200).optional() }).safeParse(req.body);
-    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const b = z.object({ userId: z.string().min(1).max(64), points: z.number().int().min(-1000000).max(1000000).optional(), xp: z.number().int().min(-10000000).max(10000000).optional(), reason: z.string().max(200).optional() }).safeParse(req.body);
+    if (!b.success || (b.data.points == null && b.data.xp == null)) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const cur = await p.userEconomy.findUnique({ where: { userId: b.data.userId } });
-    const newPts = Math.max(0, (cur?.points || 0) + b.data.points);
-    await p.userEconomy.upsert({ where: { userId: b.data.userId }, create: { userId: b.data.userId, points: newPts }, update: { points: newPts } });
+    const newPts = Math.max(0, (cur?.points || 0) + (b.data.points || 0));
+    // XP moves the LEVEL too — same curve as accrual, so a granted level is a real one.
+    const eco = (await getBotConfig(p)).economy || {};
+    const newXp = Math.max(0, (cur?.xp || 0) + (b.data.xp || 0));
+    const newLevel = b.data.xp != null ? economyLevelFor(newXp, eco.curveBase, eco.curveFactor) : (cur?.level || 0);
+    await p.userEconomy.upsert({ where: { userId: b.data.userId }, create: { userId: b.data.userId, points: newPts, xp: newXp, level: newLevel }, update: { points: newPts, ...(b.data.xp != null ? { xp: newXp, level: newLevel } : {}) } });
     await logAudit(p, req.user.uid, 'economy.grant', `user=${b.data.userId} delta=${b.data.points} → ${newPts}${b.data.reason ? ` (${b.data.reason})` : ''}`);
-    return { ok: true, points: newPts };
+    return { ok: true, points: newPts, xp: newXp, level: newLevel };
   });
 
   // A member spends points in the bot shop. The bot posts this on a /shop purchase; the API
@@ -1819,8 +1823,8 @@ export default async function botRoutes(app) {
   // owner OR a Manage-Server admin. `in`/`hasSome` over an empty list matches nothing, but we
   // guard on ids.length before calling so an account with no linked Discord never lists guilds.
   const manageableWhere = (ids) => ({ OR: [{ ownerDiscordId: { in: ids } }, { managerDiscordIds: { hasSome: ids } }] });
-  const serGuildUser = (g, stored, ids) => ({
-    guildId: g.guildId, name: g.name, memberMode: g.memberMode, logChannelId: g.logChannelId,
+  const serGuildUser = (g, stored, ids, icons = {}) => ({
+    guildId: g.guildId, name: g.name, icon: icons[g.guildId] || null, memberMode: g.memberMode, logChannelId: g.logChannelId,
     storeLogs: g.storeLogs, memberCount: g.memberCount, storedMembers: stored,
     capacity: capacityStatus(g.storageQuotaBytes, stored), // read-only: user can't set the budget
     role: g.ownerDiscordId && ids.includes(g.ownerDiscordId) ? 'owner' : 'manager',
@@ -1837,7 +1841,10 @@ export default async function botRoutes(app) {
     const guilds = await p.botGuild.findMany({ where: manageableWhere(ids), orderBy: { memberCount: 'desc' } });
     const counts = guilds.length ? await p.discordActivity.groupBy({ by: ['guildId'], _count: { _all: true }, where: { guildId: { in: guilds.map((g) => g.guildId) } } }) : [];
     const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
-    return { linked: true, guilds: guilds.map((g) => serGuildUser(g, storedBy[g.guildId] || 0, ids)), appId };
+    // The server's Discord icon rides in the bot's heartbeat guild list, not in BotGuild.
+    const hb = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList || [];
+    const icons = Object.fromEntries(hb.filter((x) => x && x.id).map((x) => [x.id, x.icon || null]));
+    return { linked: true, guilds: guilds.map((g) => serGuildUser(g, storedBy[g.guildId] || 0, ids, icons)), appId };
   });
 
   app.get('/me/discord/guilds/:id', { preHandler: requireRole() }, async (req, reply) => {
@@ -1868,7 +1875,7 @@ export default async function botRoutes(app) {
     const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
     const gEntry = (status?.guildList || []).find((x) => x.id === g.guildId) || null;
     return {
-      guild: serGuildUser(g, stored, ids), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
+      guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
       globalStorage: { mode: cfg.memberStorage?.mode || 'managed' },
       roles: gEntry?.roles || [], channels: gEntry?.channels || [],
     };
@@ -2068,6 +2075,6 @@ export default async function botRoutes(app) {
     const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
     const outBlog = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
     const outPanels = (Array.isArray(cfg.rolePanels) ? cfg.rolePanels : []).filter((pnl) => pnl.guildId === g.guildId);
-    return { ok: true, guild: serGuildUser(g, stored, ids), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog }, rolePanels: outPanels };
+    return { ok: true, guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog }, rolePanels: outPanels };
   });
 }

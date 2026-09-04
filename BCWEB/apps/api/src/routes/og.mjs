@@ -269,6 +269,57 @@ export default async function ogRoutes(app) {
   // for a PUBLIC profile — a private one never renders a name/face, it just bounces to the logo.
   // Rendered with @napi-rs/canvas, dynamically imported so a missing lib degrades ONLY this image
   // (falls back to the site logo) instead of breaking the whole OG route.
+  // ── Casino result cards ──────────────────────────────────────────────────────
+  // The bot embeds one of these as the image of a /casino reply, so a win or a loss is a
+  // picture (big reels / coin / die / roulette pocket + a banner) rather than a line of
+  // emoji. Pure canvas, no assets on disk: game + outcome + a short detail in the query.
+  //   /og/casino/<coinflip|dice|slots|roulette>/<win|lose>.png?d=<detail>&a=<amount>
+  app.get('/og/casino/:game/:outcome', async (req, reply) => {
+    const game = String(req.params.game || '').replace(/[^a-z]/g, '');
+    const win = String(req.params.outcome || '').startsWith('win');
+    const detail = String(req.query?.d || '').slice(0, 40);
+    const amount = String(req.query?.a || '').replace(/[^0-9,. -]/g, '').slice(0, 16);
+    if (!['coinflip', 'dice', 'slots', 'roulette'].includes(game)) return reply.code(404).send({ error: 'not_found' });
+    try {
+      const { createCanvas } = await import('@napi-rs/canvas');
+      const W = 900, H = 420;
+      const c = createCanvas(W, H); const x = c.getContext('2d');
+      // Felt background + vignette, tinted by outcome.
+      const bg = x.createLinearGradient(0, 0, W, H); bg.addColorStop(0, win ? '#0b2a1c' : '#2a0b12'); bg.addColorStop(1, '#0a0f1e');
+      x.fillStyle = bg; x.fillRect(0, 0, W, H);
+      const vg = x.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 560); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+      x.fillStyle = vg; x.fillRect(0, 0, W, H);
+      // Title strip
+      const titles = { coinflip: 'COIN FLIP', dice: 'DICE', slots: 'SLOTS', roulette: 'ROULETTE' };
+      x.font = 'bold 22px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.textAlign = 'left'; x.fillText(titles[game], 36, 48);
+      x.font = 'bold 20px sans-serif'; x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.35)'; x.fillText('BetterCommunity', W - 36, 48);
+      // The play itself, big and centred. Emoji render through the system font on the server;
+      // if it lacks colour emoji the glyph still draws, just monochrome.
+      const mid = (s0) => { x.font = '120px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff'; x.fillText(s0, W / 2, H / 2 + 42); };
+      if (game === 'slots') {
+        // three reel boxes
+        const reels = (detail || '🍒 🍋 🔔').split(/s+/).slice(0, 3);
+        const bw = 170, gap = 26, x0 = W / 2 - (bw * 3 + gap * 2) / 2, y0 = 110;
+        reels.forEach((r, i) => { const rx = x0 + i * (bw + gap);
+          x.fillStyle = 'rgba(255,255,255,0.08)'; x.strokeStyle = 'rgba(255,255,255,0.25)'; x.lineWidth = 3;
+          x.beginPath(); x.roundRect(rx, y0, bw, 190, 22); x.fill(); x.stroke();
+          x.font = '100px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff'; x.fillText(r, rx + bw / 2, y0 + 138); });
+      } else if (game === 'roulette') {
+        // a pocket disc in its colour with the number
+        const m = /(d+)s*(red|black|green)?/i.exec(detail) || []; const num = m[1] || '?'; const col = (m[2] || '').toLowerCase();
+        const fill = col === 'red' ? '#c0392b' : col === 'green' ? '#1e8449' : '#1b1f2a';
+        x.beginPath(); x.arc(W / 2, H / 2 + 10, 110, 0, Math.PI * 2); x.fillStyle = fill; x.fill(); x.lineWidth = 8; x.strokeStyle = '#d4af37'; x.stroke();
+        x.font = 'bold 96px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff'; x.fillText(num, W / 2, H / 2 + 46);
+      } else if (game === 'dice') { mid(detail || '🎲'); } else { mid(detail || '🪙'); }
+      // Outcome banner
+      const bh = 76; x.fillStyle = win ? 'rgba(46,204,113,0.92)' : 'rgba(231,76,60,0.92)'; x.fillRect(0, H - bh, W, bh);
+      x.font = 'bold 34px sans-serif'; x.fillStyle = '#0a0f1e'; x.textAlign = 'center';
+      x.fillText(win ? `YOU WIN  +${amount}` : `YOU LOSE  −${amount}`, W / 2, H - 26);
+      reply.header('content-type', 'image/png'); reply.header('cache-control', 'public, max-age=300');
+      return reply.send(await c.encode('png'));
+    } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino card failed'); return reply.code(500).send({ error: 'render_failed' }); }
+  });
+
   app.get('/og/profile/:id', async (req, reply) => {
     const id = String(req.params.id || '').replace(/\.(png|webp|jpe?g)$/i, '');
     if (!id) return reply.redirect(LOGO());

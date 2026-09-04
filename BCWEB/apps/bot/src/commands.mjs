@@ -52,6 +52,7 @@ export const commandData = [
       { name: 'Coin flip (2×, 50%)', value: 'coinflip' },
       { name: 'Dice — roll 4-6 to win (2×)', value: 'dice' },
       { name: 'Slots — match to win big', value: 'slots' },
+      { name: 'Roulette — red or black (2×)', value: 'roulette' },
     )),
 ].map((c) => c.toJSON());
 
@@ -110,7 +111,12 @@ async function cmdProfile(i) {
   const body = `**Level ${e.level}** · **${Number(e.points).toLocaleString()}** ${cur}\n`
     + `${e.stats.messages} messages · ${e.stats.reactions} reactions · ${Math.floor((e.stats.voiceSeconds || 0) / 3600)}h in voice\n\n`
     + `[View full profile →](${url})`;
-  return eReply(i, body, { title: `👤 ${e.displayName}`, ephemeral: false });
+  // The same 1200×630 card a shared profile link unfurls with: banner, avatar, name, level
+  // and badges — drawn by the site, so it is one picture everywhere.
+  const emb = new EmbedBuilder().setColor(BRAND).setTitle(`👤 ${e.displayName}`).setDescription(body)
+    .setImage(`${SITE_URL}/og/profile/${encodeURIComponent(e.userId)}.png?n=${Math.floor(Date.now() / 60000)}`)
+    .setThumbnail(target.displayAvatarURL?.({ size: 128 }) || null);
+  return i.reply({ embeds: [emb] });
 }
 
 // What each shop kind hands over, phrased for the buyer.
@@ -176,22 +182,32 @@ async function cmdLeaderboard(i) {
 async function cmdCasino(i) {
   const bet = i.options.getInteger('bet');
   const game = i.options.getString('game') || 'coinflip';
-  let mult = 0, detail = '';
-  if (game === 'dice') {
+  let mult = 0, detail = '', card = ''; // card = the ?d= detail the result image draws
+  if (game === 'roulette') {
+    // European wheel: 0 is green (house), 1–36 alternate red/black. You bet a colour; a hit pays
+    // 2×. Zero beats both colours — that is the whole edge of the game before the house edge.
+    const pocket = Math.floor(Math.random() * 37);
+    const reds = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
+    const colour = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black';
+    const pick = Math.random() < 0.5 ? 'red' : 'black'; // the bot picks for you; /casino has no colour arg
+    mult = colour === pick ? 2 : 0;
+    detail = `🎡 You bet **${pick}** — the ball landed on **${pocket} ${colour}**.`;
+    card = `${pocket} ${colour}`;
+  } else if (game === 'dice') {
     const roll = 1 + Math.floor(Math.random() * 6);
     mult = roll >= 4 ? 2 : 0;
-    detail = `🎲 You rolled a **${roll}** (win on 4-6).`;
+    detail = `🎲 You rolled a **${roll}** (win on 4-6).`; card = ['⚀','⚁','⚂','⚃','⚄','⚅'][roll - 1];
   } else if (game === 'slots') {
     const S = ['🍒', '🍋', '🔔', '⭐', '💎'];
     const reels = [0, 1, 2].map(() => S[Math.floor(Math.random() * S.length)]);
     mult = reels[0] === reels[1] && reels[1] === reels[2] ? 8         // three of a kind
       : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5 // a pair
       : 0;
-    detail = `${reels.join(' ')}`;
+    detail = `${reels.join(' ')}`; card = reels.join(' ');
   } else {
     const heads = Math.random() < 0.5;
     mult = heads ? 2 : 0;
-    detail = heads ? '🪙 Heads!' : '🪙 Tails.';
+    detail = heads ? '🪙 Heads!' : '🪙 Tails.'; card = heads ? '🪙' : '🌑';
   }
   const r = await api.economyCasino(i.user.id, bet, mult);
   if (!r.ok) {
@@ -206,7 +222,12 @@ async function cmdCasino(i) {
   const line = won
     ? `${detail}\n🎉 You won **+${Number(r.delta).toLocaleString()}** — balance **${Number(r.points).toLocaleString()}**.`
     : `${detail}\n💀 You lost **${Number(bet).toLocaleString()}**. Balance **${Number(r.points).toLocaleString()}**.`;
-  return eReply(i, line, { title: won ? '🎰 You win!' : '🎰 You lose', color: won ? 0x248046 : 0xda373c, ephemeral: false });
+  // A picture of the play, rendered by the site (see /og/casino on the API): big reels / coin /
+  // die / roulette pocket and a WIN/LOSE banner — a result you can see, not a line of emoji.
+  const amt = Number(won ? r.delta : bet).toLocaleString();
+  const img = `${SITE_URL}/og/casino/${encodeURIComponent(game)}/${won ? 'win' : 'lose'}.png?d=${encodeURIComponent(card)}&a=${encodeURIComponent(amt)}&n=${Date.now()}`;
+  const emb = new EmbedBuilder().setColor(won ? 0x248046 : 0xda373c).setTitle(won ? '🎰 You win!' : '🎰 You lose').setDescription(line).setImage(img).setThumbnail(i.user.displayAvatarURL?.({ size: 128 }) || null);
+  return i.reply({ embeds: [emb] });
 }
 
 async function cmdAppeal(i) {

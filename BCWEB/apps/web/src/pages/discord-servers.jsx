@@ -274,8 +274,8 @@ function GuildConfig({ guildId, onSaved }) {
         <div className="h-1 bg-gradient-to-r from-[#5865F2] via-[#5865F2]/60 to-transparent" />
         <div className="px-4 py-3.5 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0">
-              <Server size={22} className="text-[#5865F2]" />
+            <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0 overflow-hidden">
+              {data.icon || g.icon ? <img src={data.icon || g.icon} alt="" className="w-full h-full object-cover" /> : <Server size={22} className="text-[#5865F2]" />}
               <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-solid)] ${g.memberMode !== 'none' ? 'bg-success' : 'bg-[var(--line-strong)]'}`} title={g.memberMode !== 'none' ? t('ds.hero.active', 'Bot active here') : t('ds.hero.idle', 'Bot idle here')} />
             </span>
             <div className="min-w-0">
@@ -301,14 +301,18 @@ function GuildConfig({ guildId, onSaved }) {
       </div>
 
       {/* Section nav — pick one area instead of scrolling the whole config. */}
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar mb-4 pb-1 -mx-1 px-1">
+      <div className="relative mb-4">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[var(--bg-solid)] to-transparent z-10 rounded-l-xl" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[var(--bg-solid)] to-transparent z-10 rounded-r-xl" />
+      <div className="flex gap-1 overflow-x-auto no-scrollbar p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 snap-x snap-mandatory">
         {SECTIONS.map((s) => (
-          <button key={s.id} type="button" onClick={() => setSection(s.id)}
-            className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition ${section === s.id ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]/40'}`}>
+          <button key={s.id} type="button" onClick={(e) => { setSection(s.id); e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }}
+            className={`shrink-0 snap-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${section === s.id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
             <s.icon size={14} className={section === s.id ? 'text-[var(--primary-2)]' : ''} /> {s.label}
             {s.dirty && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('ds.unsaved', 'Unsaved changes')} />}
           </button>
         ))}
+      </div>
       </div>
 
       {section === 'storage' && <>
@@ -679,7 +683,10 @@ export function MyDiscordServers() {
           {state.guilds.map((g) => (
             <button key={g.guildId} type="button" onClick={() => setSel(g.guildId)}
               className={`text-start rounded-xl border px-3 py-2.5 shrink-0 md:shrink w-56 md:w-auto transition ${sel === g.guildId ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
-              <div className="text-sm font-medium truncate flex items-center gap-1.5"><Server size={13} className="shrink-0 text-[var(--faint)]" /> {g.name || g.guildId}</div>
+              <div className="text-sm font-medium truncate flex items-center gap-2">
+                {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-lg shrink-0 object-cover" /> : <span className="grid place-items-center w-6 h-6 rounded-lg bg-[#5865F2]/15 shrink-0"><Server size={12} className="text-[#5865F2]" /></span>}
+                <span className="truncate">{g.name || g.guildId}</span>
+              </div>
               <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-2">
                 <span>{(g.memberCount ?? 0).toLocaleString()} {t('ds.membersshort', 'members')}</span>
                 {g.memberMode !== 'none' && <Badge tone={g.memberMode === 'pool' ? 'primary' : 'blue'}>{g.memberMode}</Badge>}
