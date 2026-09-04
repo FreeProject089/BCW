@@ -25,13 +25,12 @@ function felt(x, win, t) {
   x.fillStyle = vg; x.fillRect(0, 0, W, H);
   x.font = 'bold 13px sans-serif'; x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.35)';
   x.fillText('BetterCommunity', W - 14, 22);
-  // Outcome banner slides up over the last frames.
-  if (t > 0.8) {
-    const k = ease((t - 0.8) / 0.2); const bh = 46 * k;
-    x.fillStyle = win ? 'rgba(46,204,113,0.94)' : 'rgba(231,76,60,0.94)'; x.fillRect(0, H - bh, W, bh);
-  }
 }
+// Outcome banner: slides up over the last frames, drawn AFTER the game so nothing sits on it.
 function banner(x, win, amount, t) {
+  if (t <= 0.8) return;
+  const k = ease((t - 0.8) / 0.2); const bh = 46 * k;
+  x.fillStyle = win ? 'rgba(46,204,113,0.96)' : 'rgba(231,76,60,0.96)'; x.fillRect(0, H - bh, W, bh);
   if (t <= 0.86) return;
   x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#0a0f1e';
   x.fillText(win ? `YOU WIN  +${amount}` : `YOU LOSE  −${amount}`, W / 2, H - 15);
@@ -117,7 +116,7 @@ const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32,
 const WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 function drawRoulette(x, f, { pocket, r }) {
   const t = f / (FRAMES - 1); const e = ease(t);
-  const cx = W / 2, cy = H / 2 + 8, R = 118; const n = WHEEL.length; const slot = (Math.PI * 2) / n;
+  const cx = W / 2, cy = H / 2 - 12, R = 94; const n = WHEEL.length; const slot = (Math.PI * 2) / n;
   const idx = WHEEL.indexOf(pocket);
   // The wheel spins and slows; the ball counter-rotates, spirals in and drops into the pocket.
   const wheelRot = (1 - e) * (2 + r.k[0]) * Math.PI * 2;
@@ -127,7 +126,7 @@ function drawRoulette(x, f, { pocket, r }) {
     x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R, i * slot - Math.PI / 2, (i + 1) * slot - Math.PI / 2); x.closePath();
     x.fillStyle = v === 0 ? '#1e8449' : REDS.has(v) ? '#c0392b' : '#1b1f2a'; x.fill();
     x.save(); x.rotate((i + 0.5) * slot - Math.PI / 2);
-    x.fillStyle = '#fff'; x.font = 'bold 11px sans-serif'; x.textAlign = 'center'; x.fillText(String(v), R - 16, 4);
+    x.fillStyle = '#fff'; x.font = 'bold 9px sans-serif'; x.textAlign = 'center'; x.fillText(String(v), R - 13, 3);
     x.restore();
   }
   x.beginPath(); x.arc(0, 0, R, 0, Math.PI * 2); x.lineWidth = 6; x.strokeStyle = '#d4af37'; x.stroke();
@@ -140,8 +139,8 @@ function drawRoulette(x, f, { pocket, r }) {
   x.fillStyle = '#f5f5f5'; x.beginPath(); x.arc(bx, by, 7, 0, Math.PI * 2); x.fill();
   x.strokeStyle = 'rgba(0,0,0,0.5)'; x.lineWidth = 1.5; x.stroke();
   if (t > 0.9) {
-    x.font = 'bold 26px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff';
-    x.fillText(`${pocket} ${pocket === 0 ? 'green' : REDS.has(pocket) ? 'red' : 'black'}`, cx, cy + 9);
+    x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff';
+    x.fillText(`${pocket} ${pocket === 0 ? 'green' : REDS.has(pocket) ? 'red' : 'black'}`, cx, cy + 8);
   }
 }
 
