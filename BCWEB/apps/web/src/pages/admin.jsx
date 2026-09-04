@@ -13149,6 +13149,7 @@ function AdminChanPicker({ guild, value, onChange, types = [0, 5], placeholder }
   return (
     <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">{t('ds.pick.none', '— none —')}</option>
+      {value && !list.some((c) => c.id === value) && <option value={value}>{t('pick.unknown', 'ID {v} (not in the bot’s list)').replace('{v}', value)}</option>}
       {list.map((c) => <option key={c.id} value={c.id}>{c.type === 2 ? '🔊 ' : '# '}{c.name}</option>)}
     </Select>
   );
@@ -13159,6 +13160,7 @@ function AdminRolePicker({ guild, value, onChange, placeholder }) {
   return (
     <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">{t('ds.pick.none', '— none —')}</option>
+      {value && !guild.roles.some((r) => r.id === value) && <option value={value}>{t('pick.unknown', 'ID {v} (not in the bot’s list)').replace('{v}', value)}</option>}
       {guild.roles.map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
     </Select>
   );
@@ -14208,7 +14210,13 @@ function AdminBot() {
           );
         })()}
 
-        <EconomyLedger currency={g('economy.currencyName') || 'points'} />
+        {/* Balances & leaderboard live on the Members page now — one member list, two views —
+            instead of a second roster here that showed the same people with different columns. */}
+        <div className="rounded-xl border border-dashed border-[var(--line)] p-3 flex items-center gap-3 flex-wrap text-sm text-[var(--muted)]">
+          <TrendingUp size={16} className="text-[var(--primary-2)]" />
+          <span className="flex-1">{t('db.eco.ledger.moved', 'Balances, XP and the leaderboard are on the Members page — one list of people, with a Roster view and an Economy view.')}</span>
+          <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
+        </div>
         </>);
       })()}
 
@@ -14413,7 +14421,7 @@ function AdminBot() {
       )}
       </>)}
 
-      {page === 'members' && <AdminBotMembers />}
+      {page === 'members' && <AdminBotMembersPage currency={g('economy.currencyName') || 'points'} />}
 
         </div>
       </div>
@@ -14508,6 +14516,27 @@ function BotModerate({ member }) {
           {last.status === 'failed' && <span className="text-[var(--error)]">{t('bmod.failed', 'refused')} — {last.error}</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+// Members: ONE page for the people the bot knows, in two views — the roster (who is in the
+// servers, linked or not) and the economy (levels, points, leaderboard, give). They used to be
+// two cards on two pages showing the same members with different columns.
+function AdminBotMembersPage({ currency }) {
+  const { t } = useI18n();
+  const [view, setView] = useState('roster');
+  return (
+    <div>
+      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 w-fit mt-6 mb-1">
+        {[['roster', t('bm.view.roster', 'Roster'), Users], ['economy', t('bm.view.economy', 'Levels & economy'), TrendingUp]].map(([id, label, I]) => (
+          <button key={id} type="button" onClick={() => setView(id)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
+            <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label}
+          </button>
+        ))}
+      </div>
+      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4"><EconomyLedger currency={currency} /></div>}
     </div>
   );
 }
@@ -16927,7 +16956,9 @@ function SeoPagesCard() {
   const [rows, setRows] = useState(null);
   const [settings, setSettings] = useState({});
   const [busy, setBusy] = useState(false);
-  const [plat, setPlat] = useState('discord'); // ONE switcher drives every preview in this card
+  const [plats, setPlats] = useState({}); // platform per row ('site' = the whole-site row)
+  const platOf = (k) => plats[k] || 'discord';
+  const setPlatOf = (k) => (v) => setPlats((m) => ({ ...m, [k]: v }));
 
   useEffect(() => {
     api.get('/admin/settings')
@@ -16967,23 +16998,28 @@ function SeoPagesCard() {
         {t('ogp.sub', 'What Discord, X and Slack show when a link is pasted. Every page already has a card built from what it is — a blog post uses its own title and cover — so leave a field empty to keep that. Exact paths only: no wildcards, so nothing is covered that you did not list.')}
       </p>
 
-      {/* ONE preview control for the whole card: pick a platform once, and both the site
-          default and every per-page override render in it. */}
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ogp.previewIn', 'Preview in')}</span>
-        <PlatformSwitcher plat={plat} setPlat={setPlat} />
-      </div>
-
-      {/* The whole-site default (from the seo.* settings), shown in the chosen platform. */}
+      {/* The whole-site default is the FIRST row — same shape as an override, its own
+          platform switcher — so there is one kind of preview on this screen, not two. */}
       {(() => {
         const sTitle = (lang === 'fr' ? settings['seo.titleFr'] : settings['seo.title']) || settings['seo.title'] || 'BetterCommunity';
         const sDesc = (lang === 'fr' ? settings['seo.descriptionFr'] : settings['seo.description']) || settings['seo.description']
           || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
         return (
-          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3 mb-4">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</div>
-            <div className="flex justify-center"><UnfurlPreview plat={plat} title={sTitle} desc={sDesc} img={settings['seo.ogImage'] || ''} host={host} /></div>
-            <p className="text-[10px] text-[var(--faint)] mt-2">{t('ogp.wholesite.note', 'Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
+          <div className="rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/[0.04] p-3 mb-3">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</span>
+              <code className="text-[10px] text-[var(--faint)]">/*</code>
+              <div className="flex-1" />
+              <PlatformSwitcher plat={platOf('site')} setPlat={setPlatOf('site')} />
+            </div>
+            <div className="grid lg:grid-cols-[1fr_auto] gap-3 items-start">
+              <div className="text-[11px] text-[var(--muted)] leading-relaxed">
+                <div><b className="text-[var(--text)]">{sTitle}</b></div>
+                <div className="mt-0.5">{sDesc}</div>
+                <p className="text-[10px] text-[var(--faint)] mt-2">{t('ogp.wholesite.note', 'Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
+              </div>
+              <div className="lg:w-[300px] shrink-0"><UnfurlPreview plat={platOf('site')} title={sTitle} desc={sDesc} img={settings['seo.ogImage'] || ''} host={host} /></div>
+            </div>
           </div>
         );
       })()}
@@ -17007,6 +17043,7 @@ function SeoPagesCard() {
                 <Input className={`!w-44 !text-xs font-mono ${badPath(r.path) ? '!border-error-border' : ''}`}
                   value={r.path || ''} onChange={(e) => set(i, { path: e.target.value })} placeholder="/hosting" />
                 <div className="flex-1" />
+                <PlatformSwitcher plat={platOf(i)} setPlat={setPlatOf(i)} />
                 <button onClick={() => setRows(rows.filter((_, n) => n !== i))}
                   className="p-1 rounded text-error hover:bg-error-bg"><Trash2 size={13} /></button>
               </div>
@@ -17026,7 +17063,7 @@ function SeoPagesCard() {
                   </div>
                 </div>
                 {/* This page's card in the SAME platform the switcher is on — no longer Discord-only. */}
-                <div className="lg:w-[300px] shrink-0"><UnfurlPreview plat={plat} title={pTitle} desc={pDesc} img={r.image || ''} host={`${host}${r.path || ''}`} /></div>
+                <div className="lg:w-[300px] shrink-0"><UnfurlPreview plat={platOf(i)} title={pTitle} desc={pDesc} img={r.image || ''} host={`${host}${r.path || ''}`} /></div>
               </div>
             </div>
           ); })}

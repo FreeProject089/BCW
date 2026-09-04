@@ -52,22 +52,26 @@ function ChannelPicker({ channels, value, onChange, types = [0, 5], placeholder 
   const { t } = useI18n();
   const list = (channels || []).filter((c) => types.includes(c.type));
   if (!list.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('ds.pick.chanph', 'Channel ID')} />;
-  return (
+  return (<>
     <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">{t('ds.pick.none', '— none —')}</option>
+      {value && !list.some((c) => c.id === value) && <option value={value}>{t('pick.unknown', 'ID {v} (not in the bot’s list)').replace('{v}', value)}</option>}
       {list.map((c) => <option key={c.id} value={c.id}>{c.type === 2 ? '🔊 ' : '# '}{c.name}</option>)}
     </Select>
-  );
+    {value && <div className="text-[10px] text-[var(--faint)] mt-1 tabular-nums">{t('pick.current', 'Current id: {v}').replace('{v}', value)}</div>}
+  </>);
 }
 function RolePicker({ roles, value, onChange, placeholder }) {
   const { t } = useI18n();
   if (!roles?.length) return <Input value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('ds.pick.roleph', 'Role ID')} />;
-  return (
+  return (<>
     <Select value={value || ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">{t('ds.pick.none', '— none —')}</option>
+      {value && !roles.some((r) => r.id === value) && <option value={value}>{t('pick.unknown', 'ID {v} (not in the bot’s list)').replace('{v}', value)}</option>}
       {roles.map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
     </Select>
-  );
+    {value && <div className="text-[10px] text-[var(--faint)] mt-1 tabular-nums">{t('pick.current', 'Current id: {v}').replace('{v}', value)}</div>}
+  </>);
 }
 
 // Welcome banner background presets (mirrors the admin editor's palette).
@@ -302,9 +306,9 @@ function GuildConfig({ guildId, onSaved }) {
 
       {/* Section nav — pick one area instead of scrolling the whole config. */}
       <div className="relative mb-4">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[var(--bg-solid)] to-transparent z-10 rounded-l-xl" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[var(--bg-solid)] to-transparent z-10 rounded-r-xl" />
-      <div className="flex gap-1 overflow-x-auto no-scrollbar p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 snap-x snap-mandatory">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[var(--bg-solid)] to-transparent z-10 rounded-l-xl md:hidden" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[var(--bg-solid)] to-transparent z-10 rounded-r-xl md:hidden" />
+      <div className="flex gap-1 overflow-x-auto md:overflow-visible md:flex-wrap no-scrollbar p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 snap-x snap-mandatory md:snap-none">
         {SECTIONS.map((s) => (
           <button key={s.id} type="button" onClick={(e) => { setSection(s.id); e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }}
             className={`shrink-0 snap-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${section === s.id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
