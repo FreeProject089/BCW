@@ -13190,7 +13190,7 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
           <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
             {collapsible && <ChevronDown size={14} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />}
             {title}
-            {onToggle && <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full ${off ? 'bg-[var(--surface-2)] text-[var(--faint)]' : 'bg-success-bg text-success'}`}>{off ? t('db.mod.off', 'Off') : t('db.mod.on', 'On')}</span>}
+            {onToggle && <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${off ? 'bg-[var(--surface-2)] text-[var(--faint)]' : 'bg-success-bg text-success'}`}>{off ? t('db.mod.off', 'Off') : t('db.mod.on', 'On')}</span>}
           </div>
           {desc && <div className="text-[11px] text-[var(--faint)] mt-0.5 leading-snug">{desc}</div>}
         </button>
@@ -14256,15 +14256,20 @@ function AdminBot() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4 items-start">
+          {/* Same rule as the announcements grid: an ON card spans the full row so its fields
+              get the width and toggling never leaves a jagged gap or reflows a sibling. */}
           {/* Moderation */}
+          <div className={scopeObj.moderation?.enabled ? 'md:col-span-2' : ''}>
           <ModuleCard id="sec-moderation" icon={Shield} title={t('db.mod.moderation', 'Moderation')} desc={t('db.mod.moderation.d', 'Auto-kick + purge in no-post channels; anti-selfbot timeout.')} enabled={!!scopeObj.moderation?.enabled} onToggle={(v) => sset('moderation.enabled', v)}>
             <label className="flex items-center justify-between gap-2 text-sm"><span>{t('db.f.antiselfbot', 'Anti-selfbot filter')} <span className="text-[var(--faint)]">{t('db.f.antiselfbot.sub', '(mass-mention timeout)')}</span></span><BotSwitch checked={!!scopeObj.moderation?.antiSelfbot} onChange={(v) => sset('moderation.antiSelfbot', v)} /></label>
             <Field label={t('db.f.nopost', 'No-post channels')} hint={t('db.f.nopost.h', 'Posting here kicks the user + purges their messages. A channel id is unique to its server.')}>
               <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder={t('db.f.chanph', 'Channel ID — press Enter')} />
             </Field>
           </ModuleCard>
+          </div>
 
           {/* Join-to-create */}
+          <div className={scopeObj.joinToCreate?.enabled ? 'md:col-span-2' : ''}>
           <ModuleCard id="sec-jtc" icon={Mic} title={t('db.mod.jtc', 'Join-to-create voice')} desc={t('db.mod.jtc.d', 'Joining a lobby spawns a personal temp voice room.')} enabled={!!scopeObj.joinToCreate?.enabled} onToggle={(v) => sset('joinToCreate.enabled', v)}
             action={<Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> {t('db.jtc.addlobby', 'Lobby')}</Button>}>
             {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.jtc.nolobbies', 'No lobbies — add one. Joining that voice channel spawns a temp room in its category.')}</div>}
@@ -14280,6 +14285,7 @@ function AdminBot() {
               </div>
             ))}
           </ModuleCard>
+          </div>
 
           {/* Welcome / bye */}
           <div className="md:col-span-2">
@@ -14344,10 +14350,12 @@ function AdminBot() {
           </div>
 
           {/* Gated access */}
+          <div className={scopeObj.gating?.enabled ? 'md:col-span-2' : ''}>
           <ModuleCard id="sec-gating" icon={KeyRound} title={t('db.mod.gating', 'Gated access')} desc={t('db.mod.gating.d', 'Grant roles automatically to members who link their account.')} enabled={!!scopeObj.gating?.enabled} onToggle={(v) => sset('gating.enabled', v)}>
             <p className="text-xs text-[var(--muted)]">{t('db.gating.desc', 'Each rule grants ONE Discord role to members who meet its requirements. Re-checked every ~5 min (granting AND removing); members can run /refreshroles to sync instantly after linking on the site.')}</p>
             <GatingRules rules={Array.isArray(scopeObj.gating?.rules) ? scopeObj.gating.rules : []} onChange={(rules) => sset('gating.rules', rules)} guild={scopeGuild} />
           </ModuleCard>
+          </div>
         </div>
       )}
       </>)}
