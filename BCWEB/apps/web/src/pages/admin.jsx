@@ -14033,19 +14033,21 @@ function AdminBot() {
 
       {page === 'community' && (<>
       <SectionTitle icon={ShieldCheck} title={t('db.sec.community', 'Rules, role panels & member DMs')} sub={t('db.sec.community.sub', 'Aimed at people rather than at a channel.')} />
+      {/* The panel editor is a tall form (a whole panel per entry, with a live preview) and the
+          DM composer is short: side by side, one column ran three screens past the other. So
+          the editor takes the full row and the composer sits under it — the same "tall card
+          spans the row" rule as the announcements grid, not a two-column grid that breaks. */}
       <div className="grid md:grid-cols-2 gap-4 items-start">
-
-        {/* No enable toggle of its own: an empty panel list already means "off", and a
-            second switch on top of that is a way to have panels configured, saved, and
-            silently not live. */}
-        {/* `enabled` is deliberately NOT the panel count. ModuleCard hides its children when
-            enabled === false, so a card reporting "0 panels" would refuse to show the form
-            for adding the first one — the state it is most needed in. It has no switch
-            either: an empty list already means off, and a second switch on top of that is a
-            way to have panels configured, saved, and silently not live. */}
+        <div className="md:col-span-2">
+        {/* No enable toggle of its own: an empty panel list already means "off", and a second
+            switch on top of that is a way to have panels configured, saved, and silently not
+            live. `enabled` is deliberately NOT the panel count either — ModuleCard hides its
+            children when enabled === false, and a card reporting "0 panels" would refuse to
+            show the form for adding the first one. */}
         <ModuleCard id="sec-rp" icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
           <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
         </ModuleCard>
+        </div>
 
         <ModuleCard id="sec-dma" icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
           <DmBroadcast />
@@ -14221,6 +14223,7 @@ function AdminBot() {
           </div>
         </ModuleCard>
 
+        <div className="md:col-span-2">
         <ModuleCard id="sec-retention" icon={LinkIcon} title={t('db.mod.retention', 'Linked-account retention')}>
           <p className="text-[11px] text-[var(--muted)] mb-3">{t('db.ret.sub', 'What the storage sweeper is allowed to do to members who linked a BCWEB account when a limit is reached.')}</p>
           <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer mb-2">
@@ -14245,6 +14248,7 @@ function AdminBot() {
             </Field>
           </div>
         </ModuleCard>
+        </div>
       </div>
 
       </>)}
