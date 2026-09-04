@@ -24,6 +24,7 @@ import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
 import { MarkdownEditor } from './blog.jsx';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
+import { BOT_DASHBOARD_REF } from '../lib/bot-dashboard-ref.js';
 
 // Icons an admin can pick for a custom section (name → component), so a saved string maps
 // back to a glyph. Kept small and relevant to documentation.
@@ -551,6 +552,42 @@ const GUIDE_MORE = {
   },
 };
 
+// The Discord bot dashboard, page by page, module by module, control by control — the same
+// idea as the hosting reference: the screens keep their controls terse, THIS is the manual.
+function BotDashboardReference({ only }) {
+  const { t, lang } = useI18n();
+  const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+  const pages = only ? BOT_DASHBOARD_REF.filter((p) => only.includes(p.id)) : BOT_DASHBOARD_REF;
+  return (
+    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+      <div className="text-[13px] font-bold mb-1">{t('ag.bot.ref', 'Every page of the bot dashboard, in full')}</div>
+      <p className="text-[12px] text-[var(--muted)] mb-4">{t('ag.bot.refsub', 'Page by page, module by module: what each control does and what it does not.')}</p>
+      <div className="space-y-5">
+        {pages.map((pg) => (
+          <div key={pg.id}>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#5865F2] mb-2">{L(pg.page)}</div>
+            <div className="space-y-2">
+              {pg.modules.map((m) => (
+                <div key={m.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
+                  <div className="text-[13px] font-semibold text-[var(--text)]">{L(m.name)}</div>
+                  <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">{L(m.what)}</p>
+                  {m.controls.length > 0 && (
+                    <ul className="mt-2 space-y-1.5">
+                      {m.controls.map((ctl, i) => (
+                        <li key={i} className="text-[12px] leading-relaxed"><b className="text-[var(--text)]">{L(ctl.label)}</b> <span className="text-[var(--muted)]">— {L(ctl.what)}</span></li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // The complete hosting-settings reference — every group, every control, spelled out in full
 // from the SAME catalog the live screen renders (lib/hosting-settings.js), so it is complete
 // by construction and can't fall behind the controls. A "Learn more →" carries the setting key
@@ -767,6 +804,8 @@ export default function AdminGuide() {
                   {/* The hosting screen keeps its cards terse and links here; THIS is where every
                       setting is spelled out in full — one entry per control, nothing clamped. */}
                   {activeItem.id === 'hostingsettings' && <HostingSettingsReference highlight={kParam} />}
+                  {activeItem.id === 'bot' && <BotDashboardReference />}
+                  {activeItem.id === 'economy' && <BotDashboardReference only={['economy', 'members']} />}
                 </>
               )}
               {activeItem.kind === 'custom' && (
