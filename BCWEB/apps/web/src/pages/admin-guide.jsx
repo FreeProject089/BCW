@@ -9,13 +9,13 @@
 // lives and changes as one block, and turning ~200 sentences into ~200 dictionary entries
 // somewhere else would make it harder to keep true, not easier. Rendered by the active lang,
 // the same pattern the site-theme token catalogue uses.
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
-  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown,
+  Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info,
 } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -260,6 +260,8 @@ export default function AdminGuide() {
   const [active, setActive] = useState(null);  // the entry shown in the reading pane (docs layout)
   const [sp] = useSearchParams();
   const deep = sp.get('g'); // a "Learn more →" link deep-links to one entry by id
+  const kParam = sp.get('k'); // …and may name the exact setting it came from, to highlight it
+  const paneRef = useRef(null);
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
   // Only ADMIN/SUPERADMIN reach this screen, but the Edit affordance is theirs specifically.
   const canEdit = !!user && (user.role === 'ADMIN' || user.role === 'SUPERADMIN');
@@ -274,6 +276,13 @@ export default function AdminGuide() {
   // and scroll it into view (the timeout lets the accordion paint first). Highlighted below.
   // A "Learn more →" deep link (?g=<id>) selects that entry in the reading pane.
   useEffect(() => { if (deep) setActive(deep); }, [deep]);
+  // On a deep link, bring the reading pane into view (the index can be tall on desktop, and on
+  // phones the page sits below the chip rail). Timeout lets the pane paint first.
+  useEffect(() => {
+    if (!deep && !kParam) return;
+    const id = setTimeout(() => paneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+    return () => clearTimeout(id);
+  }, [deep, kParam]);
 
   // Custom sections join the built-in guide as one more group at the end, so a search and the
   // expand-all control cover them too. Each carries Markdown bodies rendered by <Markdown>.
@@ -350,7 +359,7 @@ export default function AdminGuide() {
         </div>
 
         {/* The reading pane — one entry, fully open, like a docs page. */}
-        <div className="min-w-0">
+        <div className="min-w-0" ref={paneRef}>
           {!activeItem ? (
             <Card className="p-6 text-sm text-[var(--muted)]">{t('ag.none', 'Nothing matches that.')}</Card>
           ) : (
@@ -364,6 +373,15 @@ export default function AdminGuide() {
                   </h3>
                 </div>
               </div>
+              {/* Arrived from a specific "Learn more →" on a settings card: name the exact
+                  control the admin came from, so the guide answers the question they clicked
+                  with, not just the section it lives in. */}
+              {kParam && activeItem.id === deep && (
+                <div className="mb-3 rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/5 px-3 py-2 flex items-center gap-2 animate-[pulse_1.2s_ease-in-out_2]">
+                  <Info size={14} className="text-[var(--primary-2)] shrink-0" />
+                  <span className="text-[13px] text-[var(--muted)]">{t('ag.jumpfrom', 'You opened this from the')} <b className="text-[var(--text)]">{kParam}</b> {t('ag.jumpfrom2', 'setting.')}</span>
+                </div>
+              )}
               {activeItem.kind === 'builtin' && (
                 <>
                   <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{L(activeItem.body)}</p>

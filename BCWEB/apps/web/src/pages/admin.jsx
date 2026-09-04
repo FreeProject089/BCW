@@ -16741,7 +16741,7 @@ const OGP_PLATFORMS = [
   ['google', 'Google', '#4285F4'],
 ];
 
-function OgPreviewCard() {
+function OgPreviewCard({ embedded = false }) {
   const { t, lang } = useI18n();
   const { data } = useAsync(() => api.get('/admin/settings').catch(() => ({ settings: {} })), []);
   const [plat, setPlat] = useState('discord');
@@ -16759,9 +16759,10 @@ function OgPreviewCard() {
     ? <img src={img} alt="" className={`w-full object-cover ${className}`} style={{ aspectRatio: '1200 / 630', ...style }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
     : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))', ...style }}>{t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set “Link preview image URL” below (1200×630).')}</div>);
 
+  const Wrap = embedded ? 'div' : Card;
   return (
-    <Card className="p-4 mt-3 mb-4">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('ogp.prev.title', 'Link preview')}</div>
+    <Wrap className={embedded ? '' : 'p-4 mt-3 mb-4'}>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {embedded ? t('ogp.prev.wholesite', 'Whole site (default card)') : t('ogp.prev.title', 'Link preview')}</div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('ogp.prev.sub2', 'The same tags, rendered the way each platform actually shows them. Set the title, description and image in Search & discoverability below, then Save to refresh.')}</p>
 
       {/* Platform switcher — each chip in its brand colour when active. */}
@@ -16824,9 +16825,15 @@ function OgPreviewCard() {
         )}
       </div>
       <p className="text-[11px] text-[var(--faint)] mt-3">{t('ogp.prev.note', 'Google ignores the preview image for most results and shows the title + snippet; the other three lead with the image, so 1200×630 matters most there.')}</p>
-    </Card>
+    </Wrap>
   );
 }
+
+// Common pages, so an admin adds an override by picking WHAT rather than typing a path.
+const OGP_PAGE_TYPES = [
+  ['/', 'Home'], ['/hosting', 'Hosting'], ['/catalog', 'Catalog'], ['/blog', 'Blog'],
+  ['/docs', 'Docs'], ['/projects', 'Projects'], ['/faq', 'FAQ'], ['/about', 'About'],
+];
 
 function SeoPagesCard() {
   const { t } = useI18n();
@@ -16871,13 +16878,26 @@ function SeoPagesCard() {
       <p className="text-[11px] text-[var(--faint)] mb-3">
         {t('ogp.sub', 'What Discord, X and Slack show when a link is pasted. Every page already has a card built from what it is — a blog post uses its own title and cover — so leave a field empty to keep that. Exact paths only: no wildcards, so nothing is covered that you did not list.')}
       </p>
+      {/* The whole-site default card lives here now, above the per-page overrides — the general
+          case first, the exceptions under it, in one place. */}
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3 mb-4">
+        <OgPreviewCard embedded />
+      </div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('ogp.overrides', 'Per-page overrides')}</div>
       {rows.length === 0
         ? <div className="text-xs text-[var(--faint)]">{t('ogp.none', 'No overrides — every page uses its built-in card.')}</div>
         : <div className="space-y-3">
-          {rows.map((r, i) => (
+          {rows.map((r, i) => {
+            const known = OGP_PAGE_TYPES.find(([p]) => p === r.path);
+            return (
             <div key={i} className="rounded-lg border border-[var(--line)] p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Input className={`!w-56 !text-xs font-mono ${badPath(r.path) ? '!border-error-border' : ''}`}
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                {/* Pick a common page by name, or choose "Custom path" to type one. */}
+                <Select className="!w-auto !text-xs" value={known ? r.path : '__custom'} onChange={(e) => set(i, { path: e.target.value === '__custom' ? '' : e.target.value })}>
+                  {OGP_PAGE_TYPES.map(([p, label]) => <option key={p} value={p}>{label}</option>)}
+                  <option value="__custom">{t('ogp.custompath', 'Custom path…')}</option>
+                </Select>
+                <Input className={`!w-44 !text-xs font-mono ${badPath(r.path) ? '!border-error-border' : ''}`}
                   value={r.path || ''} onChange={(e) => set(i, { path: e.target.value })} placeholder="/hosting" />
                 <div className="flex-1" />
                 <button onClick={() => setRows(rows.filter((_, n) => n !== i))}
@@ -16910,7 +16930,7 @@ function SeoPagesCard() {
                 </div>
               )}
             </div>
-          ))}
+          ); })}
         </div>}
     </Card>
   );
@@ -20266,7 +20286,7 @@ function AdminSettings() {
                   {/* The gist stays on the control; the full explanation lives in the Admin guide,
                       so a setting reads as a control, not a manual (clamp + a "learn more" link). */}
                   <div className="text-[11px] text-[var(--faint)] mt-1.5 line-clamp-2">{D}</div>
-                  <Link to="?s=guide&g=hostingsettings" className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
+                  <Link to={`?s=guide&g=hostingsettings&k=${encodeURIComponent(k)}`} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
                   {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
@@ -20275,10 +20295,9 @@ function AdminSettings() {
           </div>
         ))}
       </div>
-      {/* A live preview of how the whole site unfurls, from the seo.* values above. */}
-      <OgPreviewCard />
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
-          value, so it cannot be a key/label/type entry like the rest. */}
+          value, so it cannot be a key/label/type entry like the rest. The whole-site
+          default preview now lives at the top of this same card. */}
       <SeoPagesCard />
       <SeedGeneratorCard />
     </div>
