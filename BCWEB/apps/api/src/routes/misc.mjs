@@ -3064,6 +3064,23 @@ export default async function miscRoutes(app) {
     // writes on top of the built-in guide. A LIST built by hand, so it is validated: bounded
     // counts and lengths keep a runaway paste from bloating the settings blob, and every field
     // is a plain string the guide renders through the same Markdown component as the blog.
+    // Overrides on the BUILT-IN guide entries: a retitled entry, a rewritten body, an extra
+    // B.MD section under it, or an entry hidden. Keyed by the entry id; every field optional,
+    // so an admin who only adds a paragraph does not have to restate the rest. Bounded like
+    // guide.custom — the guide is read by every admin and rendered through Markdown.
+    if (req.params.key === 'guide.overrides') {
+      const loc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
+      const ovSchema = z.record(z.string().regex(/^[a-z0-9-]{1,60}$/), z.object({
+        title: loc.optional(), body: loc.optional(), extra: loc.optional(), hidden: z.boolean().optional(),
+      })).refine((o) => Object.keys(o).length <= 200, 'too many');
+      const parsed = ovSchema.safeParse(value && typeof value === 'object' ? value : {});
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid_input', details: parsed.error.flatten() });
+      // Drop empty overrides so the blob only carries what an admin actually changed.
+      const clean = Object.fromEntries(Object.entries(parsed.data).filter(([, o]) => o.hidden || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim())));
+      await p.adminSetting.upsert({ where: { key: 'guide.overrides' }, create: { key: 'guide.overrides', value: clean }, update: { value: clean } });
+      await logAudit(p, req.user.uid, 'guide.overrides', `entries=${Object.keys(clean).length}`);
+      return { ok: true };
+    }
     if (req.params.key === 'guide.custom') {
       const loc = z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') });
       const secSchema = z.array(z.object({

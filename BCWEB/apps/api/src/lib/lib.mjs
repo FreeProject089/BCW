@@ -410,6 +410,31 @@ export function isScopedRole(r) {
   const s = r?.scope;
   return !!(s && typeof s === 'object' && ((s.projectKeys || []).length || (s.showcaseIds || []).length || s.allShowcase));
 }
+/** The rights a scoped role carries on its elements. Absent = `pages`, what a scope always meant. */
+export function scopeRights(r) {
+  const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => x === 'pages' || x === 'blog') : [];
+  return rights.length ? rights : ['pages'];
+}
+// The blog side of scoped roles: which blogs a user may post in because a role says so —
+// the same shape projectGrants() has for pages, kept apart because the two rights are
+// granted separately ("writes the BSM blog" is not "edits the BSM page").
+export async function blogRoleGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (!u?.customRoleIds?.length) return out;
+    const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+    for (const r of roles) {
+      if (!isScopedRole(r) || !scopeRights(r).includes('blog')) continue;
+      if (r.scope.allShowcase) out.allShowcase = true;
+      for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+      for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
 // Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
 // MOD → its defaults + explicit grants; anyone else → only explicit grants.
 export function hasCap(user, cap) {
@@ -445,7 +470,8 @@ export async function projectGrants(uid) {
     if (u?.customRoleIds?.length) {
       const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
       for (const r of roles) {
-        if (!isScopedRole(r)) continue;
+        // Only the roles whose rights include the PAGE. A blog-only scope grants nothing here.
+        if (!isScopedRole(r) || !scopeRights(r).includes('pages')) continue;
         if (r.scope.allShowcase) out.allShowcase = true;
         for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
         for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);

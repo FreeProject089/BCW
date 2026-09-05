@@ -36,13 +36,17 @@ export default async function roleRoutes(app) {
       projectKeys: z.array(z.string().regex(KEY_SHAPE)).max(50).default([]),
       showcaseSlugs: z.array(z.string().max(80)).max(200).default([]),
       allShowcase: z.boolean().default(false),
+      // WHAT the role may do on those elements: edit the page's content, write in its blog,
+      // or both. A scope stored before this field existed means `pages` — what it always did.
+      rights: z.array(z.enum(['pages', 'blog'])).max(2).default(['pages']),
     }).nullable().optional(),
   });
   // Slugs → ids (a slug is what the picker shows; an id is what survives a rename).
   const resolveScope = async (p, scope) => {
     if (!scope) return null;
     const rows = scope.showcaseSlugs.length ? await p.showcaseProject.findMany({ where: { slug: { in: scope.showcaseSlugs } }, select: { id: true } }) : [];
-    const out = { projectKeys: [...new Set(scope.projectKeys)], showcaseIds: rows.map((r) => r.id), allShowcase: !!scope.allShowcase };
+    const rights = [...new Set(scope.rights || [])];
+    const out = { projectKeys: [...new Set(scope.projectKeys)], showcaseIds: rows.map((r) => r.id), allShowcase: !!scope.allShowcase, rights: rights.length ? rights : ['pages'] };
     return out.projectKeys.length || out.showcaseIds.length || out.allShowcase ? out : null;
   };
   // For the list: the scope back as slugs + names, so the editor and the badge read it.

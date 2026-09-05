@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, slugify, pruneRevisions, blogRoleGrants } from '../lib/lib.mjs';
 import { emailEnabled } from '../lib/mail.mjs';
 import { sendNewsletter } from './newsletter.mjs';
 import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
@@ -159,9 +159,13 @@ async function canPostTo(p, user, { projectKey, showcaseSlug }) {
   const grants = await p.blogPermission.findMany({ where: { userId: user.uid } });
   if (grants.some((g) => !g.projectKey && !g.showcaseProjectId)) return true;
   if (projectKey && grants.some((g) => g.projectKey === projectKey)) return true;
+  // A scoped custom role with the `blog` right on this element — the reusable form of the
+  // per-user grant above ("blog editor of BSM and of these two other projects" as one badge).
+  const rg = await blogRoleGrants(user.uid);
+  if (projectKey && rg.projectKeys.has(projectKey)) return true;
   if (showcaseSlug) {
     const sp = await p.showcaseProject.findUnique({ where: { slug: showcaseSlug } });
-    if (sp && grants.some((g) => g.showcaseProjectId === sp.id)) return true;
+    if (sp && (grants.some((g) => g.showcaseProjectId === sp.id) || rg.allShowcase || rg.showcaseIds.has(sp.id))) return true;
   }
   return false;
 }
@@ -283,7 +287,13 @@ export default async function blogRoutes(app) {
     if (grants.some((g) => !g.projectKey && !g.showcaseProjectId)) return { projects, showcases, global: true };
     const projectKeys = new Set(grants.filter((g) => g.projectKey).map((g) => g.projectKey));
     const showcaseIds = new Set(grants.filter((g) => g.showcaseProjectId).map((g) => g.showcaseProjectId));
-    const showcasesById = await p.showcaseProject.findMany({ where: { id: { in: [...showcaseIds] } }, select: { id: true, slug: true, name: true } });
+    // Plus what a scoped role with the blog right adds.
+    const rg = await blogRoleGrants(req.user.uid);
+    for (const k of rg.projectKeys) projectKeys.add(k);
+    for (const id of rg.showcaseIds) showcaseIds.add(id);
+    const showcasesById = rg.allShowcase
+      ? showcases.map((sc) => ({ slug: sc.slug, name: sc.name }))
+      : await p.showcaseProject.findMany({ where: { id: { in: [...showcaseIds] } }, select: { id: true, slug: true, name: true } });
     return {
       projects: projects.filter((pr) => projectKeys.has(pr.key)),
       showcases: showcasesById.map((s) => ({ slug: s.slug, name: s.name })),

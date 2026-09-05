@@ -12,6 +12,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  RotateCcw,
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
@@ -668,6 +669,7 @@ export default function AdminGuide() {
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(false);
   const [custom, setCustom] = useState(null); // admin-authored Markdown sections
+  const [overrides, setOverrides] = useState({}); // edits on the built-in entries (guide.overrides)
   const [active, setActive] = useState(null);  // the entry shown in the reading pane (docs layout)
   const [sp] = useSearchParams();
   const deep = sp.get('g'); // a "Learn more →" link deep-links to one entry by id
@@ -679,7 +681,11 @@ export default function AdminGuide() {
 
   useEffect(() => {
     api.get('/admin/settings')
-      .then((d) => setCustom(Array.isArray(d?.settings?.['guide.custom']) ? d.settings['guide.custom'] : []))
+      .then((d) => {
+        setCustom(Array.isArray(d?.settings?.['guide.custom']) ? d.settings['guide.custom'] : []);
+        const ov = d?.settings?.['guide.overrides'];
+        setOverrides(ov && typeof ov === 'object' && !Array.isArray(ov) ? ov : {});
+      })
       .catch(() => setCustom([]));
   }, []);
 
@@ -698,7 +704,21 @@ export default function AdminGuide() {
   // Custom sections join the built-in guide as one more group at the end, so a search and the
   // expand-all control cover them too. Each carries Markdown bodies rendered by <Markdown>.
   const merged = useMemo(() => {
-    const base = GUIDE.map((g) => ({ ...g, items: g.items.map((it) => ({ ...it, kind: 'builtin' })) }));
+    // A built-in entry with an override: the admin's title / body replace the built-in ones
+    // per language (an empty language keeps the original), `extra` is a B.MD section rendered
+    // under it, `hidden` drops the entry from the index. The built-in text is never lost —
+    // "Reset" in the editor is one click.
+    const mergeLoc = (base, over) => ({ en: (over?.en || '').trim() || base?.en || '', fr: (over?.fr || '').trim() || base?.fr || '' });
+    const base = GUIDE.map((g) => ({
+      ...g,
+      items: g.items
+        .filter((it) => !overrides[it.id]?.hidden)
+        .map((it) => {
+          const o = overrides[it.id];
+          if (!o) return { ...it, kind: 'builtin' };
+          return { ...it, kind: 'builtin', title: mergeLoc(it.title, o.title), body: mergeLoc(it.body, o.body), bodyIsMd: !!((o.body?.en || '').trim() || (o.body?.fr || '').trim()), extra: o.extra || null, edited: true };
+        }),
+    })).filter((g) => g.items.length);
     if (custom && custom.length) {
       base.push({
         heading: { en: 'Added by your team', fr: 'Ajouté par ton équipe' },
@@ -706,7 +726,7 @@ export default function AdminGuide() {
       });
     }
     return base;
-  }, [custom]);
+  }, [custom, overrides]);
 
   const query = q.trim().toLowerCase();
   const groups = useMemo(() => {
@@ -715,7 +735,7 @@ export default function AdminGuide() {
       ...g,
       items: g.items.filter((it) => {
         const pts = it.kind === 'custom' ? '' : it.points.map((p) => p.en + ' ' + p.fr).join(' ');
-        const bodies = it.kind === 'custom' ? `${it.body?.en || ''} ${it.body?.fr || ''}` : `${it.body.en} ${it.body.fr}`;
+        const bodies = it.kind === 'custom' ? `${it.body?.en || ''} ${it.body?.fr || ''}` : `${it.body.en} ${it.body.fr} ${it.extra?.en || ''} ${it.extra?.fr || ''}`;
         const hay = `${it.title.en} ${it.title.fr} ${bodies} ${pts}`.toLowerCase();
         return hay.includes(query);
       }),
@@ -726,7 +746,7 @@ export default function AdminGuide() {
   const flat = useMemo(() => groups.flatMap((g) => g.items.map((it) => ({ ...it, _heading: g.heading }))), [groups]);
   const activeItem = flat.find((it) => it.id === active) || flat[0] || null;
 
-  if (editing) return <GuideEditor initial={custom || []} onClose={() => setEditing(false)} onSaved={(v) => { setCustom(v); setEditing(false); }} />;
+  if (editing) return <GuideEditor initial={custom || []} overrides={overrides} onClose={() => setEditing(false)} onSaved={(v, ov) => { setCustom(v); setOverrides(ov); setEditing(false); }} />;
 
   return (
     <div>
@@ -795,7 +815,9 @@ export default function AdminGuide() {
               )}
               {activeItem.kind === 'builtin' && (
                 <>
-                  <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{L(activeItem.body)}</p>
+                  {activeItem.bodyIsMd
+                    ? <div className="text-sm text-[var(--muted)] leading-relaxed mb-3 break-words"><Markdown>{L(activeItem.body) || '*—*'}</Markdown></div>
+                    : <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{L(activeItem.body)}</p>}
                   {activeItem.points.length > 0 && (
                     <ul className="space-y-2">
                       {activeItem.points.map((p, i) => (
@@ -836,6 +858,14 @@ export default function AdminGuide() {
                   {activeItem.id === 'bot' && <BotDashboardReference />}
                   {activeItem.id === 'economy' && <BotDashboardReference only={['economy', 'members']} />}
                   {ADMIN_SCREENS_REF[activeItem.id] && <ScreenReference sections={ADMIN_SCREENS_REF[activeItem.id]} />}
+                  {/* What the team added under the built-in text — B.MD, so a callout, a
+                      checklist or a table of the house rules reads like the rest of the site. */}
+                  {activeItem.extra && (L(activeItem.extra) || '').trim() && (
+                    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2">{t('ag.extra', 'Added by your team')}</div>
+                      <div className="text-sm text-[var(--muted)] leading-relaxed break-words"><Markdown>{L(activeItem.extra)}</Markdown></div>
+                    </div>
+                  )}
                 </>
               )}
               {activeItem.kind === 'custom' && (
@@ -854,12 +884,29 @@ export default function AdminGuide() {
 // The editor for custom Markdown sections. Kept in this file (next to what it edits) and only
 // reachable by an ADMIN. Bilingual title + body per section, reorderable, saved as one blob to
 // AdminSetting 'guide.custom' — the same list the guide reads and the API validates.
-function GuideEditor({ initial, onClose, onSaved }) {
-  const { t } = useI18n();
+function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved }) {
+  const { t, lang } = useI18n();
   const toast = useToast();
   const [rows, setRows] = useState(() => initial.map((r) => ({ ...r })));
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en');
+  // Which half is being edited: the built-in entries (retitle, rewrite, add a B.MD section,
+  // hide) or the team's own sections. Both save together.
+  const [part, setPart] = useState('builtin');
+  const [ov, setOv] = useState(() => ({ ...(initialOverrides || {}) }));
+  const [sel, setSel] = useState(() => GUIDE[0]?.items?.[0]?.id || null);
+  const [bq, setBq] = useState('');
+  const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+  const entries = useMemo(() => GUIDE.flatMap((g) => g.items.map((it) => ({ ...it, heading: g.heading }))), []);
+  const bqn = bq.trim().toLowerCase();
+  const shown = entries.filter((it) => !bqn || `${it.title.en} ${it.title.fr}`.toLowerCase().includes(bqn));
+  const cur = entries.find((it) => it.id === sel) || null;
+  const curOv = (sel && ov[sel]) || {};
+  const setOvField = (field, patch) => setOv((o) => ({ ...o, [sel]: { ...(o[sel] || {}), [field]: { ...((o[sel] || {})[field] || {}), ...patch } } }));
+  const setOvFlag = (k, v) => setOv((o) => ({ ...o, [sel]: { ...(o[sel] || {}), [k]: v } }));
+  const resetOv = () => setOv((o) => { const n = { ...o }; delete n[sel]; return n; });
+  const isEdited = (id) => { const o = ov[id]; return !!(o && (o.hidden || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim()))); };
+  const editedCount = entries.filter((it) => isEdited(it.id)).length;
 
   const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
   const setLoc = (i, field, locpatch) => set(i, { [field]: { ...(rows[i][field] || {}), ...locpatch } });
@@ -871,11 +918,21 @@ function GuideEditor({ initial, onClose, onSaved }) {
     const clean = rows
       .map((r) => ({ id: String(r.id || `sec-${Math.random().toString(36).slice(2)}`).slice(0, 60), icon: r.icon || 'FileText', heading: r.heading || { en: '', fr: '' }, title: r.title || { en: '', fr: '' }, body: r.body || { en: '', fr: '' } }))
       .filter((r) => (r.title.en || r.title.fr || '').trim());
+    // Overrides carry only what changed — an untouched entry has no row at all.
+    const cleanOv = Object.fromEntries(Object.entries(ov).filter(([id]) => isEdited(id)).map(([id, o]) => [id, {
+      ...(o.title ? { title: { en: o.title.en || '', fr: o.title.fr || '' } } : {}),
+      ...(o.body ? { body: { en: o.body.en || '', fr: o.body.fr || '' } } : {}),
+      ...(o.extra ? { extra: { en: o.extra.en || '', fr: o.extra.fr || '' } } : {}),
+      ...(o.hidden ? { hidden: true } : {}),
+    }]));
     setBusy(true);
     try {
-      await api.put('/admin/settings/guide.custom', { value: clean });
+      await Promise.all([
+        api.put('/admin/settings/guide.custom', { value: clean }),
+        api.put('/admin/settings/guide.overrides', { value: cleanOv }),
+      ]);
       toast.success(t('ag.saved', 'Guide saved.'));
-      onSaved(clean);
+      onSaved(clean, cleanOv);
     } catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -892,8 +949,59 @@ function GuideEditor({ initial, onClose, onSaved }) {
         <Button size="sm" variant="ghost" onClick={onClose}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
         <Button size="sm" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('ag.edit.sub', 'Extra sections written in Markdown, on top of the built-in guide. They show under “Added by your team”. Both languages — an empty FR falls back to EN.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
+      <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
+        {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
+          <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)]">{n}</span> : null}</button>
+        ))}
+      </div>
 
+      {part === 'builtin' && (
+        <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5 lg:items-start">
+          <div className="mb-4 lg:mb-0">
+            <div className="relative mb-2"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 !text-sm" value={bq} onChange={(e) => setBq(e.target.value)} placeholder={t('ag.edit.find', 'Find an entry…')} /></div>
+            <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:max-h-[62vh] lg:overflow-y-auto no-scrollbar">
+              {shown.map((it) => { const Icon = it.icon; const on = sel === it.id; const ed = isEdited(it.id); const hid = !!ov[it.id]?.hidden; return (
+                <button key={it.id} type="button" onClick={() => setSel(it.id)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
+                  <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
+                  <span className="flex-1 min-w-0 truncate">{L(it.title)}</span>
+                  {ed && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" title={t('ag.edit.edited', 'edited')} />}
+                </button>
+              ); })}
+            </nav>
+          </div>
+          {cur ? (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{L(cur.heading)}</span>
+                <span className="text-sm font-semibold">{L(cur.title)}</span>
+                <span className="text-[11px] text-[var(--faint)]">· {cur.id}</span>
+                <div className="ms-auto flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!curOv.hidden} onChange={(e) => setOvFlag('hidden', e.target.checked)} /> {t('ag.edit.hide', 'Hide this entry')}</label>
+                  {isEdited(cur.id) && <Button size="sm" variant="ghost" onClick={resetOv}><RotateCcw size={13} /> {t('ag.edit.reset', 'Back to built-in')}</Button>}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.title.l', 'Title')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <Input value={(curOv.title || {})[tab] || ''} onChange={(e) => setOvField('title', { [tab]: e.target.value })} placeholder={cur.title[tab] || cur.title.en} />
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.body.l', 'Body — replaces the built-in paragraph (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <MarkdownEditor value={(curOv.body || {})[tab] || ''} onChange={(v) => setOvField('body', { [tab]: v })} minHeight={110} placeholder={cur.body[tab] || cur.body.en} />
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.extra.l', 'Your section under it — house rules, who to ask, a checklist (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <MarkdownEditor value={(curOv.extra || {})[tab] || ''} onChange={(v) => setOvField('extra', { [tab]: v })} minHeight={160} placeholder={tab === 'fr' ? ':::tip[Chez nous]\nCe que ton équipe doit savoir sur cet écran…\n:::' : ':::tip[Here]\nWhat your team should know about this screen…\n:::'} />
+                </div>
+                <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.builtin.h', 'An empty field keeps the built-in text for that language. The built-in bullet points, step-by-step and traps stay under your text; “Back to built-in” drops every change on this entry.')}</div>
+              </div>
+            </Card>
+          ) : <div className="text-sm text-[var(--faint)]">{t('ag.none', 'Nothing matches that.')}</div>}
+        </div>
+      )}
+
+      {part === 'custom' && (<>
       <div className="space-y-3">
         {rows.map((r, i) => (
           <Card key={i} className="p-3.5">
@@ -922,6 +1030,7 @@ function GuideEditor({ initial, onClose, onSaved }) {
       </div>
 
       <Button variant="ghost" className="mt-3" onClick={add}><Plus size={14} /> {t('ag.addsection', 'Add a section')}</Button>
+      </>)}
     </div>
   );
 }

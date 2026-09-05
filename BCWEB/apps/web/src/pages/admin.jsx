@@ -4709,13 +4709,14 @@ function RoleManager({ roles }) {
   const [scopeKeys, setScopeKeys] = useState([]);   // official project keys
   const [scopeSlugs, setScopeSlugs] = useState([]); // showcase slugs
   const [scopeAllSc, setScopeAllSc] = useState(false);
+  const [scopeRights, setScopeRights] = useState(['pages']); // what the role may do on those elements
   const elements = useAsync(() => api.get('/blog/my-scopes').catch(() => ({ projects: [], showcases: [] })), []);
   const list = (roles.data?.roles || []).filter((r) => !undo.pending.has(r.id));
 
   const open = (r) => {
     setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || '#3b82f6'); setCaps(r?.capabilities || []);
     const sc = r?.scope || null;
-    setScoped(!!sc); setScopeKeys(sc?.projectKeys || []); setScopeSlugs((sc?.showcases || []).map((x) => x.slug)); setScopeAllSc(!!sc?.allShowcase);
+    setScoped(!!sc); setScopeKeys(sc?.projectKeys || []); setScopeSlugs((sc?.showcases || []).map((x) => x.slug)); setScopeAllSc(!!sc?.allShowcase); setScopeRights(Array.isArray(sc?.rights) && sc.rights.length ? sc.rights : ['pages']);
   };
   const close = () => setEditing(null);
   const toggleCap = (id) => setCaps((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
@@ -4724,7 +4725,7 @@ function RoleManager({ roles }) {
   const save = () => {
     if (name.trim().length < 2) return toast.error(t('rm.nametooShort', 'Give the role a name (2+ characters).'));
     setBusy(true);
-    const body = { name: name.trim(), color, capabilities: caps, scope: scoped ? { projectKeys: scopeKeys, showcaseSlugs: scopeSlugs, allShowcase: scopeAllSc } : null };
+    const body = { name: name.trim(), color, capabilities: caps, scope: scoped ? { projectKeys: scopeKeys, showcaseSlugs: scopeSlugs, allShowcase: scopeAllSc, rights: scopeRights.length ? scopeRights : ['pages'] } : null };
     // Snapshot the target before deferring — `editing` is the modal's own state and the user
     // can switch roles inside the undo window, which would send the PUT to the wrong one.
     const id = editing?.id;
@@ -4752,7 +4753,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
-              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
@@ -4782,7 +4783,7 @@ function RoleManager({ roles }) {
             <div>
               <div className="text-sm font-medium mb-2">{t('rm.scope', 'Where it applies')}</div>
               <div className="grid grid-cols-2 gap-2">
-                {[[false, t('rm.scope.global', 'Everywhere'), t('rm.scope.global.d', 'The capabilities below apply site-wide.')], [true, t('rm.scope.elements', 'Only these elements'), t('rm.scope.elements.d', 'Edit rights on the projects ticked below — nothing site-wide.')]].map(([v, label, d]) => (
+                {[[false, t('rm.scope.global', 'Everywhere'), t('rm.scope.global.d', 'The capabilities below apply site-wide.')], [true, t('rm.scope.elements', 'Only these elements'), t('rm.scope.elements.d2', 'Rights on the projects ticked below — the page, its blog, or both — and nothing site-wide.')]].map(([v, label, d]) => (
                   <button key={String(v)} type="button" onClick={() => setScoped(v)} className={`text-start rounded-xl border p-3 transition ${scoped === v ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
                     <div className="text-sm font-medium">{label}</div><div className="text-[11px] text-[var(--faint)]">{d}</div>
                   </button>
@@ -4790,6 +4791,17 @@ function RoleManager({ roles }) {
               </div>
               {scoped && (
                 <div className="mt-2 rounded-xl border border-[var(--line)] p-3 space-y-2">
+                  {/* What the role may do on the elements below. Two rights, granted apart:
+                      editing a project page and writing in its blog are different jobs. */}
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config — not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects — the same as a blog permission, granted by role.')]].map(([id, label, h]) => {
+                        const on = scopeRights.includes(id);
+                        return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
+                      })}
+                    </div>
+                  </div>
                   <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={scopeAllSc} onChange={(e) => setScopeAllSc(e.target.checked)} /> {t('rm.scope.allsc.l', 'Every “other project” page')}</label>
                   {(elements.data?.projects || []).length > 0 && <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.projects', 'Official projects')}</div>
@@ -4799,7 +4811,7 @@ function RoleManager({ roles }) {
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.showcases', 'Other projects')}</div>
                     <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
                   </div>}
-                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h', 'A member of this role can edit the content of these pages (like a per-project grant). Publishing, pinning, visibility and announcements stay with managers.')}</p>
+                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission. Publishing, pinning, visibility and announcements stay with managers.')}</p>
                 </div>
               )}
             </div>
