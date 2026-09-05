@@ -56,6 +56,9 @@ const CALLOUTS = {
 const CALLOUT_ICON = { info: 'info', tip: 'tip', success: 'success', warning: 'warning', danger: 'danger', custom: 'info' };
 const CALLOUT_LABEL = { info: 'Note', tip: 'Tip', success: 'Success', warning: 'Warning', danger: 'Danger', custom: 'Note' };
 // Build an inline lucide-icon element node (rendered by the DocIcon component).
+// A one-line child element (a title, a label, a value) — the shape every block's header is.
+const textEl = (tag, className, text, props = {}) => ({ type: 'paragraph', data: { hName: tag, hProperties: { className: [className], ...props } }, children: [{ type: 'text', value: String(text ?? '') }] });
+const EVENT_STATE = { done: 'done', past: 'done', shipped: 'done', now: 'now', current: 'now', active: 'now', next: 'next', planned: 'next', future: 'next', soon: 'next' };
 const iconNode = (nm) => ({ type: 'emphasis', data: { hName: 'doc-icon', hProperties: { className: ['doc-icon'], 'data-name': nm } }, children: [] });
 
 function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') return n.value; return (n.children || []).map(nodeText).join(''); }
@@ -373,6 +376,147 @@ export function remarkDocBlocks() {
         });
         node.children = [];
 /* kit:injected:end */
+      } else if (name === 'timeline') {
+        // A vertical timeline: `:::event` children on a rail, each with a date, a state and
+        // a body. What a changelog page, a roadmap in prose or a "how we got here" section
+        // wanted and wrote as a bulleted list with dates in bold.
+        setEl('div', ['doc-timeline']);
+        if (labelText || attrs.title) node.children.unshift(textEl('div', 'doc-timeline-title', labelText || attrs.title));
+      } else if (name === 'event' || name === 'moment') {
+        //   :::event[Title]{date="2026-09-01" state=done|now|next icon=rocket color=#0a7}
+        const state = EVENT_STATE[String(attrs.state || attrs.status || '').toLowerCase()] || 'next';
+        setEl('div', ['doc-event', `doc-event-${state}`], attrs.color ? { style: `--ev:${attrs.color}` } : {});
+        const title = labelText || attrs.title || '';
+        const meta = [];
+        if (attrs.date) meta.push(textEl('div', 'doc-event-date', attrs.date));
+        if (title) meta.push({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-event-title'] } },
+          children: [...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] });
+        node.children = [
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-event-marker'], 'aria-hidden': 'true' } }, children: [] },
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-event-body'] } }, children: [...meta, ...node.children] },
+        ];
+      } else if (name === 'compare') {
+        // Two sides, labelled: `:::compare{before="v1" after="v2"}` holding `:::before` and
+        // `:::after`. The labels can also sit on the sides themselves as [Bracket] titles.
+        setEl('div', ['doc-compare']);
+        for (const child of node.children) {
+          if (child.type === 'containerDirective' && (child.name === 'before' || child.name === 'after') && attrs[child.name]) {
+            child.data = child.data || {}; child.data.compareLabel = attrs[child.name];
+          }
+        }
+      } else if (name === 'before' || name === 'after') {
+        setEl('div', ['doc-compare-side', `doc-compare-${name}`]);
+        node.children.unshift(textEl('div', 'doc-compare-label', labelText || attrs.title || node.data?.compareLabel || (name === 'before' ? 'Before' : 'After')));
+      } else if (name === 'stats') {
+        setEl('div', ['doc-stats']);
+      } else if (name === 'stat' || name === 'kpi') {
+        // A number with its label: `:::stat[Downloads]{value="12 400" delta="+8%" icon=download}`.
+        // The delta's sign picks the colour; the body, if any, is the small print under it.
+        setEl('div', ['doc-stat'], attrs.color ? { style: `--stat:${attrs.color}` } : {});
+        const label = labelText || attrs.label || '';
+        const value = String(attrs.value ?? '');
+        const delta = String(attrs.delta ?? attrs.trend ?? '');
+        const dir = delta.startsWith('-') ? 'down' : delta.startsWith('+') ? 'up' : 'flat';
+        node.children = [
+          ...(attrs.icon ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-icon'] } }, children: [iconNode(String(attrs.icon).toLowerCase())] }] : []),
+          textEl('div', 'doc-stat-value', value),
+          ...(label ? [textEl('div', 'doc-stat-label', label)] : []),
+          ...(delta ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-delta', `doc-stat-${dir}`] } }, children: [{ type: 'text', value: delta }] }] : []),
+          ...(node.children.length ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-note'] } }, children: node.children }] : []),
+        ];
+      } else if (name === 'quote' || name === 'testimonial') {
+        // A pull quote with somebody's name under it:
+        //   :::quote[Ada Lovelace]{role="Analyst" avatar=/a.png href=https://…}
+        setEl('blockquote', ['doc-quote'], attrs.color ? { style: `--q:${attrs.color}` } : {});
+        const who = labelText || attrs.author || attrs.by || '';
+        const href = attrs.href || attrs.url || '';
+        const foot = [];
+        if (attrs.avatar) foot.push({ type: 'paragraph', data: { hName: 'img', hProperties: { src: attrs.avatar, alt: '', className: ['doc-quote-avatar'], loading: 'lazy' } }, children: [] });
+        if (who || attrs.role) {
+          const authorProps = href ? { href, ...(/^https?:\/\//i.test(href) ? { target: '_blank', rel: 'noreferrer' } : {}) } : {};
+          foot.push({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-quote-who'] } }, children: [
+            ...(who ? [textEl(href ? 'a' : 'span', 'doc-quote-author', who, authorProps)] : []),
+            ...(attrs.role ? [textEl('span', 'doc-quote-role', attrs.role)] : []),
+          ] });
+        }
+        node.children = [
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-quote-body'] } }, children: node.children },
+          ...(foot.length ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-quote-foot'] } }, children: foot }] : []),
+        ];
+      } else if (name === 'hero') {
+        // A banner: big title, a line under it, an optional cover, the body (buttons, text).
+        //   :::hero[Better Mods Manager]{subtitle="One library, every game" image=/hero.png color=#0a7 align=center}
+        const align = ['left', 'center', 'right'].includes(String(attrs.align)) ? attrs.align : 'left';
+        setEl('div', ['doc-hero', `doc-hero-${align}`, ...(attrs.image ? ['doc-hero-has-image'] : [])], attrs.color ? { style: `--hero:${attrs.color}` } : {});
+        const title = labelText || attrs.title || '';
+        node.children = [
+          ...(attrs.image ? [{ type: 'paragraph', data: { hName: 'img', hProperties: { src: attrs.image, alt: title, className: ['doc-hero-media'], loading: 'lazy' } }, children: [] }] : []),
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-hero-body'] } }, children: [
+            ...(title ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-hero-title'] } }, children: [...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] }] : []),
+            ...(attrs.subtitle ? [textEl('div', 'doc-hero-sub', attrs.subtitle)] : []),
+            ...node.children,
+          ] },
+        ];
+      } else if (name === 'changelog') {
+        setEl('div', ['doc-changelog']);
+        if (labelText || attrs.title) node.children.unshift(textEl('div', 'doc-changelog-title', labelText || attrs.title));
+      } else if (name === 'version' || name === 'release') {
+        // One entry of a changelog: `:::version[1.4.0]{date="2026-09-01" label=latest}` — the
+        // body is ordinary markdown, and the [NEW] / [FIXED] chips already work inside it.
+        setEl('div', ['doc-version', ...(attrs.label ? [`doc-version-${String(attrs.label).toLowerCase().replace(/[^a-z0-9-]/g, '')}`] : [])]);
+        const v = labelText || attrs.title || attrs.v || '';
+        node.children = [
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-version-head'] } }, children: [
+            ...(v ? [textEl('span', 'doc-version-tag', v)] : []),
+            ...(attrs.date ? [textEl('span', 'doc-version-date', attrs.date)] : []),
+            ...(attrs.label ? [textEl('span', 'doc-badge', attrs.label)] : []),
+          ] },
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-version-body'] } }, children: node.children },
+        ];
+      } else if (name === 'spoiler') {
+        // Hidden until clicked — a puzzle's answer, a plot point. A <details>, so it works
+        // without a script and the reader's choice is theirs.
+        setEl('details', ['doc-spoiler']);
+        node.children.unshift(textEl('summary', 'doc-spoiler-summary', labelText || attrs.title || 'Spoiler — click to reveal'));
+      } else if (name === 'faq') {
+        setEl('div', ['doc-faq']);
+        if (labelText || attrs.title) node.children.unshift(textEl('div', 'doc-faq-title', labelText || attrs.title));
+      } else if (name === 'q' || name === 'question') {
+        // A question that opens on its answer. `{open}` starts it open.
+        setEl('details', ['doc-faq-item'], attrs.open != null ? { open: true } : {});
+        node.children.unshift(textEl('summary', 'doc-faq-q', labelText || attrs.title || 'Question'));
+      } else if (name === 'checklist') {
+        // A GFM task list with a header that counts: "3 / 7" and a bar. The ticks come from
+        // the list items themselves (`- [x]`), so there is nothing to keep in step.
+        let done = 0, total = 0;
+        visit(node, 'listItem', (li) => { if (typeof li.checked === 'boolean') { total++; if (li.checked) done++; } });
+        const pct = total ? Math.round((done * 100) / total) : 0;
+        setEl('div', ['doc-checklist', ...(total && done === total ? ['doc-checklist-done'] : [])], attrs.color ? { style: `--check:${attrs.color}` } : {});
+        node.children.unshift({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-checklist-head'] } }, children: [
+          textEl('div', 'doc-checklist-title', labelText || attrs.title || 'Checklist'),
+          textEl('div', 'doc-checklist-count', `${done} / ${total}`),
+          { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-checklist-bar'] } }, children: [
+            { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-checklist-fill'], style: `width:${pct}%` } }, children: [] },
+          ] },
+        ] });
+      } else if (name === 'grid') {
+        // A fixed-column grid, for when `:::columns` (equal, auto) is not the shape wanted:
+        //   :::grid{cols=3 gap=lg} … any blocks … :::
+        const cols = Math.min(6, Math.max(1, parseInt(attrs.cols || attrs.columns, 10) || 3));
+        setEl('div', ['doc-grid', ...(attrs.gap ? [`doc-grid-gap-${String(attrs.gap).replace(/[^a-z]/g, '')}`] : [])], { style: `--cols:${cols}` });
+      } else if (name === 'meter') {
+        // Inline progress: `:meter[60]{label=Done color=#0a7 max=100}` → a small bar + "60 %".
+        const raw = nodeText(node) || attrs.value || '0';
+        const max = Math.max(1, Number(attrs.max) || 100);
+        const val = Math.max(0, Math.min(max, Number(String(raw).replace(/[^0-9.]/g, '')) || 0));
+        const pct = Math.round((val * 100) / max);
+        setEl('span', ['doc-meter'], { ...(attrs.color ? { style: `--meter:${attrs.color}` } : {}), title: `${attrs.label ? `${attrs.label}: ` : ''}${pct}%` });
+        node.children = [
+          { type: 'paragraph', data: { hName: 'span', hProperties: { className: ['doc-meter-track'] } }, children: [
+            { type: 'paragraph', data: { hName: 'span', hProperties: { className: ['doc-meter-fill'], style: `width:${pct}%` } }, children: [] },
+          ] },
+          textEl('span', 'doc-meter-text', `${attrs.label ? `${attrs.label} ` : ''}${pct}%`),
+        ];
       } else if (name === 'toc') {
         data.hName = 'nav'; data.hProperties = { className: ['doc-toc'] };
         node.children = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-toc-title'] } }, children: [{ type: 'text', value: labelText || 'On this page' }] },

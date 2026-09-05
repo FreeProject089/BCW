@@ -6,25 +6,25 @@
 //
 // This module is imported only by /dev/markdown, which is a lazy route, so the ~100 KB of
 // inlined source lands in that chunk and nowhere near the entry.
-import indexSrc from '../markdown/index.jsx?raw';
-import configSrc from '../markdown/config.js?raw';
-import urlSrc from '../markdown/url.js?raw';
-import pluginsSrc from '../markdown/plugins.js?raw';
-import sanitizeSrc from '../markdown/sanitize.js?raw';
-import directivesSrc from '../markdown/directives.js?raw';
-import blocksSrc from '../markdown/blocks.jsx?raw';
-import iconsSrc from '../markdown/icons.jsx?raw';
-import roadmapSrc from '../markdown/roadmap.jsx?raw';
-import replaySrc from '../markdown/replay.jsx?raw';
-import nestingSrc from '../markdown/nesting.js?raw';
-import shorthandSrc from '../markdown/shorthand.js?raw';
-import emojiSrc from '../markdown/emoji.js?raw';
-import brandsSrc from '../markdown/brands.jsx?raw';
-import cssSrc from '../markdown/markdown.css?raw';
+import indexSrc from '../../../../packages/bmd/src/index.jsx?raw';
+import configSrc from '../../../../packages/bmd/src/config.js?raw';
+import urlSrc from '../../../../packages/bmd/src/url.js?raw';
+import pluginsSrc from '../../../../packages/bmd/src/plugins.js?raw';
+import sanitizeSrc from '../../../../packages/bmd/src/sanitize.js?raw';
+import directivesSrc from '../../../../packages/bmd/src/directives.js?raw';
+import blocksSrc from '../../../../packages/bmd/src/blocks.jsx?raw';
+import iconsSrc from '../../../../packages/bmd/src/icons.jsx?raw';
+import roadmapSrc from '../../../../packages/bmd/src/roadmap.jsx?raw';
+import replaySrc from '../../../../packages/bmd/src/replay.jsx?raw';
+import nestingSrc from '../../../../packages/bmd/src/nesting.js?raw';
+import shorthandSrc from '../../../../packages/bmd/src/shorthand.js?raw';
+import emojiSrc from '../../../../packages/bmd/src/emoji.js?raw';
+import brandsSrc from '../../../../packages/bmd/src/brands.jsx?raw';
+import cssSrc from '../../../../packages/bmd/src/markdown.css?raw';
 // The TypeScript half. Not an optional part: types cost nothing at runtime, and a kit packed
 // without them is a kit that silently stops type-checking on the receiving end.
-import dtsSrc from '../markdown/markdown.d.ts?raw';
-import readmeSrc from '../markdown/README.md?raw';
+import dtsSrc from '../../../../packages/bmd/src/markdown.d.ts?raw';
+import readmeSrc from '../../../../packages/bmd/src/README.md?raw';
 
 /**
  * What can be left out, and what leaving it out costs.

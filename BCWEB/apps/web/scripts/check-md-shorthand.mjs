@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const FILE = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/shorthand.js');
+const FILE = join(dirname(fileURLToPath(import.meta.url)), '../../../packages/bmd/src/shorthand.js');
 if (!existsSync(FILE)) {
   console.error(`✗ ${FILE} is missing — refusing to report success`);
   process.exit(2);

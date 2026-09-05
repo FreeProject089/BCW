@@ -1,0 +1,76 @@
+{
+  "name": "@bettercommunity/bmd",
+  "version": "2.0.0",
+  "description": "B.MD — better.markdown: GitBook-style blocks (callouts, cards, tabs, steps, timelines, stats, FAQ…) on GitHub-flavoured Markdown, as one React component. The renderer behind BetterCommunity's blog, docs and pages.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.jsx",
+  "types": "./src/markdown.d.ts",
+  "exports": {
+    ".": "./src/index.jsx",
+    "./config": "./src/config.js",
+    "./icons": "./src/icons.jsx",
+    "./brands": "./src/brands.jsx",
+    "./plugins": "./src/plugins.js",
+    "./markdown.css": "./src/markdown.css",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "keywords": [
+    "markdown",
+    "react",
+    "gitbook",
+    "directives",
+    "remark",
+    "blocks",
+    "docs",
+    "bettercommunity"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BetterDCS/BCW",
+    "directory": "BCWEB/packages/bmd"
+  },
+  "homepage": "https://bettercommunity.ch/dev/markdown",
+  "peerDependencies": {
+    "lucide-react": ">=0.400.0",
+    "react": ">=18",
+    "react-dom": ">=18",
+    "react-markdown": "^9",
+    "rehype-raw": "^7",
+    "rehype-sanitize": "^6",
+    "remark-directive": "^3",
+    "remark-gfm": "^4",
+    "unist-util-visit": "^5",
+    "rehype-highlight": "^7",
+    "remark-math": "^6",
+    "rehype-katex": "^7",
+    "katex": ">=0.16"
+  },
+  "peerDependenciesMeta": {
+    "rehype-highlight": {
+      "optional": true
+    },
+    "remark-math": {
+      "optional": true
+    },
+    "rehype-katex": {
+      "optional": true
+    },
+    "katex": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "pack:check": "npm pack --dry-run"
+  }
+}

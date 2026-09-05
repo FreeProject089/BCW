@@ -1109,6 +1109,229 @@ Only the 384 names in the list are replaced, so \`10:30:45\` is a timestamp, \`3
 
 Add \`::toc[On this page]\` at the top and it builds a summary from your \`##\` / \`###\` headings automatically.
 
+## Timeline
+
+\`\`\`
+:::timeline[How we got here]
+:::event[First release]{date="2025-03-01" state=done}
+The library, profiles and the first catalog.
+:::
+:::event[Server repos]{date="2026-01-12" state=done icon=server}
+Shared repositories, hosted or self-served.
+:::
+:::event[Where we are]{date="now" state=now}
+Levels, the shop, the casino.
+:::
+:::event[Next]{state=next}
+Whatever the vote says.
+:::
+:::
+\`\`\`
+
+:::timeline[How we got here]
+:::event[First release]{date="2025-03-01" state=done}
+The library, profiles and the first catalog.
+:::
+:::event[Server repos]{date="2026-01-12" state=done icon=server}
+Shared repositories, hosted or self-served.
+:::
+:::event[Where we are]{date="now" state=now}
+Levels, the shop, the casino.
+:::
+:::event[Next]{state=next}
+Whatever the vote says.
+:::
+:::
+
+\`state\` is \`done\`, \`now\` or \`next\` (aliases: past/shipped, current/active, planned/future). \`:::moment\` is the same block.
+
+## Before / after
+
+\`\`\`
+:::compare{before="v1" after="v2"}
+:::before
+One profile at a time, and a restart between them.
+:::
+:::after
+Profiles switch live, and the game is told.
+:::
+:::
+\`\`\`
+
+:::compare{before="v1" after="v2"}
+:::before
+One profile at a time, and a restart between them.
+:::
+:::after
+Profiles switch live, and the game is told.
+:::
+:::
+
+## Stats
+
+\`\`\`
+:::stats
+:::stat[Downloads]{value="12 400" delta="+8%" icon=download}
+:::
+:::stat[Members]{value="2 310" delta="+3%" icon=users color=#16a34a}
+:::
+:::stat[Open issues]{value="7" delta="-4" icon=bug}
+Since last month.
+:::
+:::
+\`\`\`
+
+:::stats
+:::stat[Downloads]{value="12 400" delta="+8%" icon=download}
+:::
+:::stat[Members]{value="2 310" delta="+3%" icon=users color=#16a34a}
+:::
+:::stat[Open issues]{value="7" delta="-4" icon=bug}
+Since last month.
+:::
+:::
+
+The delta's sign picks the colour. A body is the small print under the number. \`:::kpi\` is the same block.
+
+## Quote
+
+\`\`\`
+:::quote[Ada Lovelace]{role="Analyst, 1843" avatar=/icons/bmm.png}
+The engine might compose elaborate pieces of music of any degree of complexity.
+:::
+\`\`\`
+
+:::quote[Ada Lovelace]{role="Analyst, 1843" avatar=/icons/bmm.png}
+The engine might compose elaborate pieces of music of any degree of complexity.
+:::
+
+\`href\` makes the name a link; \`color\` recolours the bar. \`:::testimonial\` is the same block.
+
+## Hero
+
+\`\`\`
+:::hero[Better Mods Manager]{subtitle="One library, every game." icon=rocket align=center color=#7c3aed}
+:button[Download]{href=/p/bmm size=lg} :button[Read the docs]{href=/docs outline}
+:::
+\`\`\`
+
+:::hero[Better Mods Manager]{subtitle="One library, every game." icon=rocket align=center color=#7c3aed}
+:button[Download]{href=/p/bmm size=lg} :button[Read the docs]{href=/docs outline}
+:::
+
+\`image=\` puts a cover above the text; \`align\` is left, center or right.
+
+## Changelog
+
+\`\`\`
+:::changelog
+:::version[1.4.0]{date="2026-09-01" label=latest}
+- [NEW] A template gallery for automations
+- [FIXED] Casino: a 1× bucket returned less than the bet
+:::
+:::version[1.3.2]{date="2026-08-14"}
+- [IMPROVED] Faster repo sync
+:::
+:::
+\`\`\`
+
+:::changelog
+:::version[1.4.0]{date="2026-09-01" label=latest}
+- [NEW] A template gallery for automations
+- [FIXED] Casino: a 1× bucket returned less than the bet
+:::
+:::version[1.3.2]{date="2026-08-14"}
+- [IMPROVED] Faster repo sync
+:::
+:::
+
+The \`[NEW]\` / \`[FIXED]\` / \`[IMPROVED]\` chips are the ordinary shorthand. \`:::release\` is the same block.
+
+## Spoiler
+
+\`\`\`
+:::spoiler[The answer]
+Forty-two.
+:::
+\`\`\`
+
+:::spoiler[The answer]
+Forty-two.
+:::
+
+## FAQ
+
+\`\`\`
+:::faq[Questions people ask]
+:::q[Is hosting free?]{open}
+There is a free tier; above it, you pay by the size you use.
+:::
+:::q[Can I move a repo to another account?]
+Yes — Ownership transfers, in the repo's dashboard.
+:::
+:::
+\`\`\`
+
+:::faq[Questions people ask]
+:::q[Is hosting free?]{open}
+There is a free tier; above it, you pay by the size you use.
+:::
+:::q[Can I move a repo to another account?]
+Yes — Ownership transfers, in the repo's dashboard.
+:::
+:::
+
+## Checklist
+
+\`\`\`
+:::checklist[Launch day]
+- [x] Tag the release
+- [x] Write the notes
+- [ ] Post on Discord
+:::
+\`\`\`
+
+:::checklist[Launch day]
+- [x] Tag the release
+- [x] Write the notes
+- [ ] Post on Discord
+:::
+
+The count and the bar come from the ticked items; nothing to keep in step.
+
+## Grid
+
+\`\`\`
+:::grid{cols=3 gap=lg}
+:::card[One]
+a
+:::
+:::card[Two]
+b
+:::
+:::card[Three]
+c
+:::
+:::
+\`\`\`
+
+Where \`:::columns\` sizes itself, \`:::grid\` takes a fixed number of columns (1–6) and folds to two, then one, on narrow screens.
+
+## Inline meter
+
+\`\`\`
+Migration: :meter[72]{label=Done} · Tests: :meter[9]{max=12 color=#16a34a}
+\`\`\`
+
+Migration: :meter[72]{label=Done} · Tests: :meter[9]{max=12 color=#16a34a}
+
+## Phosphor icons
+
+Anywhere an icon name goes — \`:icon[…]\`, a card's \`icon=\`, a stat, a button — a **Phosphor**
+icon works next to the lucide ones: \`:icon[ph:rocket]\` :icon[ph:rocket], and a weight as a
+prefix: \`:icon[ph-bold:rocket]\` :icon[ph-bold:rocket] · \`:icon[ph-fill:heart]\` :icon[ph-fill:heart] · \`:icon[ph-duotone:star]\` :icon[ph-duotone:star].
+The picker in every editor lists all 1 500 of them.
+
 ## Two extras that aren't directives
 
 A blockquote starting with \`[!NOTE]\`, \`[!TIP]\`, \`[!IMPORTANT]\`, \`[!WARNING]\` or \`[!CAUTION]\`

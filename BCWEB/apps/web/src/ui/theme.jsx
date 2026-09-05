@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
-import { registerAppIcons } from '../markdown/config.js';
+import { registerAppIcons } from '@bettercommunity/bmd/config';
 
 // White/orange (light) ↔ black/orange (dark). Persisted; applied on <html>.
 const KEY = 'bcw_theme';

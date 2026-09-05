@@ -21,7 +21,7 @@ import { pathToFileURL } from 'node:url';
 
 // The PARSER, which is where the directive names live. index.jsx is the assembly and
 // names none of them — a gate pointed at it reads zero and says so.
-const SRC = 'src/markdown/directives.js';
+const SRC = '../../packages/bmd/src/directives.js';
 if (!existsSync(SRC)) { console.error(`✗ ${SRC} is missing — refusing to report success`); process.exit(2); }
 
 // Every name the renderer answers to, read from it rather than listed here: a directive added
@@ -58,6 +58,13 @@ const FORM = {
   schedule: ':::schedule[S]{tz=Europe/Paris}\n| a | b |\n|---|---|\n| c | d |\n:::',
   hours: ':::hours[S]{tz=Europe/Paris}\n| a | b |\n|---|---|\n| c | d |\n:::',
   callout: ':::callout[T]{icon=rocket}\nx\n:::',
+  meter: 'x :meter[60]{label=Done}',
+  event: ':::timeline\n:::event[E]{date=2026-09-01 state=done}\nx\n:::\n:::', moment: ':::timeline\n:::moment[E]{date=2026-09-01}\nx\n:::\n:::',
+  before: ':::compare\n:::before\na\n:::\n:::after\nb\n:::\n:::', after: ':::compare\n:::before\na\n:::\n:::after\nb\n:::\n:::',
+  stat: ':::stats\n:::stat[Users]{value=12 delta=+3%}\n:::\n:::', kpi: ':::stats\n:::kpi[Users]{value=12}\n:::\n:::',
+  version: ':::changelog\n:::version[1.0.0]{date=2026-09-01}\n- [NEW] x\n:::\n:::', release: ':::changelog\n:::release[1.0.0]\nx\n:::\n:::',
+  q: ':::faq\n:::q[Why?]\nx\n:::\n:::', question: ':::faq\n:::question[Why?]{open}\nx\n:::\n:::',
+  checklist: ':::checklist[Launch]\n- [x] a\n- [ ] b\n:::',
 };
 const formOf = (n) => FORM[n] || `:::${n}[T]\nx\n:::`;
 
@@ -77,10 +84,12 @@ try {
   // actually gets.
   writeFileSync(entry, [
     "import { renderToStaticMarkup } from 'react-dom/server';",
-    "import Markdown from '../src/markdown/index.jsx';",
+    "import Markdown from '../../../packages/bmd/src/index.jsx';",
     'export const render = (md) => renderToStaticMarkup(<Markdown>{md}</Markdown>);',
   ].join('\n'));
   await esbuild.build({
+    // The kit sits in packages/bmd, outside this app: its bare imports resolve from here.
+    nodePaths: [join(process.cwd(), 'node_modules')],
     entryPoints: [entry], outfile: bundle, bundle: true, format: 'esm', platform: 'node',
     jsx: 'automatic', logLevel: 'silent',
     // Only OUR files are bundled; every package stays external and node resolves it at

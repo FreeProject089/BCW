@@ -12,7 +12,7 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIR = 'src/markdown';
+const DIR = '../../packages/bmd/src';
 const DTS = join(DIR, 'markdown.d.ts');
 if (!existsSync(DTS)) { console.error(`✗ ${DTS} is missing — refusing to report success`); process.exit(2); }
 

@@ -1,7 +1,7 @@
 # B.MD — better.markdown
 
-A GitBook-style block system on top of GitHub-flavoured Markdown, as a **React component you
-copy into your project**. Forty-eight directives — callouts, cards, tabs, steps, columns,
+A GitBook-style block system on top of GitHub-flavoured Markdown, as a **React component** —
+the `@bettercommunity/bmd` package. Seventy-odd directives — callouts, cards, tabs, steps, columns,
 buttons with brand logos, file downloads, a roadmap, a media embed, a table of contents,
 maths — and no build step of its own.
 
@@ -34,7 +34,9 @@ It was one 1081-line file. Those seams were already in it; being in one file mea
 of them was reachable from every other, so "add a block" and "change what a URL may be" were
 edits to the same thing.
 
-Copy the folder. That is the install.
+Install the package (this folder IS the package: `packages/bmd`, with its `package.json`, `docs/`
+and `CHANGELOG.md`), or copy the `src/` folder — both work, and the second one has no build step
+of its own either. Inside this monorepo the web app reads it in place through a Vite alias.
 
 ## Dependencies
 
@@ -268,6 +270,18 @@ short version:
 :::schedule[Support]{tz=Europe/Paris}               a repeating schedule, in ONE zone (:::hours)
 :time[2026-09-01T20:00]{tz=Europe/Paris}            one instant, in the reader's zone (:at)
 ::toc[On this page]                                 table of contents
+:::timeline[Title] / :::event[Title]{date= state=}   a dated timeline (state done|now|next; :::moment = :::event)
+:::compare{before= after=} / :::before / :::after   two labelled sides
+:::stats / :::stat[Label]{value= delta= icon=}      KPI tiles (:::kpi = :::stat)
+:::quote[Author]{role= avatar= href=}               a pull quote with a name under it (:::testimonial)
+:::hero[Title]{subtitle= image= color= align=}      a banner
+:::changelog / :::version[1.4.0]{date= label=}      release notes (:::release = :::version)
+:::spoiler[Reveal]                                  hidden until clicked
+:::faq[Title] / :::q[Question]{open}                a question list (:::question = :::q)
+:::checklist[Title]                                 a task list that counts — uses `- [x]` items
+:::grid{cols=3 gap=lg}                              a fixed-column grid
+:meter[60]{label=Done max=100 color=}               an inline progress bar
+:icon[ph:rocket]  :icon[ph-bold:rocket]             Phosphor icons, six weights (ph-thin/light/regular/bold/fill/duotone)
 $$E = mc^2$$                                        maths
 :rocket: :tada: :+1:                                emoji, by GitHub's names
 ```

@@ -16,7 +16,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FILE = join(HERE, '../src/markdown/emoji.js');
+const FILE = join(HERE, '../../../packages/bmd/src/emoji.js');
 if (!existsSync(FILE)) {
   console.error(`✗ ${FILE} is missing — refusing to report success`);
   process.exit(2);

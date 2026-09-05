@@ -149,6 +149,24 @@ Les blocs de code délimités sont colorés par langage.
 ## Renvois
 \`:ref[libellé]{href=…}\` crée un lien portant le nom de sa cible. Les liens internes vers la documentation affichent une carte d'aperçu au survol, avec l'icône de la page et sa première ligne.
 
+## Nouveau dans B.MD 2.0
+
+Dix blocs de plus, tous documentés avec des exemples vivants sur la page **Blocs de
+documentation** des docs : une **chronologie** datée (\`:::timeline\` / \`:::event\`), un
+**avant / après** (\`:::compare\`), des tuiles de **stats** (\`:::stats\` / \`:::stat\`), une
+**citation** signée, une bannière **hero**, un **changelog** (\`:::version\`), un **spoiler**,
+une **FAQ** (\`:::faq\` / \`:::q\`), une **checklist** qui compte ses cases, une **grille** à
+colonnes fixes et une **jauge** en ligne (\`:meter[60]{label=Fait}\`). Les icônes viennent aussi
+de **Phosphor** : \`:icon[ph:rocket]\`, avec la graisse en préfixe (\`ph-bold:\`, \`ph-fill:\`,
+\`ph-duotone:\`).
+
+:::stats
+:::stat[Blocs]{value="70" delta="+22" icon=ph:stack}
+:::
+:::stat[Icônes]{value="3 000+" icon=ph:palette}
+:::
+:::
+
 Voilà tout le vocabulaire. Combinez encadrés, cartes et listes courtes pour des pages que les gens lisent vraiment.`,
   },
   'guide-app-catalog': {

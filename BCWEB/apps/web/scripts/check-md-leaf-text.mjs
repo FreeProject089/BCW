@@ -19,7 +19,7 @@
 // round-trip check, which never renders. It is caught by reading what the branch does.
 import { readFileSync, existsSync } from 'node:fs';
 
-const SRC = 'src/markdown/directives.js';
+const SRC = '../../packages/bmd/src/directives.js';
 if (!existsSync(SRC)) { console.error(`✗ ${SRC} is missing — refusing to report success`); process.exit(2); }
 const src = readFileSync(SRC, 'utf8');
 const lines = src.split(/\r?\n/);

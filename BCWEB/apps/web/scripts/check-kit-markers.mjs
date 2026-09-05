@@ -13,7 +13,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const KIT = join(HERE, '../src/markdown');
+const KIT = join(HERE, '../../../packages/bmd/src');
 const PACK = join(HERE, '../src/pages/kit-pack.js');
 for (const f of [KIT, PACK]) {
   if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }

@@ -258,7 +258,8 @@ services:
 
   web:
     build:
-      context: ../../apps/web
+      context: ../..                 # BCWEB root (needs packages/bmd, the B.MD kit)
+      dockerfile: apps/web/Dockerfile
       args:
         VITE_GTM_ID: ${VITE_GTM_ID:-}
     restart: unless-stopped

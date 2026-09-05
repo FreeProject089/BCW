@@ -17,7 +17,7 @@ import { readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const SRC = 'src/markdown/index.jsx';
+const SRC = '../../packages/bmd/src/index.jsx';
 if (!existsSync(SRC)) { console.error(`✗ ${SRC} is missing — refusing to report success`); process.exit(2); }
 
 /**
@@ -118,10 +118,12 @@ try {
   const esbuild = await import('esbuild');
   writeFileSync(entry, [
     "import { renderToStaticMarkup } from 'react-dom/server';",
-    "import Markdown from '../src/markdown/index.jsx';",
+    "import Markdown from '../../../packages/bmd/src/index.jsx';",
     'export const render = (md) => renderToStaticMarkup(<Markdown>{md}</Markdown>);',
   ].join('\n'));
   await esbuild.build({
+    // The kit sits in packages/bmd, outside this app: its bare imports resolve from here.
+    nodePaths: [join(process.cwd(), 'node_modules')],
     entryPoints: [entry], outfile: bundle, bundle: true, format: 'esm', platform: 'node',
     jsx: 'automatic', logLevel: 'silent', packages: 'external', loader: { '.css': 'empty' },
   });

@@ -5,7 +5,7 @@
 // Discord uses the STANDARD Discord glyph (a currentColor path from the markdown kit), NOT our
 // own "BetterDiscord" mark — reverted on request. One copy of each brand path, re-exported here
 // so the ~twenty files importing from ui/brand keep working.
-export { GithubIcon, GoogleIcon, KofiIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon, MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon } from '../markdown/brands.jsx';
+export { GithubIcon, GoogleIcon, KofiIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon, MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon } from '@bettercommunity/bmd/brands';
 
 export const APP_LOGO = { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', installer: '/icons/bi.png', bi: '/icons/bi.png' };
 export function AppLogo({ pkey, size = 22, className = '', fallback: F }) {

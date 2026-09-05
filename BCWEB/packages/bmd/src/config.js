@@ -44,6 +44,9 @@ const DEFAULTS = {
   cdn: {
     lucide: (name) => `https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${name}.svg`,
     brand: (slug) => `https://cdn.simpleicons.org/${slug}`,
+    // Phosphor, drawn as a mask like lucide. `name` arrives as `<weight>/<file>` — see
+    // phosphorRef in icons.jsx — so a project can point this at its own copy of the assets.
+    phosphor: (path) => `https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2/assets/${path}.svg`,
   },
   /**
    * Where authored URLs may point. See url.js for what each field does.

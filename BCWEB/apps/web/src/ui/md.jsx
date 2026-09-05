@@ -1,7 +1,7 @@
 // BetterCommunity's wiring for the markdown kit.
 //
-// The renderer itself is in `src/markdown/` and knows nothing about this site: it is a folder
-// you can copy into another project, which is the whole point of it having moved. Two things
+// The renderer itself is the `@bettercommunity/bmd` package (packages/bmd) and knows nothing
+// about this site: it is a package another project installs, which is the whole point of it having moved. Two things
 // it cannot know are supplied here, and nothing else:
 //
 //   · the two blocks that are React components rather than markup — `:::roadmap` (the project
@@ -11,7 +11,7 @@
 //
 // Everything else is re-exported from here so the ~20 files that already import
 // `ui/md.jsx` keep working, and so there is exactly one renderer on the site.
-import Markdown, { configureMarkdown } from '../markdown/index.jsx';
+import Markdown, { configureMarkdown } from '@bettercommunity/bmd';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import ReplayPlayer from './ReplayPlayer.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -19,7 +19,7 @@ import { useI18n } from '../i18n.jsx';
 export {
   ANCHOR_PREFIX, anchorEl, preprocessMd, ICON_NAMES, ShowcaseIcon, appIconKeys, appIconLabel, registerAppIcons, IconGlyph,
   matchesLang, MarkdownConfig, configureMarkdown,
-} from '../markdown/index.jsx';
+} from '@bettercommunity/bmd';
 
 // These paths are this site's asset layout, and they are the only thing in the kit that was
 // specific to it by value. Set once, at import time, before anything renders.

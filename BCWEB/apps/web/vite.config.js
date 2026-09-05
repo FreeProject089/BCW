@@ -1,9 +1,34 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
+
+// B.MD lives in packages/bmd — a real npm package (its own package.json, README, docs, CHANGELOG)
+// that this app consumes IN PLACE. Not through node_modules: there is no root workspace in this
+// repo (each app installs on its own), so a `file:` link would leave the kit's own imports —
+// react, react-markdown… — with no node_modules above them. Two things make the in-place read
+// work: the alias below maps the package name onto the folder, and `resolve.dedupe` tells Vite
+// to resolve those bare names from THIS app's root rather than from the importing file's
+// directory. The result is one React, one renderer, and a kit that is also a package.
+const BMD = resolve(dirname(fileURLToPath(import.meta.url)), '../../packages/bmd/src');
+const BMD_DEPS = ['react', 'react-dom', 'react-markdown', 'remark-gfm', 'remark-directive', 'rehype-raw', 'rehype-sanitize',
+  'unist-util-visit', 'lucide-react', 'rehype-highlight', 'remark-math', 'rehype-katex', 'katex'];
 
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: [
+      { find: /^@bettercommunity\/bmd$/, replacement: `${BMD}/index.jsx` },
+      { find: /^@bettercommunity\/bmd\/config$/, replacement: `${BMD}/config.js` },
+      { find: /^@bettercommunity\/bmd\/brands$/, replacement: `${BMD}/brands.jsx` },
+      { find: /^@bettercommunity\/bmd\/icons$/, replacement: `${BMD}/icons.jsx` },
+      { find: /^@bettercommunity\/bmd\/plugins$/, replacement: `${BMD}/plugins.js` },
+      { find: /^@bettercommunity\/bmd\/markdown\.css$/, replacement: `${BMD}/markdown.css` },
+      { find: /^@bettercommunity\/bmd\/src\/(.*)$/, replacement: `${BMD}/$1` },
+    ],
+    dedupe: BMD_DEPS,
+  },
   // Dev server prefers :5176 (the site's base URL); if that's taken — e.g. the
   // Docker Caddy is already serving on 5176 — Vite falls back to the next free port
   // instead of hard-failing. Proxies /api to the local API.

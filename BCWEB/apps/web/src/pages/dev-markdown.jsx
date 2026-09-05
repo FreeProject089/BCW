@@ -16,10 +16,10 @@ import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
 import { KIT_PARTS, KIT_FLAVOURS, buildKit, zipKit } from './kit-pack.js';
 
-const INSTALL = 'npm i react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit lucide-react';
+const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex';
 
-const USAGE = `import Markdown from './markdown/index.jsx';
+const USAGE = `import Markdown from '@bettercommunity/bmd';
 
 <Markdown lang="en">{body}</Markdown>`;
 
@@ -243,7 +243,7 @@ export default function DevMarkdown() {
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Package size={16} /> {t('devmd.install', 'Put it in your project')}</h2>
         <p className="text-sm text-[var(--muted)] max-w-2xl">
-          {t('devmd.install.1', 'Copy the six files of the kit — the renderer, its nesting and shorthand pre-passes, the emoji table, the brand marks and one stylesheet. There is no package to publish and nothing to configure to get the first document on screen.')}
+          {t('devmd.install.1b', 'B.MD is the `@bettercommunity/bmd` package (packages/bmd in the repo: sources, a README, docs/ block by block, a CHANGELOG). Install it with its peer dependencies — or copy its src/ folder — the renderer, its nesting and shorthand pre-passes, the emoji table, the brand marks and one stylesheet. There is no package to publish and nothing to configure to get the first document on screen.')}
         </p>
         <Snippet code={INSTALL} />
         <p className="text-sm text-[var(--muted)] max-w-2xl">

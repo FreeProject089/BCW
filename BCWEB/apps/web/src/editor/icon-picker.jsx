@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
+import PHOSPHOR_NAMES from './phosphor-names.json';
 import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md.jsx';
 
 // The names come from the kit's registry — the bundled four plus whatever an admin added
@@ -72,6 +73,10 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
 
   const nq = q.trim().toLowerCase();
   const lucideHits = useMemo(() => (nq ? lucide.filter((n) => n.includes(nq)) : lucide).slice(0, MAX_SHOWN), [lucide, nq]);
+  // Phosphor: the 1 512 regular-weight names shipped in phosphor-names.json (generated from the
+  // @phosphor-icons/core package listing), drawn as currentColor masks straight from the CDN.
+  // Inserted as `ph:<name>`; a weight is a prefix the author adds by hand (`ph-bold:<name>`).
+  const phHits = useMemo(() => (nq ? PHOSPHOR_NAMES.filter((n) => n.includes(nq)) : PHOSPHOR_NAMES).slice(0, MAX_SHOWN), [nq]);
   const simpleHits = useMemo(() => (nq ? simple.filter((s) => s.slug.includes(nq) || s.title.toLowerCase().includes(nq)) : simple).slice(0, MAX_SHOWN / 2), [simple, nq]);
 
   // Portal to <body>: the picker is often opened from inside a modal whose card uses a
@@ -87,7 +92,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
         </div>
         <div className="px-3 py-2.5 border-b border-[var(--line)] flex items-center gap-2 shrink-0">
           <Search size={14} className="text-[var(--faint)]" />
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + PHOSPHOR_NAMES.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
         </div>
         <div className="p-3 overflow-auto">
           {/* Our own project logos — usable in the topbar, blog, docs, faq. */}
@@ -111,6 +116,16 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
               </button>
             ))}
             {!lucideHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">No lucide icon matches “{q}”.</div>}
+          </div>
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-1.5">Phosphor {nq && `· ${phHits.length}${phHits.length === MAX_SHOWN ? '+' : ''}`} <span className="normal-case font-normal tracking-normal">· {t('ip.ph.weights', 'ph-bold: / ph-fill: / ph-duotone: for other weights')}</span></div>
+          <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
+            {phHits.map((name) => (
+              <button key={name} type="button" title={`ph:${name}`} onClick={() => { onPick(`ph:${name}`); onClose(); }}
+                className="aspect-square grid place-items-center rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]">
+                <IconGlyph name={`ph:${name}`} size={17} />
+              </button>
+            ))}
+            {!phHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">{t('ip.ph.none', 'No Phosphor icon matches “{q}”.').replace('{q}', q)}</div>}
           </div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-1.5">Brands · Simple Icons {nq && `· ${simpleHits.length}`}</div>
           <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">

@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const KIT = join(ROOT, 'src/markdown');
+const KIT = join(ROOT, '../../packages/bmd/src');
 const README = join(KIT, 'README.md');
 
 if (!existsSync(KIT) || !existsSync(README)) {

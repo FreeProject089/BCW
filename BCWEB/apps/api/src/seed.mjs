@@ -393,6 +393,23 @@ Fenced code blocks are highlighted by language.
 ## Cross-references
 \`:ref[label]{href=…}\` links with the target's own name. Internal doc links show a preview card on hover, with the page's icon and first line.
 
+## New in B.MD 2.0
+
+Ten more blocks, all documented with live examples on the **Documentation blocks** page of the
+docs: a dated **timeline** (\`:::timeline\` / \`:::event\`), a **before / after** pair
+(\`:::compare\`), **stats** tiles (\`:::stats\` / \`:::stat\`), a **quote** with a name under it, a
+**hero** banner, a **changelog** (\`:::version\`), a **spoiler**, a **FAQ** (\`:::faq\` / \`:::q\`),
+a **checklist** that counts its ticks, a fixed **grid**, and an inline **meter**
+(\`:meter[60]{label=Done}\`). Icons now come from **Phosphor** too: \`:icon[ph:rocket]\`, with a
+weight as prefix (\`ph-bold:\`, \`ph-fill:\`, \`ph-duotone:\`).
+
+:::stats
+:::stat[Blocks]{value="70" delta="+22" icon=ph:stack}
+:::
+:::stat[Icons]{value="3 000+" icon=ph:palette}
+:::
+:::
+
 That is the whole vocabulary. Combine callouts, cards and short bullets for pages people actually read.`;
   const guideFr = BLOG_FR['markdown-guide'] || {};
   const guide = {

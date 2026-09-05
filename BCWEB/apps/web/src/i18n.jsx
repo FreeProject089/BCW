@@ -3846,6 +3846,8 @@ const DICT = {
     'devmd.dl.note': 'Les mathématiques et la coloration syntaxique n’ont volontairement pas d’interrupteur : les deux ne se chargent que si un document contient vraiment une formule ou un bloc de code, donc les garder coûte une ligne dans package.json et rien à l’exécution.',
     'dev.hub.md': 'Le kit markdown',
     'dev.hub.md.s': 'Le système de blocs avec lequel ce site s’affiche — encadrés, cartes, onglets, étapes, boutons de marque — en quatre fichiers à copier dans ton projet. Avec un éditeur en direct.',
+    'devmd.install.1b': 'B.MD est le paquet `@bettercommunity/bmd` (packages/bmd dans le dépôt : les sources, un README, une doc bloc par bloc, un CHANGELOG). Installe-le avec ses dépendances — ou copie son dossier src/ : sans étape de build à lui, les deux marchent.',
+    'ip.ph.weights': 'ph-bold: / ph-fill: / ph-duotone: pour les autres graisses', 'ip.ph.none': 'Aucune icône Phosphor ne correspond à « {q} ».',
     'devmd.title': 'B.MD — better.markdown',
     'devmd.lede': 'Un système de blocs à la GitBook posé sur le Markdown GitHub — encadrés, cartes, onglets, étapes, colonnes, boutons de marque, fichiers à télécharger, feuille de route, horaires, mathématiques. C’est un composant React que tu copies dans ton projet, et c’est celui avec lequel chaque page de ce site s’affiche.',
     'devmd.b1': '48 directives',

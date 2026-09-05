@@ -73,6 +73,24 @@ function lucideMask(name, size, className = '') {
 }
 const isLucideName = (n) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(n);
 
+// Phosphor icons: `ph:rocket`, `phosphor:rocket`, and a weight — `ph-bold:rocket`,
+// `ph-fill:rocket`, `ph-duotone:rocket` (thin · light · regular · bold · fill · duotone).
+// Resolved to `<weight>/<file>` the way the @phosphor-icons/core package lays its assets out
+// (`regular/rocket.svg`, `bold/rocket-bold.svg`), then drawn as a currentColor mask exactly
+// like an uncurated lucide name. `null` from the config's `cdn.phosphor` switches it off.
+const PH_WEIGHTS = new Set(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']);
+export function phosphorRef(n) {
+  const m = String(n || '').toLowerCase().match(/^(?:ph|phosphor)(?:-(thin|light|regular|bold|fill|duotone))?:([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (!m) return null;
+  const weight = PH_WEIGHTS.has(m[1]) ? m[1] : 'regular';
+  return weight === 'regular' ? `regular/${m[2]}` : `${weight}/${m[2]}-${weight}`;
+}
+function phosphorMask(ref, size, className = '') {
+  const url = cdnIconUrl('phosphor', ref);
+  if (!url) return <Hash aria-hidden className={className} style={{ display: 'inline-block', width: size, height: size, verticalAlign: '-2px' }} />;
+  return <span aria-hidden className={className} style={{ display: 'inline-block', width: size, height: size, backgroundColor: 'currentColor', WebkitMask: `url(${url}) center / contain no-repeat`, mask: `url(${url}) center / contain no-repeat`, verticalAlign: '-2px' }} />;
+}
+
 // A project/showcase icon accepting EITHER an image URL (uploaded svg/png, or a
 // logo) OR an icon name (lucide / `simple:brand`). Falls back to `fallback` when
 // unset — one field, every source (used by the topbar pill + project header).
@@ -118,6 +136,8 @@ export function IconGlyph({ name, size = 18, className = '' }) {
       </span>
     );
   }
+  const ph = phosphorRef(name);
+  if (ph) return phosphorMask(ph, size, className);
   const slug = simpleSlug(name);
   const Local = slug && localBrand(slug);
   if (Local) return <Local size={size} className={className} aria-hidden />;
@@ -134,6 +154,8 @@ export function IconGlyph({ name, size = 18, className = '' }) {
 export function DocIcon({ node }) {
   const p = node?.properties || {};
   const name = String(p.dataName || p['data-name'] || p.name || '').toLowerCase();
+  const ph = phosphorRef(name);
+  if (ph) return phosphorMask(ph, 16, 'doc-icon-svg');
   const slug = simpleSlug(name);
   const Local = slug && localBrand(slug);
   if (Local) return <Local className="doc-icon-svg" size={16} aria-hidden />;

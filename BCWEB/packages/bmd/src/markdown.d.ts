@@ -185,7 +185,19 @@ export function urlPolicy(): MarkdownUrlPolicy;
 export function appIcon(key: string): string;
 
 /** The URL for a remote icon, or '' when that family is switched off. */
-export function cdnIconUrl(family: 'lucide' | 'brand', name: string): string;
+export function cdnIconUrl(family: 'lucide' | 'brand' | 'phosphor', name: string): string;
+
+/**
+ * Register the `app:<key>` icons from a list ({ key, url, label }) — what a host that loads
+ * its app list at runtime calls, instead of the static map in configureMarkdown.
+ */
+export function registerAppIcons(list?: Array<{ key: string; url: string; label?: string }>): void;
+
+/** The label registered for an `app:` key, or the key itself. */
+export function appIconLabel(key: string): string;
+
+/** `ph:rocket` / `ph-bold:rocket` → the `<weight>/<file>` path under Phosphor's assets, or null. */
+export function phosphorRef(name: string): string | null;
 
 /* ── url.js ────────────────────────────────────────────────────────────── */
 

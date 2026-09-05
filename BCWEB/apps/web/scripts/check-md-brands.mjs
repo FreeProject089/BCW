@@ -25,10 +25,10 @@ import { fileURLToPath } from 'node:url';
 // assembly. Reading the whole kit and slicing from that is the only version of this check
 // that survives the next move, and it cannot report a false pass: every claim below still
 // has to find its text somewhere.
-const KIT = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown');
+const KIT = join(dirname(fileURLToPath(import.meta.url)), '../../../packages/bmd/src');
 const KIT_FILES = ['icons.jsx', 'directives.js', 'sanitize.js', 'index.jsx'];
 const MD = join(KIT, 'icons.jsx');
-const BRANDS = join(dirname(fileURLToPath(import.meta.url)), '../src/markdown/brands.jsx');
+const BRANDS = join(dirname(fileURLToPath(import.meta.url)), '../../../packages/bmd/src/brands.jsx');
 for (const f of [MD, BRANDS]) {
   if (!existsSync(f)) { console.error(`✗ ${f} is missing — refusing to report success`); process.exit(2); }
 }
