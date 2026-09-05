@@ -4,6 +4,7 @@
 // Their files are kept until that moment, then this job hard-deletes the rows and
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
+import { sweepAutoBadges } from '../routes/social.mjs';
 import { sweepAttention } from './attention.mjs';
 import { PENDING_QUEUES } from '../routes/misc.mjs';
 import { sendMail, mailShell, emailEnabled } from './mail.mjs';
@@ -629,6 +630,15 @@ export function startSweeper(app) {
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
       await sampleAndAlert(p, app.log);
       await runEventScheduler(p).catch((e) => app.log.warn({ e: String(e) }, 'event scheduler failed'));
+      // Threshold badges ("30 days old", "level 10") once a day: the rule may have been created
+      // after people already qualified, and time passing is not an event anything else fires.
+      await (async () => {
+        const row = await p.adminSetting.findUnique({ where: { key: 'badges.sweepAt' } }).catch(() => null);
+        if (row?.value && Date.now() - new Date(row.value).getTime() < 23 * 3600e3) return;
+        const n = await sweepAutoBadges(p, app.log);
+        await p.adminSetting.upsert({ where: { key: 'badges.sweepAt' }, create: { key: 'badges.sweepAt', value: new Date().toISOString() }, update: { value: new Date().toISOString() } });
+        if (n) app.log.info(`[sweeper] badge rules granted ${n} badge(s)`);
+      })().catch((e) => app.log.warn({ e: String(e) }, 'badge sweep failed'));
       // The 404 game's monthly podium. Idempotent in the database (GameAward is unique on
       // game+season+rank), so running this every ten minutes mints nothing after the first.
       await awardSeason(p)

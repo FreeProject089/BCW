@@ -1,11 +1,21 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, slugify } from '../lib/lib.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
+import { emitWebhook } from '../lib/webhooks.mjs';
 
 // Profile badges + public profiles + profile search. A badge is admin-created and shown
 // Twitch-chat-style next to a user's name; a profile is a privacy-controlled /u/<id> page.
 
 const STAFF = ['MOD', 'ADMIN', 'SUPERADMIN'];
+
+// Every way a badge can be earned automatically. The first three are the original rules; the
+// rest arrived with the Discord economy and the shop, so that a level, a habit or a purchase
+// can put something on a profile without a person handing it out.
+export const BADGE_RULE_TYPES = [
+  'signup_nth', 'signup_before', 'kofi_donation',
+  'level_reached', 'messages_sent', 'purchases_made', 'polls_answered', 'items_published',
+  'repo_hosted', 'discord_linked', 'twofa_enabled', 'account_age',
+];
 const badgeInput = z.object({
   name: z.string().trim().min(1).max(40),
   slug: z.string().trim().max(40).optional(),
@@ -16,9 +26,12 @@ const badgeInput = z.object({
   grant: z.enum(['manual', 'easter_egg', 'auto']).default('manual'),
   trigger: z.string().max(40).nullable().optional(),
   rule: z.object({
-    type: z.enum(['signup_nth', 'signup_before', 'kofi_donation']),
+    type: z.enum(BADGE_RULE_TYPES),
     every: z.number().int().min(1).max(1000000).optional(),
     date: z.string().max(40).optional(),
+    level: z.number().int().min(1).max(10000).optional(),
+    count: z.number().int().min(1).max(100000000).optional(),
+    days: z.number().int().min(1).max(36500).optional(),
   }).nullable().optional(),
   earnMessage: z.string().max(600).optional().default(''),
   priority: z.number().int().min(0).max(999).optional().default(0),
@@ -27,31 +40,107 @@ const badgeInput = z.object({
 
 const pubBadge = (ub) => ({ id: ub.badge.id, slug: ub.badge.slug, name: ub.badge.name, description: ub.badge.description, iconType: ub.badge.iconType, icon: ub.badge.icon, color: ub.badge.color });
 
-// Auto-grant badges when a lifecycle event fires. `event`: "signup" | "kofi". Best-effort,
-// never throws to the caller. Idempotent (createMany skipDuplicates on the unique pair).
-export async function grantAutoBadges(p, { event, user }) {
+// Which events each rule listens to. A rule not listed for an event is skipped without a
+// query, so the accrue loop (every minute, every active member) only pays for what matters.
+const RULE_EVENTS = {
+  signup_nth: ['signup'], signup_before: ['signup'], kofi_donation: ['kofi'],
+  level_reached: ['level', 'activity'], messages_sent: ['activity'],
+  purchases_made: ['purchase'], polls_answered: ['vote'], items_published: ['publish'],
+  repo_hosted: ['hosting'], discord_linked: ['discord'], twofa_enabled: ['twofa'], account_age: ['age'],
+};
+
+// Does `user` meet rule `r` right now? `ctx` carries what the caller already knows (a fresh
+// economy row, the level just reached) so the common cases cost no extra query.
+async function ruleMet(p, r, user, event, ctx) {
+  switch (r.type) {
+    case 'signup_nth': {
+      if (!(r.every > 0)) return false;
+      // The user's signup ordinal = how many accounts existed up to and including theirs.
+      const ordinal = await p.user.count({ where: { createdAt: { lte: user.createdAt } } });
+      return ordinal % r.every === 0;
+    }
+    case 'signup_before': return !!r.date && new Date(user.createdAt) < new Date(r.date);
+    case 'kofi_donation': return event === 'kofi';
+    case 'level_reached': {
+      const lvl = ctx.level ?? ctx.economy?.level ?? (await p.userEconomy.findUnique({ where: { userId: user.id }, select: { level: true } }))?.level ?? 0;
+      return lvl >= (r.level || 1);
+    }
+    case 'messages_sent': {
+      const n = ctx.economy?.messages ?? (await p.userEconomy.findUnique({ where: { userId: user.id }, select: { messages: true } }))?.messages ?? 0;
+      return n >= (r.count || 1);
+    }
+    case 'purchases_made': return (await p.economyPurchase.count({ where: { userId: user.id } })) >= (r.count || 1);
+    case 'polls_answered': {
+      const rows = await p.pollVote.findMany({ where: { userId: user.id }, select: { pollId: true }, distinct: ['pollId'] });
+      return rows.length >= (r.count || 1);
+    }
+    case 'items_published': return (await p.catalogItem.count({ where: { ownerId: user.id, status: 'PUBLISHED' } })) >= (r.count || 1);
+    case 'repo_hosted': return event === 'hosting' || (await p.hostingGroup.count({ where: { ownerId: user.id } })) > 0;
+    case 'discord_linked': return event === 'discord' || (await p.discordLink.count({ where: { userId: user.id } })) > 0;
+    case 'twofa_enabled': return event === 'twofa' || !!(await p.user.findUnique({ where: { id: user.id }, select: { totpEnabled: true } }))?.totpEnabled;
+    case 'account_age': return (Date.now() - new Date(user.createdAt).getTime()) >= (r.days || 1) * 864e5;
+    default: return false;
+  }
+}
+
+// Auto-grant badges when a lifecycle event fires. `event`: "signup" | "kofi" | "level" |
+// "activity" | "purchase" | "vote" | "publish" | "hosting" | "discord" | "twofa" | "age".
+// Best-effort, never throws to the caller. Idempotent (skipDuplicates on the unique pair); the
+// webhook fires only for a badge the person did not already hold. `user` needs `id` and
+// `createdAt` (the two things every rule may read) — pass the row you have.
+export async function grantAutoBadges(p, { event, user, level = null, economy = null }) {
   try {
-    const badges = await p.badge.findMany({ where: { grant: 'auto', active: true } });
+    if (!user?.id) return;
+    if (!user.createdAt) user = await p.user.findUnique({ where: { id: user.id }, select: { id: true, createdAt: true } });
+    if (!user) return;
+    const badges = (await p.badge.findMany({ where: { grant: 'auto', active: true } }))
+      .filter((b) => (RULE_EVENTS[b.rule?.type] || []).includes(event));
     if (!badges.length) return;
+    const held = new Set((await p.userBadge.findMany({ where: { userId: user.id, badgeId: { in: badges.map((b) => b.id) } }, select: { badgeId: true } })).map((x) => x.badgeId));
     const toGrant = [];
     for (const b of badges) {
-      const r = b.rule || {};
-      if (event === 'signup') {
-        if (r.type === 'signup_nth' && r.every > 0) {
-          // The user's signup ordinal = how many accounts existed up to and including theirs.
-          const ordinal = await p.user.count({ where: { createdAt: { lte: user.createdAt } } });
-          if (ordinal % r.every === 0) toGrant.push(b.id);
-        } else if (r.type === 'signup_before' && r.date) {
-          if (new Date(user.createdAt) < new Date(r.date)) toGrant.push(b.id);
-        }
-      } else if (event === 'kofi' && r.type === 'kofi_donation') {
-        toGrant.push(b.id);
-      }
+      if (held.has(b.id)) continue;
+      if (await ruleMet(p, b.rule || {}, user, event, { level, economy })) toGrant.push(b);
     }
-    if (toGrant.length) {
-      await p.userBadge.createMany({ data: toGrant.map((badgeId) => ({ userId: user.id, badgeId, grantedBy: 'system' })), skipDuplicates: true });
-    }
+    if (!toGrant.length) return;
+    await p.userBadge.createMany({ data: toGrant.map((b) => ({ userId: user.id, badgeId: b.id, grantedBy: 'system' })), skipDuplicates: true });
+    for (const b of toGrant) emitWebhook(p, user.id, 'badge.earned', { id: b.id, slug: b.slug, name: b.name, via: `rule:${b.rule?.type}` }).catch(() => {});
   } catch { /* auto-grant is best-effort */ }
+}
+
+// The rules that are met by TIME PASSING or by a threshold a person may already be past when
+// the badge is created ("everyone at level 10" should include the people already there). Run
+// by the sweeper once a day: for each such badge, find who qualifies and does not hold it.
+export async function sweepAutoBadges(p, log) {
+  const badges = await p.badge.findMany({ where: { grant: 'auto', active: true } });
+  let granted = 0;
+  for (const b of badges) {
+    const r = b.rule || {};
+    let ids = [];
+    try {
+      if (r.type === 'account_age') ids = (await p.user.findMany({ where: { createdAt: { lte: new Date(Date.now() - (r.days || 1) * 864e5) }, closedAt: null }, select: { id: true }, take: 5000 })).map((u) => u.id);
+      else if (r.type === 'level_reached') ids = (await p.userEconomy.findMany({ where: { level: { gte: r.level || 1 } }, select: { userId: true }, take: 5000 })).map((u) => u.userId);
+      else if (r.type === 'messages_sent') ids = (await p.userEconomy.findMany({ where: { messages: { gte: r.count || 1 } }, select: { userId: true }, take: 5000 })).map((u) => u.userId);
+      else if (r.type === 'discord_linked') ids = (await p.discordLink.findMany({ select: { userId: true }, distinct: ['userId'], take: 5000 })).map((u) => u.userId);
+      else if (r.type === 'twofa_enabled') ids = (await p.user.findMany({ where: { totpEnabled: true, closedAt: null }, select: { id: true }, take: 5000 })).map((u) => u.id);
+      else if (r.type === 'repo_hosted') ids = (await p.hostingGroup.findMany({ select: { ownerId: true }, distinct: ['ownerId'], take: 5000 })).map((u) => u.ownerId);
+      else if (r.type === 'items_published') {
+        const rows = await p.catalogItem.groupBy({ by: ['ownerId'], where: { status: 'PUBLISHED' }, _count: { _all: true } });
+        ids = rows.filter((x) => x.ownerId && x._count._all >= (r.count || 1)).map((x) => x.ownerId);
+      } else if (r.type === 'purchases_made') {
+        const rows = await p.economyPurchase.groupBy({ by: ['userId'], _count: { _all: true } });
+        ids = rows.filter((x) => x._count._all >= (r.count || 1)).map((x) => x.userId);
+      } else continue; // event-only rules (signup, kofi, polls) have no retroactive form
+      if (!ids.length) continue;
+      const held = new Set((await p.userBadge.findMany({ where: { badgeId: b.id, userId: { in: ids } }, select: { userId: true } })).map((x) => x.userId));
+      const fresh = ids.filter((id) => !held.has(id));
+      if (!fresh.length) continue;
+      const res = await p.userBadge.createMany({ data: fresh.map((userId) => ({ userId, badgeId: b.id, grantedBy: 'system' })), skipDuplicates: true });
+      granted += res.count || 0;
+      for (const userId of fresh) emitWebhook(p, userId, 'badge.earned', { id: b.id, slug: b.slug, name: b.name, via: `rule:${r.type}` }).catch(() => {});
+    } catch (e) { log?.warn?.({ e: String(e?.message || e), badge: b.slug }, 'badge sweep failed'); }
+  }
+  return granted;
 }
 
 // A user's shareable profile. No PII — pseudo, avatar, badges, join date, role, public
@@ -215,6 +304,7 @@ export default async function socialRoutes(app) {
     const existing = await p.userBadge.findUnique({ where: { userId_badgeId: { userId: req.user.uid, badgeId: badge.id } } });
     if (existing) return { alreadyHad: true, badge: { name: badge.name, icon: badge.icon, iconType: badge.iconType, color: badge.color } };
     await p.userBadge.create({ data: { userId: req.user.uid, badgeId: badge.id, grantedBy: 'system' } });
+    emitWebhook(p, req.user.uid, 'badge.earned', { id: badge.id, slug: badge.slug, name: badge.name, via: 'easter_egg' }).catch(() => {});
     return { alreadyHad: false, badge: { name: badge.name, icon: badge.icon, iconType: badge.iconType, color: badge.color } };
   });
 
@@ -277,6 +367,7 @@ export default async function socialRoutes(app) {
       create: { userId: user.id, badgeId: badge.id, grantedBy: req.user.uid },
       update: {},
     });
+    emitWebhook(p, user.id, 'badge.earned', { id: badge.id, slug: badge.slug, name: badge.name, via: 'staff' }).catch(() => {});
     return { ok: true, userId: user.id, displayName: user.displayName };
   });
 

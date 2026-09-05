@@ -38,7 +38,20 @@ export const WEBHOOK_EVENTS = Object.freeze({
   'review.posted': 'Somebody reviewed or rated one of your items.',
   'catalog.item.submitted': 'A submission landed in a catalog you manage.',
   'pool.storage.changed': 'The used space in one of your pools changed materially.',
+
+  // Community: things that happen to everyone at once (a poll, the charity pot) and the
+  // personal counters the Discord economy moves. The broadcast ones go to every endpoint
+  // subscribed to them, not to one owner — there is no owner of "a poll opened".
+  'poll.opened': 'A poll opened to the community — id, question and the option ids to answer with.',
+  'poll.closed': 'A poll closed.',
+  'charity.month.closed': 'The month’s Community Charity pot was closed and its total fixed.',
+  'badge.earned': 'A badge was added to your profile — by a rule, a purchase, staff, or an easter egg.',
+  'economy.level_up': 'Your Discord level went up (with the points it granted).',
+  'shop.purchased': 'You bought something in the points shop.',
 });
+
+/** Events with no owner — delivered to EVERY enabled endpoint that subscribed. */
+export const BROADCAST_EVENTS = new Set(['poll.opened', 'poll.closed', 'charity.month.closed']);
 
 // Events that can fire many times a minute are coalesced rather than sent one by one: a
 // per-download webhook on a popular item would be a denial of service we perform on our own
@@ -99,6 +112,18 @@ export async function emitWebhook(p, userId, event, data) {
     await p.webhookDelivery.createMany({
       data: endpoints.map((e) => ({ endpointId: e.id, event, payload, nextAt: new Date() })),
     });
+    return endpoints.length;
+  } catch { return 0; }
+}
+
+/** A community event: one delivery per subscribed endpoint, whoever owns it. Never throws. */
+export async function emitWebhookAll(p, event, data) {
+  try {
+    if (!WEBHOOK_EVENTS[event] || !BROADCAST_EVENTS.has(event)) return 0;
+    const endpoints = await p.webhookEndpoint.findMany({ where: { enabled: true, events: { has: event } }, select: { id: true } });
+    if (!endpoints.length) return 0;
+    const payload = { event, at: new Date().toISOString(), data };
+    await p.webhookDelivery.createMany({ data: endpoints.map((e) => ({ endpointId: e.id, event, payload, nextAt: new Date() })) });
     return endpoints.length;
   } catch { return 0; }
 }

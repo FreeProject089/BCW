@@ -10,6 +10,9 @@ import { verifyTotp } from '../lib/totp.mjs';
 import { buildPublicProfile } from './social.mjs';
 import { findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { apiUsageConfig } from '../lib/apiusage.mjs';
+import { charityCurrent } from './charity.mjs';
+import { economyView } from '../lib/economy-curve.mjs';
+import { listPurchases } from '../lib/economy-shop.mjs';
 
 // Only the PREFIXED form (BCU-XXXX-XXXX). repofingerprint's looksLikeBcId also accepts a
 // bare 8-character string, and resolving one costs a scan over every account — it
@@ -620,6 +623,65 @@ export default async function apiKeyRoutes(app) {
       }),
     ]);
     return { ok: true, myVotes: picks };
+  });
+
+  // One poll by id — open OR closed — with every id a client needs to answer it: the option
+  // ids for /vote, and the multi-question form (question ids + choice ids) when the poll has
+  // one. The list endpoint above hides closed polls because it answers "what can I vote on";
+  // this one answers "what was that poll", which includes its result once it may be seen.
+  app.get('/v1/polls/:id', { preHandler: apiAuth('polls:read'), ...RL_READ }, async (req, reply) => {
+    const p = await db();
+    const poll = await p.poll.findUnique({
+      where: { id: String(req.params.id) },
+      include: {
+        options: { orderBy: { sort: 'asc' } },
+        votes: { select: { optionId: true, userId: true } },
+        questions: { orderBy: { sort: 'asc' }, include: { choices: { orderBy: { sort: 'asc' } } } },
+      },
+    }).catch(() => null);
+    // Unlisted and private polls are shared by hand or scoped to a group; a key reads only
+    // what a signed-in member browsing the site would find on the polls page.
+    if (!poll || poll.status === 'draft' || (poll.visibility && poll.visibility !== 'public')) return reply.code(404).send({ error: 'not_found' });
+    const now = Date.now();
+    const open = poll.status === 'open' && (!poll.opensAt || new Date(poll.opensAt).getTime() <= now) && (!poll.closesAt || new Date(poll.closesAt).getTime() > now);
+    const mine = poll.votes.filter((v) => v.userId === req.user.uid).map((v) => v.optionId);
+    const counted = mine.length > 0 || poll.results === 'always' || poll.status === 'closed';
+    const tally = new Map(poll.options.map((o) => [o.id, 0]));
+    for (const v of poll.votes) tally.set(v.optionId, (tally.get(v.optionId) || 0) + 1);
+    return {
+      id: poll.id, question: poll.question, description: poll.description || '',
+      status: poll.status, open, audience: poll.audience, multiple: !!poll.multiple, maxChoices: poll.maxChoices || 0,
+      opensAt: poll.opensAt, closesAt: poll.closesAt, createdAt: poll.createdAt,
+      totalVotes: poll.votes.length, myVotes: mine,
+      options: poll.options.map((o) => ({ id: o.id, label: o.label, ...(counted ? { votes: tally.get(o.id) || 0 } : {}) })),
+      questions: (poll.questions || []).map((q) => ({
+        id: q.id, kind: q.kind, prompt: q.label || '', required: !!q.required,
+        choices: (q.choices || []).map((c) => ({ id: c.id, label: c.label })),
+      })),
+    };
+  });
+
+  // ── Community Charity ───────────────────────────────────────────────────────
+  // The same shape the landing widget reads: association, percent, this month's totals, the
+  // vote (id + open) — so a bot or a dashboard can show the pot without scraping the page.
+  app.get('/v1/charity', { preHandler: apiAuth('charity:read'), ...RL_READ }, async () => charityCurrent(await db()));
+
+  // ── Discord economy ─────────────────────────────────────────────────────────
+  app.get('/v1/economy', { preHandler: apiAuth('economy:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const [e, cfg] = await Promise.all([
+      p.userEconomy.findUnique({ where: { userId: req.user.uid } }),
+      p.adminSetting.findUnique({ where: { key: 'bot.config' } }),
+    ]);
+    return economyView(e, cfg?.value?.economy || {});
+  });
+  app.get('/v1/economy/purchases', { preHandler: apiAuth('economy:read'), ...RL_READ }, async (req) => ({ purchases: await listPurchases(await db(), req.user.uid, 200) }));
+
+  // ── Badges ──────────────────────────────────────────────────────────────────
+  app.get('/v1/badges', { preHandler: apiAuth('badges:read'), ...RL_READ }, async (req) => {
+    const p = await db();
+    const rows = await p.userBadge.findMany({ where: { userId: req.user.uid }, include: { badge: true }, orderBy: { badge: { priority: 'desc' } } });
+    return { badges: rows.map((ub) => ({ id: ub.badge.id, slug: ub.badge.slug, name: ub.badge.name, description: ub.badge.description, iconType: ub.badge.iconType, icon: ub.badge.icon, color: ub.badge.color, earnedAt: ub.grantedAt, how: ub.grantedBy === 'system' ? 'system' : 'staff' })) };
   });
 
   // ── Favourites ──────────────────────────────────────────────────────────────

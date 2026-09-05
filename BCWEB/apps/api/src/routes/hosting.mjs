@@ -7,6 +7,7 @@ import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
 import { promoMeetsMinimum } from '../lib/promo-rules.mjs';
+import { grantAutoBadges } from './social.mjs';
 
 const GiB = 1024 ** 3;
 
@@ -174,6 +175,7 @@ export async function provisionHostingPool(p, { userId, plan, poolName, months, 
     poolContribBytes: bytes, // this sub's storage contribution to the pool
     currentPeriodEnd: new Date(Date.now() + months * 30 * 864e5),
   } });
+  grantAutoBadges(p, { event: 'hosting', user: { id: userId } }).catch(() => {});
   return group;
 }
 

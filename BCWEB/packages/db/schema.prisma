@@ -111,6 +111,7 @@ model User {
   expenses         Expense[]      @relation("ExpenseAuthor")
   sessions         Session[]
   economy          UserEconomy?
+  purchases        EconomyPurchase[]
   createdAt        DateTime       @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -3574,4 +3575,25 @@ model UserEconomy {
   createdAt    DateTime @default(now())
 
   @@index([level])
+}
+
+// What a member bought with points — the inventory. One row per purchase, whichever door it
+// came through (Discord /shop or the site's Boutique). `delivery` holds what was handed over
+// (a promo code, the badge's name); `status` is `delivered` for what the API fulfils itself
+// and `pending` for a role / custom reward a person still has to hand out.
+model EconomyPurchase {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId    String
+  itemName  String
+  kind      String
+  cost      Int
+  via       String   @default("site") // "site" | "discord"
+  status    String   @default("delivered") // "delivered" | "pending"
+  delivery  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([status])
 }

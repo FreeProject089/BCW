@@ -648,6 +648,9 @@ export const API_SCOPES = Object.freeze({
   'polls:write':   'Answer polls on your behalf.',
   'transfers:read': 'See ownership transfers offered to or by you.',
   'favorites:read': 'List the repositories and catalogs you starred.',
+  'economy:read':  'Read your Discord level, XP, points, and what you bought in the points shop.',
+  'badges:read':   'List the badges on your profile and when you earned them.',
+  'charity:read':  'Read the Community Charity pot: the association, the totals and the month’s vote.',
 });
 
 /** True if the key carries `scope`. A key with no scopes is allowed nothing. */

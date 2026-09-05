@@ -149,6 +149,76 @@ export function computeActivityFromCommits(commits) {
 }
 
 /**
+ * Parse a `git log` export into per-day / per-author counts — the compact form an import
+ * stores (a 20 000-commit repo is a few KB of counts, not a few MB of messages).
+ *
+ * Two shapes are accepted, because both are one command away:
+ *   · the pipe format the editor suggests:  `git log --all --format="%H|%aI|%an|%s"`
+ *   · plain `git log` output — the "commit …" / "Author: …" / "Date: …" blocks.
+ * Anything else is ignored line by line; an import that parses to zero commits is refused by
+ * the route rather than stored as an empty year.
+ */
+export function parseGitLog(text) {
+  const days = {}, authors = {};
+  let total = 0, first = null, last = null;
+  const take = (dateStr, author) => {
+    const t = new Date(dateStr);
+    if (!Number.isFinite(t.getTime())) return;
+    const d = t.toISOString().slice(0, 10);
+    days[d] = (days[d] || 0) + 1;
+    const a = String(author || 'unknown').trim().slice(0, 80) || 'unknown';
+    authors[a] = (authors[a] || 0) + 1;
+    total++;
+    if (!first || d < first) first = d;
+    if (!last || d > last) last = d;
+  };
+  const lines = String(text || '').split(/\r?\n/);
+  let plainAuthor = null;
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    // Pipe format: hash|date|author|subject (subject may itself contain pipes).
+    const pipe = line.match(/^([0-9a-f]{7,40})\|([^|]+)\|([^|]*)\|?/i);
+    if (pipe) { take(pipe[2].trim(), pipe[3]); continue; }
+    // Plain `git log`.
+    const au = line.match(/^Author:\s+(.+?)\s*(<[^>]*>)?\s*$/);
+    if (au) { plainAuthor = au[1]; continue; }
+    const dt = line.match(/^(?:Author)?Date:\s+(.+)$/);
+    if (dt && plainAuthor != null) { take(dt[1].trim(), plainAuthor); plainAuthor = null; continue; }
+  }
+  return { days, authors, total, first, last };
+}
+
+/** The activity shape the page renders, from stored day/author counts (an import). */
+export function computeActivityFromCounts({ days = {}, authors = {}, first = null, last = null, total = 0 } = {}) {
+  const heatmap = [];
+  let yearCommits = 0, activeDays = 0, busiest = { date: null, count: 0 };
+  const now = new Date();
+  const todaySec = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) / 1000;
+  const dow = new Date(todaySec * 1000).getUTCDay();
+  const startWeek = todaySec - dow * DAY - 51 * 7 * DAY;
+  for (let i = 0; i < 52 * 7; i++) {
+    const date = iso(startWeek + i * DAY);
+    const count = days[date] || 0;
+    heatmap.push({ date, count });
+    yearCommits += count;
+    if (count > 0) activeDays += 1;
+    if (count > busiest.count) busiest = { date, count };
+  }
+  const byYear = {};
+  for (const [d, n] of Object.entries(days)) { const y = d.slice(0, 4); byYear[y] = (byYear[y] || 0) + n; }
+  const perYear = Object.keys(byYear).map((y) => ({ year: Number(y), commits: byYear[y] })).sort((a, b) => a.year - b.year);
+  const contributors = Object.entries(authors).map(([name, commits]) => ({ name, commits, avatar: null, url: null })).sort((a, b) => b.commits - a.commits);
+  const spanDays = first && last ? Math.round((new Date(last) - new Date(first)) / 864e5) + 1 : 0;
+  return {
+    heatmap, yearCommits, activeDays, busiestDay: busiest.date ? busiest : null,
+    totalCommits: total, perYear, contributors,
+    firstCommit: first, lastCommit: last,
+    spanDays, spanMonths: Math.round(spanDays / 30.44), spanYears: spanDays ? +(spanDays / 365.25).toFixed(1) : 0,
+    imported: true,
+  };
+}
+
+/**
  * Dated markers to pin on the timeline, from GitHub /releases. `includeMessages` decides
  * whether the release body travels (the "include commit messages" toggle the feature asks
  * for, applied to release notes here).

@@ -222,6 +222,7 @@ export default async function oauthRoutes(app) {
         const owner = await p.discordLink.findUnique({ where: { discordId: profile.id } });
         if (!owner) {
           await p.discordLink.create({ data: { userId: user.id, discordId: profile.id, username: profile.username, pendingSync: true } }).catch(() => {});
+          grantAutoBadges(p, { event: 'discord', user }).catch(() => {});
         } else if (owner.userId === user.id) {
           await p.discordLink.update({ where: { discordId: profile.id }, data: { username: profile.username, pendingSync: true } }).catch(() => {});
         }

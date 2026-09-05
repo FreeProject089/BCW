@@ -332,6 +332,7 @@ export default async function authRoutes(app) {
     const recoveryCodes = generateRecoveryCodes();
     const hashed = await Promise.all(recoveryCodes.map((c) => argon2.hash(c.replace('-', ''), { type: argon2.argon2id })));
     await p.user.update({ where: { id: req.user.uid }, data: { totpSecret: b.data.secret, totpEnabled: true, totpRecoveryCodes: hashed } });
+    grantAutoBadges(p, { event: 'twofa', user: { id: req.user.uid } }).catch(() => {});
     return { ok: true, recoveryCodes }; // shown to the user exactly once
   });
 

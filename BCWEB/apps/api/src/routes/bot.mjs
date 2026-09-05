@@ -4,6 +4,10 @@ import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, admitMembers, capacityStatus, logModeration } from '../lib/discord-storage.mjs';
+import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS } from '../lib/economy-shop.mjs';
+import { emitWebhook } from '../lib/webhooks.mjs';
+import { grantAutoBadges } from './social.mjs';
+import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView } from '../lib/economy-curve.mjs';
 
 // B4: a guild's member-storage config, created lazily on first sight with the safe default
 // (mode `none` — store nothing). Every member write goes through this so a guild the admin
@@ -1553,22 +1557,7 @@ export default async function botRoutes(app) {
   });
 
   // ── B-econ: levelling / economy ───────────────────────────────────────────
-  // The level a cumulative XP total maps to, using the configured curve. The cost to go from
-  // level k to k+1 is base·factor^k, so reaching level L costs base·(factor^L−1)/(factor−1) —
-  // the exact curve the admin preview draws. Higher factor = each level is harder.
-  const economyLevelFor = (xp, base, factor) => {
-    base = Number(base) || 100; factor = Number(factor) || 1.18; xp = Math.max(0, Number(xp) || 0);
-    let lvl = 0, cum = 0;
-    while (lvl < 100000) { const step = base * factor ** lvl; if (cum + step > xp) break; cum += step; lvl++; }
-    return lvl;
-  };
-  const economyXpForLevel = (lvl, base, factor) => {
-    base = Number(base) || 100; factor = Number(factor) || 1.18;
-    return Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
-  };
-  // Total points a member has EARNED by reaching a level (floored to the grant interval). The
-  // spendable balance adds the delta of this on level-up, so points are never double-granted.
-  const economyPointsEarned = (level, everyN, perGrant) => Math.floor(Math.max(0, level) / Math.max(1, Number(everyN) || 5)) * (Number(perGrant) || 0);
+  // The curve itself lives in lib/economy-curve.mjs — the public /v1/economy reads it too.
 
   // The bot reports raw activity deltas here; the API turns them into XP (server-authoritative
   // rates), a level, and points. XP accrues ONLY for a discordId linked to a BCWEB account — an
@@ -1602,11 +1591,20 @@ export default async function botRoutes(app) {
       const newXp = oldXp + xpDelta;
       const newLevel = economyLevelFor(newXp, eco.curveBase, eco.curveFactor);
       const pointsDelta = Math.max(0, economyPointsEarned(newLevel, eco.pointsEveryLevels, eco.pointsPerGrant) - economyPointsEarned(oldLevel, eco.pointsEveryLevels, eco.pointsPerGrant));
-      await p.userEconomy.upsert({
+      const fresh = await p.userEconomy.upsert({
         where: { userId },
         create: { userId, xp: newXp, level: newLevel, points: pointsDelta, voiceSeconds: vsec, messages: msgs, reactions: reacts },
         update: { xp: newXp, level: newLevel, points: { increment: pointsDelta }, voiceSeconds: { increment: vsec }, messages: { increment: msgs }, reactions: { increment: reacts } },
-      }).then(() => { updated++; }).catch(() => {});
+      }).then((row) => { updated++; return row; }).catch(() => null);
+      if (!fresh) continue;
+      // A level crossed is an event people subscribe to (and a badge rule can listen for);
+      // plain activity only matters to the message-count rule. Neither is awaited.
+      if (newLevel > oldLevel) {
+        emitWebhook(p, userId, 'economy.level_up', { level: newLevel, from: oldLevel, xp: newXp, pointsGranted: pointsDelta }).catch(() => {});
+        grantAutoBadges(p, { event: 'level', user: { id: userId }, level: newLevel, economy: fresh }).catch(() => {});
+      } else if (msgs > 0) {
+        grantAutoBadges(p, { event: 'activity', user: { id: userId }, economy: fresh }).catch(() => {});
+      }
     }
     return { ok: true, updated };
   });
@@ -1622,8 +1620,29 @@ export default async function botRoutes(app) {
   app.get('/bot/economy/leaderboard', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
-    const rows = await p.userEconomy.findMany({ where: { level: { gt: 0 } }, include: { user: { select: { displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
-    return { members: rows.map((r) => ({ displayName: r.user.displayName, level: r.level, points: r.points })) };
+    const rows = await p.userEconomy.findMany({ where: { level: { gt: 0 } }, include: { user: { select: { id: true, displayName: true, avatar: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
+    const out = { members: rows.map((r) => ({ userId: r.user.id, displayName: r.user.displayName, avatar: r.user.avatar || null, level: r.level, xp: r.xp, points: r.points })), total: await p.userEconomy.count({ where: { level: { gt: 0 } } }) };
+    // The caller's own place, so "/leaderboard" can say "you: #37" even when they are not in
+    // the top ten — the number that makes somebody want to climb.
+    const discordId = String(req.query?.discordId || '');
+    if (discordId) {
+      const link = await p.discordLink.findUnique({ where: { discordId }, select: { userId: true } });
+      const me = link ? await p.userEconomy.findUnique({ where: { userId: link.userId } }) : null;
+      if (me && me.level > 0) {
+        const ahead = await p.userEconomy.count({ where: { OR: [{ level: { gt: me.level } }, { level: me.level, xp: { gt: me.xp } }] } });
+        out.me = { rank: ahead + 1, level: me.level, xp: me.xp, points: me.points };
+      }
+    }
+    return out;
+  });
+
+  // A member's purchases by Discord id — the bot's /inventory.
+  app.get('/bot/economy/purchases/:discordId', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const link = await p.discordLink.findUnique({ where: { discordId: req.params.discordId }, select: { userId: true } });
+    if (!link) return { linked: false, purchases: [] };
+    return { linked: true, purchases: await listPurchases(p, link.userId, 50) };
   });
 
   // A member's economy by Discord id — for the bot's /level and /profile commands.
@@ -1650,19 +1669,12 @@ export default async function botRoutes(app) {
     const p = await db();
     const e = await p.userEconomy.findUnique({ where: { userId: req.user.uid } });
     const eco = (await getBotConfig(p)).economy || {};
-    const level = e?.level || 0;
-    const xp = e?.xp || 0;
-    return {
-      enabled: !!eco.enabled,
-      currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '', image: eco.currencyImage || '' },
-      level, xp, points: e?.points || 0,
-      xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
-      xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
-      stats: { voiceSeconds: e?.voiceSeconds || 0, messages: e?.messages || 0, reactions: e?.reactions || 0, public: e?.statsPublic ?? (eco.statsPublic !== false) },
-      // The XP rates, so the dashboard can show where a member's XP came from (message vs
-      // reaction vs voice) without a second request.
-      rates: { message: Number(eco.xpPerMessage ?? 5), reaction: Number(eco.xpPerReaction ?? 1), voiceMinute: Number(eco.xpPerVoiceMinute ?? 3) },
-    };
+    // Plus the two counts the dashboard's Boutique card shows without a second request.
+    const [purchases, pending] = await Promise.all([
+      p.economyPurchase.count({ where: { userId: req.user.uid } }),
+      p.economyPurchase.count({ where: { userId: req.user.uid, status: 'pending' } }),
+    ]);
+    return { ...economyView(e, eco), shopItems: visibleShopItems(eco).length, purchases, pendingDeliveries: pending };
   });
 
   // Toggle whether the member's activity stats are public (level itself is always public).
@@ -1702,6 +1714,10 @@ export default async function botRoutes(app) {
     const newLevel = b.data.xp != null ? economyLevelFor(newXp, eco.curveBase, eco.curveFactor) : (cur?.level || 0);
     await p.userEconomy.upsert({ where: { userId: b.data.userId }, create: { userId: b.data.userId, points: newPts, xp: newXp, level: newLevel }, update: { points: newPts, ...(b.data.xp != null ? { xp: newXp, level: newLevel } : {}) } });
     await logAudit(p, req.user.uid, 'economy.grant', `user=${b.data.userId} delta=${b.data.points} → ${newPts}${b.data.reason ? ` (${b.data.reason})` : ''}`);
+    if (newLevel > (cur?.level || 0)) {
+      emitWebhook(p, b.data.userId, 'economy.level_up', { level: newLevel, from: cur?.level || 0, xp: newXp, pointsGranted: 0, by: 'staff' }).catch(() => {});
+      grantAutoBadges(p, { event: 'level', user: { id: b.data.userId }, level: newLevel }).catch(() => {});
+    }
     return { ok: true, points: newPts, xp: newXp, level: newLevel };
   });
 
@@ -1715,50 +1731,66 @@ export default async function botRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
-    const item = (Array.isArray(eco.shop) ? eco.shop : []).find((i) => i.id === b.data.itemId);
-    if (!item) return { ok: false, error: 'no_such_item' };
     const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
     if (!link) return { ok: false, error: 'not_linked' };
-    const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
-    const cost = Math.max(0, Number(item.cost) || 0);
-    if ((cur?.points || 0) < cost) return { ok: false, error: 'insufficient', points: cur?.points || 0, cost };
-    // Fulfil what the API itself can grant BEFORE debiting, so a failed grant never charges
-    // the member. `role`/`promo`/`custom` are delivered by the BOT (it has the guild + can DM a
-    // code); `badge` and the site-perk kinds (pool/boost/hosting) are granted here, on the site.
-    let delivery = { kind: item.kind };
-    try {
-      if (item.kind === 'badge' && item.ref) {
-        const badge = await p.badge.findUnique({ where: { id: item.ref }, select: { id: true, name: true, active: true } });
-        if (!badge || !badge.active) return { ok: false, error: 'badge_unavailable' };
-        // Idempotent: a member who already holds it can't spend points for nothing.
-        if (await p.userBadge.findUnique({ where: { userId_badgeId: { userId: link.userId, badgeId: badge.id } } }))
-          return { ok: false, error: 'already_owned' };
-        await p.userBadge.create({ data: { userId: link.userId, badgeId: badge.id, grantedBy: 'system' } });
-        delivery = { kind: 'badge', badge: badge.name };
-      } else if (item.kind === 'pool' || item.kind === 'boost' || item.kind === 'hosting') {
-        // Mint a real single-use promo code assigned to the buyer and DM it — reusing the promo
-        // infra so redemption, limits and lifecycle are the platform's, not a bespoke path.
-        const promoKind = item.kind === 'pool' ? 'free_pool' : item.kind === 'boost' ? 'free_boost' : 'free_hosting';
-        const amount = Math.max(1, Number(item.amount) || 1);
-        let code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
-        for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
-        await p.promoCode.create({ data: {
-          code, kind: promoKind,
-          storageGB: (item.kind === 'pool' || item.kind === 'hosting') ? amount : null,
-          boostDays: item.kind === 'boost' ? amount : null,
-          hostMonths: item.kind === 'hosting' ? 1 : null,
-          maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [link.userId],
-          note: `Shop purchase: ${item.name || item.id}`,
-        } });
-        delivery = { kind: item.kind, code, amount };
-      }
-    } catch (e) {
-      req.log?.warn?.({ err: e?.message }, 'economy buy fulfil failed');
-      return { ok: false, error: 'fulfil_failed' };
-    }
-    await p.userEconomy.update({ where: { userId: link.userId }, data: { points: { decrement: cost } } });
-    await logAudit(p, 'system', 'economy.buy', `user=${link.userId} item=${item.id} kind=${item.kind} cost=${cost}`);
-    return { ok: true, item: { id: item.id, name: item.name, kind: item.kind, payload: item.payload || null, ref: item.ref || null }, delivery, points: (cur?.points || 0) - cost };
+    const r = await buyShopItem(p, eco, { userId: link.userId, itemId: b.data.itemId, via: 'discord', log: req.log });
+    if (r.ok) grantAutoBadges(p, { event: 'purchase', user: { id: link.userId } }).catch(() => {});
+    return r;
+  });
+
+  // ── The shop and the inventory, from the site ───────────────────────────────
+  // The same items the bot sells, the same purchase function. What the member sees: their
+  // balance, every item with its price and what it hands over, which badges they already
+  // hold (a badge is one-per-account), and everything they bought so far.
+  app.get('/me/economy/shop', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const [e, held, purchases] = await Promise.all([
+      p.userEconomy.findUnique({ where: { userId: req.user.uid }, select: { points: true, level: true } }),
+      p.userBadge.findMany({ where: { userId: req.user.uid }, select: { badgeId: true } }),
+      listPurchases(p, req.user.uid, 100),
+    ]);
+    const heldIds = new Set(held.map((x) => x.badgeId));
+    const items = visibleShopItems(eco).map((x) => ({
+      id: x.id, name: x.name, desc: x.desc || '', cost: Math.max(0, Number(x.cost) || 0), kind: x.kind || 'custom',
+      amount: x.amount || null, fulfil: SHOP_KINDS[x.kind]?.fulfil || 'admin',
+      owned: x.kind === 'badge' ? heldIds.has(x.ref) : false,
+    }));
+    return {
+      enabled: !!eco.enabled,
+      currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '', image: eco.currencyImage || '' },
+      points: e?.points || 0, level: e?.level || 0, items, purchases,
+    };
+  });
+  app.post('/me/economy/buy', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const b = z.object({ itemId: z.string().min(1).max(60) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const r = await buyShopItem(p, eco, { userId: req.user.uid, itemId: b.data.itemId, via: 'site', log: req.log });
+    if (!r.ok) return reply.code(r.error === 'insufficient' ? 402 : r.error === 'no_such_item' ? 404 : 409).send(r);
+    grantAutoBadges(p, { event: 'purchase', user: { id: req.user.uid } }).catch(() => {});
+    return r;
+  });
+  app.get('/me/economy/purchases', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    return { purchases: await listPurchases(p, req.user.uid, 200) };
+  });
+
+  // Admin: what still needs a person — roles and custom rewards bought with points — and the
+  // button that says it was handed over. Newest first, pending on top.
+  app.get('/admin/economy/purchases', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const rows = await p.economyPurchase.findMany({ orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 100, include: { user: { select: { id: true, displayName: true } } } });
+    return { purchases: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status, delivery: r.delivery, createdAt: r.createdAt })) };
+  });
+  app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const row = await p.economyPurchase.findUnique({ where: { id: req.params.id } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    await p.economyPurchase.update({ where: { id: row.id }, data: { status: 'delivered' } });
+    await logAudit(p, req.user.uid, 'economy.deliver', `purchase=${row.id} user=${row.userId} item=${row.itemId}`);
+    return { ok: true };
   });
 
   // A member gambles points in the casino. The bot posts the bet + outcome multiplier it rolled;
@@ -1801,6 +1833,7 @@ export default async function botRoutes(app) {
     if (!row || row.expiresAt < new Date()) return reply.code(404).send({ error: 'invalid_or_expired' });
     if (await p.discordLink.findUnique({ where: { discordId: row.discordId } })) return reply.code(409).send({ error: 'already_linked' });
     const link = await p.discordLink.create({ data: { userId: req.user.uid, discordId: row.discordId, username: row.username } });
+    grantAutoBadges(p, { event: 'discord', user: { id: req.user.uid } }).catch(() => {});
     await p.discordLinkCode.delete({ where: { id: row.id } }).catch(() => {});
     return { ok: true, link };
   });
@@ -1825,7 +1858,7 @@ export default async function botRoutes(app) {
   const manageableWhere = (ids) => ({ OR: [{ ownerDiscordId: { in: ids } }, { managerDiscordIds: { hasSome: ids } }] });
   const serGuildUser = (g, stored, ids, icons = {}) => ({
     guildId: g.guildId, name: g.name, icon: icons[g.guildId] || null, memberMode: g.memberMode, logChannelId: g.logChannelId,
-    storeLogs: g.storeLogs, memberCount: g.memberCount, storedMembers: stored,
+    storeLogs: g.storeLogs, memberCount: g.memberCount, storedMembers: stored, lastScanAt: g.updatedAt,
     capacity: capacityStatus(g.storageQuotaBytes, stored), // read-only: user can't set the budget
     role: g.ownerDiscordId && ids.includes(g.ownerDiscordId) ? 'owner' : 'manager',
   });

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
+import { grantAutoBadges } from './social.mjs';
 
 // Human-friendly pairing code (no ambiguous chars): e.g. "K7P3-9QMX".
 function genCode() {
@@ -61,6 +62,7 @@ export default async function linkRoutes(app) {
       return reply.code(409).send({ error: 'already_linked' });
     }
     const dl = await p.discordLink.create({ data: { userId: link.userId, discordId: row.discordId, username: row.username } });
+    grantAutoBadges(p, { event: 'discord', user: { id: link.userId } }).catch(() => {});
     await p.discordLinkCode.delete({ where: { id: row.id } }).catch(() => {});
     await notify(p, link.userId, 'discord_linked', `Discord account ${dl.username || dl.discordId} was linked (via BMM).`);
     return { ok: true, username: dl.username || null };

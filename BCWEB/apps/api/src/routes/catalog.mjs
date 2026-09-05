@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER } from '../lib/catalog-kinds.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
+import { grantAutoBadges } from './social.mjs';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
 import { db, requireRole, optionalAuth, slugify, notify, hasFreeTierClaim, recordFreeTierClaim, resolveClientIdentity, policyBans, policyWhitelist, getGlobalAccessPolicy, catalogLog, logAudit, requireVerifiedEmail, safeEqual } from '../lib/lib.mjs';
@@ -1094,6 +1095,7 @@ export default async function catalogRoutes(app) {
     emitWebhook(p, sub.ownerId, 'catalog.item.published', {
       id: sub.item.id, slug: sub.item.slug, name: sub.item.name, kind: sub.item.kind,
     }).catch(() => {});
+    grantAutoBadges(p, { event: 'publish', user: { id: sub.ownerId } }).catch(() => {});
     return { ok: true };
   });
 

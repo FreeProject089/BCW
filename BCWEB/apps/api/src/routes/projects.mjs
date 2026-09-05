@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
-import { computeActivity, computeActivityFromCommits, releaseMarkers } from '../lib/git-activity.mjs';
+import { computeActivity, computeActivityFromCommits, computeActivityFromCounts, parseGitLog, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { zipReadAll } from '../lib/native.mjs';
 import { detectStack, interestingPaths } from '../lib/stack-detect.mjs';
@@ -26,6 +26,7 @@ const VISIBILITY = async () => (await projectKeys()).filter((k) => k !== 'commun
 // 'community' always stays public — it's the site's own community hub, not an
 // admin-curated project someone might want to soft-launch or gate.
 const settingKey = (k) => `project.${k}`;
+const activityImportKey = (k) => `project.activity-import.${String(k || '').slice(0, 60)}`;
 
 async function getConfig(p, key) {
   const row = await p.adminSetting.findUnique({ where: { key: settingKey(key) } });
@@ -1017,9 +1018,22 @@ export default async function projectRoutes(app) {
     if ((await KEYS()).includes(req.params.key) && !(await assertVisible(p, req, reply))) return;
     const cfg = await getConfig(p, req.params.key);
     const src = repoOf(cfg);
-    if (!src) return reply.code(404).send({ error: 'no_git_source' });
+    // An imported git log (the editor's "Import commits") is the authoritative commit source
+    // when it exists: it is the whole history of whatever repo the admin exported, private or
+    // not, with no API budget. GitHub then only supplies the release markers.
+    const imported = (await p.adminSetting.findUnique({ where: { key: activityImportKey(req.params.key) } }))?.value || null;
+    if (!src && !imported) return reply.code(404).send({ error: 'no_git_source' });
     // The "include commit messages" toggle the feature asks for — applied to release notes.
     const includeMessages = req.query?.messages === '1' || req.query?.messages === 'true';
+    if (imported?.days) {
+      const releases = src ? await gh(`https://api.github.com/repos/${src.owner}/${src.repo}/releases?per_page=100`).catch(() => []) : [];
+      return {
+        source: { ...(src ? { owner: src.owner, repo: src.repo } : {}), imported: true, importedAt: imported.importedAt || null, importedFrom: imported.label || null },
+        computing: false,
+        ...computeActivityFromCounts(imported),
+        markers: releaseMarkers(releases, { includeMessages }),
+      };
+    }
     try {
       // A pinned branch can't use the /stats/* endpoints (default-branch only), so read it from
       // /commits instead — paged back ~a year, capped at 10 pages so a busy repo can't turn one
@@ -1101,6 +1115,36 @@ export default async function projectRoutes(app) {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'project.dlclicks' } });
     return { value: Number(row?.value?.[key]) || 0 };
+  });
+
+  // ── Commit import ─────────────────────────────────────────────────────────
+  // The Activity tab's commit source when GitHub's stats are not enough — a private repo, a
+  // mirror, a history older than the API returns, or simply "read the whole .git". The admin
+  // runs one `git log` command locally and pastes / uploads the output; what is stored is the
+  // per-day and per-author COUNTS, a few KB, never the messages.
+  app.get('/admin/projects/:key/activity-import', { preHandler: requireCap('manage_projects', 'ADMIN') }, async (req) => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: activityImportKey(req.params.key) } });
+    const v = row?.value || null;
+    return { import: v ? { importedAt: v.importedAt, total: v.total, first: v.first, last: v.last, authors: Object.keys(v.authors || {}).length, label: v.label || null } : null };
+  });
+  app.post('/admin/projects/:key/activity-import', { preHandler: requireCap('manage_projects', 'ADMIN'), bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const b = z.object({ log: z.string().min(1).max(6 * 1024 * 1024), label: z.string().max(80).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const parsed = parseGitLog(b.data.log);
+    if (!parsed.total) return reply.code(400).send({ error: 'no_commits', detail: 'Nothing in that text looks like git log output.' });
+    const p = await db();
+    const key = String(req.params.key || '').slice(0, 60);
+    const value = { ...parsed, importedAt: new Date().toISOString(), label: (b.data.label || '').trim() || null };
+    await p.adminSetting.upsert({ where: { key: activityImportKey(key) }, create: { key: activityImportKey(key), value }, update: { value } });
+    await logAudit(p, req.user.uid, 'project.activity.import', `${key}: ${parsed.total} commits, ${Object.keys(parsed.authors).length} authors, ${parsed.first} → ${parsed.last}`);
+    return { ok: true, import: { importedAt: value.importedAt, total: parsed.total, first: parsed.first, last: parsed.last, authors: Object.keys(parsed.authors).length, label: value.label } };
+  });
+  app.delete('/admin/projects/:key/activity-import', { preHandler: requireCap('manage_projects', 'ADMIN') }, async (req) => {
+    const p = await db();
+    await p.adminSetting.deleteMany({ where: { key: activityImportKey(req.params.key) } });
+    await logAudit(p, req.user.uid, 'project.activity.import', `${req.params.key}: removed`);
+    return { ok: true };
   });
 
   // Import a repo's GitHub releases as editable timeline entries. A read-only helper for the

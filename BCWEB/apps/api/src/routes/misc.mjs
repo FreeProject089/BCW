@@ -171,6 +171,7 @@ export const PENDING_QUEUES = [
 ];
 
 import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
+const APP_ICONS_KEY = 'brand.appIcons';
 import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
 
@@ -661,9 +662,42 @@ export default async function miscRoutes(app) {
   // Public: every visitor reads this to paint the site. Cheap and cacheable.
   app.get('/theme', async (req, reply) => {
     const p = await db();
-    const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
+    const [row, icons] = await Promise.all([
+      p.adminSetting.findUnique({ where: { key: THEME_KEY } }),
+      p.adminSetting.findUnique({ where: { key: APP_ICONS_KEY } }),
+    ]);
     reply.header('Cache-Control', 'public, max-age=60');
-    return { theme: { ...THEME_DEFAULTS, ...(row?.value || {}) } };
+    // The Better* project marks the icon picker offers as `app:<key>` — editable by an admin,
+    // so a new project gets its logo without a deploy. Delivered with the theme because both
+    // are read once at boot by every visitor.
+    return { theme: { ...THEME_DEFAULTS, ...(row?.value || {}) }, appIcons: Array.isArray(icons?.value) ? icons.value : [] };
+  });
+
+  // The admin-managed app icons: key (what `app:<key>` refers to), label, image URL. The
+  // bundled ones (bmm, bsm, bi, bc) stay as fallbacks; a stored entry with the same key
+  // overrides the bundled image, so a redesigned logo needs no deploy either.
+  app.get('/admin/site/app-icons', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: APP_ICONS_KEY } });
+    return { icons: Array.isArray(row?.value) ? row.value : [] };
+  });
+  app.put('/admin/site/app-icons', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({ icons: z.array(z.object({
+      key: z.string().regex(/^[a-z0-9][a-z0-9-]{0,23}$/),
+      label: z.string().trim().min(1).max(40),
+      // A site-served media path or an https image — never a data URI (it would be shipped
+      // to every visitor with the theme), never a bare http.
+      url: z.string().max(600).refine((u) => u.startsWith('/') || /^https:\/\//.test(u), 'url'),
+    })).max(40) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    // One entry per key: the last one typed wins, silently merging is how two projects end
+    // up with the same logo.
+    const seen = new Set();
+    const icons = b.data.icons.filter((i) => !seen.has(i.key) && seen.add(i.key));
+    const p = await db();
+    await p.adminSetting.upsert({ where: { key: APP_ICONS_KEY }, create: { key: APP_ICONS_KEY, value: icons }, update: { value: icons } });
+    await logAudit(p, req.user.uid, 'site.appicons', icons.map((i) => i.key).join(',') || '-');
+    return { ok: true, icons };
   });
 
   // SUPERADMIN only. This changes what every visitor sees, which is a different class of

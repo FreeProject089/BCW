@@ -15,6 +15,8 @@ import { pollStats, questionStats, completion } from '../lib/poll-stats.mjs';
 import { planQuestionUpdate } from '../lib/poll-edit.mjs';
 import { mayViewPoll, listWhere, shareKeyFor, newShareKey, POLL_VISIBILITIES } from '../lib/poll-visibility.mjs';
 import { validateAnswer, maxAnswers, validateRanking, validateGrid, ALL_QUESTION_KINDS, isAnswerable } from '../lib/poll-answer.mjs';
+import { emitWebhookAll } from '../lib/webhooks.mjs';
+import { grantAutoBadges } from './social.mjs';
 
 /** Per-poll device fingerprint for anonymous voters.
  *
@@ -301,6 +303,7 @@ export default async function pollRoutes(app) {
       where: { id: poll.id },
       include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, wasLoggedIn: true, userId: true, voterKey: true } } },
     });
+    if (userId) grantAutoBadges(p, { event: 'vote', user: { id: userId } }).catch(() => {});
     return publicPoll(fresh, { myVotes: picks, showResults: canSeeResults(fresh, true) });
   });
 
@@ -549,6 +552,14 @@ export default async function pollRoutes(app) {
     };
   });
 
+  // What a poll webhook carries: enough to answer it through /v1/polls/:id/vote without a
+  // second read — the option ids are the whole point.
+  const pollEvent = (poll) => ({
+    id: poll.id, question: poll.question, description: poll.description || '', multiple: !!poll.multiple, maxChoices: poll.maxChoices || 0,
+    opensAt: poll.opensAt, closesAt: poll.closesAt,
+    options: (poll.options || []).map((o) => ({ id: o.id, label: o.label })),
+  });
+
   app.post('/admin/polls', { preHandler: requireCap('manage_polls') }, async (req, reply) => {
     const b = pollBody.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues[0]?.message });
@@ -569,6 +580,9 @@ export default async function pollRoutes(app) {
       include: { options: true },
     });
     await logAudit(p, req.user.uid, 'poll.created', poll.question, clientIp(req));
+    // Only a PUBLIC open poll is announced: an unlisted one is shared by hand, a private one is
+    // for a group, and a webhook subscriber is neither.
+    if (poll.status === 'open' && (poll.visibility || 'public') === 'public') emitWebhookAll(p, 'poll.opened', pollEvent(poll)).catch(() => {});
     return { ok: true, poll };
   });
 
@@ -611,6 +625,10 @@ export default async function pollRoutes(app) {
       await logAudit(p, req.user.uid, 'poll.visibility', `${poll.question}: ${existing.visibility} -> ${rest.visibility}`, clientIp(req));
     }
     await logAudit(p, req.user.uid, 'poll.updated', poll.question, clientIp(req));
+    if (rest.status && rest.status !== existing.status && (poll.visibility || 'public') === 'public') {
+      if (rest.status === 'open') emitWebhookAll(p, 'poll.opened', pollEvent(poll)).catch(() => {});
+      else if (rest.status === 'closed') emitWebhookAll(p, 'poll.closed', pollEvent(poll)).catch(() => {});
+    }
     return { ok: true, poll };
   });
 
