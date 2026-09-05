@@ -30,6 +30,13 @@ pour héberger tes propres dépôts/catalogues voir [HOST_GUIDE_FR.md](HOST_GUID
   normalisé). Ça devient un lien de pourboire ; un **badge donateur** Ko-fi peut être accordé
   automatiquement.
 
+### Points, boutique & inventaire (économie Discord)
+Si le bot Discord de la communauté a son économie activée, être actif sur les serveurs où il est (messages, réactions, vocal) rapporte de l'XP, l'XP fait monter de niveau, et tous les quelques niveaux tu gagnes des points. Une fois ton Discord lié :
+- **Tableau de bord → Vue d'ensemble** montre ton anneau de niveau, d'où vient ton XP, et ton solde.
+- **Tableau de bord → Boutique & inventaire** est la boutique de points sur le site — les mêmes articles et prix que `/shop` sur Discord — et l'inventaire : tout ce que tu as acheté, d'un côté ou de l'autre, avec le code remis (pool de stockage, boost, hébergement offert, promo). Un rôle Discord ou une récompense perso reste *en attente* jusqu'à ce qu'un admin le remette.
+- Sur Discord : `/level`, `/shop`, `/inventory`, `/leaderboard` (avec ton propre rang), `/profile`, et `/casino` (une table animée — pile ou face, dés, machine à sous, roulette avec mise couleur / vert / numéro, roue, plinko).
+- Des badges s'obtiennent par les règles que les admins fixent — un niveau, un nombre de messages, un achat, un sondage répondu, un élément publié, un dépôt hébergé, Discord lié, la 2FA activée, l'âge du compte — en plus des attributions du staff et des œufs de Pâques. Ils apparaissent aussitôt sur ton profil.
+
 ## 3. Parcourir le contenu
 
 BetterCommunity agrège deux types de contenu téléchargeable, tous deux consommables par

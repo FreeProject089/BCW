@@ -53,6 +53,7 @@ export default function StatusPage() {
   const [sp] = useSearchParams();
   const { data, err, loading, reload } = useAsync(() => api.get('/status'), []);
   const [table, setTable] = useState(false);   // the figures behind the charts
+  const [range, setRange] = useState(30);       // days of metrics on the charts
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -173,18 +174,28 @@ export default function StatusPage() {
         )}
       </Card>
 
-      <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Activity size={12} /> {t('st.metrics', 'System metrics')}</h2>
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Activity size={12} /> {t('st.metrics', 'System metrics')}</h2>
+        {(d.metrics || []).length > 7 && (
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-[11px]">
+            {[7, 30, 90].filter((n) => n <= 7 || (d.metrics || []).length > (n === 30 ? 7 : 30)).map((n) => (
+              <button key={n} type="button" onClick={() => setRange(n)} className={`px-2.5 py-1 ${range === n ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('st.m.days', '{n} d').replace('{n}', String(n))}</button>
+            ))}
+          </div>
+        )}
+      </div>
       <Card className="p-4 mb-6">
         {!(d.metrics || []).length ? (
           <div className="text-[13px] text-[var(--muted)]">{t('st.nometrics', 'No daily figures recorded yet.')}</div>
         ) : (<>
           {/* Four charts, never one with four lines: a percentage and a millisecond figure on
               one pair of axes is the most common way to make a chart say something untrue. */}
-          <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-6">
             {[['CPU', 'cpu', '%', 85], [t('st.m.mem', 'Memory'), 'mem', '%', 90],
               [t('st.m.disk', 'Disk'), 'disk', '%', 90], [t('st.m.lat', 'Latency'), 'latencyMs', ' ms', null]].map(([label, key, unit, warn]) => (
               <MetricChart key={key} title={label} unit={unit} warnAt={warn}
-                points={d.metrics.slice(-30).map((m) => ({ label: String(m.day).slice(0, 10), value: m[key] }))} />
+                labels={{ avg: t('st.m.avg', 'avg'), min: t('st.m.min', 'min'), peak: t('st.m.peak', 'peak'), warn: t('st.m.warnat', 'warn at') }}
+                points={d.metrics.slice(-range).map((m) => ({ label: String(m.day).slice(0, 10), value: m[key] }))} />
             ))}
           </div>
           {/* The table has not gone anywhere. A chart is the answer to "is it climbing"; the
@@ -204,7 +215,7 @@ export default function StatusPage() {
                 <th className="font-normal pb-1 text-end">{t('st.m.lat', 'Latency')}</th>
               </tr></thead>
               <tbody>
-                {d.metrics.slice(-30).reverse().map((m) => (
+                {d.metrics.slice(-range).reverse().map((m) => (
                   <tr key={String(m.day)} className="border-t border-[var(--line)]">
                     <td className="py-1">{String(m.day).slice(0, 10)}</td>
                     <td className="py-1 text-end tabular-nums">{m.cpu}%</td>

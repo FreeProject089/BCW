@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic,
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -43,7 +43,11 @@ export { NOTIF, NOTIF_FALLBACK };
 // The member's Discord level, XP progress and spendable points — from /me/economy. Renders
 // nothing until the economy is enabled and they've earned some XP (so it never shows an empty
 // "Level 0" to someone who has never used Discord).
-function EconomyWidget() {
+//
+// Laid out as one card in three parts: the level (ring + progress), the balance with the two
+// doors it opens (shop, inventory), and where the XP came from as three tiles — a shape you
+// read in a glance, not a paragraph of numbers on one line.
+function EconomyWidget({ onOpenShop }) {
   const { t } = useI18n();
   const [d, setD] = useState(null);
   useEffect(() => { api.get('/me/economy').then(setD).catch(() => setD({ enabled: false })); }, []);
@@ -56,62 +60,156 @@ function EconomyWidget() {
     setD((v) => ({ ...v, stats: { ...v.stats, public: next } }));
     try { await api.put('/me/economy/stats-public', { public: next }); } catch { setD((v) => ({ ...v, stats: { ...v.stats, public: !next } })); }
   };
+  const r = d.rates || { message: 5, reaction: 1, voiceMinute: 3 };
+  const src = [
+    { key: 'msg', label: t('eco.w.src.msg', 'Messages'), xp: (stats.messages || 0) * r.message, Icon: MessageSquare, count: (stats.messages || 0).toLocaleString(), rate: t('eco.w.rate.msg', '{n} XP each').replace('{n}', r.message) },
+    { key: 'rea', label: t('eco.w.src.rea', 'Reactions'), xp: (stats.reactions || 0) * r.reaction, Icon: Sparkles, count: (stats.reactions || 0).toLocaleString(), rate: t('eco.w.rate.rea', '{n} XP each').replace('{n}', r.reaction) },
+    { key: 'voi', label: t('eco.w.src.voi', 'Voice'), xp: Math.floor((stats.voiceSeconds || 0) / 60) * r.voiceMinute, Icon: Mic, count: `${Math.floor((stats.voiceSeconds || 0) / 3600)}h`, rate: t('eco.w.rate.voi', '{n} XP / min').replace('{n}', r.voiceMinute) },
+  ];
+  const total = src.reduce((s, x) => s + x.xp, 0);
+  // A ring drawn with a conic gradient: the progress to the next level around the level itself.
+  const ring = `conic-gradient(var(--primary) ${pct * 3.6}deg, var(--surface-2) 0)`;
   return (
-    <Card className="p-4 mb-6">
-      <div className="flex items-center gap-3 flex-wrap">
-        <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white text-lg font-bold shrink-0">{d.level}</span>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold flex items-center gap-2"><Sparkles size={14} className="text-[var(--primary-2)]" /> {t('eco.w.level', 'Level {n}').replace('{n}', d.level)}
-            <span className="text-xs text-[var(--faint)] font-normal">· {(d.points || 0).toLocaleString()} {cur}</span>
+    <Card className="p-0 overflow-hidden mb-6">
+      <div className="grid md:grid-cols-[auto_1fr_auto] gap-5 p-5 items-center">
+        <div className="flex items-center gap-4">
+          <div className="relative w-[76px] h-[76px] rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={`${pct}%`}>
+            <div className="w-[62px] h-[62px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
+              <span className="text-2xl font-extrabold tabular-nums leading-none">{d.level}</span>
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden mt-1.5">
-            <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all" style={{ width: `${pct}%` }} />
+          <div className="min-w-0">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.level.k', 'Discord level')}</div>
+            <div className="text-lg font-bold leading-tight">{t('eco.w.level', 'Level {n}').replace('{n}', d.level)}</div>
+            <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}% {t('eco.w.next2', 'to level {n}').replace('{n}', d.level + 1)}</div>
           </div>
-          <div className="text-[11px] text-[var(--faint)] mt-1 tabular-nums">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP {t('eco.w.next', 'to next level')}</div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 md:border-x md:border-[var(--line)] md:px-5">
+          {src.map((x) => (
+            <div key={x.key} className="rounded-xl bg-[var(--surface-2)]/60 px-3 py-2.5 min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
+              <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] truncate"><x.Icon size={12} className="text-[var(--primary-2)] shrink-0" /> {x.label}</div>
+              <div className="text-base font-semibold tabular-nums leading-tight mt-0.5">{x.count}</div>
+              <div className="text-[10px] text-[var(--faint)] tabular-nums">{total > 0 ? Math.round((x.xp / total) * 100) : 0}% {t('eco.w.ofxp', 'of your XP')}</div>
+            </div>
+          ))}
+        </div>
+        <div className="flex md:flex-col items-center md:items-end gap-2 justify-between">
+          <div className="text-end">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
+            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()} <span className="text-sm font-medium text-[var(--muted)]">{cur}</span></div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="primary" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={14} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[10px] opacity-80"> · {d.shopItems}</span> : null}</Button>
+            <Button size="sm" onClick={() => onOpenShop?.('inventory')}><Backpack size={14} /> {t('eco.w.inv', 'Inventory')}{d.pendingDeliveries ? <Badge tone="amber" className="ms-1">{d.pendingDeliveries}</Badge> : null}</Button>
+          </div>
         </div>
       </div>
-      {/* Where the XP came from — a real breakdown from the member's counts × the configured
-          rates. A single stacked bar + a legend, so it reads at a glance without a chart lib. */}
-      {(() => {
-        const r = d.rates || { message: 5, reaction: 1, voiceMinute: 3 };
-        const src = [
-          { key: 'msg', label: t('eco.w.src.msg', 'Messages'), xp: (stats.messages || 0) * r.message, color: 'var(--primary)', Icon: MessageSquare, count: stats.messages || 0 },
-          { key: 'rea', label: t('eco.w.src.rea', 'Reactions'), xp: (stats.reactions || 0) * r.reaction, color: 'var(--primary-2)', Icon: Sparkles, count: stats.reactions || 0 },
-          { key: 'voi', label: t('eco.w.src.voi', 'Voice'), xp: Math.floor((stats.voiceSeconds || 0) / 60) * r.voiceMinute, color: '#22c55e', Icon: Mic, count: Math.floor((stats.voiceSeconds || 0) / 3600) },
-        ];
-        const total = src.reduce((s, x) => s + x.xp, 0);
-        return (
-          <div className="mt-3 pt-3 border-t border-[var(--line)]">
-            <div className="flex items-center justify-between gap-2 mb-1.5">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('eco.w.srctitle', 'XP by source')}</div>
-              <div className="text-[11px] text-[var(--faint)] tabular-nums">{total.toLocaleString()} XP {t('eco.w.total', 'total')}</div>
-            </div>
-            <div className="flex h-2.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="img"
-              aria-label={src.map((s) => `${s.label}: ${s.xp} XP`).join(', ')}>
-              {total > 0 && src.map((s) => s.xp > 0 && (
-                <div key={s.key} style={{ width: `${(s.xp / total) * 100}%`, background: s.color }} title={`${s.label}: ${s.xp.toLocaleString()} XP`} />
-              ))}
-            </div>
-            <div className="flex items-center gap-x-4 gap-y-1 flex-wrap mt-2 text-[12px] text-[var(--muted)]">
-              {src.map((s) => (
-                <span key={s.key} className="flex items-center gap-1.5" title={`${s.xp.toLocaleString()} XP`}>
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.color }} />
-                  <s.Icon size={12} className="text-[var(--faint)]" /> {s.label}
-                  <b className="tabular-nums text-[var(--text)]">{s.key === 'voi' ? `${s.count}h` : s.count.toLocaleString()}</b>
-                  <span className="text-[var(--faint)] tabular-nums">· {total > 0 ? Math.round((s.xp / total) * 100) : 0}%</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        );
-      })()}
-      <div className="flex items-center gap-3 flex-wrap mt-3 pt-3 border-t border-[var(--line)] text-[12px] text-[var(--muted)]">
-        <div className="flex-1" />
-        <label className="flex items-center gap-1.5 text-[11px] cursor-pointer select-none" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
+      <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-2.5 border-t border-[var(--line)] bg-[var(--surface-2)]/30 text-[11px] text-[var(--muted)]">
+        <span>{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</span>
+        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
           <input type="checkbox" className="accent-[var(--primary)]" checked={stats.public !== false} onChange={toggleStats} /> {t('eco.w.pub', 'Stats public')}
         </label>
       </div>
     </Card>
+  );
+}
+
+// The points shop and the inventory, on the site. The same items and the same purchase
+// function the Discord /shop uses (lib/economy-shop.mjs on the API), so a badge bought here
+// and one bought there are the same thing — and everything bought either way lands in the
+// inventory below with its code.
+const SHOP_KIND = {
+  badge: { Icon: BadgeCheck, tone: 'text-amber-400' }, pool: { Icon: HardDrive, tone: 'text-[var(--primary-2)]' }, boost: { Icon: Zap, tone: 'text-[var(--primary-2)]' },
+  hosting: { Icon: Server, tone: 'text-[var(--primary-2)]' }, promo: { Icon: Ticket, tone: 'text-emerald-400' }, role: { Icon: Users, tone: 'text-[#5865F2]' }, custom: { Icon: Gift, tone: 'text-[var(--primary-2)]' },
+};
+function EconomyShop({ view = 'shop', onView }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState('');
+  const load = () => api.get('/me/economy/shop').then(setD).catch(() => setD({ enabled: false, items: [], purchases: [] }));
+  useEffect(() => { load(); }, []);
+  if (!d) return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>;
+  const cur = d.currency?.name || 'points';
+  const kindLabel = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
+  const buy = async (it) => {
+    if (!(await dialog.confirm({ title: t('eco.buy.t', 'Buy “{n}”?').replace('{n}', it.name), message: t('eco.buy.m', 'This spends {c} {cur} of your {b}. {what}').replace('{c}', it.cost.toLocaleString()).replace('{cur}', cur).replace('{b}', (d.points || 0).toLocaleString()).replace('{what}', it.fulfil === 'site' ? t('eco.buy.site', 'It is delivered immediately.') : t('eco.buy.admin', 'An admin hands it out — it shows as pending until then.')), okLabel: t('eco.buy.ok', 'Buy') }))) return;
+    setBusy(it.id);
+    try {
+      const r = await api.post('/me/economy/buy', { itemId: it.id });
+      const dl = r.delivery || {};
+      toast.success(dl.code ? t('eco.bought.code', 'Bought — your code: {c} (kept in your inventory).').replace('{c}', dl.code)
+        : dl.badge ? t('eco.bought.badge', 'Bought — the “{b}” badge is on your profile.').replace('{b}', dl.badge)
+        : r.status === 'pending' ? t('eco.bought.pending', 'Bought — an admin will hand it out shortly.') : t('eco.bought', 'Bought.'));
+      load();
+    } catch (x) {
+      const e = x?.data?.error;
+      toast.error(e === 'insufficient' ? t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur) : e === 'already_owned' ? t('eco.err.owned', 'You already own that badge.') : e === 'economy_off' ? t('eco.err.off', 'The shop is closed right now.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+  const purchases = d.purchases || [];
+  const pending = purchases.filter((p) => p.status === 'pending').length;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40">
+          {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length]].map(([id, label, I, n]) => (
+            <button key={id} type="button" onClick={() => onView?.(id)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
+              <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label} <span className="text-[11px] text-[var(--faint)]">{n}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm"><Coins size={16} className="text-[var(--primary-2)]" /> <b className="tabular-nums">{(d.points || 0).toLocaleString()}</b> <span className="text-[var(--muted)]">{cur}</span></div>
+      </div>
+      {!d.enabled ? <EmptyState icon={ShoppingBag} title={t('eco.off.t', 'The shop is closed')} sub={t('eco.off.s', 'The Discord economy is switched off right now.')} /> : view === 'shop' ? (
+        d.items?.length ? (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {d.items.map((it) => {
+              const K = SHOP_KIND[it.kind] || SHOP_KIND.custom;
+              const can = (d.points || 0) >= it.cost && !it.owned;
+              return (
+                <Card key={it.id} className="p-4 flex flex-col gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><K.Icon size={18} className={K.tone} /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="text-[11px] text-[var(--faint)]">{kindLabel(it.kind)}{it.amount ? ` · ${it.amount}` : ''}{it.fulfil !== 'site' ? ` · ${t('eco.k.byadmin', 'handed out by an admin')}` : ''}</div>
+                    </div>
+                  </div>
+                  {it.desc && <p className="text-xs text-[var(--muted)] flex-1">{it.desc}</p>}
+                  <div className="flex items-center justify-between gap-2 mt-auto">
+                    <span className="text-sm font-semibold tabular-nums flex items-center gap-1"><Coins size={13} className="text-[var(--primary-2)]" /> {it.cost.toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{cur}</span></span>
+                    {it.owned ? <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.owned', 'Owned')}</Badge>
+                      : <Button size="sm" variant={can ? 'primary' : 'ghost'} disabled={!can || busy === it.id} onClick={() => buy(it)} title={can ? undefined : t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur)}>{busy === it.id ? <Spinner /> : <><ShoppingBag size={13} /> {t('eco.buy.ok', 'Buy')}</>}</Button>}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        ) : <EmptyState icon={ShoppingBag} title={t('eco.empty.t', 'Nothing for sale yet')} sub={t('eco.empty.s', 'The admins have not put anything in the shop. Your points keep.')} />
+      ) : (
+        purchases.length ? (
+          <div className="space-y-2">
+            {pending > 0 && <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('eco.inv.pending', '{n} still on the way — an admin hands those out.').replace('{n}', pending)}</div>}
+            {purchases.map((p) => {
+              const K = SHOP_KIND[p.kind] || SHOP_KIND.custom; const dl = p.delivery || {};
+              return (
+                <Card key={p.id} className="p-3 flex items-center gap-3">
+                  <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><K.Icon size={16} className={K.tone} /></span>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate flex items-center gap-2">{p.name} {p.status === 'pending' ? <Badge tone="amber"><Clock size={11} /> {t('eco.inv.st.pending', 'pending')}</Badge> : <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.inv.st.done', 'delivered')}</Badge>}</div>
+                    <div className="text-[11px] text-[var(--faint)] flex items-center gap-2 flex-wrap">
+                      <span>{kindLabel(p.kind)} · {p.cost.toLocaleString()} {cur} · {new Date(p.createdAt).toLocaleDateString()} · {p.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}</span>
+                      {dl.badge && <span>· {t('eco.inv.badge', 'badge “{b}”').replace('{b}', dl.badge)}</span>}
+                    </div>
+                  </div>
+                  {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
+                </Card>
+              );
+            })}
+          </div>
+        ) : <EmptyState icon={Backpack} title={t('eco.inv.empty.t', 'Nothing here yet')} sub={t('eco.inv.empty.s', 'What you buy in the shop — here or with /shop on Discord — is listed here with its code.')} />
+      )}
+    </div>
   );
 }
 
@@ -487,6 +585,9 @@ export function Dashboard() {
   // fetch never takes the dashboard down; no guilds → no tab, no clutter for everyone else.
   const { data: discordMe } = useAsync(() => api.get('/me/discord/guilds').catch(() => null), []);
   const discordGuilds = discordMe?.guilds?.length || 0;
+  // The Discord economy: the shop tab exists only once the admins turned the system on.
+  const { data: ecoMe } = useAsync(() => api.get('/me/economy').catch(() => null), []);
+  const [ecoView, setEcoView] = useState('shop');
 
   // Quick actions — no "Write a post" here (that lives in the Blog for staff).
   const actions = [
@@ -497,17 +598,20 @@ export function Dashboard() {
   ];
   const tabs = [
     { id: 'overview', label: t('dash.overview', 'Overview'), icon: LayoutDashboard },
-    { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined },
+    // A count of what you own is a quiet number with a title that says so; only the polls
+    // (and a pending delivery) are something WAITING on you, and only those get the accent.
+    { id: 'items', label: t('dash.myitems', 'My items'), icon: Package, badge: list.length || undefined, badgeKind: 'count', badgeTitle: t('dash.badge.items', '{n} item(s) you submitted').replace('{n}', list.length) },
     { id: 'catalogs', label: t('dash.mycatalogs', 'My catalogs'), icon: Boxes },
-    { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined },
+    { id: 'repos', label: t('dash.myrepos', 'My repos'), icon: Server, badge: rlist.length || undefined, badgeKind: 'count', badgeTitle: t('dash.badge.repos', '{n} repo(s) you own').replace('{n}', rlist.length) },
     // Always shown, not only when the user already has servers: the tab is also how someone
     // with zero servers reaches the "Invite the bot" screen in the first place. The badge is
     // the guild count when there is one.
-    { id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds || undefined },
+    { id: 'discord', label: t('dash.discord', 'Discord servers'), icon: MessageSquare, badge: discordGuilds || undefined, badgeKind: 'count', badgeTitle: t('dash.badge.discord', '{n} server(s) you manage').replace('{n}', discordGuilds) },
+    ...(ecoMe?.enabled ? [{ id: 'economy', label: t('dash.economy', 'Shop & inventory'), icon: ShoppingBag, badge: ecoMe.pendingDeliveries || undefined, badgeTitle: t('dash.badge.eco', '{n} purchase(s) waiting to be handed out').replace('{n}', ecoMe.pendingDeliveries || 0) }] : []),
     { id: 'starred', label: t('dash.starred', 'Starred'), icon: Star },
     // The badge counts what is still WAITING, not what has been answered — a number that
     // goes down as you use it, rather than one that only ever grows and stops meaning anything.
-    { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined },
+    { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined, badgeTitle: t('dash.badge.polls', '{n} poll(s) waiting for your answer').replace('{n}', pollsOpen) },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
     { id: 'reports', label: t('dash.reports', 'Messages & reports'), icon: MessageSquare },
     { id: 'data', label: t('dash.mydata', 'Your data'), icon: HardDriveDownload },
@@ -548,11 +652,12 @@ export function Dashboard() {
                 </button>
               ))}
             </div>
-            <EconomyWidget />
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               {stats.map((st) => <Card key={st.label} className="p-5"><st.icon size={18} className={st.tone || 'text-[var(--primary-2)]'} />
                 <div className="text-3xl font-bold mt-3">{st.value}</div><div className="text-xs text-[var(--muted)] mt-0.5">{st.label}</div></Card>)}
             </div>
+            {/* Under the content counts, not above: the site's own numbers first, Discord's second. */}
+            <EconomyWidget onOpenShop={(v) => { setEcoView(v); nav('/dashboard?s=economy'); }} />
             <NotificationsPanel />
           </>}
 
@@ -612,6 +717,7 @@ export function Dashboard() {
           {s === 'repos' && <MyRepos />}
           {s === 'discord' && <MyDiscordServers />}
           {s === 'starred' && <Starred />}
+          {s === 'economy' && <EconomyShop view={ecoView} onView={setEcoView} />}
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
           {s === 'reports' && <MyReports />}

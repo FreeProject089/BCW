@@ -166,6 +166,9 @@ export function Admin() {
   const pendingReload = useRef(pending.reload);
   pendingReload.current = pending.reload;
   useEffect(() => { const id = setInterval(() => pendingReload.current?.(), 60_000); return () => clearInterval(id); }, []);
+  // …and at once when a screen says so (an alert marked as seen, a queue item dismissed):
+  // a badge that waits for the next minute after you cleared it reads as "did not work".
+  useEffect(() => { const h = () => pendingReload.current?.(); window.addEventListener('bcw:pending-changed', h); return () => window.removeEventListener('bcw:pending-changed', h); }, []);
   const pc = pending.data?.counts || {};
   const [review, setReview] = useState(null);
   // The nav, grouped.
@@ -2027,7 +2030,7 @@ function AdminServerPerf() {
     toast.action({
       tone: 'success', cancelLabel: t('common.undo', 'Undo'), msg: t('sp.al.acked', 'Marked as seen.'),
       onCommit: async () => {
-        try { await api.post('/admin/server/alerts/ack'); alerts.reload(); }
+        try { await api.post('/admin/server/alerts/ack'); alerts.reload(); pendingChanged(); }
         catch { toast.error(t('sp.failed', 'Failed.')); }
         finally { setAckPending(false); }
       },
@@ -6385,8 +6388,10 @@ function UserDetailModal({ id, onClose }) {
   // "Laisser chill": the modal used to render ~20 stacked sections at once. The primary ones
   // stay; the heavy tail (devices, billing, hosted content, account actions) folds behind
   // one toggle, collapsed by default, so the screen opens calm and you expand what you need.
-  const [showMore, setShowMore] = useState(false);
-  useEffect(() => { setClosureForm(null); setShowMore(false); }, [id]);
+  // One tab strip instead of twenty stacked sections: the account and how to moderate it on
+  // Overview; everything else where its name says. The modal opens calm; you go where you need.
+  const [tab, setTab] = useState('overview');
+  useEffect(() => { setClosureForm(null); setTab('overview'); }, [id]);
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
   const fdate = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -6428,13 +6433,37 @@ function UserDetailModal({ id, onClose }) {
           </div>
           {u.bio && <p className="text-sm text-[var(--muted)]">{u.bio}</p>}
 
+          {/* The dossier, by subject. Counts on the tabs say where there is something. */}
+          {(() => {
+            const tabs = [
+              ['overview', t('ud.tab.overview', 'Overview'), Users, null],
+              ['access', t('ud.tab.access', 'Access'), KeyRound, null],
+              ['links', t('ud.tab.links', 'Links'), Link2, (u.creatorLinks?.length || 0) + (u.discordLinks?.length || 0)],
+              ['content', t('ud.tab.content', 'Content'), Package, (u.serverRepos?.length || 0) + (u.items?.length || 0)],
+              ['billing', t('ud.tab.billing', 'Billing'), Receipt, (u.subscriptions?.length || 0) + (u.payments?.length || 0)],
+              ['security', t('ud.tab.security', 'Security'), Shield, (u.sessions?.length || 0) + (u.apiKeys?.length || 0)],
+              ['actions', t('ud.tab.actions', 'Actions'), Gavel, null],
+              ['more', t('ud.tab.more', 'More'), Layers, null],
+            ];
+            return (
+              <div className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-[var(--line)]" role="tablist">
+                {tabs.map(([id, label, I, n]) => (
+                  <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    <I size={14} className={tab === id ? 'text-[var(--primary-2)]' : ''} /> {label}{n ? <span className="text-[11px] text-[var(--faint)] tabular-nums">{n}</span> : null}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+
+          {tab === 'overview' && (<>
           <UserModerationCard user={u} onChange={reload} />
-
+          </>)}
+          {tab === 'access' && (<>
           <UserPermissionsCard user={u} onChange={reload} />
-
-          <UserTwoFactorCard user={u} onChange={reload} />
-          <UserPasswordCard user={u} />
-
+          </>)}
+          {tab === 'links' && (<>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>
             {u.creatorLinks.length ? <div className="flex flex-wrap gap-1.5">{u.creatorLinks.map((c) => <Badge key={c.creatorId} tone="green"><code>{c.creatorId}</code>{c.displayName ? ` · ${c.displayName}` : ''}</Badge>)}</div>
@@ -6452,7 +6481,26 @@ function UserDetailModal({ id, onClose }) {
               </div>
             ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nodiscord', 'No Discord linked.')}</div>}
           </div>
+          </>)}
+          {tab === 'content' && (<>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
+            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
+              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
+          </div>
 
+          {listed.length > 0 && <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
+            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
+          </div>}
+
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
+            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
+              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
+          </div>
+          </>)}
+          {tab === 'billing' && (<>
           {u.subscriptions?.length > 0 && (
             <div>
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><RefreshCw size={12} /> {t('ud.subs', 'Active subscriptions')} · <span className="text-success normal-case">≈ ${(u.mrrCents / 100).toFixed(2)}/{t('pu.mo', 'mo')}</span></div>
@@ -6472,15 +6520,23 @@ function UserDetailModal({ id, onClose }) {
             </div>
           )}
 
-          {/* One line between the everyday half and the rest. Collapsed, the screen is the
-              account and how to moderate it; expanded, it is the full dossier. */}
-          <button type="button" onClick={() => setShowMore((v) => !v)} aria-expanded={showMore}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--line)] border-dashed text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)] transition">
-            {showMore ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            {showMore ? t('ud.less', 'Show less') : t('ud.more', 'Devices, billing, content & account actions')}
-          </button>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>
+            {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.payments.map((pay) => (
+              <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                <Receipt size={13} className="text-success shrink-0" />
+                <span className="flex-1 truncate">{pay.description}</span>
+                <span className="text-success font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
+              </div>
+            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments — free plan only.')}</div>}
+          </div>
+          </>)}
+          {tab === 'security' && (<>
+          <UserTwoFactorCard user={u} onChange={reload} />
+          <UserPasswordCard user={u} />
 
-          {showMore && (<>
+
           {/* API keys. The endpoint returns null for a non-SUPERADMIN caller and [] for a
               SUPERADMIN looking at an account with none — two different facts, so the
               section renders only when it is actually allowed to say something. Hiding
@@ -6517,21 +6573,6 @@ function UserDetailModal({ id, onClose }) {
               ))}</div> : <div className="text-[12px] text-[var(--faint)]">{t('ud.sessNone', 'No active sessions.')}</div>}
             </div>
           )}
-
-          {/* Answering an access or erasure request from the account it is about, rather
-              than from a separate screen where the person is a row in a list. */}
-          <UserSanctions userId={u.id} />
-          {/* The two ways an account ends, stated as a choice. Hidden while the closure form
-              is open — the form IS the closure branch, and offering to open it again beside
-              itself is a dead control. */}
-          {!closureForm && (
-            <AccountEndActions user={u} onChanged={reload}
-              onClose={() => setClosureForm({ reason: '', days: 30, cancellable: true })} />
-          )}
-          {/* Above the data-request panel on purpose: what somebody reaching this screen is
-              usually looking for is why the account is in the state it is in. */}
-          <StaffNotes userId={id} />
-          <DataRequestPanel user={u} onChanged={reload} />
 
           {u.apiKeys && (
             <div>
@@ -6572,37 +6613,26 @@ function UserDetailModal({ id, onClose }) {
               })}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nokeys', 'No API keys.')}</div>}
             </div>
           )}
-
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Receipt size={12} /> {t('ud.payments', 'Payments')} ({u.payments?.length || 0})</div>
-            {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.payments.map((pay) => (
-              <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
-                <Receipt size={13} className="text-success shrink-0" />
-                <span className="flex-1 truncate">{pay.description}</span>
-                <span className="text-success font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
-                <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
-              </div>
-            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments — free plan only.')}</div>}
-          </div>
-
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
-            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
-              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
-          </div>
-
-          {listed.length > 0 && <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
-            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
-          </div>}
-
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
-            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
-              : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
-          </div>
-
+          </>)}
+          {tab === 'actions' && (<>
+          {/* Answering an access or erasure request from the account it is about, rather
+              than from a separate screen where the person is a row in a list. */}
+          <UserSanctions userId={u.id} />
+          {/* The two ways an account ends, stated as a choice. Hidden while the closure form
+              is open — the form IS the closure branch, and offering to open it again beside
+              itself is a dead control. */}
+          {!closureForm && (
+            <AccountEndActions user={u} onChanged={reload}
+              onClose={() => setClosureForm({ reason: '', days: 30, cancellable: true })} />
+          )}
+          {/* Above the data-request panel on purpose: what somebody reaching this screen is
+              usually looking for is why the account is in the state it is in. */}
+          <StaffNotes userId={id} />
+          <DataRequestPanel user={u} onChanged={reload} />
+          </>)}
+          {tab === 'more' && (<>
           <UserExtras userId={u.id} />
+
           </>)}
         </div>
       )}
@@ -14067,7 +14097,7 @@ function AdminBot() {
         // Preview the level curve so an admin sees how hard each level is before saving.
         const base = Number(num('curveBase', 100)) || 100, factor = Number(num('curveFactor', 1.18)) || 1.18;
         const xpFor = (lvl) => Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
-        return (<>
+        return (<div className="space-y-4">
         <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend. Only accrues for members who linked a BCWEB account.')} />
         <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system — off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
           {/* Currency */}
@@ -14221,7 +14251,7 @@ function AdminBot() {
           <span className="flex-1">{t('db.eco.ledger.moved', 'Balances, XP and the leaderboard are on the Members page — one list of people, with a Roster view and an Economy view.')}</span>
           <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
         </div>
-        </>);
+        </div>);
       })()}
 
       {page === 'limits' && (<>
@@ -14540,7 +14570,7 @@ function AdminBotMembersPage({ currency }) {
           </button>
         ))}
       </div>
-      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4"><EconomyLedger currency={currency} /></div>}
+      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /></div>}
     </div>
   );
 }
@@ -14599,7 +14629,7 @@ function AdminBotMembers() {
   // Give XP or points to a linked member without leaving the roster. The API recomputes the
   // level from the curve when XP moves, and the row updates in place from its answer.
   const toast = useToast();
-  const [giving, setGiving] = useState(null); // discordId of the row with the give form open
+  const [expanded, setExpanded] = useState(null); // discordId of the row opened for details
   const [giveKind, setGiveKind] = useState('points');
   const [giveAmt, setGiveAmt] = useState(100);
   const give = async (m) => {
@@ -14608,7 +14638,6 @@ function AdminBotMembers() {
       const r = await api.post('/admin/economy/grant', { userId: m.linkedUser.id, [giveKind]: amt, reason: 'members page' });
       setRows((rs) => (rs || []).map((x) => x.discordId === m.discordId ? { ...x, linkedUser: { ...x.linkedUser, economy: { level: r.level, xp: r.xp, points: r.points } } } : x));
       toast.success(t('bm.give.ok', 'Done — Lv {l} · {p} points').replace('{l}', r.level).replace('{p}', r.points));
-      setGiving(null);
     } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   return (
@@ -14620,18 +14649,18 @@ function AdminBotMembers() {
       </button>
       <p className="text-sm text-[var(--muted)] mb-3">{t('bm.desc', 'The full roster — the bot scans every member on startup. Shows join date, last message/voice activity, and whether the member has linked a BCWEB account.')}</p>
       {!collapsed && <>
-        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit mb-3">
-          {tabs.map(([v, label, n]) => (
-            <button key={v} onClick={() => pickLink(v)} className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${link === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-              {v === 'linked' ? <CheckCircle2 size={12} className="text-success" /> : v === 'unlinked' ? <XCircle size={12} className="text-[var(--faint)]" /> : null}
-              {label}{n != null && <span className="text-[var(--faint)]">{n}</span>}
-            </button>
-          ))}
-        </div>
-        {/* Sort and role sit BESIDE the search, not under it: all three narrow the same
-            list, and a control that lives somewhere else reads as doing something else. */}
-        <div className="flex flex-wrap gap-2 mb-3 items-center">
-          <Select className="!w-auto !py-2" value={sort} onChange={(e) => pickSort(e.target.value)}>
+        {/* One toolbar: who (linked / not), in what order, which role, and the export — then the
+            search. Three stacked rows of controls read as three different tools. */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {tabs.map(([v, label, n]) => (
+              <button key={v} onClick={() => pickLink(v)} className={`px-3 py-1.5 text-xs flex items-center gap-1.5 ${link === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                {v === 'linked' ? <CheckCircle2 size={12} className="text-success" /> : v === 'unlinked' ? <XCircle size={12} className="text-[var(--faint)]" /> : null}
+                {label}{n != null && <span className="text-[var(--faint)] tabular-nums">{n}</span>}
+              </button>
+            ))}
+          </div>
+          <Select className="!w-auto !py-1.5 !text-xs" value={sort} onChange={(e) => pickSort(e.target.value)}>
             <option value="recent">{t('bm.sort.recent', 'Recently active')}</option>
             <option value="quiet">{t('bm.sort.quiet', 'Quiet the longest')}</option>
             <option value="newest">{t('bm.sort.newest', 'Newest members')}</option>
@@ -14639,79 +14668,127 @@ function AdminBotMembers() {
             <option value="name">{t('bm.sort.name', 'Name (A–Z)')}</option>
           </Select>
           {roleList.length > 0 && (
-            <Select className="!w-auto !py-2" value={role} onChange={(e) => pickRole(e.target.value)}>
+            <Select className="!w-auto !py-1.5 !text-xs" value={role} onChange={(e) => pickRole(e.target.value)}>
               <option value="">{t('bm.role.any', 'Any role')}</option>
               {roleList.map((r) => <option key={r} value={r}>{r}</option>)}
             </Select>
           )}
+          <div className="flex-1" />
           <Button size="sm" variant="ghost" disabled={!rows?.length} onClick={exportCsv} title={t('bm.export.h', 'Download the rows currently listed')}>
             <Download size={14} /> {t('bm.export', 'CSV')}
           </Button>
         </div>
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-4">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
             <Input className="!ps-9" placeholder={t('bm.search', 'Search by Discord id or username…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load(false)} /></div>
           <Button variant="primary" disabled={busy} onClick={() => load(false)}>{busy ? <Spinner /> : <><Search size={15} /> {t('bm.searchbtn', 'Search')}</>}</Button>
         </div>
-        {rows === null ? <Loading /> : rows.length ? <div className="space-y-1.5">
-          {rows.map((m) => (
-            <Card key={m.discordId} className="p-3 flex items-center gap-3">
-              {m.avatar ? <img src={m.avatar} alt="" className="w-9 h-9 rounded-full shrink-0" /> : <div className="w-9 h-9 rounded-full bg-[var(--surface-2)] grid place-items-center shrink-0"><DiscordIcon size={16} className="text-[#5865F2]" /></div>}
-              <div className="flex-1 min-w-0">
-                <div className="font-medium truncate flex items-center gap-2 flex-wrap">{m.username || m.discordId}
-                  {m.linkedUser
-                    ? <Badge tone="green"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
-                    : <Badge><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</Badge>}
-                  {m.linkedUser?.economy && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] tabular-nums" title={`${(m.linkedUser.economy.xp || 0).toLocaleString()} XP`}>
-                      <Sparkles size={10} /> Lv {m.linkedUser.economy.level || 0} · {(m.linkedUser.economy.points || 0).toLocaleString()}
-                    </span>
+        {rows === null ? <Loading /> : rows.length ? <div className="space-y-2">
+          {rows.map((m) => {
+            const open = expanded === m.discordId;
+            const eco = m.linkedUser?.economy;
+            return (
+            <Card key={m.discordId} className="p-0 overflow-hidden">
+              {/* The row: who, linked or not, when they joined / last spoke — and nothing
+                  else. Roles, servers, ids and the give form live under the chevron. */}
+              <div className="flex items-center gap-3 px-3.5 py-3">
+                {m.avatar ? <img src={m.avatar} alt="" className="w-10 h-10 rounded-full shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] grid place-items-center shrink-0"><DiscordIcon size={16} className="text-[#5865F2]" /></div>}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium truncate">{m.username || m.discordId}</span>
+                    {m.linkedUser
+                      ? <Badge tone="green" className="shrink-0"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
+                      : <span className="shrink-0 text-[11px] text-[var(--faint)] inline-flex items-center gap-1"><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</span>}
+                  </div>
+                  <div className="text-[11px] text-[var(--faint)] truncate mt-0.5">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)}</div>
+                </div>
+                {eco && (
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--primary)]/10 text-[var(--primary-2)] tabular-nums shrink-0" title={`${(eco.xp || 0).toLocaleString()} XP`}>
+                    <Sparkles size={11} /> Lv {eco.level || 0} · {(eco.points || 0).toLocaleString()}
+                  </span>
+                )}
+                {(m.roles?.length > 0 || m.servers?.length > 1) && (
+                  <span className="hidden md:inline text-[11px] text-[var(--faint)] tabular-nums shrink-0">{m.roles?.length ? t('bm.nroles', '{n} role(s)').replace('{n}', m.roles.length) : ''}{m.roles?.length && m.servers?.length > 1 ? ' · ' : ''}{m.servers?.length > 1 ? t('bm.nservers', '{n} servers').replace('{n}', m.servers.length) : ''}</span>
+                )}
+                <BotModerate member={m} />
+                <button type="button" onClick={() => setExpanded(open ? null : m.discordId)} aria-expanded={open} title={open ? t('bm.less', 'Hide details') : t('bm.more', 'Details, roles, give XP or points')}
+                  className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] shrink-0"><ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></button>
+              </div>
+              {open && (
+                <div className="border-t border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-3 space-y-3 text-xs">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[var(--muted)]">
+                    <span>id <code className="text-[11px]">{m.discordId}</code></span>
+                    {m.nickname && <span>{t('bm.nick', 'nickname')} <b>{m.nickname}</b></span>}
+                    <span>{t('bm.lastvoice', 'last voice')} {since(m.lastVoiceJoinAt)}</span>
+                    {eco && <span>{(eco.xp || 0).toLocaleString()} XP</span>}
+                  </div>
+                  {/* What they ARE, before deciding what to do about them. @everyone is stripped
+                      by the scan — every member has it, so it says nothing. */}
+                  {m.roles?.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] me-1">{t('bm.roles', 'Roles')}</span>
+                      {m.roles.map((r) => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] text-[var(--muted)]">{r}</span>)}
+                    </div>
+                  )}
+                  {/* Unified mode: this is ONE row per person, so show every server they share
+                      with the bot rather than repeating the person once per server. */}
+                  {m.servers?.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] me-1 inline-flex items-center gap-1"><Server size={10} /> {t('bm.servers', 'Servers')}</span>
+                      {m.servers.map((sv) => <span key={sv.guildId} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#5865F2]/10 text-[var(--primary-2)]">{sv.name}</span>)}
+                    </div>
                   )}
                   {m.linkedUser && (
-                    <button type="button" onClick={() => { setGiving(giving === m.discordId ? null : m.discordId); }} className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]/40 inline-flex items-center gap-1"><Gift size={10} /> {t('bm.give', 'Give')}</button>
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <Gift size={12} className="text-[var(--primary-2)]" /> <span className="text-[var(--muted)]">{t('bm.give', 'Give')}</span>
+                      <Select className="!w-auto !py-1 !text-xs" value={giveKind} onChange={(e) => setGiveKind(e.target.value)}>
+                        <option value="points">{t('bm.give.points', 'Points')}</option>
+                        <option value="xp">XP</option>
+                      </Select>
+                      <Input type="number" className="!w-24 !py-1 !text-xs" value={giveAmt} onChange={(e) => setGiveAmt(e.target.value)} />
+                      <Button size="sm" variant="primary" onClick={() => give(m)}>{t('bm.give.go', 'Apply')}</Button>
+                      <span className="text-[10px] text-[var(--faint)]">{t('bm.give.h', 'Negative takes away. XP moves the level.')}</span>
+                    </div>
                   )}
                 </div>
-                {giving === m.discordId && (
-                  <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                    <Select className="!w-auto !py-1 !text-xs" value={giveKind} onChange={(e) => setGiveKind(e.target.value)}>
-                      <option value="points">{t('bm.give.points', 'Points')}</option>
-                      <option value="xp">XP</option>
-                    </Select>
-                    <Input type="number" className="!w-24 !py-1 !text-xs" value={giveAmt} onChange={(e) => setGiveAmt(e.target.value)} />
-                    <Button size="sm" variant="primary" onClick={() => give(m)}>{t('bm.give.go', 'Apply')}</Button>
-                    <span className="text-[10px] text-[var(--faint)]">{t('bm.give.h', 'Negative takes away. XP moves the level.')}</span>
-                  </div>
-                )}
-                <div className="text-xs text-[var(--faint)] truncate">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)} · {t('bm.lastvoice', 'last voice')} {since(m.lastVoiceJoinAt)} · id {m.discordId}</div>
-                {/* What they ARE, before deciding what to do about them. @everyone is stripped
-                    by the scan — every member has it, so it says nothing. */}
-                {m.roles?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {m.roles.slice(0, 8).map((r) => (
-                      <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[var(--muted)]">{r}</span>
-                    ))}
-                    {m.roles.length > 8 && <span className="text-[10px] text-[var(--faint)]">+{m.roles.length - 8}</span>}
-                  </div>
-                )}
-                {/* Unified mode: this is ONE row per person, so show every server they share
-                    with the bot rather than repeating the person once per server. */}
-                {m.servers?.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1 mt-1">
-                    <Server size={11} className="text-[var(--faint)]" />
-                    {m.servers.slice(0, 6).map((s) => (
-                      <span key={s.guildId} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#5865F2]/10 text-[var(--primary-2)]">{s.name}</span>
-                    ))}
-                    {m.servers.length > 6 && <span className="text-[10px] text-[var(--faint)]">+{m.servers.length - 6}</span>}
-                  </div>
-                )}
-              </div>
-              <BotModerate member={m} />
-            </Card>
-          ))}
+              )}
+            </Card>);
+          })}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('bm.loadmore', 'Load more')}</Button></div>}
         </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')} sub={link ? t('bm.trother', 'Try another filter.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")} />}
       </>}
     </div>
+  );
+}
+
+// What members bought with points that a PERSON still has to hand out (a Discord role, a
+// custom reward), and the button that says it was done. Delivered rows stay listed a while
+// as the record; the count on the site's dashboard follows this status.
+function PendingDeliveries({ currency }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/economy/purchases'), []);
+  const rows = data?.purchases || [];
+  const pending = rows.filter((r) => r.status === 'pending');
+  const deliver = async (r) => { try { await api.post(`/admin/economy/purchases/${r.id}/deliver`); toast.success(t('db.eco.delivered', 'Marked as handed out.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const kind = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
+  return (
+    <ModuleCard id="sec-eco-deliveries" icon={Gift} title={t('db.eco.deliv', 'Purchases to hand out')} desc={t('db.eco.deliv.d', 'Roles and custom rewards bought with points are yours to deliver — mark each one once it is done. Badges and site perks deliver themselves.')} onToggle={null}
+      action={pending.length ? <Badge tone="amber">{pending.length}</Badge> : null}>
+      {loading ? <Spinner /> : !rows.length ? <div className="text-xs text-[var(--faint)]">{t('db.eco.deliv.none', 'Nobody has bought anything yet.')}</div> : (
+        <div className="space-y-1.5 max-h-[40vh] overflow-auto pe-1">
+          {rows.slice(0, 40).map((r) => (
+            <div key={r.id} className={`flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2 ${r.status === 'pending' ? '' : 'opacity-70'}`}>
+              <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${r.status === 'pending' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}>{r.status === 'pending' ? <Clock size={14} /> : <CheckCircle2 size={14} />}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{r.name} <span className="text-[11px] text-[var(--faint)] font-normal">· {kind(r.kind)}</span></div>
+                <div className="text-[11px] text-[var(--faint)] truncate"><Link to={`/u/${r.userId}`} className="hover:text-[var(--primary-2)]">{r.displayName}</Link> · {r.cost.toLocaleString()} {currency} · {new Date(r.createdAt).toLocaleDateString()} · {r.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}{r.delivery?.code ? ` · ${r.delivery.code}` : ''}</div>
+              </div>
+              {r.status === 'pending' && <Button size="sm" variant="primary" onClick={() => deliver(r)}><CheckCircle2 size={13} /> {t('db.eco.deliv.ok', 'Handed out')}</Button>}
+            </div>
+          ))}
+        </div>
+      )}
+    </ModuleCard>
   );
 }
 
@@ -18413,6 +18490,8 @@ function AdminCatalogExamine({ catalog, onClose }) {
 // Admin: create & manage profile badges (verified, developer, moderator, YouTuber, Twitch,
 // certified, …). Badges can be a lucide icon, a brand/image URL or a data URI; manual ones
 // are granted to users by id/email, easter-egg ones are self-claimed via a trigger.
+// Tells the admin shell to re-count what is waiting — the tab badges follow at once.
+const pendingChanged = () => { try { window.dispatchEvent(new Event('bcw:pending-changed')); } catch { /* SSR */ } };
 const BADGE_BLANK = { name: '', description: '', iconType: 'lucide', icon: 'BadgeCheck', color: '#f59e0b', grant: 'manual', trigger: '', earnMessage: '', priority: 0, active: true };
 function AdminBadges() {
   const { t } = useI18n(); const toast = useToast();
@@ -18485,14 +18564,34 @@ function AdminBadges() {
             <Field label={t('ab.earnmsg', 'Reveal message')}><Textarea value={edit.earnMessage} onChange={(e) => setEdit({ ...edit, earnMessage: e.target.value })} placeholder={t('ab.earnmsg.ph', 'Shown in the reveal modal when a user finds it.')} /></Field>
           </>}
           {edit.grant === 'auto' && (() => { const rule = edit.rule || { type: 'signup_nth', every: 100 }; const setRule = (r) => setEdit({ ...edit, rule: r }); return <>
-            <Field label={t('ab.rule', 'Auto-grant rule')}><Select value={rule.type} onChange={(e) => setRule({ type: e.target.value, every: rule.every || 100, date: rule.date || '' })}>
-              <option value="signup_nth">{t('ab.rule.nth', 'Every Nth signup (100th, 200th…)')}</option>
-              <option value="signup_before">{t('ab.rule.before', 'Signed up before a date')}</option>
-              <option value="kofi_donation">{t('ab.rule.kofi', 'Made a Ko-fi donation')}</option>
+            <Field label={t('ab.rule', 'Auto-grant rule')}><Select value={rule.type} onChange={(e) => setRule({ type: e.target.value, every: rule.every || 100, date: rule.date || '', level: rule.level || 10, count: rule.count || 10, days: rule.days || 365 })}>
+              <optgroup label={t('ab.rule.g.account', 'Account')}>
+                <option value="signup_nth">{t('ab.rule.nth', 'Every Nth signup (100th, 200th…)')}</option>
+                <option value="signup_before">{t('ab.rule.before', 'Signed up before a date')}</option>
+                <option value="account_age">{t('ab.rule.age', 'Account older than N days')}</option>
+                <option value="twofa_enabled">{t('ab.rule.twofa', 'Turned on two-factor authentication')}</option>
+                <option value="discord_linked">{t('ab.rule.discord', 'Linked a Discord account')}</option>
+              </optgroup>
+              <optgroup label={t('ab.rule.g.community', 'Community')}>
+                <option value="kofi_donation">{t('ab.rule.kofi', 'Made a Ko-fi donation')}</option>
+                <option value="polls_answered">{t('ab.rule.polls', 'Answered N polls')}</option>
+                <option value="items_published">{t('ab.rule.items', 'Has N published catalog items')}</option>
+                <option value="repo_hosted">{t('ab.rule.repo', 'Hosts a repo (has a storage pool)')}</option>
+              </optgroup>
+              <optgroup label={t('ab.rule.g.discord', 'Discord economy')}>
+                <option value="level_reached">{t('ab.rule.level', 'Reached level N')}</option>
+                <option value="messages_sent">{t('ab.rule.messages', 'Sent N messages (counted by the bot)')}</option>
+                <option value="purchases_made">{t('ab.rule.purchases', 'Made N shop purchases')}</option>
+              </optgroup>
             </Select></Field>
             {rule.type === 'signup_nth' && <Field label={t('ab.rule.every', 'Grant every N signups')}><Input type="number" min="1" value={rule.every ?? 100} onChange={(e) => setRule({ ...rule, every: Math.max(1, Number(e.target.value) || 1) })} placeholder="100" /></Field>}
             {rule.type === 'signup_before' && <Field label={t('ab.rule.date', 'Before date (YYYY-MM-DD)')}><Input type="date" value={rule.date || ''} onChange={(e) => setRule({ ...rule, date: e.target.value })} /></Field>}
-            <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.rulehint', 'Granted automatically when the event fires — e.g. a badge for the 100th, 200th… member, early adopters, or Ko-fi supporters.')}</p>
+            {rule.type === 'account_age' && <Field label={t('ab.rule.days', 'Days since signup')}><Input type="number" min="1" value={rule.days ?? 365} onChange={(e) => setRule({ ...rule, days: Math.max(1, Number(e.target.value) || 1) })} placeholder="365" /></Field>}
+            {rule.type === 'level_reached' && <Field label={t('ab.rule.lvl', 'Level')}><Input type="number" min="1" value={rule.level ?? 10} onChange={(e) => setRule({ ...rule, level: Math.max(1, Number(e.target.value) || 1) })} placeholder="10" /></Field>}
+            {['messages_sent', 'purchases_made', 'polls_answered', 'items_published'].includes(rule.type) && <Field label={t('ab.rule.count', 'How many (N)')}><Input type="number" min="1" value={rule.count ?? 10} onChange={(e) => setRule({ ...rule, count: Math.max(1, Number(e.target.value) || 1) })} placeholder="10" /></Field>}
+            <p className="text-[11px] text-[var(--faint)] -mt-1">{['signup_nth', 'signup_before', 'kofi_donation', 'polls_answered'].includes(rule.type)
+              ? t('ab.rulehint', 'Granted automatically when the event fires — e.g. a badge for the 100th, 200th… member, early adopters, or Ko-fi supporters.')
+              : t('ab.rulehint2', 'Granted the moment somebody qualifies, and once a day for everyone who already does — so a badge for “level 10” also reaches the members who were past it when you created it.')}</p>
           </>; })()}
           <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> {t('ab.active', 'Active')}</label>
         </div>
@@ -18814,7 +18913,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
         ? t('nq.handled', 'Marked as dealt with.')
         : t('nq.archived', 'Archived — it stays in its queue.'),
       onCommit: async () => {
-        try { await api.post('/admin/pending/dismiss', { queue: it.queue, itemId: String(it.id), mode }); onReload?.(); }
+        try { await api.post('/admin/pending/dismiss', { queue: it.queue, itemId: String(it.id), mode }); onReload?.(); pendingChanged(); }
         catch { toast.error(t('common.failed', 'Failed.')); }
         finally { setPendingOut((s) => { const n = new Set(s); n.delete(key); return n; }); }
       },
@@ -19279,6 +19378,65 @@ function liveToken(name) {
   } catch { return '#888888'; }
 }
 
+// The Better* project marks the icon picker offers as `app:<key>` (blog, docs, showcase
+// pages, badges…). The four bundled ones are the fallback; anything added here — a new
+// project, a redesigned logo — reaches every visitor with the theme, without a deploy.
+function AppIconsCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/site/app-icons'), []);
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) setRows(data.icons || []); }, [data]);
+  if (loading || !rows) return null;
+  const BUNDLED = [['bmm', 'BetterModsManager', '/icons/bmm.png'], ['bsm', 'BetterSoundMaker', '/icons/bsm.png'], ['bi', 'BetterInstaller', '/icons/bi.svg'], ['bc', 'BetterCommunity', '/logo.png']];
+  const upd = (i, patch) => setRows(rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  const pick = async (i, file) => {
+    if (!file) return;
+    try { const url = await uploadImage(file); upd(i, { url }); } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+  const save = async () => {
+    const clean = rows.map((r) => ({ key: String(r.key || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 24), label: String(r.label || '').trim(), url: String(r.url || '').trim() })).filter((r) => r.key && r.label && r.url);
+    setBusy(true);
+    try { await api.put('/admin/site/app-icons', { icons: clean }); toast.success(t('ai.saved', 'App icons saved — visitors pick them up on their next page load.')); reload(); }
+    catch { toast.error(t('ai.bad', 'Could not save: every row needs a key (letters, digits, dashes), a name and an image.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><ImageIcon size={12} /> {t('ai.title', 'App icons (Better* projects)')}</div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setRows([...rows, { key: '', label: '', url: '' }])}><Plus size={13} /> {t('ai.add', 'Add')}</Button>
+          <Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={13} /> {t('common.save', 'Save')}</>}</Button>
+        </div>
+      </div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">{t('ai.desc', 'What the icon picker offers under “Projects” (app:key). Use a bundled key to replace that logo; a new key adds a project. PNG or SVG with a transparent background, square.')}</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {BUNDLED.map(([k, l, u]) => {
+          const over = rows.find((r) => r.key === k);
+          return <span key={k} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/60" title={over ? t('ai.overridden', 'Replaced by the row below') : t('ai.bundled', 'Bundled — add a row with this key to replace it')}><span className="inline-grid place-items-center w-5 h-5 rounded bg-white p-0.5"><img src={over?.url || u} alt="" className="max-w-full max-h-full" /></span> {l} <code className="text-[10px] text-[var(--faint)]">app:{k}</code>{over && <Badge tone="amber">{t('ai.custom', 'custom')}</Badge>}</span>;
+        })}
+      </div>
+      {rows.length === 0 ? <div className="text-[12px] text-[var(--faint)]">{t('ai.none', 'No custom icons — the four bundled marks are offered.')}</div> : (
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={i} className="grid grid-cols-[auto_1fr_1fr_2fr_auto] gap-2 items-center">
+              <label className="w-10 h-10 rounded-lg bg-white border border-[var(--line)] grid place-items-center overflow-hidden cursor-pointer" title={t('ai.upload', 'Upload an image')}>
+                <input type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={(e) => pick(i, e.target.files?.[0])} />
+                {r.url ? <img src={r.url} alt="" className="max-w-full max-h-full p-1" /> : <UploadIcon size={14} className="text-[var(--faint)]" />}
+              </label>
+              <Input className="!py-1.5 !text-sm font-mono" value={r.key} onChange={(e) => upd(i, { key: e.target.value })} placeholder="bxx" />
+              <Input className="!py-1.5 !text-sm" value={r.label} onChange={(e) => upd(i, { label: e.target.value })} placeholder="BetterSomething" />
+              <Input className="!py-1.5 !text-sm font-mono" value={r.url} onChange={(e) => upd(i, { url: e.target.value })} placeholder="/api/media/… or https://…" />
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => setRows(rows.filter((_, k) => k !== i))}><Trash2 size={13} /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminSiteTheme() {
   const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/theme'), []);
@@ -19435,6 +19593,8 @@ function AdminSiteTheme() {
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('st.sub', 'The accent colour every visitor sees, in both light and dark. Only a superadmin can change it.')}</p>
+
+      <AppIconsCard />
 
       <Card className="p-4 mb-4">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.presets', 'Presets')}</div>

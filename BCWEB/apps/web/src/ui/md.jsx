@@ -17,7 +17,7 @@ import ReplayPlayer from './ReplayPlayer.jsx';
 import { useI18n } from '../i18n.jsx';
 
 export {
-  ANCHOR_PREFIX, anchorEl, preprocessMd, ICON_NAMES, ShowcaseIcon, appIconKeys, IconGlyph,
+  ANCHOR_PREFIX, anchorEl, preprocessMd, ICON_NAMES, ShowcaseIcon, appIconKeys, appIconLabel, registerAppIcons, IconGlyph,
   matchesLang, MarkdownConfig, configureMarkdown,
 } from '../markdown/index.jsx';
 

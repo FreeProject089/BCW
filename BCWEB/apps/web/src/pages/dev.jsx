@@ -53,7 +53,14 @@ const ENDPOINTS = [
 
   // Polls
   { m: 'GET', p: '/v1/polls', scope: 'polls:read', g: 'Polls', d: 'Polls open to you, and how you answered' },
-  { m: 'POST', p: '/v1/polls/ID/vote', scope: 'polls:write', g: 'Polls', d: 'Answer one — replace ID', write: true, body: '{\n  "optionId": "…"\n}' },
+  { m: 'GET', p: '/v1/polls/ID', scope: 'polls:read', g: 'Polls', d: 'One poll — open or closed — with every option and question id, and its result once you may see it' },
+  { m: 'POST', p: '/v1/polls/ID/vote', scope: 'polls:write', g: 'Polls', d: 'Answer one — replace ID', write: true, body: '{\n  "optionIds": ["…"]\n}' },
+
+  // Community
+  { m: 'GET', p: '/v1/charity', scope: 'charity:read', g: 'Community', d: 'The Community Charity pot this month: association, totals, the vote' },
+  { m: 'GET', p: '/v1/economy', scope: 'economy:read', g: 'Community', d: 'Your Discord level, XP, points and activity' },
+  { m: 'GET', p: '/v1/economy/purchases', scope: 'economy:read', g: 'Community', d: 'What you bought with points, with any code you were handed' },
+  { m: 'GET', p: '/v1/badges', scope: 'badges:read', g: 'Community', d: 'The badges on your profile and when you earned them' },
 ];
 
 // The same call, as code you can paste into a project.

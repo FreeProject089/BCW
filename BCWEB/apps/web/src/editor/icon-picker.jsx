@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
-import { ICON_NAMES, IconGlyph, appIconKeys } from '../ui/md.jsx';
+import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md.jsx';
 
-const PROJECT_LABEL = { bmm: 'BetterModsManager', bsm: 'BetterSoundMaker', bi: 'BetterInstaller', bc: 'BetterCommunity' };
+// The names come from the kit's registry — the bundled four plus whatever an admin added
+// under Site theme → App icons — so a new project shows up here without a code change.
+const PROJECT_LABEL = new Proxy({}, { get: (_, k) => (typeof k === 'string' ? appIconLabel(k) : undefined) });
 
 // Icon picker searching the FULL catalogues: every lucide icon (name list from the
 // lucide-static CDN, previews rendered as colour-inheriting CSS-mask images) and

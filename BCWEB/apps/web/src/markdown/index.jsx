@@ -52,7 +52,7 @@ export { preprocessMd } from './shorthand.js';
 export { ANCHOR_PREFIX, anchorEl } from './sanitize.js';
 export { ICON_NAMES, ShowcaseIcon, IconGlyph, DocIcon } from './icons.jsx';
 export { matchesLang } from './blocks.jsx';
-export { MarkdownConfig, configureMarkdown, appIconKeys, markdownConfig } from './config.js';
+export { MarkdownConfig, configureMarkdown, appIconKeys, appIconLabel, registerAppIcons, markdownConfig } from './config.js';
 export { registerBlock } from './plugins.js';
 export { safeUrl, linkAttrs } from './url.js';
 /* kit:injected:start */

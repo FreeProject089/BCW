@@ -471,12 +471,17 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
   };
   // One row renderer, reused by the desktop sidebar and the mobile sheet.
   const renderTab = (tb, big) => (
-    <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)}
+    <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)} title={tb.badge && tb.badgeTitle ? tb.badgeTitle : undefined}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-start w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
       <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate">{tb.label}</span>
       {(() => {
         const n = (tb.badge || 0) + leafOf(tb).reduce((a, lf) => a + (lf === tb ? 0 : (lf.badge || 0)), 0);
-        return n ? <Badge tone="primary" className="ms-auto shrink-0">{n}</Badge> : null;
+        if (!n) return null;
+        // Two kinds of number: something WAITING on this person (accent, with a title that
+        // says what) and a plain count of what they own (quiet). A badge that means nothing
+        // reads as an unread alert forever — which is why the counts went quiet.
+        const waiting = tb.badgeKind !== 'count';
+        return <Badge tone={waiting ? 'primary' : ''} className="ms-auto shrink-0" title={tb.badgeTitle || undefined}>{n}</Badge>;
       })()}
     </button>
   );

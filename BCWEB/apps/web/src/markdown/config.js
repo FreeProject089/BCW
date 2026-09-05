@@ -31,6 +31,8 @@ export const MarkdownConfig = createContext({
 const DEFAULTS = {
   /** `app:<key>` → an image URL. */
   appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.svg', installer: '/icons/bi.svg', bc: '/logo.png' },
+  /** `app:<key>` → the name a picker shows beside the mark. */
+  appIconLabels: { bmm: 'BetterModsManager', bsm: 'BetterSoundMaker', bi: 'BetterInstaller', bc: 'BetterCommunity' },
   /**
    * Where an icon that is not bundled comes from.
    *
@@ -76,6 +78,7 @@ export function configureMarkdown(next = {}) {
     ...CURRENT,
     ...next,
     appIcons: next.appIcons ? { ...next.appIcons } : CURRENT.appIcons,
+    appIconLabels: next.appIconLabels ? { ...next.appIconLabels } : CURRENT.appIconLabels,
     cdn: next.cdn ? { ...CURRENT.cdn, ...next.cdn } : CURRENT.cdn,
     policy: next.policy ? { ...CURRENT.policy, ...next.policy } : CURRENT.policy,
   };
@@ -89,6 +92,23 @@ export const urlPolicy = () => CURRENT.policy;
 
 /** `app:<key>` → its image URL, or '' when the host never configured one. */
 export const appIcon = (key) => CURRENT.appIcons[key] || '';
+/** `app:<key>` → its display name, falling back to the key. */
+export const appIconLabel = (key) => CURRENT.appIconLabels?.[key] || key;
+
+/**
+ * Add (or override) app icons at runtime — what the site does once its admin-managed list
+ * arrives with the theme. Additive: the bundled marks stay unless a stored entry names the
+ * same key, in which case the stored image wins (a redesigned logo needs no deploy).
+ */
+export function registerAppIcons(list = []) {
+  const icons = { ...CURRENT.appIcons }, labels = { ...CURRENT.appIconLabels };
+  for (const it of Array.isArray(list) ? list : []) {
+    if (!it?.key || !it?.url) continue;
+    icons[it.key] = it.url;
+    if (it.label) labels[it.key] = it.label;
+  }
+  CURRENT = { ...CURRENT, appIcons: icons, appIconLabels: labels };
+}
 
 /**
  * The `app:` keys worth offering in a picker.

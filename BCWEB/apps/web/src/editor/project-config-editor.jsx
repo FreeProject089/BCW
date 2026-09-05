@@ -10,6 +10,7 @@ import { api, uploadMedia } from '../lib/api.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
+import { GitCommitHorizontal as GitLogIcon, Trash2 as RemoveIcon, FileUp } from 'lucide-react';
 import { ProgressTracker } from '../pages/project.jsx';
 import StackMap from '../ui/stack-map.jsx';
 import { stackSwitchOn, STACK_KINDS } from '../lib/stack-layout.js';
@@ -361,6 +362,65 @@ function StackDetect({ onDraft, hasExisting }) {
             <Button type="button" size="sm" variant="primary" onClick={apply}>{t('pce.usethese', "Use these")}</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => setDraft(null)}>Discard</Button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The Activity tab's commit source, when GitHub's statistics are not the whole story: a
+// private repo, a mirror, a history that predates the API's window — or simply the wish to
+// read the actual .git. One command locally, paste or upload its output, done. Stored as
+// per-day and per-author counts (a few KB), independent of the config draft, so it lands the
+// moment it is imported rather than on the next Save.
+function CommitImport({ slug }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [info, setInfo] = useState(null);
+  const [text, setText] = useState('');
+  const [label, setLabel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+  const load = () => api.get(`/admin/projects/${slug}/activity-import`).then((r) => setInfo(r.import || false)).catch(() => setInfo(false));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [slug]);
+  const cmd = 'git log --all --date=iso-strict --format="%H|%aI|%an|%s" > commits.txt';
+  const onFile = async (f) => { if (!f) return; if (f.size > 6 * 1024 * 1024) { toast.error(t('pce.ci.toobig', 'That file is over 6 MB — export without --all, or a date range.')); return; } setText(await f.text()); if (!label) setLabel(f.name.replace(/\.[^.]+$/, '')); };
+  const run = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try { const r = await api.post(`/admin/projects/${slug}/activity-import`, { log: text, label: label.trim() || undefined }); setInfo(r.import); setText(''); toast.success(t('pce.ci.done', '{n} commits imported — the Activity tab reads them now.').replace('{n}', r.import.total)); }
+    catch (x) { toast.error(x?.data?.error === 'no_commits' ? t('pce.ci.nothing', 'Nothing in that text looks like git log output.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const remove = async () => { try { await api.del(`/admin/projects/${slug}/activity-import`); setInfo(false); toast.success(t('pce.ci.removed', 'Import removed — GitHub statistics are used again.')); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  return (
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start">
+        <GitLogIcon size={15} className="text-[var(--primary-2)] shrink-0" />
+        <span className="text-sm font-medium flex-1">{t('pce.ci.title', 'Import commits (full history)')}</span>
+        {info ? <Badge tone="green">{t('pce.ci.badge', '{n} commits · {d}').replace('{n}', info.total).replace('{d}', new Date(info.importedAt).toLocaleDateString())}</Badge> : info === false ? <Badge>{t('pce.ci.none', 'GitHub stats')}</Badge> : null}
+        <span className="text-[11px] text-[var(--faint)]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[12px] text-[var(--muted)]">{t('pce.ci.desc', 'GitHub’s statistics only cover the default branch and a rolling year, and nothing at all for a private repo. Run this in the repository and import the file — the Activity tab then reads the whole history (per day, per author, per year). Releases still come from GitHub.')}</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 min-w-0 text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] truncate">{cmd}</code>
+            <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard?.writeText(cmd); toast.success(t('common.copied', 'Copied.')); }}>{t('common.copy', 'Copy')}</Button>
+          </div>
+          <div className="grid sm:grid-cols-[1fr_auto] gap-2 items-start">
+            <Textarea rows={4} className="!text-[11px] font-mono" value={text} onChange={(e) => setText(e.target.value)} placeholder={t('pce.ci.ph', 'Paste commits.txt here — or drop the file with the button →')} />
+            <div className="flex sm:flex-col gap-2">
+              <label className="cursor-pointer"><input type="file" accept=".txt,.log,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} /><span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--line)] text-sm hover:border-[var(--primary)]/40"><FileUp size={14} /> {t('pce.ci.file', 'Choose file')}</span></label>
+              <Input className="!py-1.5 !text-sm sm:w-40" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('pce.ci.label', 'Label (e.g. main repo)')} />
+              <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? <Spinner /> : <><GitLogIcon size={14} /> {t('pce.ci.go', 'Import')}</>}</Button>
+            </div>
+          </div>
+          {info && (
+            <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--faint)]">
+              <span>{t('pce.ci.current', 'Current import: {n} commits, {a} authors, {f} → {l}{lab}').replace('{n}', info.total).replace('{a}', info.authors).replace('{f}', info.first || '?').replace('{l}', info.last || '?').replace('{lab}', info.label ? ` · ${info.label}` : '')}</span>
+              <button type="button" onClick={remove} className="inline-flex items-center gap-1 text-error hover:underline"><RemoveIcon size={11} /> {t('pce.ci.remove', 'Remove and use GitHub again')}</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -921,6 +981,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             <Github size={13} /> {t('pce.tl.import', 'Import GitHub releases')}
           </Button>
         </div>
+        {!isShowcase && slug && <CommitImport slug={slug} />}
         <Repeatable items={c.timeline || []} onChange={(v) => set({ timeline: v })} addLabel="Add event" empty="No timeline events yet."
           add={() => ({ kind: 'update', date: '', title: '', body: '', url: '' })}
           render={(it, patch) => (

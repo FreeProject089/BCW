@@ -109,6 +109,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 ## 5. Projets & vitrine « Autres projets » (`projects.mjs`, `showcase.mjs`)
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
+| GET/POST/DELETE | `/admin/projects/:key/activity-import` | admin (`manage_projects`) | La source des commits de l'onglet Activité quand les stats GitHub ne suffisent pas : POST `{ log, label? }` avec la sortie de `git log --all --format="%H|%aI|%an|%s"` (le texte brut de `git log` est accepté aussi). Stocké en COMPTES par jour / par auteur (quelques Ko, jamais les messages) ; GET renvoie le résumé ; DELETE revient aux statistiques GitHub. Tant qu'un import existe, `/projects/:key/activity` le lit (`source.imported:true`) et GitHub ne fournit que les marqueurs de release. |
 | GET | `/projects` · `/projects/:key` | — | Pages de config des projets (BMM/BSM/…). |
 | GET | `/projects/:key/community` · `/progress` · `/releases` | — | Données des sous-onglets de projet. |
 | PUT | `/projects/:key` | admin | Éditer la config du projet. |
@@ -206,6 +207,15 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 ## 13. API du bot Discord (`bot.mjs`)
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
+| POST | `/bot/economy/buy` | bot | Un achat `/shop` depuis Discord. Exécute la MÊME `buyShopItem()` (`lib/economy-shop.mjs`) que le `/me/economy/buy` du site : prix relu, livraison avant débit, une ligne `EconomyPurchase` (l'inventaire). Badges / pool / boost / hébergement / codes promo fixes sont livrés par l'API ; rôles et récompenses perso sont enregistrés `pending` pour un admin. |
+| GET | `/bot/economy/purchases/:discordId` | bot | Les achats du membre — la commande `/inventory`. |
+| GET | `/bot/economy/leaderboard?discordId=` | bot | Top 10 par niveau (+ avatar, userId, total). Avec `discordId`, aussi `me: { rank, level, xp, points }` pour l'appelant. |
+| GET | `/me/economy` | user | Niveau, XP, points, stats, taux — plus `shopItems`, `purchases`, `pendingDeliveries` pour la carte du tableau de bord. |
+| GET | `/me/economy/shop` | user | La boutique depuis le site : solde, chaque article (`fulfil: site|admin`, `owned` pour un badge déjà possédé), et les achats. |
+| POST | `/me/economy/buy` | user (limité) | Acheter `{ itemId }` depuis le site — même fonction que le bot. 402 `insufficient`, 404 `no_such_item`, 409 sinon. |
+| GET | `/me/economy/purchases` | user | L'inventaire, du plus récent au plus ancien, avec le code remis le cas échéant. |
+| GET | `/admin/economy/purchases` | admin | Chaque achat (en attente d'abord) — ce qu'une personne doit encore remettre. |
+| POST | `/admin/economy/purchases/:id/deliver` | admin | Marquer un rôle / une récompense perso comme remis. |
 | GET | `/bot/config` · `/bot/token` · `/bot/account/:discordId` | bot | Lookup config/token/compte du bot. |
 | POST | `/bot/heartbeat` · `/bot/activity` · `/bot/link/issue` | bot | Heartbeat, activité, émission de code de liaison. |
 | POST | `/bot/blog/sync` · `/bot/blog/announced` | bot | File d'annonce blog : le bot demande les articles dus dans ses salons, puis marque ce qu'il a publié. |
@@ -232,6 +242,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 ## 15. Admin : utilisateurs, réglages, stockage, contact, stats (`misc.mjs`, `analytics.mjs`)
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
+| GET | `/theme` | — | Le thème du site **et `appIcons`** — les marques des projets Better* gérées par un admin, que le sélecteur d'icônes propose en `app:<clé>` (bmm/bsm/bi/bc fournies en secours ; une entrée stockée avec la même clé remplace l'image). |
+| GET/PUT | `/admin/site/app-icons` | admin | La liste `{ icons: [{ key, label, url }] }` — clé `[a-z0-9-]{1,24}`, url un chemin média du site ou https, 40 max, une par clé. |
 | GET | `/admin/users` · `/admin/users/:id` | admin | Recherche utilisateur (id/nom/e-mail/creator id/Discord/**BC id**) + détail ; les deux incluent l'état de modération du compte. |
 | PUT | `/admin/users/:id/role` | superadmin | Réassigner le rôle. |
 | DELETE | `/admin/users/:id/sessions/:sid` | superadmin | Déconnecter un appareil d'un utilisateur. Filtré par userId autant que par id de session ; idempotent ; effectif à la requête suivante de cet appareil. La liste elle-même revient dans `/admin/users/:id` sous `sessions`, qui vaut `null` (et non `[]`) pour tout rang inférieur à SUPERADMIN — chaque ligne porte l'IP de connexion et sa localisation approximative. |
@@ -310,6 +322,11 @@ Clés nommées et limitées, créées par le propriétaire du compte pour l’AP
 | GET | `/v1/payments` | `payments:read` | Ton historique de paiements. Montants et dates, jamais de données de carte. |
 | GET | `/v1/polls` | `polls:read` | Les sondages qui te sont ouverts, et ta réponse. |
 | POST | `/v1/polls/:id/vote` | `polls:write` | Répondre à un sondage. Remplace la réponse précédente, comme sur le site. |
+| GET | `/v1/polls/:id` | `polls:read` | Un sondage PUBLIC par id — ouvert **ou clos** — avec chaque id d'option (ce que prend `/vote`), la forme multi-questions (ids de question + de choix), `myVotes`, et le décompte dès qu'il peut être vu (après ta réponse, ou clos / `results: always`). Les sondages non listés et privés répondent 404. |
+| GET | `/v1/charity` | `charity:read` | La cagnotte Community Charity du mois — la même forme que le widget d'accueil : association, pourcentage, totaux, id + état ouvert du vote. |
+| GET | `/v1/economy` | `economy:read` | Ton niveau Discord, ton XP (ce niveau / jusqu'au suivant), tes points, tes compteurs d'activité et les taux d'XP. |
+| GET | `/v1/economy/purchases` | `economy:read` | Ce que tu as acheté en boutique de points, avec le code remis le cas échéant et son statut `delivered`/`pending`. |
+| GET | `/v1/badges` | `badges:read` | Les badges de ton profil, avec `earnedAt` et si c'est le staff ou une règle (`how`) qui les a accordés. |
 | GET | `/v1/transfers` | `transfers:read` | Les transferts de propriété proposés par ou pour toi. En lecture seule volontairement. |
 | POST | `/v1/notifications/:id/read` | `notifications:write` | Marquer une notification comme lue. |
 | POST | `/v1/notifications/read-all` | `notifications:write` | Marquer toutes les notifications non lues comme lues. |
@@ -541,6 +558,8 @@ Lecture des profils publics, recherche d’utilisateurs et système de badges.
 | POST | `/admin/badges/:id/grant` | admin | Attribuer un badge. |
 | DELETE | `/admin/badges/:id/holders/:userId` | admin | Retirer un badge. |
 
+**Règles automatiques (`Badge.rule.type`).** `signup_nth` (chaque N), `signup_before` (date), `kofi_donation`, et depuis le 2026-09-05 : `level_reached` (niveau), `messages_sent` (nombre), `purchases_made` (nombre), `polls_answered` (nombre), `items_published` (nombre), `repo_hosted`, `discord_linked`, `twofa_enabled`, `account_age` (jours). Les règles événementielles s'appliquent sur le moment (`grantAutoBadges`, branché sur l'accumulation d'XP, les achats, les votes, les validations, la mise à disposition d'une pool, les liens, la 2FA) ; les règles à seuil sont aussi balayées une fois par jour (`sweepAutoBadges`) pour atteindre ceux qui avaient déjà passé la barre. Chaque attribution émet `badge.earned`.
+
 ## 33. Telemetry access (`telemetry.mjs`)
 L’endpoint de forward-auth appelé par l’edge pour protéger le tableau de bord télémétrie BMM, et qui peut y accéder.
 
@@ -660,4 +679,18 @@ pointant vers des objets MinIO que le zip ne transporte pas. Voir
 [BACKUP_FR.md](../run/BACKUP_FR.md) pour savoir laquelle des trois choses appelées
 « sauvegarde » répond à quelle question.
 
-*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*
+## 37. Webhooks (`webhooks.mjs`, `lib/webhooks.mjs`)
+Webhooks sortants auxquels un compte s'abonne depuis Dev → Config. Chaque livraison est signée (`X-Webhook-Signature`, HMAC sur `timestamp.body` avec le secret du point de terminaison) et réessayée avec un délai croissant (1 min → 10 h, six tentatives).
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/v1/webhook-events` | — | Chaque événement et ce qu'il signifie. |
+| GET/POST | `/me/webhooks` | user | Lister / créer un point de terminaison `{ url, events[] }` — le secret est renvoyé une fois. |
+| PATCH/DELETE | `/me/webhooks/:id` | user | Modifier (url, events, enabled) / supprimer. |
+| POST | `/me/webhooks/:id/rotate` · `/test` | user | Nouveau secret · envoyer un `ping`. |
+| GET | `/me/webhooks/:id/deliveries` · POST `…/deliveries/:did/replay` | user | Le journal des livraisons · en renvoyer une. |
+| GET | `/admin/webhooks` | admin | Tous les points de terminaison, pour le support. |
+
+**Événements.** Contenu : `catalog.item.published` · `.updated` · `.removed` · `.submitted`, `repo.updated`, `repo.status.changed`, `item.downloaded` (regroupé par minute), `item.milestone`, `repo.downloaded` (regroupé), `review.posted`, `stats.daily`. Compte : `pool.storage.warning` · `.changed`, `subscription.expiring`, `sanction.issued`, `transfer.offered`. Communauté & économie (2026-09-05) : `poll.opened` / `poll.closed` (**diffusion** — à chaque point de terminaison abonné, avec les ids d'options pour répondre), `charity.month.closed` (**diffusion**), `badge.earned` (une règle, un achat, le staff ou un œuf de Pâques — `via` le dit), `economy.level_up` (`level`, `from`, `pointsGranted`), `shop.purchased` (`purchaseId`, `kind`, `cost`, `status`).
+
+*Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

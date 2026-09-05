@@ -30,7 +30,17 @@ const MODES = [
 
 function CapacityBar({ cap }) {
   const { t } = useI18n();
-  if (!cap || cap.unlimited) return null;
+  if (!cap) return null;
+  // Unlimited is a state worth a sentence, not an empty card: this is exactly what a member
+  // database on a free/unified plan shows, and a blank box read as "broken".
+  if (cap.unlimited) {
+    return (
+      <div className="flex items-center justify-between text-[11px]">
+        <span className="text-[var(--muted)] flex items-center gap-1.5"><Gauge size={12} className="text-[var(--primary-2)]" /> {t('ds.capacity', 'Storage used')}</span>
+        <span className="tabular-nums font-medium">{(cap.stored ?? 0).toLocaleString()} · {t('ds.unlimited', 'no cap on this plan')}</span>
+      </div>
+    );
+  }
   return (
     <div className="mt-2">
       <div className="flex items-center justify-between text-[11px] mb-1">
@@ -371,6 +381,29 @@ function GuildConfig({ guildId, onSaved }) {
       )}
       {/* Storing members needs a storage allowance (a pool an admin assigns). With none, the
           bot has nowhere to put them — so warn plainly instead of silently storing nothing. */}
+      {/* Member-database mode: what is being stored, how many, when it refreshes, and where
+          to see them. Before this the panel showed a capacity bar (empty on an unlimited
+          plan) and nothing else — which read as "nothing to configure, is it broken?". */}
+      {draft.memberMode === 'pool' && (
+        <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+          <div className="flex items-start gap-2.5">
+            <Database size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+            <div className="text-xs text-[var(--muted)] min-w-0 flex-1">
+              <div className="text-sm font-medium text-[var(--text)]">{t('ds.pool.t', 'Member database is on')}</div>
+              {t('ds.pool.s', 'The bot stores each member’s name, avatar, join date and roles, and refreshes the list every 30 minutes (and on startup). That powers the Members tab, role gating and the moderation tools. Nothing else about your server is kept.')}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+                {[[(g.memberCount ?? 0).toLocaleString(), t('ds.pool.members', 'members in the server')], [(g.storedMembers ?? g.capacity?.stored ?? 0).toLocaleString(), t('ds.pool.stored', 'stored here')], [g.lastScanAt ? new Date(g.lastScanAt).toLocaleString() : t('ds.pool.pending', 'on next scan'), t('ds.pool.last', 'last refresh')]].map(([v, l]) => (
+                  <div key={l} className="rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate">{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 flex-wrap mt-3">
+                {g.memberMode === 'pool' && <Button size="sm" variant="primary" onClick={() => setSection('members')}><Users size={13} /> {t('ds.pool.open', 'Open the member list')}</Button>}
+                {g.memberMode !== 'pool' && <span className="text-[11px] text-[var(--faint)]">{t('ds.pool.save', 'Save to switch this server to the member database — the first scan runs within a minute.')}</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showBudget && (
         hasUsablePool
           ? <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>

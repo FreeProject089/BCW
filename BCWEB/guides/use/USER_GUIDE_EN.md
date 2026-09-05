@@ -29,6 +29,13 @@ password is the first domino.
 - **Ko-fi**: paste your handle (bare `name`, `@name`, or a full `ko-fi.com/...` URL — it's
   normalised). It becomes a tip link; a Ko-fi **donor badge** can be granted automatically.
 
+### Points, shop & inventory (Discord economy)
+If the community's Discord bot has its economy on, being active on the servers it is in (messages, reactions, voice) earns XP, XP earns levels, and every few levels grant points. Once your Discord is linked:
+- **Dashboard → Overview** shows your level ring, where your XP comes from, and your balance.
+- **Dashboard → Shop & inventory** is the points shop on the site — the same items and prices as `/shop` on Discord — and the inventory: everything you bought, either way, with the code you were handed (a storage pool, a boost, free hosting, a promo). A Discord role or a custom reward shows as *pending* until an admin hands it out.
+- On Discord: `/level`, `/shop`, `/inventory`, `/leaderboard` (with your own rank), `/profile`, and `/casino` (an animated table — coin flip, dice, slots, roulette with colour / green / number bets, wheel, plinko).
+- Badges can be earned by rules the admins set — a level, a number of messages, a purchase, an answered poll, a published item, hosting a repo, linking Discord, turning on 2FA, an account's age — on top of staff grants and easter eggs. They appear on your profile at once.
+
 ## 3. Browsing content
 
 BetterCommunity aggregates two kinds of downloadable content, both consumable by the

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
+import { registerAppIcons } from '../markdown/config.js';
 
 // White/orange (light) ↔ black/orange (dark). Persisted; applied on <html>.
 const KEY = 'bcw_theme';
@@ -201,6 +202,8 @@ export function ThemeProvider({ children }) {
       .then((d) => {
         if (!alive || !d?.theme) return;
         applySiteTheme(d.theme);
+        // The admin-managed Better* project marks ride with the theme (one boot fetch).
+        if (Array.isArray(d.appIcons) && d.appIcons.length) registerAppIcons(d.appIcons);
         let stored = null;
         try { stored = localStorage.getItem(KEY); } catch {}
         if (!stored && (d.theme.mode === 'light' || d.theme.mode === 'dark')) setTheme(d.theme.mode);
