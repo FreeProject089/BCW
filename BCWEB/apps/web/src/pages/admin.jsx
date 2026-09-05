@@ -13245,101 +13245,59 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
 
 // Live bot console logs (shipped in the heartbeat) — the fastest way to see WHY the
 // bot did or didn't do something (e.g. a payment channel not found / no permission).
-// B4 Phase 2: per-server member-storage config. Lists the guilds the bot has seen and lets an
-// admin choose each one's mode and, for `pool`, its byte budget — the UI over the guild CRUD
-// and the per-guild budget Phase 1 enforces server-side.
-function GuildStorageRow({ g, busy, onSave }) {
+// The member database, global and admin-owned: every server the bot is in is stored against
+// one cap. What an admin decides here is the cap, whether inactive members are evicted to
+// make room, and what "inactive" means. Servers no longer choose — their owners see the list.
+function MemberDatabaseCard({ cfg, set }) {
   const { t } = useI18n();
-  const MODES = [['none', t('bg.mode.none', 'No storage')], ['moderation', t('bg.mode.mod', 'Moderation (Discord logs)')], ['pool', t('bg.mode.pool', 'Store members')]];
-  const [quota, setQuota] = useState(g.storageQuotaBytes); // local so we PUT on Save, not per keystroke
-  const quotaDirty = quota !== g.storageQuotaBytes;
-  const [showLogs, setShowLogs] = useState(false);
-  const keepsLogs = g.memberMode === 'pool' || (g.memberMode === 'moderation' && g.storeLogs);
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/memberdb'), []);
+  const ms = cfg.memberStorage || {};
+  const on = ms.enabled !== false;
+  const capMB = Number(cfg.limits?.storageMB) || 0;
+  const usedMB = (data?.usedBytes || 0) / 1048576;
+  const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0;
   return (
-    <div className="rounded-lg border border-[var(--line)] p-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-        <span className="font-medium text-sm">{g.name || g.guildId}</span>
-        <span className="text-[11px] text-[var(--faint)]">{g.memberCount} {t('bg.real', 'members')} · {g.storedMembers} {t('bg.stored', 'stored')}</span>
+    <Card className="p-4 mb-4">
+      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
+          <span className="font-medium text-sm">{t('db.mdb.title', 'Member database')}</span>
+          <Badge tone={on ? 'green' : ''}>{on ? t('db.mdb.on', 'on') : t('db.mdb.off', 'off')}</Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
+          <BotSwitch checked={on} onChange={(v) => set('memberStorage.enabled', v)} />
+        </div>
       </div>
-      <div className="grid sm:grid-cols-2 gap-3 items-end">
-        <label className="block"><div className="text-[11px] text-[var(--muted)] mb-1">{t('bg.mode', 'Mode')}</div>
-          <Select value={g.memberMode} disabled={busy} onChange={(e) => onSave(g.guildId, { memberMode: e.target.value })}>
-            {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </Select>
-        </label>
-        {g.memberMode === 'pool' && (
-          <div><div className="text-[11px] text-[var(--muted)] mb-1">{t('bg.quota', 'Storage budget (0 = unlimited)')}</div>
-            <div className="flex gap-2 items-center">
-              <ByteSize value={quota} onChange={setQuota} className="flex-1" />
-              <Button size="sm" disabled={busy || !quotaDirty} onClick={() => onSave(g.guildId, { storageQuotaBytes: quota })}>{t('common.save', 'Save')}</Button>
-            </div>
+      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-3xl">{t('db.mdb.sub', 'One database for every server the bot is in — the full roster of each, refreshed every 30 minutes, with the roles, join date and last activity. Servers do not choose; their owners see their own list. Linked members are always kept; when the cap is reached, inactive unlinked members are the ones removed to make room (if eviction is on) — otherwise the database stops growing.')}</p>
+      <div className="grid sm:grid-cols-3 gap-2 mb-3">
+        <Field label={t('db.mdb.cap', 'Cap (MB)')} className="!mb-0" hint={t('db.mdb.cap.h', '~512 bytes per member row.')}><Input type="number" min="0" value={capMB} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
+        <Field label={t('db.mdb.days', '“Inactive” = no message or voice for (days)')} className="!mb-0"><Input type="number" min="1" value={ms.inactiveDays ?? 30} onChange={(e) => set('memberStorage.inactiveDays', Number(e.target.value))} /></Field>
+        <div className="flex flex-col gap-1.5 justify-end text-xs">
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={ms.evictInactive !== false} onChange={(e) => set('memberStorage.evictInactive', e.target.checked)} /> {t('db.mdb.evict', 'Evict inactive members when the cap is reached')}</label>
+          <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={cfg.limits?.keepLinked !== false} onChange={(e) => set('limits.keepLinked', e.target.checked)} /> {t('db.mdb.keeplinked', 'Never evict a linked member')}</label>
+        </div>
+      </div>
+      {loading ? <Spinner /> : data && (<>
+        <div className="flex items-center justify-between text-[11px] mb-1">
+          <span className="text-[var(--muted)]">{t('db.mdb.usage', '{s} stored · {l} linked · {i} inactive').replace('{s}', data.stored.toLocaleString()).replace('{l}', data.linked.toLocaleString()).replace('{i}', data.inactive.toLocaleString())}</span>
+          <span className="tabular-nums font-medium">{usedMB.toFixed(1)} MB {capMB ? `/ ${capMB} MB` : ''}{data.capRows ? ` · ${data.capRows.toLocaleString()} ${t('db.mdb.rows', 'rows max')}` : ''}</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mb-3"><div className={`h-full ${pct > 90 ? 'bg-error' : pct > 75 ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('db.mdb.servers', 'Per server')}</div>
+        {!data.guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet — the bot registers each one it is in.')}</p> : (
+          <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-64 overflow-auto">
+            {data.guilds.map((g) => (
+              <div key={g.guildId} className="flex items-center gap-2.5 px-3 py-1.5 text-xs">
+                {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
+                <span className="flex-1 min-w-0 truncate font-medium">{g.name || g.guildId}</span>
+                <span className="tabular-nums text-[var(--muted)]">{g.stored.toLocaleString()} / {(g.memberCount || 0).toLocaleString()}</span>
+                <span className="w-24 h-1 rounded-full bg-[var(--surface-2)] overflow-hidden hidden sm:block"><span className="block h-full bg-[var(--primary)]" style={{ width: `${g.memberCount ? Math.min(100, (g.stored / g.memberCount) * 100) : 0}%` }} /></span>
+              </div>
+            ))}
           </div>
         )}
-      </div>
-      {g.memberMode === 'pool' && g.capacity && !g.capacity.unlimited && (
-        <div className="mt-2">
-          <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${g.capacity.full ? 'bg-error' : g.capacity.near ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${g.capacity.pct}%` }} /></div>
-          <div className="text-[11px] text-[var(--faint)] mt-1">{g.capacity.stored} / {g.capacity.cap} · {g.capacity.remaining} {t('bg.left', 'left')}{g.capacity.full ? ` — ${t('bg.full', 'full; new members are not stored')}` : ''}</div>
-        </div>
-      )}
-      {g.memberMode === 'moderation' && (
-        <label className="flex items-center gap-2 text-[12px] text-[var(--muted)] mt-2 cursor-pointer select-none"><input type="checkbox" checked={g.storeLogs} disabled={busy} onChange={(e) => onSave(g.guildId, { storeLogs: e.target.checked })} /> {t('bg.storelogs', 'Also keep moderation logs in the dashboard (needs a pool)')}</label>
-      )}
-      {keepsLogs && (
-        <div className="mt-2">
-          <button type="button" className="text-[11px] text-[var(--primary-2)] hover:underline" onClick={() => setShowLogs((s) => !s)}>
-            {showLogs ? t('bg.hidelogs', 'Hide moderation log') : t('bg.showlogs', 'Show moderation log')}
-          </button>
-          {showLogs && <GuildLogs guildId={g.guildId} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Lazy-loaded moderation record for one guild (B4 Phase 4). Fetched only when expanded.
-function GuildLogs({ guildId }) {
-  const { t } = useI18n();
-  const { data, loading } = useAsync(() => api.get(`/admin/bot/guilds/${guildId}/logs?take=50`), [guildId]);
-  if (loading) return <div className="mt-2"><Spinner /></div>;
-  const logs = data?.logs || [];
-  if (!logs.length) return <p className="text-[11px] text-[var(--faint)] mt-2">{t('bg.nologs', 'No moderation actions recorded yet.')}</p>;
-  const TONE = { ban: 'red', kick: 'amber', timeout: 'amber', warn: '', unban: 'green', untimeout: 'green' };
-  return (
-    <div className="mt-2 space-y-1 border-t border-[var(--line)] pt-2">
-      {logs.map((l) => (
-        <div key={l.id} className="flex items-center gap-2 text-[11px] flex-wrap">
-          <Badge tone={TONE[l.action] || ''}>{l.action}</Badge>
-          {l.auto ? <Badge tone="">{t('bg.auto', 'auto')}</Badge> : null}
-          <span className="text-[var(--muted)] font-mono">{l.targetId}</span>
-          {l.reason ? <span className="text-[var(--faint)] truncate max-w-[16rem]">— {l.reason}</span> : null}
-          <span className="text-[var(--faint)] ms-auto">{new Date(l.createdAt).toLocaleDateString()}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BotGuildStorageCard() {
-  const { t } = useI18n(); const toast = useToast();
-  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/guilds'), []);
-  const [busy, setBusy] = useState('');
-  const guilds = data?.guilds || [];
-  const save = async (guildId, patch) => {
-    setBusy(guildId);
-    try { await api.put(`/admin/bot/guilds/${guildId}`, patch); reload(); }
-    catch (x) { toast.error(x.data?.error === 'log_channel_required' ? t('bg.needlog', 'Set a Discord log channel first for moderation mode.') : t('common.failed', 'Failed.')); }
-    finally { setBusy(''); }
-  };
-  return (
-    <Card className="p-4">
-      <div className="text-sm font-medium flex items-center gap-2 mb-1"><HardDrive size={14} className="text-[var(--primary-2)]" /> {t('bg.title', 'Per-server member storage')}</div>
-      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('bg.sub', 'Each server decides whether the bot stores its members, and how much. New servers store nothing until you turn it on — so the bot joining a huge server costs no storage. A full pool keeps counting the real member count but stops adding rows.')}</p>
-      {loading ? <Spinner /> : !guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet — the bot registers each one it is in.')}</p> : (
-        <div className="space-y-3">
-          {guilds.map((g) => <GuildStorageRow key={g.guildId} g={g} busy={busy === g.guildId} onSave={save} />)}
-        </div>
-      )}
+      </>)}
     </Card>
   );
 }
@@ -13891,66 +13849,7 @@ function AdminBot() {
         )}
       </div>
 
-      {/* Global member-storage strategy — how the bot builds its database across every
-          server. The three modes are mutually exclusive; 'free' reveals a WHO sub-choice. */}
-      <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
-          <span className="font-medium text-sm">{t('db.ms.title', 'Member storage')}</span>
-        </div>
-        <p className="text-[11px] text-[var(--muted)] mb-3">{t('db.ms.sub', 'How the bot builds its member database across every server it is in.')}</p>
-        <div className="grid sm:grid-cols-3 gap-2">
-          {[
-            ['managed', Server, t('db.ms.managed', 'Per-server (recommended)'), t('db.ms.managed.d', 'Each server opts in on its own — a paid pool that stores members, or moderation logs only — with its own byte budget. Nothing is stored until a server turns it on.')],
-            ['free', Users, t('db.ms.free', 'Free — every server'), t('db.ms.free.d', 'Store members of every server the bot is in, for free. Choose who below. This can grow the database fast.')],
-            ['unified', Layers, t('db.ms.unified', 'Unified per person'), t('db.ms.unified.d', 'Store each person once, with the list of servers they share with the bot — instead of one row per server.')],
-          ].map(([mode, Icon, label, desc]) => {
-            const on = (cfg.memberStorage?.mode || 'managed') === mode;
-            return (
-              <button key={mode} type="button" onClick={() => set('memberStorage.mode', mode)}
-                className={`text-start rounded-xl border p-3 transition ${on ? 'border-[#5865F2] bg-[#5865F2]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon size={15} className={on ? 'text-[#5865F2]' : 'text-[var(--faint)]'} />
-                  <span className="text-sm font-medium">{label}</span>
-                  {on && <Check size={14} className="text-[#5865F2] ms-auto" />}
-                </div>
-                <p className="text-[11px] text-[var(--muted)] leading-snug">{desc}</p>
-              </button>
-            );
-          })}
-        </div>
-        {(cfg.memberStorage?.mode || 'managed') === 'free' && (
-          <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('db.ms.whotitle', 'Who to store')}</div>
-            <div className="flex flex-wrap gap-2">
-              {[
-                ['linked', t('db.ms.linked', 'Linked accounts only'), t('db.ms.linked.d', 'Only members who linked a site account.')],
-                ['active', t('db.ms.active', 'Active members'), t('db.ms.active.d', 'Only members the bot has seen do something.')],
-                ['all', t('db.ms.all', 'Everyone'), t('db.ms.all.d', 'Every member of every server.')],
-              ].map(([scope, label, desc]) => {
-                const on = (cfg.memberStorage?.scope || 'linked') === scope;
-                return (
-                  <button key={scope} type="button" onClick={() => set('memberStorage.scope', scope)} title={desc}
-                    className={`px-3 py-1.5 rounded-lg border text-xs transition ${on ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-warning flex items-center gap-1.5 mt-2"><AlertTriangle size={11} /> {t('db.ms.warn', 'Storing everyone across every server can grow the database quickly — the member-DB cap (Limits) still prunes the oldest inactive rows once full.')}</p>
-          </div>
-        )}
-        {(cfg.memberStorage?.mode || 'managed') === 'managed' && (
-          <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer">
-            <input type="checkbox" className="mt-0.5" checked={cfg.memberStorage?.requirePool !== false}
-              onChange={(e) => set('memberStorage.requirePool', e.target.checked)} />
-            <div>
-              <div className="text-sm font-medium">{t('db.ms.reqpool', 'Require a paid pool to store members')}</div>
-              <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{t('db.ms.reqpool.d', 'On: a server needs a purchased storage pool before it can switch to member storage. Off: every server can store members for free — the bot stops gating member storage behind a purchase, while keeping each server’s own byte budget.')}</p>
-            </div>
-          </label>
-        )}
-      </Card>
-
-      <BotGuildStorageCard />
+      <MemberDatabaseCard cfg={cfg} set={set} />
       <BotLogsCard />
       <BotDMCard />
       </>)}

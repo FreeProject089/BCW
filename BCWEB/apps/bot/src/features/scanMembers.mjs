@@ -8,24 +8,12 @@ import { api } from '../api.mjs';
 const CHUNK = 500;
 
 export async function scanAllMembers(client) {
-  // The GLOBAL member-storage strategy decides which guilds are worth a full roster fetch.
+  // ONE member database for every server (admin-configured). Skip the (privileged, expensive)
+  // roster fetch only when the whole thing is switched off.
   const cfg = await api.getConfig().catch(() => ({}));
-  const ms = cfg?.memberStorage || { mode: 'managed', scope: 'linked' };
+  if (cfg?.memberStorage?.enabled === false) return 0;
   let total = 0;
   for (const guild of client.guilds.cache.values()) {
-    if (ms.mode === 'free' || ms.mode === 'unified') {
-      // Both store across every server (unified just collapses to one row per person in the
-      // view). 'active' scope (free only) means "members the bot has seen act" — a full roster
-      // scan would store inactive members too, so skip it and let activity/event writes populate
-      // the DB. Everything else full-scans every guild; the API applies the who-filter on sync.
-      if (ms.mode === 'free' && ms.scope === 'active') continue;
-    } else {
-      // 'managed' (and, for now, 'unified'): only guilds the admin opted into `pool` store
-      // members. Check the mode BEFORE the (expensive, privileged) full-roster fetch — this is
-      // what stops the bot pulling a million members for a server that stores nothing.
-      const mode = await api.guildMode(guild.id);
-      if (mode !== 'pool') continue;
-    }
     let members;
     try { members = await guild.members.fetch(); } catch (e) { console.warn(`[bot] member scan failed for ${guild.name}:`, e.message); continue; }
     const roster = [];
@@ -45,7 +33,7 @@ export async function scanAllMembers(client) {
     for (let i = 0; i < roster.length; i += CHUNK) {
       const r = await api.syncMembers(guild.id, guild.name, guild.memberCount, roster.slice(i, i + CHUNK));
       total += r?.synced || 0;
-      if (r && r.stored === false) break; // guild not storing (mode changed mid-scan) — stop
+      if (r && r.stored === false) break; // the database is off — stop
       // The API admits new rows only while the guild's byte budget has room and reports `full`
       // once it does not. Stop pushing chunks then: the rest of the roster would be fetched,
       // serialised and posted for nothing. The owner's dashboard shows the capacity bar.

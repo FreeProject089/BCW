@@ -12,21 +12,6 @@ import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDi
 // capacity meter is read-only — a user picks HOW members are handled, not how big their
 // budget is. Backed by /me/discord/guilds (ownership re-checked server-side on every call).
 
-// The three member-handling modes, in plain language. Order matters: the safe default first.
-const MODES = [
-  { id: 'none', icon: MinusCircle, tone: 'text-[var(--faint)]',
-    label: 'Store nothing', labelFr: 'Ne rien stocker',
-    desc: 'The bot never scans or stores your members. The safe default — nothing about your server is kept here.',
-    descFr: 'Le bot ne scanne ni ne stocke jamais tes membres. Le choix sûr par défaut — rien de ton serveur n’est conservé ici.' },
-  { id: 'moderation', icon: Shield, tone: 'text-info',
-    label: 'Moderation only', labelFr: 'Modération seule',
-    desc: 'Run moderation commands (ban / kick / timeout) that post to a log channel in your server. Keeping a copy of those logs here is optional and uses storage.',
-    descFr: 'Utilise les commandes de modération (ban / kick / exclusion) qui postent dans un salon de logs de ton serveur. Garder une copie de ces logs ici est optionnel et consomme du stockage.' },
-  { id: 'pool', icon: Database, tone: 'text-[var(--primary-2)]',
-    label: 'Member database', labelFr: 'Base de membres',
-    desc: 'Store your members (name, join date, roles) so the bot can power a member list and role gating. Budgeted against your storage allowance.',
-    descFr: 'Stocke tes membres (nom, date d’arrivée, rôles) pour alimenter une liste de membres et le contrôle par rôle. Décompté de ton allocation de stockage.' },
-];
 
 function CapacityBar({ cap }) {
   const { t } = useI18n();
@@ -258,15 +243,13 @@ function GuildConfig({ guildId, onSaved }) {
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>;
   if (data.error) return <EmptyState icon={MessageSquare} title={t('ds.gone', 'You can no longer manage this server')} sub={t('ds.gone.s', 'Your access may have changed on Discord.')} />;
   const g = data.guild;
-  const name = (m) => (lang === 'fr' ? m.labelFr : m.label);
-  const desc = (m) => (lang === 'fr' ? m.descFr : m.desc);
-  const needsChannel = draft.memberMode === 'moderation' && !draft.logChannelId.trim();
+  const needsChannel = draft.storeLogs && !draft.logChannelId.trim();
   const welcomeDirty = JSON.stringify(draft.welcome) !== JSON.stringify(normWelcome(data.welcome));
   const jtcDirty = JSON.stringify(draft.jtc) !== JSON.stringify(normJtc(data.joinToCreate));
   const gatingDirty = JSON.stringify(draft.gating) !== JSON.stringify(normGating(data.gating));
   const blogDirty = JSON.stringify(draft.blog) !== JSON.stringify(normBlog(data.blog));
   const rpDirty = JSON.stringify(draft.rp) !== JSON.stringify(normRp(data.rolePanels));
-  const dirty = draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
+  const dirty = (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   // Upload a welcome banner background in place — no trip to another page. Goes through the
@@ -286,7 +269,7 @@ function GuildConfig({ guildId, onSaved }) {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api.put(`/me/discord/guilds/${guildId}`, { memberMode: draft.memberMode, logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog, rolePanels: draft.rp });
+      const r = await api.put(`/me/discord/guilds/${guildId}`, { logChannelId: draft.logChannelId.trim() || null, storeLogs: draft.storeLogs, welcome: draft.welcome, joinToCreate: draft.jtc, gating: draft.gating, blog: draft.blog, rolePanels: draft.rp });
       setData((d) => ({ ...d, guild: r.guild, welcome: r.welcome, joinToCreate: r.joinToCreate, gating: r.gating, blog: r.blog, rolePanels: r.rolePanels }));
       setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) });
       toast.success(t('ds.saved', 'Saved.'));
@@ -297,22 +280,17 @@ function GuildConfig({ guildId, onSaved }) {
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
-  const showBudget = draft.memberMode === 'pool' || (draft.memberMode === 'moderation' && draft.storeLogs);
-  // A pool is "usable" only if it is unlimited or has a cap ABOVE zero — a zero-cap pool holds
-  // nothing, and treating it as present is what made this area look empty (a 0/0 bar, or a
-  // warning that never fired). This drives the storage panel so it is never blank.
-  const hasUsablePool = !!(g.capacity && (g.capacity.unlimited || Number(g.capacity.cap) > 0));
   // The dashboard is a set of SECTIONS you switch between, not one long scroll — you pick the
   // area you want to configure. The Members list only exists in pool mode (the only mode that
   // stores members). Each carries its own unsaved-changes dot so nothing hides behind a tab.
   const SECTIONS = [
-    { id: 'storage', icon: Database, label: t('ds.sec.storage', 'Members & storage'), dirty: draft.memberMode !== g.memberMode || (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs },
+    { id: 'storage', icon: ScrollText, label: t('ds.sec.modlogs', 'Moderation logs'), dirty: (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs },
     { id: 'welcome', icon: Sparkles, label: t('ds.sec.welcome', 'Welcome'), dirty: welcomeDirty },
     { id: 'voice', icon: Mic, label: t('ds.sec.voice', 'Voice'), dirty: jtcDirty },
     { id: 'roles', icon: Shield, label: t('ds.sec.roles', 'Auto-roles'), dirty: gatingDirty },
     { id: 'panels', icon: ScrollText, label: t('ds.sec.panels', 'Panels'), dirty: rpDirty },
     { id: 'blog', icon: Newspaper, label: t('ds.sec.blog', 'Blog'), dirty: blogDirty },
-    ...(g.memberMode === 'pool' ? [{ id: 'members', icon: Users, label: t('ds.sec.members', 'Members'), dirty: false }] : []),
+    { id: 'members', icon: Users, label: t('ds.sec.members', 'Members'), dirty: false },
   ];
   return (
     <div>
@@ -325,19 +303,19 @@ function GuildConfig({ guildId, onSaved }) {
           <div className="flex items-center gap-3 min-w-0">
             <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0 overflow-hidden">
               {data.icon || g.icon ? <img src={data.icon || g.icon} alt="" className="w-full h-full object-cover" /> : <Server size={22} className="text-[#5865F2]" />}
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-solid)] ${g.memberMode !== 'none' ? 'bg-success' : 'bg-[var(--line-strong)]'}`} title={g.memberMode !== 'none' ? t('ds.hero.active', 'Bot active here') : t('ds.hero.idle', 'Bot idle here')} />
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-[var(--bg-solid)] bg-success`} title={t('ds.hero.active', 'Bot active here')} />
             </span>
             <div className="min-w-0">
               <div className="font-bold text-base leading-tight flex items-center gap-2 flex-wrap"><span className="truncate">{g.name || guildId}</span> <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
               <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5">
-                <span className={`inline-flex items-center gap-1 font-medium ${g.memberMode !== 'none' ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${g.memberMode !== 'none' ? 'bg-success' : 'bg-[var(--line-strong)]'}`} /> {g.memberMode === 'pool' ? t('ds.hero.pool', 'Member database on') : g.memberMode === 'moderation' ? t('ds.hero.mod', 'Moderation on') : t('ds.hero.none', 'Nothing stored')}</span>
+                <span className="inline-flex items-center gap-1 font-medium text-success"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('ds.hero.pool', 'Member database on')}</span>
               </div>
             </div>
           </div>
           <div className="flex items-stretch gap-1.5 flex-wrap ms-auto">
             {[
               [(g.memberCount ?? 0).toLocaleString(), t('ds.membersshort', 'members'), Users],
-              ...(g.memberMode === 'pool' ? [[(g.storedMembers ?? g.capacity?.stored ?? 0).toLocaleString(), t('ds.hero.stored', 'stored'), Database]] : []),
+              [(g.storedMembers ?? 0).toLocaleString(), t('ds.hero.stored', 'stored'), Database],
               ...(data.logs?.length ? [[data.logs.length, t('ds.hero.logs', 'recent logs'), ScrollText]] : []),
             ].map(([v, l, I], i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--bg-solid)]/60 px-3 py-1.5 min-w-[74px]">
@@ -365,97 +343,33 @@ function GuildConfig({ guildId, onSaved }) {
       </div>
 
       {section === 'storage' && <>
-      {/* When the admin has chosen a global storage strategy, it overrides this per-server
-          choice — so say so instead of letting the selector look like it decides. */}
-      {(data.globalStorage?.mode === 'free' || data.globalStorage?.mode === 'unified') && (
-        <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-3 flex items-start gap-2.5">
-          <Database size={15} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
-          <div className="text-xs text-[var(--muted)]">
-            {data.globalStorage.mode === 'unified'
-              ? t('ds.gstore.unified', 'Members are stored site-wide (one entry per person, unified across servers) by an admin setting — the choice below is not used for storage on this server.')
-              : t('ds.gstore.free', 'Members are stored site-wide by an admin setting — the choice below is not used for storage on this server. Moderation logs still follow it.')}
+      {/* The member database itself is global and admin-run: every server is stored, the owner
+          sees their list under Members. What a server decides here is only where its
+          moderation actions are posted, and whether a copy is kept on the site. */}
+      <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 flex items-start gap-2.5">
+        <Database size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+        <div className="text-xs text-[var(--muted)] min-w-0 flex-1">
+          <div className="text-sm font-medium text-[var(--text)]">{t('ds.mdb.t', 'Your members are in the bot’s database')}</div>
+          {t('ds.mdb.s', 'The bot stores every member of every server it is in — name, avatar, join date, roles, last activity — refreshed every 30 minutes. Members who linked a BetterCommunity account are always kept; when the site-wide cap is reached, members inactive for {d} days may be dropped and come back on their next message.').replace('{d}', data.globalStorage?.inactiveDays || 30)}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
+            {[[(g.memberCount ?? 0).toLocaleString(), t('ds.pool.members', 'members in the server')], [(g.storedMembers ?? 0).toLocaleString(), t('ds.pool.stored', 'stored here')], [g.lastScanAt ? new Date(g.lastScanAt).toLocaleString() : t('ds.pool.pending', 'on next scan'), t('ds.pool.last', 'last refresh')]].map(([v, l]) => (
+              <div key={l} className="rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate">{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
+            ))}
           </div>
+          <div className="mt-3"><Button size="sm" variant="primary" onClick={() => setSection('members')}><Users size={13} /> {t('ds.pool.open', 'Open the member list')}</Button></div>
         </div>
-      )}
-      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('ds.mode', 'How the bot handles your members')}</div>
-      <div className="grid sm:grid-cols-3 gap-2 mb-4">
-        {MODES.map((m) => {
-          const on = draft.memberMode === m.id;
-          return (
-            <button key={m.id} type="button" onClick={() => setDraft({ ...draft, memberMode: m.id })}
-              className={`text-start rounded-xl border p-3 transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
-              <div className="flex items-center gap-1.5 mb-1"><m.icon size={15} className={m.tone} /> <span className="text-sm font-medium flex-1">{name(m)}</span>{on && <Check size={14} className="text-[var(--primary-2)]" />}</div>
-              <div className="text-[11px] text-[var(--faint)] leading-snug">{desc(m)}</div>
-            </button>
-          );
-        })}
       </div>
-
-      {draft.memberMode === 'moderation' && (
-        <div className="space-y-3 mb-4">
-          <Field label={t('ds.logchannel', 'Log channel ID')} hint={t('ds.logchannel.h', 'The Discord channel the bot posts moderation actions to. Right-click a channel in Discord → Copy Channel ID (Developer Mode on).')}>
-            <ChannelPicker channels={data.channels} value={draft.logChannelId} onChange={(v) => setDraft({ ...draft, logChannelId: v })} />
-          </Field>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-            <input type="checkbox" checked={draft.storeLogs} onChange={(e) => setDraft({ ...draft, storeLogs: e.target.checked })} />
-            <span>{t('ds.storelogs', 'Also keep a copy of moderation logs here')}</span>
-          </label>
-          <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h', 'Off = actions are posted to Discord only. On = a searchable copy is kept here and counts against your storage.')}</p>
-        </div>
-      )}
-      {/* 'none' mode stores nothing — say so plainly instead of leaving the panel blank, so
-          the area always explains the current choice rather than looking broken. */}
-      {draft.memberMode === 'none' && (
-        <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 flex items-start gap-2.5">
-          <Shield size={16} className="text-[var(--faint)] shrink-0 mt-0.5" />
-          <div className="text-xs text-[var(--muted)]">
-            <div className="text-sm font-medium text-[var(--text)]">{t('ds.none.t', 'Nothing is stored')}</div>
-            {t('ds.none.s', 'The bot stays in your server and answers commands, but keeps no member data and no logs here. Pick “Moderation only” to log actions, or “Member database” to power a member list and role gating.')}
-          </div>
-        </div>
-      )}
-      {/* Storing members needs a storage allowance (a pool an admin assigns). With none, the
-          bot has nowhere to put them — so warn plainly instead of silently storing nothing. */}
-      {/* Member-database mode: what is being stored, how many, when it refreshes, and where
-          to see them. Before this the panel showed a capacity bar (empty on an unlimited
-          plan) and nothing else — which read as "nothing to configure, is it broken?". */}
-      {draft.memberMode === 'pool' && (
-        <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
-          <div className="flex items-start gap-2.5">
-            <Database size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
-            <div className="text-xs text-[var(--muted)] min-w-0 flex-1">
-              <div className="text-sm font-medium text-[var(--text)]">{t('ds.pool.t', 'Member database is on')}</div>
-              {t('ds.pool.s', 'The bot stores each member’s name, avatar, join date and roles, and refreshes the list every 30 minutes (and on startup). That powers the Members tab, role gating and the moderation tools. Nothing else about your server is kept.')}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-3">
-                {[[(g.memberCount ?? 0).toLocaleString(), t('ds.pool.members', 'members in the server')], [(g.storedMembers ?? g.capacity?.stored ?? 0).toLocaleString(), t('ds.pool.stored', 'stored here')], [g.lastScanAt ? new Date(g.lastScanAt).toLocaleString() : t('ds.pool.pending', 'on next scan'), t('ds.pool.last', 'last refresh')]].map(([v, l]) => (
-                  <div key={l} className="rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate">{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 flex-wrap mt-3">
-                {g.memberMode === 'pool' && <Button size="sm" variant="primary" onClick={() => setSection('members')}><Users size={13} /> {t('ds.pool.open', 'Open the member list')}</Button>}
-                {g.memberMode !== 'pool' && <span className="text-[11px] text-[var(--faint)]">{t('ds.pool.save', 'Save to switch this server to the member database — the first scan runs within a minute.')}</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {showBudget && (
-        hasUsablePool
-          ? <Card className="p-3 mb-4"><CapacityBar cap={g.capacity} /></Card>
-          : <div className="mb-4 rounded-xl border border-warning-border bg-warning/[0.08] p-3">
-              <div className="flex items-start gap-2.5">
-                <AlertTriangle size={16} className="text-warning shrink-0 mt-0.5" />
-                <div className="text-xs text-[var(--muted)] min-w-0">
-                  <div className="text-sm font-medium text-warning">{t('ds.nopool.t', 'No storage pool assigned')}</div>
-                  {t('ds.nopool.s2', 'This mode stores members, but this server has no storage pool yet — so nothing is actually kept. Get a storage pool to hold them, or switch to “moderation logs only”.')}
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap mt-2.5 ps-[26px]">
-                <Link to="/hosting"><Button size="sm" variant="primary"><Gauge size={13} /> {t('ds.nopool.buy', 'Get a storage pool')}</Button></Link>
-                <span className="text-[11px] text-[var(--faint)]">{t('ds.nopool.or', 'or ask an admin to assign one to this server')}</span>
-              </div>
-            </div>
-      )}
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">{t('ds.modlogs', 'Moderation logs')}</div>
+      <div className="space-y-3 mb-4">
+        <Field label={t('ds.logchannel', 'Log channel ID')} hint={t('ds.logchannel.h2', 'The Discord channel the bot posts moderation actions to (bans, kicks, timeouts, warnings). Empty = nothing is posted.')}>
+          <ChannelPicker channels={data.channels} value={draft.logChannelId} onChange={(v) => setDraft({ ...draft, logChannelId: v })} />
+        </Field>
+        <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+          <input type="checkbox" checked={draft.storeLogs} onChange={(e) => setDraft({ ...draft, storeLogs: e.target.checked })} />
+          <span>{t('ds.storelogs', 'Also keep a copy of moderation logs here')}</span>
+        </label>
+        <p className="text-[11px] text-[var(--faint)] -mt-1.5 ps-6">{t('ds.storelogs.h2', 'Off = actions are posted to Discord only. On = a searchable copy is kept here (needs the log channel above).')}</p>
+      </div>
       {data.logs?.length > 0 && (
         <div className="mb-4">
           <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><ScrollText size={12} /> {t('ds.recentlogs', 'Recent moderation')}</div>
@@ -761,7 +675,7 @@ export function MyDiscordServers() {
               </div>
               <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-2">
                 <span>{(g.memberCount ?? 0).toLocaleString()} {t('ds.membersshort', 'members')}</span>
-                {g.memberMode !== 'none' && <Badge tone={g.memberMode === 'pool' ? 'primary' : 'blue'}>{g.memberMode}</Badge>}
+                {g.storedMembers != null && <span>· {g.storedMembers.toLocaleString()} {t('ds.hero.stored', 'stored')}</span>}
               </div>
             </button>
           ))}

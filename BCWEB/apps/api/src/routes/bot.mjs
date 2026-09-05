@@ -3,7 +3,7 @@ import { getObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
-import { memberCapacity, admitMembers, capacityStatus, logModeration } from '../lib/discord-storage.mjs';
+import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { ICONS as BOT_ICONS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
@@ -113,7 +113,11 @@ const DEFAULT_BOT_CONFIG = {
   //   switch its memberMode to 'pool'. Turn it off to let every server store members for
   //   free (the bot stops gating member storage behind a purchase) without leaving the
   //   per-server budget model.
-  memberStorage: { mode: 'managed', scope: 'linked', requirePool: true },
+  // The member database is GLOBAL and admin-configured (2026-09-06): every server the bot is
+  // in is stored, against limits.storageMB. A server no longer picks a mode. Linked members
+  // are never evicted; when the cap is reached and evictInactive is on, members with no
+  // message / voice activity within inactiveDays (and no site link) are removed to make room.
+  memberStorage: { enabled: true, evictInactive: true, inactiveDays: 30 },
   // ── Economy / levelling (B-econ) ──────────────────────────────────────────
   // A points + XP system the bot runs across every server: messages, reactions and voice time
   // earn XP, XP earns levels (each level harder than the last), and levels hand out points that
@@ -373,7 +377,7 @@ export default async function botRoutes(app) {
     // guild — the collapse is a view: `distinct: discordId` keeps the most-recent row per person,
     // and their servers are attached below. Counts are distinct-person counts to match.
     const cfg = await getBotConfig(p);
-    const unified = cfg.memberStorage?.mode === 'unified';
+    const unified = cfg.memberStorage?.unified !== false; // one row per person, with their servers
     const distinctLen = (w) => p.discordActivity.findMany({ where: w, distinct: ['discordId'], select: { discordId: true } }).then((a) => a.length);
     const [rows, total, allTotal, linkedTotal] = await Promise.all([
       p.discordActivity.findMany({ where, orderBy: SORTS[sort], take, skip, ...(unified ? { distinct: ['discordId'] } : {}) }),
@@ -415,7 +419,30 @@ export default async function botRoutes(app) {
     storeLogs: g.storeLogs, hostingGroupId: g.hostingGroupId,
     storageQuotaBytes: Number(g.storageQuotaBytes), // BigInt → Number for JSON
     memberCount: g.memberCount, storedMembers: stored,
-    capacity: capacityStatus(g.storageQuotaBytes, stored),
+  });
+
+  // The global member database, for the admin card: policy, usage, and every server's share.
+  app.get('/admin/bot/memberdb', { preHandler: requireRole('ADMIN') }, async () => {
+    const p = await db();
+    const cfg = await getBotConfig(p);
+    const pol = memberPolicy(cfg);
+    const [stored, inactive, guilds, counts, linkedIds] = await Promise.all([
+      p.discordActivity.count(),
+      p.discordActivity.count({ where: inactiveWhere(pol) }),
+      p.botGuild.findMany({ orderBy: { memberCount: 'desc' }, select: { guildId: true, name: true, memberCount: true } }),
+      p.discordActivity.groupBy({ by: ['guildId'], _count: { _all: true } }),
+      p.discordLink.findMany({ select: { discordId: true } }),
+    ]);
+    const linkedSet = new Set(linkedIds.map((l) => l.discordId));
+    const linked = await p.discordActivity.count({ where: { discordId: { in: [...linkedSet] } } });
+    const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
+    const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+    const icons = Object.fromEntries((status?.guildList || []).map((x) => [x.id, x.icon || null]));
+    return {
+      policy: pol, stored, linked, inactive, capRows: pol.capRows === Infinity ? null : pol.capRows,
+      usedBytes: stored * 512, capBytes: pol.storageMB * 1024 * 1024,
+      guilds: guilds.map((g) => ({ guildId: g.guildId, name: g.name, icon: icons[g.guildId] || null, memberCount: g.memberCount, stored: storedBy[g.guildId] || 0 })),
+    };
   });
 
   app.get('/admin/bot/guilds', { preHandler: requireRole('ADMIN') }, async () => {
@@ -1226,16 +1253,16 @@ export default async function botRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const g = await botGuild(p, b.data.guildId, b.data.guildName);
-    // Same privacy default as the bulk sync: a guild not opted into `pool` stores nothing.
-    if (g.memberMode !== 'pool') return { ok: true, stored: false, reason: 'member_storage_off' };
+    const pol = memberPolicy(await getBotConfig(p));
+    if (!pol.enabled) return { ok: true, stored: false, reason: 'member_storage_off' };
     const now = new Date();
     const field = { join: 'guildJoinedAt', message: 'lastMessageAt', voiceJoin: 'lastVoiceJoinAt', voiceCreate: 'lastVoiceCreateAt' }[b.data.event];
     const base = { username: b.data.username, avatar: b.data.avatar };
     // A brand-new member counts against the budget; an existing row is only refreshed.
     const exists = await p.discordActivity.findUnique({ where: { guildId_discordId: { guildId: g.guildId, discordId: b.data.discordId } }, select: { discordId: true } });
-    if (!exists) {
-      const cap = memberCapacity(g.storageQuotaBytes);
-      if (cap !== Infinity && (await p.discordActivity.count({ where: { guildId: g.guildId } })) >= cap) return { ok: true, stored: false, reason: 'at_capacity' };
+    if (!exists && pol.capRows !== Infinity && (await p.discordActivity.count()) >= pol.capRows) {
+      // Somebody who just did something outranks somebody who has not in a month.
+      if (!(await evictForRoom(p, pol, 1, { protect: [b.data.discordId] }))) return { ok: true, stored: false, reason: 'at_capacity' };
     }
     await p.discordActivity.upsert({
       where: { guildId_discordId: { guildId: g.guildId, discordId: b.data.discordId } },
@@ -1512,38 +1539,25 @@ export default async function botRoutes(app) {
     // big the server actually is, and a `none` guild still reports its size to the dashboard.
     if (b.data.memberCount != null) await p.botGuild.update({ where: { guildId: g.guildId }, data: { memberCount: b.data.memberCount } }).catch(() => {});
 
-    // The GLOBAL member-storage strategy overrides the per-guild gate. 'managed' (default) is
-    // the per-server model — a guild stores only when opted into `pool`, against its own budget.
-    // 'free' stores in EVERY guild against the shared limits.storageMB budget, narrowed by scope
-    // ('linked' keeps only members who linked a site account). 'unified' is not wired on the data
-    // model yet, so it falls back to the managed per-guild behaviour.
+    // ONE database for every server (see DEFAULT_BOT_CONFIG.memberStorage). Existing rows are
+    // refreshed for free; newcomers need room. A newcomer who linked a site account always gets
+    // a slot — inactive unlinked members are evicted for them when the policy allows — while an
+    // unknown newcomer is admitted only while there is room. The daily sweep keeps headroom.
     const cfg = await getBotConfig(p);
-    const ms = cfg.memberStorage || { mode: 'managed', scope: 'linked' };
-    let members = b.data.members;
-    let effMode = g.memberMode, stored, capacity;
-    if (ms.mode === 'free' || ms.mode === 'unified') {
-      // Store in every server against one shared budget. 'free' + 'linked' narrows to members
-      // who linked a site account; 'unified' stores everyone (it is collapsed to one row per
-      // person in the members VIEW, not at write time).
-      effMode = 'pool';
-      if (ms.mode === 'free' && ms.scope === 'linked') {
-        const linked = new Set((await p.discordLink.findMany({ where: { discordId: { in: members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
-        members = members.filter((m) => linked.has(m.discordId));
-      }
-      stored = await p.discordActivity.count(); // one shared budget across every guild
-      capacity = memberCapacity((Number(cfg.limits?.storageMB) || 0) * 1024 * 1024);
-    } else {
-      stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
-      capacity = memberCapacity(g.storageQuotaBytes);
-    }
-    const gate = admitMembers(effMode, stored, capacity, members.length);
-    if (!gate.store) return { ok: true, stored: false, reason: gate.reason, mode: g.memberMode };
-
+    const pol = memberPolicy(cfg);
+    if (!pol.enabled) return { ok: true, stored: false, reason: 'member_storage_off', mode: 'global' };
+    const members = b.data.members;
+    const stored = await p.discordActivity.count();
+    let room = pol.capRows === Infinity ? Infinity : Math.max(0, pol.capRows - stored);
+    const gate = { full: room !== Infinity && room < members.length };
     let synced = 0;
     // Update rows we already hold FIRST (they cost no new budget), then admit new ones only
     // while there is room — so a full guild keeps its existing members fresh but stops growing.
     const existing = new Set((await p.discordActivity.findMany({ where: { guildId: g.guildId, discordId: { in: members.map((m) => m.discordId) } }, select: { discordId: true } })).map((r) => r.discordId));
-    let room = gate.room;
+    const linkedNew = new Set((await p.discordLink.findMany({ where: { discordId: { in: members.filter((m) => !existing.has(m.discordId)).map((m) => m.discordId) } }, select: { discordId: true } })).map((l) => l.discordId));
+    if (room !== Infinity && linkedNew.size > room) room += await evictForRoom(p, pol, linkedNew.size - room, { protect: [...linkedNew] });
+    // Linked newcomers first, so the room that was made goes to them.
+    members.sort((a, b2) => (linkedNew.has(b2.discordId) ? 1 : 0) - (linkedNew.has(a.discordId) ? 1 : 0));
     for (const m of members) {
       const isNew = !existing.has(m.discordId);
       if (isNew && room !== Infinity && room <= 0) continue; // budget full — count real size, store no more
@@ -1990,7 +2004,6 @@ export default async function botRoutes(app) {
   const serGuildUser = (g, stored, ids, icons = {}) => ({
     guildId: g.guildId, name: g.name, icon: icons[g.guildId] || null, memberMode: g.memberMode, logChannelId: g.logChannelId,
     storeLogs: g.storeLogs, memberCount: g.memberCount, storedMembers: stored, lastScanAt: g.updatedAt,
-    capacity: capacityStatus(g.storageQuotaBytes, stored), // read-only: user can't set the budget
     role: g.ownerDiscordId && ids.includes(g.ownerDiscordId) ? 'owner' : 'manager',
   });
 
@@ -2040,7 +2053,7 @@ export default async function botRoutes(app) {
     const gEntry = (status?.guildList || []).find((x) => x.id === g.guildId) || null;
     return {
       guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
-      globalStorage: { mode: cfg.memberStorage?.mode || 'managed' },
+      globalStorage: { enabled: memberPolicy(cfg).enabled, inactiveDays: memberPolicy(cfg).inactiveDays },
       roles: gEntry?.roles || [], channels: gEntry?.channels || [],
     };
   });
@@ -2071,7 +2084,7 @@ export default async function botRoutes(app) {
     // The guild's role list (id → name/colour) so the page can show and edit roles by name.
     const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
     const roles = status?.guildList?.find((x) => x.id === g.guildId)?.roles || [];
-    return { members: rows.map((r) => ({ ...r, linked: byId[r.discordId] || null })), total, mode: g.memberMode, roles };
+    return { members: rows.map((r) => ({ ...r, linked: byId[r.discordId] || null })), total, mode: 'global', roles };
   });
 
   // Owner-side moderation: queue a ban/kick/timeout (or its undo) against a member of THIS
@@ -2199,7 +2212,9 @@ export default async function botRoutes(app) {
     const { welcome, joinToCreate, gating, blog, rolePanels, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
-    if (next.memberMode === 'moderation' && !next.logChannelId) return reply.code(400).send({ error: 'log_channel_required' });
+    // memberMode is not a choice a server makes any more (the database is global) — it is
+    // accepted for old clients and dropped.
+    delete guildData.memberMode;
     const g = await p.botGuild.update({ where: { guildId: cur.guildId }, data: guildData });
     // Merge the given config into bot.config. Read the RAW stored value (not the defaults-merged
     // one) so we never persist DEFAULT_BOT_CONFIG into the row, and touch ONLY what this owner is

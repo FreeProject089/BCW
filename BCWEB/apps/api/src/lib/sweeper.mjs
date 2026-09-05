@@ -30,7 +30,7 @@ import { sampleAndAlert } from './monitor.mjs';
 import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
 import { sweepStaleMyoRequests } from '../routes/myo.mjs';
-import { memberCapacity } from './discord-storage.mjs';
+import { memberCapacity , memberPolicy, evictForRoom } from './discord-storage.mjs';
 import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
@@ -316,25 +316,19 @@ export async function sweepEndedSuspensions(p, log) {
 
 async function sweepDiscordActivityCap(p, log) {
   try {
-    // Per-guild now (B4). Each guild is pruned to ITS OWN byte budget (storageQuotaBytes), so
-    // one busy server can never evict another's members — the flaw of the old single global cap,
-    // which also deleted by discordId alone and would now wipe a member from EVERY guild at once.
-    const guilds = await p.botGuild.findMany({ where: { storageQuotaBytes: { gt: 0 } }, select: { guildId: true, storageQuotaBytes: true } });
-    let evicted = 0;
-    for (const g of guilds) {
-      const cap = memberCapacity(g.storageQuotaBytes);
-      if (cap === Infinity) continue;
-      const total = await p.discordActivity.count({ where: { guildId: g.guildId } });
-      const over = total - cap;
-      if (over <= 0) continue;
-      // Prune a little past the cap so the boundary isn't re-hit (and one row evicted) each sweep.
-      const toDelete = over + Math.ceil(cap * 0.05);
-      const victims = await p.discordActivity.findMany({ where: { guildId: g.guildId }, orderBy: { updatedAt: 'asc' }, take: toDelete, select: { discordId: true } });
-      if (!victims.length) continue;
-      await p.discordActivity.deleteMany({ where: { guildId: g.guildId, discordId: { in: victims.map((v) => v.discordId) } } });
-      evicted += victims.length;
-    }
-    if (evicted) log?.info?.({ evicted }, 'sweeper: discord per-guild activity cap');
+    // One global cap (limits.storageMB) for the whole member database. When over it — or
+    // within 5% of it, so scans can keep admitting newcomers — evict by priority: inactive
+    // unlinked rows first (oldest refresh first), then active unlinked; linked members never
+    // while keepLinked holds. Off (evictInactive=false), the database just stops growing.
+    const cfg = { ...(await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value };
+    const pol = memberPolicy(cfg);
+    if (!pol.enabled || !pol.evictInactive || pol.capRows === Infinity) return 0;
+    const total = await p.discordActivity.count();
+    const target = Math.floor(pol.capRows * 0.95);
+    const over = total - target;
+    if (over <= 0) return 0;
+    const evicted = await evictForRoom(p, pol, over, { hard: true });
+    if (evicted) log?.info?.({ evicted }, 'sweeper: member database trimmed to the global cap');
     return evicted;
   } catch (e) { log.warn({ e: String(e?.message || e) }, 'sweeper: discord activity cap failed'); return 0; }
 }
