@@ -8,7 +8,7 @@ import { recentLogs } from './logbuffer.mjs';
 import { api } from './api.mjs';
 import { config, guildBan } from './config.mjs';
 import { commandData, handleInteraction } from './commands.mjs';
-import { onVoiceStateUpdate } from './features/joinToCreate.mjs';
+import { onVoiceStateUpdate, sweepTempRooms } from './features/joinToCreate.mjs';
 import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
@@ -94,6 +94,10 @@ function buildClient() {
     });
     beat();
     timers.push(setInterval(beat, 60_000));
+    // Temp voice rooms: re-adopt the ones a previous process created (people are still in
+    // them), delete the empty ones it left behind, then keep doing that every two minutes.
+    sweepTempRooms(c).catch(() => {});
+    timers.push(setInterval(() => sweepTempRooms(c).catch(() => {}), 2 * 60_000));
     // B-econ: track messages / reactions / voice for XP, and flush the buffer every minute.
     wireEconomy(c);
     timers.push(setInterval(() => flushEconomy().catch(() => {}), 60_000));

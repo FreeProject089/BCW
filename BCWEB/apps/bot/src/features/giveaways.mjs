@@ -2,7 +2,8 @@
 //  1. Post any active giveaway that hasn't been posted yet (embed + "Enter" button).
 //  2. Draw + announce any active giveaway whose end time has passed.
 // Entries arrive via the button handler in commands.mjs (customId `gw:enter:<id>`).
-import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } from 'discord.js';
+import { ButtonStyle, MessageFlags } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
 
@@ -30,11 +31,11 @@ export async function pollGiveaways(client) {
           : gr.linked
             ? `\n🔒 **Requires** a linked BetterCommunity account — link at ${SITE_URL}/profile`
             : '';
-        const embed = new EmbedBuilder().setColor(0xf59e0b).setTitle('🎉 Giveaway!')
-          .setDescription(`**Prize:** ${gw.prize}\n**Winners:** ${gw.winnersCount}\n**Ends:** <t:${endTs}:R>${reqLine}\n\nClick **Enter** below to join!`)
-          .setTimestamp(new Date(gw.endsAt));
-        const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`gw:enter:${gw.id}`).setLabel('🎉 Enter').setStyle(ButtonStyle.Primary));
-        const msg = await ch.send({ embeds: [embed], components: [row] }).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
+        const msg = await ch.send(ui.card({
+          title: '🎉 Giveaway!',
+          body: [`**Prize:** ${gw.prize}`, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
+          buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: '🎉' })],
+        })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
         if (msg) { await api.giveawayPosted(gw.id, msg.id); console.log(`[bot] giveaway ${gw.id} posted in ${gw.channelId}`); }
         continue;
       }
@@ -47,10 +48,14 @@ export async function pollGiveaways(client) {
         const res = await api.giveawayDrawn(gw.id, winners);
         const ch = await resolveChannel(client, gw.channelId);
         if (ch?.send) {
-          const content = winners.length
-            ? `🎉 Congratulations ${winners.map((w) => `<@${w}>`).join(', ')}! You won **${gw.prize}**!`
-            : `The giveaway for **${gw.prize}** ended with no entries. 😢`;
-          await ch.send({ content }).catch(() => {});
+          await ch.send(winners.length
+            ? ui.card({ title: '🎉 Giveaway ended', color: ui.GOOD, body: [`Congratulations ${winners.map((w) => `<@${w}>`).join(', ')}!`, `You won **${gw.prize}**. Check your DMs.`], footer: `${pool.length} entr${pool.length === 1 ? 'y' : 'ies'}` })
+            : ui.card({ title: '🎉 Giveaway ended', color: 0x6b7280, body: `The giveaway for **${gw.prize}** ended with no entries.` })).catch(() => {});
+          // The original post stops inviting people: its button is retired in place.
+          if (gw.messageId) {
+            const orig = await ch.messages.fetch(gw.messageId).catch(() => null);
+            if (orig) await orig.edit(ui.card({ title: '🎉 Giveaway — ended', color: 0x6b7280, body: [`**Prize:** ${gw.prize}`, winners.length ? `**Winners:** ${winners.map((w) => `<@${w}>`).join(', ')}` : '**Winners:** nobody entered'], buttons: [ui.btn('gw:closed', 'Entries closed', ButtonStyle.Secondary, { disabled: true })] })).catch(() => {});
+          }
         }
         // DM every winner the customizable message (English default), substituting the
         // bot variables. {code} resolves to their minted gift code when a gift is attached
@@ -84,7 +89,7 @@ export async function handleGiveawayButton(interaction) {
   const [, , id] = interaction.customId.split(':');
   try {
     const r = await api.giveawayEnter(id, interaction.user.id);
-    await interaction.reply({ content: r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, flags: MessageFlags.Ephemeral });
+    await ui.line(interaction, r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, { color: ui.GOOD });
   } catch (e) {
     const err = e.body?.error;
     const msg = err === 'need_link'
@@ -94,6 +99,6 @@ export async function handleGiveawayButton(interaction) {
         : (err === 'not_active' || String(e.message || '').includes('409'))
           ? 'This giveaway has ended.'
           : 'Could not enter — try again in a moment.';
-    await interaction.reply({ content: msg, flags: MessageFlags.Ephemeral }).catch(() => {});
+    await ui.line(interaction, msg, { color: ui.BAD }).catch(() => {});
   }
 }

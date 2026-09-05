@@ -80,7 +80,19 @@ export const api = {
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
   economyCasino: (discordId, bet, multiplier) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier }).catch(() => ({ ok: false, error: 'network' })),
-  economyLeaderboard: () => call('GET', '/bot/economy/leaderboard').catch(() => ({ members: [] })),
+  economyPurchases: (discordId) => call('GET', `/bot/economy/purchases/${encodeURIComponent(discordId)}`).catch(() => ({ purchases: [] })),
+  economyLeaderboard: (discordId = '') => call('GET', `/bot/economy/leaderboard${discordId ? `?discordId=${encodeURIComponent(discordId)}` : ''}`).catch(() => ({ members: [] })),
+  // A picture the site renders (the casino GIF, the profile card), fetched over the INTERNAL
+  // API address and attached to the message — Discord never has to reach SITE_URL, which in a
+  // dev or LAN deployment it cannot. Null on any failure, so the caller shows the card without.
+  siteImage: async (path) => {
+    try {
+      const res = await fetch(BASE + path, { headers: { 'x-bot-secret': SECRET }, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      const buf = Buffer.from(await res.arrayBuffer());
+      return buf.length > 0 && buf.length < 8 * 1024 * 1024 ? buf : null;
+    } catch { return null; }
+  },
 
   // Warnings go through the site so the count, the ladder and the record are in one place —
   // a bot keeping its own tally would disagree with the admin screen the first time either

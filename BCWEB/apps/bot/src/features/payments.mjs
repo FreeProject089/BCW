@@ -3,7 +3,7 @@
 // Stripe webhook's charge.refunded → bot.refundEvents) into the refund channel
 // (falls back to the payment channel). Same server-side announced-set polling as
 // blog/kofi, so bot restarts never re-announce old activity.
-import { EmbedBuilder } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
 
@@ -40,13 +40,10 @@ export async function pollPayments(client) {
     // Admin "Send test message" → post a sample embed so channel/permissions can be
     // verified without a real payment. Fired before the early-return below.
     if (test) {
-      const embed = new EmbedBuilder().setColor(0x22c55e).setAuthor({ name: 'BetterCommunity · Payments' }).setTitle('🧪 Test message')
-        .setDescription('If you can read this, the bot can post payment & refund notifications to this channel. ✅')
-        .setThumbnail(BRAND_ICON).setFooter({ text: 'BetterCommunity' })
-        .setTimestamp(new Date());
+      const embed = ui.card({ title: '🧪 Test message', color: 0x22c55e, body: 'If you can read this, the bot can post payment & refund notifications to this channel. ✅', footer: 'BetterCommunity · Payments' });
       const targets = [...new Set([...payChannelIds, ...refundTargets])];
       let ok = false;
-      for (const id of targets) { const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null); if (ch?.send) { try { await ch.send({ embeds: [embed] }); ok = true; } catch (e) { console.warn('[bot] test post to', id, 'failed', e.message); } } }
+      for (const id of targets) { const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null); if (ch?.send) { try { await ch.send(embed); ok = true; } catch (e) { console.warn('[bot] test post to', id, 'failed', e.message); } } }
       console.log(`[bot] payments test message → ${ok ? `sent to ${targets.length} channel(s)` : 'NO channel reachable — check the channel id + bot permissions'}`);
     }
 
@@ -63,7 +60,7 @@ export async function pollPayments(client) {
         // Fetch on cache miss so a freshly-configured salon still receives the post.
         const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
         if (!ch?.send) { console.warn('[bot] payments channel not found/inaccessible:', id); continue; }
-        try { await ch.send({ embeds: [embed], ...(files?.length ? { files } : {}) }); delivered = true; }
+        try { await ch.send({ ...embed, ...(files?.length ? { files } : {}) }); delivered = true; }
         catch (e) { console.warn('[bot] payments announce to', id, 'failed', e.message); }
       }
       return delivered;
@@ -78,20 +75,11 @@ export async function pollPayments(client) {
           ? (p.userId ? `[${clean(p.buyer)}](${SITE_URL}/admin?s=planusers&user=${encodeURIComponent(p.userId)})` : clean(p.buyer))
           : 'Anonymous';
         const when = p.createdAt ? new Date(p.createdAt) : new Date();
-        const embed = new EmbedBuilder()
-          .setColor(0x22c55e)
-          .setAuthor({ name: 'BetterCommunity · Payment received' })
-          .setTitle(`${kindEmoji(p.kind)}  ${money(p.amountCents, p.currency)}`)
-          .setDescription(clean(p.description, 300) || '—')
-          .addFields(
-            { name: 'Type', value: kindLabel(p.kind), inline: true },
-            { name: 'Customer', value: customer, inline: true },
-            { name: 'Invoice №', value: `\`${p.invoiceNo || '—'}\``, inline: true },
-            { name: 'Date', value: `<t:${Math.floor(when.getTime() / 1000)}:f>`, inline: false },
-          )
-          .setThumbnail(BRAND_ICON)
-          .setFooter({ text: 'BetterCommunity' })
-          .setTimestamp(when);
+        const embed = ui.card({
+          title: `${kindEmoji(p.kind)}  ${money(p.amountCents, p.currency)}`, color: 0x22c55e,
+          body: [clean(p.description, 300) || '—', '', `**Type** ${kindLabel(p.kind)} · **Customer** ${customer} · **Invoice №** \`${p.invoiceNo || '—'}\``, `**Date** <t:${Math.floor(when.getTime() / 1000)}:f>`],
+          footer: 'BetterCommunity · Payment received',
+        });
         // Attach the REAL Stripe invoice PDF (not just a link) when available.
         let files;
         try {
@@ -108,14 +96,11 @@ export async function pollPayments(client) {
     // Refunds → red embed in every refund channel (or the payment channels).
     if (refundTargets.length) {
       for (const r of refunds) {
-        const embed = new EmbedBuilder()
-          .setColor(0xef4444)
-          .setAuthor({ name: 'BetterCommunity · Refund issued' })
-          .setTitle(`↩️  −${money(r.amountCents, r.currency)}`)
-          .setDescription(`A refund was issued${r.email ? ` to **${maskEmail(r.email)}**` : ''}.`)
-          .setThumbnail(BRAND_ICON)
-          .setFooter({ text: 'BetterCommunity' })
-          .setTimestamp(r.at ? new Date(r.at) : new Date());
+        const embed = ui.card({
+          title: `↩️  −${money(r.amountCents, r.currency)}`, color: 0xef4444,
+          body: `A refund was issued${r.email ? ` to **${maskEmail(r.email)}**` : ''}.`,
+          footer: `BetterCommunity · Refund issued · <t:${Math.floor((r.at ? new Date(r.at) : new Date()).getTime() / 1000)}:f>`,
+        });
         if (await sendToAll(refundTargets, embed)) marks.refundIds.push(r.id);
       }
     } else {

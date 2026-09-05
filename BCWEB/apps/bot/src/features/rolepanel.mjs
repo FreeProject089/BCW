@@ -13,9 +13,10 @@
 //     and the roles on it may since have been renamed, removed, or repointed. What the
 //     admin configured NOW is the authority; the message is just a picture of it.
 import {
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle,
   StringSelectMenuBuilder, StringSelectMenuOptionBuilder, MessageFlags,
 } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api } from '../api.mjs';
 
@@ -77,10 +78,13 @@ export function renderRolePanel(panel) {
   }
 
   if (panel.asEmbed) {
-    const e = new EmbedBuilder().setDescription(panel.body || '​');
-    if (panel.title) e.setTitle(panel.title.slice(0, 256));
-    if (panel.color) { try { e.setColor(panel.color); } catch { /* not a colour */ } }
-    return { content: '', embeds: [e], components };
+    // A Components V2 card: accent bar in the panel's colour, the title as a heading, the
+    // body under it, the role buttons / dropdown inside the same block.
+    let color = 0xf59e0b;
+    if (typeof panel.color === 'string' && /^#?[0-9a-f]{6}$/i.test(panel.color)) color = parseInt(panel.color.replace('#', ''), 16);
+    const msg = ui.card({ title: panel.title ? panel.title.slice(0, 200) : null, body: panel.body || '​', color });
+    for (const row of components.slice(0, 5)) msg.components[0].addActionRowComponents(row);
+    return msg;
   }
   // Plain message. The title is not lost when the embed is off — it becomes a heading,
   // which is what somebody who turned the embed off was asking for.
@@ -109,7 +113,13 @@ export async function pollRolePanels(client) {
       const st = panel.state;
       if (st?.messageId && st.channelId === panel.channelId) {
         const msg = await ch.messages.fetch(st.messageId).catch(() => null);
-        if (msg) { await msg.edit(payload).catch(() => { /* fall through to a fresh post */ }); messageId = msg.id; }
+        // An edit that fails (a panel posted as an embed before the V2 cards, say) falls
+        // through to a fresh post — and the old one is removed so the channel does not
+        // carry two copies of the same rules.
+        if (msg) {
+          const ok = await msg.edit(payload).then(() => true).catch(() => false);
+          if (ok) messageId = msg.id; else await msg.delete().catch(() => {});
+        }
       }
       if (!messageId) {
         const sent = await ch.send(payload).catch((e) => { console.warn('[bot] role panel send failed:', e?.message); return null; });
@@ -126,8 +136,7 @@ export async function pollRolePanels(client) {
 }
 
 /** Ephemeral one-liner, so a role pick never leaves a trail in the channel. */
-const say = (i, text, color = 0x22c55e) =>
-  i.reply({ embeds: [new EmbedBuilder().setColor(color).setDescription(text)], flags: MessageFlags.Ephemeral });
+const say = (i, text, color = 0x22c55e) => ui.line(i, text, { color });
 
 /**
  * Toggle the roles a member picked.

@@ -2,7 +2,7 @@
 // webhook → KofiDonation) into the configured channel as a celebratory embed with
 // the running total. Same server-side announced-set polling shape as blog/alerts,
 // so bot restarts never re-announce old tips.
-import { EmbedBuilder } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
 
@@ -24,14 +24,12 @@ export async function pollKofi(client) {
     const done = [];
     for (const tip of tips) {
       try {
-        const embed = new EmbedBuilder()
-          .setColor(0xff5e5b) // Ko-fi red
-          .setTitle('☕ New Ko-fi tip!')
-          .setDescription(`**${tip.fromName || 'Anonymous'}** just tipped **${tip.amount.toFixed(2)} ${tip.currency}**${tip.isSubscription ? ' *(monthly supporter)*' : ''} — thank you! 🧡`)
-          .setURL(`${SITE_URL}`)
-          .setFooter({ text: `Total raised: ${(totals.totalAmount || 0).toFixed(2)} ${tip.currency} · ${totals.tipCount || 0} tips` })
-          .setTimestamp(new Date(tip.createdAt));
-        await channel.send({ embeds: [embed] });
+        await channel.send(ui.card({
+          title: '☕ New Ko-fi tip!', color: 0xff5e5b, // Ko-fi red
+          body: `**${tip.fromName || 'Anonymous'}** just tipped **${tip.amount.toFixed(2)} ${tip.currency}**${tip.isSubscription ? ' *(monthly supporter)*' : ''} — thank you! 🧡`,
+          footer: `Total raised: ${(totals.totalAmount || 0).toFixed(2)} ${tip.currency} · ${totals.tipCount || 0} tips`,
+          buttons: [ui.btn(`${SITE_URL}/about#support`, 'Support the project')],
+        }));
         done.push(tip.id);
       } catch (e) {
         console.warn('[bot] kofi announce failed', e.message);

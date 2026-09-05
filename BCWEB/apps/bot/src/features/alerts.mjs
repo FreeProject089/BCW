@@ -2,7 +2,7 @@
 // each fired ServerAlertLog into the configured channel. Same polling shape as
 // blog.mjs's pollBlog — announced ids are tracked SERVER-side so a bot restart
 // never re-announces old alerts.
-import { EmbedBuilder } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api } from '../api.mjs';
 
@@ -50,12 +50,11 @@ export async function pollAlerts(client) {
             // channel that is unset, deleted, or not in the cache must never mean silence.
             const target = (isPerf(alert.kind) ? perfChannel : (generalChannel?.send ? generalChannel : perfChannel));
             try {
-                const embed = new EmbedBuilder()
-                    .setColor(KIND_COLOR[alert.kind] || 0xf59e0b)
-                    .setTitle(`⚠️ ${KIND_LABEL[alert.kind] || alert.kind}`)
-                    .setDescription(alert.message)
-                    .setTimestamp(new Date(alert.createdAt));
-                await target.send({ embeds: [embed] });
+                await target.send(ui.card({
+                    title: `⚠️ ${KIND_LABEL[alert.kind] || alert.kind}`, color: KIND_COLOR[alert.kind] || 0xf59e0b,
+                    body: alert.message,
+                    footer: `<t:${Math.floor(new Date(alert.createdAt).getTime() / 1000)}:f>`,
+                }));
                 done.push(alert.id);
             } catch (e) {
                 console.warn('[bot] alert announce failed', e.message);

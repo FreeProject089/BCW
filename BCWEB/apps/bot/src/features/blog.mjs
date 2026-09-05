@@ -8,7 +8,7 @@
 // bot is in. Dedup is tracked per channel SERVER-side, so restarts never re-announce
 // and adding a new route never floods with the back-catalogue. Configured from the
 // admin dashboard (Discord bot tab → Blog announcements).
-import { EmbedBuilder } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api } from '../api.mjs';
 
@@ -49,15 +49,14 @@ export async function pollBlog(client) {
       const pending = posts.filter((post) => !seen.has(post.id) && matchesSources(route.sources, post.source));
       for (const post of pending) {
         try {
-          const embed = new EmbedBuilder()
-            .setColor(0xf59e0b)
-            .setTitle(post.title.slice(0, 250))
-            .setURL(post.url)
-            .setDescription((post.excerpt || '').slice(0, 400) || null)
-            .setTimestamp(post.publishedAt ? new Date(post.publishedAt) : new Date())
-            .setFooter({ text: `${post.space?.name || 'BetterCommunity'} · ${post.author?.displayName || ''}`.trim() });
-          if (post.cover && /^https?:\/\//i.test(post.cover)) embed.setImage(post.cover);
-          await channel.send({ content: post.url, embeds: [embed] });
+          const when = post.publishedAt ? new Date(post.publishedAt) : new Date();
+          await channel.send(ui.card({
+            title: `📰 ${post.title.slice(0, 200)}`,
+            body: [(post.excerpt || '').slice(0, 400) || null],
+            image: post.cover && /^https?:\/\//i.test(post.cover) ? post.cover : null,
+            footer: `${post.space?.name || 'BetterCommunity'} · ${post.author?.displayName || ''} · <t:${Math.floor(when.getTime() / 1000)}:D>`.replace(' ·  ·', ' ·'),
+            buttons: [ui.btn(post.url, 'Read the post')],
+          }));
           (marks[route.channelId] ||= []).push(post.id);
         } catch (e) {
           console.warn('[bot] blog announce failed for', post.slug, 'in', route.channelId, '-', e.message);

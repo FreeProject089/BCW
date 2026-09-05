@@ -1,7 +1,8 @@
 // Welcome / bye. Posts a 1200x400 banner (BCWEB dark theme + the member's avatar)
 // inside a brand-colored embed with the variable-driven message. Canvas is
 // optional — if it fails to load, the embed still goes out without the banner.
-import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { AttachmentBuilder } from 'discord.js';
+import * as ui from '../ui.mjs';
 import { guildConfig } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
 
@@ -150,12 +151,10 @@ export async function banner(member, title = 'Welcome', bg = 'dark', bgImage = n
   return new AttachmentBuilder(await cv.encode('png'), { name: `${name}.png` });
 }
 
-// Embed wrapping the banner: the GIF/PNG rides inside the embed via its
-// attachment:// name, so the whole message is one clean brand-colored card.
-function welcomeEmbed(text, img, color) {
-  const embed = new EmbedBuilder().setColor(color).setDescription(text).setTimestamp();
-  if (img) embed.setImage(`attachment://${img.name}`);
-  return embed;
+// Card wrapping the banner: the GIF/PNG rides inside the card via its attachment:// name,
+// so the whole message is one clean brand-colored block.
+function welcomeCard(text, img, color) {
+  return ui.card({ body: text, color, image: img ? `attachment://${img.name}` : null, files: img ? [img] : [] });
 }
 
 export async function onMemberAdd(member) {
@@ -166,7 +165,7 @@ export async function onMemberAdd(member) {
   if (!ch?.send) return;
   // Banner failures are LOGGED (not swallowed) so a missing image is diagnosable.
   const img = await banner(member, 'Welcome', w.gifBg, w.bgImage).catch((e) => { console.warn('[bot] welcome banner failed:', e.message); return null; });
-  await ch.send({ embeds: [welcomeEmbed(applyVars(w.joinMessage, member), img, 0xf59e0b)], files: img ? [img] : [] })
+  await ch.send(welcomeCard(applyVars(w.joinMessage, member), img, 0xf59e0b))
     .catch((e) => console.warn('[bot] welcome send failed:', e.message));
 }
 
@@ -177,6 +176,6 @@ export async function onMemberRemove(member) {
   if (!ch?.send) return;
   // The bye message gets its own banner too (same style, "Goodbye" headline).
   const img = await banner(member, 'Goodbye', w.gifBg, w.bgImage).catch((e) => { console.warn('[bot] bye banner failed:', e.message); return null; });
-  await ch.send({ embeds: [welcomeEmbed(applyVars(w.leaveMessage, member), img, 0x6b7280)], files: img ? [img] : [] })
+  await ch.send(welcomeCard(applyVars(w.leaveMessage, member), img, 0x6b7280))
     .catch((e) => console.warn('[bot] bye send failed:', e.message));
 }
