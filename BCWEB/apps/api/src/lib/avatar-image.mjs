@@ -108,6 +108,47 @@ export async function loadLucideIcon(name, color = '#ffffff', size = 48) {
   return img;
 }
 
+/** A Phosphor icon (`ph:rocket`, `ph-bold:rocket` …) recoloured, as a canvas Image, or null. */
+const PH_WEIGHTS = new Set(['thin', 'light', 'regular', 'bold', 'fill', 'duotone']);
+export function phosphorFile(name) {
+  const m = String(name || '').toLowerCase().match(/^(?:ph|phosphor)(?:-(thin|light|regular|bold|fill|duotone))?:([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (!m) return null;
+  const w = PH_WEIGHTS.has(m[1]) ? m[1] : 'regular';
+  return `${w}/${m[2]}${w === 'regular' ? '' : `-${w}`}`;
+}
+export async function loadPhosphorIcon(name, color = '#ffffff', size = 48) {
+  const file = phosphorFile(name);
+  if (!file) return null;
+  const key = `ph|${file}|${color}|${size}`;
+  if (lucideCache.has(key)) return lucideCache.get(key);
+  let img = null;
+  try {
+    const svgPath = require.resolve(`@phosphor-icons/core/assets/${file}.svg`);
+    let svg = await readFile(svgPath, 'utf8');
+    svg = svg.replace(/currentColor/g, color).replace('<svg', `<svg width="${size}" height="${size}"`);
+    const { loadImage } = await import('@napi-rs/canvas');
+    img = await loadImage(Buffer.from(svg));
+  } catch { img = null; }
+  lucideCache.set(key, img);
+  return img;
+}
+
+/** Any icon name the site's pickers produce — `ph:x`, a lucide name, an image URL — as a canvas Image. */
+export async function loadNamedIcon(name, color = '#ffffff', size = 48) {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  if (/^(?:ph|phosphor)(?:-[a-z]+)?:/i.test(n)) return loadPhosphorIcon(n, color, size);
+  if (/^(data:|https?:|\/)/i.test(n)) {
+    try {
+      const { loadImage } = await import('@napi-rs/canvas');
+      if (/^(data:|https?:)/i.test(n)) return await loadImage(n);
+      const buf = await siteMediaBuffer(n);
+      return buf ? await loadImage(buf) : null;
+    } catch { return null; }
+  }
+  return loadLucideIcon(n, color, size);
+}
+
 /** A badge's visual: a lucide glyph, an uploaded image, or a data URI — as a canvas Image or null. */
 export async function loadBadgeIcon(badge, color = '#ffffff', size = 48) {
   if (!badge) return null;

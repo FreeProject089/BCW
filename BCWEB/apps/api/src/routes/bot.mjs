@@ -6,7 +6,7 @@ import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
-import { ICONS as BOT_ICONS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
+import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView } from '../lib/economy-curve.mjs';
@@ -1234,6 +1234,50 @@ export default async function botRoutes(app) {
   // Admin: ask the bot to re-scan every server's roster NOW (instead of waiting for the
   // 30-minute cycle). Stored as a timestamp the next heartbeat (≤60 s) hands to the bot; the
   // bot reports back through the usual /bot/members/sync, which is what moves `lastScanAt`.
+  // Admin: the whole member database as a file — CSV (a spreadsheet opens it) or JSON lines.
+  // Streamed in pages, because a roster can be hundreds of thousands of rows and building one
+  // string would hold all of it in memory. Linked accounts carry their site user id.
+  app.get('/admin/bot/memberdb/export.:format', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const format = req.params.format === 'json' ? 'json' : 'csv';
+    const p = await db();
+    const [guilds, links] = await Promise.all([
+      p.botGuild.findMany({ select: { guildId: true, name: true } }),
+      p.discordLink.findMany({ select: { discordId: true, userId: true } }),
+    ]);
+    const guildName = Object.fromEntries(guilds.map((g) => [g.guildId, g.name || '']));
+    const linked = Object.fromEntries(links.map((l) => [l.discordId, l.userId]));
+    const stamp = new Date().toISOString().slice(0, 10);
+    await logAudit(p, req.user.uid, 'memberdb.export', `format=${format}`).catch(() => {});
+    reply.raw.writeHead(200, {
+      'Content-Type': format === 'json' ? 'application/x-ndjson; charset=utf-8' : 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="discord-members-${stamp}.${format === 'json' ? 'jsonl' : 'csv'}"`,
+      'Cache-Control': 'no-store',
+    });
+    reply.hijack();
+    const csv = (v) => { const t = v == null ? '' : String(v); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const cols = ['guildId', 'guildName', 'discordId', 'username', 'nickname', 'siteUserId', 'roles', 'guildJoinedAt', 'lastMessageAt', 'lastVoiceJoinAt', 'lastVoiceCreateAt', 'updatedAt'];
+    const write = (line) => new Promise((res) => { if (!reply.raw.write(line)) reply.raw.once('drain', res); else res(); });
+    if (format === 'csv') await write('\uFEFF' + cols.join(',') + '\n');
+    let cursor = null;
+    for (;;) {
+      const rows = await p.discordActivity.findMany({
+        take: 5000, ...(cursor ? { skip: 1, cursor } : {}),
+        orderBy: [{ guildId: 'asc' }, { discordId: 'asc' }],
+      });
+      if (!rows.length) break;
+      const chunk = rows.map((r) => {
+        const o = { guildId: r.guildId, guildName: guildName[r.guildId] || '', discordId: r.discordId, username: r.username || '', nickname: r.nickname || '', siteUserId: linked[r.discordId] || '', roles: (r.roles || []).join('|'),
+          guildJoinedAt: r.guildJoinedAt?.toISOString() || '', lastMessageAt: r.lastMessageAt?.toISOString() || '', lastVoiceJoinAt: r.lastVoiceJoinAt?.toISOString() || '', lastVoiceCreateAt: r.lastVoiceCreateAt?.toISOString() || '', updatedAt: r.updatedAt?.toISOString() || '' };
+        return format === 'json' ? JSON.stringify(o) : cols.map((c) => csv(o[c])).join(',');
+      }).join('\n') + '\n';
+      await write(chunk);
+      const last = rows[rows.length - 1];
+      cursor = { guildId_discordId: { guildId: last.guildId, discordId: last.discordId } };
+      if (rows.length < 5000) break;
+    }
+    reply.raw.end();
+  });
+
   app.post('/admin/bot/memberdb/rescan', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const at = new Date().toISOString();
@@ -1940,17 +1984,30 @@ export default async function botRoutes(app) {
     return { history: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, kind: r.kind, delta: r.delta, balance: r.balance, ref: r.ref, meta: r.meta || null, createdAt: r.createdAt })) };
   });
   // The bot's own icons, as PNGs to upload to the application's Emojis page.
+  // One button icon as a PNG. The saved style applies; `?icon=&color=&fg=&shape=&scale=` override
+  // it for the dashboard's live preview, so an admin sees a choice before saving it.
   app.get('/admin/bot/emoji/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const key = String(req.params.key || '').replace(/\.png$/i, '');
-    const png = await renderEmoji(key).catch(() => null);
-    if (!png) return reply.code(404).send({ error: 'not_found' });
-    return reply.header('Content-Type', 'image/png').header('Cache-Control', 'private, max-age=3600').send(png);
+    if (!BOT_ICONS[key]) return reply.code(404).send({ error: 'not_found' });
+    const p = await db();
+    const cfg = await getBotConfig(p);
+    const q = req.query || {};
+    const override = {};
+    for (const k of ['icon', 'color', 'fg', 'shape', 'scale']) if (q[k] != null && String(q[k]) !== '') override[k] = String(q[k]).slice(0, 200);
+    const png = await renderEmoji(key, cfg.economy?.iconStyle || {}, override);
+    if (!png) return reply.code(500).send({ error: 'render_failed' });
+    return reply.header('Content-Type', 'image/png').header('Cache-Control', Object.keys(override).length ? 'no-store' : 'private, max-age=60').send(png);
   });
   app.get('/admin/bot/emoji-pack.zip', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
-    const zip = await renderEmojiPack();
+    const p = await db();
+    const cfg = await getBotConfig(p);
+    const zip = await renderEmojiPack(cfg.economy?.iconStyle || {});
     return reply.header('Content-Type', 'application/zip').header('Content-Disposition', 'attachment; filename="bettercommunity-bot-icons.zip"').send(zip);
   });
-  app.get('/admin/bot/emoji-keys', { preHandler: requireRole('ADMIN') }, async () => ({ icons: Object.entries(BOT_ICONS).map(([key, v]) => ({ key, label: v.label, fallback: v.fallback })) }));
+  app.get('/admin/bot/emoji-keys', { preHandler: requireRole('ADMIN') }, async () => ({
+    icons: Object.entries(BOT_ICONS).map(([key, v]) => ({ key, label: v.label, fallback: v.fallback, color: v.color, icon: v.icon })),
+    defaults: ICON_STYLE_DEFAULTS,
+  }));
 
   // Admin: what still needs a person — roles and custom rewards bought with points — and the
   // button that says it was handed over. Newest first, pending on top.

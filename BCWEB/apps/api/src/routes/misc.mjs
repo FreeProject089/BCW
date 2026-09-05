@@ -941,6 +941,23 @@ export default async function miscRoutes(app) {
     // disk space" without needing a bespoke line item per model.
     const dbSizeRows = await p.$queryRaw`SELECT pg_database_size(current_database())::bigint AS bytes`.catch(() => [{ bytes: null }]);
     const dbSizeBytes = dbSizeRows?.[0]?.bytes != null ? Number(dbSizeRows[0].bytes) : null;
+    // Table by table — the answer to "what inside the database is the size": the bot's member
+    // roster, the point ledger, analytics events, audit logs… each with its real on-disk size
+    // (data + indexes + toast) and its live row estimate. Labelled where a name would not do.
+    const TABLE_LABEL = {
+      DiscordActivity: 'Discord member database (bot roster)', ModerationLog: 'Discord moderation logs (bot)', EconomyLedger: 'Point history (economy ledger)',
+      EconomyPurchase: 'Shop purchases', UserEconomy: 'Levels & balances', AnalyticsEvent: 'Analytics events', AuditLog: 'Staff audit log', LoginEvent: 'Login history',
+      ErrorEvent: 'Client error reports', BlogPost: 'Blog posts', BlogRevision: 'Blog edit history', DocPage: 'Docs pages', DocRevision: 'Docs edit history',
+      ContactMessage: 'Contact messages', Notification: 'Notifications', CatalogItem: 'Catalog items', Submission: 'Submissions', ServerRepo: 'Server repos',
+      User: 'Accounts', MetricSample: 'Server metrics history', PollVote: 'Poll votes', Poll: 'Polls', WebhookDelivery: 'Webhook deliveries', BotGuild: 'Discord servers (bot)',
+    };
+    const tableRows = await p.$queryRaw`
+      SELECT c.relname AS name, pg_total_relation_size(c.oid)::bigint AS bytes, COALESCE(s.n_live_tup, 0)::bigint AS rows
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid
+      WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relname NOT LIKE '\\_prisma%'
+      ORDER BY pg_total_relation_size(c.oid) DESC LIMIT 60`.catch(() => []);
+    const dbTables = (tableRows || []).map((r) => ({ name: String(r.name), label: TABLE_LABEL[String(r.name)] || String(r.name).replace(/([a-z])([A-Z])/g, '$1 $2'), bytes: Number(r.bytes || 0), rows: Number(r.rows || 0) }));
+    const memberTable = dbTables.find((x) => x.name === 'DiscordActivity') || null;
     // Git-backed version history for file/DB edits made through Advanced server
     // management — its own real disk usage, separate from the app's own data.
     const backupLimitRow = await p.adminSetting.findUnique({ where: { key: 'backup.maxBytes' } });
@@ -1011,6 +1028,7 @@ export default async function miscRoutes(app) {
       ],
       totals: { bytes: wholeBucket.bytes, count: wholeBucket.count },
       dbSizeBytes,
+      dbTables,
       db: {
         hostedRepos: hostedCount,
         repoAllocatedBytes: Number(hostedAgg._sum.storageQuotaBytes || 0n),
@@ -1033,6 +1051,10 @@ export default async function miscRoutes(app) {
         // history, analytics events, ...). Supersedes a single-table estimate:
         // it's the actual answer to "besides object storage, what else is using
         // real disk" without needing one line item per Prisma model.
+        // The bot's roster is the one table an admin sizes deliberately (Discord bot → Member
+        // database sets the cap), so it gets its own line, with the export beside it.
+        { key: 'memberdb', label: 'Discord member database (bot)', usedBytes: memberTable?.bytes ?? null, allocatedBytes: null, count: memberTable?.rows ?? null,
+          note: 'Every member of every server the bot is in — capped and evicted from Discord bot → Member database. Export it as CSV / JSON there, or from the table list below.', export: '/api/admin/bot/memberdb/export.csv' },
         { key: 'database', label: 'Database (all tables — users, content, logs, metrics, analytics)', usedBytes: dbSizeBytes, allocatedBytes: null, count: null, note: `${analyticsCount} analytics events, ${promoCount} promo codes, ${messageCount} contact messages among them.` },
         { key: 'backups', label: 'Server backups (cron — git file & DB edit history)', usedBytes: filesBackupBytes + dbBackupBytes, allocatedBytes: backupLimitRow?.value?.maxBytes ?? null, count: null, note: `${(filesBackupBytes / 1024 / 1024).toFixed(1)} MB file history, ${(dbBackupBytes / 1024 / 1024).toFixed(1)} MB DB row history. Limit configured from Advanced server management.` },
         { key: 'telemetry', label: 'BMM telemetry (separate service)', usedBytes: telemetryBytes, allocatedBytes: telemetryLimitBytes, count: null,

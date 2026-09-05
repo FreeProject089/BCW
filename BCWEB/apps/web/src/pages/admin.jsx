@@ -13269,22 +13269,26 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
     // page header. The enabled card gets a hairline blurple top edge so a page of modules reads
     // as "these are on, those are off" without hunting for the switch.
     <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-70' : ''} ${onToggle && live ? 'border-t-2 border-t-[#5865F2]/60' : ''}`}>
-      <div className="flex items-start gap-3 p-4">
-        <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
-        {/* The heading is the fold control. The switch is NOT: turning a module off and
-            hiding its settings are different intentions, and one click must not do both. */}
-        <button type="button" onClick={collapsible ? toggleOpen : undefined}
-          className={`flex-1 min-w-0 text-start ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
-          aria-expanded={collapsible ? open : undefined}>
-          <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
-            {collapsible && <ChevronDown size={14} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />}
-            {title}
-            {onToggle && <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${off ? 'bg-[var(--surface-2)] text-[var(--faint)]' : 'bg-success-bg text-success'}`}>{off ? t('db.mod.off', 'Off') : t('db.mod.on', 'On')}</span>}
-          </div>
-          {desc && <div className="text-[11px] text-[var(--faint)] mt-0.5 leading-snug">{desc}</div>}
-        </button>
-        {action}
-        {onToggle && <BotSwitch checked={!!enabled} onChange={onToggle} />}
+      <div className="p-4 pb-3">
+        <div className="flex items-center gap-3">
+          <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
+          {/* The heading is the fold control. The switch is NOT: turning a module off and
+              hiding its settings are different intentions, and one click must not do both. */}
+          <button type="button" onClick={collapsible ? toggleOpen : undefined}
+            className={`flex-1 min-w-0 text-start ${collapsible ? 'cursor-pointer' : 'cursor-default'}`}
+            aria-expanded={collapsible ? open : undefined}>
+            <div className="font-semibold text-sm flex items-center gap-1.5 flex-wrap">
+              {collapsible && <ChevronDown size={14} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />}
+              {title}
+              {onToggle && <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${off ? 'bg-[var(--surface-2)] text-[var(--faint)]' : 'bg-success-bg text-success'}`}>{off ? t('db.mod.off', 'Off') : t('db.mod.on', 'On')}</span>}
+            </div>
+          </button>
+          <div className="flex items-center gap-2 shrink-0">{action}{onToggle && <BotSwitch checked={!!enabled} onChange={onToggle} />}</div>
+        </div>
+        {/* The description on its own line, the card's full width. It used to sit in the header's
+            middle column, beside the action button and the switch, where a narrow card wrapped
+            it one word per line. */}
+        {desc && <div className="text-[11px] text-[var(--faint)] mt-2 leading-snug">{desc}</div>}
       </div>
       {children && !off && open && <div className="px-4 pb-4 space-y-2.5 border-t border-[var(--line)] pt-3">{children}</div>}
     </Card>
@@ -13381,6 +13385,8 @@ function MemberDatabaseCard({ cfg, set }) {
           <Button size="sm" onClick={rescan} disabled={busyScan || !data?.botOnline} title={!data?.botOnline ? t('db.mdb.rescan.offline', 'The bot is offline — it cannot scan right now.') : t('db.mdb.rescan.h', 'Ask the bot to walk every server’s roster now instead of waiting for the 30-minute cycle')}>
             <Users size={13} /> {busyScan ? t('db.mdb.rescan.busy', 'Scanning…') : t('db.mdb.rescan', 'Re-scan servers now')}
           </Button>
+          <a href="/api/admin/bot/memberdb/export.csv" download><Button size="sm" variant="ghost" title={t('db.mdb.export.h', 'Every stored member of every server, one row each — CSV for a spreadsheet')}><Download size={13} /> CSV</Button></a>
+          <a href="/api/admin/bot/memberdb/export.json" download><Button size="sm" variant="ghost" title={t('db.mdb.export.jh', 'The same, one JSON object per line')}><Download size={13} /> JSON</Button></a>
         </div>
         {refreshedAt && !refreshing && <div className="basis-full text-[10px] text-[var(--faint)]">{t('db.mdb.refreshedat', 'Numbers as of {t}').replace('{t}', new Date(refreshedAt).toLocaleTimeString())}</div>}
       </div>
@@ -14117,11 +14123,11 @@ function AdminBot() {
         <ModuleCard id="sec-dma" icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
           <DmBroadcast />
         </ModuleCard>
+        {/* Giveaways — an engagement tool aimed at the community, not a health metric, so it
+            lives here rather than on the Overview; beside the composer, the two short cards
+            share the row the tall editor takes alone above. */}
+        <BotGiveawaysCard />
       </div>
-
-      {/* Giveaways — an engagement tool aimed at the community, not a health metric, so it
-          lives here rather than on the Overview. */}
-      <div className="mt-4"><BotGiveawaysCard /></div>
       </>)}
 
       {page === 'economy' && (() => {
@@ -14175,8 +14181,9 @@ function AdminBot() {
           </div>
         </ModuleCard>
 
-        <div className="grid lg:grid-cols-2 gap-4 items-start">
-        {/* Casino */}
+        <div className="grid xl:grid-cols-3 gap-4 items-start">
+        {/* Casino — the wide one: its payout table needs the room. */}
+        <div className="xl:col-span-2">
         <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account — the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
           <div className="grid grid-cols-3 gap-2">
             <Field label={t('db.eco.minbet', 'Min bet')} className="!mb-0"><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
@@ -14216,8 +14223,9 @@ function AdminBot() {
             );
           })()}
         </ModuleCard>
+        </div>
 
-        {/* Gifts, history, icons */}
+        {/* Gifts and history — two short cards, stacked beside the casino. */}
         <div className="space-y-4">
           <ModuleCard id="sec-gifts" icon={Gift} title={t('db.eco.gifts', 'Gifts between members')} desc={t('db.eco.gifts.d', '/gift on Discord and the Boutique on the site. Points move between two linked accounts; giftable shop items change hands unopened.')} enabled={eco.gifts?.enabled !== false} onToggle={(v) => set('economy.gifts.enabled', v)}>
             <div className="grid grid-cols-2 gap-2">
@@ -14228,9 +14236,12 @@ function AdminBot() {
           <ModuleCard id="sec-history" icon={History} title={t('db.eco.hist', 'History')} desc={t('db.eco.hist.d', 'Every point movement — purchases, casino plays, gifts, level-ups, staff grants — is kept as a ledger. Members see theirs on the site and with /history; you see everything under Members → Levels & economy.')} onToggle={null}>
             <Field label={t('db.eco.hist.days', 'Keep the ledger for (days, 0 = forever)')} className="!mb-0" hint={t('db.eco.hist.days.h', 'Older rows are deleted once a day. Purchases themselves (the inventory) are never deleted by this.')}><Input type="number" min="0" value={eco.historyDays ?? 180} onChange={(e) => set('economy.historyDays', Number(e.target.value))} /></Field>
           </ModuleCard>
-          <BotIconsCard icons={eco.icons || {}} onChange={(k, v) => set(`economy.icons.${k}`, v)} />
         </div>
         </div>
+
+        {/* Button icons — a row of its own: twenty-six rows with a preview, a glyph, a colour
+            and a mapping each do not fit a third of the page. */}
+        <BotIconsCard icons={eco.icons || {}} iconStyle={eco.iconStyle || {}} onChange={(k, v) => set(`economy.icons.${k}`, v)} onStyle={(path, v) => set(`economy.iconStyle.${path}`, v)} />
 
         {/* Shop */}
         {(() => {
@@ -14642,29 +14653,67 @@ function BotModerate({ member }) {
 // Members: ONE page for the people the bot knows, in two views — the roster (who is in the
 // servers, linked or not) and the economy (levels, points, leaderboard, give). They used to be
 // two cards on two pages showing the same members with different columns.
-// The bot's button icons: a pack of PNGs to upload on the application's Emojis page, then one
-// field per button for the <:name:id> Discord gives back. Empty = the unicode fallback.
-function BotIconsCard({ icons, onChange }) {
+// The bot's button icons. Each is a coloured tile with a glyph from the site's own icon
+// families (lucide, Phosphor, an uploaded image) — the same picker as everywhere else — so an
+// admin changes the glyph or the tile colour per button, the shape and the glyph colour for
+// the set, and downloads the pack to upload on the application's Emojis page. The preview is
+// drawn by the API from the CURRENT draft (query overrides), so a choice is seen before it is
+// saved; the pack uses the SAVED style, which the card says.
+function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
   const { t } = useI18n();
   const { data } = useAsync(() => api.get('/admin/bot/emoji-keys'), []);
   const list = data?.icons || [];
-  const [open, setOpen] = useState(false);
+  const defaults = data?.defaults || { shape: 'rounded', fg: '#ffffff' };
+  const [open, setOpen] = useState(true);
+  const [picking, setPicking] = useState(null); // key whose glyph is being chosen
+  const st = iconStyle || {};
+  const shape = st.shape || defaults.shape;
+  const fg = st.fg || defaults.fg;
+  const mine = (k) => (st[k] && typeof st[k] === 'object' ? st[k] : {});
+  const preview = (ic) => {
+    const m = mine(ic.key);
+    const q = new URLSearchParams({ icon: m.icon || ic.icon, color: m.color || ic.color, fg, shape });
+    return `/api/admin/bot/emoji/${ic.key}.png?${q.toString()}`;
+  };
+  const customised = list.filter((ic) => mine(ic.key).icon || mine(ic.key).color).length;
   return (
-    <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d', 'Custom emoji on the bot’s buttons instead of the unicode ones. Download the pack, upload it on the app’s Emojis page in the Discord Developer Portal, then paste each emoji here.')} onToggle={null}
+    <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d3', 'The bot’s buttons carry custom emoji instead of the unicode ones. Each icon is a coloured tile with a glyph from the same icon families as the site (lucide, Phosphor, or an image): pick the glyph and the colour per button, the shape and the glyph colour for the set, download the pack, upload it on the application’s Emojis page, then paste each emoji here.')}
       action={<a href="/api/admin/bot/emoji-pack.zip" download><Button size="sm" variant="ghost"><Download size={13} /> {t('db.eco.icons.pack', 'Icon pack')}</Button></a>}>
-      <p className="text-[11px] text-[var(--faint)]">{t('db.eco.icons.h', 'Developer Portal → your application → Emojis → Upload. Then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> here.')}</p>
-      <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+      {/* Set-wide style */}
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={t('db.eco.icons.shape', 'Tile shape')} className="!mb-0 w-40"><Dropdown value={shape} onChange={(v) => onStyle('shape', v)} options={[{ value: 'rounded', label: t('db.eco.icons.shape.rounded', 'Rounded') }, { value: 'circle', label: t('db.eco.icons.shape.circle', 'Circle') }, { value: 'square', label: t('db.eco.icons.shape.square', 'Square') }, { value: 'none', label: t('db.eco.icons.shape.none', 'No tile (glyph only)') }]} /></Field>
+        <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><input type="color" value={fg} onChange={(e) => onStyle('fg', e.target.value)} className="h-9 w-14 rounded-md border border-[var(--line)] bg-transparent cursor-pointer" /></Field>
+        <div className="text-[11px] text-[var(--faint)] flex-1 min-w-[12rem]">
+          {t('db.eco.icons.h2', 'Save the page, then download the pack — it is drawn from the saved style. Developer Portal → your application → Emojis → Upload (keep the bc_<name> file names); then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> in the field.')}
+          {customised ? <> · <b>{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</b></> : null}
+        </div>
+        <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+      </div>
       {open && (
-        <div className="grid sm:grid-cols-2 gap-1.5">
-          {list.map((ic) => (
-            <div key={ic.key} className="flex items-center gap-2">
-              <img src={`/api/admin/bot/emoji/${ic.key}.png`} alt="" className="w-6 h-6 rounded shrink-0" />
-              <span className="text-[11px] w-28 truncate shrink-0" title={ic.key}>{ic.label} <span className="text-[var(--faint)]">{ic.fallback}</span></span>
-              <Input className="!py-1 !text-xs font-mono" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
-            </div>
-          ))}
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+          {list.map((ic) => {
+            const m = mine(ic.key);
+            const changed = !!(m.icon || m.color);
+            return (
+              <div key={ic.key} className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${changed ? 'border-[var(--primary)]/40' : 'border-[var(--line)]'}`}>
+                <img src={preview(ic)} alt="" className="w-9 h-9 rounded shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-medium truncate flex items-center gap-1" title={ic.key}>{ic.label} <span className="text-[var(--faint)] font-normal">{ic.fallback}</span></div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <button type="button" onClick={() => setPicking(ic.key)} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] max-w-[9rem]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
+                      <IconGlyph name={m.icon || ic.icon} size={12} /><span className="truncate">{m.icon || ic.icon}</span>
+                    </button>
+                    <input type="color" value={m.color || ic.color} onChange={(e) => onStyle(`${ic.key}.color`, e.target.value)} className="h-6 w-7 rounded border border-[var(--line)] bg-transparent cursor-pointer" title={t('db.eco.icons.color', 'Tile colour')} />
+                    {changed && <button type="button" onClick={() => { onStyle(`${ic.key}.icon`, ''); onStyle(`${ic.key}.color`, ''); }} className="text-[10px] text-[var(--faint)] hover:text-[var(--text)]" title={t('db.eco.icons.reset', 'Back to the default')}><RotateCcw size={11} /></button>}
+                  </div>
+                  <Input className="!py-0.5 !text-[11px] font-mono mt-1" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+      {picking && <IconPicker title={t('db.eco.icons.pick', 'Glyph for “{k}”').replace('{k}', list.find((x) => x.key === picking)?.label || picking)} onPick={(name) => onStyle(`${picking}.icon`, name)} onClose={() => setPicking(null)} />}
     </ModuleCard>
   );
 }
@@ -15108,6 +15157,7 @@ const LEDGER_ICON = {
 // measure against, otherwise just the count/bytes we do have — every category
 // that can occupy real disk space gets a place here, never invented numbers.
 function LedgerRow({ row }) {
+  const { t } = useI18n();
   const I = LEDGER_ICON[row.key] || HardDrive;
   const hasBar = row.allocatedBytes != null && row.allocatedBytes > 0;
   const pct = hasBar ? Math.min(100, ((row.usedBytes || 0) / row.allocatedBytes) * 100) : 0;
@@ -15123,6 +15173,7 @@ function LedgerRow({ row }) {
       </div>
       {hasBar && <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>}
       {row.note && <div className="text-[10px] text-[var(--faint)] mt-0.5">{row.note}</div>}
+      {row.export && <a href={row.export} download className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1"><Download size={11} /> {t('as.exportcsv', 'Export CSV')}</a>}
     </div>
   );
 }
@@ -15261,6 +15312,33 @@ function AdminStorage() {
           </div>
         </Card>
       )}
+
+      {/* Inside the database, table by table — the bot's member roster, the point ledger,
+          analytics, logs — with the real on-disk size of each. The one number "Database" above
+          could not say which of them was growing. */}
+      {Array.isArray(d.dbTables) && d.dbTables.length > 0 && (() => {
+        const top = d.dbTables.slice(0, 14);
+        const max = Math.max(1, ...top.map((x) => x.bytes));
+        return (
+          <Card className="p-5 mb-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+              <div className="text-sm font-medium flex items-center gap-2"><Database size={15} className="text-[var(--primary-2)]" /> {t('as.dbtables', 'Database, table by table')}</div>
+              <span className="text-[11px] text-[var(--faint)]">{t('as.dbtables.n', '{n} tables · sizes include indexes').replace('{n}', d.dbTables.length)}</span>
+            </div>
+            <div className="text-[11px] text-[var(--faint)] mb-3">{t('as.dbtables.sub', 'What inside the database takes the space. The Discord member roster is the one you size yourself (Discord bot → Member database); everything else grows with use and is pruned by its own retention setting.')}</div>
+            <div className="space-y-1.5">
+              {top.map((x) => (
+                <div key={x.name} className="flex items-center gap-2 text-xs">
+                  <span className="w-44 sm:w-64 truncate" title={x.name}>{x.label}{x.name === 'DiscordActivity' && <a href="/api/admin/bot/memberdb/export.csv" download className="ms-1.5 text-[var(--primary-2)] hover:underline">{t('as.export', 'export')}</a>}</span>
+                  <span className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><span className={`block h-full ${x.name === 'DiscordActivity' ? 'bg-[#5865F2]' : 'bg-[var(--primary)]'}`} style={{ width: `${Math.max(1.5, (x.bytes / max) * 100)}%` }} /></span>
+                  <span className="tabular-nums w-20 text-end font-medium">{fmtBytes(x.bytes)}</span>
+                  <span className="tabular-nums w-24 text-end text-[var(--faint)] hidden sm:inline">{x.rows.toLocaleString()} {t('as.rows', 'rows')}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        );
+      })()}
 
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
         {areas.map((a) => { const I = AREA_ICON[a.key] || HardDrive; return (
