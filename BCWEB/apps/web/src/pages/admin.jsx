@@ -10,6 +10,7 @@ import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
+import { Bug as BugIcon } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -200,6 +201,7 @@ export function Admin() {
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
+        can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
         { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
         { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
@@ -419,6 +421,7 @@ export function Admin() {
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'errors' && <AdminErrors />}
+        {s === 'feedback' && <AdminFeedback />}
         {s === 'goals' && <AdminGoals />}
         {s === 'projects' && <AdminProjects />}
         {s === 'assets' && <AdminAssets />}
@@ -16267,6 +16270,161 @@ function AdminGoals() {
 
 // Client-error dashboard: uncaught errors + rejections grouped by message, with
 // occurrences, distinct sessions, first/last seen, and an expandable stack trace.
+/* ── Feedback & crash centre ──
+   One inbox per project for what apps post to /feedback/<project>: feedback, bug reports,
+   crash dumps. The left column is the list with its filters; the right one is the open item
+   (body, context, attachments, thread, reply). Settings for the project — switch, caps,
+   sampling, filters — fold under the header so an admin sees the queue first. */
+const FB_KIND_TONE = { feedback: 'success', bug: 'warning', crash: 'red' };
+const FB_STATUS_TONE = { new: 'red', triaged: 'warning', resolved: 'success', ignored: '' };
+function AdminFeedback() {
+  const { t } = useI18n(); const toast = useToast();
+  const [cfg, setCfg] = useState(null);
+  const [project, setProject] = useState(() => { try { return new URLSearchParams(location.search).get('p') || ''; } catch { return ''; } });
+  const [kind, setKind] = useState(''); const [status, setStatus] = useState('new'); const [version, setVersion] = useState('');
+  const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState(''); const [page, setPage] = useState(0);
+  const [open, setOpen] = useState(null); const [reply, setReply] = useState(''); const [busy, setBusy] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); const [draft, setDraft] = useState(null); const [savingCfg, setSavingCfg] = useState(false);
+  const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); if (!project) { const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject(first); } }).catch(() => toast.error(t('common.failed', 'Failed.')));
+  useEffect(() => { loadCfg(); }, []); // eslint-disable-line
+  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&page=${page}`;
+  const { data, loading, reload } = useAsync(() => project ? api.get(`/admin/feedback?${qs}`) : Promise.resolve(null), [qs]);
+  const openItem = async (id) => { try { const r = await api.get(`/admin/feedback/${id}`); setOpen(r.item); setReply(''); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const setSt = async (id, st) => { setBusy(true); try { const r = await api.post(`/admin/feedback/${id}/status`, { status: st }); setOpen((o) => o && o.id === id ? { ...o, status: r.item.status } : o); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
+  const send = async () => { if (!open || !reply.trim()) return; setBusy(true); try { const r = await api.post(`/admin/feedback/${open.id}/reply`, { body: reply.trim() }); toast.success(r.via === 'mail' ? t('fb.replied.mail', 'Sent by e-mail.') : t('fb.replied.thread', 'Posted in their dashboard thread.')); setReply(''); reload(); } catch (x) { toast.error(x.data?.error === 'no_channel' ? t('fb.nochannel', 'No way to reach this sender: no account and no e-mail.') : x.data?.error === 'mail_failed' ? t('fb.mailfail', 'The mail could not be sent.') : t('common.failed', 'Failed.')); } finally { setBusy(false); } };
+  const del = async (id) => { if (!confirm(t('fb.del.confirm', 'Delete this report and its attachments?'))) return; try { await api.del(`/admin/feedback/${id}`); setOpen(null); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // Settings draft: the project's block + the global limits, edited together, saved together.
+  const startEdit = () => { const pc = cfg.projects[project] || cfg.defaults.project; setDraft({ project: { ...cfg.defaults.project, ...pc, kinds: { ...cfg.defaults.project.kinds, ...(pc.kinds || {}) } }, limits: JSON.parse(JSON.stringify(cfg.limits)) }); setShowSettings(true); };
+  const saveCfg = async () => {
+    setSavingCfg(true);
+    try {
+      const projects = { ...cfg.projects, [project]: draft.project };
+      await api.put('/admin/feedback/config', { projects, limits: draft.limits });
+      toast.success(t('fb.cfg.saved', 'Saved.')); setShowSettings(false); await loadCfg();
+    } catch (x) { toast.error(t('fb.cfg.bad', 'Some value is out of range.') + (x.data?.detail?.path ? ` (${x.data.detail.path.join('.')})` : '')); }
+    finally { setSavingCfg(false); }
+  };
+  const pd = (k, v) => setDraft((d) => ({ ...d, project: { ...d.project, [k]: v } }));
+  const ld = (k, v) => setDraft((d) => ({ ...d, limits: { ...d.limits, [k]: v } }));
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const list = (v) => String(v || '').split(/[,\n]/).map((x) => x.trim()).filter(Boolean);
+  if (!cfg) return <div className="flex justify-center py-20 text-[var(--muted)]"><Spinner /></div>;
+  const pc = cfg.projects[project];
+  const projects = cfg.knownProjects;
+  const counts = data?.counts || {};
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2"><BugIcon size={16} className="text-[var(--primary-2)]" /> {t('fb.title', 'Feedback & crashes')}</h2>
+        <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps — one inbox per project, answered from here.')}</p>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {projects.map((x) => <button key={x.key} onClick={() => { setProject(x.key); setPage(0); setOpen(null); setShowSettings(false); }} className={`px-3 py-1.5 rounded-lg text-sm border ${x.key === project ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
+          {x.name} {cfg.projects[x.key]?.enabled ? <span className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--success)] ms-1 align-middle" /> : <span className="text-[10px] text-[var(--faint)] ms-1">{t('fb.off', 'off')}</span>}
+        </button>)}
+        <div className="flex-1" />
+        <Button size="sm" variant={showSettings ? 'primary' : 'default'} onClick={() => showSettings ? setShowSettings(false) : startEdit()}><Sliders size={14} /> {t('fb.settings', 'Project settings & limits')}</Button>
+      </div>
+      {!pc?.enabled && !showSettings && <Card className="p-4 text-sm text-[var(--muted)] flex items-center gap-3"><AlertTriangle size={16} className="text-[var(--warning)] shrink-0" /> {t('fb.disabled', 'This project does not accept reports yet — open the settings and switch it on. Apps get a clean “not enabled” answer meanwhile, nothing breaks on their side.')}</Card>}
+      {showSettings && draft && <Card className="p-5 space-y-4">
+        <div className="grid md:grid-cols-2 gap-5">
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">{t('fb.cfg.project', 'Project')} · <span className="font-mono">{project}</span></div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.enabled} onChange={(e) => pd('enabled', e.target.checked)} /> {t('fb.cfg.enabled', 'Accept reports for this project')}</label>
+            <div className="flex gap-4 text-sm">
+              {['feedback', 'bug', 'crash'].map((k) => <label key={k} className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!draft.project.kinds[k]} onChange={(e) => pd('kinds', { ...draft.project.kinds, [k]: e.target.checked })} /> {t(`fb.kind.${k}`, k)}</label>)}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('fb.cfg.sampling', 'Crash sampling (% kept)')}><Input type="number" min="0" max="100" value={draft.project.crashSampling} onChange={(e) => pd('crashSampling', num(e.target.value))} /></Field>
+              <Field label={t('fb.cfg.dedupe', 'Dedupe window (min)')}><Input type="number" min="0" value={draft.project.dedupeMinutes} onChange={(e) => pd('dedupeMinutes', num(e.target.value))} /></Field>
+              <Field label={t('fb.cfg.bodykb', 'Max text (KB)')}><Input type="number" min="1" value={draft.project.maxBodyKB} onChange={(e) => pd('maxBodyKB', num(e.target.value))} /></Field>
+              <Field label={t('fb.cfg.attachmb', 'Max attachments total (MB)')}><Input type="number" min="0" value={draft.project.maxAttachMB} onChange={(e) => pd('maxAttachMB', num(e.target.value))} /></Field>
+              <Field label={t('fb.cfg.attachn', 'Max attachments (count)')}><Input type="number" min="0" value={draft.project.maxAttachments} onChange={(e) => pd('maxAttachments', num(e.target.value))} /></Field>
+              <Field label={t('fb.cfg.minver', 'Minimum app version')}><Input value={draft.project.minVersion} onChange={(e) => pd('minVersion', e.target.value)} placeholder="1.4.0" /></Field>
+            </div>
+            <Field label={t('fb.cfg.blockedver', 'Refused versions (comma-separated)')}><Input value={draft.project.blockedVersions.join(', ')} onChange={(e) => pd('blockedVersions', list(e.target.value))} placeholder="1.3.2, 1.3.3" /></Field>
+            <Field label={t('fb.cfg.blockedwords', 'Refused words (comma-separated, matched in title + text)')}><Input value={draft.project.blockedWords.join(', ')} onChange={(e) => pd('blockedWords', list(e.target.value))} /></Field>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.requireContact} onChange={(e) => pd('requireContact', e.target.checked)} /> {t('fb.cfg.contact', 'Anonymous senders must give an e-mail')}</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.openThread} onChange={(e) => pd('openThread', e.target.checked)} /> {t('fb.cfg.thread', 'Linked senders get a thread in Messages & reports')}</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.mailFallback} onChange={(e) => pd('mailFallback', e.target.checked)} /> {t('fb.cfg.mail', 'Anonymous senders with an e-mail get a confirmation + replies by mail')}</label>
+          </div>
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">{t('fb.cfg.limits', 'Rate limits (all projects)')}</div>
+            <p className="text-xs text-[var(--muted)]">{t('fb.cfg.limits.d', 'The first three apply to the feedback endpoint. The last two are the platform-wide API ceilings — every route, per IP and per signed-in account, requests per minute; 0 = default / off.')}</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('fb.cfg.perip', 'Feedback per IP')}><Input type="number" min="0" value={draft.limits.perIp.max} onChange={(e) => ld('perIp', { ...draft.limits.perIp, max: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perIp.windowMin} onChange={(e) => ld('perIp', { ...draft.limits.perIp, windowMin: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.peracct', 'Feedback per account')}><Input type="number" min="0" value={draft.limits.perAccount.max} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, max: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAccount.windowMin} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, windowMin: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.perday', 'Feedback per project per day')}><Input type="number" min="0" value={draft.limits.perProjectDay} onChange={(e) => ld('perProjectDay', num(e.target.value))} /></Field>
+              <div />
+              <Field label={t('fb.cfg.apiip', 'API: requests / min per IP')}><Input type="number" min="0" value={draft.limits.apiPerIpMin} onChange={(e) => ld('apiPerIpMin', num(e.target.value))} placeholder="600" /></Field>
+              <Field label={t('fb.cfg.apiacct', 'API: requests / min per account')}><Input type="number" min="0" value={draft.limits.apiPerAccountMin} onChange={(e) => ld('apiPerAccountMin', num(e.target.value))} placeholder="0" /></Field>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2"><Button variant="primary" disabled={savingCfg} onClick={saveCfg}>{savingCfg ? <Spinner /> : t('common.save', 'Save')}</Button><Button variant="ghost" onClick={() => setShowSettings(false)}>{t('common.cancel', 'Cancel')}</Button></div>
+      </Card>}
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-4 items-start">
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            {['new', 'triaged', 'resolved', 'ignored', ''].map((st) => <button key={st || 'all'} onClick={() => { setStatus(st); setPage(0); }} className={`px-2.5 py-1 rounded-lg text-xs border ${status === st ? 'bg-[var(--surface-2)] border-[var(--primary)]' : 'border-[var(--line)]'}`}>{st ? t(`fb.st.${st}`, st) : t('fb.st.all', 'all')} {st && counts[st] ? <span className="text-[var(--faint)]">· {counts[st]}</span> : null}</button>)}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select value={kind} onChange={(e) => { setKind(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.kind.all', 'All kinds')}</option>{['feedback', 'bug', 'crash'].map((k) => <option key={k} value={k}>{t(`fb.kind.${k}`, k)}</option>)}</Select>
+            <Select value={version} onChange={(e) => { setVersion(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.ver.all', 'All versions')}</option>{(data?.versions || []).filter((v) => v.version).map((v) => <option key={v.version} value={v.version}>{v.version} ({v.n})</option>)}</Select>
+            <form className="flex-1 min-w-[160px] flex gap-1" onSubmit={(e) => { e.preventDefault(); setQApplied(q.trim()); setPage(0); }}><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fb.search', 'Search title, text, e-mail, fingerprint')} /><Button size="sm">{t('common.search', 'Search')}</Button></form>
+          </div>
+          {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>
+            : !(data?.items || []).length ? <div className="py-10 text-center text-sm text-[var(--muted)]">{t('fb.empty', 'Nothing here.')}</div>
+            : <div className="space-y-1.5">
+              {data.items.map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border px-3 py-2.5 hover:bg-[var(--surface-2)] ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+                <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[f.kind]}>{t(`fb.kind.${f.kind}`, f.kind)}</Badge><span className="font-medium text-sm truncate min-w-0 flex-1">{f.title || <span className="text-[var(--faint)]">{t('fb.untitled', '(untitled)')}</span>}</span>{f.count > 1 && <Badge>×{f.count}</Badge>}<Badge tone={FB_STATUS_TONE[f.status]}>{t(`fb.st.${f.status}`, f.status)}</Badge></div>
+                <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span>· 📎 {f.attachments.length}</span>}</div>
+                <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{f.body}</div>
+              </button>)}
+              {data.total > data.take && <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2"><Button size="sm" variant="ghost" disabled={page === 0} onClick={() => setPage(page - 1)}>‹</Button><span>{page * data.take + 1}–{Math.min(data.total, (page + 1) * data.take)} / {data.total}</span><Button size="sm" variant="ghost" disabled={(page + 1) * data.take >= data.total} onClick={() => setPage(page + 1)}>›</Button></div>}
+            </div>}
+        </Card>
+        <Card className="p-5 space-y-4 min-w-0">
+          {!open ? <div className="py-16 text-center text-sm text-[var(--muted)]">{t('fb.pick', 'Pick a report on the left.')}</div> : <>
+            <div className="flex items-start gap-3 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[open.kind]}>{t(`fb.kind.${open.kind}`, open.kind)}</Badge><Badge tone={FB_STATUS_TONE[open.status]}>{t(`fb.st.${open.status}`, open.status)}</Badge>{open.count > 1 && <Badge>×{open.count} {t('fb.dup', 'occurrences')}</Badge>}</div>
+                <h2 className="text-lg font-bold mt-1 break-words">{open.title || t('fb.untitled', '(untitled)')}</h2>
+                <div className="text-xs text-[var(--faint)] font-mono mt-0.5">{open.id}{open.fingerprint ? ` · ${open.fingerprint.slice(0, 16)}` : ''}</div>
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {['triaged', 'resolved', 'ignored'].filter((x) => x !== open.status).map((st) => <Button key={st} size="sm" disabled={busy} onClick={() => setSt(open.id, st)}>{t(`fb.mark.${st}`, `Mark ${st}`)}</Button>)}
+                <Button size="sm" variant="ghost" className="text-[var(--error)]" onClick={() => del(open.id)}><Trash2 size={14} /></Button>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-xs">
+              <div><span className="text-[var(--faint)]">{t('fb.f.project', 'Project')}</span> · <span className="font-mono">{open.projectKey}</span></div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.when', 'When')}</span> · {new Date(open.createdAt).toLocaleString()}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.version', 'Version')}</span> · {open.appVersion || '—'}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.os', 'OS')}</span> · {open.os || '—'}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</span> · {open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--primary)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)]"> · {open.creatorId}</span> : null}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</span> · {open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--primary)]">{t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</div>
+            </div>
+            <pre className="text-sm whitespace-pre-wrap break-words bg-[var(--surface-2)] rounded-xl p-3 max-h-[50vh] overflow-auto">{open.body || t('fb.nobody', '(no text)')}</pre>
+            {open.attachments?.length > 0 && <div>
+              <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1.5">{t('fb.attachments', 'Attachments')}</div>
+              <div className="flex flex-wrap gap-2">{open.attachments.map((a) => <a key={a.i} href={`/api/admin/feedback/${open.id}/attachments/${a.i}`} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-[var(--line)] px-2.5 py-1.5 hover:bg-[var(--surface-2)]"><Download size={12} /> {a.name} <span className="text-[var(--faint)]">{(a.size / 1024).toFixed(0)} KB</span></a>)}</div>
+            </div>}
+            {open.meta && <details className="text-xs"><summary className="cursor-pointer text-[var(--muted)]">{t('fb.meta', 'Context (meta)')}</summary><pre className="mt-1 bg-[var(--surface-2)] rounded-xl p-3 overflow-auto max-h-64">{JSON.stringify(open.meta, null, 2)}</pre></details>}
+            {(open.reportId || open.email) && <div className="space-y-2 pt-2 border-t border-[var(--line)]">
+              <div className="text-sm font-semibold">{open.reportId ? t('fb.reply.thread', 'Reply in their thread') : t('fb.reply.mail', 'Reply by e-mail')}</div>
+              <Textarea rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('fb.reply.ph', 'Thanks — could you tell us…')} />
+              <Button variant="primary" size="sm" disabled={busy || !reply.trim()} onClick={send}>{busy ? <Spinner /> : t('fb.reply.send', 'Send')}</Button>
+            </div>}
+          </>}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 function AdminErrors() {
   const { t } = useI18n(); const toast = useToast();
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
@@ -19166,7 +19324,7 @@ function AdminBadgeHolders({ badge, onClose }) {
 }
 
 const REPORT_STATUS_TONE = { open: 'green', archived: 'amber', closed: '' };
-const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare, showcase_request: Sparkles };
+const REPORT_TARGET_ICON = { user: Users, repo: Server, catalog: Boxes, item: Package, general: MessageSquare, showcase_request: Sparkles, feedback: BugIcon };
 
 // User dashboard: the reports / support threads this user opened, GitHub-PR style.
 // Rendered by the MEMBER dashboard (pages/dashboard.jsx), never by this page — it lives
@@ -19422,6 +19580,7 @@ const NEEDS_QUEUES = [
   { key: 'submissions', to: '/admin?s=moderation', icon: Inbox, label: (t) => t('nq.submissions', 'Submissions to review'), chip: (t) => t('nq.k.submissions', 'Submission') },
   { key: 'errors', to: '/admin?s=errors', icon: AlertTriangle, label: (t) => t('nq.errors', 'Errors to look at (API + Discord bot, 24 h)'), chip: (t) => t('nq.k.errors', 'Error') },
   { key: 'reports', to: '/admin?s=reports', icon: Inbox, label: (t) => t('nq.reports', 'Open reports'), chip: (t) => t('nq.k.reports', 'Report') },
+  { key: 'feedback', to: '/admin?s=feedback', icon: BugIcon, label: (t) => t('nq.feedback', 'New feedback & crash reports'), chip: (t) => t('nq.k.feedback', 'Feedback') },
   { key: 'contact', to: '/admin?s=messages', icon: Mail, label: (t) => t('nq.contact', 'Unread messages'), chip: (t) => t('nq.k.contact', 'Message') },
   { key: 'myo', to: '/admin?s=myo', icon: Wand2, label: (t) => t('nq.myo', 'Commissions awaiting a reply'), chip: (t) => t('nq.k.myo', 'Commission') },
 ];

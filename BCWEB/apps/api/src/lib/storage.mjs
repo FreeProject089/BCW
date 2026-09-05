@@ -40,6 +40,11 @@ export async function presignPut(key, contentType, expiresIn = 600) {
   return getSignedUrl(signer, new PutObjectCommand({ Bucket: BUCKET, Key: key, ContentType: contentType }), { expiresIn });
 }
 
+/** Server-side PUT of bytes the API already holds (feedback attachments arrive inline). */
+export async function putObject(key, body, contentType = 'application/octet-stream') {
+  await internal.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: contentType }));
+}
+
 /** Pre-signed GET for downloads of a published payload. */
 export async function presignGet(key, expiresIn = 600) {
   return getSignedUrl(signer, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn });

@@ -14,7 +14,7 @@ const STAFF_ROLES = ['MOD', 'ADMIN', 'SUPERADMIN'];
 // open → archived (auto after inactivity or manual) → deleted (after a further delay).
 // A reporter may have at most one OPEN report per target at a time.
 
-const TARGET_TYPES = ['user', 'repo', 'catalog', 'item', 'general'];
+const TARGET_TYPES = ['user', 'repo', 'catalog', 'item', 'general', 'feedback'];
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 
 // Admin-configurable knobs (AdminSetting `reports.config`), with sane defaults.

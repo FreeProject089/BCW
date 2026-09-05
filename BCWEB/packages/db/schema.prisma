@@ -1773,6 +1773,38 @@ model OAuthLinkProposal {
   @@index([userId])
 }
 
+/// Feedback & crash centre: one row per submission an app posted to `/feedback/<project>`.
+/// Loose ids on purpose (no relation to User): a report must survive its sender leaving, and
+/// an anonymous one has no sender at all. `attachments` = [{ key, name, type, size }] in
+/// object storage, served only to staff. `reportId` = the dashboard thread opened for a
+/// linked sender.
+model Feedback {
+  id          String   @id
+  projectKey  String
+  kind        String // feedback | bug | crash
+  title       String   @default("")
+  body        String   @default("")
+  appVersion  String   @default("")
+  os          String   @default("")
+  meta        Json?
+  attachments Json     @default("[]")
+  fingerprint String   @default("")
+  count       Int      @default(1)
+  status      String   @default("new") // new | triaged | resolved | ignored
+  userId      String?
+  email       String   @default("")
+  creatorId   String   @default("")
+  ipHash      String   @default("")
+  reportId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectKey, status])
+  @@index([fingerprint])
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model PasswordReset {
   id        String    @id @default(cuid())
   userId    String

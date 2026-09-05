@@ -64,6 +64,8 @@ import socialRoutes from './routes/social.mjs';
 import statusRoutes from './routes/status.mjs';
 import codeWebhookRoutes from './routes/code-webhook.mjs';
 import reportRoutes from './routes/reports.mjs';
+import feedbackRoutes from './routes/feedback.mjs';
+import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
 import { registerApiUsageHook, flushApiUsage } from './lib/apiusage.mjs';
@@ -194,6 +196,44 @@ await startFlagRefresh();
 const rlTimer = setInterval(refreshRateLimit, 15_000);
 rlTimer.unref?.();   // never hold the process open on this
 
+// Per-ACCOUNT ceiling, on top of the per-IP one. Set from Admin → Feedback & crashes → limits
+// (AdminSetting hosting.apiRateLimitPerAccount, requests per minute; 0 = off). Reads the
+// session cookie without touching the database — a limiter that costs a query per request
+// would be the load it exists to prevent.
+const ACCT_JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
+let rlAcct = 0;
+async function refreshAcctLimit() {
+  try {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'hosting.apiRateLimitPerAccount' } });
+    const v = Number(row?.value);
+    rlAcct = Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+  } catch { /* keep the current value */ }
+}
+await refreshAcctLimit();
+const acctTimer = setInterval(refreshAcctLimit, 15_000);
+acctTimer.unref?.();
+const acctHits = new Map();
+app.addHook('onRequest', async (req, reply) => {
+  if (!rlAcct) return;
+  const tok = req.cookies?.bcw_session;
+  if (!tok) return;
+  let uid;
+  try { uid = jwt.verify(tok, ACCT_JWT_SECRET)?.uid; } catch { return; }
+  if (!uid) return;
+  const now = Date.now();
+  const rec = acctHits.get(uid);
+  if (!rec || now - rec.at >= 60_000) {
+    if (acctHits.size > 50_000) acctHits.clear();
+    acctHits.set(uid, { at: now, n: 1 });
+    return;
+  }
+  if (++rec.n > rlAcct) {
+    reply.code(429).send({ error: 'rate_limited', retryAfterSec: Math.ceil((60_000 - (now - rec.at)) / 1000) });
+    return reply;
+  }
+});
+
 await app.register(rateLimit, {
   // 600/min per IP is generous for a human (~10 req/s) and is what keeps the DB safe under
   // abuse — keep it in production. Env-tunable so an operator can adjust it, and so a load
@@ -323,6 +363,7 @@ await app.register(oauthRoutes);
 await app.register(ogRoutes); // crawler link-unfurl prerender (og:title/image per page)
 await app.register(socialRoutes); // profile badges + public profiles + user search
 await app.register(reportRoutes); // user reports + support threads + admin moderation
+await app.register(feedbackRoutes); // feedback & crash centre (per-project inbox for BMM and friends)
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up
 await app.register(codeWebhookRoutes); // encapsulated: raw-body for the GitHub HMAC

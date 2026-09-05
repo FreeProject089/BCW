@@ -111,6 +111,16 @@ export const PENDING_QUEUES = [
     }).then((rows) => rows.map((r) => ({ id: r.id, title: r.name, sub: r.kind, at: r.createdAt }))),
   },
   {
+    key: 'feedback', cap: 'manage_reports', to: '/admin?s=feedback',
+    count: (p) => p.feedback.count({ where: { status: 'new' } }),
+    recent: (p) => p.feedback.findMany({
+      where: { status: 'new' }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, title: true, kind: true, projectKey: true, createdAt: true },
+    }).then((rows) => rows.map((r) => ({ id: r.id, title: r.title || `${r.kind} · ${r.projectKey}`, sub: `${r.projectKey} · ${r.kind}`, at: r.createdAt }))),
+    // "Handled" from the digest = triaged on the feedback screen. One opinion, not two.
+    handle: (p, id) => p.feedback.update({ where: { id }, data: { status: 'triaged' } }).catch(() => null),
+  },
+  {
     key: 'reports', cap: 'manage_reports', to: '/admin?s=reports',
     count: (p) => p.report.count({ where: { status: 'open' } }),
     recent: (p) => p.report.findMany({
