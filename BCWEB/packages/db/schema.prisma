@@ -1753,6 +1753,26 @@ model FeatureSubscription {
 }
 
 // Password reset tokens (single-use, short-lived). The raw token is never stored.
+/// A social sign-in that landed on an e-mail some account already owns. The callback no
+/// longer attaches the provider on the strength of the address alone: the person proves the
+/// account is theirs (its password, or the code mailed to the address), and only then is the
+/// provider linked and the session issued. Short-lived; one use.
+model OAuthLinkProposal {
+  id                String    @id @default(cuid())
+  tokenHash         String    @unique // sha256 of the token carried in the /auth?link= URL
+  userId            String
+  provider          String
+  providerAccountId String
+  username          String?
+  avatar            String?
+  codeHash          String? // sha256 of the 6-digit code e-mailed to the account's address
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([userId])
+}
+
 model PasswordReset {
   id        String    @id @default(cuid())
   userId    String

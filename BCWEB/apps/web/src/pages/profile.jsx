@@ -6,7 +6,7 @@ import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
-import { DiscordIcon, KofiIcon, YoutubeIcon } from '../ui/brand.jsx';
+import { DiscordIcon, KofiIcon, YoutubeIcon, GithubIcon, GoogleIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -246,6 +246,7 @@ export default function Profile() {
           {/* 2FA leads Security — it now gates repo creation and server-control access, so
               it's the most important thing to set up. Password change sits below it. */}
           <TwoFactorCard />
+          <SignInMethods />
           <Card className="p-5">
             <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.changepw', 'Change password')}</div>
             <p className="text-xs text-[var(--muted)] mb-3">{t('prof.changepw.d', 'Use a strong password you don’t reuse anywhere else.')}</p>
@@ -1288,6 +1289,63 @@ function DiscordLinks() {
 // style cards with an inline "show on my profile" toggle. Only providers configured
 // server-side (.env) are offered; the whole card hides if none are. GitHub/Discord come
 // from sign-in and are toggled in the Public-profile privacy card above.
+/* Every way INTO this account: e-mail + password, and each social provider the login page
+   offers. Linking a provider from here rides the normal login start URL — the callback sees
+   the session and attaches the provider to it, no e-mail match needed. Unlinking the last
+   method is refused server-side; the button says so before it is tried. */
+const SIGNIN_META = [['google', GoogleIcon, 'Google'], ['github', GithubIcon, 'GitHub'], ['discord', DiscordIcon, 'Discord']];
+function SignInMethods() {
+  const { t } = useI18n(); const toast = useToast();
+  const [providers, setProviders] = useState(null);
+  const [data, setData] = useState(null);
+  const load = () => Promise.all([api.get('/auth/oauth/providers').catch(() => ({})), api.get('/me/oauth')])
+    .then(([p, d]) => { setProviders(p); setData(d); }).catch(() => { setProviders({}); setData({ links: [], hasPassword: true }); });
+  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    if (q.get('linked')) { toast.success(t('sim.linked', 'Sign-in method linked.')); q.delete('linked'); history.replaceState({}, '', `${location.pathname}?${q}`); load(); }
+    else if (q.get('link_error')) {
+      toast.error(q.get('link_error') === 'already_linked' ? t('sim.taken', 'That account is already linked to another BetterCommunity account.') : t('sim.failed', 'Could not link that account.'));
+      q.delete('link_error'); history.replaceState({}, '', `${location.pathname}?${q}`);
+    }
+  }, []); // eslint-disable-line
+  if (!providers || !data) return null;
+  const linked = Object.fromEntries((data.links || []).map((l) => [l.provider, l]));
+  const methods = (data.hasPassword ? 1 : 0) + (data.links || []).length;
+  const unlink = async (k) => {
+    try { await api.del(`/me/oauth/${k}`); toast.success(t('sim.unlinked', 'Unlinked.')); load(); }
+    catch (x) { toast.error(x.data?.error === 'last_method' ? t('sim.last', 'This is the only way into your account — set a password first.') : t('acc.failed', 'Failed.')); }
+  };
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('sim.title', 'Sign-in methods')}</div>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('sim.desc', 'Every way into this account. Link several so losing one never locks you out.')}</p>
+      <div className="space-y-2">
+        <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 flex items-center gap-2.5">
+          <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Mail size={17} className="text-[var(--primary-2)]" /></span>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm">{t('sim.email', 'E-mail + password')}</div>
+            <div className="text-[11px] text-[var(--faint)]">{data.hasPassword ? t('sim.pwset', 'Password set') : t('sim.nopw', 'No password yet — set one below to sign in without a provider.')}</div>
+          </div>
+          {data.hasPassword ? <Badge tone="success">{t('sim.on', 'Active')}</Badge> : <Badge tone="warning">{t('sim.missing', 'Missing')}</Badge>}
+        </div>
+        {SIGNIN_META.filter(([k]) => providers[k] || linked[k]).map(([k, Ico, label]) => { const l = linked[k]; return (
+          <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 flex items-center gap-2.5">
+            <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm">{label}</div>
+              <div className="text-[11px] text-[var(--faint)] truncate">{l ? (l.username || t('sim.on', 'Active')) : t('sc.notlinked', 'Not linked')}</div>
+            </div>
+            {l
+              ? <Button size="sm" variant="ghost" disabled={methods <= 1} title={methods <= 1 ? t('sim.last', 'This is the only way into your account — set a password first.') : ''} onClick={() => unlink(k)}>{t('sim.unlink', 'Unlink')}</Button>
+              : providers[k] ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/oauth/${k}/start`; }}>{t('sim.link', 'Link')}</Button> : null}
+          </div>
+        ); })}
+      </div>
+    </Card>
+  );
+}
+
 const CONN_META = [
   ['youtube', YoutubeIcon, 'YouTube', '#ff0000', 'oauth'],
   ['twitch', Twitch, 'Twitch', '#9146ff', 'oauth'],

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ShieldCheck, Ban, Lock, Clock, MessageSquare, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Ban, Lock, Clock, MessageSquare, Eye, EyeOff, Link2 } from 'lucide-react';
 import { Button, Card, Field, Input, Spinner, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -85,6 +85,80 @@ function AccountLockedPanel({ data, onBack }) {
           </div>
         )}
         <button onClick={onBack} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] mt-4">{t('lock.back', '← Back to sign in')}</button>
+      </Card>
+    </div>
+  );
+}
+
+/* A social sign-in landed on an address some account already owns. Nothing was linked yet:
+   the person proves the account is theirs — its password, or the code that was just mailed —
+   and only then is the provider attached and the session opened. */
+const PROVIDER_ICON = { google: GoogleIcon, github: GithubIcon, discord: DiscordIcon };
+const PROVIDER_LABEL = { google: 'Google', github: 'GitHub', discord: 'Discord' };
+function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }) {
+  const { t } = useI18n(); const toast = useToast(); const { refresh } = useAuth();
+  const [info, setInfo] = useState(null); const [gone, setGone] = useState(false);
+  const [method, setMethod] = useState('password'); // password | code
+  const [password, setPassword] = useState(''); const [code, setCode] = useState(devcode || '');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  useEffect(() => {
+    api.get(`/auth/oauth/link/${encodeURIComponent(token)}`).then((r) => { setInfo(r); setMethod(r.hasPassword ? 'password' : 'code'); }).catch(() => setGone(true));
+  }, [token]);
+  const Ico = PROVIDER_ICON[provider] || Link2; const label = PROVIDER_LABEL[provider] || provider;
+  const confirm = async (e) => {
+    e.preventDefault(); setBusy(true); setErr('');
+    try {
+      await api.post('/auth/oauth/link/confirm', { token, ...(method === 'password' ? { password } : { code: code.trim() }) });
+      await refresh();
+      toast.success(t('auth.link.done', '{p} is now linked to your account.').replace('{p}', label));
+      onDone(next);
+    } catch (x) {
+      const e2 = x.data?.error;
+      setErr(e2 === 'wrong_credentials' ? (method === 'password' ? t('auth.link.badpw', 'Wrong password.') : t('auth.link.badcode', 'Wrong or expired code.'))
+        : e2 === 'already_linked' ? t('auth.link.taken', 'That {p} account is already linked to another BetterCommunity account.').replace('{p}', label)
+        : e2 === 'invalid_token' ? t('auth.link.expired', 'This link request expired — sign in with {p} again.').replace('{p}', label)
+        : t('auth.err.fail'));
+    } finally { setBusy(false); }
+  };
+  const decline = async () => { try { await api.post('/auth/oauth/link/decline', { token }); } catch { /* best effort */ } onDecline(); };
+  if (gone) {
+    return (
+      <div className="max-w-sm mx-auto mt-8"><Card className="p-7 text-center">
+        <Clock size={30} className="mx-auto text-[var(--muted)] mb-3" />
+        <h1 className="text-lg font-bold">{t('auth.link.expired.t', 'Link request expired')}</h1>
+        <p className="text-sm text-[var(--muted)] mt-1">{t('auth.link.expired', 'This link request expired — sign in with {p} again.').replace('{p}', label)}</p>
+        <Button className="mt-4 w-full" onClick={onDecline}>{t('auth.link.back', 'Back to sign-in')}</Button>
+      </Card></div>
+    );
+  }
+  if (!info) return <div className="max-w-sm mx-auto mt-20 flex justify-center text-[var(--muted)]"><Spinner /></div>;
+  return (
+    <div className="max-w-sm mx-auto mt-8">
+      <Card className="p-7">
+        <div className="text-center mb-5">
+          <span className="mx-auto mb-3 grid place-items-center w-14 h-14 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)]"><Ico size={26} /></span>
+          <h1 className="text-xl font-bold">{t('auth.link.title', 'Link {p} to your account?').replace('{p}', label)}</h1>
+          <p className="text-sm text-[var(--muted)] mt-1.5">{t('auth.link.sub', 'A BetterCommunity account already uses {e}. Confirm it is yours and {p} becomes one more way to sign in — nothing else changes.').replace('{e}', info.email).replace('{p}', label)}</p>
+        </div>
+        <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 text-sm flex items-center gap-2.5 mb-4">
+          <Ico size={16} /><span className="font-medium">{info.username || label}</span><span className="text-[var(--faint)]">→</span><span className="text-[var(--muted)] truncate">{info.displayName}</span>
+        </div>
+        <form onSubmit={confirm} className="space-y-3">
+          {method === 'password'
+            ? <Field label={t('auth.link.pw', 'Your BetterCommunity password')}><PwInput value={password} onChange={(e) => setPassword(e.target.value)} autoFocus /></Field>
+            : <Field label={t('auth.link.code', 'The 6-digit code we e-mailed to {e}').replace('{e}', info.email)}>
+                <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" inputMode="numeric" autoFocus />
+                {devcode && <div className="text-[11px] text-[var(--faint)] mt-1">{t('auth.link.devcode', 'No mail backend — the code was prefilled (dev).')}</div>}
+              </Field>}
+          {err && <div className="text-xs text-[var(--error)] anim-fade">{err}</div>}
+          <Button variant="primary" className="w-full" disabled={busy || (method === 'password' ? !password : code.length !== 6)}>{busy ? <Spinner /> : t('auth.link.cta', 'Link and sign in')}</Button>
+        </form>
+        <div className="mt-4 flex flex-col items-center gap-1.5 text-sm">
+          {info.hasPassword && <button type="button" className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setErr(''); setMethod(method === 'password' ? 'code' : 'password'); }}>
+            {method === 'password' ? t('auth.link.usecode', 'Use the e-mailed code instead') : t('auth.link.usepw', 'Use my password instead')}
+          </button>}
+          <button type="button" className="text-[var(--muted)] hover:text-[var(--text)]" onClick={decline}>{t('auth.link.no', 'Not my account — go back')}</button>
+        </div>
       </Card>
     </div>
   );
@@ -233,6 +307,13 @@ export function Auth() {
     );
   }
   if (lock) return <AccountLockedPanel data={lock} onBack={() => setLock(null)} />;
+  const linkToken = params.get('link');
+  if (linkToken) {
+    const nextP = params.get('next');
+    return <LinkProposalPanel token={linkToken} provider={params.get('provider') || ''} devcode={params.get('devcode') || ''} next={nextP && nextP.startsWith('/') ? nextP : ''}
+      onDone={(n) => nav(n || '/dashboard', { replace: true })}
+      onDecline={() => setParams((q) => { q.delete('link'); q.delete('provider'); q.delete('devcode'); return q; }, { replace: true })} />;
+  }
 
   if (twoFa) {
     return (
