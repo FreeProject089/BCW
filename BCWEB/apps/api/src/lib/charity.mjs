@@ -43,7 +43,60 @@ export const CHARITY_DEFAULTS = {
   percent: 10,
   currency: 'chf',
   association: '',
+  design: null, // filled by normalizeCharityDesign (null here so the defaults object stays flat)
 };
+
+// The landing widget's LOOK. `default` is the plain card; `custom` lets an admin replace it
+// with artwork they made at a known size: a backdrop that fills the frame, an "overflow" layer
+// that spills past the frame by `bleed` px on every side (a mascot leaning out, a ribbon), and
+// a sticker pinned to one corner. Sizes are fixed HERE so the admin UI can print exactly what
+// canvas to draw on — no scaling surprises. Nothing here is a colour preset: the design is the
+// images; the code only decides where they sit and which ink the text uses over them.
+export const CHARITY_DESIGN_DEFAULTS = {
+  mode: 'default',        // default | custom
+  width: 'xl',            // xl (576 px) | 2xl (672 px) | 3xl (768 px) — the frame's CSS width
+  height: 360,            // min height of the frame, px (content can still make it taller)
+  frame: true,            // keep the card's own border + background under the artwork
+  ink: 'auto',            // auto (theme text) | light (white text + shadow) | dark
+  align: 'center',        // center | left | right — where the pot + buttons sit
+  backdrop: '',           // image URL, drawn to cover the frame (recommended 2× frame size)
+  backdropFit: 'cover',   // cover | contain
+  overflow: '',           // transparent image spilling `bleed` px past the frame on every side
+  bleed: 64,              // px, 0–200
+  sticker: '',            // small image pinned to a corner, half outside the frame
+  stickerSize: 160,       // px, 48–320
+  stickerCorner: 'tr',    // tl | tr | bl | br
+  stickerOffset: 24,      // px the sticker sticks OUT of the frame (0 = flush inside)
+  alt: '',                // alt text for the artwork (accessibility)
+};
+export const CHARITY_WIDTHS = { xl: 576, '2xl': 672, '3xl': 768 };
+const clampInt = (v, lo, hi, d) => { const x = Math.round(Number(v)); return Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : d; };
+// Only images the site serves itself or an absolute http(s) URL — never a data: blob (unbounded
+// size in an AdminSetting row) and never a javascript: string.
+const imgUrl = (s) => (typeof s === 'string' && s.trim().length <= 600 && /^(\/api\/media\/|\/media\/|https?:\/\/)/i.test(s.trim())) ? s.trim() : '';
+const oneOf = (v, list, d) => (list.includes(v) ? v : d);
+
+export function normalizeCharityDesign(v) {
+  const o = v && typeof v === 'object' ? v : {};
+  const D = CHARITY_DESIGN_DEFAULTS;
+  return {
+    mode: oneOf(o.mode, ['default', 'custom'], D.mode),
+    width: oneOf(o.width, Object.keys(CHARITY_WIDTHS), D.width),
+    height: clampInt(o.height, 200, 720, D.height),
+    frame: o.frame !== false,
+    ink: oneOf(o.ink, ['auto', 'light', 'dark'], D.ink),
+    align: oneOf(o.align, ['center', 'left', 'right'], D.align),
+    backdrop: imgUrl(o.backdrop),
+    backdropFit: oneOf(o.backdropFit, ['cover', 'contain'], D.backdropFit),
+    overflow: imgUrl(o.overflow),
+    bleed: clampInt(o.bleed, 0, 200, D.bleed),
+    sticker: imgUrl(o.sticker),
+    stickerSize: clampInt(o.stickerSize, 48, 320, D.stickerSize),
+    stickerCorner: oneOf(o.stickerCorner, ['tl', 'tr', 'bl', 'br'], D.stickerCorner),
+    stickerOffset: clampInt(o.stickerOffset, 0, 160, D.stickerOffset),
+    alt: typeof o.alt === 'string' ? o.alt.slice(0, 200) : '',
+  };
+}
 
 /** Normalise a stored/incoming config blob to the current shape, clamping the percent. */
 export function normalizeCharityConfig(v) {
@@ -53,6 +106,7 @@ export function normalizeCharityConfig(v) {
     percent: clampCharityPct(o.percent ?? CHARITY_DEFAULTS.percent),
     currency: (typeof o.currency === 'string' && o.currency.trim()) ? o.currency.trim().toLowerCase() : CHARITY_DEFAULTS.currency,
     association: typeof o.association === 'string' ? o.association : '',
+    design: normalizeCharityDesign(o.design),
   };
 }
 

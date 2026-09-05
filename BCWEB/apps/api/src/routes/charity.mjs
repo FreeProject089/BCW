@@ -88,6 +88,9 @@ export async function charityCurrent(p) {
     proofUrl: pot?.status === 'paid' ? (pot.proofUrl || '') : '',
     paidAt: pot?.paidAt ? pot.paidAt.toISOString() : null,
     poll, presets: CONTRIBUTION_PRESETS_CENTS, ...totals,
+    // The widget's look (mode, artwork URLs, geometry) — public by nature, it is what the
+    // landing page draws. Normalised, so a client never sees a half-filled object.
+    design: config.design,
   };
 }
 
@@ -256,6 +259,9 @@ export default async function charityRoutes(app) {
       percent: z.number().optional(),
       currency: z.string().min(1).max(8).optional(),
       association: z.string().max(200).optional(),
+      // The landing design — normalised by normalizeCharityDesign (bounds, enum values, image
+      // URL shape); zod only checks it is an object so a new field never has to be listed twice.
+      design: z.record(z.unknown()).optional(),
     }).safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'bad_request' });
 

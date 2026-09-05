@@ -1,5 +1,5 @@
 // Slash commands + interaction routing. Every response is a Components V2 card (see ui.mjs).
-import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -54,8 +54,11 @@ export const commandData = [
       { name: 'Casino', value: 'casino' }, { name: 'Purchases', value: 'purchase' }, { name: 'Gifts sent', value: 'gift_out' }, { name: 'Gifts received', value: 'gift_in' }, { name: 'Level-ups', value: 'levelup' })),
   new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by level — this server or everyone')
     .addStringOption((o) => o.setName('scope').setDescription('This server, or every server the bot is in').addChoices({ name: 'This server', value: 'server' }, { name: 'Global', value: 'global' })),
-  new SlashCommandBuilder().setName('casino').setDescription('Bet points on a game of chance')
-    .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet').setRequired(true).setMinValue(1))
+  // Every option is a SHORTCUT: `/casino` alone opens the interactive table (pick the game, the
+  // bet and the game's own options with menus, then Play); options given up front skip straight
+  // to the roll. A game without its bet still opens the table with that game pre-selected.
+  new SlashCommandBuilder().setName('casino').setDescription('Bet points on a game of chance — no options opens the interactive table')
+    .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet (leave empty to pick from the table)').setMinValue(1))
     .addStringOption((o) => o.setName('game').setDescription('Which game (default: coin flip)').addChoices(
       { name: 'Coin flip (2×, 50%)', value: 'coinflip' },
       { name: 'Dice — roll 4-6 to win (2×)', value: 'dice' },
@@ -119,6 +122,8 @@ export async function handleInteraction(i) {
   if (i.isButton() && i.customId === 'eco:history') return cmdHistory(i, '');
   if (i.isButton() && i.customId === 'eco:leaderboard') return cmdLeaderboard(i, false, 'server');
   if (i.isButton() && i.customId.startsWith('casino:again:')) return casinoAgain(i);
+  if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('cas:')) return casinoSetup(i);
+  if (i.isModalSubmit() && i.customId.startsWith('casm:')) return casinoModal(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
   // It returns false when the custom id is not one of its own, so this stays a filter and
   // not a fork somebody has to keep in sync.
@@ -453,8 +458,11 @@ async function playCasino(i, opts) {
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
   await i.deferReply();
-  const won = r.delta > 0; // a 0.3× plinko bucket returns part of the bet — still a loss
-  const amt = n(won ? r.delta : bet);
+  // Three outcomes, not two: a win (delta > 0), a push (a 1× bucket — the bet comes back to the
+  // point, nothing won, nothing lost) and a loss — which may be PARTIAL (a 0.3× bucket returns
+  // 30 % of the bet), so the loss line shows what actually left the balance, not the whole bet.
+  const won = r.delta > 0, push = r.delta === 0, lost = -r.delta;
+  const amt = n(won ? r.delta : lost);
   // Animated GIF of the spin, seeded per play so every roll looks different, rendered by the
   // site and ATTACHED (fetched over the internal API address, so Discord never has to reach
   // the site). The PNG still is the fallback the API itself falls back to.
@@ -463,29 +471,188 @@ async function playCasino(i, opts) {
   const files = gif ? [ui.attach(gif, 'casino.gif')] : [];
   const line = won
     ? `${detail}\n🎉 You won **+${n(r.delta)}** — balance **${n(r.points)}**.`
-    : `${detail}\n💀 You lost **${n(bet)}**. Balance **${n(r.points)}**.`;
+    : push ? `${detail}\n↩️ Push — your **${n(bet)}** came back. Balance **${n(r.points)}**.`
+    : `${detail}\n💀 You lost **${n(lost)}**${lost < bet ? ` of your ${n(bet)}` : ''}. Balance **${n(r.points)}**.`;
   // "Play again" re-runs the same bet with the same options — the custom id carries them (and
   // the player's id, so nobody spends somebody else's points from their button).
   const again = ['casino', 'again', game, bet, opts.betOn || '', opts.num ?? '', opts.target || '', opts.risk || '', i.user.id].join(':');
   return ui.editReply(i, {
-    title: won ? `${GAME_NAME[game] || 'Casino'} — you win!` : `${GAME_NAME[game] || 'Casino'} — you lose`,
-    color: won ? 0x248046 : 0xda373c,
+    title: won ? `${GAME_NAME[game] || 'Casino'} — you win!` : push ? `${GAME_NAME[game] || 'Casino'} — push` : `${GAME_NAME[game] || 'Casino'} — you lose`,
+    color: won ? 0x248046 : push ? ui.INFO : 0xda373c,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: line,
     image: gif ? 'attachment://casino.gif' : null, files,
-    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' })],
+    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, bet: 0, owner: i.user.id })}`, 'Change bet / game', ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' })],
   });
 }
 
 async function cmdCasino(i) {
   const bet = i.options.getInteger('bet');
-  const game = i.options.getString('game') || 'coinflip';
-  const betOn = i.options.getString('bet_on') || 'red';
+  const game = GAME_NAME[i.options.getString('game')] ? i.options.getString('game') : 'coinflip';
+  const betOn = ['red', 'black', 'green', 'number'].includes(i.options.getString('bet_on')) ? i.options.getString('bet_on') : 'red';
   const num = i.options.getInteger('number');
-  if (game === 'roulette' && betOn === 'number' && num == null) return ui.line(i, 'Pick the number too: `/casino game:roulette bet_on:number number:17`', { title: '🎡 Roulette' });
   const target = i.options.getInteger('target') || 2;
   const risk = ['low', 'medium', 'high'].includes(i.options.getString('risk')) ? i.options.getString('risk') : 'medium';
+  const st = { game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
+  // No bet, or a number bet without its number: the table opens with everything given so far
+  // already selected, instead of a one-line "use these options" refusal.
+  if (!bet || (game === 'roulette' && betOn === 'number' && num == null)) return casinoMenu(i, st);
   return playCasino(i, { bet, game, betOn, num, target, risk });
+}
+
+// ── Casino table (interactive setup) ─────────────────────────────────────────
+// The whole choice lives in the custom ids (game · bet · bet_on · number · target · risk ·
+// owner), so the menu survives a bot restart and never needs server-side session state. Each
+// select re-renders the same ephemeral card with the new choice; Play hands it to playCasino.
+const CASINO_GAMES = [
+  { id: 'coinflip', emoji: '🪙', name: 'Coin flip', desc: 'Heads or tails — 2×, one chance in two' },
+  { id: 'dice', emoji: '🎲', name: 'Dice', desc: 'Roll 4, 5 or 6 to double — 2×, one chance in two' },
+  { id: 'slots', emoji: '🎰', name: 'Slots', desc: 'Three of a kind pays 8×, any pair 1.5×' },
+  { id: 'roulette', emoji: '🎡', name: 'Roulette', desc: 'A colour 2×, green 14×, an exact number 35×' },
+  { id: 'wheel', emoji: '🎯', name: 'Wheel', desc: 'Pick a multiplier — the bigger it is, the thinner its slice' },
+  { id: 'plinko', emoji: '🟡', name: 'Plinko', desc: 'A ball drops into a multiplier bucket — you pick the risk table' },
+];
+const ROULETTE_BETS = [['red', '🔴 Red — 2×'], ['black', '⚫ Black — 2×'], ['green', '🟢 Green (zero) — 14×'], ['number', '🔢 An exact number — 35×']];
+const WHEEL_TARGETS = [[2, '2× — 45 % of the wheel'], [3, '3× — 24 %'], [5, '5× — 16 %'], [10, '10× — 9 %'], [20, '20× — 4 %'], [50, '50× — 2 %']];
+const PLINKO_RISKS = [['low', 'Low — buckets 0.5× to 5×'], ['medium', 'Medium — buckets 0.3× to 13×'], ['high', 'High — buckets 0.2× to 50×']];
+
+function packCas(st) {
+  return [st.game || 'coinflip', st.bet || 0, st.betOn || 'red', st.num ?? '', st.target || 2, st.risk || 'medium', st.owner || ''].join(':');
+}
+function unpackCas(parts) {
+  const [game, bet, betOn, num, target, risk, owner] = parts;
+  return {
+    game: GAME_NAME[game] ? game : 'coinflip',
+    bet: bet === 'all' ? 'all' : Math.max(0, Number(bet) || 0),
+    betOn: ['red', 'black', 'green', 'number'].includes(betOn) ? betOn : 'red',
+    num: num === '' || num == null ? null : Math.min(36, Math.max(0, Number(num) || 0)),
+    target: WHEEL_TARGETS.some(([m]) => m === Number(target)) ? Number(target) : 2,
+    risk: ['low', 'medium', 'high'].includes(risk) ? risk : 'medium',
+    owner: owner || '',
+  };
+}
+const casOpt = (value, label, selected, description = null) => {
+  const o = new StringSelectMenuOptionBuilder().setValue(String(value)).setLabel(label.slice(0, 100)).setDefault(!!selected);
+  if (description) o.setDescription(description.slice(0, 100));
+  return o;
+};
+const casSelect = (id, placeholder, options) => new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).addOptions(options.slice(0, 25));
+
+/** The bet presets between min and max — the config's bounds plus the usual round numbers. */
+function betPresets(min, max) {
+  const out = new Set([min, 5, 10, 25, 50, 100, 250, 500, 1000, max].filter((v) => v >= min && v <= max));
+  return [...out].sort((a, b) => a - b).slice(0, 22);
+}
+
+async function casinoMenu(i, st, { update = false } = {}) {
+  const cfg = (await config()).economy?.casino || {};
+  const min = Math.max(1, Number(cfg.minBet) || 1), max = Math.max(min, Number(cfg.maxBet) || 100);
+  const e = await api.economyUser(i.user.id);
+  const cur = curLabel(e.currency);
+  const balance = e.linked ? Number(e.points) || 0 : 0;
+  const g = CASINO_GAMES.find((x) => x.id === st.game) || CASINO_GAMES[0];
+  const bet = st.bet === 'all' ? Math.min(max, balance) : st.bet;
+  const enabled = cfg.enabled !== false;
+  const needsNumber = st.game === 'roulette' && st.betOn === 'number' && st.num == null;
+  const canPlay = enabled && e.linked && bet >= min && bet <= max && bet <= balance && !needsNumber;
+
+  const optionLine = st.game === 'roulette' ? `**Bet on** ${ROULETTE_BETS.find(([v]) => v === st.betOn)?.[1] || st.betOn}${st.betOn === 'number' ? (st.num == null ? ' — pick the number below' : ` **${st.num}**`) : ''}`
+    : st.game === 'wheel' ? `**Going for** ${WHEEL_TARGETS.find(([m]) => m === st.target)?.[1] || `${st.target}×`}`
+    : st.game === 'plinko' ? `**Risk** ${PLINKO_RISKS.find(([v]) => v === st.risk)?.[1] || st.risk}` : null;
+  const why = !enabled ? '⛔ The casino is off right now.'
+    : !e.linked ? '🔗 Link your BetterCommunity account to play — points live on the site.'
+    : !bet ? `Pick a bet between **${n(min)}** and **${n(max)}**.`
+    : bet < min || bet > max ? `⚠ Bets go from **${n(min)}** to **${n(max)}**.`
+    : bet > balance ? `⚠ You only have **${n(balance)}** ${cur}.`
+    : needsNumber ? '🔢 Pick your number (0–36) below.' : null;
+
+  const S = (patch) => packCas({ ...st, ...patch });
+  const gameSel = casSelect(`cas:game:${S({})}`, 'Game', CASINO_GAMES.map((x) => casOpt(x.id, `${x.emoji} ${x.name}`, x.id === st.game, x.desc)));
+  const presets = betPresets(min, max);
+  const betSel = casSelect(`cas:bet:${S({})}`, 'Bet', [
+    ...presets.map((v) => casOpt(v, `${n(v)} ${cur}`, st.bet !== 'all' && v === st.bet)),
+    ...(e.linked && balance >= min ? [casOpt('all', `All in — ${n(Math.min(max, balance))} ${cur}`, st.bet === 'all', balance > max ? `Capped at the ${n(max)} max bet` : 'Your whole balance')] : []),
+    casOpt('custom', '✏️ Custom amount…', false, `Any amount from ${n(min)} to ${n(max)}`),
+  ]);
+  const optSel = st.game === 'roulette' ? casSelect(`cas:opt:${S({})}`, 'Bet on', ROULETTE_BETS.map(([v, l]) => casOpt(v, l, v === st.betOn, v === 'number' ? 'You will be asked for the number' : null)))
+    : st.game === 'wheel' ? casSelect(`cas:opt:${S({})}`, 'Multiplier', WHEEL_TARGETS.map(([m, l]) => casOpt(m, l, m === st.target)))
+    : st.game === 'plinko' ? casSelect(`cas:opt:${S({})}`, 'Risk', PLINKO_RISKS.map(([v, l]) => casOpt(v, l, v === st.risk)))
+    : null;
+  const buttons = [gameSel, betSel, optSel,
+    ui.btn(`cas:play:${S({})}`, canPlay ? `Play — ${n(bet)} on ${g.name}` : 'Play', ButtonStyle.Success, { emoji: 'casino', disabled: !canPlay }),
+    ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? 'Pick a number' : `Number: ${st.num}`, ButtonStyle.Primary)] : []),
+    e.linked ? ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', 'Link my account', ButtonStyle.Primary, { emoji: 'link' }),
+  ];
+  const opts = {
+    title: '🎰 Casino',
+    thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
+    body: [
+      e.linked ? `Balance **${n(balance)}** ${cur} · bets **${n(min)}–${n(max)}**` : `Bets **${n(min)}–${n(max)}** ${cur}`,
+      '',
+      `**Game** ${g.emoji} ${g.name} — ${g.desc}`,
+      `**Bet** ${bet ? `${n(bet)} ${cur}${st.bet === 'all' ? ' (all in)' : ''}` : '—'}`,
+      optionLine,
+      why ? `\n${why}` : '\n✅ Ready — press **Play**. The result is posted in the channel.',
+    ],
+    footer: 'The house edge only taxes what you win: a 1× bucket gives your bet back to the point.',
+    buttons,
+  };
+  return update ? ui.update(i, opts) : ui.reply(i, opts);
+}
+
+async function casinoSetup(i) {
+  const [, verb, ...rest] = i.customId.split(':');
+  const st = unpackCas(rest);
+  if (st.owner && st.owner !== i.user.id) return ui.line(i, 'That is somebody else’s table — run **/casino** to open your own.', { title: '🎰 Casino' });
+  st.owner = i.user.id;
+  if (verb === 'open') return casinoMenu(i, st);
+  if (verb === 'game') { st.game = GAME_NAME[i.values?.[0]] ? i.values[0] : st.game; return casinoMenu(i, st, { update: true }); }
+  if (verb === 'bet') {
+    const v = i.values?.[0];
+    if (v === 'custom') return casinoAmountModal(i, st);
+    st.bet = v === 'all' ? 'all' : Math.max(0, Number(v) || 0);
+    return casinoMenu(i, st, { update: true });
+  }
+  if (verb === 'opt') {
+    const v = i.values?.[0];
+    if (st.game === 'roulette') { st.betOn = ['red', 'black', 'green', 'number'].includes(v) ? v : st.betOn; if (st.betOn === 'number' && st.num == null) return casinoNumberModal(i, st); }
+    else if (st.game === 'wheel') st.target = WHEEL_TARGETS.some(([m]) => m === Number(v)) ? Number(v) : st.target;
+    else if (st.game === 'plinko') st.risk = ['low', 'medium', 'high'].includes(v) ? v : st.risk;
+    return casinoMenu(i, st, { update: true });
+  }
+  if (verb === 'num') return casinoNumberModal(i, st);
+  if (verb === 'play') {
+    const cfg = (await config()).economy?.casino || {};
+    const max = Math.max(1, Number(cfg.maxBet) || 100);
+    let bet = st.bet;
+    if (bet === 'all') { const e = await api.economyUser(i.user.id); bet = Math.min(max, Number(e.points) || 0); }
+    if (!bet) return casinoMenu(i, st, { update: true });
+    return playCasino(i, { bet, game: st.game, betOn: st.betOn, num: st.num, target: st.target, risk: st.risk });
+  }
+  return casinoMenu(i, st, { update: true });
+}
+
+function casinoAmountModal(i, st) {
+  const modal = new ModalBuilder().setCustomId(`casm:bet:${packCas(st)}`).setTitle('Your bet')
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel('How many points?').setStyle(TextInputStyle.Short).setPlaceholder('e.g. 42').setMaxLength(9).setRequired(true)));
+  return i.showModal(modal);
+}
+function casinoNumberModal(i, st) {
+  const modal = new ModalBuilder().setCustomId(`casm:num:${packCas(st)}`).setTitle('Roulette — your number')
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('v').setLabel('A number from 0 to 36').setStyle(TextInputStyle.Short).setPlaceholder('17').setMaxLength(2).setRequired(true)));
+  return i.showModal(modal);
+}
+async function casinoModal(i) {
+  const [, kind, ...rest] = i.customId.split(':');
+  const st = unpackCas(rest);
+  if (st.owner && st.owner !== i.user.id) return ui.line(i, 'That is somebody else’s table.', { title: '🎰 Casino' });
+  const raw = (i.fields.getTextInputValue('v') || '').replace(/[^0-9]/g, '');
+  const v = raw === '' ? NaN : Number(raw);
+  if (kind === 'bet') st.bet = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : st.bet;
+  else if (kind === 'num') { st.betOn = 'number'; st.num = Number.isFinite(v) && v >= 0 && v <= 36 ? v : st.num; }
+  // A modal opened from a component can edit that component's message; one opened elsewhere
+  // (it cannot happen here, but a stale client can) gets a fresh card instead.
+  return casinoMenu(i, st, { update: typeof i.isFromMessage === 'function' && i.isFromMessage() });
 }
 
 async function casinoAgain(i) {

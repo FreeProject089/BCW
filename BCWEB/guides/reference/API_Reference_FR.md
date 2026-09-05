@@ -332,7 +332,7 @@ Clés nommées et limitées, créées par le propriétaire du compte pour l’AP
 | GET | `/v1/polls` | `polls:read` | Les sondages qui te sont ouverts, et ta réponse. |
 | POST | `/v1/polls/:id/vote` | `polls:write` | Répondre à un sondage. Remplace la réponse précédente, comme sur le site. |
 | GET | `/v1/polls/:id` | `polls:read` | Un sondage PUBLIC par id — ouvert **ou clos** — avec chaque id d'option (ce que prend `/vote`), la forme multi-questions (ids de question + de choix), `myVotes`, et le décompte dès qu'il peut être vu (après ta réponse, ou clos / `results: always`). Les sondages non listés et privés répondent 404. |
-| GET | `/v1/charity` | `charity:read` | La cagnotte Community Charity du mois — la même forme que le widget d'accueil : association, pourcentage, totaux, id + état ouvert du vote. |
+| GET | `/v1/charity` | `charity:read` | La cagnotte Community Charity du mois — la même forme que le widget d'accueil : association, pourcentage, totaux, id + état ouvert du vote, et `design` (l'apparence de la carte d'accueil : `mode` default/custom, `width`/`height` du cadre, `ink`, `align`, les URL d'images `backdrop`/`overflow`/`sticker` avec `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
 | GET | `/v1/economy` | `economy:read` | Ton niveau Discord, ton XP (ce niveau / jusqu'au suivant), tes points, tes compteurs d'activité et les taux d'XP. |
 | GET | `/v1/economy/purchases` | `economy:read` | Ce que tu as acheté en boutique de points, avec le code remis le cas échéant et son statut `delivered`/`pending`. |
 | GET | `/v1/badges` | `badges:read` | Les badges de ton profil, avec `earnedAt` et si c'est le staff ou une règle (`how`) qui les a accordés. |

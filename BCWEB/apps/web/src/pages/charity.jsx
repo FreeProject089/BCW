@@ -128,6 +128,100 @@ function PotSummary({ pot, t }) {
   );
 }
 
+// The frame widths the design can pick — the same table as the API's CHARITY_WIDTHS, so the
+// size the admin screen prints ("draw a 1152 × 720 image") is the size the page really uses.
+export const CHARITY_WIDTHS = { xl: 576, '2xl': 672, '3xl': 768 };
+export const CHARITY_DESIGN_DEFAULTS = { mode: 'default', width: 'xl', height: 360, frame: true, ink: 'auto', align: 'center', backdrop: '', backdropFit: 'cover', overflow: '', bleed: 64, sticker: '', stickerSize: 160, stickerCorner: 'tr', stickerOffset: 24, alt: '' };
+
+/** The canvas sizes (in px, at 2× for crisp rendering) an admin should draw for a design. */
+export function charityCanvasSizes(d) {
+  const w = CHARITY_WIDTHS[d.width] || CHARITY_WIDTHS.xl, h = Number(d.height) || 360, b = Number(d.bleed) || 0, s = Number(d.stickerSize) || 160;
+  return {
+    frame: { w, h },
+    backdrop: { w: w * 2, h: h * 2 },
+    overflow: { w: (w + 2 * b) * 2, h: (h + 2 * b) * 2, bleed: b * 2 },
+    sticker: { w: s * 2, h: s * 2 },
+  };
+}
+
+// The card itself — the landing widget AND the admin's live preview draw this one component,
+// so what the admin sees while uploading is what the home page shows.
+//   design.mode === 'default' → the plain glowing card;
+//   'custom' → the admin's artwork: a backdrop covering the frame, an overflow layer that
+//   spills `bleed` px past the frame on every side (drawn ABOVE the frame so a mascot can lean
+//   out of it, but under the text and buttons so nothing becomes unclickable), and a sticker
+//   pinned to a corner half outside. The frame's own border/background can be dropped when
+//   the artwork is the whole design.
+export function CharityCard({ pot, design, t, onGive, preview = false }) {
+  const d = { ...CHARITY_DESIGN_DEFAULTS, ...(design || {}) };
+  const custom = d.mode === 'custom' && (d.backdrop || d.overflow || d.sticker);
+  const buttons = (
+    <div className={`flex flex-wrap gap-2 mt-5 ${d.align === 'left' ? 'justify-start' : d.align === 'right' ? 'justify-end' : 'justify-center'}`}>
+      <Button variant="primary" onClick={onGive}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
+      <Link to={pot.poll?.id ? `/polls/${pot.poll.id}` : '/polls'} tabIndex={preview ? -1 : undefined}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
+      <Link to="/charity" tabIndex={preview ? -1 : undefined}><Button variant="ghost"><Info size={15} /> {t('ch.more', 'Learn more')}</Button></Link>
+    </div>
+  );
+  const heading = (
+    <>
+      <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--primary-2)]'} /> {t('ch.title', 'Community Charity')}</div>
+      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'Every month a share of our revenue — plus your gifts — goes to a charity the community chooses.')}</p>
+    </>
+  );
+  if (!custom) {
+    return (
+      <Card className="p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
+        <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
+        <div className="relative">
+          {heading}
+          <PotSummary pot={pot} t={t} />
+          {buttons}
+        </div>
+      </Card>
+    );
+  }
+  const W = CHARITY_WIDTHS[d.width] || CHARITY_WIDTHS.xl;
+  const bleed = d.overflow ? d.bleed : 0;
+  // The ink re-points the text TOKENS (not just `color`), so the muted/faint lines inside
+  // PotSummary follow too — they read var(--muted) / var(--faint), which the frame redefines.
+  const inkStyle = d.ink === 'light' ? { color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.35)', '--text': '#fff', '--muted': 'rgba(255,255,255,.82)', '--faint': 'rgba(255,255,255,.66)', '--surface-2': 'rgba(255,255,255,.18)' }
+    : d.ink === 'dark' ? { color: '#111', textShadow: '0 1px 0 rgba(255,255,255,.45)', '--text': '#111', '--muted': 'rgba(0,0,0,.7)', '--faint': 'rgba(0,0,0,.55)', '--surface-2': 'rgba(0,0,0,.12)' } : {};
+  const half = Math.round(d.stickerSize / 2);
+  const corner = {
+    tl: { top: -d.stickerOffset, left: -d.stickerOffset },
+    tr: { top: -d.stickerOffset, right: -d.stickerOffset },
+    bl: { bottom: -d.stickerOffset, left: -d.stickerOffset },
+    br: { bottom: -d.stickerOffset, right: -d.stickerOffset },
+  }[d.stickerCorner] || {};
+  const align = d.align === 'left' ? 'text-left items-start' : d.align === 'right' ? 'text-right items-end' : 'text-center items-center';
+  const pad = Math.max(bleed, d.sticker ? d.stickerOffset + half : 0);
+  return (
+    // The wrapper reserves the bleed + sticker overhang so a parent with overflow:hidden (or
+    // the next section) never clips the artwork that is meant to stick out.
+    <div className="relative mx-auto" style={{ maxWidth: W + 2 * pad, padding: pad }} data-charity-design="custom">
+      <div className={`relative ${d.frame ? 'card' : ''} ${align} flex flex-col justify-center p-6 md:p-8 overflow-visible`} style={{ minHeight: d.height, ...inkStyle }}>
+        {d.backdrop && (
+          <div className={`absolute inset-0 pointer-events-none ${d.frame ? 'rounded-[inherit] overflow-hidden' : ''}`} aria-hidden="true">
+            <img src={d.backdrop} alt="" className="w-full h-full block" style={{ objectFit: d.backdropFit }} draggable={false} />
+          </div>
+        )}
+        {d.overflow && (
+          <img src={d.overflow} alt={d.alt || ''} draggable={false} className="absolute pointer-events-none select-none z-[2]"
+            style={{ top: -bleed, left: -bleed, width: `calc(100% + ${2 * bleed}px)`, height: `calc(100% + ${2 * bleed}px)`, maxWidth: 'none', objectFit: 'fill' }} />
+        )}
+        {d.sticker && (
+          <img src={d.sticker} alt="" draggable={false} className="absolute pointer-events-none select-none z-[4] drop-shadow-lg" style={{ width: d.stickerSize, height: d.stickerSize, objectFit: 'contain', ...corner }} />
+        )}
+        <div className={`relative z-[3] flex flex-col ${align} w-full`}>
+          {heading}
+          <div className={d.align === 'center' ? 'w-full' : 'w-full max-w-md'}><PotSummary pot={pot} t={t} /></div>
+          {buttons}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function CharityWidget() {
   const { t } = useI18n();
   const { data } = useAsync(() => api.get('/charity/current').catch(() => null), []);
@@ -135,19 +229,7 @@ export function CharityWidget() {
   if (!data || data.enabled === false) return null; // charity off → render nothing
   return (
     <section className="reveal-on-scroll">
-      <Card className="p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
-        <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
-        <div className="relative">
-          <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className="text-[var(--primary-2)]" /> {t('ch.title', 'Community Charity')}</div>
-          <p className="text-xs text-[var(--muted)] mb-4">{t('ch.sub', 'Every month a share of our revenue — plus your gifts — goes to a charity the community chooses.')}</p>
-          <PotSummary pot={data} t={t} />
-          <div className="flex flex-wrap gap-2 justify-center mt-5">
-            <Button variant="primary" onClick={() => setGiving(true)}><Heart size={15} /> {t('ch.give.cta', 'Increase the pot')}</Button>
-            <Link to={data.poll?.id ? `/polls/${data.poll.id}` : '/polls'}><Button><Vote size={15} /> {t('ch.vote', 'Vote')}</Button></Link>
-            <Link to="/charity"><Button variant="ghost"><Info size={15} /> {t('ch.more', 'Learn more')}</Button></Link>
-          </div>
-        </div>
-      </Card>
+      <CharityCard pot={data} design={data.design} t={t} onGive={() => setGiving(true)} />
       {giving && <ContributeModal pot={data} onClose={() => setGiving(false)} />}
     </section>
   );

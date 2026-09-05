@@ -326,7 +326,7 @@ Named, scoped keys the account owner mints for the public API. Every `/v1/*` rou
 | GET | `/v1/polls` | `polls:read` | Polls open to you, and how you answered. |
 | POST | `/v1/polls/:id/vote` | `polls:write` | Answer a poll. Replaces a previous answer, like the site. |
 | GET | `/v1/polls/:id` | `polls:read` | One PUBLIC poll by id — open **or closed** — with every option id (what `/vote` takes), the multi-question form (question ids + choice ids), `myVotes`, and the tally once it may be seen (after you answer, or when closed / `results: always`). Unlisted and private polls answer 404. |
-| GET | `/v1/charity` | `charity:read` | The Community Charity pot this month — the same shape the landing widget reads: association, percent, totals, the vote's id + open flag. |
+| GET | `/v1/charity` | `charity:read` | The Community Charity pot this month — the same shape the landing widget reads: association, percent, totals, the vote's id + open flag, and `design` (the landing card's look: `mode` default/custom, frame `width`/`height`, `ink`, `align`, the `backdrop`/`overflow`/`sticker` image URLs with `bleed`, `stickerSize`, `stickerCorner`, `stickerOffset`). |
 | GET | `/v1/economy` | `economy:read` | Your Discord level, XP (this level / to next), points, activity counts and the XP rates. |
 | GET | `/v1/economy/purchases` | `economy:read` | What you bought in the points shop, with any code handed over and its `delivered`/`pending` status. |
 | GET | `/v1/badges` | `badges:read` | The badges on your profile, with `earnedAt` and whether staff or a rule (`how`) granted them. |

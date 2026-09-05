@@ -1955,9 +1955,13 @@ export default async function botRoutes(app) {
     if (!link) return { ok: false, error: 'not_linked' };
     const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     if ((cur?.points || 0) < b.data.bet) return { ok: false, error: 'insufficient', points: cur?.points || 0 };
-    const edge = 1 - (Number(eco.casino.houseEdgePct) || 0) / 100;
-    // Net delta = payout − bet. Payout = bet · multiplier · edge (edge already prices the house in).
-    const payout = Math.floor(b.data.bet * b.data.multiplier * edge);
+    // The house edge is a tax on the PROFIT of a winning play, never on the stake: a 1× bucket
+    // gives the bet back to the point, a 0.3× bucket returns exactly 30 % of it, a 2× flip pays
+    // bet + (bet · edge). The old formula taxed the whole payout (a 1× "win" lost 5 %) and
+    // floored it (a 3-point bet in the 0.3× bucket returned 0, more than the game promised).
+    const edge = 1 - Math.min(100, Math.max(0, Number(eco.casino.houseEdgePct) || 0)) / 100;
+    const m = b.data.multiplier;
+    const payout = Math.max(0, Math.round(m >= 1 ? b.data.bet + (b.data.bet * m - b.data.bet) * edge : b.data.bet * m));
     const delta = payout - b.data.bet;
     const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game || null, meta: { game: b.data.game || null, bet: b.data.bet, multiplier: b.data.multiplier, payout } });
     return { ok: true, delta, payout, points: newPts };

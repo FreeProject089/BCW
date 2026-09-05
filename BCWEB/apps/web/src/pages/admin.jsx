@@ -29,6 +29,7 @@ const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { I18nDraft } from '../i18n.jsx';
+import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes } from './charity.jsx';
 import { useAuth } from './auth.jsx';
 import { utilAllowed, effectiveCaps } from '../lib/roles.js';
 import { readLayout, navAlignClass } from '../lib/navLayout.js';
@@ -14106,15 +14107,26 @@ function AdminBot() {
             <Field label={t('db.eco.edge', 'House edge %')} className="!mb-0"><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
           </div>
           {(() => {
-            const edge = 1 - (Number(eco.casino?.houseEdgePct) || 0) / 100;
+            const edge = 1 - Math.min(100, Math.max(0, Number(eco.casino?.houseEdgePct) || 0)) / 100;
+            // Same pricing as the API: the edge taxes the PROFIT of a winning outcome only — a 1×
+            // bucket returns the stake, a 0.3× bucket returns 30 % of it, a 2× win pays 1 + edge.
             const C = [1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]; const T = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
-            const rtp = (k) => T[k].reduce((acc, m, i) => acc + (C[i] / 1024) * m, 0);
-            const GAMES = [['🪙', t('db.eco.game.coin', 'Coin flip'), 1.0, '2× · 50%'], ['🎲', t('db.eco.game.dice', 'Dice'), 1.0, '2× · 50%'], ['🎰', t('db.eco.game.slots', 'Slots'), 1.04, '8× / 1.5×'], ['🎡', t('db.eco.game.roulette', 'Roulette'), 36 / 37, '2× · 14× · 35×'], ['🎯', t('db.eco.game.wheel', 'Wheel'), 0.9, '2×…50×'], ['🟡', t('db.eco.game.plinko', 'Plinko'), rtp('medium'), `${rtp('low').toFixed(2)} · ${rtp('medium').toFixed(2)} · ${rtp('high').toFixed(2)}`]];
+            const rtp = (outs) => outs.reduce((acc, [pr, m]) => acc + pr * (m >= 1 ? 1 + (m - 1) * edge : m), 0);
+            const plinko = (k) => rtp(T[k].map((m, i) => [C[i] / 1024, m]));
+            const two = [[0.5, 2], [0.5, 0]];
+            const GAMES = [
+              ['🪙', t('db.eco.game.coin', 'Coin flip'), rtp(two), '2× · 50%'],
+              ['🎲', t('db.eco.game.dice', 'Dice'), rtp(two), '2× · 50%'],
+              ['🎰', t('db.eco.game.slots', 'Slots'), rtp([[0.04, 8], [0.48, 1.5], [0.48, 0]]), '8× / 1.5×'],
+              ['🎡', t('db.eco.game.roulette', 'Roulette'), rtp([[18 / 37, 2], [19 / 37, 0]]), '2× · 14× · 35×'],
+              ['🎯', t('db.eco.game.wheel', 'Wheel'), rtp([[0.45, 2], [0.55, 0]]), '2×…50×'],
+              ['🟡', t('db.eco.game.plinko', 'Plinko'), plinko('medium'), `${plinko('low').toFixed(2)} · ${plinko('medium').toFixed(2)} · ${plinko('high').toFixed(2)}`],
+            ];
             return (
               <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
                 <Lbl>{t('db.eco.payoutprev2', 'Return to player, after the house edge')}</Lbl>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                  {GAMES.map(([emoji, name, base0, odds]) => { const eff = base0 * edge; const take = 1 - eff; return (
+                  {GAMES.map(([emoji, name, eff, odds]) => { const take = 1 - eff; return (
                     <div key={name} className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">
                       <div className="text-xs font-medium">{emoji} {name}</div>
                       <div className="text-[10px] text-[var(--faint)] tabular-nums">{odds}</div>
@@ -14122,7 +14134,7 @@ function AdminBot() {
                     </div>
                   ); })}
                 </div>
-                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote2', 'RTP = share of a bet paid back on average. Above 100% means players win long-term — slots pays 104% before the edge, so keep the edge above 4%.')}</p>
+                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote3', 'RTP = share of a bet paid back on average. The edge only taxes the profit of a winning play: a 1× bucket gives the whole bet back, a 0.3× bucket exactly 30 % of it. Above 100 % means players win long-term — slots pays 104 % with no edge, keep it above 8 %.')}</p>
               </div>
             );
           })()}
@@ -20300,6 +20312,99 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
 // at 50 server-side) and default association, see the org-share preview computed from the real
 // mrr − monthlyBurn, and manage this month's pot: link the association vote, set the chosen
 // association, move its status. Payment stays manual — nothing here moves money.
+// The landing widget's look. Not colour presets: the admin DRAWS the design at the sizes
+// printed here (frame, backdrop, overflow layer with its bleed, sticker), uploads each layer,
+// and the preview below is the very component the home page renders — with this month's
+// pot numbers — so the artwork is judged on the real card, not a mock-up.
+function CharityDesignEditor({ design, onChange, pot, currency }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const d = { ...CHARITY_DESIGN_DEFAULTS, ...(design || {}) };
+  const set = (k, v) => onChange({ ...d, [k]: v });
+  const sizes = charityCanvasSizes(d);
+  const pick = (key) => {
+    const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/png,image/webp,image/svg+xml,image/jpeg,image/gif';
+    i.onchange = async () => {
+      const file = i.files?.[0]; if (!file) return;
+      try { toast.info(t('chc.design.uploading', 'Uploading…')); const url = await uploadImage(file); set(key, url); }
+      catch { toast.error(t('chc.design.uploadfail', 'Upload failed.')); }
+    };
+    i.click();
+  };
+  const px = (o) => `${o.w} × ${o.h} px`;
+  // A plain render function, not a nested component: a component declared inside render
+  // remounts on every keystroke and the URL box would lose focus while typing.
+  const layer = (k, title, hint, size) => (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{title}</div>
+          <div className="text-[11px] text-[var(--muted)] leading-snug">{hint}</div>
+        </div>
+        {d[k] ? <img src={d[k]} alt="" className="w-14 h-14 rounded-md object-contain bg-[var(--bg-solid)] border border-[var(--line)] shrink-0" /> : null}
+      </div>
+      <div className="text-[11px] tabular-nums"><span className="text-[var(--faint)]">{t('chc.design.canvas', 'Canvas to draw')}:</span> <b>{size}</b> <span className="text-[var(--faint)]">{t('chc.design.2x', '(2× for sharp rendering — transparent PNG or WebP)')}</span></div>
+      <div className="flex flex-wrap gap-2 items-center">
+        <Button size="sm" onClick={() => pick(k)}><Upload size={14} /> {d[k] ? t('chc.design.replace', 'Replace') : t('chc.design.upload', 'Upload')}</Button>
+        <Input className="flex-1 min-w-[10rem] !py-1 text-xs" placeholder={t('chc.design.urlph', '…or paste an image URL')} value={d[k]} onChange={(e) => set(k, e.target.value)} />
+        {d[k] ? <Button size="sm" variant="ghost" onClick={() => set(k, '')}><X size={14} /></Button> : null}
+      </div>
+    </div>
+  );
+  // The preview uses the real pot when there is one, else a plausible month so the artwork is
+  // judged with numbers on it.
+  const previewPot = pot ? { ...pot, currency, poll: pot.pollId ? { id: pot.pollId, question: t('chc.design.pollph', 'Which association this month?'), open: true } : null, presets: [] }
+    : { totalCents: 42000, orgContribCents: 30000, communityCents: 12000, currency, association: '', percent: 10, status: 'open', poll: null, presets: [] };
+  return (
+    <div className="mt-5 pt-4 border-t border-[var(--line)]">
+      <h3 className="font-medium mb-1 flex items-center gap-2"><Palette size={15} /> {t('chc.design.t', 'Landing design')}</h3>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('chc.design.sub', 'Make the charity card yours: pick the frame size, draw the artwork at the canvas sizes printed below, upload each layer. The overflow layer is allowed to spill out of the card; the sticker hangs off a corner. The preview is the exact card the home page shows.')}</p>
+      <div className="flex flex-wrap gap-2 mb-3">
+        {[['default', t('chc.design.mode.default', 'Default card')], ['custom', t('chc.design.mode.custom', 'Custom artwork')]].map(([v, l]) => (
+          <button key={v} type="button" onClick={() => set('mode', v)} className={`px-3 py-1.5 rounded-lg text-sm border ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/10 font-medium' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>{l}</button>
+        ))}
+      </div>
+      {d.mode === 'custom' && (
+        <>
+          <div className="grid gap-2 sm:grid-cols-4 mb-3">
+            <Field label={t('chc.design.width', 'Frame width')} className="!mb-0"><Dropdown value={d.width} onChange={(v) => set('width', v)} options={Object.entries(CHARITY_WIDTHS).map(([k, w]) => ({ value: k, label: `${w} px` }))} /></Field>
+            <Field label={t('chc.design.height', 'Frame min height (px)')} className="!mb-0"><Input type="number" min="200" max="720" value={d.height} onChange={(e) => set('height', Number(e.target.value) || 360)} /></Field>
+            <Field label={t('chc.design.ink', 'Text ink')} className="!mb-0"><Dropdown value={d.ink} onChange={(v) => set('ink', v)} options={[{ value: 'auto', label: t('chc.design.ink.auto', 'Theme (auto)') }, { value: 'light', label: t('chc.design.ink.light', 'Light — over dark artwork') }, { value: 'dark', label: t('chc.design.ink.dark', 'Dark — over light artwork') }]} /></Field>
+            <Field label={t('chc.design.align', 'Text & buttons')} className="!mb-0"><Dropdown value={d.align} onChange={(v) => set('align', v)} options={[{ value: 'center', label: t('chc.design.align.center', 'Centered') }, { value: 'left', label: t('chc.design.align.left', 'Left — artwork on the right') }, { value: 'right', label: t('chc.design.align.right', 'Right — artwork on the left') }]} /></Field>
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none mb-3">
+            <input type="checkbox" className="accent-[var(--primary)]" checked={d.frame} onChange={(e) => set('frame', e.target.checked)} /> {t('chc.design.frame', 'Keep the card frame (border + background) under the artwork')}
+          </label>
+          <div className="text-[11px] text-[var(--muted)] mb-2 tabular-nums">{t('chc.design.framesize', 'The frame on the page is {w} px wide and at least {h} px tall.').replace('{w}', sizes.frame.w).replace('{h}', sizes.frame.h)}</div>
+          <div className="grid gap-2 md:grid-cols-3">
+            {layer('backdrop', t('chc.design.backdrop', 'Backdrop'), t('chc.design.backdrop.h', 'Fills the frame edge to edge, behind the text.'), px(sizes.backdrop))}
+            {layer('overflow', t('chc.design.overflow', 'Overflow layer'), t('chc.design.overflow.h', 'Transparent image laid OVER the frame that spills past it by the bleed on every side — a mascot leaning out, a ribbon, confetti. Keep the middle clear: text sits on top.'), `${px(sizes.overflow)} · ${t('chc.design.bleedis', 'bleed {b} px on each side').replace('{b}', sizes.overflow.bleed)}`)}
+            {layer('sticker', t('chc.design.sticker', 'Corner sticker'), t('chc.design.sticker.h', 'A small image pinned to one corner, sticking out of the frame.'), px(sizes.sticker))}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-4 mt-2">
+            <Field label={t('chc.design.fit', 'Backdrop fit')} className="!mb-0"><Dropdown value={d.backdropFit} onChange={(v) => set('backdropFit', v)} options={[{ value: 'cover', label: t('chc.design.fit.cover', 'Cover (crop)') }, { value: 'contain', label: t('chc.design.fit.contain', 'Contain (letterbox)') }]} /></Field>
+            <Field label={t('chc.design.bleed', 'Overflow bleed (px)')} className="!mb-0"><Input type="number" min="0" max="200" value={d.bleed} onChange={(e) => set('bleed', Number(e.target.value) || 0)} /></Field>
+            <Field label={t('chc.design.stickersize', 'Sticker size (px)')} className="!mb-0"><Input type="number" min="48" max="320" value={d.stickerSize} onChange={(e) => set('stickerSize', Number(e.target.value) || 160)} /></Field>
+            <Field label={t('chc.design.stickercorner', 'Sticker corner · overhang')} className="!mb-0">
+              <div className="flex gap-1.5">
+                <Dropdown className="flex-1" value={d.stickerCorner} onChange={(v) => set('stickerCorner', v)} options={[{ value: 'tl', label: '↖' }, { value: 'tr', label: '↗' }, { value: 'bl', label: '↙' }, { value: 'br', label: '↘' }]} />
+                <Input type="number" min="0" max="160" className="w-20" value={d.stickerOffset} onChange={(e) => set('stickerOffset', Number(e.target.value) || 0)} />
+              </div>
+            </Field>
+          </div>
+          <Field label={t('chc.design.alt', 'Artwork description (accessibility)')} className="mt-2 !mb-0"><Input maxLength={200} value={d.alt} onChange={(e) => set('alt', e.target.value)} placeholder={t('chc.design.altph', 'e.g. Our mascot holding a donation jar')} /></Field>
+        </>
+      )}
+      <div className="mt-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('chc.design.preview', 'Preview — the card as the home page draws it')}</div>
+        <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)] p-4 overflow-x-auto">
+          <CharityCard pot={previewPot} design={d} t={t} onGive={() => {}} preview />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CharityAdminCard() {
   const { t } = useI18n();
   const toast = useToast();
@@ -20320,7 +20425,7 @@ function CharityAdminCard() {
   const saveConfig = async () => {
     setBusy(true);
     try {
-      const r = await api.put('/admin/charity', { enabled: cfg.enabled, percent: Number(cfg.percent) || 0, currency: cfg.currency, association: cfg.association });
+      const r = await api.put('/admin/charity', { enabled: cfg.enabled, percent: Number(cfg.percent) || 0, currency: cfg.currency, association: cfg.association, design: cfg.design || CHARITY_DESIGN_DEFAULTS });
       setCfg(r.config); toast.success(t('chc.saved', 'Saved.')); reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
@@ -20357,6 +20462,7 @@ function CharityAdminCard() {
         <span className="text-[var(--muted)]">{t('chc.eligible', 'Eligible recurring revenue')}: <b className="text-[var(--text)] tabular-nums">{money(pv.eligibleCents)}</b></span>
         <span>{t('chc.orgadds', 'BetterCommunity adds {n} at {p}%').replace('{n}', money(pv.orgShareCents)).replace('{p}', pv.percent ?? cfg.percent)}</span>
       </div>
+      <CharityDesignEditor design={cfg.design || CHARITY_DESIGN_DEFAULTS} onChange={(d) => setCfg((c) => ({ ...c, design: d }))} pot={data.pot} preview={data.preview} currency={cfg.currency} />
       <div className="flex justify-end mt-3"><Button variant="primary" loading={busy} onClick={saveConfig}><Save size={15} /> {t('chc.save', 'Save')}</Button></div>
 
       {pot && (
