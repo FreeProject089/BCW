@@ -112,6 +112,7 @@ model User {
   sessions         Session[]
   economy          UserEconomy?
   purchases        EconomyPurchase[]
+  ledger           EconomyLedger[]
   createdAt        DateTime       @default(now())
 
   // ── 2FA (TOTP) — see totp.mjs. Recovery codes are argon2 hashes, one-time use. ──
@@ -3313,6 +3314,8 @@ model BotAction {
   reason      String @default("")
   /// For a timeout, and for a ban that should lift itself. Null means permanent.
   minutes     Int?
+  /// For role_add / role_remove: the role to give or take.
+  roleId      String?
 
   requestedBy      User?   @relation("BotActionRequester", fields: [requestedById], references: [id], onDelete: SetNull)
   requestedById    String?
@@ -3592,8 +3595,32 @@ model EconomyPurchase {
   via       String   @default("site") // "site" | "discord"
   status    String   @default("delivered") // "delivered" | "pending"
   delivery  Json?
+  // A code is minted on reveal (see lib/economy-shop.mjs), and may then expire; a giftable
+  // purchase can change hands, and the giver is remembered.
+  revealedAt   DateTime?
+  expiresAt    DateTime?
+  giftedFromId String?
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
   @@index([status])
+  @@index([itemId])
+}
+
+// Every movement of points, whichever door moved them: level-up grants, staff grants,
+// purchases, casino plays, gifts both ways. The histories on both dashboards read this
+// table; `economy.historyDays` decides how long it is kept.
+model EconomyLedger {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String   // levelup | grant | purchase | casino | gift_out | gift_in | gift_item_out | gift_item_in | refund
+  delta     Int
+  balance   Int
+  ref       String?
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
 }

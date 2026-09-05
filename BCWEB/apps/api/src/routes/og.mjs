@@ -332,6 +332,57 @@ export default async function ogRoutes(app) {
     } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino card failed'); return reply.code(500).send({ error: 'render_failed' }); }
   });
 
+  // The leaderboard as one picture — the bot attaches it to /leaderboard. `guildId` narrows
+  // it to a server's linked members; `me` (a user id) highlights that row.
+  app.get('/og/leaderboard.png', async (req, reply) => {
+    const p = await db();
+    const guildId = String(req.query?.guildId || '');
+    const meId = String(req.query?.me || '');
+    let where = { level: { gt: 0 } };
+    let scopeName = 'Global';
+    if (guildId) {
+      const ids = (await p.discordActivity.findMany({ where: { guildId }, select: { discordId: true }, take: 20000 })).map((r) => r.discordId);
+      const userIds = (await p.discordLink.findMany({ where: { discordId: { in: ids } }, select: { userId: true } })).map((l) => l.userId);
+      where = { level: { gt: 0 }, userId: { in: userIds } };
+      scopeName = (await p.botGuild.findFirst({ where: { guildId }, select: { name: true } }))?.name || 'Server';
+    }
+    const rows = await p.userEconomy.findMany({ where, include: { user: { select: { id: true, displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
+    const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
+    try {
+      const { createCanvas, loadImage } = await import('@napi-rs/canvas');
+      const W = 900, ROW = 58, TOP = 96, H = TOP + Math.max(1, rows.length) * ROW + 28;
+      const c = createCanvas(W, H); const x = c.getContext('2d');
+      const bg = x.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0f1420'); bg.addColorStop(1, '#1a1024'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+      x.fillStyle = 'rgba(245,158,11,0.9)'; x.fillRect(0, 0, W, 6);
+      x.fillStyle = '#fff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+      x.fillText('🏆 Leaderboard', 32, 56);
+      x.font = '500 20px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillText(`${scopeName} · by level`, 32, 82);
+      x.textAlign = 'right'; x.fillText('BetterCommunity', W - 32, 56); x.textAlign = 'left';
+      const cur = eco.currencyName || 'points';
+      const medals = ['#f5c542', '#c0c6d0', '#cd7f32'];
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i]; const y = TOP + i * ROW;
+        const mine = meId && r.user.id === meId;
+        x.fillStyle = mine ? 'rgba(245,158,11,0.16)' : i % 2 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)';
+        x.beginPath(); x.roundRect?.(20, y, W - 40, ROW - 8, 12); if (!x.roundRect) x.rect(20, y, W - 40, ROW - 8); x.fill();
+        // rank badge
+        x.fillStyle = medals[i] || 'rgba(255,255,255,0.14)'; x.beginPath(); x.arc(52, y + (ROW - 8) / 2, 16, 0, Math.PI * 2); x.fill();
+        x.fillStyle = i < 3 ? '#1a1206' : '#fff'; x.font = 'bold 17px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 52, y + (ROW - 8) / 2 + 1);
+        // avatar
+        try { const av = await loadImage(`${SITE()}/avatar/${encodeURIComponent(r.user.id)}`); x.save(); x.beginPath(); x.arc(98, y + (ROW - 8) / 2, 18, 0, Math.PI * 2); x.clip(); x.drawImage(av, 80, y + (ROW - 8) / 2 - 18, 36, 36); x.restore(); } catch { x.fillStyle = 'rgba(255,255,255,0.12)'; x.beginPath(); x.arc(98, y + (ROW - 8) / 2, 18, 0, Math.PI * 2); x.fill(); }
+        x.textAlign = 'left'; x.fillStyle = '#fff'; x.font = `${mine ? 'bold' : '600'} 21px sans-serif`; x.fillText(String(r.user.displayName || 'Member').slice(0, 26), 130, y + (ROW - 8) / 2);
+        x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.85)'; x.font = '600 18px sans-serif'; x.fillText(`${r.points.toLocaleString('en-US')} ${cur}`, W - 40, y + (ROW - 8) / 2);
+        x.fillStyle = '#f59e0b'; x.font = 'bold 18px sans-serif'; x.fillText(`Lv ${r.level}`, W - 230, y + (ROW - 8) / 2);
+        // xp bar under the name
+        x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(130, y + ROW - 18, 420, 4);
+        x.fillStyle = 'rgba(245,158,11,0.75)'; x.fillRect(130, y + ROW - 18, Math.max(6, Math.round(420 * (r.xp / Math.max(1, rows[0].xp)))), 4);
+      }
+      if (!rows.length) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.font = '500 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Nobody has a level yet.', W / 2, TOP + ROW / 2); }
+      const png = await c.encode('png');
+      return reply.header('Content-Type', 'image/png').header('Cache-Control', 'public, max-age=60').header('X-Robots-Tag', 'noindex').send(png);
+    } catch { return reply.redirect(LOGO()); }
+  });
+
   app.get('/og/profile/:id', async (req, reply) => {
     const id = String(req.params.id || '').replace(/\.(png|webp|jpe?g)$/i, '');
     if (!id) return reply.redirect(LOGO());

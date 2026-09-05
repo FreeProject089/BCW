@@ -4,7 +4,9 @@ import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, admitMembers, capacityStatus, logModeration } from '../lib/discord-storage.mjs';
-import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS } from '../lib/economy-shop.mjs';
+import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser } from '../lib/economy-shop.mjs';
+import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
+import { ICONS as BOT_ICONS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView } from '../lib/economy-curve.mjs';
@@ -31,6 +33,7 @@ const genCode = () => Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABE
 
 // Default bot configuration. Admins edit a subset from the dashboard; the bot reads
 // the merged result. Kept here so a fresh install has sane values.
+const SITE_URL = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const DEFAULT_BOT_CONFIG = {
   enabled: true,
   moderation: { enabled: true, antiSelfbot: true, purgeChannelId: '', clearMax: 100 },
@@ -136,6 +139,13 @@ const DEFAULT_BOT_CONFIG = {
     // (award a badge, mint an assigned promo code); ref = badge/role id, amount = GB or days.
     shop: [],
     casino: { enabled: false, minBet: 1, maxBet: 100, houseEdgePct: 5 },
+    // Members handing points to each other (/gift, the site's Boutique). A daily cap per giver
+    // keeps a compromised account from draining itself into another in one go; 0 = no cap.
+    gifts: { enabled: true, min: 1, maxPerDay: 0 },
+    // How long the point ledger (purchases, casino, gifts, grants) is kept. 0 = forever.
+    historyDays: 180,
+    // Custom emoji for the bot's buttons: { [key]: '<:name:id>' } — see lib/bot-emoji.mjs.
+    icons: {},
   },
   // Self-serve role panels — a rules post, or a "pick your pings" post, with the roles
   // attached to it as buttons or as a dropdown. Each entry:
@@ -375,9 +385,9 @@ export default async function botRoutes(app) {
     let serversByPerson = {};
     if (unified && rows.length) {
       const ids = rows.map((r) => r.discordId);
-      const allRows = await p.discordActivity.findMany({ where: { discordId: { in: ids } }, select: { discordId: true, guildId: true } });
+      const allRows = await p.discordActivity.findMany({ where: { discordId: { in: ids } }, select: { discordId: true, guildId: true, roles: true } });
       const gnames = Object.fromEntries((await p.botGuild.findMany({ where: { guildId: { in: [...new Set(allRows.map((r) => r.guildId))] } }, select: { guildId: true, name: true } })).map((g) => [g.guildId, g.name]));
-      for (const r of allRows) (serversByPerson[r.discordId] ||= []).push({ guildId: r.guildId, name: gnames[r.guildId] || r.guildId });
+      for (const r of allRows) (serversByPerson[r.discordId] ||= []).push({ guildId: r.guildId, name: gnames[r.guildId] || r.guildId, roles: r.roles || [] });
     }
     // Distinct role names across the roster. Capped: a server with thousands of roles
     // should slow nothing down, and a picker past a few hundred entries is unusable anyway.
@@ -393,6 +403,9 @@ export default async function botRoutes(app) {
       // name to remember. Built from the rows the scan holds, which is the only place this
       // service knows about roles at all.
       roles: allRoles,
+      // Per guild: the assignable roles by id, from the last heartbeat — what the Manage
+      // roles menu offers, and the map from a stored role NAME to an id it can act on.
+      guildRoles: Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).map((g) => [g.id, { name: g.name, roles: (g.roles || []).map((r) => ({ id: r.id, name: r.name, color: r.color || null })) }])),
     };
   });
 
@@ -1250,7 +1263,7 @@ export default async function botRoutes(app) {
   // Queued, not called. See the BotAction model: the API has no way to reach Discord, and the
   // outcome matters — a ban Discord refuses because the bot's own role sits below the target's
   // is a normal, frequent failure that a moderator must SEE rather than assume away.
-  const ACTIONS = ['ban', 'unban', 'kick', 'timeout', 'untimeout'];
+  const ACTIONS = ['ban', 'unban', 'kick', 'timeout', 'untimeout', 'role_add', 'role_remove'];
 
   app.post('/admin/bot/actions', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const b = z.object({
@@ -1261,11 +1274,13 @@ export default async function botRoutes(app) {
       // reason to undo something is how an undo stops being used.
       reason: z.string().trim().max(500).optional(),
       minutes: z.number().int().min(1).max(60 * 24 * 28).optional(),
+      roleId: z.string().max(32).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    const { kind, discordId, minutes, guildId } = b.data;
+    const { kind, discordId, minutes, guildId, roleId } = b.data;
     const reason = (b.data.reason || '').trim();
     if (['ban', 'kick', 'timeout'].includes(kind) && !reason) return reply.code(400).send({ error: 'reason_required' });
+    if (kind.startsWith('role_') && (!roleId || !guildId)) return reply.code(400).send({ error: 'role_required' });
     // Discord's own ceiling. Asking for 40 days silently becomes 28, so it is refused instead.
     if (kind === 'timeout' && !minutes) return reply.code(400).send({ error: 'minutes_required' });
 
@@ -1278,7 +1293,7 @@ export default async function botRoutes(app) {
     ]);
     const action = await p.botAction.create({
       data: {
-        kind, discordId, guildId: guildId || null, minutes: minutes ?? null, reason,
+        kind, discordId, guildId: guildId || null, minutes: minutes ?? null, roleId: roleId || null, reason,
         targetLabel: member?.username || discordId,
         requestedById: req.user.uid,
         requestedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · ').slice(0, 200),
@@ -1600,6 +1615,7 @@ export default async function botRoutes(app) {
       // A level crossed is an event people subscribe to (and a badge rule can listen for);
       // plain activity only matters to the message-count rule. Neither is awaited.
       if (newLevel > oldLevel) {
+        if (pointsDelta > 0) ledger(p, { userId, kind: 'levelup', delta: pointsDelta, balance: fresh.points, meta: { level: newLevel, from: oldLevel } }).catch(() => {});
         emitWebhook(p, userId, 'economy.level_up', { level: newLevel, from: oldLevel, xp: newXp, pointsGranted: pointsDelta }).catch(() => {});
         grantAutoBadges(p, { event: 'level', user: { id: userId }, level: newLevel, economy: fresh }).catch(() => {});
       } else if (msgs > 0) {
@@ -1620,8 +1636,16 @@ export default async function botRoutes(app) {
   app.get('/bot/economy/leaderboard', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
-    const rows = await p.userEconomy.findMany({ where: { level: { gt: 0 } }, include: { user: { select: { id: true, displayName: true, avatar: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
-    const out = { members: rows.map((r) => ({ userId: r.user.id, displayName: r.user.displayName, avatar: r.user.avatar || null, level: r.level, xp: r.xp, points: r.points })), total: await p.userEconomy.count({ where: { level: { gt: 0 } } }) };
+    // Server scope: the members the bot stored for that guild who linked an account.
+    const guildId = String(req.query?.guildId || '');
+    let scopeWhere = { level: { gt: 0 } };
+    if (guildId) {
+      const ids = (await p.discordActivity.findMany({ where: { guildId }, select: { discordId: true }, take: 20000 })).map((r) => r.discordId);
+      const userIds = (await p.discordLink.findMany({ where: { discordId: { in: ids } }, select: { userId: true } })).map((l) => l.userId);
+      scopeWhere = { level: { gt: 0 }, userId: { in: userIds } };
+    }
+    const rows = await p.userEconomy.findMany({ where: scopeWhere, include: { user: { select: { id: true, displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
+    const out = { scope: guildId ? 'server' : 'global', members: rows.map((r) => ({ userId: r.user.id, displayName: r.user.displayName, avatar: `/avatar/${encodeURIComponent(r.user.id)}`, level: r.level, xp: r.xp, points: r.points })), total: await p.userEconomy.count({ where: scopeWhere }) };
     // The caller's own place, so "/leaderboard" can say "you: #37" even when they are not in
     // the top ten — the number that makes somebody want to climb.
     const discordId = String(req.query?.discordId || '');
@@ -1629,7 +1653,7 @@ export default async function botRoutes(app) {
       const link = await p.discordLink.findUnique({ where: { discordId }, select: { userId: true } });
       const me = link ? await p.userEconomy.findUnique({ where: { userId: link.userId } }) : null;
       if (me && me.level > 0) {
-        const ahead = await p.userEconomy.count({ where: { OR: [{ level: { gt: me.level } }, { level: me.level, xp: { gt: me.xp } }] } });
+        const ahead = await p.userEconomy.count({ where: { AND: [scopeWhere, { OR: [{ level: { gt: me.level } }, { level: me.level, xp: { gt: me.xp } }] }] } });
         out.me = { rank: ahead + 1, level: me.level, xp: me.xp, points: me.points };
       }
     }
@@ -1640,9 +1664,43 @@ export default async function botRoutes(app) {
   app.get('/bot/economy/purchases/:discordId', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
     const link = await p.discordLink.findUnique({ where: { discordId: req.params.discordId }, select: { userId: true } });
     if (!link) return { linked: false, purchases: [] };
-    return { linked: true, purchases: await listPurchases(p, link.userId, 50) };
+    return { linked: true, purchases: await listPurchases(p, eco, link.userId, 50) };
+  });
+  app.post('/bot/economy/reveal', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordId: z.string().min(1).max(32), purchaseId: z.string().min(1).max(64) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
+    if (!link) return { ok: false, error: 'not_linked' };
+    return revealPurchase(p, eco, { userId: link.userId, purchaseId: b.data.purchaseId });
+  });
+  // /gift from Discord: points, or a purchase, to another member named by Discord id or site name.
+  app.post('/bot/economy/gift', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ discordId: z.string().min(1).max(32), toDiscordId: z.string().max(32).optional(), to: z.string().max(120).optional(), points: z.number().int().min(1).max(10000000).optional(), purchaseId: z.string().max(64).optional(), note: z.string().max(140).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const from = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
+    if (!from) return { ok: false, error: 'not_linked' };
+    let toId = null;
+    if (b.data.toDiscordId) toId = (await p.discordLink.findUnique({ where: { discordId: b.data.toDiscordId }, select: { userId: true } }))?.userId || null;
+    else if (b.data.to) toId = (await resolveUser(p, b.data.to, { looksLikeBcId, findUserIdByBcId }))?.id || null;
+    if (!toId) return { ok: false, error: b.data.toDiscordId ? 'recipient_not_linked' : 'no_such_user' };
+    if (b.data.purchaseId) return giftPurchase(p, eco, { fromUserId: from.userId, purchaseId: b.data.purchaseId, toUserId: toId });
+    return giftPoints(p, eco, { fromUserId: from.userId, toUserId: toId, points: b.data.points || 0, note: b.data.note, via: 'discord' });
+  });
+  app.get('/bot/economy/history/:discordId', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const p = await db();
+    const link = await p.discordLink.findUnique({ where: { discordId: req.params.discordId }, select: { userId: true } });
+    if (!link) return { linked: false, history: [] };
+    return { linked: true, history: await listLedger(p, link.userId, { kind: String(req.query?.kind || '') || null, take: 25 }) };
   });
 
   // A member's economy by Discord id — for the bot's /level and /profile commands.
@@ -1654,8 +1712,13 @@ export default async function botRoutes(app) {
     const e = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     const eco = (await getBotConfig(p)).economy || {};
     const level = e?.level || 0, xp = e?.xp || 0;
+    const badges = await p.userBadge.findMany({ where: { userId: link.userId }, include: { badge: { select: { name: true, color: true } } }, orderBy: { badge: { priority: 'desc' } }, take: 8 });
     return {
       linked: true, userId: link.userId, displayName: link.user.displayName,
+      // The site's own avatar (the /avatar route draws it whether it is an upload or a
+      // generated one) — what the bot shows instead of the Discord picture.
+      avatar: `${SITE_URL()}/avatar/${encodeURIComponent(link.userId)}`, avatarPath: `/avatar/${encodeURIComponent(link.userId)}`,
+      badges: badges.map((x) => ({ name: x.badge.name, color: x.badge.color })),
       level, xp, points: e?.points || 0,
       xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
       xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
@@ -1714,6 +1777,7 @@ export default async function botRoutes(app) {
     const newLevel = b.data.xp != null ? economyLevelFor(newXp, eco.curveBase, eco.curveFactor) : (cur?.level || 0);
     await p.userEconomy.upsert({ where: { userId: b.data.userId }, create: { userId: b.data.userId, points: newPts, xp: newXp, level: newLevel }, update: { points: newPts, ...(b.data.xp != null ? { xp: newXp, level: newLevel } : {}) } });
     await logAudit(p, req.user.uid, 'economy.grant', `user=${b.data.userId} delta=${b.data.points} → ${newPts}${b.data.reason ? ` (${b.data.reason})` : ''}`);
+    if (b.data.points) ledger(p, { userId: b.data.userId, kind: 'grant', delta: newPts - (cur?.points || 0), balance: newPts, meta: { by: req.user.uid, reason: b.data.reason || null, xp: b.data.xp || 0 } }).catch(() => {});
     if (newLevel > (cur?.level || 0)) {
       emitWebhook(p, b.data.userId, 'economy.level_up', { level: newLevel, from: cur?.level || 0, xp: newXp, pointsGranted: 0, by: 'staff' }).catch(() => {});
       grantAutoBadges(p, { event: 'level', user: { id: b.data.userId }, level: newLevel }).catch(() => {});
@@ -1745,20 +1809,28 @@ export default async function botRoutes(app) {
   app.get('/me/economy/shop', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
-    const [e, held, purchases] = await Promise.all([
+    const [e, held, purchases, mine] = await Promise.all([
       p.userEconomy.findUnique({ where: { userId: req.user.uid }, select: { points: true, level: true } }),
       p.userBadge.findMany({ where: { userId: req.user.uid }, select: { badgeId: true } }),
-      listPurchases(p, req.user.uid, 100),
+      listPurchases(p, eco, req.user.uid, 100),
+      p.economyPurchase.findMany({ where: { userId: req.user.uid, status: { not: 'refunded' } }, select: { itemId: true } }),
     ]);
     const heldIds = new Set(held.map((x) => x.badgeId));
-    const items = visibleShopItems(eco).map((x) => ({
-      id: x.id, name: x.name, desc: x.desc || '', cost: Math.max(0, Number(x.cost) || 0), kind: x.kind || 'custom',
-      amount: x.amount || null, fulfil: SHOP_KINDS[x.kind]?.fulfil || 'admin',
-      owned: x.kind === 'badge' ? heldIds.has(x.ref) : false,
+    const mineIds = new Set(mine.map((x) => x.itemId));
+    const items = await Promise.all(visibleShopItems(eco).map(async (x) => {
+      const sold = x.stock != null || x.exclusive ? await soldCount(p, x.id) : 0;
+      const { tag, remaining } = itemTag(x, sold);
+      return {
+        id: x.id, name: x.name, desc: x.desc, cost: x.cost, kind: x.kind, fulfil: SHOP_KINDS[x.kind].fulfil,
+        gb: x.gb, days: x.days, months: x.months, target: x.target, codeDays: x.codeDays, availableUntil: x.availableUntil,
+        giftable: x.giftable, exclusive: x.exclusive, tag, remaining, soldOut: x.stock != null && remaining <= 0,
+        owned: x.kind === 'badge' ? heldIds.has(x.ref) : (x.exclusive && mineIds.has(x.id)),
+      };
     }));
     return {
       enabled: !!eco.enabled,
       currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '', image: eco.currencyImage || '' },
+      gifts: { enabled: eco.gifts?.enabled !== false, min: Math.max(1, Number(eco.gifts?.min) || 1), maxPerDay: Number(eco.gifts?.maxPerDay) || 0 },
       points: e?.points || 0, level: e?.level || 0, items, purchases,
     };
   });
@@ -1774,8 +1846,68 @@ export default async function botRoutes(app) {
   });
   app.get('/me/economy/purchases', { preHandler: requireRole() }, async (req) => {
     const p = await db();
-    return { purchases: await listPurchases(p, req.user.uid, 200) };
+    const eco = (await getBotConfig(p)).economy || {};
+    return { purchases: await listPurchases(p, eco, req.user.uid, 200) };
   });
+  // The sealed envelope opens: the code is minted now, for whoever holds the purchase.
+  app.post('/me/economy/purchases/:id/reveal', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const r = await revealPurchase(p, eco, { userId: req.user.uid, purchaseId: String(req.params.id) });
+    if (!r.ok) return reply.code(r.error === 'not_found' ? 404 : 409).send(r);
+    return r;
+  });
+  // Hand a giftable purchase to another member (id, BC id, e-mail or exact display name).
+  app.post('/me/economy/purchases/:id/gift', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const b = z.object({ to: z.string().trim().min(1).max(120) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const to = await resolveUser(p, b.data.to, { looksLikeBcId, findUserIdByBcId });
+    if (!to) return reply.code(404).send({ ok: false, error: 'no_such_user' });
+    const r = await giftPurchase(p, eco, { fromUserId: req.user.uid, purchaseId: String(req.params.id), toUserId: to.id });
+    if (!r.ok) return reply.code(r.error === 'not_found' ? 404 : 409).send(r);
+    return r;
+  });
+  // Points to another member.
+  app.post('/me/economy/gift', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const b = z.object({ to: z.string().trim().min(1).max(120), points: z.number().int().min(1).max(10000000), note: z.string().max(140).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    const to = await resolveUser(p, b.data.to, { looksLikeBcId, findUserIdByBcId });
+    if (!to) return reply.code(404).send({ ok: false, error: 'no_such_user' });
+    const r = await giftPoints(p, eco, { fromUserId: req.user.uid, toUserId: to.id, points: b.data.points, note: b.data.note, via: 'site' });
+    if (!r.ok) return reply.code(r.error === 'insufficient' ? 402 : 409).send(r);
+    return r;
+  });
+  // Every point movement of mine — purchases, casino, gifts, grants.
+  app.get('/me/economy/history', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const kind = String(req.query?.kind || '').slice(0, 30) || null;
+    return { history: await listLedger(p, req.user.uid, { kind, take: Math.min(500, Number(req.query?.take) || 200) }) };
+  });
+  // Admin: the whole ledger, searchable by member, filterable by kind.
+  app.get('/admin/economy/history', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const kind = String(req.query?.kind || '').slice(0, 30) || null;
+    const where = { ...(kind ? { kind } : {}), ...(q ? { user: { OR: [{ displayName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { id: q }] } } : {}) };
+    const rows = await p.economyLedger.findMany({ where, orderBy: { createdAt: 'desc' }, take: Math.min(500, Number(req.query?.take) || 150), include: { user: { select: { id: true, displayName: true } } } });
+    return { history: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, kind: r.kind, delta: r.delta, balance: r.balance, ref: r.ref, meta: r.meta || null, createdAt: r.createdAt })) };
+  });
+  // The bot's own icons, as PNGs to upload to the application's Emojis page.
+  app.get('/admin/bot/emoji/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const key = String(req.params.key || '').replace(/\.png$/i, '');
+    const png = await renderEmoji(key).catch(() => null);
+    if (!png) return reply.code(404).send({ error: 'not_found' });
+    return reply.header('Content-Type', 'image/png').header('Cache-Control', 'private, max-age=3600').send(png);
+  });
+  app.get('/admin/bot/emoji-pack.zip', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const zip = await renderEmojiPack();
+    return reply.header('Content-Type', 'application/zip').header('Content-Disposition', 'attachment; filename="bettercommunity-bot-icons.zip"').send(zip);
+  });
+  app.get('/admin/bot/emoji-keys', { preHandler: requireRole('ADMIN') }, async () => ({ icons: Object.entries(BOT_ICONS).map(([key, v]) => ({ key, label: v.label, fallback: v.fallback })) }));
 
   // Admin: what still needs a person — roles and custom rewards bought with points — and the
   // button that says it was handed over. Newest first, pending on top.
@@ -1798,7 +1930,7 @@ export default async function botRoutes(app) {
   // payout, and settles the balance. The RNG lives on the bot (per game) — the API is the ledger.
   app.post('/bot/economy/casino', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(1000000), multiplier: z.number().min(0).max(1000) }).safeParse(req.body);
+    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(1000000), multiplier: z.number().min(0).max(1000), game: z.string().max(20).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
@@ -1813,8 +1945,7 @@ export default async function botRoutes(app) {
     // Net delta = payout − bet. Payout = bet · multiplier · edge (edge already prices the house in).
     const payout = Math.floor(b.data.bet * b.data.multiplier * edge);
     const delta = payout - b.data.bet;
-    const newPts = Math.max(0, (cur?.points || 0) + delta);
-    await p.userEconomy.upsert({ where: { userId: link.userId }, create: { userId: link.userId, points: newPts }, update: { points: newPts } });
+    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game || null, meta: { game: b.data.game || null, bet: b.data.bet, multiplier: b.data.multiplier, payout } });
     return { ok: true, delta, payout, points: newPts };
   });
 
@@ -1933,7 +2064,14 @@ export default async function botRoutes(app) {
       p.discordActivity.findMany({ where, orderBy: { updatedAt: 'desc' }, take, skip, select: { discordId: true, username: true, avatar: true, nickname: true, roles: true, guildJoinedAt: true, lastMessageAt: true } }),
       p.discordActivity.count({ where }),
     ]);
-    return { members: rows, total, mode: g.memberMode };
+    // What a linked member IS on the site: their level and badges. Read-only here — the
+    // owner sees it, and manages Discord roles, never the site account.
+    const links = await p.discordLink.findMany({ where: { discordId: { in: rows.map((r) => r.discordId) } }, select: { discordId: true, user: { select: { id: true, displayName: true, economy: { select: { level: true, points: true } }, badges: { include: { badge: { select: { name: true, color: true, icon: true, iconType: true } } }, orderBy: { badge: { priority: 'desc' } }, take: 6 } } } } });
+    const byId = Object.fromEntries(links.map((l) => [l.discordId, { userId: l.user.id, displayName: l.user.displayName, level: l.user.economy?.level || 0, points: l.user.economy?.points || 0, badges: l.user.badges.map((b) => b.badge) }]));
+    // The guild's role list (id → name/colour) so the page can show and edit roles by name.
+    const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+    const roles = status?.guildList?.find((x) => x.id === g.guildId)?.roles || [];
+    return { members: rows.map((r) => ({ ...r, linked: byId[r.discordId] || null })), total, mode: g.memberMode, roles };
   });
 
   // Owner-side moderation: queue a ban/kick/timeout (or its undo) against a member of THIS
@@ -1947,9 +2085,10 @@ export default async function botRoutes(app) {
       discordId: z.string().min(1).max(32),
       reason: z.string().trim().max(500).optional(),
       minutes: z.number().int().min(1).max(60 * 24 * 28).optional(),
+      roleId: z.string().max(32).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
-    const { kind, discordId, minutes } = b.data;
+    const { kind, discordId, minutes, roleId } = b.data;
     const reason = (b.data.reason || '').trim();
     if (['ban', 'kick', 'timeout'].includes(kind) && !reason) return reply.code(400).send({ error: 'reason_required' });
     if (kind === 'timeout' && !minutes) return reply.code(400).send({ error: 'minutes_required' });
@@ -1957,6 +2096,14 @@ export default async function botRoutes(app) {
     const ids = await myDiscordIds(p, req.user.uid);
     const g = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
     if (!g) return reply.code(404).send({ error: 'not_found' });
+    // A role must be one of THIS guild's assignable roles (the bot's heartbeat lists them —
+    // @everyone and managed roles are already dropped there), so an owner can never name a
+    // role from another server or one the bot cannot hand out.
+    if (kind.startsWith('role_')) {
+      const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
+      const roles = status?.guildList?.find((x) => x.id === g.guildId)?.roles || [];
+      if (!roleId || !roles.some((r) => r.id === roleId)) return reply.code(400).send({ error: 'role_required' });
+    }
     // You cannot moderate yourself through this, and the target must be a member of THIS guild.
     if (ids.includes(discordId)) return reply.code(400).send({ error: 'cannot_moderate_self' });
     const member = await p.discordActivity.findUnique({ where: { guildId_discordId: { guildId: g.guildId, discordId } }, select: { username: true } });
@@ -1964,7 +2111,7 @@ export default async function botRoutes(app) {
     const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true, email: true } });
     const action = await p.botAction.create({
       data: {
-        kind, discordId, guildId: g.guildId, minutes: minutes ?? null, reason,
+        kind, discordId, guildId: g.guildId, minutes: minutes ?? null, roleId: roleId || null, reason,
         targetLabel: member.username || discordId,
         requestedById: req.user.uid,
         requestedByLabel: [me?.displayName, me?.email].filter(Boolean).join(' · ').slice(0, 200),

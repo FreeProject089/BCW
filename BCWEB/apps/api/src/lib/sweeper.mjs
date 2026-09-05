@@ -5,6 +5,7 @@
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
 import { sweepAutoBadges } from '../routes/social.mjs';
+import { sweepEconomyHistory } from './economy-shop.mjs';
 import { sweepAttention } from './attention.mjs';
 import { PENDING_QUEUES } from '../routes/misc.mjs';
 import { sendMail, mailShell, emailEnabled } from './mail.mjs';
@@ -638,6 +639,10 @@ export function startSweeper(app) {
         const n = await sweepAutoBadges(p, app.log);
         await p.adminSetting.upsert({ where: { key: 'badges.sweepAt' }, create: { key: 'badges.sweepAt', value: new Date().toISOString() }, update: { value: new Date().toISOString() } });
         if (n) app.log.info(`[sweeper] badge rules granted ${n} badge(s)`);
+        // The point ledger's retention rides the same daily tick.
+        const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
+        const gone = await sweepEconomyHistory(p, eco).catch(() => 0);
+        if (gone) app.log.info(`[sweeper] economy history: aged out ${gone} row(s)`);
       })().catch((e) => app.log.warn({ e: String(e) }, 'badge sweep failed'));
       // The 404 game's monthly podium. Idempotent in the database (GameAward is unique on
       // game+season+rank), so running this every ten minutes mints nothing after the first.

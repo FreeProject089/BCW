@@ -6,7 +6,9 @@
 // emoji font, so symbols are drawn by hand. 480×270, 34 frames, one 256-colour palette per
 // clip, gifenc-encoded, cached by (game, outcome, detail, amount, seed) for five minutes.
 
-const W = 480, H = 270, FRAMES = 34, DELAY = 42;
+// 60 frames at 33 ms ≈ 2 s of motion at 30 fps (was 34 × 42 ms, visibly steppy); the palette
+// is still built once per clip, so encode time grows linearly and stays well under a second.
+const W = 480, H = 270, FRAMES = 60, DELAY = 33;
 const BANNER_H = 46, PLAY_BOTTOM = H - BANNER_H - 8; // nothing draws below this line
 
 function rng(seed) {
@@ -14,7 +16,7 @@ function rng(seed) {
   return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) % 100000) / 100000; };
 }
 const clamp01 = (t) => Math.min(1, Math.max(0, t));
-const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 3);
+const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 4); // quartic: a long, satisfying settle
 const easeOutBack = (t) => { const c = 1.4; const u = clamp01(t) - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 
 function felt(x, win) {
