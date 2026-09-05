@@ -355,6 +355,9 @@ model BotGuild {
   // heartbeat, so this is populated for EVERY guild the bot is in, even one still in `none`
   // mode. A logged-in site user whose linked DiscordLink.discordId is the owner — or is in
   // managerDiscordIds — may configure this guild's bot settings for their own server.
+  // The bot's language in this server, chosen on the onboarding card: auto (each member's
+  // Discord locale) or a code. Null = auto.
+  language          String?
   ownerDiscordId    String?
   managerDiscordIds String[] @default([])
   updatedAt      DateTime @updatedAt

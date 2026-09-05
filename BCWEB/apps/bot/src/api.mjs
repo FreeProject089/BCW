@@ -31,6 +31,8 @@ export const api = {
   // A handler that threw: the message, its stack and where it happened (command / custom id,
   // guild, user) — one ErrorEvent on the site, so the admin Errors page, the alerts channel
   // and the "Needs attention" digest all see it. Best-effort, never awaited by the handler.
+  // The language a server's manager picked in the onboarding card (auto | en | fr | de | es).
+  setGuildLanguage: (guildId, language) => call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/language`, { language }).catch(() => ({})),
   reportHandlerError: (message, stack, context) => call('POST', '/bot/errors', { message, stack, context }).catch(() => {}),
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.

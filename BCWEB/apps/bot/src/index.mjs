@@ -13,6 +13,8 @@ import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
 import { scanAllMembers } from './features/scanMembers.mjs';
+import { sendOnboarding } from './features/onboarding.mjs';
+import { BASE as I18N_BASE } from './i18n.mjs';
 import { wireEconomy, flushEconomy } from './features/economy.mjs';
 import { startModQueue } from './features/modqueue.mjs';
 import { startAnnouncer } from './features/announce.mjs';
@@ -80,7 +82,12 @@ function buildClient() {
         scanAllMembers(c).catch(() => {});
       }
     };
+    // The built-in dictionary rides on the FIRST heartbeat only: the site's Languages screen
+    // shows every key with its English text beside the translation fields, and the bot is
+    // the only place that dictionary lives.
+    let sentI18n = false;
     const beat = () => Promise.resolve(api.heartbeat({
+      ...(sentI18n ? {} : { i18nBase: I18N_BASE }),
       // The bot's own id === the application (client) id — what an "invite the bot" OAuth2 URL
       // needs, so the user dashboard can build that link without anyone pasting a client id.
       appId: ready.user.id,
@@ -118,7 +125,7 @@ function buildClient() {
           .map((ch) => ({ id: ch.id, name: String(ch.name || '').slice(0, 100), type: ch.type, parentId: ch.parentId || null })),
       })),
       ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats }, logs: recentLogs(60),
-    })).then(onBeat).catch(() => {});
+    })).then((r) => { sentI18n = true; onBeat(r); }).catch(() => {});
     beat();
     timers.push(setInterval(beat, 60_000));
     // Temp voice rooms: re-adopt the ones a previous process created (people are still in
@@ -177,7 +184,9 @@ function buildClient() {
   // is the backstop; this is the immediate response.
   c.on(Events.GuildCreate, guard(async (g) => {
     const ban = guildBan(await config(), g.id);
-    if (ban && ban.mode !== 'disable') { console.log(`[bot] joined a banned guild (${g.id}) — leaving.`); await g.leave().catch(() => {}); }
+    if (ban && ban.mode !== 'disable') { console.log(`[bot] joined a banned guild (${g.id}) — leaving.`); await g.leave().catch(() => {}); return; }
+    // The welcome card: link an account, pick the bot's language here, open the dashboard.
+    await sendOnboarding(g);
   }));
   return c;
 }

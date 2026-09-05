@@ -545,8 +545,16 @@ export default async function botRoutes(app) {
     // anything merged into it would be persisted into bot.config by the next unrelated save
     // and then re-trigger a restart forever. Same reserved-field trap as everywhere else
     // here; the fix is to keep the field out of the object that round-trips.
+    // The per-server language choices and the admin's string overrides ride beside the
+    // config for the same reason restartAt does: the dashboard writes bot.config back whole.
+    const [langRows, i18nRow] = await Promise.all([
+      p.botGuild.findMany({ where: { language: { not: null } }, select: { guildId: true, language: true } }).catch(() => []),
+      p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null),
+    ]);
+    const guildLanguages = Object.fromEntries(langRows.map((r) => [r.guildId, r.language]));
+    const i18n = i18nRow?.value && typeof i18nRow.value === 'object' ? i18nRow.value : {};
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.restart' } });
-    return { config: await getBotConfig(p), restartAt: row?.value?.at || null };
+    return { config: { ...(await getBotConfig(p)), guildLanguages, i18n }, restartAt: row?.value?.at || null };
   });
 
   // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
@@ -1172,6 +1180,40 @@ export default async function botRoutes(app) {
   // lists, what the monitor's error alerts count, what the digest surfaces. The context
   // travels in the stack text so the page shows it with the trace. Deduplicated per message
   // and minute — a button spammed while broken is one error, not a hundred rows.
+  // The onboarding card's language select. `auto` clears the choice.
+  app.put('/bot/guilds/:id/language', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({ language: z.string().regex(/^(auto|[a-z]{2})$/) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const language = b.data.language === 'auto' ? null : b.data.language;
+    await p.botGuild.upsert({ where: { guildId: req.params.id }, create: { guildId: req.params.id, language }, update: { language } });
+    return { ok: true, language };
+  });
+  // Admin → Languages → Discord bot: the bot's dictionary (as it reported it) and the
+  // overrides, per language. An override is one key in one language; an empty string deletes.
+  app.get('/admin/bot/i18n', { preHandler: requireCap('translate_site') }, async () => {
+    const p = await db();
+    const [base, ov] = await Promise.all([
+      p.adminSetting.findUnique({ where: { key: 'bot.i18n.base' } }).catch(() => null),
+      p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null),
+    ]);
+    return { base: base?.value || {}, overrides: ov?.value || {} };
+  });
+  app.put('/admin/bot/i18n', { preHandler: requireCap('translate_site') }, async (req, reply) => {
+    const b = z.object({ lang: z.string().regex(/^[a-z]{2}(-[A-Za-z]{2,4})?$/), strings: z.record(z.string().max(2000)).refine((o) => Object.keys(o).length <= 2000) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null);
+    const all = row?.value && typeof row.value === 'object' ? { ...row.value } : {};
+    const cur = { ...(all[b.data.lang] || {}) };
+    for (const [k, v] of Object.entries(b.data.strings)) { if (String(v).trim()) cur[k] = String(v); else delete cur[k]; }
+    if (Object.keys(cur).length) all[b.data.lang] = cur; else delete all[b.data.lang];
+    await p.adminSetting.upsert({ where: { key: 'bot.i18n' }, create: { key: 'bot.i18n', value: all }, update: { value: all } });
+    await logAudit(p, req.user.uid, 'bot.i18n', `${b.data.lang}: ${Object.keys(b.data.strings).length} key(s)`);
+    return { ok: true, overrides: all };
+  });
+
   app.post('/bot/errors', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
@@ -1222,12 +1264,14 @@ export default async function botRoutes(app) {
       ping: z.number().nullable().optional(), // gateway latency (ms)
       mod: z.object({ kicks: z.number().optional(), timeouts: z.number().optional(), purged: z.number().optional() }).optional(), // since-restart moderation counters
       logs: z.array(z.object({ t: z.number(), level: z.string().max(10), msg: z.string().max(500) })).max(200).optional(), // recent bot console output → live logs tab
+      i18nBase: z.record(z.record(z.string().max(2000))).optional(), // the bot's built-in dictionary, once per boot
     }).safeParse(req.body || {});
     const d = b.success ? b.data : {};
     const p = await db();
     // Logs are stored separately (they change every heartbeat and can be large) so the
     // small bot.status blob the config page reads stays lean.
-    const { logs, ...rest } = d;
+    const { logs, i18nBase, ...rest } = d;
+    if (i18nBase && Object.keys(i18nBase).length) await p.adminSetting.upsert({ where: { key: 'bot.i18n.base' }, create: { key: 'bot.i18n.base', value: i18nBase }, update: { value: i18nBase } }).catch(() => {});
     const value = { ...rest, at: new Date().toISOString(), online: rest.online !== false };
     await p.adminSetting.upsert({ where: { key: 'bot.status' }, create: { key: 'bot.status', value }, update: { value } });
     if (logs) await p.adminSetting.upsert({ where: { key: 'bot.logs' }, create: { key: 'bot.logs', value: { logs, at: Date.now() } }, update: { value: { logs, at: Date.now() } } });

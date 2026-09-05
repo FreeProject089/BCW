@@ -305,7 +305,7 @@ export function Admin() {
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}>
       {(s) => (<>
         {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /><CharityAdminCard /></>}
-        {s === 'languages' && <LanguagesCard />}
+        {s === 'languages' && <><LanguagesCard /><BotI18nCard /></>}
         {s === 'moderation' && <div>
           <h2 className="font-semibold mb-3 flex items-center gap-2"><Inbox size={16} /> {t('mod.queue', 'Moderation queue')}</h2>
           <BmmInspector />
@@ -20837,6 +20837,78 @@ function CharityAdminCard() {
             <Button variant="primary" loading={busy} onClick={savePot}><Save size={15} /> {t('chc.savepot', 'Save pot')}</Button>
           </div>
         </div>
+      )}
+    </Card>
+  );
+}
+
+// The Discord bot's strings. The bot reports its built-in dictionary (EN, FR, DE, ES) on its
+// first heartbeat; this edits an override layer per language — the same idea as the site's
+// base-language editor — and a language the bot does not ship can be added by code: the bot
+// falls back key by key to English. Saved per language; the bot picks it up within 30 s.
+function BotI18nCard() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/bot/i18n'), []);
+  const [lang, setLang] = useState('fr');
+  const [q, setQ] = useState('');
+  const [draft, setDraft] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [custom, setCustom] = useState('');
+  const base = data?.base || {};
+  const overrides = data?.overrides || {};
+  const langs = useMemo(() => [...new Set([...Object.keys(base), ...Object.keys(overrides)])].sort(), [base, overrides]);
+  const keys = useMemo(() => Object.keys(base.en || {}).sort(), [base]);
+  const nq = q.trim().toLowerCase();
+  const shown = keys.filter((k) => !nq || k.includes(nq) || String(base.en?.[k] || '').toLowerCase().includes(nq) || String(base[lang]?.[k] || overrides[lang]?.[k] || '').toLowerCase().includes(nq));
+  const valueOf = (k) => (draft[k] !== undefined ? draft[k] : (overrides[lang]?.[k] ?? ''));
+  const changed = Object.keys(draft).length;
+  const save = async () => {
+    setBusy(true);
+    try { const r = await api.put('/admin/bot/i18n', { lang, strings: draft }); toast.success(t('bi.saved', 'Saved — the bot picks it up within 30 s.')); setDraft({}); reload(); void r; }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const missing = keys.filter((k) => !(base[lang]?.[k]) && !(overrides[lang]?.[k])).length;
+  return (
+    <Card className="mt-6 p-5">
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('bi.title', 'Discord bot')}</h2>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('bi.sub', 'Every text the bot shows — buttons, cards, the casino, the onboarding — per language. The bot ships English, French, German and Spanish; edit any of them here, or add a language by code (missing keys fall back to English). A server’s manager picks the bot’s language on the welcome card (/setup); “auto” follows each member’s own Discord language.')}</p>
+      {loading ? <Spinner /> : !keys.length ? (
+        <div className="text-sm text-[var(--faint)]">{t('bi.nobase', 'The bot has not reported its dictionary yet — it does on its first heartbeat after starting. Start the bot, then reload.')}</div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+              {langs.map((l) => <button key={l} type="button" onClick={() => { setLang(l); setDraft({}); }} className={`px-2.5 py-1 rounded-md uppercase ${lang === l ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{l}{overrides[l] && Object.keys(overrides[l]).length ? <span className="ms-1 text-[9px] text-[var(--primary-2)]">●</span> : null}</button>)}
+            </div>
+            <div className="flex items-center gap-1">
+              <Input className="!py-1 !text-xs w-16" placeholder="it" maxLength={5} value={custom} onChange={(e) => setCustom(e.target.value.toLowerCase())} />
+              <Button size="sm" variant="ghost" disabled={!/^[a-z]{2}$/.test(custom) || langs.includes(custom)} onClick={() => { setLang(custom); setDraft({}); setCustom(''); }}><Plus size={13} /> {t('bi.addlang', 'Add a language')}</Button>
+            </div>
+            <div className="relative flex-1 min-w-[12rem]"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('bi.search', 'Search a key or a text…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <span className="text-[11px] text-[var(--faint)]">{t('bi.missing', '{n} of {k} keys without a text in {l}').replace('{n}', missing).replace('{k}', keys.length).replace('{l}', lang.toUpperCase())}</span>
+            <Button size="sm" variant="primary" disabled={!changed || busy} onClick={save}>{busy ? <Spinner /> : <Save size={13} />} {t('bi.save', 'Save {n}').replace('{n}', changed)}</Button>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-[60vh] overflow-auto">
+            {shown.map((k) => {
+              const en = base.en?.[k] || '';
+              const shipped = base[lang]?.[k] || '';
+              const v = valueOf(k);
+              return (
+                <div key={k} className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-mono text-[var(--faint)] truncate" title={k}>{k}</div>
+                    <div className="text-xs text-[var(--muted)] break-words">{en}</div>
+                    {shipped && lang !== 'en' && <div className="text-[11px] text-[var(--faint)] break-words mt-0.5">{t('bi.shipped', 'Shipped')}: {shipped}</div>}
+                  </div>
+                  <Input className="!py-1 !text-xs" value={v} placeholder={shipped || en} onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
+                </div>
+              );
+            })}
+            {!shown.length && <div className="p-4 text-sm text-[var(--faint)]">{t('bi.none', 'No key matches.')}</div>}
+          </div>
+        </>
       )}
     </Card>
   );
