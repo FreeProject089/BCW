@@ -28,6 +28,10 @@ export const api = {
   heartbeat: (data) => call('POST', '/bot/heartbeat', data).catch(() => {}),
   // Report a failed connection (surfaced in the admin dashboard so the cause is visible).
   reportError: (error) => call('POST', '/bot/heartbeat', { online: false, error }).catch(() => {}),
+  // A handler that threw: the message, its stack and where it happened (command / custom id,
+  // guild, user) — one ErrorEvent on the site, so the admin Errors page, the alerts channel
+  // and the "Needs attention" digest all see it. Best-effort, never awaited by the handler.
+  reportHandlerError: (message, stack, context) => call('POST', '/bot/errors', { message, stack, context }).catch(() => {}),
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.
   rolePanels: () => call('GET', '/bot/rolepanels').catch(() => ({ panels: [], due: [] })),

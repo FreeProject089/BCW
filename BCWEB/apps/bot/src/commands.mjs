@@ -114,7 +114,7 @@ export async function handleInteraction(i) {
   if (i.isButton() && i.customId.startsWith('inv:reveal:')) return invReveal(i);
   if (i.isButton() && i.customId.startsWith('inv:gift:')) return invGiftModal(i);
   if (i.isModalSubmit() && i.customId.startsWith('invm:gift:')) return invGiftSubmit(i);
-  if (i.isButton() && i.customId.startsWith('eco:lb:')) return cmdLeaderboard(i, true, i.customId.split(':')[2]);
+  if (i.isButton() && i.customId.startsWith('eco:lb:')) { const seg = i.customId.split(':'); return cmdLeaderboard(i, true, seg[2] === 'refresh' ? seg[3] : seg[2]); }
   if (i.isButton() && i.customId === 'eco:link') return cmdLink(i);
   if (i.isButton() && i.customId === 'eco:level') return cmdLevel(i);
   if (i.isButton() && i.customId === 'eco:shop') return cmdShop(i);
@@ -384,7 +384,9 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
     buttons: [
       ui.btn('eco:lb:server', 'This server', guildId ? ButtonStyle.Primary : ButtonStyle.Secondary, { disabled: !i.guildId }),
       ui.btn('eco:lb:global', 'Global', guildId ? ButtonStyle.Secondary : ButtonStyle.Primary),
-      ui.btn(`eco:lb:${guildId ? 'server' : 'global'}`, 'Refresh', ButtonStyle.Secondary, { emoji: 'refresh' }),
+      // Its own id: it used to reuse the scope button's, and Discord refuses a message whose
+      // components share a custom id (COMPONENT_CUSTOM_ID_DUPLICATED) — the whole card failed.
+      ui.btn(`eco:lb:refresh:${guildId ? 'server' : 'global'}`, 'Refresh', ButtonStyle.Secondary, { emoji: 'refresh' }),
       ui.btn('eco:level', 'My level', ButtonStyle.Secondary, { emoji: 'level' }),
     ],
   });

@@ -485,12 +485,25 @@ export function capacityVerdict(cap, t) {
 async function errorAlerts(p, t) {
   const since = new Date(Date.now() - 10 * 60 * 1000);
   const out = [];
-  for (const source of ['server', 'client']) {
+  for (const source of ['server', 'client', 'bot']) {
     const n = await p.errorEvent.count({ where: { source, createdAt: { gte: since } } }).catch(() => 0);
     if (n >= t.errorBurst) {
       out.push({ kind: 'errors', message: `${n} new ${source} error(s) in the last 10 minutes (threshold ${t.errorBurst}).` });
     }
   }
+  // A NEW kind of failure — a server or bot error message not seen in the last week — is an
+  // alert on its own, threshold or not. A burst rule only ever noticed the hundredth
+  // occurrence; the first one is when somebody could still act before members notice.
+  // maybeAlert() debounces on the exact message, so one new group alerts once.
+  try {
+    const week = new Date(Date.now() - 7 * 864e5);
+    const fresh = await p.$queryRaw`
+      SELECT e.source, e.message FROM "ErrorEvent" e
+      WHERE e."createdAt" >= ${since} AND e.source IN ('server', 'bot')
+        AND NOT EXISTS (SELECT 1 FROM "ErrorEvent" o WHERE o.source = e.source AND o.message = e.message AND o."createdAt" < ${since} AND o."createdAt" >= ${week})
+      GROUP BY e.source, e.message LIMIT 5`;
+    for (const r of fresh || []) out.push({ kind: 'errors', message: `New ${r.source === 'bot' ? 'Discord bot' : 'server'} error: ${String(r.message).slice(0, 160)}` });
+  } catch { /* the alert is a convenience; the page still lists the error */ }
   return out;
 }
 

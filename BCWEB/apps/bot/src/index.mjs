@@ -44,7 +44,22 @@ function buildClient() {
     // Reaction partials so a reaction on an uncached (older) message still fires the event.
     partials: [Partials.Channel, Partials.Message, Partials.Reaction],
   });
-  const guard = (fn) => (...a) => fn(...a).catch((e) => console.warn('[bot] handler error:', e.message));
+  // Every handler is wrapped: an error is logged (the heartbeat ships the tail to the
+  // dashboard's live logs) AND reported as an ErrorEvent, with what it was handling — the
+  // command or button, the server, the member — because "Invalid Form Body" without the
+  // command that built the form is a message nobody can act on.
+  const ctxOf = (x) => {
+    if (!x || typeof x !== 'object') return {};
+    const i = x;
+    return {
+      command: i.commandName ? `/${i.commandName}` : i.customId ? String(i.customId).slice(0, 80) : i.constructor?.name || '',
+      guildId: i.guildId || i.guild?.id || null, userId: i.user?.id || i.author?.id || i.member?.id || null,
+    };
+  };
+  const guard = (fn) => (...a) => fn(...a).catch((e) => {
+    console.error('[bot] handler error:', e?.message || e);
+    api.reportHandlerError(String(e?.message || e).slice(0, 400), String(e?.stack || '').slice(0, 6000), ctxOf(a[0]));
+  });
   c.once(Events.ClientReady, async (ready) => {
     console.log(`[bot] logged in as ${ready.user.tag}`);
     try {

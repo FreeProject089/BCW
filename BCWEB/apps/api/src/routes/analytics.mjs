@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
+import { errorGroupId } from '../lib/errorlog.mjs';
 import { EventEmitter } from 'node:events';
 import { db, requireRole, requireCap, optionalUid } from '../lib/lib.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
@@ -523,7 +524,7 @@ export default async function analyticsRoutes(app) {
     const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
     const q = String(req.query?.path || '').trim();
     // 'server' = a 5xx the API caught, 'client' = an uncaught error in a visitor's browser.
-    const src = ['server', 'client'].includes(String(req.query?.source || '')) ? String(req.query.source) : null;
+    const src = ['server', 'client', 'bot'].includes(String(req.query?.source || '')) ? String(req.query.source) : null;
     const where = { createdAt: { gte: since }, ...(q ? { path: { contains: q, mode: 'insensitive' } } : {}), ...(src ? { source: src } : {}) };
     // Aggregate per message: occurrences, distinct visitors, first/last seen. Params are
     // positional and appended in the same order the predicates are, so the indexes line up.
@@ -538,6 +539,10 @@ export default async function analyticsRoutes(app) {
          FROM "ErrorEvent" WHERE "createdAt" >= $1 ${pathPred} ${srcPred}
          GROUP BY message ORDER BY max("createdAt") DESC LIMIT 100`,
       ...params);
+    // "Handled" is per group, kept as a PendingDismissal in the `errors` queue — the same row
+    // the Needs-attention digest ticks, so marking an error handled here clears it there.
+    const handledRows = await p.pendingDismissal.findMany({ where: { queue: 'errors' }, select: { itemId: true } }).catch(() => []);
+    const handled = new Set(handledRows.map((r) => r.itemId));
     // Latest sample per message (path/stack/device/browser/os/country) for the detail view.
     const msgs = groups.map((g) => g.message);
     const samples = new Map();
@@ -556,7 +561,8 @@ export default async function analyticsRoutes(app) {
     const total = await p.errorEvent.count({ where });
     return {
       total,
-      errors: groups.map((g) => { const s = samples.get(g.message) || {}; return {
+      errors: groups.map((g) => { const s = samples.get(g.message) || {}; const id = errorGroupId(s.source || 'client', g.message); return {
+        id, handled: handled.has(id),
         message: g.message, occurrences: Number(g.occurrences), sessions: Number(g.sessions),
         firstSeen: g.firstSeen, lastSeen: g.lastSeen,
         path: s.path || null, stack: s.stack || null, source: s.source || 'client', device: s.device || null, browser: s.browser || null, os: s.os || null, country: s.country || null,

@@ -9,6 +9,7 @@ import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '..
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
+import { errorGroupId } from '../lib/errorlog.mjs';
 import { Prisma } from '@prisma/client';
 import { exportUser } from '../lib/user-export.mjs';
 import { buildErasePlan, eraseUser, KEEP } from '../lib/user-erase.mjs';
@@ -168,7 +169,28 @@ export const PENDING_QUEUES = [
       select: { id: true, kind: true, message: true, createdAt: true },
     }).then((rows) => rows.map((r) => ({ id: r.id, title: r.message, sub: r.kind, at: r.createdAt }))),
   },
+  {
+    // Errors of the last 24 hours — the API's 5xx and the Discord bot's handler failures —
+    // one row per distinct message, until somebody marks the group handled (on the Errors
+    // page or here; both write the same dismissal). Browser errors stay on the Errors page:
+    // a visitor's extension throwing is not work for staff.
+    key: 'errors', cap: 'manage_analytics', to: '/admin?s=errors',
+    count: async (p) => {
+      const rows = await errorGroups(p);
+      return rows.length;
+    },
+    recent: async (p) => (await errorGroups(p)).slice(0, 5).map((r) => ({ id: r.id, title: r.message, sub: `${r.source === 'bot' ? 'Discord bot' : 'server'} · ×${r.n}`, at: r.at })),
+  },
 ];
+/** Unhandled error groups (server + bot) of the last 24 h, newest first. */
+async function errorGroups(p) {
+  const since = new Date(Date.now() - 24 * 3600e3);
+  const rows = await p.$queryRaw`
+    SELECT source, message, count(*)::int AS n, max("createdAt") AS at FROM "ErrorEvent"
+    WHERE "createdAt" >= ${since} AND source IN ('server', 'bot') GROUP BY source, message ORDER BY max("createdAt") DESC LIMIT 100`.catch(() => []);
+  const handled = new Set((await p.pendingDismissal.findMany({ where: { queue: 'errors' }, select: { itemId: true } }).catch(() => [])).map((d) => d.itemId));
+  return rows.map((r) => ({ id: errorGroupId(r.source, r.message), source: r.source, message: r.message, n: Number(r.n), at: r.at })).filter((r) => !handled.has(r.id));
+}
 
 import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
 const APP_ICONS_KEY = 'brand.appIcons';

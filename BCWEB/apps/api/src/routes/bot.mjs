@@ -1168,6 +1168,28 @@ export default async function botRoutes(app) {
     return { token: cfg.enabled === false ? null : await storedToken(p) };
   });
   // The bot posts periodic heartbeats; the dashboard shows uptime / guild counts.
+  // The bot's handler errors, as ErrorEvent rows (source 'bot'): what the admin Errors page
+  // lists, what the monitor's error alerts count, what the digest surfaces. The context
+  // travels in the stack text so the page shows it with the trace. Deduplicated per message
+  // and minute — a button spammed while broken is one error, not a hundred rows.
+  app.post('/bot/errors', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      message: z.string().min(1).max(400),
+      stack: z.string().max(6000).optional().default(''),
+      context: z.object({ command: z.string().max(120).optional(), guildId: z.string().max(32).nullable().optional(), userId: z.string().max(32).nullable().optional() }).optional().default({}),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const { message, stack, context } = b.data;
+    const path = `bot:${context.command || 'handler'}`.slice(0, 300);
+    const dup = await p.errorEvent.findFirst({ where: { source: 'bot', message, path, createdAt: { gte: new Date(Date.now() - 60_000) } }, select: { id: true } }).catch(() => null);
+    if (dup) return { ok: true, deduped: true };
+    const ctxLine = `context: ${JSON.stringify({ command: context.command || null, guild: context.guildId || null, member: context.userId || null })}`;
+    await p.errorEvent.create({ data: { source: 'bot', message, stack: `${ctxLine}\n${stack || ''}`.slice(0, 6000), path } }).catch(() => {});
+    return { ok: true };
+  });
+
   app.post('/bot/heartbeat', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const b = z.object({
@@ -1209,6 +1231,23 @@ export default async function botRoutes(app) {
     const value = { ...rest, at: new Date().toISOString(), online: rest.online !== false };
     await p.adminSetting.upsert({ where: { key: 'bot.status' }, create: { key: 'bot.status', value }, update: { value } });
     if (logs) await p.adminSetting.upsert({ where: { key: 'bot.logs' }, create: { key: 'bot.logs', value: { logs, at: Date.now() } }, update: { value: { logs, at: Date.now() } } });
+    // Error-level lines the bot logged outside a guarded handler (a login failure, a poller,
+    // the gateway) — recorded once each, so they are not lost in a scrolling log tab.
+    if (logs?.length) {
+      const errs = logs.filter((l) => l.level === 'error' && l.msg && !/handler error/.test(l.msg)).slice(-20);
+      for (const l of errs) {
+        const message = String(l.msg).slice(0, 400);
+        const seen = await p.errorEvent.findFirst({ where: { source: 'bot', message, createdAt: { gte: new Date(Date.now() - 6 * 3600e3) } }, select: { id: true } }).catch(() => null);
+        if (!seen) await p.errorEvent.create({ data: { source: 'bot', message, stack: '', path: 'bot:log' } }).catch(() => {});
+      }
+    }
+    // The bot reported it could not start (a bad token, missing intents): an error the
+    // dashboard must show as one, not only as "offline".
+    if (rest.online === false && rest.error) {
+      const message = String(rest.error).slice(0, 400);
+      const seen = await p.errorEvent.findFirst({ where: { source: 'bot', message, createdAt: { gte: new Date(Date.now() - 6 * 3600e3) } }, select: { id: true } }).catch(() => null);
+      if (!seen) await p.errorEvent.create({ data: { source: 'bot', message, stack: '', path: 'bot:login' } }).catch(() => {});
+    }
     // B10: mirror the guild roster into BotGuild so every server the bot is in exists as a
     // row carrying its owner — even one still in the default `none` mode. This is what lets a
     // server owner manage their guild from the user dashboard before any admin touches it.

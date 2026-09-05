@@ -8,6 +8,7 @@ const c = (en, fr) => ({ en, fr });
 
 export const ADMIN_SCREENS_REF = {
   needs: [
+    { id: 'errorsq', name: c('Errors queue', 'File des erreurs'), what: c('Server errors (API 5xx) and Discord-bot handler failures of the last 24 hours, one row per distinct message, until marked handled — here or on the Errors page (same dismissal). A NEW server or bot error also raises an alert: Discord alerts channel + in-app notification to superadmins. Browser errors stay on the Errors page only.', 'Erreurs serveur (API 5xx) et échecs des handlers du bot Discord des dernières 24 h, une ligne par message distinct, jusqu’à être marquées traitées — ici ou sur la page Erreurs (même clôture). Une NOUVELLE erreur serveur ou bot déclenche aussi une alerte : salon d’alertes Discord + notification dans l’app aux superadmins. Les erreurs navigateur restent sur la page Erreurs seulement.'), controls: [] },
     { id: 'digest', name: c('Queues digest', 'Résumé des files'), what: c('One row per queue with its waiting count; each row is a link to the screen where the work is done. No badge of its own — the queues already carry theirs.', 'Une ligne par file avec son nombre en attente ; chaque ligne mène à l’écran où le travail se fait. Pas de pastille propre — les files ont déjà la leur.'), controls: [] },
   ],
   moderation: [

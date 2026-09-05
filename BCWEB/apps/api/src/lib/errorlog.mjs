@@ -11,6 +11,7 @@
 //  2. Never block the reply — the insert is fire-and-forget.
 //  3. Never assume the DB is alive. It is frequently the very thing that's broken, in which
 //     case the insert fails and we fall back to the in-memory ring (below).
+import { createHash } from 'node:crypto';
 import { db } from './lib.mjs';
 import { boundedSet } from './boundedmap.mjs';
 
@@ -32,6 +33,9 @@ const PATH_MAX = 300;
  *  The query string is not metadata here, it is credentials: private share links are
  *  `/r/<id>?k=<shareKey>`, and repo sync accepts `?password=` as an alternative to the
  *  X-Repo-Password header (see presentedPassword in hosting-content.mjs). */
+/** One id per error GROUP (source + message): what the Errors page marks handled and the
+ *  digest lists. A hash rather than the message, so it fits a dismissal row and a URL. */
+export const errorGroupId = (source, message) => createHash('sha1').update(`${source}\n${String(message || '')}`).digest('hex').slice(0, 24);
 export const pathOnly = (url) => String(url || '').split('?')[0].slice(0, PATH_MAX);
 
 // A broken endpoint fails on EVERY request. Without a throttle, one outage writes a row per

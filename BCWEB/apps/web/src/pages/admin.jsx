@@ -16257,7 +16257,26 @@ function AdminErrors() {
   const rq = Object.fromEntries(WV_RANGES)[range] || { days: 7 };
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${source ? `&source=${source}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
-  const errors = data?.errors || [];
+  const [showHandled, setShowHandled] = useState(false);
+  const errors = (data?.errors || []).filter((e) => showHandled || !e.handled);
+  const handledCount = (data?.errors || []).filter((e) => e.handled).length;
+  // "New since you last looked": the page remembers when it was last opened (this browser)
+  // and counts the groups seen after that — the notification an admin who does not read
+  // the alerts channel actually needs. Written when the page unmounts, so the count is
+  // stable while it is being read.
+  const [lastVisit] = useState(() => { try { return Number(localStorage.getItem('bcw.errors.visitedAt') || 0); } catch { return 0; } });
+  useEffect(() => () => { try { localStorage.setItem('bcw.errors.visitedAt', String(Date.now())); } catch { /* private mode */ } }, []);
+  const fresh = (data?.errors || []).filter((e) => !e.handled && lastVisit && new Date(e.lastSeen).getTime() > lastVisit);
+  const [busyId, setBusyId] = useState(null);
+  const markHandled = async (e) => {
+    setBusyId(e.id);
+    try { await api.post('/admin/pending/dismiss', { queue: 'errors', itemId: e.id, mode: 'handled' }); toast.success(t('er.handled.ok', 'Marked handled — it leaves the Needs-attention digest too.')); pendingChanged(); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusyId(null); }
+  };
+  // The bot's rows carry their context (command, server, member) on the first line of the
+  // stack; split it off so it reads as fields, not as the top of a trace.
+  const splitCtx = (stack) => { const m = /^context: (\{.*\})\n?/.exec(stack || ''); if (!m) return { ctx: null, rest: stack }; try { return { ctx: JSON.parse(m[1]), rest: (stack || '').slice(m[0].length) }; } catch { return { ctx: null, rest: stack }; } };
   // The in-memory tail (survives a DB outage). We only surface it when it holds errors that
   // FAILED to persist — those are the previously-invisible ones, the 500s where the database
   // was the thing that broke, so neither the list below nor its own logger could record them.
@@ -16280,7 +16299,13 @@ function AdminErrors() {
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
         </div>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub', 'Server errors (API 5xx) and uncaught JavaScript errors from real visits, grouped by message. Repeated identical server errors collapse to one entry per minute — the occurrence count is per entry, not per request.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('er.sub2', 'Server errors (API 5xx), the Discord bot’s handler failures and uncaught JavaScript errors from real visits, grouped by message. A new server or bot error raises an alert (Discord alerts channel + in-app notification) and sits in “Needs attention” until it is marked handled.')}</p>
+      {fresh.length > 0 && (
+        <div className="mb-3 rounded-lg border border-warning-border bg-warning-bg/50 px-3 py-2 text-sm flex items-center gap-2 flex-wrap">
+          <AlertTriangle size={14} className="text-warning shrink-0" />
+          <span>{t('er.fresh', '{n} error group(s) new since you last opened this page.').replace('{n}', fresh.length)}</span>
+        </div>
+      )}
       {unpersisted.length > 0 && (
         <div className="mb-4 rounded-lg border border-error-border bg-error-bg px-3 py-2.5">
           <div className="font-medium text-error flex items-center gap-2 text-sm"><AlertTriangle size={14} /> {t('er.dbdown.t', '{n} recent server error(s) could not be written to the database').replace('{n}', unpersisted.length)}</div>
@@ -16294,8 +16319,10 @@ function AdminErrors() {
           { value: '', label: t('er.src.all', 'All sources') },
           { value: 'server', label: t('er.src.server', 'Server (API 5xx)') },
           { value: 'client', label: t('er.src.client', 'Browser') },
+          { value: 'bot', label: t('er.src.bot', 'Discord bot') },
         ]} />
         <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
+        <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer ms-auto"><input type="checkbox" checked={showHandled} onChange={(e) => setShowHandled(e.target.checked)} /> {t('er.showhandled', 'Show handled ({n})').replace('{n}', handledCount)}</label>
       </div>
       {loading ? <Loading /> : errors.length ? <div className="space-y-2">
         {errors.map((e, i) => { const isOpen = open === i; return (
@@ -16307,7 +16334,9 @@ function AdminErrors() {
                 <div className="text-xs text-[var(--faint)] mt-1 flex items-center gap-3 flex-wrap">
                   {/* A server 5xx and a browser exception need very different responses —
                       say which one this is instead of leaving them indistinguishable. */}
-                  <Badge tone={e.source === 'server' ? 'red' : ''}>{e.source === 'server' ? <><Server size={9} /> {t('er.src.server', 'Server (API 5xx)')}</> : <><Globe size={9} /> {t('er.src.client', 'Browser')}</>}</Badge>
+                  <Badge tone={e.source === 'server' ? 'red' : e.source === 'bot' ? 'amber' : ''}>{e.source === 'server' ? <><Server size={9} /> {t('er.src.server', 'Server (API 5xx)')}</> : e.source === 'bot' ? <><Cpu size={9} /> {t('er.src.bot', 'Discord bot')}</> : <><Globe size={9} /> {t('er.src.client', 'Browser')}</>}</Badge>
+                  {e.handled && <Badge tone="green">{t('er.handledchip', 'handled')}</Badge>}
+                  {lastVisit && !e.handled && new Date(e.lastSeen).getTime() > lastVisit ? <Badge tone="amber">{t('er.newchip', 'new')}</Badge> : null}
                   {e.country ? <span className="inline-flex items-center gap-1"><Flag cc={e.country} className="w-4 h-3" /></span> : null}
                   {e.browser && <span>{e.browser}{e.os ? ` · ${e.os}` : ''}</span>}
                   <span className="font-mono truncate max-w-[220px]" title={e.path}>{e.path}</span>
@@ -16322,8 +16351,11 @@ function AdminErrors() {
             </button>
             {isOpen && <div className="px-4 pb-4 border-t border-[var(--line)] pt-3 space-y-3">
               <div className="text-xs text-[var(--muted)] flex items-center gap-2 flex-wrap">
-                <span><b>{t('er.page', 'Page')}:</b> <span className="font-mono">{e.path}</span></span>
+                <span><b>{e.source === 'bot' ? t('er.where', 'Where') : t('er.page', 'Page')}:</b> <span className="font-mono">{e.path}</span></span>
                 <span><b>{t('er.firstseen', 'First seen')}:</b> {new Date(e.firstSeen).toLocaleString()}</span>
+                {!e.handled
+                  ? <Button size="sm" variant="ghost" disabled={busyId === e.id} onClick={() => markHandled(e)}><CheckCircle2 size={13} /> {t('er.markhandled', 'Mark handled')}</Button>
+                  : <span className="text-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> {t('er.handledchip', 'handled')}</span>}
                 <button onClick={() => copy(`${e.message}\n${e.path}\n\n${e.stack || ''}`, t('er.copiedlog', 'Error log copied.'))} className="inline-flex items-center gap-1 text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /> {t('er.copylog', 'Copy log')}</button>
               </div>
               {/* Which signed-in accounts hit this error (BC ids) — click one to copy, or copy all. */}
@@ -16331,9 +16363,16 @@ function AdminErrors() {
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><Fingerprint size={12} /> {t('er.affected', 'Affected accounts')} ({e.bcIds.length}) <button onClick={() => copy(e.bcIds.join('\n'), t('er.bcidscopied', 'BC ids copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('er.copyall', 'copy all')}</button></div>
                 <div className="flex flex-wrap gap-1.5">{e.bcIds.map((b) => <button key={b} onClick={() => copy(b)} className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--primary)] hover:border-[var(--primary)]">{b}</button>)}</div>
               </div>}
+              {(() => { const { ctx } = splitCtx(e.stack); return ctx ? (
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {ctx.command && <span className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--line)] font-mono">{ctx.command}</span>}
+                  {ctx.guild && <span className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--line)]">{t('er.ctx.guild', 'server')} <span className="font-mono">{ctx.guild}</span></span>}
+                  {ctx.member && <span className="px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--line)]">{t('er.ctx.member', 'member')} <span className="font-mono">{ctx.member}</span></span>}
+                </div>
+              ) : null; })()}
               {e.stack ? <div>
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')} <button onClick={() => copy(e.stack, t('er.stackcopied', 'Stack copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('common.copy', 'copy')}</button></div>
-                <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre text-[var(--muted)] max-h-72">{e.stack}</pre>
+                <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words text-[var(--muted)] max-h-[60vh]">{splitCtx(e.stack).rest || e.stack}</pre>
               </div> : <div className="text-xs text-[var(--faint)]">{t('er.nostack', 'No stack trace captured.')}</div>}
             </div>}
           </Card>
@@ -19363,6 +19402,7 @@ function AdminReportsConfig({ onClose }) {
 // flag it. Written this way, every key below is seen and required to have a French entry.
 const NEEDS_QUEUES = [
   { key: 'submissions', to: '/admin?s=moderation', icon: Inbox, label: (t) => t('nq.submissions', 'Submissions to review'), chip: (t) => t('nq.k.submissions', 'Submission') },
+  { key: 'errors', to: '/admin?s=errors', icon: AlertTriangle, label: (t) => t('nq.errors', 'Errors to look at (API + Discord bot, 24 h)'), chip: (t) => t('nq.k.errors', 'Error') },
   { key: 'reports', to: '/admin?s=reports', icon: Inbox, label: (t) => t('nq.reports', 'Open reports'), chip: (t) => t('nq.k.reports', 'Report') },
   { key: 'contact', to: '/admin?s=messages', icon: Mail, label: (t) => t('nq.contact', 'Unread messages'), chip: (t) => t('nq.k.contact', 'Message') },
   { key: 'myo', to: '/admin?s=myo', icon: Wand2, label: (t) => t('nq.myo', 'Commissions awaiting a reply'), chip: (t) => t('nq.k.myo', 'Commission') },
