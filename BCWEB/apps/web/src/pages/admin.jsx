@@ -13740,6 +13740,7 @@ function AdminBot() {
   // data arrives and the early return stops firing.
   const [restarting, setRestarting] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/config'), []);
+  const [powering, setPowering] = useState(false);
   const [cfg, setCfg] = useState(null);
   const [previewNonce, setPreviewNonce] = useState(0);
   const [tokenInput, setTokenInput] = useState('');
@@ -13794,7 +13795,6 @@ function AdminBot() {
   // bot re-reads its config every 20 seconds and already knows how to rebuild a client. The
   // label says "reconnect" for that reason — an admin who presses "restart" expecting new
   // code, and gets a reconnect, concludes the deploy failed.
-  const [powering, setPowering] = useState(false);
   const setPower = async (on) => {
     setPowering(true);
     try {
