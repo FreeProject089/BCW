@@ -287,6 +287,16 @@ export default async function showcaseRequestRoutes(app) {
       // Approved but not yet visible: the page is created unpublished so it can be filled in
       // before anybody sees it.
       publish: z.boolean().optional().default(false),
+      // "Approve & configure": the whole page as the New-project modal writes it, so the
+      // listing is created finished instead of created bare and edited afterwards.
+      project: z.object({
+        name: z.string().min(2).max(60).optional(), short: z.string().min(1).max(8).optional(), icon: z.string().max(500).nullable().optional(),
+        config: z.record(z.any()).optional(), published: z.boolean().optional(), pinTopbar: z.boolean().optional(),
+        visibility: z.string().max(20).optional(), visibilityWhitelist: z.array(z.any()).max(500).optional(),
+        announceEnabled: z.boolean().optional(), announceTitle: z.string().max(200).optional(), announceLogo: z.string().max(500).optional(),
+        announceMarkdown: z.string().max(20000).optional(), announceRevealAt: z.string().nullable().optional(), announceShowPage: z.boolean().optional(),
+        announceButtonLabel: z.string().max(80).optional(), announceButtonUrl: z.string().max(500).optional(),
+      }).optional(),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
 
@@ -295,14 +305,22 @@ export default async function showcaseRequestRoutes(app) {
     const clash = await p.showcaseProject.findUnique({ where: { slug }, select: { id: true } });
     if (clash) return reply.code(409).send({ error: 'slug_taken' });
 
+    const pj = b.data.project || null;
     const project = await p.showcaseProject.create({
       data: {
-        slug, name: row.name, short: (b.data.short || row.short).slice(0, 8),
-        icon: row.icon || null,
-        published: b.data.publish === true,
+        slug, name: pj?.name || row.name, short: (pj?.short || b.data.short || row.short).slice(0, 8),
+        icon: pj?.icon ?? row.icon ?? null,
+        published: pj ? !!pj.published : b.data.publish === true,
         // Unlisted, not public, even when published: it appears at its own address and stays
-        // out of the grid until somebody puts it there deliberately.
-        visibility: 'unlisted',
+        // out of the grid until somebody puts it there deliberately — unless the reviewer
+        // configured the page in full and chose otherwise.
+        visibility: pj?.visibility || 'unlisted',
+        ...(pj ? {
+          config: pj.config || {}, pinTopbar: !!pj.pinTopbar, visibilityWhitelist: pj.visibilityWhitelist || [],
+          announceEnabled: !!pj.announceEnabled, announceTitle: pj.announceTitle || '', announceLogo: pj.announceLogo || '', announceMarkdown: pj.announceMarkdown || '',
+          announceRevealAt: pj.announceRevealAt ? new Date(pj.announceRevealAt) : null, announceShowPage: !!pj.announceShowPage,
+          announceButtonLabel: pj.announceButtonLabel || '', announceButtonUrl: pj.announceButtonUrl || '',
+        } : {}),
       },
     });
     // Approved → the listing is live, so the proof-of-rights document has served its purpose;

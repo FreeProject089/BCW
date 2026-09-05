@@ -4702,9 +4702,20 @@ function RoleManager({ roles }) {
   const [color, setColor] = useState('#3b82f6');
   const [caps, setCaps] = useState([]);
   const [busy, setBusy] = useState(false);
+  // Where the role applies: everywhere (a bundle of site-wide capabilities), or only on a
+  // set of elements — then it grants content-edit rights on those and nothing site-wide.
+  const [scoped, setScoped] = useState(false);
+  const [scopeKeys, setScopeKeys] = useState([]);   // official project keys
+  const [scopeSlugs, setScopeSlugs] = useState([]); // showcase slugs
+  const [scopeAllSc, setScopeAllSc] = useState(false);
+  const elements = useAsync(() => api.get('/blog/my-scopes').catch(() => ({ projects: [], showcases: [] })), []);
   const list = (roles.data?.roles || []).filter((r) => !undo.pending.has(r.id));
 
-  const open = (r) => { setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || '#3b82f6'); setCaps(r?.capabilities || []); };
+  const open = (r) => {
+    setEditing(r || {}); setName(r?.name || ''); setColor(r?.color || '#3b82f6'); setCaps(r?.capabilities || []);
+    const sc = r?.scope || null;
+    setScoped(!!sc); setScopeKeys(sc?.projectKeys || []); setScopeSlugs((sc?.showcases || []).map((x) => x.slug)); setScopeAllSc(!!sc?.allShowcase);
+  };
   const close = () => setEditing(null);
   const toggleCap = (id) => setCaps((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
   const capLabel = (c) => lang === 'fr' ? c.labelFr : c.label;
@@ -4712,7 +4723,7 @@ function RoleManager({ roles }) {
   const save = () => {
     if (name.trim().length < 2) return toast.error(t('rm.nametooShort', 'Give the role a name (2+ characters).'));
     setBusy(true);
-    const body = { name: name.trim(), color, capabilities: caps };
+    const body = { name: name.trim(), color, capabilities: caps, scope: scoped ? { projectKeys: scopeKeys, showcaseSlugs: scopeSlugs, allShowcase: scopeAllSc } : null };
     // Snapshot the target before deferring — `editing` is the modal's own state and the user
     // can switch roles inside the undo window, which would send the PUT to the wrong one.
     const id = editing?.id;
@@ -4740,6 +4751,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
@@ -4764,8 +4776,34 @@ function RoleManager({ roles }) {
                 <span className="ms-1"><RoleBadge color={color}>{name.trim() || t('rm.preview', 'Preview')}</RoleBadge></span>
               </div>
             </Field>
+            {/* Where it applies. A scoped role is the reusable form of a per-project grant:
+                "editor of BSM and of these two other projects" as one badge to hand out. */}
             <div>
-              <div className="text-sm font-medium mb-2">{t('rm.caps', 'Capabilities')} <span className="text-xs text-[var(--faint)]">({caps.length})</span></div>
+              <div className="text-sm font-medium mb-2">{t('rm.scope', 'Where it applies')}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {[[false, t('rm.scope.global', 'Everywhere'), t('rm.scope.global.d', 'The capabilities below apply site-wide.')], [true, t('rm.scope.elements', 'Only these elements'), t('rm.scope.elements.d', 'Edit rights on the projects ticked below — nothing site-wide.')]].map(([v, label, d]) => (
+                  <button key={String(v)} type="button" onClick={() => setScoped(v)} className={`text-start rounded-xl border p-3 transition ${scoped === v ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
+                    <div className="text-sm font-medium">{label}</div><div className="text-[11px] text-[var(--faint)]">{d}</div>
+                  </button>
+                ))}
+              </div>
+              {scoped && (
+                <div className="mt-2 rounded-xl border border-[var(--line)] p-3 space-y-2">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={scopeAllSc} onChange={(e) => setScopeAllSc(e.target.checked)} /> {t('rm.scope.allsc.l', 'Every “other project” page')}</label>
+                  {(elements.data?.projects || []).length > 0 && <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.projects', 'Official projects')}</div>
+                    <div className="flex flex-wrap gap-1.5">{(elements.data?.projects || []).map((pr) => { const on = scopeKeys.includes(pr.key); return <button key={pr.key} type="button" onClick={() => setScopeKeys((k) => on ? k.filter((x) => x !== pr.key) : [...k, pr.key])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{pr.name}</button>; })}</div>
+                  </div>}
+                  {!scopeAllSc && (elements.data?.showcases || []).length > 0 && <div>
+                    <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.showcases', 'Other projects')}</div>
+                    <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
+                  </div>}
+                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h', 'A member of this role can edit the content of these pages (like a per-project grant). Publishing, pinning, visibility and announcements stay with managers.')}</p>
+                </div>
+              )}
+            </div>
+            <div className={scoped ? 'opacity-60' : ''}>
+              <div className="text-sm font-medium mb-2">{t('rm.caps', 'Capabilities')} <span className="text-xs text-[var(--faint)]">({caps.length})</span>{scoped && <span className="text-xs text-[var(--faint)]"> · {t('rm.caps.scopednote', 'not applied site-wide while the role is limited to elements')}</span>}</div>
               <div className="space-y-3">
                 {CAP_CATEGORIES.map((cat) => {
                   const inCat = ADMIN_CAPS.filter((c) => c.cat === cat.id);
@@ -8654,6 +8692,7 @@ function ShowcaseQueue() {
   const { data, reload, loading } = useAsync(() => api.get(`/admin/showcase-requests?status=${status}`), [status]);
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState({});
+  const [configure, setConfigure] = useState(null); // a request being approved WITH its page configured
 
   const rows = data?.requests || [];
   const counts = data?.counts || {};
@@ -8722,12 +8761,20 @@ function ShowcaseQueue() {
                       onChange={(e) => setNote({ ...note, [r.id]: e.target.value })}
                       placeholder={t('sq.note', 'A line back to them \u2014 a rejection with no reason gets resubmitted unchanged')} />
                     <Button size="sm" disabled={busy === r.id} onClick={() => act(r.id, 'approve')}>{t('sq.approve', 'Approve')}</Button>
+                    <Button size="sm" variant="primary" disabled={busy === r.id} onClick={() => setConfigure(r)} title={t('sq.configure.h', 'Open the full page editor prefilled from the request; approving creates the page as configured.')}><Wand2 size={13} /> {t('sq.configure', 'Approve & configure')}</Button>
                     <Button size="sm" variant="ghost" disabled={busy === r.id} onClick={() => act(r.id, 'reject')}>{t('sq.reject', 'Reject')}</Button>
                   </div>
                 ) : r.reviewNote ? <p className="text-[11px] text-[var(--faint)] mt-2">{t('sq.said', 'You said:')} {r.reviewNote}</p> : null}
               </div>
             ))}
           </div>}
+      {configure && (
+        <ShowcaseEditModal
+          draft={{ name: configure.name, short: configure.short, icon: configure.icon || '', published: false, visibility: 'unlisted',
+            config: { tagline: (configure.description || '').split('\n')[0].slice(0, 140), links: configure.url ? { website: configure.url } : {}, overview: configure.pitch ? { body: configure.pitch } : undefined } }}
+          onSubmit={async (payload) => { await api.post(`/admin/showcase-requests/${configure.id}/approve`, { note: note[configure.id] || '', project: payload }); }}
+          onClose={() => setConfigure(null)} onDone={() => { setConfigure(null); reload(); }} />
+      )}
     </Card>
   );
 }
@@ -13608,7 +13655,7 @@ function AdminBot() {
   const setScope = (id) => setScopeRaw(id || '');
   // Defaults to the first server the bot knows, once the status has loaded. Above the early
   // return below on purpose: a hook after a conditional return is React error #310.
-  useEffect(() => { const gl = status?.guildList || []; if (!scope && gl.length) setScopeRaw(gl[0].id); /* eslint-disable-next-line */ }, [status?.guildList?.length]);
+  useEffect(() => { const gl = data?.status?.guildList || []; if (!scope && gl.length) setScopeRaw(gl[0].id); /* eslint-disable-next-line */ }, [data?.status?.guildList?.length]);
   const [page, setPage] = useState('overview'); // which module page the left rail has selected
   useEffect(() => { if (data?.config) setCfg(data.config); }, [data]);
   // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
@@ -16920,30 +16967,33 @@ function AdminShowcase() {
   );
 }
 
-function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
+// `draft`: prefilled values for a page that does not exist yet (a listing request); `onSubmit`:
+// what to do with the payload instead of POST /admin/showcase (the request's approve route).
+function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage = true, onClose, onDone }) {
   const toast = useToast(); const { t } = useI18n();
   const isNew = !project;
-  const cfg0 = project?.config || {};
-  const [name, setName] = useState(project?.name || '');
-  const [short, setShort] = useState(project?.short || '');
-  const [icon, setIcon] = useState(project?.icon || '');
-  const [published, setPublished] = useState(project?.published ?? true);
+  const src = project || draft;
+  const cfg0 = src?.config || {};
+  const [name, setName] = useState(src?.name || '');
+  const [short, setShort] = useState(src?.short || '');
+  const [icon, setIcon] = useState(src?.icon || '');
+  const [published, setPublished] = useState(src?.published ?? true);
   const [tabs, setTabs] = useState({ releases: !!cfg0.tabs?.releases, community: !!cfg0.tabs?.community, legal: !!cfg0.tabs?.legal, stack: !!cfg0.tabs?.stack });
   const [tagline, setTagline] = useState(cfg0.tagline || '');
   const { tabs: _t, tagline: _tl, ...rest } = cfg0;
   const [details, setDetails] = useState(JSON.stringify(Object.keys(rest).length ? rest : SHOWCASE_TEMPLATE, null, 2));
-  const [pinTopbar, setPinTopbar] = useState(project?.pinTopbar ?? false);
-  const [visibility, setVisibility] = useState(project?.visibility ?? 'public');
-  const [whitelist, setWhitelist] = useState(project?.visibilityWhitelist ?? []);
+  const [pinTopbar, setPinTopbar] = useState(src?.pinTopbar ?? false);
+  const [visibility, setVisibility] = useState(src?.visibility ?? 'public');
+  const [whitelist, setWhitelist] = useState(src?.visibilityWhitelist ?? []);
   const [announce, setAnnounce] = useState({
-    announceEnabled: project?.announceEnabled ?? false,
-    announceTitle: project?.announceTitle ?? '',
-    announceLogo: project?.announceLogo ?? '',
-    announceMarkdown: project?.announceMarkdown ?? '',
-    announceRevealAt: project?.announceRevealAt ? new Date(project.announceRevealAt).toISOString().slice(0, 16) : '',
-    announceShowPage: project?.announceShowPage ?? false,
-    announceButtonLabel: project?.announceButtonLabel ?? '',
-    announceButtonUrl: project?.announceButtonUrl ?? '',
+    announceEnabled: src?.announceEnabled ?? false,
+    announceTitle: src?.announceTitle ?? '',
+    announceLogo: src?.announceLogo ?? '',
+    announceMarkdown: src?.announceMarkdown ?? '',
+    announceRevealAt: src?.announceRevealAt ? new Date(project.announceRevealAt).toISOString().slice(0, 16) : '',
+    announceShowPage: src?.announceShowPage ?? false,
+    announceButtonLabel: src?.announceButtonLabel ?? '',
+    announceButtonUrl: src?.announceButtonUrl ?? '',
   });
   const [iconPick, setIconPick] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -16968,7 +17018,8 @@ function ShowcaseEditModal({ project, canManage = true, onClose, onDone }) {
     setBusy(true);
     onClose();
     undoSave(async () => {
-      if (isNew) await api.post('/admin/showcase', payload);
+      if (onSubmit) await onSubmit(payload);
+      else if (isNew) await api.post('/admin/showcase', payload);
       else await api.put(`/admin/showcase/${id}`, payload);
       onDone();
     }, t('common.saved', 'Saved.'),

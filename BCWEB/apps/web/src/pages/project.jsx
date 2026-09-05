@@ -555,7 +555,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
             <div className="text-xs text-[var(--muted)] mt-3 flex items-center gap-2 flex-wrap">
               <b className="text-[var(--text)]">{selDay.date}</b> — {selDay.count} {t('act.commitsl', 'commit(s)')}
               {githubUrl && /github\.com\//.test(githubUrl) && (
-                <a href={`${githubUrl.replace(/\/+$/, '')}/commits?since=${selDay.date}&until=${selDay.date}`} target="_blank" rel="noreferrer"
+                <a href={`${githubUrl.replace(/\/+$/, '')}/commits${a.source?.branch ? `/${encodeURIComponent(a.source.branch)}` : ''}?since=${selDay.date}&until=${selDay.date}`} target="_blank" rel="noreferrer"
                   className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline">
                   <Github size={11} /> {t('act.viewday', 'View that day on GitHub')}
                 </a>

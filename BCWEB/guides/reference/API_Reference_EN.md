@@ -535,6 +535,8 @@ SUPERADMIN-authored role bundles layered on top of the role enum, and per-projec
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
+| POST | `/admin/showcase-requests/:id/approve` | admin | Now also takes `project` (the full page as the New-project modal writes it: name, short, icon, config, published, pinTopbar, visibility, whitelist, announcement) — “Approve & configure” creates the listing finished instead of bare. |
+| PUT/POST | `/admin/custom-roles[/:id]` | superadmin | Accepts `scope: { projectKeys[], showcaseSlugs[], allShowcase }`. A scoped role adds no site-wide capability; it grants content-edit rights on those elements through `projectGrants()`. |
 | GET | `/admin/custom-roles` | superadmin | List custom roles. |
 | POST | `/admin/custom-roles` | superadmin | Create a custom role. |
 | PUT | `/admin/custom-roles/:id` | superadmin | Edit a custom role. |

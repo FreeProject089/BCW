@@ -2,7 +2,7 @@ import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
-import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants, logAudit } from '../lib/lib.mjs';
+import { db, issueSession, clearSession, requireRole, optionalAuth, safeEqual, clearAccountLockCache, projectGrants, logAudit, isScopedRole } from '../lib/lib.mjs';
 import { emailHash } from './closure.mjs';
 import { generateSecret, verifyTotp, otpauthUri, generateRecoveryCodes } from '../lib/totp.mjs';
 import { userBcId } from '../lib/repofingerprint.mjs';
@@ -401,9 +401,10 @@ export default async function authRoutes(app) {
     // editor edits); `effectivePermissions` is the union the UI keys off.
     let customRoles = [];
     if (user.customRoleIds?.length) {
-      customRoles = await p.customRole.findMany({ where: { id: { in: user.customRoleIds } }, select: { id: true, name: true, color: true, capabilities: true } });
+      customRoles = await p.customRole.findMany({ where: { id: { in: user.customRoleIds } }, select: { id: true, name: true, color: true, capabilities: true, scope: true } });
     }
-    const effectivePermissions = [...new Set([...(user.permissions || []), ...customRoles.flatMap((r) => r.capabilities || [])])];
+    // A scoped role's capabilities are per element (see projectGrants), never site-wide.
+    const effectivePermissions = [...new Set([...(user.permissions || []), ...customRoles.filter((r) => !isScopedRole(r)).flatMap((r) => r.capabilities || [])])];
     const g = await projectGrants(user.id);
     return { user: { ...user, bcId: userBcId(user.id), customRoles, effectivePermissions, projectGrants: { allShowcase: g.allShowcase, showcaseIds: [...g.showcaseIds], projectKeys: [...g.projectKeys] } } };
   });

@@ -176,6 +176,21 @@ const DICT = {
     'common.loading': 'Loading…',
   },
   fr: {
+    // ── Sept 6: scoped roles + approve & configure ──
+    'sq.configure': 'Approuver & configurer',
+    'sq.configure.h': 'Ouvre l’éditeur complet de la page pré-rempli depuis la demande ; approuver crée la page telle que configurée.',
+    'rm.scope': 'Où il s’applique',
+    'rm.scope.global': 'Partout',
+    'rm.scope.global.d': 'Les capacités ci-dessous s’appliquent à tout le site.',
+    'rm.scope.elements': 'Seulement ces éléments',
+    'rm.scope.elements.d': 'Droits d’édition sur les projets cochés ci-dessous — rien à l’échelle du site.',
+    'rm.scope.allsc': 'chaque autre projet',
+    'rm.scope.some': 'certains éléments',
+    'rm.scope.allsc.l': 'Chaque page « autre projet »',
+    'rm.scope.projects': 'Projets officiels',
+    'rm.scope.showcases': 'Autres projets',
+    'rm.scope.h': 'Un membre de ce rôle peut éditer le contenu de ces pages (comme un droit par projet). Publication, épinglage, visibilité et annonces restent aux gestionnaires.',
+    'rm.caps.scopednote': 'non appliquées au site tant que le rôle est limité à des éléments',
     // ── Sept 6: global member database ──
     'db.mdb.cap': 'Plafond (Mo)',
     'db.mdb.cap.h': '~512 octets par ligne membre.',

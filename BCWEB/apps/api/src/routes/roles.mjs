@@ -21,7 +21,7 @@ export default async function roleRoutes(app) {
     const withRole = await p.user.findMany({ where: { NOT: { customRoleIds: { isEmpty: true } } }, select: { customRoleIds: true } });
     const counts = {};
     for (const u of withRole) for (const id of u.customRoleIds) counts[id] = (counts[id] || 0) + 1;
-    return { roles: roles.map((r) => ({ ...r, memberCount: counts[r.id] || 0 })), capabilities: CAPABILITIES };
+    return { roles: (await withScopeNames(p, roles)).map((r) => ({ ...r, memberCount: counts[r.id] || 0 })), capabilities: CAPABILITIES };
   });
 
   const roleBody = z.object({
@@ -30,7 +30,28 @@ export default async function roleRoutes(app) {
     // roles created before the picker existed. The client renders both (see RoleBadge).
     color: z.string().trim().regex(/^(#[0-9a-fA-F]{6}|primary|amber|green|red|blue)$/).default('#3b82f6'),
     capabilities: z.array(z.enum(CAPABILITIES)).max(CAPABILITIES.length).default([]),
+    // Limit the role to elements: official project keys and/or showcase slugs (stored as
+    // ids). Null / empty = the role applies site-wide.
+    scope: z.object({
+      projectKeys: z.array(z.string().regex(KEY_SHAPE)).max(50).default([]),
+      showcaseSlugs: z.array(z.string().max(80)).max(200).default([]),
+      allShowcase: z.boolean().default(false),
+    }).nullable().optional(),
   });
+  // Slugs → ids (a slug is what the picker shows; an id is what survives a rename).
+  const resolveScope = async (p, scope) => {
+    if (!scope) return null;
+    const rows = scope.showcaseSlugs.length ? await p.showcaseProject.findMany({ where: { slug: { in: scope.showcaseSlugs } }, select: { id: true } }) : [];
+    const out = { projectKeys: [...new Set(scope.projectKeys)], showcaseIds: rows.map((r) => r.id), allShowcase: !!scope.allShowcase };
+    return out.projectKeys.length || out.showcaseIds.length || out.allShowcase ? out : null;
+  };
+  // For the list: the scope back as slugs + names, so the editor and the badge read it.
+  const withScopeNames = async (p, roles) => {
+    const ids = [...new Set(roles.flatMap((r) => r.scope?.showcaseIds || []))];
+    const sc = ids.length ? await p.showcaseProject.findMany({ where: { id: { in: ids } }, select: { id: true, slug: true, name: true } }) : [];
+    const byId = Object.fromEntries(sc.map((s) => [s.id, s]));
+    return roles.map((r) => ({ ...r, scope: r.scope ? { ...r.scope, showcases: (r.scope.showcaseIds || []).map((id) => byId[id]).filter(Boolean) } : null }));
+  };
   app.post('/admin/custom-roles', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
     const b = roleBody.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -38,8 +59,9 @@ export default async function roleRoutes(app) {
     const caps = [...new Set(b.data.capabilities)];
     const dup = await p.customRole.findUnique({ where: { name: b.data.name } });
     if (dup) return reply.code(409).send({ error: 'name_taken' });
-    const role = await p.customRole.create({ data: { name: b.data.name, color: b.data.color || 'primary', capabilities: caps, createdBy: req.user.uid } });
-    await logAudit(p, req.user.uid, 'role.create', `${role.name}: [${caps.join(', ')}]`, clientIp(req));
+    const scope = await resolveScope(p, b.data.scope);
+    const role = await p.customRole.create({ data: { name: b.data.name, color: b.data.color || 'primary', capabilities: caps, scope, createdBy: req.user.uid } });
+    await logAudit(p, req.user.uid, 'role.create', `${role.name}: [${caps.join(', ')}]${scope ? ' scoped' : ''}`, clientIp(req));
     return reply.code(201).send({ role });
   });
   app.put('/admin/custom-roles/:id', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
@@ -52,7 +74,8 @@ export default async function roleRoutes(app) {
     // Name is unique — reject a rename that collides with a different role.
     const clash = await p.customRole.findFirst({ where: { name: b.data.name, NOT: { id: req.params.id } } });
     if (clash) return reply.code(409).send({ error: 'name_taken' });
-    const role = await p.customRole.update({ where: { id: req.params.id }, data: { name: b.data.name, color: b.data.color || 'primary', capabilities: caps } });
+    const scope = await resolveScope(p, b.data.scope);
+    const role = await p.customRole.update({ where: { id: req.params.id }, data: { name: b.data.name, color: b.data.color || 'primary', capabilities: caps, scope } });
     // A role's caps changed → every member's effective perms changed. Clear the whole cache.
     clearUserCache();
     await logAudit(p, req.user.uid, 'role.update', `${role.name}: [${caps.join(', ')}]`, clientIp(req));

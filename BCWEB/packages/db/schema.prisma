@@ -703,6 +703,11 @@ model CustomRole {
   // red/…) — cosmetic only.
   color        String   @default("primary")
   capabilities String[] @default([])
+  // A SCOPED role: { projectKeys: [], showcaseIds: [], allShowcase: false }. When set, the
+  // role's capabilities are NOT added site-wide; instead the role grants content-edit rights
+  // on exactly those elements (like ProjectPermission rows, but reusable and named). Null =
+  // the role applies everywhere, as before.
+  scope        Json?
   createdBy    String // SUPERADMIN userId — audit trail only
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

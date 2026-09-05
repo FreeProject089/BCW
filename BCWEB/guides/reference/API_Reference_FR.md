@@ -541,6 +541,8 @@ Ensembles de rôles créés par un SUPERADMIN par-dessus l’énumération de r�
 
 | Méthode | Chemin | Auth | Rôle |
 |---|---|---|---|
+| POST | `/admin/showcase-requests/:id/approve` | admin | Prend aussi `project` (la page complète telle que l'écrit la modale Nouveau projet : name, short, icon, config, published, pinTopbar, visibility, whitelist, annonce) — « Approuver & configurer » crée la fiche finie plutôt que vide. |
+| PUT/POST | `/admin/custom-roles[/:id]` | superadmin | Accepte `scope: { projectKeys[], showcaseSlugs[], allShowcase }`. Un rôle limité n'ajoute aucune capacité globale ; il donne les droits d'édition sur ces éléments via `projectGrants()`. |
 | GET | `/admin/custom-roles` | superadmin | Lister les rôles personnalisés. |
 | POST | `/admin/custom-roles` | superadmin | Créer un rôle personnalisé. |
 | PUT | `/admin/custom-roles/:id` | superadmin | Modifier un rôle personnalisé. |

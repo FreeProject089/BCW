@@ -392,15 +392,23 @@ export async function currentUser(uid) {
       perms = u.permissions || [];
       // Expand any assigned CustomRole into its capabilities and UNION them in — additive
       // only, so a role can never strip what the tier/individual grants already give.
+      // A SCOPED role (limited to elements) adds nothing here: its rights are per element
+      // and live in projectGrants() below.
       if (u.customRoleIds?.length) {
-        const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { capabilities: true } });
-        if (roles.length) perms = [...new Set([...perms, ...roles.flatMap((r) => r.capabilities || [])])];
+        const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { capabilities: true, scope: true } });
+        const wide = roles.filter((r) => !isScopedRole(r));
+        if (wide.length) perms = [...new Set([...perms, ...wide.flatMap((r) => r.capabilities || [])])];
       }
     }
   } catch { /* keep nulls */ }
   const rec = { at: Date.now(), role, perms, exists };
   boundedSet(_userCache, uid, rec, UID_CACHE_MAX, MOD_TTL);
   return rec;
+}
+/** A role limited to elements (projects / showcase pages) rather than site-wide. */
+export function isScopedRole(r) {
+  const s = r?.scope;
+  return !!(s && typeof s === 'object' && ((s.projectKeys || []).length || (s.showcaseIds || []).length || s.allShowcase));
 }
 // Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
 // MOD → its defaults + explicit grants; anyone else → only explicit grants.
@@ -431,6 +439,17 @@ export async function projectGrants(uid) {
       if (g.allShowcase) out.allShowcase = true;
       if (g.showcaseProjectId) out.showcaseIds.add(g.showcaseProjectId);
       if (g.projectKey) out.projectKeys.add(g.projectKey);
+    }
+    // Scoped custom roles: a named, reusable version of the same grants.
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (u?.customRoleIds?.length) {
+      const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+      for (const r of roles) {
+        if (!isScopedRole(r)) continue;
+        if (r.scope.allShowcase) out.allShowcase = true;
+        for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+        for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+      }
     }
   } catch { /* no grants on error */ }
   return out;
