@@ -75,6 +75,23 @@ Including \`code\`, lists and images.
 
 The rows above are not converted — the card tells you how far you are from that zone right
 now. A single moment is: the stream starts at :time[2026-09-01T20:00]{tz=Europe/Paris}.
+
+## New in 2.0
+
+:::stats
+:::stat[Blocks]{value="70" delta="+22" icon=ph:stack}
+:::
+:::stat[Icons]{value="3 000+" icon=ph:palette}
+:::
+:::
+
+:::checklist[Try these]
+- [x] A stat tile
+- [ ] A timeline — \:::timeline / \:::event
+- [ ] A FAQ — \:::faq / \:::q
+:::
+
+Progress: :meter[60]{label=Done} · :icon[ph-bold:rocket] Phosphor works everywhere an icon does.
 `;
 
 function Snippet({ code, lang = 'bash' }) {
