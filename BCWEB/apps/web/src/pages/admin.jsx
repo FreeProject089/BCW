@@ -13298,12 +13298,60 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
 // make room, and what "inactive" means. Servers no longer choose — their owners see the list.
 function MemberDatabaseCard({ cfg, set }) {
   const { t } = useI18n();
+  const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/memberdb'), []);
+  const [refreshing, setRefreshing] = useState(false);
+  const [rescanning, setRescanning] = useState(false);
+  const [refreshedAt, setRefreshedAt] = useState(null);
   const ms = cfg.memberStorage || {};
   const on = ms.enabled !== false;
   const capMB = Number(cfg.limits?.storageMB) || 0;
   const usedMB = (data?.usedBytes || 0) / 1048576;
   const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0;
+  const ago = (iso) => {
+    if (!iso) return t('db.mdb.never', 'never');
+    const s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+    if (s < 60) return t('db.mdb.ago.s', '{n}s ago').replace('{n}', s);
+    if (s < 3600) return t('db.mdb.ago.m', '{n} min ago').replace('{n}', Math.round(s / 60));
+    if (s < 86400) return t('db.mdb.ago.h', '{n} h ago').replace('{n}', Math.round(s / 3600));
+    return new Date(iso).toLocaleString();
+  };
+  // Refresh = re-read the numbers. The button shows it is working (spinner, disabled), then
+  // says WHEN it last did — a silent icon that re-fetched in 80 ms looked like a dead button.
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    const t0 = Date.now();
+    try { await reload(); await new Promise((r) => setTimeout(r, Math.max(0, 450 - (Date.now() - t0)))); setRefreshedAt(new Date().toISOString()); toast.info(t('db.mdb.refreshed', 'Numbers refreshed.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setRefreshing(false); }
+  };
+  // Re-scan = ask the BOT to walk every server's roster now (the API hands the request to it
+  // on its next heartbeat, ≤ 60 s), then poll the numbers until the roster moves.
+  const rescan = async () => {
+    if (rescanning) return;
+    setRescanning(true);
+    try {
+      await api.post('/admin/bot/memberdb/rescan', {});
+      toast.info(t('db.mdb.rescan.queued', 'Re-scan requested — the bot picks it up within a minute.'));
+      const before = data?.lastScanAt || null;
+      for (let k = 0; k < 24; k++) { // ≤ 2 min
+        await new Promise((r) => setTimeout(r, 5000));
+        const d = await api.get('/admin/bot/memberdb').catch(() => null);
+        if (d && d.lastScanAt && d.lastScanAt !== before && !d.rescanPending) { await reload(); toast.success(t('db.mdb.rescan.done', 'Roster re-scanned — {n} members stored.').replace('{n}', Number(d.stored || 0).toLocaleString())); return; }
+      }
+      await reload();
+      toast.info(t('db.mdb.rescan.slow', 'Still scanning — the numbers will follow on the next refresh.'));
+    } catch { toast.error(t('db.mdb.rescan.fail', 'Could not queue the re-scan.')); }
+    finally { setRescanning(false); }
+  };
+  const busyScan = rescanning || !!data?.rescanPending;
+  const Stat = ({ icon: I, label, value, tone = '' }) => (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2 min-w-0">
+      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] flex items-center gap-1"><I size={11} /> {label}</div>
+      <div className={`text-base font-semibold tabular-nums leading-tight ${tone}`}>{value}</div>
+    </div>
+  );
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
@@ -13311,13 +13359,32 @@ function MemberDatabaseCard({ cfg, set }) {
           <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
           <span className="font-medium text-sm">{t('db.mdb.title', 'Member database')}</span>
           <Badge tone={on ? 'green' : ''}>{on ? t('db.mdb.on', 'on') : t('db.mdb.off', 'off')}</Badge>
+          {data && <span className={`text-[11px] inline-flex items-center gap-1 ${data.botOnline ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${data.botOnline ? 'bg-success' : 'bg-[var(--faint)]'}`} /> {data.botOnline ? t('db.mdb.bot.on', 'bot online') : t('db.mdb.bot.off', 'bot offline')}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
-          <BotSwitch checked={on} onChange={(v) => set('memberStorage.enabled', v)} />
-        </div>
+        <BotSwitch checked={on} onChange={(v) => set('memberStorage.enabled', v)} />
       </div>
-      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-3xl">{t('db.mdb.sub', 'One database for every server the bot is in — the full roster of each, refreshed every 30 minutes, with the roles, join date and last activity. Servers do not choose; their owners see their own list. Linked members are always kept; when the cap is reached, inactive unlinked members are the ones removed to make room (if eviction is on) — otherwise the database stops growing.')}</p>
+      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-3xl">{t('db.mdb.sub', 'One database for every server the bot is in — the full roster of each, refreshed every 30 minutes, with the roles, join date and last activity. Servers do not choose; their owners see their own list. Linked members are always kept; at the cap, inactive unlinked members are removed to make room (if eviction is on) — otherwise the database stops growing.')}</p>
+
+      {/* The scan bar: when the roster was last written, and the two actions, each of which
+          visibly does something — a spinner while it runs, a timestamp / toast when it is done. */}
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="text-xs flex items-center gap-1.5 min-w-0">
+          <Clock size={13} className="text-[var(--faint)] shrink-0" />
+          <span className="text-[var(--muted)]">{t('db.mdb.lastscan', 'Last roster scan')}:</span>
+          <b className="tabular-nums">{loading ? '…' : ago(data?.lastScanAt)}</b>
+          {busyScan && <span className="inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)]"><Spinner /> {t('db.mdb.scanning', 'scanning…')}</span>}
+        </div>
+        <div className="ms-auto flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={refresh} disabled={refreshing} aria-busy={refreshing || undefined} title={t('db.mdb.refresh.h', 'Re-read the numbers below')}>
+            <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? t('db.mdb.refreshing', 'Refreshing…') : t('db.mdb.refresh', 'Refresh numbers')}
+          </Button>
+          <Button size="sm" onClick={rescan} disabled={busyScan || !data?.botOnline} title={!data?.botOnline ? t('db.mdb.rescan.offline', 'The bot is offline — it cannot scan right now.') : t('db.mdb.rescan.h', 'Ask the bot to walk every server’s roster now instead of waiting for the 30-minute cycle')}>
+            <Users size={13} /> {busyScan ? t('db.mdb.rescan.busy', 'Scanning…') : t('db.mdb.rescan', 'Re-scan servers now')}
+          </Button>
+        </div>
+        {refreshedAt && !refreshing && <div className="basis-full text-[10px] text-[var(--faint)]">{t('db.mdb.refreshedat', 'Numbers as of {t}').replace('{t}', new Date(refreshedAt).toLocaleTimeString())}</div>}
+      </div>
+
       <div className="grid sm:grid-cols-3 gap-2 mb-3">
         <Field label={t('db.mdb.cap', 'Cap (MB)')} className="!mb-0" hint={t('db.mdb.cap.h', '~512 bytes per member row.')}><Input type="number" min="0" value={capMB} onChange={(e) => set('limits.storageMB', Number(e.target.value))} /></Field>
         <Field label={t('db.mdb.days', '“Inactive” = no message or voice for (days)')} className="!mb-0"><Input type="number" min="1" value={ms.inactiveDays ?? 30} onChange={(e) => set('memberStorage.inactiveDays', Number(e.target.value))} /></Field>
@@ -13327,22 +13394,32 @@ function MemberDatabaseCard({ cfg, set }) {
         </div>
       </div>
       {loading ? <Spinner /> : data && (<>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+          <Stat icon={Users} label={t('db.mdb.stat.stored', 'Stored')} value={Number(data.stored || 0).toLocaleString()} />
+          <Stat icon={Link2} label={t('db.mdb.stat.linked', 'Linked')} value={Number(data.linked || 0).toLocaleString()} tone="text-success" />
+          <Stat icon={Clock} label={t('db.mdb.stat.inactive', 'Inactive')} value={Number(data.inactive || 0).toLocaleString()} tone={data.inactive ? 'text-warning' : ''} />
+          <Stat icon={Database} label={t('db.mdb.stat.usage', 'Usage')} value={`${usedMB.toFixed(1)} MB${capMB ? ` / ${capMB}` : ''}`} tone={pct > 90 ? 'text-error' : pct > 75 ? 'text-warning' : ''} />
+        </div>
         <div className="flex items-center justify-between text-[11px] mb-1">
           <span className="text-[var(--muted)]">{t('db.mdb.usage', '{s} stored · {l} linked · {i} inactive').replace('{s}', data.stored.toLocaleString()).replace('{l}', data.linked.toLocaleString()).replace('{i}', data.inactive.toLocaleString())}</span>
-          <span className="tabular-nums font-medium">{usedMB.toFixed(1)} MB {capMB ? `/ ${capMB} MB` : ''}{data.capRows ? ` · ${data.capRows.toLocaleString()} ${t('db.mdb.rows', 'rows max')}` : ''}</span>
+          <span className="tabular-nums text-[var(--faint)]">{data.capRows ? `${data.capRows.toLocaleString()} ${t('db.mdb.rows', 'rows max')}` : t('db.mdb.nocap', 'no cap')}</span>
         </div>
         <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mb-3"><div className={`h-full ${pct > 90 ? 'bg-error' : pct > 75 ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
         <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('db.mdb.servers', 'Per server')}</div>
         {!data.guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet — the bot registers each one it is in.')}</p> : (
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-64 overflow-auto">
-            {data.guilds.map((g) => (
-              <div key={g.guildId} className="flex items-center gap-2.5 px-3 py-1.5 text-xs">
-                {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
-                <span className="flex-1 min-w-0 truncate font-medium">{g.name || g.guildId}</span>
-                <span className="tabular-nums text-[var(--muted)]">{g.stored.toLocaleString()} / {(g.memberCount || 0).toLocaleString()}</span>
-                <span className="w-24 h-1 rounded-full bg-[var(--surface-2)] overflow-hidden hidden sm:block"><span className="block h-full bg-[var(--primary)]" style={{ width: `${g.memberCount ? Math.min(100, (g.stored / g.memberCount) * 100) : 0}%` }} /></span>
-              </div>
-            ))}
+            {data.guilds.map((g) => {
+              const cov = g.memberCount ? Math.min(100, (g.stored / g.memberCount) * 100) : 0;
+              return (
+                <div key={g.guildId} className="flex items-center gap-2.5 px-3 py-1.5 text-xs">
+                  {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
+                  <span className="flex-1 min-w-0 truncate font-medium">{g.name || g.guildId}</span>
+                  <span className="tabular-nums text-[var(--muted)]" title={t('db.mdb.cov', 'stored / members on the server')}>{g.stored.toLocaleString()} / {(g.memberCount || 0).toLocaleString()}</span>
+                  <span className={`tabular-nums w-10 text-end ${cov >= 95 ? 'text-success' : cov >= 60 ? 'text-[var(--muted)]' : 'text-warning'}`}>{Math.round(cov)}%</span>
+                  <span className="w-24 h-1 rounded-full bg-[var(--surface-2)] overflow-hidden hidden sm:block"><span className={`block h-full ${cov >= 95 ? 'bg-success' : 'bg-[var(--primary)]'}`} style={{ width: `${cov}%` }} /></span>
+                </div>
+              );
+            })}
           </div>
         )}
       </>)}
@@ -17209,6 +17286,114 @@ const OGP_PAGE_TYPES = [
   ['/docs', 'Docs'], ['/projects', 'Projects'], ['/faq', 'FAQ'], ['/about', 'About'],
 ];
 
+
+// The SEO health card — what a search engine actually gets from this site, checked live:
+// the files (sitemap, robots), the ownership tokens, and for every key page the title /
+// description / image the resolver serves (the same the SPA writes into <head> and the unfurl
+// shell serves crawlers). A page that falls back to the site-wide text is flagged, with the
+// fix one card lower (add a row in "Link previews, per page"). No new configuration: it reads.
+const SEO_KEY_PAGES = ['/', '/catalog', '/blog', '/docs', '/hosting', '/repos', '/projects', '/faq', '/dev', '/charity', '/myo', '/users'];
+function SeoHealthCard() {
+  const { t, lang } = useI18n();
+  const [state, setState] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [probe, setProbe] = useState('');
+  const [probeRes, setProbeRes] = useState(null);
+  const [probeBusy, setProbeBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    const out = { checks: [], pages: [] };
+    const text = (u) => fetch(u, { cache: 'no-store' }).then((r) => r.ok ? r.text().then((b) => ({ ok: true, body: b, type: r.headers.get('content-type') || '' })) : { ok: false, status: r.status }).catch(() => ({ ok: false }));
+    const [sm, rb, cfg] = await Promise.all([text('/sitemap.xml'), text('/robots.txt'), fetch('/api/seo').then((r) => r.ok ? r.json() : null).catch(() => null)]);
+    const smXml = sm.ok && /xml/i.test(sm.type);
+    const urls = smXml ? (sm.body.match(/<loc>/g) || []).length : 0;
+    out.checks.push({ ok: smXml, label: t('seoh.sitemap', 'Sitemap'), detail: smXml ? t('seoh.sitemap.ok', '{n} URLs listed').replace('{n}', urls) : sm.ok ? t('seoh.sitemap.html', 'The app shell answered instead of XML — in production Caddy routes /sitemap.xml to the API; in dev this is expected.') : t('seoh.sitemap.no', 'Not reachable') });
+    const rbOk = rb.ok && /Sitemap:/i.test(rb.body || '') && !/text\/html/i.test(rb.type || '');
+    out.checks.push({ ok: rbOk, label: t('seoh.robots', 'robots.txt'), detail: rbOk ? t('seoh.robots.ok', 'Points at the sitemap; private screens disallowed') : t('seoh.robots.no', 'Not served by the API (dev) or missing the Sitemap line') });
+    out.checks.push({ ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'), detail: cfg?.googleVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.gsc.no', 'No token — set it in Site settings to verify the property and submit the sitemap') });
+    out.checks.push({ ok: !!cfg?.bingVerify, label: t('seoh.bing', 'Bing Webmaster'), detail: cfg?.bingVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.bing.no', 'No token (optional)'), soft: true });
+    out.checks.push({ ok: !!cfg?.description, label: t('seoh.desc', 'Site description'), detail: cfg?.description ? `${cfg.description.length} ${t('seoh.chars', 'chars')}${cfg.descriptionFr ? ' · FR ✓' : ` · ${t('seoh.nofr', 'no FR')}`}` : t('seoh.desc.no', 'Empty — the built-in one is used') });
+    let ogOk = false;
+    if (cfg?.ogImage) { ogOk = await new Promise((res) => { const im = new Image(); im.onload = () => res(im.naturalWidth >= 600); im.onerror = () => res(false); im.src = cfg.ogImage; }); }
+    out.checks.push({ ok: cfg?.ogImage ? ogOk : true, label: t('seoh.og', 'Share image'), detail: cfg?.ogImage ? (ogOk ? t('seoh.og.ok', 'Loads, ≥ 600 px wide') : t('seoh.og.bad', 'Does not load or is too small (1200 × 630 recommended)')) : t('seoh.og.default', 'Built-in card (og-card.png)'), soft: true });
+    const metas = await Promise.all(SEO_KEY_PAGES.map((p) => fetch(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${lang}`).then((r) => r.ok ? r.json() : null).catch(() => null)));
+    const home = metas[0];
+    out.pages = SEO_KEY_PAGES.map((p, i) => {
+      const m = metas[i];
+      if (!m) return { path: p, missing: true };
+      const generic = p !== '/' && home && m.description === home.description;
+      const issues = [];
+      if (generic) issues.push(t('seoh.i.generic', 'uses the site-wide description'));
+      if ((m.title || '').length > 65) issues.push(t('seoh.i.title', 'title over 65 chars'));
+      if ((m.description || '').length > 165) issues.push(t('seoh.i.desc', 'description over 165 chars'));
+      if ((m.description || '').length < 50) issues.push(t('seoh.i.short', 'description under 50 chars'));
+      return { path: p, title: m.title, description: m.description, image: m.image, noindex: m.noindex, issues };
+    });
+    setState(out); setBusy(false);
+  };
+  useEffect(() => { run(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [lang]);
+  const runProbe = async () => {
+    const p = probe.trim(); if (!p.startsWith('/')) return;
+    setProbeBusy(true);
+    const [en, fr] = await Promise.all(['en', 'fr'].map((l) => fetch(`/api/seo/meta?path=${encodeURIComponent(p)}&lang=${l}`).then((r) => r.ok ? r.json() : null).catch(() => null)));
+    setProbeRes({ en, fr }); setProbeBusy(false);
+  };
+  const Snippet = ({ m }) => m ? (
+    <div className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] p-3 min-w-0">
+      <div className="text-[11px] text-[var(--faint)] truncate">{m.url}</div>
+      <div className="text-[15px] text-[#1a0dab] dark:text-[#8ab4f8] font-medium truncate">{m.title}</div>
+      <div className="text-xs text-[var(--muted)] line-clamp-2">{m.description}</div>
+      <div className="text-[10px] text-[var(--faint)] mt-1 flex gap-2 flex-wrap"><span>{m.type}</span>{m.noindex && <span className="text-warning">noindex</span>}{Array.isArray(m.jsonLd) && m.jsonLd.length ? <span>JSON-LD: {m.jsonLd.map((x) => x['@type']).join(', ')}</span> : null}</div>
+    </div>
+  ) : <div className="text-xs text-[var(--faint)]">—</div>;
+  const problems = state ? state.checks.filter((c) => !c.ok && !c.soft).length + state.pages.filter((p) => p.missing || p.issues?.length).length : 0;
+  return (
+    <Card className="p-4 mb-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2">
+          <Globe size={15} className="text-[var(--primary-2)]" /> {t('seoh.title', 'SEO health')}
+          {state && <Badge tone={problems ? 'amber' : 'green'}>{problems ? t('seoh.problems', '{n} to fix').replace('{n}', problems) : t('seoh.allgood', 'all good')}</Badge>}
+        </div>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={run}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> {busy ? t('seoh.checking', 'Checking…') : t('seoh.recheck', 'Re-check')}</Button>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('seoh.sub', 'What search engines get from this site, checked live: the sitemap and robots files, the ownership tokens, and — per key page — the title, description and image the resolver serves. The same text feeds the tab title, the <head> tags and the pasted-link card, so a fix in “Link previews, per page” below repairs all three at once.')}</p>
+      {!state ? <Spinner /> : (
+        <>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
+            {state.checks.map((c) => (
+              <div key={c.label} className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${c.ok ? 'border-[var(--line)]' : c.soft ? 'border-[var(--line)]' : 'border-warning-border bg-warning-bg/40'}`}>
+                {c.ok ? <CheckCircle2 size={15} className="text-success shrink-0 mt-0.5" /> : <AlertTriangle size={15} className={`${c.soft ? 'text-[var(--faint)]' : 'text-warning'} shrink-0 mt-0.5`} />}
+                <div className="min-w-0"><div className="text-xs font-medium">{c.label}</div><div className="text-[11px] text-[var(--muted)] leading-snug">{c.detail}</div></div>
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('seoh.pages', 'Key pages — what a search result shows ({l})').replace('{l}', lang.toUpperCase())}</div>
+          <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
+            {state.pages.map((p) => (
+              <div key={p.path} className="px-3 py-2 text-xs flex items-start gap-3">
+                <code className="shrink-0 w-24 text-[var(--primary-2)] truncate" title={p.path}>{p.path}</code>
+                {p.missing ? <span className="text-error">{t('seoh.unreach', 'resolver unreachable')}</span> : (
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate">{p.title}</div>
+                    <div className="text-[var(--muted)] line-clamp-1">{p.description}</div>
+                    {p.issues.length ? <div className="text-[11px] text-warning mt-0.5">⚠ {p.issues.join(' · ')}</div> : null}
+                  </div>
+                )}
+                {!p.missing && (p.issues.length ? <AlertTriangle size={14} className="text-warning shrink-0 mt-0.5" /> : <CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" />)}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <Field label={t('seoh.probe', 'Check any path')} className="!mb-0 flex-1 min-w-[14rem]"><Input placeholder="/blog/my-post" value={probe} onChange={(e) => setProbe(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runProbe(); }} /></Field>
+            <Button size="sm" disabled={probeBusy || !probe.trim().startsWith('/')} onClick={runProbe}>{probeBusy ? <Spinner /> : <><Search size={13} /> {t('seoh.probe.go', 'Show snippet')}</>}</Button>
+          </div>
+          {probeRes && <div className="grid md:grid-cols-2 gap-2 mt-2"><div><div className="text-[10px] text-[var(--faint)] mb-1">EN</div><Snippet m={probeRes.en} /></div><div><div className="text-[10px] text-[var(--faint)] mb-1">FR</div><Snippet m={probeRes.fr} /></div></div>}
+        </>
+      )}
+    </Card>
+  );
+}
+
 function SeoPagesCard() {
   const { t, lang } = useI18n();
   const toast = useToast();
@@ -20842,6 +21027,7 @@ function AdminSettings() {
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
           value, so it cannot be a key/label/type entry like the rest. The whole-site
           default preview now lives at the top of this same card. */}
+      <SeoHealthCard />
       <SeoPagesCard />
       <SeedGeneratorCard />
     </div>

@@ -10,6 +10,7 @@
 // human ever lands here they bounce straight to the app.
 import { db } from '../lib/lib.mjs';
 import { renderCasinoGif } from '../lib/casino-gif.mjs';
+import { loadAvatarImage, loadBadgeIcon } from '../lib/avatar-image.mjs';
 
 const SITE = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const LOGO = () => `${SITE()}/logo.png`;
@@ -250,7 +251,66 @@ ${twCard === 'summary_large_image' ? `<meta property="og:image:width" content="1
 </html>`;
 }
 
+// Paths a search engine must not index even though the SPA serves them: private, per-account
+// or transactional screens. The SPA sets <meta name=robots content=noindex> for these on
+// navigation; robots.txt disallows the same prefixes. One list, so they cannot disagree.
+const NOINDEX_PREFIXES = ['/dashboard', '/admin', '/profile', '/auth', '/settings', '/notifications', '/repo/', '/myo/deal', '/2fa/fill', '/uploads'];
+
+/** Structured data (schema.org JSON-LD) for a resolved page — what a rich result is built from. */
+function jsonLdFor(meta, clean) {
+  const site = SITE();
+  const org = { '@type': 'Organization', name: 'BetterCommunity', url: site, logo: LOGO() };
+  if (clean === '/' || clean === '') {
+    return [
+      { '@context': 'https://schema.org', ...org },
+      { '@context': 'https://schema.org', '@type': 'WebSite', name: 'BetterCommunity', url: site,
+        potentialAction: { '@type': 'SearchAction', target: `${site}/catalog?q={search_term_string}`, 'query-input': 'required name=search_term_string' } },
+    ];
+  }
+  if (meta.type === 'article') {
+    return [{ '@context': 'https://schema.org', '@type': 'Article', headline: meta.title.replace(/ — BetterCommunity.*$/, ''), description: meta.description, image: meta.image, url: meta.url,
+      publisher: org, ...(meta.datePublished ? { datePublished: meta.datePublished } : {}), ...(meta.dateModified ? { dateModified: meta.dateModified } : {}) }];
+  }
+  if (meta.type === 'profile') {
+    return [{ '@context': 'https://schema.org', '@type': 'ProfilePage', name: meta.title.replace(/ — BetterCommunity.*$/, ''), url: meta.url, description: meta.description }];
+  }
+  if (/^\/(p|item|project)\//.test(clean)) {
+    return [{ '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: meta.title.replace(/ — BetterCommunity.*$/, ''), description: meta.description, url: meta.url, image: meta.image,
+      applicationCategory: 'UtilitiesApplication', operatingSystem: 'Windows, Linux, macOS', offers: { '@type': 'Offer', price: '0', priceCurrency: 'CHF' }, publisher: org }];
+  }
+  if (clean === '/faq') return [{ '@context': 'https://schema.org', '@type': 'FAQPage', name: 'FAQ — BetterCommunity', url: meta.url }];
+  return [{ '@context': 'https://schema.org', '@type': 'WebPage', name: meta.title, description: meta.description, url: meta.url, isPartOf: { '@type': 'WebSite', name: 'BetterCommunity', url: site } }];
+}
+
+/** noindex for a path: a private prefix, or a path an admin marked in the SEO settings. */
+async function noindexFor(clean) {
+  if (NOINDEX_PREFIXES.some((pre) => clean === pre || clean.startsWith(pre.endsWith('/') ? pre : `${pre}/`) || clean === pre.replace(/\/$/, ''))) return true;
+  try {
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'seo.config' } });
+    const list = (row?.value?.noindexPaths || []).map((v) => String(v).replace(/\/$/, '') || '/');
+    return list.includes(clean.replace(/\/$/, '') || '/');
+  } catch { return false; }
+}
+
 export default async function ogRoutes(app) {
+  // The SPA's head, per route: the SAME title / description / image / type the unfurl shell
+  // above serves to crawlers (derived from the page + the admin's per-page overrides), plus
+  // whether the page is noindex and the JSON-LD a rich result is built from. Called by the
+  // web app on every navigation, so what a search engine reads and what a pasted link shows
+  // come from ONE resolver — editing a row in Admin → SEO changes both at once.
+  app.get('/seo/meta', async (req, reply) => {
+    const lang = String(req.query?.lang || '').toLowerCase() === 'fr' ? 'fr' : 'en';
+    const raw = String(req.query?.path || '/');
+    const clean = (raw.split('?')[0].split('#')[0] || '/').slice(0, 300);
+    if (!clean.startsWith('/')) return reply.code(400).send({ error: 'bad_path' });
+    const meta = await metaForRequest(clean, lang).catch(() => null)
+      || { title: 'BetterCommunity', description: 'The home for all Better* projects.', image: LOGO(), url: SITE() + clean, type: 'website' };
+    const noindex = await noindexFor(clean);
+    reply.header('Cache-Control', 'public, max-age=300');
+    return { ...meta, path: clean, lang, noindex, jsonLd: noindex ? [] : jsonLdFor(meta, clean.replace(/\/$/, '') || '/') };
+  });
+
   // Reached only via the Caddy @unfurl handler (bot User-Agents). `u` is the
   // originally-requested app path (e.g. /blog/my-post). Never authenticated.
   app.get('/og', async (req, reply) => {
@@ -390,7 +450,7 @@ export default async function ogRoutes(app) {
     const u = await p.user.findUnique({ where: { id }, select: {
       displayName: true, avatar: true, profilePublic: true, role: true,
       economy: { select: { level: true } },
-      badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } }, take: 3 },
+      badges: { include: { badge: true }, orderBy: { badge: { priority: 'desc' } }, take: 4 },
     } }).catch(() => null);
     if (!u || !u.profilePublic) return reply.redirect(LOGO());
     try {
@@ -402,31 +462,32 @@ export default async function ogRoutes(app) {
       try { const bg = await loadImage(OG_BANNER_DATA_URI); const s = Math.max(W / bg.width, H / bg.height); const bw = bg.width * s, bh = bg.height * s; x.drawImage(bg, (W - bw) / 2, (H - bh) / 2, bw, bh); } catch { x.fillStyle = '#0a0f1e'; x.fillRect(0, 0, W, H); }
       const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, 'rgba(8,11,18,0.80)'); g.addColorStop(0.55, 'rgba(8,11,18,0.32)'); g.addColorStop(1, 'rgba(8,11,18,0.06)'); x.fillStyle = g; x.fillRect(0, 0, W, H);
       const cx = 210, cy = H / 2, r = 120;
-      let drew = false;
-      if (u.avatar) { try { const src = /^(https?:|data:)/.test(u.avatar) ? u.avatar : `${SITE()}${u.avatar}`; const av = await loadImage(src); x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip(); x.drawImage(av, cx - r, cy - r, 2 * r, 2 * r); x.restore(); drew = true; } catch { /* fall through to boring avatar */ } }
-      if (!drew) {
-        let h = 0; for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-        const pal = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899']; const pick = (k) => pal[(h >> (k * 3)) % pal.length];
-        x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip();
-        x.fillStyle = pick(0); x.fillRect(cx - r, cy - r, 2 * r, 2 * r);
-        x.fillStyle = pick(1); x.beginPath(); x.arc(cx - 34, cy + 46, r * 0.95, 0, Math.PI * 2); x.fill();
-        x.fillStyle = pick(2); x.beginPath(); x.arc(cx + 58, cy - 34, r * 0.62, 0, Math.PI * 2); x.fill();
-        x.fillStyle = '#fff'; x.beginPath(); x.arc(cx - 26, cy - 12, 11, 0, Math.PI * 2); x.arc(cx + 26, cy - 12, 11, 0, Math.PI * 2); x.fill();
-        x.strokeStyle = '#fff'; x.lineWidth = 9; x.lineCap = 'round'; x.beginPath(); x.arc(cx, cy + 12, 34, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
-        x.restore();
-      }
+      // EXACTLY the picture the site shows for this account — uploaded photo, logo default, or
+      // the Boring Avatar with the user's own variant / seed / palette (lib/avatar-image.mjs).
+      // The card used to test the avatar JSON against a URL regex, always miss, and draw its
+      // own smiley: "a boring avatar", never the member's.
+      const av = await loadAvatarImage({ id, displayName: u.displayName, avatar: u.avatar }, 2 * r);
+      x.save(); x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.clip();
+      if (av) { const s = Math.max((2 * r) / av.width, (2 * r) / av.height); const w = av.width * s, h = av.height * s; x.drawImage(av, cx - w / 2, cy - h / 2, w, h); }
+      else { x.fillStyle = '#f59e0b'; x.fillRect(cx - r, cy - r, 2 * r, 2 * r); }
+      x.restore();
       x.strokeStyle = 'rgba(255,255,255,0.92)'; x.lineWidth = 7; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
       // Text is best-effort: a font-less container must not blank the whole card.
       try {
         x.fillStyle = '#fff'; x.font = 'bold 66px sans-serif'; x.fillText(String(u.displayName || 'Member').slice(0, 22), 380, cy - 40);
         x.fillStyle = 'rgba(255,255,255,0.82)'; x.font = '500 32px sans-serif'; x.fillText('BetterCommunity', 380, cy + 6);
-        // A row of chips under the name: level, role, then top badge names.
-        const chip = (tx, label, bg, fg) => {
-          x.font = 'bold 26px sans-serif'; const tw = x.measureText(label).width; const pad = 18, h = 44, w = tw + pad * 2;
+        // A row of chips under the name: level, role, then the badges — each with its REAL icon
+        // (the lucide glyph or uploaded image the site shows) in the badge's colour.
+        const chip = (tx, label, bg, fg, icon = null, iconBg = null) => {
+          x.font = 'bold 26px sans-serif'; const tw = x.measureText(label).width; const pad = 18, h = 44, ic = icon ? 30 : 0, w = tw + pad * 2 + (icon ? ic + 10 : 0);
           x.fillStyle = bg; x.beginPath();
           const rr = 12, yy = cy + 34;
           x.moveTo(tx + rr, yy); x.arcTo(tx + w, yy, tx + w, yy + h, rr); x.arcTo(tx + w, yy + h, tx, yy + h, rr); x.arcTo(tx, yy + h, tx, yy, rr); x.arcTo(tx, yy, tx + w, yy, rr); x.closePath(); x.fill();
-          x.fillStyle = fg; x.fillText(label, tx + pad, yy + h - 14);
+          if (icon) {
+            if (iconBg) { x.fillStyle = iconBg; x.beginPath(); x.arc(tx + pad + ic / 2, yy + h / 2, ic / 2 + 4, 0, Math.PI * 2); x.fill(); }
+            x.drawImage(icon, tx + pad, yy + (h - ic) / 2, ic, ic);
+          }
+          x.fillStyle = fg; x.fillText(label, tx + pad + (icon ? ic + 10 : 0), yy + h - 14);
           return tx + w + 12;
         };
         let tx = 380;
@@ -434,8 +495,9 @@ export default async function ogRoutes(app) {
         if (lvl > 0) tx = chip(tx, `Lv ${lvl}`, '#f59e0b', '#1a1206');
         if (u.role && u.role !== 'USER') tx = chip(tx, String(u.role), 'rgba(88,101,242,0.9)', '#fff');
         for (const b of (u.badges || [])) {
-          if (tx > W - 160) break;
-          tx = chip(tx, String(b.badge?.name || '').slice(0, 14), 'rgba(255,255,255,0.16)', '#fff');
+          if (tx > W - 200) break;
+          const icon = await loadBadgeIcon(b.badge, '#ffffff', 60).catch(() => null);
+          tx = chip(tx, String(b.badge?.name || '').slice(0, 14), 'rgba(255,255,255,0.16)', '#fff', icon, b.badge?.color || 'rgba(255,255,255,0.25)');
         }
       } catch { /* no font */ }
       const png = await c.encode('png');

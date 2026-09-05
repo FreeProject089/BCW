@@ -482,7 +482,7 @@ async function playCasino(i, opts) {
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: line,
     image: gif ? 'attachment://casino.gif' : null, files,
-    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, bet: 0, owner: i.user.id })}`, 'Change bet / game', ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' })],
+    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, view: 'game', bet: 0, owner: i.user.id })}`, 'Change bet / game', ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' })],
   });
 }
 
@@ -493,35 +493,44 @@ async function cmdCasino(i) {
   const num = i.options.getInteger('number');
   const target = i.options.getInteger('target') || 2;
   const risk = ['low', 'medium', 'high'].includes(i.options.getString('risk')) ? i.options.getString('risk') : 'medium';
-  const st = { game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
-  // No bet, or a number bet without its number: the table opens with everything given so far
-  // already selected, instead of a one-line "use these options" refusal.
+  const st = { view: i.options.getString('game') ? 'game' : 'list', game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
+  // No bet: the table opens — on the list of games, or straight on the named game's page with
+  // everything given so far already selected. A number bet without its number does the same.
   if (!bet || (game === 'roulette' && betOn === 'number' && num == null)) return casinoMenu(i, st);
   return playCasino(i, { bet, game, betOn, num, target, risk });
 }
 
-// ── Casino table (interactive setup) ─────────────────────────────────────────
-// The whole choice lives in the custom ids (game · bet · bet_on · number · target · risk ·
-// owner), so the menu survives a bot restart and never needs server-side session state. Each
-// select re-renders the same ephemeral card with the new choice; Play hands it to playCasino.
+// ── Casino table (interactive) ───────────────────────────────────────────────
+// `/casino` alone opens a paged table: the LIST of games first (one big entry per game with
+// an Open button), then one page per game — a preview picture, the rules and odds, the bet
+// menu, the game's own option menu, and Play — with ◀ Games ▶ at the bottom to move between
+// pages. The whole choice lives in the custom ids (view · game · bet · bet_on · number ·
+// target · risk · owner), so the table survives a bot restart and needs no session state.
 const CASINO_GAMES = [
-  { id: 'coinflip', emoji: '🪙', name: 'Coin flip', desc: 'Heads or tails — 2×, one chance in two' },
-  { id: 'dice', emoji: '🎲', name: 'Dice', desc: 'Roll 4, 5 or 6 to double — 2×, one chance in two' },
-  { id: 'slots', emoji: '🎰', name: 'Slots', desc: 'Three of a kind pays 8×, any pair 1.5×' },
-  { id: 'roulette', emoji: '🎡', name: 'Roulette', desc: 'A colour 2×, green 14×, an exact number 35×' },
-  { id: 'wheel', emoji: '🎯', name: 'Wheel', desc: 'Pick a multiplier — the bigger it is, the thinner its slice' },
-  { id: 'plinko', emoji: '🟡', name: 'Plinko', desc: 'A ball drops into a multiplier bucket — you pick the risk table' },
+  { id: 'coinflip', emoji: '🪙', name: 'Coin flip', desc: 'Heads or tails — 2×, one chance in two',
+    rules: ['Call it. **Heads** doubles your bet, **tails** loses it.', '**Odds** 50 % · **Pays** 2×'], preview: '🪙' },
+  { id: 'dice', emoji: '🎲', name: 'Dice', desc: 'Roll 4, 5 or 6 to double — 2×, one chance in two',
+    rules: ['One die. A **4, 5 or 6** doubles your bet; **1, 2 or 3** loses it.', '**Odds** 50 % · **Pays** 2×'], preview: '6' },
+  { id: 'slots', emoji: '🎰', name: 'Slots', desc: 'Three of a kind pays 8×, any pair 1.5×',
+    rules: ['Three reels. **Three of a kind** pays 8×, **any pair** 1.5×, anything else loses.', '**Triple** 4 % · **Pair** 48 %'], preview: 'cherry cherry cherry' },
+  { id: 'roulette', emoji: '🎡', name: 'Roulette', desc: 'A colour 2×, green 14×, an exact number 35×',
+    rules: ['European wheel, 0–36. **Red** or **black** pays 2× (18 pockets each), **green** — the zero — pays 14×, an **exact number** pays 35×.', '**Option** what you bet on; a number bet asks for the number.'], preview: '17' },
+  { id: 'wheel', emoji: '🎯', name: 'Wheel', desc: 'Pick a multiplier — the bigger it is, the thinner its slice',
+    rules: ['Pick the multiplier you go for. The wheel stops on one slice — you win **only if it is yours**.', '2× 45 % · 3× 24 % · 5× 16 % · 10× 9 % · 20× 4 % · 50× 2 %'], preview: '5|5' },
+  { id: 'plinko', emoji: '🟡', name: 'Plinko', desc: 'A ball drops into a multiplier bucket — you pick the risk table',
+    rules: ['A ball bounces down **10 rows of pegs** into one of 11 buckets. The edges pay big, the middle pays little — a 1× bucket gives your bet back, a 0.3× bucket returns 30 % of it.', '**Low** 0.5×–5× · **Medium** 0.3×–13× · **High** 0.2×–50×'], preview: 'medium|RRLRLRLRLR|5' },
 ];
 const ROULETTE_BETS = [['red', '🔴 Red — 2×'], ['black', '⚫ Black — 2×'], ['green', '🟢 Green (zero) — 14×'], ['number', '🔢 An exact number — 35×']];
 const WHEEL_TARGETS = [[2, '2× — 45 % of the wheel'], [3, '3× — 24 %'], [5, '5× — 16 %'], [10, '10× — 9 %'], [20, '20× — 4 %'], [50, '50× — 2 %']];
 const PLINKO_RISKS = [['low', 'Low — buckets 0.5× to 5×'], ['medium', 'Medium — buckets 0.3× to 13×'], ['high', 'High — buckets 0.2× to 50×']];
 
 function packCas(st) {
-  return [st.game || 'coinflip', st.bet || 0, st.betOn || 'red', st.num ?? '', st.target || 2, st.risk || 'medium', st.owner || ''].join(':');
+  return [st.view === 'list' ? 'list' : 'game', st.game || 'coinflip', st.bet || 0, st.betOn || 'red', st.num ?? '', st.target || 2, st.risk || 'medium', st.owner || ''].join(':');
 }
 function unpackCas(parts) {
-  const [game, bet, betOn, num, target, risk, owner] = parts;
+  const [view, game, bet, betOn, num, target, risk, owner] = parts;
   return {
+    view: view === 'list' ? 'list' : 'game',
     game: GAME_NAME[game] ? game : 'coinflip',
     bet: bet === 'all' ? 'all' : Math.max(0, Number(bet) || 0),
     betOn: ['red', 'black', 'green', 'number'].includes(betOn) ? betOn : 'red',
@@ -544,15 +553,46 @@ function betPresets(min, max) {
   return [...out].sort((a, b) => a - b).slice(0, 22);
 }
 
-async function casinoMenu(i, st, { update = false } = {}) {
+async function casinoContext(i) {
   const cfg = (await config()).economy?.casino || {};
   const min = Math.max(1, Number(cfg.minBet) || 1), max = Math.max(min, Number(cfg.maxBet) || 100);
   const e = await api.economyUser(i.user.id);
-  const cur = curLabel(e.currency);
-  const balance = e.linked ? Number(e.points) || 0 : 0;
-  const g = CASINO_GAMES.find((x) => x.id === st.game) || CASINO_GAMES[0];
+  return { cfg, min, max, e, cur: curLabel(e.currency), balance: e.linked ? Number(e.points) || 0 : 0, enabled: cfg.enabled !== false };
+}
+
+/** Page 1: the games, one big entry each, with the ◀ Games ▶ bar underneath. */
+async function casinoList(i, st, { update = false } = {}) {
+  const { min, max, e, cur, balance, enabled } = await casinoContext(i);
+  const S = (patch) => packCas({ ...st, ...patch });
+  const first = CASINO_GAMES[0].id, last = CASINO_GAMES[CASINO_GAMES.length - 1].id;
+  const opts = {
+    title: '🎰 Casino',
+    thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
+    body: [
+      e.linked ? `Balance **${n(balance)}** ${cur} · bets **${n(min)}–${n(max)}**` : `Bets **${n(min)}–${n(max)}** ${cur} · link your account to play`,
+      !enabled ? '⛔ The casino is off right now.' : 'Pick a game — each page shows the rules, the odds and the options before you bet.',
+    ],
+    sections: CASINO_GAMES.map((g) => ({ text: `## ${g.emoji} ${g.name}\n-# ${g.desc}`, button: ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, 'Open', ButtonStyle.Primary) })),
+    footer: 'The house edge only taxes what you win: a 1× bucket gives your bet back to the point.',
+    buttons: [
+      ui.btn(`cas:open:${S({ view: 'game', game: last })}`, '◀', ButtonStyle.Secondary),
+      ui.btn('cas:noop', 'Games', ButtonStyle.Secondary, { disabled: true }),
+      ui.btn(`cas:open:${S({ view: 'game', game: first })}`, '▶', ButtonStyle.Secondary),
+      e.linked ? ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', 'Link my account', ButtonStyle.Primary, { emoji: 'link' }),
+    ],
+  };
+  return update ? ui.update(i, opts) : ui.reply(i, opts);
+}
+
+/** One game's page: preview picture, rules, the bet + option menus, Play, and the nav bar. */
+async function casinoMenu(i, st, { update = false } = {}) {
+  if (st.view === 'list') return casinoList(i, st, { update });
+  const { min, max, e, cur, balance, enabled } = await casinoContext(i);
+  const idx = Math.max(0, CASINO_GAMES.findIndex((x) => x.id === st.game));
+  const g = CASINO_GAMES[idx];
+  const prev = CASINO_GAMES[(idx + CASINO_GAMES.length - 1) % CASINO_GAMES.length].id;
+  const next = CASINO_GAMES[(idx + 1) % CASINO_GAMES.length].id;
   const bet = st.bet === 'all' ? Math.min(max, balance) : st.bet;
-  const enabled = cfg.enabled !== false;
   const needsNumber = st.game === 'roulette' && st.betOn === 'number' && st.num == null;
   const canPlay = enabled && e.linked && bet >= min && bet <= max && bet <= balance && !needsNumber;
 
@@ -561,13 +601,12 @@ async function casinoMenu(i, st, { update = false } = {}) {
     : st.game === 'plinko' ? `**Risk** ${PLINKO_RISKS.find(([v]) => v === st.risk)?.[1] || st.risk}` : null;
   const why = !enabled ? '⛔ The casino is off right now.'
     : !e.linked ? '🔗 Link your BetterCommunity account to play — points live on the site.'
-    : !bet ? `Pick a bet between **${n(min)}** and **${n(max)}**.`
+    : !bet ? `Pick a bet between **${n(min)}** and **${n(max)}** below.`
     : bet < min || bet > max ? `⚠ Bets go from **${n(min)}** to **${n(max)}**.`
     : bet > balance ? `⚠ You only have **${n(balance)}** ${cur}.`
     : needsNumber ? '🔢 Pick your number (0–36) below.' : null;
 
   const S = (patch) => packCas({ ...st, ...patch });
-  const gameSel = casSelect(`cas:game:${S({})}`, 'Game', CASINO_GAMES.map((x) => casOpt(x.id, `${x.emoji} ${x.name}`, x.id === st.game, x.desc)));
   const presets = betPresets(min, max);
   const betSel = casSelect(`cas:bet:${S({})}`, 'Bet', [
     ...presets.map((v) => casOpt(v, `${n(v)} ${cur}`, st.bet !== 'all' && v === st.bet)),
@@ -578,23 +617,29 @@ async function casinoMenu(i, st, { update = false } = {}) {
     : st.game === 'wheel' ? casSelect(`cas:opt:${S({})}`, 'Multiplier', WHEEL_TARGETS.map(([m, l]) => casOpt(m, l, m === st.target)))
     : st.game === 'plinko' ? casSelect(`cas:opt:${S({})}`, 'Risk', PLINKO_RISKS.map(([v, l]) => casOpt(v, l, v === st.risk)))
     : null;
-  const buttons = [gameSel, betSel, optSel,
-    ui.btn(`cas:play:${S({})}`, canPlay ? `Play — ${n(bet)} on ${g.name}` : 'Play', ButtonStyle.Success, { emoji: 'casino', disabled: !canPlay }),
+  // A still of the table, drawn by the site (same renderer as the result cards) and attached.
+  const png = await api.siteImage(`/og/casino/${encodeURIComponent(g.id)}/win.png?d=${encodeURIComponent(g.preview)}&a=${encodeURIComponent(n(bet || min))}`);
+  const files = png ? [ui.attach(png, 'table.png')] : [];
+  const buttons = [betSel, optSel,
+    ui.btn(`cas:play:${S({})}`, canPlay ? `Play — ${n(bet)} ${cur}` : 'Play', ButtonStyle.Success, { emoji: 'casino', disabled: !canPlay }),
     ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? 'Pick a number' : `Number: ${st.num}`, ButtonStyle.Primary)] : []),
+    ui.btn(`cas:open:${S({ game: prev })}`, '◀', ButtonStyle.Secondary),
+    ui.btn(`cas:list:${S({ view: 'list' })}`, 'Games', ButtonStyle.Secondary),
+    ui.btn(`cas:open:${S({ game: next })}`, '▶', ButtonStyle.Secondary),
     e.linked ? ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', 'Link my account', ButtonStyle.Primary, { emoji: 'link' }),
   ];
   const opts = {
-    title: '🎰 Casino',
-    thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
+    title: `${g.emoji} ${g.name}`,
     body: [
-      e.linked ? `Balance **${n(balance)}** ${cur} · bets **${n(min)}–${n(max)}**` : `Bets **${n(min)}–${n(max)}** ${cur}`,
+      ...g.rules,
       '',
-      `**Game** ${g.emoji} ${g.name} — ${g.desc}`,
+      e.linked ? `Balance **${n(balance)}** ${cur} · bets **${n(min)}–${n(max)}**` : `Bets **${n(min)}–${n(max)}** ${cur}`,
       `**Bet** ${bet ? `${n(bet)} ${cur}${st.bet === 'all' ? ' (all in)' : ''}` : '—'}`,
       optionLine,
       why ? `\n${why}` : '\n✅ Ready — press **Play**. The result is posted in the channel.',
     ],
-    footer: 'The house edge only taxes what you win: a 1× bucket gives your bet back to the point.',
+    image: png ? 'attachment://table.png' : null, files,
+    footer: `Game ${idx + 1} / ${CASINO_GAMES.length} · ◀ ▶ to browse · the edge only taxes what you win`,
     buttons,
   };
   return update ? ui.update(i, opts) : ui.reply(i, opts);
@@ -602,11 +647,19 @@ async function casinoMenu(i, st, { update = false } = {}) {
 
 async function casinoSetup(i) {
   const [, verb, ...rest] = i.customId.split(':');
+  if (verb === 'noop') return i.deferUpdate();
   const st = unpackCas(rest);
   if (st.owner && st.owner !== i.user.id) return ui.line(i, 'That is somebody else’s table — run **/casino** to open your own.', { title: '🎰 Casino' });
   st.owner = i.user.id;
-  if (verb === 'open') return casinoMenu(i, st);
-  if (verb === 'game') { st.game = GAME_NAME[i.values?.[0]] ? i.values[0] : st.game; return casinoMenu(i, st, { update: true }); }
+  if (verb === 'list') { st.view = 'list'; return casinoMenu(i, st, { update: true }); }
+  if (verb === 'open') {
+    // From a result card ("Change bet / game") this is a fresh reply; from the table itself
+    // it edits in place. A message component interaction on a deferred/public reply cannot
+    // be distinguished cheaply, so: update when the click comes from an ephemeral card.
+    st.view = 'game';
+    const ephemeral = !!(i.message?.flags?.has?.('Ephemeral'));
+    return casinoMenu(i, st, { update: ephemeral });
+  }
   if (verb === 'bet') {
     const v = i.values?.[0];
     if (v === 'custom') return casinoAmountModal(i, st);
@@ -653,15 +706,6 @@ async function casinoModal(i) {
   // A modal opened from a component can edit that component's message; one opened elsewhere
   // (it cannot happen here, but a stale client can) gets a fresh card instead.
   return casinoMenu(i, st, { update: typeof i.isFromMessage === 'function' && i.isFromMessage() });
-}
-
-async function casinoAgain(i) {
-  const [, , game, bet, betOn, num, target, risk, owner] = i.customId.split(':');
-  if (owner && owner !== i.user.id) return ui.line(i, 'That is somebody else’s bet — run **/casino** to place your own.', { title: '🎰 Casino' });
-  return playCasino(i, {
-    bet: Math.max(1, Number(bet) || 1), game: GAME_NAME[game] ? game : 'coinflip',
-    betOn: betOn || 'red', num: num === '' ? null : Number(num), target: Number(target) || 2, risk: ['low', 'medium', 'high'].includes(risk) ? risk : 'medium',
-  });
 }
 
 async function cmdAppeal(i) {

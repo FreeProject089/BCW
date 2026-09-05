@@ -53,7 +53,19 @@ function buildClient() {
       console.log('[bot] slash commands registered');
     } catch (e) { console.warn('[bot] command registration failed:', e.message); }
 
-    const beat = () => api.heartbeat({
+    // Commands the dashboard queued ride back on the heartbeat answer. A re-scan requested
+    // from Admin → Member database runs at once instead of waiting for the 30-minute cycle;
+    // the timestamp is remembered so the same request is not replayed every minute.
+    let handledRescan = null;
+    const onBeat = (r) => {
+      const at = r?.commands?.rescanAt;
+      if (at && at !== handledRescan) {
+        handledRescan = at;
+        console.log('[bot] member re-scan requested from the dashboard');
+        scanAllMembers(c).catch(() => {});
+      }
+    };
+    const beat = () => Promise.resolve(api.heartbeat({
       // The bot's own id === the application (client) id — what an "invite the bot" OAuth2 URL
       // needs, so the user dashboard can build that link without anyone pasting a client id.
       appId: ready.user.id,
@@ -91,7 +103,7 @@ function buildClient() {
           .map((ch) => ({ id: ch.id, name: String(ch.name || '').slice(0, 100), type: ch.type, parentId: ch.parentId || null })),
       })),
       ping: c.ws.ping >= 0 ? c.ws.ping : null, mod: { ...modStats }, logs: recentLogs(60),
-    });
+    })).then(onBeat).catch(() => {});
     beat();
     timers.push(setInterval(beat, 60_000));
     // Temp voice rooms: re-adopt the ones a previous process created (people are still in

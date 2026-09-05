@@ -69,6 +69,53 @@ export async function applySeoHead(lang = 'en') {
   }
 }
 
+// ── Per-route head ────────────────────────────────────────────────────────────
+// Title, description, og:*, twitter:*, robots and JSON-LD for the page being viewed, from
+// GET /api/seo/meta — the SAME resolver that builds the unfurl card a crawler is served (the
+// page's own data + the admin's per-page overrides in Admin → SEO). One source, so editing a
+// row there changes the search snippet, the pasted-link card and the tab title together.
+//
+// Cached per (lang, path) for five minutes: navigating back and forth must not re-ask.
+const routeMetaCache = new Map();
+export function fetchRouteMeta(pathname, lang = 'en') {
+  const key = `${lang}|${pathname}`;
+  let p = routeMetaCache.get(key);
+  if (!p) {
+    p = fetch(`/api/seo/meta?path=${encodeURIComponent(pathname)}&lang=${encodeURIComponent(lang)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null);
+    routeMetaCache.set(key, p);
+    setTimeout(() => routeMetaCache.delete(key), 5 * 60_000);
+  }
+  return p;
+}
+
+/** Write a resolved route meta into the head. Idempotent; each tag is created once. */
+export function applyRouteMeta(m) {
+  if (!m || typeof document === 'undefined') return;
+  if (m.title) document.title = m.title;
+  setMeta('name', 'description', m.description);
+  setMeta('property', 'og:title', m.title);
+  setMeta('property', 'og:description', m.description);
+  setMeta('property', 'og:url', m.url);
+  setMeta('property', 'og:type', m.type || 'website');
+  setMeta('property', 'og:locale', m.lang === 'fr' ? 'fr_FR' : 'en_GB');
+  setMeta('name', 'twitter:title', m.title);
+  setMeta('name', 'twitter:description', m.description);
+  if (m.image) {
+    setMeta('property', 'og:image', m.image);
+    setMeta('name', 'twitter:image', m.image);
+    setMeta('property', 'og:image:alt', m.title);
+  }
+  // Private and per-account screens must not be indexed even though the SPA serves them.
+  setMeta('name', 'robots', m.noindex ? 'noindex, nofollow' : 'index, follow');
+  // Structured data: one script, replaced per route (never appended — a page would otherwise
+  // accumulate every previous route's schema as you navigate).
+  let ld = document.head.querySelector('script#seo-jsonld');
+  if (!ld) { ld = document.createElement('script'); ld.id = 'seo-jsonld'; ld.type = 'application/ld+json'; document.head.appendChild(ld); }
+  ld.textContent = Array.isArray(m.jsonLd) && m.jsonLd.length ? JSON.stringify(m.jsonLd.length === 1 ? m.jsonLd[0] : m.jsonLd) : '';
+}
+
 /**
  * The canonical URL for the page being viewed.
  *

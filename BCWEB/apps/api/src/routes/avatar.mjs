@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import BoringAvatarImport from 'boring-avatars';
 import { db } from '../lib/lib.mjs';
+import { renderAvatarPng } from '../lib/avatar-image.mjs';
 
 // CJS/ESM interop: the component is nested under a second `.default`.
 const BoringAvatar = (BoringAvatarImport && BoringAvatarImport.default) || BoringAvatarImport;
@@ -19,6 +20,20 @@ const PALETTES = {
 };
 
 export default async function avatarRoutes(app) {
+  // The SAME picture as pixels: an uploaded photo, the logo default, or the Boring Avatar —
+  // drawn round, transparent corners. Discord thumbnails and the canvas-rendered cards need
+  // a raster (an SVG attached as .png simply does not show), which is why this exists next
+  // to the SVG route rather than instead of it.
+  app.get('/avatar/:id/png', async (req, reply) => {
+    const size = Math.max(32, Math.min(512, parseInt(req.query?.size, 10) || 256));
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: req.params.id }, select: { id: true, displayName: true, avatar: true } });
+    if (!u) return reply.code(404).send({ error: 'not_found' });
+    try {
+      const png = await renderAvatarPng(u, size);
+      return reply.header('Content-Type', 'image/png').header('Cache-Control', 'public, max-age=600').send(png);
+    } catch { return reply.redirect(`/avatar/${encodeURIComponent(u.id)}?size=${size}`, 302); }
+  });
   app.get('/avatar/:id', async (req, reply) => {
     const size = Math.max(16, Math.min(256, parseInt(req.query?.size, 10) || 80));
     const p = await db();

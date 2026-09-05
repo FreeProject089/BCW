@@ -1160,7 +1160,7 @@ export default async function miscRoutes(app) {
     // not offered either.
     const staticRoutes = [
       '/', '/catalog', '/blog', '/repos', '/hosting', '/projects', '/contact',
-      '/docs', '/faq', '/users', '/myo', '/status', '/dev', '/2fa',
+      '/docs', '/faq', '/users', '/myo', '/status', '/dev', '/2fa', '/charity', '/polls',
       '/legal', '/legal/about', '/legal/privacy', '/legal/terms', '/legal/cookies', '/legal/refunds',
       '/p/bmm', '/p/bsm', '/p/installer',
     ];
@@ -1181,14 +1181,15 @@ export default async function miscRoutes(app) {
       ...showcase.map((s) => ({ loc: `${site}/project/${s.slug}`, lastmod: s.updatedAt })),
       ...posts.map((b) => ({ loc: `${site}/blog/${b.slug}`, lastmod: b.updatedAt })),
       ...docs.map((d) => ({ loc: `${site}/docs/${d.slug}`, lastmod: d.updatedAt })),
-      ...cat.map((c) => ({ loc: `${site}/catalog/${c.slug}`, lastmod: c.updatedAt })),
+      // The item page is /item/:slug — /catalog/:slug was a 404 offered to every crawler.
+      ...cat.map((c) => ({ loc: `${site}/item/${c.slug}`, lastmod: c.updatedAt })),
     ];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
   });
   app.get('/robots.txt', async (req, reply) => {
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
-    return reply.header('Content-Type', 'text/plain').send(`User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /profile\nDisallow: /auth\nSitemap: ${site}/sitemap.xml\n`);
+    return reply.header('Content-Type', 'text/plain').send(`User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /profile\nDisallow: /auth\nDisallow: /settings\nDisallow: /notifications\nDisallow: /og\nDisallow: /api/\nSitemap: ${site}/sitemap.xml\n`);
   });
 
   // ── Contact form → stored for Admin + optional Discord webhook ──

@@ -34,7 +34,7 @@ import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
 const telemetry = () => import('./lib/analytics.js').catch(() => null);
 const trackPageview = (p) => { void telemetry().then((m) => m?.trackPageview(p)); };
 const loadGtmIfConsented = () => { void import('./lib/gtm.js').then((m) => m.loadGtmIfConsented()).catch(() => {}); };
-import { applySeoHead, setCanonical } from './lib/seo.js';
+import { applySeoHead, setCanonical, fetchRouteMeta, applyRouteMeta } from './lib/seo.js';
 import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
 import { readLayout, navAlignClass } from './lib/navLayout.js';
@@ -1315,7 +1315,10 @@ export default function App() {
     void el.offsetWidth;
     el.classList.add('anim-fade');
   }, [loc.pathname]);
-  // Per-route document title (helps SEO + shows in tabs/history).
+  // Per-route head: an instant title from the static table (so the tab never lags), then the
+  // full set — title, description, og/twitter, robots, JSON-LD — from the API's resolver, the
+  // same one crawlers are served. `alive` drops a slow answer that lands after the next
+  // navigation, so a fast back-and-forth never leaves the previous page's title behind.
   useEffect(() => {
     const p = loc.pathname;
     let t = TITLES[p];
@@ -1324,7 +1327,10 @@ export default function App() {
       else if (p.startsWith('/project/') || p.startsWith('/item/') || p.startsWith('/blog/')) t = 'BetterCommunity';
     }
     document.title = t && p !== '/' ? `${t} · BetterCommunity` : 'BetterCommunity — The home for all Better* projects';
-  }, [loc.pathname]);
+    let alive = true;
+    fetchRouteMeta(p, lang).then((m) => { if (alive && m && m.path === p) applyRouteMeta(m); });
+    return () => { alive = false; };
+  }, [loc.pathname, lang]);
   return (
     <IntroProvider>
       <div className="min-h-screen flex flex-col">

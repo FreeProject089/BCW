@@ -438,8 +438,18 @@ export default async function botRoutes(app) {
     const storedBy = Object.fromEntries(counts.map((c) => [c.guildId, c._count._all]));
     const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
     const icons = Object.fromEntries((status?.guildList || []).map((x) => [x.id, x.icon || null]));
+    // When the roster was last written (any guild) and whether a re-scan is queued but not
+    // yet picked up — so the card can say "scanning…" instead of leaving a click unanswered.
+    const [last, cmd] = await Promise.all([
+      p.discordActivity.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }).catch(() => null),
+      p.adminSetting.findUnique({ where: { key: 'bot.commands' } }).catch(() => null),
+    ]);
+    const lastScanAt = last?.updatedAt ? last.updatedAt.toISOString() : null;
+    const rescanAt = cmd?.value?.rescanAt || null;
     return {
       policy: pol, stored, linked, inactive, capRows: pol.capRows === Infinity ? null : pol.capRows,
+      lastScanAt, botOnline: !!status?.online && status?.at && (Date.now() - new Date(status.at).getTime()) < 3 * 60_000, botAt: status?.at || null,
+      rescanAt, rescanPending: !!rescanAt && (!lastScanAt || new Date(lastScanAt) < new Date(rescanAt)),
       usedBytes: stored * 512, capBytes: pol.storageMB * 1024 * 1024,
       guilds: guilds.map((g) => ({ guildId: g.guildId, name: g.name, icon: icons[g.guildId] || null, memberCount: g.memberCount, stored: storedBy[g.guildId] || 0 })),
     };
@@ -1214,7 +1224,23 @@ export default async function botRoutes(app) {
         await p.botGuild.upsert({ where: { guildId: g.id }, create: { guildId: g.id, ...upd }, update: upd }).catch(() => {});
       }
     }
-    return { ok: true };
+    // Commands the dashboard queued for the bot ride back on the heartbeat: the only channel
+    // that already exists from the API to the bot, so no new socket or poller. Today: a full
+    // member re-scan requested from Admin → Member database.
+    const cmd = (await p.adminSetting.findUnique({ where: { key: 'bot.commands' } }).catch(() => null))?.value || {};
+    return { ok: true, commands: { rescanAt: cmd.rescanAt || null } };
+  });
+
+  // Admin: ask the bot to re-scan every server's roster NOW (instead of waiting for the
+  // 30-minute cycle). Stored as a timestamp the next heartbeat (≤60 s) hands to the bot; the
+  // bot reports back through the usual /bot/members/sync, which is what moves `lastScanAt`.
+  app.post('/admin/bot/memberdb/rescan', { preHandler: requireRole('ADMIN') }, async (req) => {
+    const p = await db();
+    const at = new Date().toISOString();
+    const cur = (await p.adminSetting.findUnique({ where: { key: 'bot.commands' } }).catch(() => null))?.value || {};
+    const value = { ...cur, rescanAt: at, rescanBy: req.user.uid };
+    await p.adminSetting.upsert({ where: { key: 'bot.commands' }, create: { key: 'bot.commands', value }, update: { value } });
+    return { ok: true, rescanAt: at };
   });
 
   // Admin: recent bot console logs (live logs tab).
@@ -1731,7 +1757,10 @@ export default async function botRoutes(app) {
       linked: true, userId: link.userId, displayName: link.user.displayName,
       // The site's own avatar (the /avatar route draws it whether it is an upload or a
       // generated one) — what the bot shows instead of the Discord picture.
-      avatar: `${SITE_URL()}/avatar/${encodeURIComponent(link.userId)}`, avatarPath: `/avatar/${encodeURIComponent(link.userId)}`,
+      // The PNG route: the bot attaches these bytes as a thumbnail, and Discord will not show
+      // an SVG handed to it as .png — the /level and /profile thumbnails were blank for every
+      // account without an uploaded photo.
+      avatar: `${SITE_URL()}/avatar/${encodeURIComponent(link.userId)}/png`, avatarPath: `/avatar/${encodeURIComponent(link.userId)}/png?size=256`,
       badges: badges.map((x) => ({ name: x.badge.name, color: x.badge.color })),
       level, xp, points: e?.points || 0,
       xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
