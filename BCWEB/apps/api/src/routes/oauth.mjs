@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { db, issueSession, requireRole, safeEqual } from '../lib/lib.mjs';
+import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { verifyConnectState, exchangeConnect, OAUTH as CONNECT_OAUTH } from './connections.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { flagEnabled, disabledReply } from '../lib/flags.mjs';
@@ -222,6 +223,7 @@ export default async function oauthRoutes(app) {
         const owner = await p.discordLink.findUnique({ where: { discordId: profile.id } });
         if (!owner) {
           await p.discordLink.create({ data: { userId: user.id, discordId: profile.id, username: profile.username, pendingSync: true } }).catch(() => {});
+          mergeShadowEconomy(p, profile.id, user.id, ((await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {}).economy || {}).catch(() => {});
           grantAutoBadges(p, { event: 'discord', user }).catch(() => {});
         } else if (owner.userId === user.id) {
           await p.discordLink.update({ where: { discordId: profile.id }, data: { username: profile.username, pendingSync: true } }).catch(() => {});

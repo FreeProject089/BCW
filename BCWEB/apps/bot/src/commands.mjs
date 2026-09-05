@@ -142,8 +142,8 @@ const ecoButtons = (except = '') => [
 ];
 const notLinked = (i) => ui.reply(i, {
   title: 'Not linked yet', color: ui.INFO,
-  body: 'Link your BetterCommunity account first — it takes a minute, and it is how your XP, points and purchases get a home. Until then nothing accrues.',
-  buttons: [ui.btn(`${SITE_URL}/profile`, 'Open my profile'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
+  body: 'Link your BetterCommunity account first — it takes a minute. Your XP, levels and points are already counting; linking is what lets you spend, give and receive them (see /level).',
+  buttons: [ui.btn(`${SITE_URL}/profile`, 'Open my profile', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
 });
 
 // The site's own avatar for a linked member, attached — it is drawn by the site, which Discord
@@ -155,22 +155,49 @@ async function siteAvatar(e, name = 'avatar.png') {
 
 async function cmdLevel(i) {
   const e = await api.economyUser(i.user.id);
-  if (!e.linked) return notLinked(i);
   const cur = curLabel(e.currency);
-  const pct = ui.bar(e.xpThisLevel, e.xpForNext);
+  const rates = e.rates || {};
+  const rateLine = `${n(rates.message)} XP / message · ${n(rates.reaction)} / reaction · ${n(rates.voiceMinute)} / voice minute`;
+  const statsOf = (st) => [
+    { text: `💬 **${n(st?.messages)}** messages` },
+    { text: `✨ **${n(st?.reactions)}** reactions` },
+    { text: `🎙️ **${Math.floor((st?.voiceSeconds || 0) / 3600)} h ${Math.floor(((st?.voiceSeconds || 0) % 3600) / 60)} min** in voice` },
+  ];
+  // Not linked: the member still earns — the card shows what is waiting, and the one thing
+  // to do about it. The old reply said "nothing accrues", which had become untrue.
+  if (!e.linked) {
+    const sh = e.shadow;
+    const body = sh
+      ? [
+        `**${i.user.displayName || i.user.username}** · not linked yet`,
+        `${ui.bar(sh.xpThisLevel, sh.xpForNext)}  ${n(sh.xpThisLevel)} / ${n(sh.xpForNext)} XP`,
+        `💰 **${n(sh.points)}** ${cur} waiting — link your BetterCommunity account to spend, give or receive them.`,
+      ]
+      : ['Nothing counted yet — messages, reactions and voice time earn XP from your first one.', '', 'Link your BetterCommunity account to spend, give or receive points once you have some.'];
+    return ui.reply(i, {
+      title: sh ? `Level ${sh.level}` : 'Level 0',
+      thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
+      color: ui.INFO,
+      body,
+      sections: sh ? statsOf(sh.stats) : [],
+      footer: rateLine,
+      buttons: [ui.btn('eco:link', 'Link my account', ButtonStyle.Primary, { emoji: 'link' }), ui.btn('eco:leaderboard', 'Leaderboard', ButtonStyle.Secondary, { emoji: 'leaderboard' })],
+    });
+  }
   const av = await siteAvatar(e);
+  const next = Math.max(0, (e.xpForNext || 0) - (e.xpThisLevel || 0));
   return ui.reply(i, {
     title: `Level ${e.level}`,
     thumb: av.thumb || i.user.displayAvatarURL?.({ size: 128 }) || null, files: av.files,
     body: [
-      `**${e.displayName}** · **${n(e.points)}** ${cur}`,
-      `${pct}`,
-      `-# ${n(e.xpThisLevel)} / ${n(e.xpForNext)} XP to level ${e.level + 1}`,
-      e.badges?.length ? `🏅 ${e.badges.map((b) => b.name).join(' · ')}` : null,
-      '',
-      `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · 🎙️ ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
+      `**${e.displayName}**${e.badges?.length ? ` · 🏅 ${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
+      `${ui.bar(e.xpThisLevel, e.xpForNext)}  ${n(e.xpThisLevel)} / ${n(e.xpForNext)} XP`,
+      `-# ${n(next)} XP to level ${e.level + 1}`,
+      `💰 **${n(e.points)}** ${cur}`,
     ],
-    buttons: [...ecoButtons('level'), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site')],
+    sections: statsOf(e.stats),
+    footer: rateLine,
+    buttons: [...ecoButtons('level'), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' })],
   });
 }
 
@@ -194,7 +221,7 @@ async function cmdProfile(i) {
       `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · 🎙️ ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
     image: png ? 'attachment://profile.png' : null, files,
-    buttons: [ui.btn(url, 'View full profile'), ...(target.id === i.user.id ? ecoButtons('') : [])],
+    buttons: [ui.btn(url, 'View full profile', ButtonStyle.Secondary, { emoji: 'site' }), ...(target.id === i.user.id ? ecoButtons('') : [])],
   });
 }
 
@@ -291,7 +318,7 @@ async function cmdInventory(i) {
     body: pending ? `**${pending}** still on the way (an admin hands those out).` : `${rows.length} purchase${rows.length === 1 ? '' : 's'}.`,
     sections,
     footer: rows.length > 10 ? `…and ${rows.length - 10} more on the site.` : 'Reveal mints the code for whoever holds the item; Gift hands an unopened item to someone else.',
-    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ...ecoButtons('inventory')],
+    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('inventory')],
   });
 }
 
@@ -303,7 +330,7 @@ async function invReveal(i) {
   return ui.reply(i, {
     title: '✉️ Your code', color: ui.GOOD,
     body: [`# ${d.code}`, `Redeem it on the site${d.target ? ` (${d.target})` : ''}.`, r.expiresAt ? `-# Valid until <t:${Math.floor(new Date(r.expiresAt).getTime() / 1000)}:f>` : '-# No expiry.', '-# It is kept in your inventory — only you can see this message.'],
-    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
+    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
   });
 }
 
@@ -360,7 +387,7 @@ async function cmdHistory(i, kind = '') {
     const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
     return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${KIND_LABEL[x.kind] || x.kind}${who} — ${d} → ${n(x.balance)}`;
   });
-  return ui.reply(i, { title: `📜 History${kind ? ` · ${KIND_LABEL[kind] || kind}` : ''}`, body: lines, footer: 'The full history, with filters, is on the site.', buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ...ecoButtons('')] });
+  return ui.reply(i, { title: `📜 History${kind ? ` · ${KIND_LABEL[kind] || kind}` : ''}`, body: lines, footer: 'The full history, with filters, is on the site.', buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
 }
 
 async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
@@ -717,7 +744,7 @@ async function cmdAppeal(i) {
   return ui.reply(i, {
     title: '📝 Appeal',
     body: ['This server is blocked from the bot.', '', `**Reference:** \`${ref}\``, ...(ban.reason ? [`**Reason:** ${ban.reason}`] : []), '', 'To contest it, contact us and quote the reference above.'],
-    buttons: [ui.btn(`${SITE_URL}/contact`, 'Contact us')],
+    buttons: [ui.btn(`${SITE_URL}/contact`, 'Contact us', ButtonStyle.Secondary, { emoji: 'site' })],
   });
 }
 
@@ -785,7 +812,7 @@ async function cmdVerify(i) {
   return ui.reply(i, {
     title: anyGranted ? '✅ Roles refreshed' : '🔒 No roles yet', color: anyGranted ? ui.GOOD : BRAND,
     body: [status, '', roleLines.length ? roleLines.join('\n') : 'No roles configured.', anyGranted ? null : '\nUse **/link**, link your creator id on the site, then run **/refreshroles**.'],
-    buttons: anyGranted ? [] : [ui.btn(`${SITE_URL}/profile`, 'Link on the site'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
+    buttons: anyGranted ? [] : [ui.btn(`${SITE_URL}/profile`, 'Link on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
   });
 }
 

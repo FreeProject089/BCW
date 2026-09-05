@@ -38,3 +38,27 @@ export function economyView(e, eco) {
     rates: { message: Number(eco?.xpPerMessage ?? 5), reaction: Number(eco?.xpPerReaction ?? 1), voiceMinute: Number(eco?.xpPerVoiceMinute ?? 3) },
   };
 }
+
+/**
+ * A member just linked: fold what they earned while unlinked (DiscordEconomy) into their
+ * account's economy, then drop the shadow row. XP and activity add up; the level is recomputed
+ * from the summed XP on the CURRENT curve; points add up (they were granted on the same level
+ * rule while unlinked). Idempotent: a second call finds no shadow and does nothing.
+ */
+export async function mergeShadowEconomy(p, discordId, userId, eco = {}) {
+  const shadow = await p.discordEconomy.findUnique({ where: { discordId } }).catch(() => null);
+  if (!shadow || !userId) return null;
+  const cur = await p.userEconomy.findUnique({ where: { userId } });
+  const xp = (cur?.xp || 0) + shadow.xp;
+  const level = economyLevelFor(xp, eco.curveBase, eco.curveFactor);
+  const data = {
+    xp, level,
+    points: (cur?.points || 0) + shadow.points,
+    messages: (cur?.messages || 0) + shadow.messages,
+    reactions: (cur?.reactions || 0) + shadow.reactions,
+    voiceSeconds: (cur?.voiceSeconds || 0) + shadow.voiceSeconds,
+  };
+  await p.userEconomy.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+  await p.discordEconomy.delete({ where: { discordId } }).catch(() => {});
+  return { merged: true, xp: shadow.xp, points: shadow.points, level };
+}

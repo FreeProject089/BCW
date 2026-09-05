@@ -84,12 +84,14 @@ function EconomyWidget({ onOpenShop }) {
             <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}% {t('eco.w.next2', 'to level {n}').replace('{n}', d.level + 1)}</div>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-2 md:border-x md:border-[var(--line)] md:px-5">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:border-x md:border-[var(--line)] md:px-5">
           {src.map((x) => (
             <div key={x.key} className="rounded-xl bg-[var(--surface-2)]/60 px-3 py-2.5 min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
-              <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] truncate"><x.Icon size={12} className="text-[var(--primary-2)] shrink-0" /> {x.label}</div>
+              {/* Wrapping, not truncating: a 90-px tile was cutting "Reactions" to "Reac…" and
+                  the rate line to nothing. Two short lines beat one clipped one. */}
+              <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] leading-tight"><x.Icon size={12} className="text-[var(--primary-2)] shrink-0" /> <span className="min-w-0 break-words">{x.label}</span></div>
               <div className="text-base font-semibold tabular-nums leading-tight mt-0.5">{x.count}</div>
-              <div className="text-[10px] text-[var(--faint)] tabular-nums">{total > 0 ? Math.round((x.xp / total) * 100) : 0}% {t('eco.w.ofxp', 'of your XP')}</div>
+              <div className="text-[10px] text-[var(--faint)] tabular-nums leading-tight break-words">{total > 0 ? Math.round((x.xp / total) * 100) : 0}% {t('eco.w.ofxp', 'of your XP')} · {x.rate}</div>
             </div>
           ))}
         </div>

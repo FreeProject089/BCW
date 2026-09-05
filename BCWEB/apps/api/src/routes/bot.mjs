@@ -9,7 +9,7 @@ import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
-import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView } from '../lib/economy-curve.mjs';
+import { economyLevelFor, economyXpForLevel, economyPointsEarned, economyView, mergeShadowEconomy } from '../lib/economy-curve.mjs';
 
 // B4: a guild's member-storage config, created lazily on first sight with the safe default
 // (mode `none` — store nothing). Every member write goes through this so a guild the admin
@@ -1721,9 +1721,20 @@ export default async function botRoutes(app) {
     let updated = 0;
     for (const ev of b.data.events) {
       const userId = userByDiscord[ev.discordId];
-      if (!userId) continue;
       const msgs = ev.messages || 0, reacts = ev.reactions || 0, vsec = ev.voiceSeconds || 0;
       const xpDelta = msgs * rMsg + reacts * rReact + Math.floor(vsec / 60) * rVoice;
+      if (!userId) {
+        // Not linked: the activity still counts, in the member's own shadow row. Levels and
+        // points grow on the same curve so nothing is lost; spending waits for the link.
+        const sh = await p.discordEconomy.findUnique({ where: { discordId: ev.discordId } }).catch(() => null);
+        const sXp = (sh?.xp || 0) + xpDelta;
+        const sLevel = economyLevelFor(sXp, eco.curveBase, eco.curveFactor);
+        const sPts = Math.max(0, economyPointsEarned(sLevel, eco.pointsEveryLevels, eco.pointsPerGrant) - economyPointsEarned(sh?.level || 0, eco.pointsEveryLevels, eco.pointsPerGrant));
+        const sData = { xp: sXp, level: sLevel, points: (sh?.points || 0) + sPts, messages: (sh?.messages || 0) + msgs, reactions: (sh?.reactions || 0) + reacts, voiceSeconds: (sh?.voiceSeconds || 0) + vsec };
+        await p.discordEconomy.upsert({ where: { discordId: ev.discordId }, create: { discordId: ev.discordId, ...sData }, update: sData }).catch(() => {});
+        updated++;
+        continue;
+      }
       const cur = await p.userEconomy.findUnique({ where: { userId } });
       const oldXp = cur?.xp || 0, oldLevel = cur?.level || 0;
       const newXp = oldXp + xpDelta;
@@ -1831,9 +1842,25 @@ export default async function botRoutes(app) {
     if (!botAuth(req, reply)) return;
     const p = await db();
     const link = await p.discordLink.findUnique({ where: { discordId: req.params.discordId }, select: { userId: true, user: { select: { displayName: true } } } });
-    if (!link) return { linked: false };
-    const e = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     const eco = (await getBotConfig(p)).economy || {};
+    if (!link) {
+      // Unlinked: what the member has earned so far, read-only — the card can say "level 7,
+      // 340 points waiting" instead of pretending nothing happened until they link.
+      const sh = await p.discordEconomy.findUnique({ where: { discordId: req.params.discordId } }).catch(() => null);
+      const level = sh?.level || 0, xp = sh?.xp || 0;
+      return {
+        linked: false,
+        shadow: sh ? {
+          level, xp, points: sh.points,
+          xpThisLevel: xp - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+          xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
+          stats: { voiceSeconds: sh.voiceSeconds, messages: sh.messages, reactions: sh.reactions },
+        } : null,
+        currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '' },
+        rates: { message: Number(eco.xpPerMessage) || 0, reaction: Number(eco.xpPerReaction) || 0, voiceMinute: Number(eco.xpPerVoiceMinute) || 0 },
+      };
+    }
+    const e = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     const level = e?.level || 0, xp = e?.xp || 0;
     const badges = await p.userBadge.findMany({ where: { userId: link.userId }, include: { badge: { select: { name: true, color: true } } }, orderBy: { badge: { priority: 'desc' } }, take: 8 });
     return {
@@ -1850,6 +1877,7 @@ export default async function botRoutes(app) {
       xpForNext: economyXpForLevel(level + 1, eco.curveBase, eco.curveFactor) - economyXpForLevel(level, eco.curveBase, eco.curveFactor),
       stats: { voiceSeconds: e?.voiceSeconds || 0, messages: e?.messages || 0, reactions: e?.reactions || 0 },
       currency: { name: eco.currencyName || 'points', emoji: eco.currencyEmoji || '' },
+      rates: { message: Number(eco.xpPerMessage) || 0, reaction: Number(eco.xpPerReaction) || 0, voiceMinute: Number(eco.xpPerVoiceMinute) || 0 },
     };
   });
 
@@ -2107,6 +2135,7 @@ export default async function botRoutes(app) {
     if (!row || row.expiresAt < new Date()) return reply.code(404).send({ error: 'invalid_or_expired' });
     if (await p.discordLink.findUnique({ where: { discordId: row.discordId } })) return reply.code(409).send({ error: 'already_linked' });
     const link = await p.discordLink.create({ data: { userId: req.user.uid, discordId: row.discordId, username: row.username } });
+    mergeShadowEconomy(p, row.discordId, req.user.uid, (await getBotConfig(p)).economy || {}).catch(() => {});
     grantAutoBadges(p, { event: 'discord', user: { id: req.user.uid } }).catch(() => {});
     await p.discordLinkCode.delete({ where: { id: row.id } }).catch(() => {});
     return { ok: true, link };

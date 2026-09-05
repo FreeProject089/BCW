@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -13794,6 +13794,18 @@ function AdminBot() {
   // bot re-reads its config every 20 seconds and already knows how to rebuild a client. The
   // label says "reconnect" for that reason — an admin who presses "restart" expecting new
   // code, and gets a reconnect, concludes the deploy failed.
+  const [powering, setPowering] = useState(false);
+  const setPower = async (on) => {
+    setPowering(true);
+    try {
+      const next = { ...cfg, enabled: on };
+      await api.put('/admin/bot/config', { config: next });
+      setCfg(next);
+      toast.success(on ? t('db.power.on.ok', 'Bot switched on — it connects within ~30 s.') : t('db.power.off.ok', 'Bot switched off — it disconnects within ~30 s.'));
+      reload?.();
+    } catch { toast.error(t('db.savefail', 'Save failed.')); }
+    finally { setPowering(false); }
+  };
   const restartBot = async () => {
     if (!await dialog.confirm({
       title: t('db.restart.t', 'Reconnect the bot?'),
@@ -13970,7 +13982,13 @@ function AdminBot() {
               first would withhold the button in the only case that needs it. */}
           {(data?.hasToken || data?.tokenFromEnv) && (
             <div className="mt-3 pt-3 border-t border-[var(--line)] flex items-center gap-2 flex-wrap">
-              <Button size="sm" variant="ghost" disabled={restarting} onClick={restartBot}>
+              {/* Online / Offline: the master switch, saved on the spot (not through the page's
+                  draft + Save), because "turn the bot off now" is not an edit to review. The
+                  bot polls its config every 30 s and disconnects or connects accordingly. */}
+              <Button size="sm" variant={botDisabled ? 'primary' : 'ghost'} disabled={powering} onClick={() => setPower(!botDisabled ? false : true)}>
+                {powering ? <Spinner /> : botDisabled ? <Power size={13} /> : <PowerOff size={13} />} {botDisabled ? t('db.power.on', 'Turn the bot on') : t('db.power.off', 'Turn the bot off')}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={restarting || botDisabled} onClick={restartBot}>
                 {restarting ? <Spinner /> : <RefreshCw size={13} />} {t('db.restart', 'Reconnect bot')}
               </Button>
               <span className="text-[11px] text-[var(--faint)]">{t('db.restart.h', 'Drops and re-opens the Discord connection. Does not deploy new code.')}</span>

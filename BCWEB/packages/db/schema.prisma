@@ -3568,6 +3568,26 @@ model SiteLocale {
 // XP into a level with the configured curve and grants points on level-up. `points` is the
 // spendable balance (shop + casino). Settings (rates, currency, curve) live in bot.config.economy,
 // not here — this table is the balances only.
+// A Discord member who has NOT linked a BetterCommunity account still earns: messages,
+// reactions and voice time accrue XP, levels and points here, keyed by Discord id. Nothing
+// can be spent, given or received from this row — the shop, the casino and gifts all need a
+// link — and the moment the member links, the row is merged into UserEconomy and deleted.
+// Before this, an unlinked member's activity was dropped on the floor and "link to get your
+// XP" was an empty promise about the past.
+model DiscordEconomy {
+  discordId    String   @id
+  xp           Int      @default(0)
+  level        Int      @default(0)
+  points       Int      @default(0)
+  voiceSeconds Int      @default(0)
+  messages     Int      @default(0)
+  reactions    Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([level])
+}
+
 model UserEconomy {
   userId       String   @id
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)

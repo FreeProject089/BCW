@@ -211,6 +211,7 @@ const DICT = {
     'db.eco.icons.h2': 'Enregistre la page, puis télécharge le pack — il est dessiné à partir du style enregistré. Developer Portal → ton application → Emojis → Upload (garde les noms de fichier bc_<nom>) ; puis clic droit sur un emoji dans Discord → Copier le texte, et colle le <:bc_shop:123…> dans le champ.',
     'db.eco.icons.custom': '{n} personnalisées', 'db.eco.icons.glyph': 'Choisir le glyphe', 'db.eco.icons.color': 'Couleur de la tuile', 'db.eco.icons.reset': 'Revenir au défaut', 'db.eco.icons.pick': 'Glyphe pour « {k} »',
     'as.dbtables': 'Base de données, table par table', 'as.dbtables.n': '{n} tables · tailles index compris', 'as.dbtables.sub': 'Ce qui prend la place dans la base. L’effectif Discord est le seul que tu dimensionnes toi-même (Bot Discord → Base de membres) ; le reste grandit à l’usage et est élagué par son propre réglage de rétention.', 'as.export': 'exporter', 'as.rows': 'lignes', 'as.exportcsv': 'Exporter en CSV',
+    'db.power.on': 'Allumer le bot', 'db.power.off': 'Éteindre le bot', 'db.power.on.ok': 'Bot allumé — il se connecte sous ~30 s.', 'db.power.off.ok': 'Bot éteint — il se déconnecte sous ~30 s.',
     'db.mdb.title': 'Base de membres',
     'db.mdb.usage': '{s} stockés · {l} liés · {i} inactifs',
     'ds.logchannel.h2': 'Le salon Discord où le bot poste les actions de modération (bans, kicks, timeouts, avertissements). Vide = rien n’est posté.',

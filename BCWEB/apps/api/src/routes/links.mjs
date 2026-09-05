@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole, notify, hashApiKey, safeEqual, ownedContent } from '../lib/lib.mjs';
+import { mergeShadowEconomy } from '../lib/economy-curve.mjs';
 import { genKey, prefixOf } from './api-keys.mjs';
 import { grantAutoBadges } from './social.mjs';
 
@@ -62,6 +63,7 @@ export default async function linkRoutes(app) {
       return reply.code(409).send({ error: 'already_linked' });
     }
     const dl = await p.discordLink.create({ data: { userId: link.userId, discordId: row.discordId, username: row.username } });
+    mergeShadowEconomy(p, row.discordId, link.userId, ((await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {}).economy || {}).catch(() => {});
     grantAutoBadges(p, { event: 'discord', user: { id: link.userId } }).catch(() => {});
     await p.discordLinkCode.delete({ where: { id: row.id } }).catch(() => {});
     await notify(p, link.userId, 'discord_linked', `Discord account ${dl.username || dl.discordId} was linked (via BMM).`);
