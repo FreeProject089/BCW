@@ -18,6 +18,22 @@ export const GOOD = 0x16a34a;
 export const BAD = 0xef4444;
 export const INFO = 0x3b82f6;
 
+// Button icons: the admin's custom emoji (<:name:id>) when one is mapped for a key, else the
+// unicode fallback. Set from the bot config on every interaction (config() is cached 30 s).
+const DEFAULT_ICONS = {
+  level: '⭐', shop: '🛒', inventory: '🎒', leaderboard: '🏆', casino: '🎰', again: '🔁', refresh: '🔄', link: '🔗', buy: '🛍️',
+  gift: '🎁', coin: '🪙', reveal: '✉️', history: '📜', enter: '🎉', site: '🌐', voice: '🎙️', rename: '✏️', limit: '👥', region: '🌍',
+  lock: '🔒', unlock: '🔓', private: '🙈', public: '👁️', claim: '🙋', export: '📤', import: '📥',
+};
+let ICONS = { ...DEFAULT_ICONS };
+export function setIcons(map) {
+  const next = { ...DEFAULT_ICONS };
+  for (const [k, v] of Object.entries(map || {})) if (k in DEFAULT_ICONS && typeof v === 'string' && v.trim()) next[k] = v.trim();
+  ICONS = next;
+}
+/** The emoji for a button key. */
+export const ic = (key) => ICONS[key] || null;
+
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
 /** A plain button. `id` becomes the custom id, or a URL when it starts with http(s). */
@@ -25,7 +41,7 @@ export function btn(id, label, style = ButtonStyle.Secondary, { emoji = null, di
   const b = new ButtonBuilder().setLabel(clip(label, 80)).setDisabled(disabled);
   if (/^https?:\/\//.test(id)) b.setStyle(ButtonStyle.Link).setURL(id);
   else b.setCustomId(id).setStyle(style);
-  if (emoji) b.setEmoji(emoji);
+  if (emoji) { try { b.setEmoji(ICONS[emoji] || emoji); } catch { /* an unusable custom emoji leaves the label */ } }
   return b;
 }
 

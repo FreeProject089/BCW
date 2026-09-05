@@ -79,9 +79,12 @@ export const api = {
   economyConfig: () => call('GET', '/bot/economy/config').then((r) => r.economy || {}).catch(() => ({})),
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
-  economyCasino: (discordId, bet, multiplier) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier }).catch(() => ({ ok: false, error: 'network' })),
+  economyCasino: (discordId, bet, multiplier, game) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier, game }).catch(() => ({ ok: false, error: 'network' })),
+  economyReveal: (discordId, purchaseId) => call('POST', '/bot/economy/reveal', { discordId, purchaseId }).catch(() => ({ ok: false, error: 'network' })),
+  economyGift: (body) => call('POST', '/bot/economy/gift', body).catch(() => ({ ok: false, error: 'network' })),
+  economyHistory: (discordId, kind = '') => call('GET', `/bot/economy/history/${encodeURIComponent(discordId)}${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`).catch(() => ({ history: [] })),
   economyPurchases: (discordId) => call('GET', `/bot/economy/purchases/${encodeURIComponent(discordId)}`).catch(() => ({ purchases: [] })),
-  economyLeaderboard: (discordId = '') => call('GET', `/bot/economy/leaderboard${discordId ? `?discordId=${encodeURIComponent(discordId)}` : ''}`).catch(() => ({ members: [] })),
+  economyLeaderboard: (discordId = '', guildId = '') => call('GET', `/bot/economy/leaderboard?discordId=${encodeURIComponent(discordId)}&guildId=${encodeURIComponent(guildId)}`).catch(() => ({ members: [] })),
   // A picture the site renders (the casino GIF, the profile card), fetched over the INTERNAL
   // API address and attached to the message — Discord never has to reach SITE_URL, which in a
   // dev or LAN deployment it cannot. Null on any failure, so the caller shows the card without.

@@ -34,6 +34,16 @@ async function run(guild, a) {
     if (!member) throw new Error('That member is not in the server.');
 
     if (a.kind === 'kick') { await member.kick(reason); return; }
+    if (a.kind === 'role_add' || a.kind === 'role_remove') {
+        if (!a.roleId) throw new Error('No role given.');
+        const role = guild.roles.cache.get(a.roleId) || await guild.roles.fetch(a.roleId).catch(() => null);
+        if (!role) throw new Error('That role no longer exists.');
+        if (role.managed) throw new Error('That role belongs to an integration and cannot be handed out.');
+        const top = guild.members.me?.roles?.highest?.position ?? 0;
+        if (role.position >= top) throw new Error(`The bot's own role sits below "${role.name}" — move the bot's role above it in Server Settings → Roles.`);
+        if (a.kind === 'role_add') await member.roles.add(role, reason); else await member.roles.remove(role, reason);
+        return;
+    }
     if (a.kind === 'untimeout') { await member.timeout(null, reason); return; }
     if (a.kind === 'timeout') {
         if (!a.minutes) throw new Error('No duration given.');

@@ -34,7 +34,7 @@ export async function pollGiveaways(client) {
         const msg = await ch.send(ui.card({
           title: '🎉 Giveaway!',
           body: [`**Prize:** ${gw.prize}`, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
-          buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: '🎉' })],
+          buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' })],
         })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
         if (msg) { await api.giveawayPosted(gw.id, msg.id); console.log(`[bot] giveaway ${gw.id} posted in ${gw.channelId}`); }
         continue;

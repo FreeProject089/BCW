@@ -26,12 +26,12 @@ function panel(channel, state) {
     title: '🎙️ Voice controls',
     body: lines,
     buttons: [
-      ui.btn('vp:rename', 'Rename', ButtonStyle.Secondary, { emoji: '✏️' }), ui.btn('vp:limit', 'Limit', ButtonStyle.Secondary, { emoji: '👥' }), ui.btn('vp:region', 'Region', ButtonStyle.Secondary, { emoji: '🌍' }),
-      ui.btn('vp:lock', state.locked ? 'Unlock' : 'Lock', state.locked ? ButtonStyle.Success : ButtonStyle.Danger, { emoji: state.locked ? '🔓' : '🔒' }),
-      ui.btn('vp:private', state.private ? 'Make public' : 'Make private', ButtonStyle.Secondary, { emoji: state.private ? '👁️' : '🙈' }),
+      ui.btn('vp:rename', 'Rename', ButtonStyle.Secondary, { emoji: 'rename' }), ui.btn('vp:limit', 'Limit', ButtonStyle.Secondary, { emoji: 'limit' }), ui.btn('vp:region', 'Region', ButtonStyle.Secondary, { emoji: 'region' }),
+      ui.btn('vp:lock', state.locked ? 'Unlock' : 'Lock', state.locked ? ButtonStyle.Success : ButtonStyle.Danger, { emoji: state.locked ? 'unlock' : 'lock' }),
+      ui.btn('vp:private', state.private ? 'Make public' : 'Make private', ButtonStyle.Secondary, { emoji: state.private ? 'public' : 'private' }),
       ui.btn('vp:whitelist', 'Whitelist'), ui.btn('vp:kick', 'Kick'), ui.btn('vp:ban', 'Ban'), ui.btn('vp:unban', 'Unban'), ui.btn('vp:unkick', 'Unkick'),
-      ui.btn('vp:preset_export', 'Export preset', ButtonStyle.Primary, { emoji: '📤' }), ui.btn('vp:preset_import', 'Import preset', ButtonStyle.Primary, { emoji: '📥' }),
-      !present && ui.btn('vp:claim', 'Claim this room', ButtonStyle.Success, { emoji: '🙋' }),
+      ui.btn('vp:preset_export', 'Export preset', ButtonStyle.Primary, { emoji: 'export' }), ui.btn('vp:preset_import', 'Import preset', ButtonStyle.Primary, { emoji: 'import' }),
+      !present && ui.btn('vp:claim', 'Claim this room', ButtonStyle.Success, { emoji: 'claim' }),
     ],
     footer: 'Only the owner can use these. Empty rooms are removed automatically.',
   });
@@ -78,7 +78,7 @@ export async function handlePanelInteraction(i) {
     return refresh(i, channel, state, `You now own this room.`, ui.GOOD);
   }
   if (i.user.id !== state.ownerId) {
-    return ui.reply(i, { body: `Only the room owner (<@${state.ownerId}>) can use these controls.${ownerPresent(channel, state) ? '' : ' They have left — you can claim the room.'}`, buttons: ownerPresent(channel, state) ? [] : [ui.btn('vp:claim', 'Claim this room', ButtonStyle.Success, { emoji: '🙋' })] });
+    return ui.reply(i, { body: `Only the room owner (<@${state.ownerId}>) can use these controls.${ownerPresent(channel, state) ? '' : ' They have left — you can claim the room.'}`, buttons: ownerPresent(channel, state) ? [] : [ui.btn('vp:claim', 'Claim this room', ButtonStyle.Success, { emoji: 'claim' })] });
   }
 
   // ── Buttons ──

@@ -1,5 +1,5 @@
 // Slash commands + interaction routing. Every response is a Components V2 card (see ui.mjs).
-import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, MessageFlags } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -44,8 +44,16 @@ export const commandData = [
   new SlashCommandBuilder().setName('profile').setDescription('Show a member’s BetterCommunity profile')
     .addUserOption((o) => o.setName('member').setDescription('The member (defaults to you)')),
   new SlashCommandBuilder().setName('shop').setDescription('Browse the points shop'),
-  new SlashCommandBuilder().setName('inventory').setDescription('What you bought with points, and what is still on its way'),
-  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by level'),
+  new SlashCommandBuilder().setName('inventory').setDescription('What you bought with points — reveal codes, gift items'),
+  new SlashCommandBuilder().setName('gift').setDescription('Give points to another member')
+    .addUserOption((o) => o.setName('member').setDescription('Who gets them').setRequired(true))
+    .addIntegerOption((o) => o.setName('points').setDescription('How many').setRequired(true).setMinValue(1))
+    .addStringOption((o) => o.setName('note').setDescription('A word for them (optional)').setMaxLength(140)),
+  new SlashCommandBuilder().setName('history').setDescription('Your last point movements — purchases, casino, gifts')
+    .addStringOption((o) => o.setName('kind').setDescription('Only one kind').addChoices(
+      { name: 'Casino', value: 'casino' }, { name: 'Purchases', value: 'purchase' }, { name: 'Gifts sent', value: 'gift_out' }, { name: 'Gifts received', value: 'gift_in' }, { name: 'Level-ups', value: 'levelup' })),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Top members by level — this server or everyone')
+    .addStringOption((o) => o.setName('scope').setDescription('This server, or every server the bot is in').addChoices({ name: 'This server', value: 'server' }, { name: 'Global', value: 'global' })),
   new SlashCommandBuilder().setName('casino').setDescription('Bet points on a game of chance')
     .addIntegerOption((o) => o.setName('bet').setDescription('How many points to bet').setRequired(true).setMinValue(1))
     .addStringOption((o) => o.setName('game').setDescription('Which game (default: coin flip)').addChoices(
@@ -66,6 +74,8 @@ export const commandData = [
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
+  // The admin's custom button emoji ride with the (cached) config.
+  try { ui.setIcons((await config()).economy?.icons); } catch { /* defaults */ }
   if (i.isChatInputCommand()) {
     // A banned server: /appeal still answers (that is its whole point), everything else is
     // inert here. The ban is enforced regardless of a command's own permission gate.
@@ -89,18 +99,25 @@ export async function handleInteraction(i) {
     if (i.commandName === 'profile') return cmdProfile(i);
     if (i.commandName === 'shop') return cmdShop(i);
     if (i.commandName === 'inventory') return cmdInventory(i);
-    if (i.commandName === 'leaderboard') return cmdLeaderboard(i);
+    if (i.commandName === 'gift') return cmdGift(i);
+    if (i.commandName === 'history') return cmdHistory(i, i.options.getString('kind') || '');
+    if (i.commandName === 'leaderboard') return cmdLeaderboard(i, false, i.options.getString('scope') || 'server');
     if (i.commandName === 'casino') return cmdCasino(i);
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
   if (i.isButton() && i.customId.startsWith('shop:buy:')) return handleShopBuy(i);
   if (i.isButton() && i.customId.startsWith('shop:page:')) return cmdShop(i, Number(i.customId.split(':')[2]) || 0, true);
+  if (i.isButton() && i.customId.startsWith('inv:reveal:')) return invReveal(i);
+  if (i.isButton() && i.customId.startsWith('inv:gift:')) return invGiftModal(i);
+  if (i.isModalSubmit() && i.customId.startsWith('invm:gift:')) return invGiftSubmit(i);
+  if (i.isButton() && i.customId.startsWith('eco:lb:')) return cmdLeaderboard(i, true, i.customId.split(':')[2]);
   if (i.isButton() && i.customId === 'eco:link') return cmdLink(i);
   if (i.isButton() && i.customId === 'eco:level') return cmdLevel(i);
   if (i.isButton() && i.customId === 'eco:shop') return cmdShop(i);
   if (i.isButton() && i.customId === 'eco:inventory') return cmdInventory(i);
-  if (i.isButton() && i.customId === 'eco:leaderboard') return cmdLeaderboard(i, true);
+  if (i.isButton() && i.customId === 'eco:history') return cmdHistory(i, '');
+  if (i.isButton() && i.customId === 'eco:leaderboard') return cmdLeaderboard(i, false, 'server');
   if (i.isButton() && i.customId.startsWith('casino:again:')) return casinoAgain(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
   // It returns false when the custom id is not one of its own, so this stays a filter and
@@ -113,33 +130,42 @@ export async function handleInteraction(i) {
 const curLabel = (c) => c?.emoji || c?.name || 'points';
 const n = (x) => Number(x || 0).toLocaleString('en-US');
 const ecoButtons = (except = '') => [
-  except !== 'level' && ui.btn('eco:level', 'My level', ButtonStyle.Secondary, { emoji: '⭐' }),
-  except !== 'shop' && ui.btn('eco:shop', 'Shop', ButtonStyle.Secondary, { emoji: '🛒' }),
-  except !== 'inventory' && ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: '🎒' }),
-  except !== 'leaderboard' && ui.btn('eco:leaderboard', 'Leaderboard', ButtonStyle.Secondary, { emoji: '🏆' }),
+  except !== 'level' && ui.btn('eco:level', 'My level', ButtonStyle.Secondary, { emoji: 'level' }),
+  except !== 'shop' && ui.btn('eco:shop', 'Shop', ButtonStyle.Secondary, { emoji: 'shop' }),
+  except !== 'inventory' && ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' }),
+  except !== 'leaderboard' && ui.btn('eco:leaderboard', 'Leaderboard', ButtonStyle.Secondary, { emoji: 'leaderboard' }),
 ];
 const notLinked = (i) => ui.reply(i, {
   title: 'Not linked yet', color: ui.INFO,
-  body: 'Link your BetterCommunity account first — it takes a minute and it is how your XP and points get a home.',
-  buttons: [ui.btn(`${SITE_URL}/profile`, 'Open my profile'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: '🔗' })],
+  body: 'Link your BetterCommunity account first — it takes a minute, and it is how your XP, points and purchases get a home. Until then nothing accrues.',
+  buttons: [ui.btn(`${SITE_URL}/profile`, 'Open my profile'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
 });
+
+// The site's own avatar for a linked member, attached — it is drawn by the site, which Discord
+// may not be able to reach. Returns { thumb, files } to spread into a card.
+async function siteAvatar(e, name = 'avatar.png') {
+  const png = e?.avatarPath ? await api.siteImage(e.avatarPath) : null;
+  return png ? { thumb: `attachment://${name}`, files: [ui.attach(png, name)] } : { thumb: null, files: [] };
+}
 
 async function cmdLevel(i) {
   const e = await api.economyUser(i.user.id);
   if (!e.linked) return notLinked(i);
   const cur = curLabel(e.currency);
   const pct = ui.bar(e.xpThisLevel, e.xpForNext);
+  const av = await siteAvatar(e);
   return ui.reply(i, {
-    title: `⭐ Level ${e.level}`,
-    thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
+    title: `Level ${e.level}`,
+    thumb: av.thumb || i.user.displayAvatarURL?.({ size: 128 }) || null, files: av.files,
     body: [
       `**${e.displayName}** · **${n(e.points)}** ${cur}`,
       `${pct}`,
       `-# ${n(e.xpThisLevel)} / ${n(e.xpForNext)} XP to level ${e.level + 1}`,
+      e.badges?.length ? `🏅 ${e.badges.map((b) => b.name).join(' · ')}` : null,
       '',
       `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · 🎙️ ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
-    buttons: [...ecoButtons('level'), ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site')],
+    buttons: [...ecoButtons('level'), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site')],
   });
 }
 
@@ -152,13 +178,14 @@ async function cmdProfile(i) {
   const cur = curLabel(e.currency);
   // The same 1200×630 card a shared profile link unfurls with, drawn by the site and ATTACHED
   // here (fetched over the internal API address) — Discord never needs to reach the site.
-  const png = await api.siteImage(`/og/profile/${encodeURIComponent(e.userId)}.png`);
-  const files = png ? [ui.attach(png, 'profile.png')] : [];
+  const [png, av] = await Promise.all([api.siteImage(`/og/profile/${encodeURIComponent(e.userId)}.png`), siteAvatar(e)]);
+  const files = [...av.files, ...(png ? [ui.attach(png, 'profile.png')] : [])];
   return ui.editReply(i, {
-    title: `👤 ${e.displayName}`,
-    thumb: target.displayAvatarURL?.({ size: 128 }) || null,
+    title: e.displayName,
+    thumb: av.thumb || target.displayAvatarURL?.({ size: 128 }) || null,
     body: [
       `**Level ${e.level}** · **${n(e.points)}** ${cur}`,
+      e.badges?.length ? `🏅 ${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
       `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · 🎙️ ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
     image: png ? 'attachment://profile.png' : null, files,
@@ -169,8 +196,9 @@ async function cmdProfile(i) {
 // What each shop kind hands over, phrased for the buyer.
 const SHOP_KIND_LABEL = {
   badge: '🏅 profile badge', role: '🎭 Discord role', pool: '💾 storage pool',
-  boost: '🚀 catalog boost', hosting: '🖥️ free hosting', promo: '🎟️ promo code', custom: '🎁 reward',
+  boost: '🚀 catalog / repo boost', hosting: '🖥️ free hosting', promo: '🎟️ promo code', custom: '🎁 reward',
 };
+const TAG_LABEL = { exclusive: '💎 Exclusive', limited: '🔥 Limited', timed: '⏳ For a limited time' };
 const PAGE = 8;
 
 // The shop: one section per item with its own Buy button. Paged eight at a time — a section
@@ -179,7 +207,8 @@ async function cmdShop(i, page = 0, isUpdate = false) {
   const [eco, me] = await Promise.all([api.economyConfig(), api.economyUser(i.user.id)]);
   const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts));
   if (!eco.enabled) return respond({ title: '🛒 Shop', body: 'The economy is currently off.' });
-  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && !(x.kind === 'badge' && !x.ref));
+  const now = Date.now();
+  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
   if (!items.length) return respond({ title: '🛒 Shop', body: 'The shop is empty for now — check back later.', buttons: ecoButtons('shop') });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
   const pages = Math.ceil(items.length / PAGE);
@@ -188,16 +217,18 @@ async function cmdShop(i, page = 0, isUpdate = false) {
   const balance = me.linked ? Number(me.points || 0) : null;
   return respond({
     title: '🛒 Points shop',
-    body: balance != null ? `You have **${n(balance)}** ${cur}.` : 'Link your account to buy — **/link**.',
+    body: balance != null ? `You have **${n(balance)}** ${cur}. Everything here needs a linked BetterCommunity account — the codes and perks land on it.` : 'Link your account to buy — **/link**.',
     sections: slice.map((x) => {
       const cost = Number(x.cost) || 0;
       const can = balance != null && balance >= cost;
+      const tag = x.exclusive ? TAG_LABEL.exclusive : x.stock != null && x.stock !== '' ? `${TAG_LABEL.limited} · ${x.stock} in stock` : x.availableUntil ? `${TAG_LABEL.timed} · until <t:${Math.floor(new Date(x.availableUntil).getTime() / 1000)}:d>` : '';
+      const extra = [SHOP_KIND_LABEL[x.kind] || '🎁 reward', x.giftable === false || x.kind === 'badge' || x.kind === 'role' ? 'bound to you' : 'giftable', x.codeDays ? `code valid ${x.codeDays} d` : null].filter(Boolean).join(' · ');
       return {
-        text: `**${x.name}** — ${n(cost)} ${cur}\n-# ${SHOP_KIND_LABEL[x.kind] || '🎁 reward'}${x.desc ? ` · ${x.desc}` : ''}`,
-        button: ui.btn(`shop:buy:${x.id}`, can ? 'Buy' : `${n(cost)}`, can ? ButtonStyle.Success : ButtonStyle.Secondary, { disabled: !can, emoji: can ? '🛍️' : null }),
+        text: `**${x.name}** — ${n(cost)} ${cur}${tag ? `  ${tag}` : ''}\n-# ${extra}${x.desc ? `\n${x.desc}` : ''}`,
+        button: ui.btn(`shop:buy:${x.id}`, can ? 'Buy' : `${n(cost)}`, can ? ButtonStyle.Success : ButtonStyle.Secondary, { disabled: !can, emoji: can ? 'buy' : null }),
       };
     }),
-    footer: pages > 1 ? `Page ${page + 1} / ${pages} · everything you buy lands in /inventory` : 'Everything you buy lands in /inventory — and on the site, under Dashboard → Shop.',
+    footer: pages > 1 ? `Page ${page + 1} / ${pages} · everything you buy lands in /inventory` : 'Everything you buy lands in /inventory — and on the site, under Dashboard → Shop & inventory.',
     buttons: [
       pages > 1 && ui.btn(`shop:page:${page - 1}`, 'Previous', ButtonStyle.Secondary, { disabled: page === 0 }),
       pages > 1 && ui.btn(`shop:page:${page + 1}`, 'Next', ButtonStyle.Secondary, { disabled: page >= pages - 1 }),
@@ -206,8 +237,8 @@ async function cmdShop(i, page = 0, isUpdate = false) {
   });
 }
 
-// A Buy button was pressed. The API is authoritative — it re-reads the price, debits atomically,
-// fulfils badge/pool/boost/hosting itself and records the purchase. We only translate the result.
+// A Buy button was pressed. The API is authoritative — it re-reads the price, checks stock
+// and exclusivity, debits atomically and records the purchase. We only translate the result.
 async function handleShopBuy(i) {
   const itemId = i.customId.slice('shop:buy:'.length);
   const r = await api.economyBuy(i.user.id, itemId);
@@ -215,22 +246,23 @@ async function handleShopBuy(i) {
     const d = r.delivery || {};
     const lines = [`You bought **${r.item?.name || 'item'}**. Balance: **${n(r.points)}**.`];
     if (d.kind === 'badge') lines.push(`🏅 The **${d.badge}** badge is now on your BCWEB profile.`);
-    else if (d.code) lines.push(`🎟️ Redeem this on the site: \`${d.code}\`${d.amount ? ` (${d.amount})` : ''} — it is also kept in your inventory.`);
+    else if (d.revealed === false) lines.push(`✉️ Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
     else lines.push('🎁 An admin has been notified to deliver it — *pending* in your inventory until then.');
-    return ui.reply(i, { title: '✅ Purchase complete', color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: '🎒' }), ui.btn('eco:shop', 'Back to the shop')] });
+    return ui.reply(i, { title: '✅ Purchase complete', color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
   }
   if (r.error === 'not_linked') return notLinked(i);
   const why = r.error === 'insufficient' ? `You need **${n(r.cost)}** points — you have ${n(r.points)}.`
-    : r.error === 'already_owned' ? 'You already own that badge.'
+    : r.error === 'already_owned' ? 'You already own that one — it is one per account.'
+    : r.error === 'sold_out' ? 'Sold out — somebody got the last one.'
     : r.error === 'badge_unavailable' ? 'That badge is no longer available.'
     : r.error === 'no_such_item' ? 'That item is gone from the shop.'
     : r.error === 'economy_off' ? 'The economy is currently off.'
     : 'That purchase could not be completed.';
-  return ui.reply(i, { title: '🛒 Shop', color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop')] });
+  return ui.reply(i, { title: '🛒 Shop', color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
 }
 
-// Everything bought with points, newest first, with the codes that are theirs to see.
+// Everything bought with points, newest first: sealed codes to reveal, giftable items to gift.
 async function cmdInventory(i) {
   const e = await api.economyUser(i.user.id);
   if (!e.linked) return notLinked(i);
@@ -238,32 +270,118 @@ async function cmdInventory(i) {
   const rows = Array.isArray(r.purchases) ? r.purchases : [];
   if (!rows.length) return ui.reply(i, { title: '🎒 Inventory', body: 'Nothing here yet — the shop is one button away.', buttons: ecoButtons('inventory') });
   const pending = rows.filter((x) => x.status === 'pending').length;
-  const lines = rows.slice(0, 15).map((x) => {
-    const when = new Date(x.createdAt).toISOString().slice(0, 10);
+  const sections = rows.slice(0, 10).map((x) => {
+    const when = `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d>`;
     const d = x.delivery || {};
-    const extra = d.code ? ` · code \`${d.code}\`` : d.badge ? ` · badge **${d.badge}**` : '';
-    return `${x.status === 'pending' ? '⏳' : '✅'} **${x.name}** — ${n(x.cost)} pts · ${when}${extra}`;
+    const state = x.status === 'pending' ? '⏳ waiting for an admin'
+      : d.revealed && d.code ? `code \`${d.code}\`${x.expiresAt ? ` · until <t:${Math.floor(new Date(x.expiresAt).getTime() / 1000)}:d>` : ''}${x.expired ? ' · expired' : ''}`
+      : d.badge ? `badge **${d.badge}**`
+      : x.canReveal ? '✉️ sealed — reveal when you want the code' : '✅ delivered';
+    const button = x.canReveal ? ui.btn(`inv:reveal:${x.id}`, 'Reveal', ButtonStyle.Primary, { emoji: 'reveal' })
+      : x.canGift ? ui.btn(`inv:gift:${x.id}`, 'Gift', ButtonStyle.Secondary, { emoji: 'gift' }) : null;
+    return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ' · 🎁 a gift' : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
   });
   return ui.reply(i, {
     title: '🎒 Inventory',
-    body: [pending ? `**${pending}** still on the way (an admin hands those out).` : `${rows.length} purchase${rows.length === 1 ? '' : 's'}.`, '', ...lines, rows.length > 15 ? `-# …and ${rows.length - 15} more on the site.` : null],
+    body: pending ? `**${pending}** still on the way (an admin hands those out).` : `${rows.length} purchase${rows.length === 1 ? '' : 's'}.`,
+    sections,
+    footer: rows.length > 10 ? `…and ${rows.length - 10} more on the site.` : 'Reveal mints the code for whoever holds the item; Gift hands an unopened item to someone else.',
     buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ...ecoButtons('inventory')],
   });
 }
 
-async function cmdLeaderboard(i, isUpdate = false) {
-  const r = await api.economyLeaderboard(i.user.id);
+async function invReveal(i) {
+  const purchaseId = i.customId.slice('inv:reveal:'.length);
+  const r = await api.economyReveal(i.user.id, purchaseId);
+  if (!r.ok) return ui.line(i, r.error === 'not_found' ? 'That item is not in your inventory (was it gifted?).' : r.error === 'nothing_to_reveal' ? 'There is no code behind this one.' : 'Could not reveal that right now.', { color: ui.BAD });
+  const d = r.delivery || {};
+  return ui.reply(i, {
+    title: '✉️ Your code', color: ui.GOOD,
+    body: [`# ${d.code}`, `Redeem it on the site${d.target ? ` (${d.target})` : ''}.`, r.expiresAt ? `-# Valid until <t:${Math.floor(new Date(r.expiresAt).getTime() / 1000)}:f>` : '-# No expiry.', '-# It is kept in your inventory — only you can see this message.'],
+    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
+  });
+}
+
+async function invGiftModal(i) {
+  const purchaseId = i.customId.slice('inv:gift:'.length);
+  const modal = new ModalBuilder().setCustomId(`invm:gift:${purchaseId}`).setTitle('Gift this item')
+    .addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('to').setLabel('Who? Discord id, BC id, site name or e-mail').setStyle(TextInputStyle.Short).setMaxLength(120).setRequired(true)));
+  return i.showModal(modal);
+}
+async function invGiftSubmit(i) {
+  const purchaseId = i.customId.slice('invm:gift:'.length);
+  const to = i.fields.getTextInputValue('to').trim();
+  const body = { discordId: i.user.id, purchaseId };
+  if (/^\d{15,22}$/.test(to)) body.toDiscordId = to; else body.to = to;
+  const r = await api.economyGift(body);
+  if (!r.ok) return ui.line(i, giftError(r), { color: ui.BAD });
+  return ui.reply(i, { title: '🎁 Gifted', color: ui.GOOD, body: `Handed to **${r.to?.displayName || to}** — it is in their inventory now, unopened.`, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })] });
+}
+const giftError = (r) => r.error === 'not_linked' ? 'Link your account first — **/link**.'
+  : r.error === 'recipient_not_linked' ? 'They have not linked a BetterCommunity account yet.'
+  : r.error === 'no_such_user' ? 'Nobody by that name, id or e-mail.'
+  : r.error === 'self' ? 'That is you.'
+  : r.error === 'gifts_off' ? 'Gifting is switched off.'
+  : r.error === 'insufficient' ? `You do not have that many points (${n(r.points)}).`
+  : r.error === 'too_small' ? `The minimum gift is ${n(r.min)}.`
+  : r.error === 'daily_cap' ? `Daily gift cap reached — ${n(r.left)} left today (cap ${n(r.maxPerDay)}).`
+  : r.error === 'not_giftable' ? 'That item is bound to its buyer and cannot be gifted.'
+  : r.error === 'pending' ? 'Wait until an admin has handed it out.'
+  : 'That gift could not be sent.';
+
+async function cmdGift(i) {
+  const member = i.options.getUser('member');
+  const points = i.options.getInteger('points');
+  const note = i.options.getString('note') || '';
+  if (member.bot) return ui.line(i, 'Bots have no wallet.', { color: ui.BAD });
+  const r = await api.economyGift({ discordId: i.user.id, toDiscordId: member.id, points, note });
+  if (!r.ok) return r.error === 'not_linked' ? notLinked(i) : ui.line(i, giftError(r), { color: ui.BAD });
+  return ui.reply(i, {
+    title: '🎁 Gift sent', color: ui.GOOD,
+    body: [`**${n(points)}** points to **${member.username}**${note ? ` — “${note}”` : ''}.`, `Your balance: **${n(r.points)}**.`],
+    buttons: [ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })],
+  }, { ephemeral: false });
+}
+
+const KIND_LABEL = { levelup: '⬆️ Level-up', grant: '🛡️ Staff', purchase: '🛒 Purchase', casino: '🎰 Casino', gift_out: '🎁 Gift sent', gift_in: '🎁 Gift received', gift_item_out: '🎁 Item given', gift_item_in: '🎁 Item received', refund: '↩️ Refund' };
+async function cmdHistory(i, kind = '') {
+  const r = await api.economyHistory(i.user.id, kind);
+  if (r.linked === false) return notLinked(i);
+  const rows = Array.isArray(r.history) ? r.history : [];
+  if (!rows.length) return ui.reply(i, { title: '📜 History', body: kind ? 'Nothing of that kind yet.' : 'Nothing yet — earn, buy, play or gift and it shows up here.', buttons: ecoButtons('') });
+  const lines = rows.slice(0, 20).map((x) => {
+    const m = x.meta || {};
+    const who = x.kind === 'gift_out' ? ` → ${m.toName || '?'}` : x.kind === 'gift_in' ? ` ← ${m.fromName || '?'}` : x.kind === 'purchase' ? ` · ${m.name || ''}` : x.kind === 'casino' ? ` · ${m.game || ''} ×${m.multiplier ?? '?'}` : x.kind === 'levelup' ? ` · Lv ${m.level}` : '';
+    const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
+    return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${KIND_LABEL[x.kind] || x.kind}${who} — ${d} → ${n(x.balance)}`;
+  });
+  return ui.reply(i, { title: `📜 History${kind ? ` · ${KIND_LABEL[kind] || kind}` : ''}`, body: lines, footer: 'The full history, with filters, is on the site.', buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site'), ...ecoButtons('')] });
+}
+
+async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
+  const guildId = scope === 'server' && i.guildId ? i.guildId : '';
+  const r = await api.economyLeaderboard(i.user.id, guildId);
   const rows = (r.members || []).slice(0, 10);
-  const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts, { ephemeral: false }));
-  if (!rows.length) return respond({ title: '🏆 Leaderboard', body: 'Nobody has earned XP yet — say something.' });
+  if (!isUpdate) await i.deferReply();
+  const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.editReply(i, opts));
+  // The board as a picture, drawn by the site with real avatars; the text list is the
+  // accessible copy and what an old client falls back to.
+  const meId = (await api.economyUser(i.user.id))?.userId || '';
+  const png = rows.length ? await api.siteImage(`/og/leaderboard.png?guildId=${encodeURIComponent(guildId)}&me=${encodeURIComponent(meId)}&n=${Math.floor(Date.now() / 60000)}`) : null;
   const medal = (k) => k === 0 ? '🥇' : k === 1 ? '🥈' : k === 2 ? '🥉' : `**${k + 1}.**`;
-  const body = rows.map((m, k) => `${medal(k)} **${m.displayName}** — Lv **${m.level}** · ${n(m.points)} pts`);
+  const body = rows.length ? rows.map((m, k) => `${medal(k)} **${m.displayName}** — Lv **${m.level}** · ${n(m.points)} pts`) : ['Nobody has a level yet — say something.'];
   const you = r.me ? `\nYou: **#${r.me.rank}** · Lv ${r.me.level} · ${n(r.me.points)} pts` : '';
   return respond({
-    title: '🏆 Leaderboard',
-    body: [...body, you],
-    footer: r.total ? `${n(r.total)} members have a level · updates as XP lands` : null,
-    buttons: [ui.btn('eco:leaderboard', 'Refresh', ButtonStyle.Secondary, { emoji: '🔄' }), ui.btn('eco:level', 'My level', ButtonStyle.Secondary, { emoji: '⭐' }), ui.btn(`${SITE_URL}/users`, 'Members on the site')],
+    title: `🏆 Leaderboard · ${guildId ? (i.guild?.name || 'this server') : 'global'}`,
+    body: png ? [you || null] : [...body, you],
+    image: png ? 'attachment://leaderboard.png' : null, files: png ? [ui.attach(png, 'leaderboard.png')] : [],
+    footer: r.total ? `${n(r.total)} members have a level · by level, then XP` : null,
+    buttons: [
+      ui.btn('eco:lb:server', 'This server', guildId ? ButtonStyle.Primary : ButtonStyle.Secondary, { disabled: !i.guildId }),
+      ui.btn('eco:lb:global', 'Global', guildId ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      ui.btn(`eco:lb:${guildId ? 'server' : 'global'}`, 'Refresh', ButtonStyle.Secondary, { emoji: 'refresh' }),
+      ui.btn('eco:level', 'My level', ButtonStyle.Secondary, { emoji: 'level' }),
+    ],
   });
 }
 
@@ -323,14 +441,14 @@ const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulett
 async function playCasino(i, opts) {
   const { bet, game } = opts;
   const { mult, detail, card } = rollGame(opts);
-  const r = await api.economyCasino(i.user.id, bet, mult);
+  const r = await api.economyCasino(i.user.id, bet, mult, game);
   if (!r.ok) {
     if (r.error === 'not_linked') return notLinked(i);
     const msg = r.error === 'casino_off' ? 'The casino is off.'
       : r.error === 'insufficient' ? "You don't have enough points for that bet."
       : r.error === 'bad_bet' ? `Your bet must be between ${r.min} and ${r.max}.`
       : 'Could not place that bet.';
-    return ui.reply(i, { title: '🎰 Casino', body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: '⭐' })] });
+    return ui.reply(i, { title: '🎰 Casino', body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
   }
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
@@ -350,12 +468,12 @@ async function playCasino(i, opts) {
   // the player's id, so nobody spends somebody else's points from their button).
   const again = ['casino', 'again', game, bet, opts.betOn || '', opts.num ?? '', opts.target || '', opts.risk || '', i.user.id].join(':');
   return ui.editReply(i, {
-    title: won ? `🎰 ${GAME_NAME[game] || 'Casino'} — you win!` : `🎰 ${GAME_NAME[game] || 'Casino'} — you lose`,
+    title: won ? `${GAME_NAME[game] || 'Casino'} — you win!` : `${GAME_NAME[game] || 'Casino'} — you lose`,
     color: won ? 0x248046 : 0xda373c,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: line,
     image: gif ? 'attachment://casino.gif' : null, files,
-    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: '🔁' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: '⭐' })],
+    buttons: [ui.btn(again, `Play again (${n(bet)})`, won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' })],
   });
 }
 
@@ -454,7 +572,7 @@ async function cmdVerify(i) {
   return ui.reply(i, {
     title: anyGranted ? '✅ Roles refreshed' : '🔒 No roles yet', color: anyGranted ? ui.GOOD : BRAND,
     body: [status, '', roleLines.length ? roleLines.join('\n') : 'No roles configured.', anyGranted ? null : '\nUse **/link**, link your creator id on the site, then run **/refreshroles**.'],
-    buttons: anyGranted ? [] : [ui.btn(`${SITE_URL}/profile`, 'Link on the site'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: '🔗' })],
+    buttons: anyGranted ? [] : [ui.btn(`${SITE_URL}/profile`, 'Link on the site'), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
   });
 }
 
