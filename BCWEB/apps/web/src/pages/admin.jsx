@@ -6445,11 +6445,13 @@ function UserDetailModal({ id, onClose }) {
               ['actions', t('ud.tab.actions', 'Actions'), Gavel, null],
               ['more', t('ud.tab.more', 'More'), Layers, null],
             ];
+            // Wrapping chips, not a strip that scrolls off a phone: eight tabs fit in two
+            // rows at 360 px, every label stays readable, and the current one is filled.
             return (
-              <div className="flex gap-1 overflow-x-auto -mx-1 px-1 pb-1 border-b border-[var(--line)]" role="tablist">
+              <div className="flex flex-wrap gap-1.5 p-1 rounded-xl bg-[var(--surface-2)]/60 border border-[var(--line)]" role="tablist">
                 {tabs.map(([id, label, I, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap border-b-2 -mb-px transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] whitespace-nowrap transition ${tab === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
                     <I size={14} className={tab === id ? 'text-[var(--primary-2)]' : ''} /> {label}{n ? <span className="text-[11px] text-[var(--faint)] tabular-nums">{n}</span> : null}
                   </button>
                 ))}
@@ -13640,7 +13642,15 @@ function AdminBot() {
   const [cfg, setCfg] = useState(null);
   const [previewNonce, setPreviewNonce] = useState(0);
   const [tokenInput, setTokenInput] = useState('');
-  const [scope, setScope] = useState(''); // '' = global defaults, else a guild id (per-server config)
+  // Per-server settings are exactly that: a server is always selected (the first one the
+  // bot knows, until you pick another). There is no "global defaults" scope to edit any more —
+  // welcome, join-to-create, moderation and gated roles belong to each server, and the admin
+  // dashboard only holds what touches BCWEB itself (announcements, alerts, payments, limits…).
+  const [scope, setScopeRaw] = useState('');
+  const setScope = (id) => setScopeRaw(id || '');
+  // Defaults to the first server the bot knows, once the status has loaded. Above the early
+  // return below on purpose: a hook after a conditional return is React error #310.
+  useEffect(() => { const gl = status?.guildList || []; if (!scope && gl.length) setScopeRaw(gl[0].id); /* eslint-disable-next-line */ }, [status?.guildList?.length]);
   const [page, setPage] = useState('overview'); // which module page the left rail has selected
   useEffect(() => { if (data?.config) setCfg(data.config); }, [data]);
   // ABOVE the loading guard: useUndoableSave calls useToast() and useI18n(), so placing it
@@ -13727,7 +13737,7 @@ function AdminBot() {
   const resetServer = () => setCfg((c) => { const next = structuredClone(c); if (next.guilds) delete next.guilds[scope]; return next; });
   const jtcLobbies = scopeObj.joinToCreate?.lobbies || (scopeObj.joinToCreate?.lobbyChannelId ? [{ lobbyChannelId: scopeObj.joinToCreate.lobbyChannelId, categoryId: scopeObj.joinToCreate.categoryId, tempCategoryName: scopeObj.joinToCreate.tempCategoryName }] : []);
   const purgeChans = scopeObj.moderation?.purgeChannelIds || (scopeObj.moderation?.purgeChannelId ? [scopeObj.moderation.purgeChannelId] : []);
-  const scopeName = scope ? (guildList.find((gg) => gg.id === scope)?.name || scope) : t('db.scope.global', 'Global defaults');
+  const scopeName = scope ? (guildList.find((gg) => gg.id === scope)?.name || scope) : t('db.scope.pick', 'Pick a server');
   // Server ban (item: block the bot from a server). Stored in cfg.bannedGuilds; the bot reads
   // it and either leaves-and-never-rejoins ('leave') or stays-but-ignores-everything ('disable').
   // A random banId is what /appeal quotes. Changes apply on Save, like the rest of the config.
@@ -13947,7 +13957,6 @@ function AdminBot() {
 
       {page === 'announcements' && (<>
       {/* ═══════════ GLOBAL — cross-server ═══════════ */}
-      <SectionTitle icon={Globe} title={t('db.sec.global', 'Global — applies across every server')} sub={t('db.sec.global.sub', 'Announcements route by channel (works in any server); limits are shared.')} />
       {/*
           A GRID whose cells change span, not CSS columns and not a fixed 2-col grid — both of
           those broke on toggle. Columns reflowed every sibling into the other column when one
@@ -14094,132 +14103,143 @@ function AdminBot() {
       {page === 'economy' && (() => {
         const eco = cfg.economy || {};
         const num = (path, def) => { const v = eco[path]; return v == null || v === '' ? def : v; };
-        // Preview the level curve so an admin sees how hard each level is before saving.
         const base = Number(num('curveBase', 100)) || 100, factor = Number(num('curveFactor', 1.18)) || 1.18;
         const xpFor = (lvl) => Math.round(base * ((factor ** lvl - 1) / (factor - 1)));
+        const cur = g('economy.currencyName') || 'points';
+        const Lbl = ({ children }) => <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{children}</div>;
         return (<div className="space-y-4">
-        <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend. Only accrues for members who linked a BCWEB account.')} />
+        <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub2', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend in the shop or the casino. Everything below is site-wide: one economy across every server the bot is in. Only members who linked their Discord to a BCWEB account accrue anything — an unlinked member earns nothing until they link, and nothing is credited retroactively.')} />
+
+        {/* Economy — the system itself, in four short columns instead of one long form. */}
         <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system — off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
-          {/* Currency */}
-          <div className="grid sm:grid-cols-3 gap-2">
-            <Field label={t('db.eco.curname', 'Currency name')}><Input value={g('economy.currencyName') || 'points'} onChange={(e) => set('economy.currencyName', e.target.value)} placeholder="points" /></Field>
-            <Field label={t('db.eco.curemoji', 'Currency emoji')} hint={t('db.eco.curemoji.h', 'A Discord custom emoji <:name:id> or a unicode emoji. Used in the bot’s messages.')}><Input value={g('economy.currencyEmoji')} onChange={(e) => set('economy.currencyEmoji', e.target.value)} placeholder="<:points:123…> or 💠" /></Field>
-            <Field label={t('db.eco.curimg', 'Currency image (fallback)')}><Input value={g('economy.currencyImage')} onChange={(e) => set('economy.currencyImage', e.target.value)} placeholder="/api/media/… or https://…" /></Field>
+          <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div>
+              <Lbl>{t('db.eco.g.currency', 'Currency')}</Lbl>
+              <div className="space-y-2">
+                <Field label={t('db.eco.curname', 'Currency name')} className="!mb-0"><Input value={g('economy.currencyName') || 'points'} onChange={(e) => set('economy.currencyName', e.target.value)} placeholder="points" /></Field>
+                <Field label={t('db.eco.curemoji', 'Currency emoji')} className="!mb-0" hint={t('db.eco.curemoji.h', 'A Discord custom emoji <:name:id> or a unicode emoji. Used in the bot’s messages.')}><Input value={g('economy.currencyEmoji')} onChange={(e) => set('economy.currencyEmoji', e.target.value)} placeholder="🪙" /></Field>
+                <Field label={t('db.eco.curimg', 'Currency image (fallback)')} className="!mb-0"><Input value={g('economy.currencyImage')} onChange={(e) => set('economy.currencyImage', e.target.value)} placeholder="/api/media/… or https://…" /></Field>
+              </div>
+            </div>
+            <div>
+              <Lbl>{t('db.eco.xp', 'XP rates')}</Lbl>
+              <div className="space-y-2">
+                <Field label={t('db.eco.xpmsg', 'XP per message')} className="!mb-0"><Input type="number" value={num('xpPerMessage', 5)} onChange={(e) => set('economy.xpPerMessage', Number(e.target.value))} /></Field>
+                <Field label={t('db.eco.xpreact', 'XP per reaction')} className="!mb-0"><Input type="number" value={num('xpPerReaction', 1)} onChange={(e) => set('economy.xpPerReaction', Number(e.target.value))} /></Field>
+                <Field label={t('db.eco.xpvoice', 'XP per voice minute')} className="!mb-0"><Input type="number" value={num('xpPerVoiceMinute', 3)} onChange={(e) => set('economy.xpPerVoiceMinute', Number(e.target.value))} /></Field>
+              </div>
+            </div>
+            <div>
+              <Lbl>{t('db.eco.g.curve', 'Level curve')}</Lbl>
+              <div className="space-y-2">
+                <Field label={t('db.eco.base', 'XP for level 1')} className="!mb-0"><Input type="number" value={num('curveBase', 100)} onChange={(e) => set('economy.curveBase', Number(e.target.value))} /></Field>
+                <Field label={t('db.eco.factor', 'Curve factor (×/level)')} className="!mb-0" hint={t('db.eco.factor.h', 'Each level needs factor× the XP of the previous one — higher = slower.')}><Input type="number" step="0.01" value={num('curveFactor', 1.18)} onChange={(e) => set('economy.curveFactor', Number(e.target.value))} /></Field>
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-2.5 py-2 text-[11px] text-[var(--faint)] space-y-0.5">
+                  {[1, 5, 10, 25, 50].map((lv) => <div key={lv} className="flex justify-between tabular-nums"><span>{t('db.eco.lv', 'Lv {n}').replace('{n}', lv)}</span><b className="text-[var(--muted)]">{xpFor(lv).toLocaleString()} XP</b></div>)}
+                </div>
+              </div>
+            </div>
+            <div>
+              <Lbl>{t('db.eco.g.points', 'Points')}</Lbl>
+              <div className="space-y-2">
+                <Field label={t('db.eco.ptsevery', 'Grant points every N levels')} className="!mb-0"><Input type="number" value={num('pointsEveryLevels', 5)} onChange={(e) => set('economy.pointsEveryLevels', Number(e.target.value))} /></Field>
+                <Field label={t('db.eco.ptsper', 'Points per grant')} className="!mb-0"><Input type="number" value={num('pointsPerGrant', 10)} onChange={(e) => set('economy.pointsPerGrant', Number(e.target.value))} /></Field>
+                <label className="flex items-center gap-2.5 text-sm cursor-pointer pt-1"><BotSwitch checked={eco.statsPublic !== false} onChange={(v) => set('economy.statsPublic', v)} /> <span className="text-xs">{t('db.eco.statspub', 'Voice / message / reaction stats are public by default')}</span></label>
+                <p className="text-[11px] text-[var(--faint)]">{t('db.eco.lvlpub', 'Levels are always public — they show on the member’s BCWEB profile and via /profile.')}</p>
+              </div>
+            </div>
           </div>
-          {/* XP rates */}
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-1">{t('db.eco.xp', 'XP rates')}</div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Field label={t('db.eco.xpmsg', 'XP per message')}><Input type="number" value={num('xpPerMessage', 5)} onChange={(e) => set('economy.xpPerMessage', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.xpreact', 'XP per reaction')}><Input type="number" value={num('xpPerReaction', 1)} onChange={(e) => set('economy.xpPerReaction', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.xpvoice', 'XP per voice minute')}><Input type="number" value={num('xpPerVoiceMinute', 3)} onChange={(e) => set('economy.xpPerVoiceMinute', Number(e.target.value))} /></Field>
-          </div>
-          {/* Level curve */}
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-1">{t('db.eco.curve', 'Level curve — higher factor = slower levelling')}</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <Field label={t('db.eco.base', 'XP for level 1')}><Input type="number" value={num('curveBase', 100)} onChange={(e) => set('economy.curveBase', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.factor', 'Curve factor (×/level)')}><Input type="number" step="0.01" value={num('curveFactor', 1.18)} onChange={(e) => set('economy.curveFactor', Number(e.target.value))} /></Field>
-          </div>
-          <div className="text-[11px] text-[var(--faint)] flex flex-wrap gap-x-3 gap-y-0.5">
-            {[1, 5, 10, 25, 50].map((lv) => <span key={lv}>{t('db.eco.lv', 'Lv {n}').replace('{n}', lv)}: <b className="text-[var(--muted)] tabular-nums">{xpFor(lv).toLocaleString()}</b> XP</span>)}
-          </div>
-          {/* Points */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
-            <Field label={t('db.eco.ptsevery', 'Grant points every N levels')}><Input type="number" value={num('pointsEveryLevels', 5)} onChange={(e) => set('economy.pointsEveryLevels', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.ptsper', 'Points per grant')}><Input type="number" value={num('pointsPerGrant', 10)} onChange={(e) => set('economy.pointsPerGrant', Number(e.target.value))} /></Field>
-          </div>
-          <label className="flex items-center gap-2.5 text-sm cursor-pointer mt-1"><BotSwitch checked={eco.statsPublic !== false} onChange={(v) => set('economy.statsPublic', v)} /> <span>{t('db.eco.statspub', 'Voice / message / reaction stats are public by default')}</span></label>
-          <p className="text-[11px] text-[var(--faint)]">{t('db.eco.lvlpub', 'Levels are always public — they show on the member’s BCWEB profile and via /profile.')}</p>
         </ModuleCard>
 
+        <div className="grid lg:grid-cols-2 gap-4 items-start">
         {/* Casino */}
-        <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d', 'Let members gamble points in solo/multi games. Configurable bet limits and house edge.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Field label={t('db.eco.minbet', 'Min bet')}><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.maxbet', 'Max bet')}><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.edge', 'House edge %')}><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
+        <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account — the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label={t('db.eco.minbet', 'Min bet')} className="!mb-0"><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.maxbet', 'Max bet')} className="!mb-0"><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.edge', 'House edge %')} className="!mb-0"><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
           </div>
-          {/* Payout preview — computed exactly like the bot rolls + the API prices it, so the
-              admin sees what the house edge actually does per game before saving. */}
           {(() => {
             const edge = 1 - (Number(eco.casino?.houseEdgePct) || 0) / 100;
-            const bet = Math.max(1, Number(eco.casino?.maxBet) || 100);
-            // base RTP (return to player) before the edge: coinflip/dice pay 2× on a 50% win;
-            // slots pay 8× on three-of-a-kind (4%) and 1.5× on a pair (48%) → 1.04.
-            const GAMES = [
-              ['🪙', t('db.eco.game.coin', 'Coin flip'), 1.0, `2× · ${Math.round(50)}%`],
-              ['🎲', t('db.eco.game.dice', 'Dice'), 1.0, `2× · ${Math.round(50)}%`],
-              ['🎰', t('db.eco.game.slots', 'Slots'), 1.04, '8× / 1.5×'],
-              ['🎯', t('db.eco.game.wheel', 'Wheel'), 0.9, t('db.eco.game.wheel.o', 'best target 50× → 1.00, worst 3× → 0.72')],
-              ...(() => { const C = [1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]; const T = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
-                const rtp = (k) => T[k].reduce((acc, m, i) => acc + (C[i] / 1024) * m, 0);
-                return [['🟡', t('db.eco.game.plinko', 'Plinko'), rtp('medium'), t('db.eco.game.plinko.o', 'low {l} · medium {m} · high {h}').replace('{l}', rtp('low').toFixed(2)).replace('{m}', rtp('medium').toFixed(2)).replace('{h}', rtp('high').toFixed(2))]]; })(),
-            ];
+            const C = [1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]; const T = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
+            const rtp = (k) => T[k].reduce((acc, m, i) => acc + (C[i] / 1024) * m, 0);
+            const GAMES = [['🪙', t('db.eco.game.coin', 'Coin flip'), 1.0, '2× · 50%'], ['🎲', t('db.eco.game.dice', 'Dice'), 1.0, '2× · 50%'], ['🎰', t('db.eco.game.slots', 'Slots'), 1.04, '8× / 1.5×'], ['🎡', t('db.eco.game.roulette', 'Roulette'), 36 / 37, '2× · 14× · 35×'], ['🎯', t('db.eco.game.wheel', 'Wheel'), 0.9, '2×…50×'], ['🟡', t('db.eco.game.plinko', 'Plinko'), rtp('medium'), `${rtp('low').toFixed(2)} · ${rtp('medium').toFixed(2)} · ${rtp('high').toFixed(2)}`]];
             return (
-              <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('db.eco.payoutprev', 'Payout preview (at max bet {b})').replace('{b}', bet.toLocaleString())}</div>
-                <div className="space-y-1.5">
-                  {GAMES.map(([emoji, name, rtp, odds]) => {
-                    const eff = rtp * edge;              // effective return to player
-                    const houseTake = 1 - eff;           // + = house wins long-term, − = players do
-                    return (
-                      <div key={name} className="flex items-center gap-2 text-xs">
-                        <span className="w-5 text-center">{emoji}</span>
-                        <span className="font-medium w-20 shrink-0">{name}</span>
-                        <span className="text-[var(--faint)] w-24 shrink-0 tabular-nums">{odds}</span>
-                        <span className="text-[var(--muted)] tabular-nums">{t('db.eco.rtp', 'RTP')} <b className="text-[var(--text)]">{(eff * 100).toFixed(1)}%</b></span>
-                        <span className={`ms-auto tabular-nums text-[11px] px-1.5 py-0.5 rounded ${houseTake >= 0 ? 'bg-success-bg text-success' : 'bg-warning/15 text-warning'}`}>
-                          {houseTake >= 0 ? t('db.eco.housewins', 'house +{p}%').replace('{p}', (houseTake * 100).toFixed(1)) : t('db.eco.playerwins', 'players +{p}%').replace('{p}', (-houseTake * 100).toFixed(1))}
-                        </span>
-                      </div>
-                    );
-                  })}
+              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                <Lbl>{t('db.eco.payoutprev2', 'Return to player, after the house edge')}</Lbl>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {GAMES.map(([emoji, name, base0, odds]) => { const eff = base0 * edge; const take = 1 - eff; return (
+                    <div key={name} className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">
+                      <div className="text-xs font-medium">{emoji} {name}</div>
+                      <div className="text-[10px] text-[var(--faint)] tabular-nums">{odds}</div>
+                      <div className={`text-[11px] font-semibold tabular-nums ${take >= 0 ? 'text-success' : 'text-warning'}`}>{(eff * 100).toFixed(1)}% RTP</div>
+                    </div>
+                  ); })}
                 </div>
-                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote', 'RTP = share of a bet paid back on average. Above 100% (house negative) means players win long-term — slots pays 104% before the edge, so a low edge makes it player-favourable.')}</p>
+                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote2', 'RTP = share of a bet paid back on average. Above 100% means players win long-term — slots pays 104% before the edge, so keep the edge above 4%.')}</p>
               </div>
             );
           })()}
         </ModuleCard>
 
+        {/* Gifts, history, icons */}
+        <div className="space-y-4">
+          <ModuleCard id="sec-gifts" icon={Gift} title={t('db.eco.gifts', 'Gifts between members')} desc={t('db.eco.gifts.d', '/gift on Discord and the Boutique on the site. Points move between two linked accounts; giftable shop items change hands unopened.')} enabled={eco.gifts?.enabled !== false} onToggle={(v) => set('economy.gifts.enabled', v)}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t('db.eco.gifts.min', 'Minimum per gift')} className="!mb-0"><Input type="number" min="1" value={eco.gifts?.min ?? 1} onChange={(e) => set('economy.gifts.min', Number(e.target.value))} /></Field>
+              <Field label={t('db.eco.gifts.cap', 'Daily cap per giver (0 = none)')} className="!mb-0"><Input type="number" min="0" value={eco.gifts?.maxPerDay ?? 0} onChange={(e) => set('economy.gifts.maxPerDay', Number(e.target.value))} /></Field>
+            </div>
+          </ModuleCard>
+          <ModuleCard id="sec-history" icon={History} title={t('db.eco.hist', 'History')} desc={t('db.eco.hist.d', 'Every point movement — purchases, casino plays, gifts, level-ups, staff grants — is kept as a ledger. Members see theirs on the site and with /history; you see everything under Members → Levels & economy.')} onToggle={null}>
+            <Field label={t('db.eco.hist.days', 'Keep the ledger for (days, 0 = forever)')} className="!mb-0" hint={t('db.eco.hist.days.h', 'Older rows are deleted once a day. Purchases themselves (the inventory) are never deleted by this.')}><Input type="number" min="0" value={eco.historyDays ?? 180} onChange={(e) => set('economy.historyDays', Number(e.target.value))} /></Field>
+          </ModuleCard>
+          <BotIconsCard icons={eco.icons || {}} onChange={(k, v) => set(`economy.icons.${k}`, v)} />
+        </div>
+        </div>
+
         {/* Shop */}
         {(() => {
           const shop = Array.isArray(eco.shop) ? eco.shop : [];
           const upd = (i, patch) => set('economy.shop', shop.map((x, k) => k === i ? { ...x, ...patch } : x));
-          // Every kind the shop sells, with the icon + hint shown on the row. Kinds marked
-          // site-fulfilled are granted by the API on purchase (badge / pool / boost / hosting);
-          // role & promo are delivered by the bot; custom is a manual/roleplay reward.
           const KINDS = [
-            ['badge', BadgeCheck, t('db.eco.kind.badge', 'BCWEB badge')],
-            ['role', Shield, t('db.eco.kind.role', 'Discord role')],
-            ['pool', HardDrive, t('db.eco.kind.pool', 'Storage pool (GB)')],
-            ['boost', Rocket, t('db.eco.kind.boost', 'Catalog boost (days)')],
-            ['hosting', Server, t('db.eco.kind.hosting', 'Free hosting (GB)')],
-            ['promo', Ticket, t('db.eco.kind.promo', 'Promo code')],
-            ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual')],
+            ['badge', BadgeCheck, t('db.eco.kind.badge', 'BCWEB badge'), t('db.eco.kind.badge.h', 'Granted on the spot. Bound to the buyer.')],
+            ['pool', HardDrive, t('db.eco.kind.pool', 'Storage pool'), t('db.eco.kind.pool.h', 'A code for a free pool of N GB, minted when the buyer reveals it.')],
+            ['boost', Rocket, t('db.eco.kind.boost', 'Catalog / repo boost'), t('db.eco.kind.boost.h', 'A code for N days of boost.')],
+            ['hosting', Server, t('db.eco.kind.hosting', 'Free hosting'), t('db.eco.kind.hosting.h', 'A code for N GB over M months of hosting.')],
+            ['promo', Ticket, t('db.eco.kind.promo', 'Promo code'), t('db.eco.kind.promo.h', 'A fixed code you typed, or a generated discount.')],
+            ['role', Shield, t('db.eco.kind.role', 'Discord role'), t('db.eco.kind.role.h', 'You hand it out (Members → Purchases to hand out).')],
+            ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual'), t('db.eco.kind.custom.h', 'Anything else — you hand it out.')],
           ];
           return (
-        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d', 'What members buy with points — BCWEB badges, storage pools, catalog boosts, Discord roles, promo codes and more. Badges and site perks are granted automatically on purchase.')} onToggle={null}
-          action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge' }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
+        <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d2', 'What members buy with points, on Discord (/shop) and on the site (Dashboard → Shop & inventory). Every item needs a linked BCWEB account: that is where the badge, the code or the perk lands. Codes are sealed until the holder reveals them, so an unopened item can be gifted.')} onToggle={null}
+          action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge', giftable: true, active: true }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
           {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
-          <div className="space-y-2">
+          <div className="grid xl:grid-cols-2 gap-3">
           {shop.map((it, i) => {
             const kind = it.kind || 'badge';
+            const bound = kind === 'badge' || kind === 'role';
+            const K = KINDS.find((k) => k[0] === kind) || KINDS[6];
+            const KIcon = K[1];
+            const tag = it.exclusive ? t('db.eco.tag.excl', 'Exclusive') : it.stock != null && it.stock !== '' ? t('db.eco.tag.lim', 'Limited · {n}').replace('{n}', it.stock) : it.availableUntil ? t('db.eco.tag.timed', 'Timed') : null;
             return (
-            <div key={it.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-2.5 relative">
-              <button onClick={() => set('economy.shop', shop.filter((_, k) => k !== i))} className="absolute top-2.5 right-2.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_6rem] gap-2 pr-6">
-                <Input value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
-                <Field label={t('db.eco.cost', 'Cost')} className="!mb-0"><Input type="number" value={it.cost ?? 0} onChange={(e) => upd(i, { cost: Number(e.target.value) })} /></Field>
+            <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
+              <div className="flex items-center gap-2 pr-6">
+                <KIcon size={14} className="text-[var(--primary-2)] shrink-0" />
+                <Input className="!py-1.5 flex-1" value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
+                <div className="flex items-center gap-1 shrink-0"><Input type="number" className="!w-24 !py-1.5" value={it.cost ?? 0} onChange={(e) => upd(i, { cost: Number(e.target.value) })} /><span className="text-[11px] text-[var(--faint)]">{cur}</span></div>
+                {tag && <Badge tone={it.exclusive ? 'amber' : 'primary'}>{tag}</Badge>}
               </div>
-              {/* Kind picker — chips, so all seven choices are visible at a glance. */}
+              <button onClick={() => set('economy.shop', shop.filter((_, k) => k !== i))} className="absolute top-2.5 right-2.5 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
               <div className="flex flex-wrap gap-1.5">
-                {KINDS.map(([k, Icon, label]) => (
-                  <button key={k} type="button" onClick={() => upd(i, { kind: k })}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs transition ${kind === k ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                    <Icon size={12} /> {label}
+                {KINDS.map(([k, Icon, label, hint]) => (
+                  <button key={k} type="button" title={hint} onClick={() => upd(i, { kind: k, ...(k === 'badge' || k === 'role' ? { giftable: false } : {}) })}
+                    className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] transition ${kind === k ? 'border-[#5865F2] bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    <Icon size={11} /> {label}
                   </button>
                 ))}
               </div>
-              {/* Per-kind target field. */}
+              <p className="text-[11px] text-[var(--faint)] -mt-1">{K[3]}</p>
+              {/* What exactly it hands over. */}
               {kind === 'badge' && (
                 <Select value={it.ref || ''} onChange={(e) => upd(i, { ref: e.target.value })}>
                   <option value="">{t('db.eco.pickbadge', 'Pick a badge…')}</option>
@@ -14227,16 +14247,44 @@ function AdminBot() {
                 </Select>
               )}
               {kind === 'role' && (
-                <AdminRolePicker guild={null} value={it.ref || ''} placeholder={t('db.eco.roleid', 'Discord role id')} onChange={(v) => upd(i, { ref: v })} />
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <Select value={it.guildId || ''} onChange={(e) => upd(i, { guildId: e.target.value, ref: '' })}><option value="">{t('db.eco.role.server', 'Which server…')}</option>{guildList.map((gg) => <option key={gg.id} value={gg.id}>{gg.name}</option>)}</Select>
+                  <AdminRolePicker guild={guildList.find((gg) => gg.id === it.guildId) || null} value={it.ref || ''} placeholder={t('db.eco.roleid', 'Discord role id')} onChange={(v) => upd(i, { ref: v })} />
+                </div>
               )}
               {(kind === 'pool' || kind === 'hosting') && (
-                <Field label={t('db.eco.gb', 'Storage granted (GB)')} className="!mb-0"><Input type="number" min="1" value={it.amount ?? 1} onChange={(e) => upd(i, { amount: Math.max(1, Number(e.target.value) || 1) })} /></Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={t('db.eco.gb', 'Storage granted (GB)')} className="!mb-0"><Input type="number" min="1" step="0.5" value={it.gb ?? it.amount ?? 1} onChange={(e) => upd(i, { gb: Number(e.target.value) })} /></Field>
+                  {kind === 'hosting' && <Field label={t('db.eco.months', 'Months of hosting')} className="!mb-0"><Input type="number" min="1" value={it.months ?? 1} onChange={(e) => upd(i, { months: Number(e.target.value) })} /></Field>}
+                </div>
               )}
               {kind === 'boost' && (
-                <Field label={t('db.eco.days', 'Boost length (days)')} className="!mb-0"><Input type="number" min="1" value={it.amount ?? 7} onChange={(e) => upd(i, { amount: Math.max(1, Number(e.target.value) || 1) })} /></Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={t('db.eco.days', 'Boost length (days)')} className="!mb-0"><Input type="number" min="1" value={it.days ?? it.amount ?? 7} onChange={(e) => upd(i, { days: Number(e.target.value) })} /></Field>
+                  <Field label={t('db.eco.target', 'What it boosts')} className="!mb-0"><Select value={it.target || 'catalog'} onChange={(e) => upd(i, { target: e.target.value })}><option value="catalog">{t('db.eco.target.catalog', 'A catalog item')}</option><option value="repo">{t('db.eco.target.repo', 'A repo')}</option></Select></Field>
+                </div>
               )}
-              <Input value={it.desc || ''} onChange={(e) => upd(i, { desc: e.target.value })} placeholder={t('db.eco.itemdesc', 'Short description')} />
-              {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Choose which badge this grants, or it can’t be bought.')}</p>}
+              {kind === 'promo' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={t('db.eco.promo.mode', 'Code')} className="!mb-0"><Select value={it.promo?.mode || 'generated'} onChange={(e) => upd(i, { promo: { ...(it.promo || {}), mode: e.target.value } })}><option value="generated">{t('db.eco.promo.gen', 'Generated discount, one per purchase')}</option><option value="fixed">{t('db.eco.promo.fixed', 'A fixed code I typed')}</option></Select></Field>
+                  {(it.promo?.mode || 'generated') === 'fixed'
+                    ? <Field label={t('db.eco.promo.code', 'The code')} className="!mb-0"><Input className="font-mono" value={it.promo?.code || ''} onChange={(e) => upd(i, { promo: { ...(it.promo || {}), code: e.target.value.toUpperCase() } })} placeholder="SUMMER25" /></Field>
+                    : <Field label={t('db.eco.promo.pct', '% off (or months free)')} className="!mb-0"><div className="flex gap-1"><Input type="number" min="1" max="100" value={it.promo?.percentOff ?? ''} onChange={(e) => upd(i, { promo: { ...(it.promo || {}), percentOff: Number(e.target.value) || null } })} placeholder="%" /><Input type="number" min="0" value={it.promo?.freeMonths ?? ''} onChange={(e) => upd(i, { promo: { ...(it.promo || {}), freeMonths: Number(e.target.value) || null } })} placeholder={t('db.eco.promo.months', 'months')} /></div></Field>}
+                </div>
+              )}
+              <Input className="!py-1.5" value={it.desc || ''} onChange={(e) => upd(i, { desc: e.target.value })} placeholder={t('db.eco.itemdesc', 'Short description shown to buyers (optional)')} />
+              {/* Value and lifetime: stock, one-per-account, listing end, code validity, giftable. */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Field label={t('db.eco.stock', 'Stock (empty = ∞)')} className="!mb-0"><Input type="number" min="0" value={it.stock ?? ''} onChange={(e) => upd(i, { stock: e.target.value === '' ? null : Number(e.target.value) })} placeholder="∞" /></Field>
+                <Field label={t('db.eco.until', 'Listed until')} className="!mb-0"><Input type="date" value={it.availableUntil ? String(it.availableUntil).slice(0, 10) : ''} onChange={(e) => upd(i, { availableUntil: e.target.value ? new Date(e.target.value + 'T23:59:59').toISOString() : null })} /></Field>
+                <Field label={t('db.eco.codedays', 'Code valid (days after reveal)')} className="!mb-0"><Input type="number" min="1" disabled={bound} value={it.codeDays ?? ''} onChange={(e) => upd(i, { codeDays: e.target.value === '' ? null : Number(e.target.value) })} placeholder="∞" /></Field>
+                <div className="flex flex-col gap-1.5 justify-end text-xs">
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.exclusive} onChange={(e) => upd(i, { exclusive: e.target.checked })} /> {t('db.eco.exclusive', 'One per account')}</label>
+                  <label className={`flex items-center gap-1.5 ${bound ? 'opacity-50' : 'cursor-pointer'}`}><input type="checkbox" disabled={bound} checked={!bound && it.giftable !== false} onChange={(e) => upd(i, { giftable: e.target.checked })} /> {t('db.eco.giftable', 'Giftable')}</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={it.active !== false} onChange={(e) => upd(i, { active: e.target.checked })} /> {t('db.eco.listed', 'Listed')}</label>
+                </div>
+              </div>
+              {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Pick the badge — the item is hidden until then.')}</p>}
             </div>
           ); })}
           </div>
@@ -14244,11 +14292,9 @@ function AdminBot() {
           );
         })()}
 
-        {/* Balances & leaderboard live on the Members page now — one member list, two views —
-            instead of a second roster here that showed the same people with different columns. */}
         <div className="rounded-xl border border-dashed border-[var(--line)] p-3 flex items-center gap-3 flex-wrap text-sm text-[var(--muted)]">
           <TrendingUp size={16} className="text-[var(--primary-2)]" />
-          <span className="flex-1">{t('db.eco.ledger.moved', 'Balances, XP and the leaderboard are on the Members page — one list of people, with a Roster view and an Economy view.')}</span>
+          <span className="flex-1">{t('db.eco.ledger.moved2', 'Balances, the leaderboard, purchases to hand out and the full point history are on the Members page → Levels & economy.')}</span>
           <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
         </div>
         </div>);
@@ -14300,7 +14346,6 @@ function AdminBot() {
       <SectionTitle icon={Server} title={t('db.sec.perserver', 'Per-server configuration')} sub={t('db.sec.perserver.sub', 'Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in.')} />
       {/* Scope selector — a bot-dashboard server picker (avatars + custom-config dot) */}
       <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-1">
-        <ServerBubble name={t('db.scope.global', 'Global defaults')} sub={t('db.scope.everyserver', 'every server')} active={scope === ''} onClick={() => setScope('')} />
         {guildList.map((gg) => (
           <ServerBubble key={gg.id} name={gg.name} icon={gg.icon} sub={gg.members != null ? t('db.scope.members', '{n} members').replace('{n}', gg.members) : t('db.scope.server', 'server')}
             active={scope === gg.id} dot={!!cfg.guilds?.[gg.id]} onClick={() => setScope(gg.id)} />
@@ -14316,11 +14361,11 @@ function AdminBot() {
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2">
         <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 min-w-0">
           {scope ? <Server size={13} className="text-[var(--primary-2)] shrink-0" /> : <Globe size={13} className="text-[var(--primary-2)] shrink-0" />}
-          <span className="truncate">{t('db.scope.editing', 'Editing')} <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : t('db.scope.usingdefaults', ' — currently using the global defaults')) : t('db.scope.appliedto', ' — applied to any server without its own config')}</span>
+          <span className="truncate">{t('db.scope.editing', 'Editing')} <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : t('db.scope.notyet', ' — not configured yet')) : t('db.scope.appliedto', ' — applied to any server without its own config')}</span>
         </div>
         {scope && (isCustomized
           ? <Button size="sm" variant="ghost" className="!text-error" onClick={resetServer}><Trash2 size={13} /> {t('db.scope.reset', 'Reset to defaults')}</Button>
-          : <Button size="sm" variant="primary" onClick={customizeServer}><Plus size={13} /> {t('db.scope.customize', 'Customize this server')}</Button>)}
+          : <Button size="sm" variant="primary" onClick={customizeServer}><Plus size={13} /> {t('db.scope.customize2', 'Configure this server')}</Button>)}
       </div>
 
       {/* Block the bot from this server. Two strengths: leave-and-never-rejoin, or stay-but-inert.
@@ -14344,10 +14389,15 @@ function AdminBot() {
         </div>
       )}
 
-      {scope && !isCustomized ? (
+      {!scope ? (
         <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
           <Server size={22} className="mx-auto mb-2 opacity-50" />
-          {t('db.scope.prompt', 'This server uses the Global defaults. Click "Customize this server" above to give it its own moderation, welcome, join-to-create and gating settings.')}
+          {t('db.scope.none', 'Pick a server above. Each server carries its own moderation, welcome, join-to-create and gated-roles settings — nothing here is shared between servers.')}
+        </div>
+      ) : !isCustomized ? (
+        <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
+          <Server size={22} className="mx-auto mb-2 opacity-50" />
+          {t('db.scope.prompt2', 'This server is not configured yet. Press "Configure this server" above — its owner can also do it from their own dashboard.')}
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4 items-start">
@@ -14557,6 +14607,173 @@ function BotModerate({ member }) {
 // Members: ONE page for the people the bot knows, in two views — the roster (who is in the
 // servers, linked or not) and the economy (levels, points, leaderboard, give). They used to be
 // two cards on two pages showing the same members with different columns.
+// The bot's button icons: a pack of PNGs to upload on the application's Emojis page, then one
+// field per button for the <:name:id> Discord gives back. Empty = the unicode fallback.
+function BotIconsCard({ icons, onChange }) {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/admin/bot/emoji-keys'), []);
+  const list = data?.icons || [];
+  const [open, setOpen] = useState(false);
+  return (
+    <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d', 'Custom emoji on the bot’s buttons instead of the unicode ones. Download the pack, upload it on the app’s Emojis page in the Discord Developer Portal, then paste each emoji here.')} onToggle={null}
+      action={<a href="/api/admin/bot/emoji-pack.zip" download><Button size="sm" variant="ghost"><Download size={13} /> {t('db.eco.icons.pack', 'Icon pack')}</Button></a>}>
+      <p className="text-[11px] text-[var(--faint)]">{t('db.eco.icons.h', 'Developer Portal → your application → Emojis → Upload. Then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> here.')}</p>
+      <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+      {open && (
+        <div className="grid sm:grid-cols-2 gap-1.5">
+          {list.map((ic) => (
+            <div key={ic.key} className="flex items-center gap-2">
+              <img src={`/api/admin/bot/emoji/${ic.key}.png`} alt="" className="w-6 h-6 rounded shrink-0" />
+              <span className="text-[11px] w-28 truncate shrink-0" title={ic.key}>{ic.label} <span className="text-[var(--faint)]">{ic.fallback}</span></span>
+              <Input className="!py-1 !text-xs font-mono" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
+            </div>
+          ))}
+        </div>
+      )}
+    </ModuleCard>
+  );
+}
+
+// Admin: the whole point ledger — purchases, casino, gifts, grants — searchable by member.
+const LEDGER_KIND = { levelup: 'Level-up', grant: 'Staff grant', purchase: 'Purchase', casino: 'Casino', gift_out: 'Gift sent', gift_in: 'Gift received', gift_item_out: 'Item given', gift_item_in: 'Item received', refund: 'Refund' };
+function EconomyHistoryCard({ currency }) {
+  const { t } = useI18n();
+  const [q, setQ] = useState(''); const [kind, setKind] = useState('');
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/economy/history?q=${encodeURIComponent(q)}&kind=${encodeURIComponent(kind)}`), [kind]);
+  const rows = data?.history || [];
+  const label = (k) => t(`db.eco.lk.${k}`, LEDGER_KIND[k] || k);
+  return (
+    <ModuleCard id="sec-eco-history" icon={History} title={t('db.eco.histcard', 'Point history')} desc={t('db.eco.histcard.d', 'Every movement: purchases, casino plays, gifts between members, level-ups and staff grants. Retention is set on the Levels & economy page.')} onToggle={null}>
+      <div className="flex gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9 !py-1.5 !text-sm" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && reload()} placeholder={t('db.eco.search', 'Search a member…')} /></div>
+        <Select className="!w-auto !py-1.5 !text-sm" value={kind} onChange={(e) => setKind(e.target.value)}><option value="">{t('db.eco.lk.all', 'Everything')}</option>{Object.keys(LEDGER_KIND).map((k) => <option key={k} value={k}>{label(k)}</option>)}</Select>
+        <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={13} /></Button>
+      </div>
+      {loading ? <Spinner /> : !rows.length ? <div className="text-xs text-[var(--faint)]">{t('db.eco.hist.none', 'Nothing recorded yet.')}</div> : (
+        <div className="max-h-[46vh] overflow-auto pe-1 text-xs">
+          <table className="w-full">
+            <thead className="text-[10px] uppercase tracking-wider text-[var(--faint)] text-start"><tr><th className="font-normal py-1 text-start">{t('db.eco.h.when', 'When')}</th><th className="font-normal py-1 text-start">{t('db.eco.h.who', 'Member')}</th><th className="font-normal py-1 text-start">{t('db.eco.h.what', 'What')}</th><th className="font-normal py-1 text-end">Δ</th><th className="font-normal py-1 text-end">{t('db.eco.h.bal', 'Balance')}</th></tr></thead>
+            <tbody>
+              {rows.map((r) => { const m = r.meta || {}; const detail = r.kind === 'purchase' ? m.name : r.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : r.kind === 'gift_out' ? `→ ${m.toName || ''}` : r.kind === 'gift_in' ? `← ${m.fromName || ''}` : r.kind === 'levelup' ? `Lv ${m.level}` : r.kind === 'grant' ? (m.reason || '') : m.name || ''; return (
+                <tr key={r.id} className="border-t border-[var(--line)]">
+                  <td className="py-1 text-[var(--faint)] whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
+                  <td className="py-1"><Link to={`/u/${r.userId}`} className="hover:text-[var(--primary-2)]">{r.displayName}</Link></td>
+                  <td className="py-1"><span className="text-[var(--muted)]">{label(r.kind)}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</td>
+                  <td className={`py-1 text-end tabular-nums font-medium ${r.delta > 0 ? 'text-success' : r.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}</td>
+                  <td className="py-1 text-end tabular-nums text-[var(--muted)]">{r.balance.toLocaleString()} {currency}</td>
+                </tr>
+              ); })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </ModuleCard>
+  );
+}
+
+// One member, in a modal: their roles per server (add / remove), the moderation actions, and
+// what was done to them before. Replaces the inline panel that used to unfold inside the row
+// and pushed every sibling around.
+function BotMemberModal({ member, guildRoles, onClose }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [busy, setBusy] = useState(false);
+  const hist = useAsync(() => api.get(`/admin/bot/actions?discordId=${member.discordId}`), [member.discordId]);
+  const servers = member.servers?.length ? member.servers : (member.guildId ? [{ guildId: member.guildId, name: guildRoles?.[member.guildId]?.name || member.guildId, roles: member.roles || [] }] : []);
+  const queue = async (body, okMsg) => {
+    setBusy(true);
+    try { await api.post('/admin/bot/actions', { discordId: member.discordId, ...body }); toast.success(okMsg || t('bmod.queued', 'Queued — the bot will do it within a minute, and the result shows here.')); hist.reload(); }
+    catch (x) { toast.error(x?.data?.error === 'reason_required' ? t('bmod.needreason', 'That one needs a reason.') : x?.data?.error === 'minutes_required' ? t('bmod.needmin', 'That one needs a duration.') : x?.data?.error === 'role_required' ? t('bmod.needrole', 'Pick a role the bot can hand out.') : t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const KINDS = [
+    { kind: 'timeout', label: t('bmod.timeout', 'Time out'), minutes: true }, { kind: 'kick', label: t('bmod.kick', 'Kick'), danger: true }, { kind: 'ban', label: t('bmod.ban', 'Ban'), danger: true },
+    { kind: 'untimeout', label: t('bmod.untimeout', 'Lift the timeout'), undo: true }, { kind: 'unban', label: t('bmod.unban', 'Lift the ban'), undo: true },
+  ];
+  const ask = async (k, guildId) => {
+    let reason = '';
+    if (!k.undo) {
+      const typed = await dialog.prompt({ title: t('bmod.why', 'Why?'), message: t('bmod.whym', 'Sent to Discord with the action, and kept here with your name on it.'), okLabel: t('common.continue', 'Continue'), danger: k.danger });
+      if (!typed || !String(typed).trim()) return; reason = String(typed).trim();
+    }
+    let minutes;
+    if (k.minutes) {
+      const typed = await dialog.prompt({ title: t('bmod.howlong', 'How many minutes?'), message: t('bmod.howlongm', 'Discord allows up to 28 days (40320 minutes).'), okLabel: t('common.continue', 'Continue') });
+      minutes = Number(String(typed || '').trim()); if (!Number.isFinite(minutes) || minutes < 1) return;
+    }
+    await queue({ kind: k.kind, reason, ...(minutes ? { minutes } : {}), ...(guildId ? { guildId } : {}) });
+  };
+  const [addRole, setAddRole] = useState({});
+  const actions = hist.data?.actions || [];
+  return (
+    <Modal open onClose={onClose} title={member.username || member.discordId} icon={Users} width="max-w-xl" footer={<Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>}>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          {member.avatar ? <img src={member.avatar} alt="" className="w-12 h-12 rounded-full" /> : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] grid place-items-center"><DiscordIcon size={18} className="text-[#5865F2]" /></div>}
+          <div className="min-w-0">
+            <div className="font-semibold">{member.username || member.discordId} {member.linkedUser && <Badge tone="green"><CheckCircle2 size={11} /> {member.linkedUser.displayName}</Badge>}</div>
+            <div className="text-[11px] text-[var(--faint)] font-mono">{member.discordId}</div>
+          </div>
+        </div>
+        {/* Roles, per server: a chip per role with a ×, and a picker to add one. Queued like
+            every other action, so the result (or Discord's refusal) lands in the history. */}
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Shield size={12} /> {t('bmod.roles', 'Roles')}</div>
+          {servers.length === 0 && <div className="text-[12px] text-[var(--faint)]">{t('bmod.noservers', 'No server stored for this member.')}</div>}
+          <div className="space-y-2">
+            {servers.map((sv) => {
+              const gr = guildRoles?.[sv.guildId]?.roles || [];
+              const idOf = (name) => gr.find((r) => r.name === name)?.id || null;
+              return (
+                <div key={sv.guildId} className="rounded-lg border border-[var(--line)] p-2.5">
+                  <div className="text-[11px] font-medium mb-1.5 flex items-center gap-1.5"><Server size={11} className="text-[var(--faint)]" /> {sv.name}</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {(sv.roles || []).length ? sv.roles.map((name) => (
+                      <span key={name} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)]">{name}
+                        {idOf(name) && <button type="button" disabled={busy} title={t('bmod.role.remove', 'Remove this role')} onClick={() => queue({ kind: 'role_remove', guildId: sv.guildId, roleId: idOf(name), reason: 'roles' }, t('bmod.role.queued', 'Queued — the roster refreshes on the next scan.'))} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>}
+                      </span>
+                    )) : <span className="text-[11px] text-[var(--faint)]">{t('bmod.role.none', 'No role')}</span>}
+                  </div>
+                  {gr.length > 0 && (
+                    <div className="flex items-center gap-1.5">
+                      <Select className="!py-1 !text-xs flex-1" value={addRole[sv.guildId] || ''} onChange={(e) => setAddRole({ ...addRole, [sv.guildId]: e.target.value })}>
+                        <option value="">{t('bmod.role.add', 'Add a role…')}</option>
+                        {gr.filter((r) => !(sv.roles || []).includes(r.name)).map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
+                      </Select>
+                      <Button size="sm" variant="primary" disabled={busy || !addRole[sv.guildId]} onClick={() => { queue({ kind: 'role_add', guildId: sv.guildId, roleId: addRole[sv.guildId], reason: 'roles' }, t('bmod.role.queued', 'Queued — the roster refreshes on the next scan.')); setAddRole({ ...addRole, [sv.guildId]: '' }); }}><Plus size={12} /></Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Gavel size={12} /> {t('bmod.title', 'Moderate')}</div>
+          {servers.length > 1 && <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('bmod.multi', 'This person is in several servers — the action is queued for the first one listed; pick the server with the roles above if you need another.')}</p>}
+          <div className="flex flex-wrap gap-1.5">
+            {KINDS.map((k) => <Button key={k.kind} size="sm" variant="ghost" disabled={busy} className={k.danger ? '!text-error' : ''} onClick={() => ask(k, servers[0]?.guildId)}>{k.label}</Button>)}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><History size={12} /> {t('bmod.history', 'What was done')}</div>
+          {hist.loading ? <Spinner /> : !actions.length ? <div className="text-[12px] text-[var(--faint)]">{t('bmod.nohist', 'Nothing yet.')}</div> : (
+            <div className="space-y-1 max-h-48 overflow-auto pe-1">
+              {actions.slice(0, 20).map((a) => (
+                <div key={a.id} className="flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                  <Badge tone={a.status === 'done' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
+                  <span className="font-medium">{a.kind}</span>
+                  <span className="text-[var(--faint)] truncate flex-1">{a.error || a.reason || ''}</span>
+                  <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AdminBotMembersPage({ currency }) {
   const { t } = useI18n();
   const [view, setView] = useState('roster');
@@ -14570,7 +14787,7 @@ function AdminBotMembersPage({ currency }) {
           </button>
         ))}
       </div>
-      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /></div>}
+      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
     </div>
   );
 }
@@ -14582,6 +14799,8 @@ function AdminBotMembers() {
   const [sort, setSort] = useState('recent');
   const [role, setRole] = useState('');
   const [roleList, setRoleList] = useState([]);
+  const [guildRoles, setGuildRoles] = useState({}); // guildId → { name, roles:[{id,name}] }
+  const [modal, setModal] = useState(null);           // the member opened in the modal
   const [rows, setRows] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [counts, setCounts] = useState(null); // { all, linked, unlinked }
@@ -14598,7 +14817,8 @@ function AdminBotMembers() {
       const skip = append ? (rows?.length || 0) : 0;
       const qs = `q=${encodeURIComponent(q)}&skip=${skip}&take=30&sort=${so}`
         + (lk ? `&link=${lk}` : '') + (ro ? `&role=${encodeURIComponent(ro)}` : '');
-      const { members, hasMore: more, counts: c, roles: rl } = await api.get(`/admin/bot/members?${qs}`);
+      const { members, hasMore: more, counts: c, roles: rl, guildRoles: grl } = await api.get(`/admin/bot/members?${qs}`);
+      if (grl && typeof grl === 'object') setGuildRoles(grl);
       setRows(append ? [...(rows || []), ...members] : members); setHasMore(more); if (c) setCounts(c);
       if (Array.isArray(rl)) setRoleList(rl);
     } catch { if (!append) setRows([]); } finally { setBusy(false); }
@@ -14710,7 +14930,7 @@ function AdminBotMembers() {
                 {(m.roles?.length > 0 || m.servers?.length > 1) && (
                   <span className="hidden md:inline text-[11px] text-[var(--faint)] tabular-nums shrink-0">{m.roles?.length ? t('bm.nroles', '{n} role(s)').replace('{n}', m.roles.length) : ''}{m.roles?.length && m.servers?.length > 1 ? ' · ' : ''}{m.servers?.length > 1 ? t('bm.nservers', '{n} servers').replace('{n}', m.servers.length) : ''}</span>
                 )}
-                <BotModerate member={m} />
+                <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setModal(m)}><Gavel size={13} /> <span className="hidden sm:inline">{t('bmod.manage', 'Manage')}</span></Button>
                 <button type="button" onClick={() => setExpanded(open ? null : m.discordId)} aria-expanded={open} title={open ? t('bm.less', 'Hide details') : t('bm.more', 'Details, roles, give XP or points')}
                   className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] shrink-0"><ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></button>
               </div>
@@ -14724,20 +14944,15 @@ function AdminBotMembers() {
                   </div>
                   {/* What they ARE, before deciding what to do about them. @everyone is stripped
                       by the scan — every member has it, so it says nothing. */}
-                  {m.roles?.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] me-1">{t('bm.roles', 'Roles')}</span>
-                      {m.roles.map((r) => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] text-[var(--muted)]">{r}</span>)}
+                  {/* Roles, PER SERVER: a person in three servers has three role lists, and one
+                      merged list said nothing about where a role applied. Editing lives in the
+                      Manage modal. */}
+                  {(m.servers?.length ? m.servers : [{ guildId: m.guildId, name: guildRoles[m.guildId]?.name || t('bm.thisserver', 'this server'), roles: m.roles || [] }]).map((sv) => (
+                    <div key={sv.guildId} className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] me-1 inline-flex items-center gap-1"><Server size={10} /> {sv.name}</span>
+                      {(sv.roles || []).length ? sv.roles.map((r) => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] text-[var(--muted)]">{r}</span>) : <span className="text-[10px] text-[var(--faint)]">{t('bmod.role.none', 'No role')}</span>}
                     </div>
-                  )}
-                  {/* Unified mode: this is ONE row per person, so show every server they share
-                      with the bot rather than repeating the person once per server. */}
-                  {m.servers?.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] me-1 inline-flex items-center gap-1"><Server size={10} /> {t('bm.servers', 'Servers')}</span>
-                      {m.servers.map((sv) => <span key={sv.guildId} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#5865F2]/10 text-[var(--primary-2)]">{sv.name}</span>)}
-                    </div>
-                  )}
+                  ))}
                   {m.linkedUser && (
                     <div className="flex items-center gap-1.5 flex-wrap pt-1">
                       <Gift size={12} className="text-[var(--primary-2)]" /> <span className="text-[var(--muted)]">{t('bm.give', 'Give')}</span>
@@ -14755,6 +14970,7 @@ function AdminBotMembers() {
             </Card>);
           })}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('bm.loadmore', 'Load more')}</Button></div>}
+          {modal && <BotMemberModal member={modal} guildRoles={guildRoles} onClose={() => { setModal(null); load(false); }} />}
         </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')} sub={link ? t('bm.trother', 'Try another filter.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")} />}
       </>}
     </div>
@@ -18608,25 +18824,46 @@ function AdminBadgeHolders({ badge, onClose }) {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(() => api.get(`/admin/badges/${badge.id}/holders`), [badge.id]);
   const [who, setWho] = useState('');
+  const [results, setResults] = useState([]);
+  const [busy, setBusy] = useState(false);
   const holders = data?.holders || [];
-  const grant = async () => {
-    if (!who.trim()) return;
-    const body = who.includes('@') ? { email: who.trim() } : { userId: who.trim() };
-    try { const r = await api.post(`/admin/badges/${badge.id}/grant`, body); toast.success(t('ab.granted', 'Granted to {n}.').replace('{n}', r.displayName || who)); setWho(''); reload(); }
+  const held = new Set(holders.map((h) => h.userId));
+  // The user search (pseudo, e-mail, id, BC id — the same box as the Users page) as you type,
+  // so a badge is granted to a person you can see rather than an id you retyped.
+  useEffect(() => {
+    const q = who.trim();
+    if (q.length < 2) { setResults([]); return; }
+    let alive = true; setBusy(true);
+    const id = setTimeout(() => api.get(`/admin/users?q=${encodeURIComponent(q)}&take=8`).then((r) => { if (alive) setResults(r.users || []); }).catch(() => { if (alive) setResults([]); }).finally(() => { if (alive) setBusy(false); }), 220);
+    return () => { alive = false; clearTimeout(id); };
+  }, [who]);
+  const grant = async (u) => {
+    try { const r = await api.post(`/admin/badges/${badge.id}/grant`, { userId: u.id }); toast.success(t('ab.granted', 'Granted to {n}.').replace('{n}', r.displayName || u.displayName)); setWho(''); setResults([]); reload(); }
     catch (x) { toast.error(x.data?.error === 'no_such_user' ? t('ab.nouser', 'No user with that id/email.') : x.data?.error || t('acc.failed', 'Failed.')); }
   };
   const revoke = async (h) => { try { await api.del(`/admin/badges/${badge.id}/holders/${h.userId}`); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
     <Modal open onClose={onClose} title={t('ab.holders.t', 'Grant: {n}').replace('{n}', badge.name)} icon={Users} width="max-w-lg">
-      <div className="flex items-end gap-2 mb-3">
-        <Field label={t('ab.grantto', 'Grant to (user id or email)')} className="flex-1"><Input value={who} onChange={(e) => setWho(e.target.value)} placeholder="user@example.com" onKeyDown={(e) => e.key === 'Enter' && grant()} /></Field>
-        <Button variant="primary" onClick={grant}><Plus size={14} /> {t('ab.grant', 'Grant')}</Button>
-      </div>
-      {loading ? <Loading /> : holders.length ? <div className="space-y-1 max-h-80 overflow-auto">
+      <Field label={t('ab.grantto2', 'Grant to — search by name, e-mail, id or BC id')} className="mb-2">
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" value={who} onChange={(e) => setWho(e.target.value)} placeholder="BC-XXXX-XXXX · name · user@example.com" autoFocus /></div>
+      </Field>
+      {who.trim().length >= 2 && (
+        <div className="rounded-lg border border-[var(--line)] mb-3 max-h-56 overflow-auto divide-y divide-[var(--line)]">
+          {busy && !results.length ? <div className="p-3"><Spinner /></div> : results.length ? results.map((u) => (
+            <div key={u.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <Avatar user={u} size={24} />
+              <span className="flex-1 min-w-0 truncate">{u.displayName} <span className="text-[var(--faint)] text-xs">· {u.email}{u.bcId ? ` · ${u.bcId}` : ''}</span></span>
+              {held.has(u.id) ? <Badge tone="green"><CheckCircle2 size={11} /> {t('ab.has', 'has it')}</Badge> : <Button size="sm" variant="primary" onClick={() => grant(u)}><Plus size={13} /> {t('ab.grant', 'Grant')}</Button>}
+            </div>
+          )) : <div className="p-3 text-xs text-[var(--faint)]">{t('ab.nomatch', 'No member matches.')}</div>}
+        </div>
+      )}
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('ab.holders.list', 'Holders')} · {holders.length}</div>
+      {loading ? <Loading /> : holders.length ? <div className="space-y-1 max-h-72 overflow-auto">
         {holders.map((h) => (
           <div key={h.userId} className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-lg hover:bg-[var(--surface-2)]">
             <span className="flex-1 min-w-0 truncate">{h.displayName} <span className="text-[var(--faint)]">· {h.email}</span></span>
-            <button onClick={() => revoke(h)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button>
+            <button onClick={() => revoke(h)} className="text-[var(--faint)] hover:text-error" title={t('ab.revoke', 'Revoke')}><X size={14} /></button>
           </div>
         ))}
       </div> : <p className="text-sm text-[var(--faint)] text-center py-6">{t('ab.noholders', 'No one has this badge yet.')}</p>}

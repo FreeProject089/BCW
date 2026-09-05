@@ -138,9 +138,24 @@ function GuildMembers({ guildId }) {
   const [q, setQ] = useState('');
   const [data, setData] = useState(null);
   const [skip, setSkip] = useState(0);
+  const [open, setOpen] = useState(null);   // discordId whose role editor is open
+  const [pick, setPick] = useState('');
+  const [busy, setBusy] = useState('');
   const TAKE = 20;
-  // Queue a moderation action against one member of THIS server. The server re-checks that the
-  // target is really a member of this guild, so the worst a crafted request can do is fail.
+  // Queue an action against one member of THIS server (a role, a timeout, a kick, a ban). The
+  // server re-checks that the target is really a member of this guild and that a role is one
+  // of the guild's own, so the worst a crafted request can do is fail.
+  const queue = async (m, body, okMsg) => {
+    setBusy(m.discordId + body.kind);
+    try { await api.post(`/me/discord/guilds/${guildId}/actions`, { discordId: m.discordId, ...body }); toast.success(okMsg || t('ds.mod.queued', 'Queued — the bot carries it out shortly.')); }
+    catch (x) {
+      toast.error(x?.data?.error === 'cannot_moderate_self' ? t('ds.mod.self', 'You can’t moderate yourself.')
+        : x?.data?.error === 'member_not_found' ? t('ds.mod.gone', 'That member is no longer in your server.')
+        : x?.data?.error === 'reason_required' ? t('ds.mod.needreason', 'A reason is required.')
+        : x?.data?.error === 'role_required' ? t('ds.mod.needrole', 'Pick a role the bot can hand out.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
   const moderate = async (m, kind) => {
     let reason = '';
     if (kind !== 'untimeout' && kind !== 'unban') {
@@ -154,49 +169,69 @@ function GuildMembers({ guildId }) {
       minutes = Number(String(typed || '').trim());
       if (!Number.isFinite(minutes) || minutes < 1) return;
     }
-    try {
-      await api.post(`/me/discord/guilds/${guildId}/actions`, { kind, discordId: m.discordId, reason: reason || undefined, minutes });
-      toast.success(t('ds.mod.queued', 'Queued — the bot carries it out shortly.'));
-    } catch (x) {
-      toast.error(x?.data?.error === 'cannot_moderate_self' ? t('ds.mod.self', 'You can’t moderate yourself.')
-        : x?.data?.error === 'member_not_found' ? t('ds.mod.gone', 'That member is no longer in your server.')
-        : x?.data?.error === 'reason_required' ? t('ds.mod.needreason', 'A reason is required.')
-        : t('common.failed', 'Failed.'));
-    }
+    await queue(m, { kind, reason: reason || undefined, minutes });
   };
   useEffect(() => { setSkip(0); }, [q]);
   useEffect(() => {
     let alive = true;
     api.get(`/me/discord/guilds/${guildId}/members?q=${encodeURIComponent(q)}&take=${TAKE}&skip=${skip}`)
-      .then((r) => { if (alive) setData(r); }).catch(() => { if (alive) setData({ members: [], total: 0 }); });
+      .then((r) => { if (alive) setData(r); }).catch(() => { if (alive) setData({ members: [], total: 0, roles: [] }); });
     return () => { alive = false; };
   }, [guildId, q, skip]);
   if (!data) return <div className="py-4 flex justify-center"><Spinner /></div>;
+  const roles = data.roles || [];
+  const roleId = (name) => roles.find((r) => r.name === name)?.id || null;
+  const roleColor = (name) => roles.find((r) => r.name === name)?.color || null;
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ds.mem.search', 'Search a member…')} className="flex-1" />
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{data.total}</span>
       </div>
+      <p className="text-[11px] text-[var(--faint)] mb-2">{t('ds.mem.h', 'What the bot stored, refreshed every 30 minutes: who they are, their level and badges on the site if they linked an account, and their roles here. Open a row to hand out or take a role; moderation sits behind the shield.')}</p>
       {data.members.length === 0 ? <div className="text-[11px] text-[var(--faint)] py-2">{t('ds.mem.none', 'No members stored yet.')}</div> : (
-        <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] max-h-72 overflow-y-auto">
-          {data.members.map((m) => (
-            <div key={m.discordId} className="group px-3 py-2 flex items-center gap-2.5 text-xs">
-              {m.avatar ? <img src={m.avatar} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{m.nickname || m.username || m.discordId}</div>
-                {m.roles?.length > 0 && <div className="truncate text-[10px] text-[var(--faint)]">{m.roles.slice(0, 5).join(' · ')}</div>}
+        <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
+          {data.members.map((m) => {
+            const isOpen = open === m.discordId;
+            const L = m.linked;
+            return (
+            <div key={m.discordId} className="text-xs">
+              <div className="px-3 py-2 flex items-center gap-2.5">
+                {m.avatar ? <img src={m.avatar} alt="" className="w-7 h-7 rounded-full shrink-0" /> : <span className="w-7 h-7 rounded-full bg-[var(--surface-2)] shrink-0" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate font-medium">{m.nickname || m.username || m.discordId}</span>
+                    {L ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] tabular-nums shrink-0" title={`${L.displayName} · ${L.points.toLocaleString()} pts`}><Sparkles size={9} /> Lv {L.level}</span> : <span className="text-[10px] text-[var(--faint)] shrink-0">{t('ds.mem.unlinked', 'not linked')}</span>}
+                    {L?.badges?.length > 0 && <span className="hidden sm:inline-flex items-center gap-1 shrink-0">{L.badges.slice(0, 4).map((b) => <span key={b.name} className="text-[9px] px-1 py-0.5 rounded border" style={{ borderColor: `${b.color}66`, color: b.color }} title={b.name}>{b.name}</span>)}</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                    {(m.roles || []).length ? m.roles.slice(0, isOpen ? 50 : 6).map((r) => <span key={r} className="text-[10px] px-1.5 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)]" style={roleColor(r) ? { borderColor: `${roleColor(r)}55` } : undefined}>{r}{isOpen && roleId(r) && <button type="button" disabled={!!busy} onClick={() => queue(m, { kind: 'role_remove', roleId: roleId(r), reason: 'roles' }, t('ds.mem.role.queued', 'Queued — the list refreshes on the next scan.'))} className="ms-1 text-[var(--faint)] hover:text-error" title={t('ds.mem.role.remove', 'Remove this role')}>×</button>}</span>)
+                      : <span className="text-[10px] text-[var(--faint)]">{t('ds.mem.norole', 'no role')}</span>}
+                    {!isOpen && (m.roles || []).length > 6 && <span className="text-[10px] text-[var(--faint)]">+{m.roles.length - 6}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button type="button" onClick={() => { setOpen(isOpen ? null : m.discordId); setPick(''); }} title={t('ds.mem.roles', 'Roles')} className={`p-1.5 rounded-lg hover:bg-[var(--surface-2)] ${isOpen ? 'text-[var(--primary-2)]' : 'text-[var(--muted)]'}`}><Shield size={13} /></button>
+                  {m.guildJoinedAt && <span className="text-[10px] text-[var(--faint)] shrink-0 hidden sm:inline ms-1">{new Date(m.guildJoinedAt).toLocaleDateString()}</span>}
+                </div>
               </div>
-              {/* Moderation, this server only. Hidden until you hover the row so the list stays a
-                  list; each opens a reason (and, for a timeout, a duration) prompt first. */}
-              <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
-                <button type="button" onClick={() => moderate(m, 'timeout')} title={t('ds.mod.timeout', 'Time out')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-warning hover:bg-[var(--surface-2)]"><Clock size={13} /></button>
-                <button type="button" onClick={() => moderate(m, 'kick')} title={t('ds.mod.kick', 'Kick')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><UserMinus size={13} /></button>
-                <button type="button" onClick={() => moderate(m, 'ban')} title={t('ds.mod.ban', 'Ban')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><Ban size={13} /></button>
-              </div>
-              {m.guildJoinedAt && <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(m.guildJoinedAt).toLocaleDateString()}</span>}
-            </div>
-          ))}
+              {isOpen && (
+                <div className="px-3 pb-2.5 flex flex-wrap items-center gap-2 bg-[var(--surface-2)]/40">
+                  {roles.length > 0 ? (<>
+                    <select className="text-[11px] rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-2 py-1" value={pick} onChange={(e) => setPick(e.target.value)}>
+                      <option value="">{t('ds.mem.role.add', 'Add a role…')}</option>
+                      {roles.filter((r) => !(m.roles || []).includes(r.name)).map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
+                    </select>
+                    <Button size="sm" variant="primary" disabled={!pick || !!busy} onClick={() => { queue(m, { kind: 'role_add', roleId: pick, reason: 'roles' }, t('ds.mem.role.queued', 'Queued — the list refreshes on the next scan.')); setPick(''); }}><Plus size={12} /> {t('ds.mem.role.give', 'Give')}</Button>
+                  </>) : <span className="text-[10px] text-[var(--faint)]">{t('ds.mem.role.nolist', 'The bot has not reported this server’s roles yet (it does on its next heartbeat).')}</span>}
+                  <span className="flex-1" />
+                  <button type="button" onClick={() => moderate(m, 'timeout')} title={t('ds.mod.timeout', 'Time out')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-warning hover:bg-[var(--surface-2)]"><Clock size={13} /></button>
+                  <button type="button" onClick={() => moderate(m, 'kick')} title={t('ds.mod.kick', 'Kick')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><UserMinus size={13} /></button>
+                  <button type="button" onClick={() => moderate(m, 'ban')} title={t('ds.mod.ban', 'Ban')} className="p-1.5 rounded-lg text-[var(--muted)] hover:text-error hover:bg-[var(--surface-2)]"><Ban size={13} /></button>
+                </div>
+              )}
+            </div>);
+          })}
         </div>
       )}
       {data.total > TAKE && (

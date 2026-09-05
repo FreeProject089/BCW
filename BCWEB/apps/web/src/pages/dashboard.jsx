@@ -125,89 +125,161 @@ const SHOP_KIND = {
 function EconomyShop({ view = 'shop', onView }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [d, setD] = useState(null);
+  const [hist, setHist] = useState(null);
   const [busy, setBusy] = useState('');
+  const [giftTo, setGiftTo] = useState(''); const [giftPts, setGiftPts] = useState(''); const [giftNote, setGiftNote] = useState('');
   const load = () => api.get('/me/economy/shop').then(setD).catch(() => setD({ enabled: false, items: [], purchases: [] }));
+  const loadHist = () => api.get('/me/economy/history').then((r) => setHist(r.history || [])).catch(() => setHist([]));
   useEffect(() => { load(); }, []);
+  useEffect(() => { if (view === 'history' && hist === null) loadHist(); /* eslint-disable-next-line */ }, [view]);
   if (!d) return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>;
   const cur = d.currency?.name || 'points';
   const kindLabel = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
+  const tagLabel = (it) => it.tag === 'exclusive' ? t('eco.tag.excl', 'Exclusive') : it.tag === 'limited' ? t('eco.tag.lim', '{n} left').replace('{n}', it.remaining ?? '?') : it.tag === 'timed' ? t('eco.tag.timed', 'Until {d}').replace('{d}', it.availableUntil ? new Date(it.availableUntil).toLocaleDateString() : '') : null;
+  const errText = (e) => e === 'insufficient' ? t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur) : e === 'already_owned' ? t('eco.err.owned', 'You already own that one.') : e === 'sold_out' ? t('eco.err.soldout', 'Sold out.') : e === 'economy_off' ? t('eco.err.off', 'The shop is closed right now.')
+    : e === 'no_such_user' ? t('eco.err.nouser', 'Nobody by that name, id or e-mail.') : e === 'self' ? t('eco.err.self', 'That is you.') : e === 'gifts_off' ? t('eco.err.giftsoff', 'Gifting is switched off.') : e === 'too_small' ? t('eco.err.toosmall', 'Below the minimum gift.') : e === 'daily_cap' ? t('eco.err.cap', 'Daily gift cap reached.') : e === 'not_giftable' ? t('eco.err.notgiftable', 'That item is bound to its buyer.') : e === 'pending' ? t('eco.err.pending', 'Wait until an admin has handed it out.') : t('common.failed', 'Failed.');
   const buy = async (it) => {
-    if (!(await dialog.confirm({ title: t('eco.buy.t', 'Buy “{n}”?').replace('{n}', it.name), message: t('eco.buy.m', 'This spends {c} {cur} of your {b}. {what}').replace('{c}', it.cost.toLocaleString()).replace('{cur}', cur).replace('{b}', (d.points || 0).toLocaleString()).replace('{what}', it.fulfil === 'site' ? t('eco.buy.site', 'It is delivered immediately.') : t('eco.buy.admin', 'An admin hands it out — it shows as pending until then.')), okLabel: t('eco.buy.ok', 'Buy') }))) return;
+    const what = it.fulfil === 'site' ? (it.kind === 'badge' ? t('eco.buy.site', 'It is delivered immediately.') : t('eco.buy.sealed', 'It lands sealed in your inventory — reveal the code when you want it, or gift it unopened.')) : t('eco.buy.admin', 'An admin hands it out — it shows as pending until then.');
+    if (!(await dialog.confirm({ title: t('eco.buy.t', 'Buy “{n}”?').replace('{n}', it.name), message: t('eco.buy.m', 'This spends {c} {cur} of your {b}. {what}').replace('{c}', it.cost.toLocaleString()).replace('{cur}', cur).replace('{b}', (d.points || 0).toLocaleString()).replace('{what}', what), okLabel: t('eco.buy.ok', 'Buy') }))) return;
     setBusy(it.id);
     try {
       const r = await api.post('/me/economy/buy', { itemId: it.id });
       const dl = r.delivery || {};
-      toast.success(dl.code ? t('eco.bought.code', 'Bought — your code: {c} (kept in your inventory).').replace('{c}', dl.code)
-        : dl.badge ? t('eco.bought.badge', 'Bought — the “{b}” badge is on your profile.').replace('{b}', dl.badge)
-        : r.status === 'pending' ? t('eco.bought.pending', 'Bought — an admin will hand it out shortly.') : t('eco.bought', 'Bought.'));
-      load();
-    } catch (x) {
-      const e = x?.data?.error;
-      toast.error(e === 'insufficient' ? t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur) : e === 'already_owned' ? t('eco.err.owned', 'You already own that badge.') : e === 'economy_off' ? t('eco.err.off', 'The shop is closed right now.') : t('common.failed', 'Failed.'));
-    } finally { setBusy(''); }
+      toast.success(dl.badge ? t('eco.bought.badge', 'Bought — the “{b}” badge is on your profile.').replace('{b}', dl.badge) : dl.revealed === false ? t('eco.bought.sealed', 'Bought — sealed in your inventory.') : r.status === 'pending' ? t('eco.bought.pending', 'Bought — an admin will hand it out shortly.') : t('eco.bought', 'Bought.'));
+      load(); onView?.('inventory');
+    } catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
+  };
+  const reveal = async (p) => {
+    setBusy(p.id);
+    try { const r = await api.post(`/me/economy/purchases/${p.id}/reveal`); const code = r.delivery?.code; if (code) { copyText(code); toast.success(t('eco.revealed', 'Your code: {c} — copied.').replace('{c}', code)); } load(); }
+    catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
+  };
+  const giftItem = async (p) => {
+    const to = await dialog.prompt({ title: t('eco.giftitem.t', 'Gift “{n}”').replace('{n}', p.name), message: t('eco.giftitem.m', 'Who gets it? A display name, e-mail, id or BC id. It lands sealed in their inventory.'), okLabel: t('eco.giftitem.ok', 'Gift') });
+    if (!to || !String(to).trim()) return;
+    setBusy(p.id);
+    try { const r = await api.post(`/me/economy/purchases/${p.id}/gift`, { to: String(to).trim() }); toast.success(t('eco.gifted', 'Handed to {n}.').replace('{n}', r.to?.displayName || to)); load(); }
+    catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
+  };
+  const giftPoints = async () => {
+    const pts = Math.round(Number(giftPts));
+    if (!giftTo.trim() || !(pts > 0)) return;
+    if (!(await dialog.confirm({ title: t('eco.gift.t', 'Send {n} {cur}?').replace('{n}', pts.toLocaleString()).replace('{cur}', cur), message: t('eco.gift.m', 'To “{to}”. Points cannot be taken back.').replace('{to}', giftTo.trim()), okLabel: t('eco.gift.ok', 'Send') }))) return;
+    setBusy('gift');
+    try { const r = await api.post('/me/economy/gift', { to: giftTo.trim(), points: pts, note: giftNote.trim() || undefined }); toast.success(t('eco.gift.sent', 'Sent to {n}. Balance: {b}.').replace('{n}', r.to?.displayName || giftTo).replace('{b}', (r.points || 0).toLocaleString())); setGiftTo(''); setGiftPts(''); setGiftNote(''); load(); setHist(null); }
+    catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
   };
   const purchases = d.purchases || [];
   const pending = purchases.filter((p) => p.status === 'pending').length;
+  const LK = { levelup: t('eco.lk.levelup', 'Level-up'), grant: t('eco.lk.grant', 'Staff'), purchase: t('eco.lk.purchase', 'Purchase'), casino: t('eco.lk.casino', 'Casino'), gift_out: t('eco.lk.gift_out', 'Gift sent'), gift_in: t('eco.lk.gift_in', 'Gift received'), gift_item_out: t('eco.lk.gift_item_out', 'Item given'), gift_item_in: t('eco.lk.gift_item_in', 'Item received'), refund: t('eco.lk.refund', 'Refund') };
   return (
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40">
-          {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length]].map(([id, label, I, n]) => (
+          {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length], ['history', t('eco.tab.hist', 'History'), Clock, null]].map(([id, label, I, n]) => (
             <button key={id} type="button" onClick={() => onView?.(id)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-              <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label} <span className="text-[11px] text-[var(--faint)]">{n}</span>
+              <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label} {n != null && <span className="text-[11px] text-[var(--faint)]">{n}</span>}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-2 text-sm"><Coins size={16} className="text-[var(--primary-2)]" /> <b className="tabular-nums">{(d.points || 0).toLocaleString()}</b> <span className="text-[var(--muted)]">{cur}</span></div>
       </div>
       {!d.enabled ? <EmptyState icon={ShoppingBag} title={t('eco.off.t', 'The shop is closed')} sub={t('eco.off.s', 'The Discord economy is switched off right now.')} /> : view === 'shop' ? (
-        d.items?.length ? (
+        d.items?.length ? (<>
+          <p className="text-[12px] text-[var(--muted)] mb-3">{t('eco.shop.note', 'Everything here is tied to this BetterCommunity account — a badge goes on your profile, a code is redeemed here. Sealed items can be gifted unopened; a badge or a role is bound to its buyer.')}</p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {d.items.map((it) => {
               const K = SHOP_KIND[it.kind] || SHOP_KIND.custom;
-              const can = (d.points || 0) >= it.cost && !it.owned;
+              const can = (d.points || 0) >= it.cost && !it.owned && !it.soldOut;
+              const tag = tagLabel(it);
               return (
-                <Card key={it.id} className="p-4 flex flex-col gap-3">
+                <Card key={it.id} className={`p-4 flex flex-col gap-3 relative ${it.tag === 'exclusive' ? 'border-amber-400/40' : ''}`}>
+                  {tag && <span className={`absolute -top-2 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${it.tag === 'exclusive' ? 'bg-amber-500/15 border-amber-400/40 text-amber-300' : it.tag === 'limited' ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)]'}`}>{tag}</span>}
                   <div className="flex items-start gap-3">
                     <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><K.Icon size={18} className={K.tone} /></span>
                     <div className="min-w-0 flex-1">
                       <div className="font-medium truncate">{it.name}</div>
-                      <div className="text-[11px] text-[var(--faint)]">{kindLabel(it.kind)}{it.amount ? ` · ${it.amount}` : ''}{it.fulfil !== 'site' ? ` · ${t('eco.k.byadmin', 'handed out by an admin')}` : ''}</div>
+                      <div className="text-[11px] text-[var(--faint)]">{kindLabel(it.kind)}{it.gb ? ` · ${it.gb} GB` : ''}{it.days ? ` · ${it.days} d` : ''}{it.kind === 'hosting' && it.months ? ` · ${it.months} mo` : ''}{it.fulfil !== 'site' ? ` · ${t('eco.k.byadmin', 'handed out by an admin')}` : ''}</div>
                     </div>
                   </div>
                   {it.desc && <p className="text-xs text-[var(--muted)] flex-1">{it.desc}</p>}
+                  <div className="flex items-center gap-2 flex-wrap text-[10px] text-[var(--faint)]">
+                    <span>{it.giftable ? t('eco.giftable', 'giftable') : t('eco.bound', 'bound to you')}</span>
+                    {it.codeDays ? <span>· {t('eco.codedays', 'code valid {n} d').replace('{n}', it.codeDays)}</span> : null}
+                    {it.exclusive ? <span>· {t('eco.oneper', 'one per account')}</span> : null}
+                  </div>
                   <div className="flex items-center justify-between gap-2 mt-auto">
                     <span className="text-sm font-semibold tabular-nums flex items-center gap-1"><Coins size={13} className="text-[var(--primary-2)]" /> {it.cost.toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{cur}</span></span>
                     {it.owned ? <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.owned', 'Owned')}</Badge>
+                      : it.soldOut ? <Badge>{t('eco.soldout', 'Sold out')}</Badge>
                       : <Button size="sm" variant={can ? 'primary' : 'ghost'} disabled={!can || busy === it.id} onClick={() => buy(it)} title={can ? undefined : t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur)}>{busy === it.id ? <Spinner /> : <><ShoppingBag size={13} /> {t('eco.buy.ok', 'Buy')}</>}</Button>}
                   </div>
                 </Card>
               );
             })}
           </div>
-        ) : <EmptyState icon={ShoppingBag} title={t('eco.empty.t', 'Nothing for sale yet')} sub={t('eco.empty.s', 'The admins have not put anything in the shop. Your points keep.')} />
-      ) : (
+        </>) : <EmptyState icon={ShoppingBag} title={t('eco.empty.t', 'Nothing for sale yet')} sub={t('eco.empty.s', 'The admins have not put anything in the shop. Your points keep.')} />
+      ) : view === 'inventory' ? (
         purchases.length ? (
           <div className="space-y-2">
             {pending > 0 && <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('eco.inv.pending', '{n} still on the way — an admin hands those out.').replace('{n}', pending)}</div>}
             {purchases.map((p) => {
               const K = SHOP_KIND[p.kind] || SHOP_KIND.custom; const dl = p.delivery || {};
               return (
-                <Card key={p.id} className="p-3 flex items-center gap-3">
+                <Card key={p.id} className="p-3 flex items-center gap-3 flex-wrap">
                   <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><K.Icon size={16} className={K.tone} /></span>
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate flex items-center gap-2">{p.name} {p.status === 'pending' ? <Badge tone="amber"><Clock size={11} /> {t('eco.inv.st.pending', 'pending')}</Badge> : <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.inv.st.done', 'delivered')}</Badge>}</div>
+                    <div className="font-medium truncate flex items-center gap-2">{p.name} {p.status === 'pending' ? <Badge tone="amber"><Clock size={11} /> {t('eco.inv.st.pending', 'pending')}</Badge> : p.expired ? <Badge>{t('eco.inv.st.expired', 'expired')}</Badge> : dl.revealed || dl.badge ? <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.inv.st.done', 'delivered')}</Badge> : <Badge tone="primary">{t('eco.inv.st.sealed', 'sealed')}</Badge>}{p.giftedFromId && <Badge><Gift size={11} /> {t('eco.inv.gifted', 'a gift')}</Badge>}</div>
                     <div className="text-[11px] text-[var(--faint)] flex items-center gap-2 flex-wrap">
                       <span>{kindLabel(p.kind)} · {p.cost.toLocaleString()} {cur} · {new Date(p.createdAt).toLocaleDateString()} · {p.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}</span>
                       {dl.badge && <span>· {t('eco.inv.badge', 'badge “{b}”').replace('{b}', dl.badge)}</span>}
+                      {p.expiresAt && <span>· {t('eco.inv.until', 'valid until {d}').replace('{d}', new Date(p.expiresAt).toLocaleString())}</span>}
                     </div>
                   </div>
-                  {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
+                    {p.canReveal && <Button size="sm" variant="primary" disabled={busy === p.id} onClick={() => reveal(p)} title={t('eco.reveal.h', 'Mints the code now, for you. A revealed item that is not giftable stays yours.')}>{busy === p.id ? <Spinner /> : <><Ticket size={13} /> {t('eco.reveal', 'Reveal')}</>}</Button>}
+                    {p.canGift && <Button size="sm" disabled={busy === p.id} onClick={() => giftItem(p)}><Gift size={13} /> {t('eco.giftitem.ok', 'Gift')}</Button>}
+                  </div>
                 </Card>
               );
             })}
           </div>
         ) : <EmptyState icon={Backpack} title={t('eco.inv.empty.t', 'Nothing here yet')} sub={t('eco.inv.empty.s', 'What you buy in the shop — here or with /shop on Discord — is listed here with its code.')} />
+      ) : (
+        <div className="space-y-4">
+          {/* Sending points: to a name, an e-mail, an id or a BC id. */}
+          {d.gifts?.enabled !== false && (
+            <Card className="p-4">
+              <div className="text-sm font-semibold flex items-center gap-2 mb-1"><Gift size={15} className="text-[var(--primary-2)]" /> {t('eco.gift.title', 'Send points to a member')}</div>
+              <p className="text-[11px] text-[var(--faint)] mb-3">{t('eco.gift.h', 'They must have a BetterCommunity account. Minimum {min}{cap} — also possible on Discord with /gift.').replace('{min}', d.gifts?.min || 1).replace('{cap}', d.gifts?.maxPerDay ? t('eco.gift.cap', ', at most {n} per day').replace('{n}', d.gifts.maxPerDay.toLocaleString()) : '')}</p>
+              <div className="grid sm:grid-cols-[1.4fr_0.7fr_1.4fr_auto] gap-2 items-end">
+                <Field label={t('eco.gift.to', 'To (name, e-mail, id or BC id)')} className="!mb-0"><Input value={giftTo} onChange={(e) => setGiftTo(e.target.value)} placeholder="BC-XXXX-XXXX" /></Field>
+                <Field label={cur} className="!mb-0"><Input type="number" min={d.gifts?.min || 1} value={giftPts} onChange={(e) => setGiftPts(e.target.value)} /></Field>
+                <Field label={t('eco.gift.note', 'A word (optional)')} className="!mb-0"><Input value={giftNote} maxLength={140} onChange={(e) => setGiftNote(e.target.value)} /></Field>
+                <Button variant="primary" disabled={busy === 'gift' || !giftTo.trim() || !(Number(giftPts) > 0)} onClick={giftPoints}>{busy === 'gift' ? <Spinner /> : <><Send size={14} /> {t('eco.gift.ok', 'Send')}</>}</Button>
+              </div>
+            </Card>
+          )}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-semibold flex items-center gap-2"><Clock size={15} className="text-[var(--primary-2)]" /> {t('eco.hist.title', 'Point history')}</div>
+              <button type="button" onClick={loadHist} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RefreshCw size={12} /> {t('common.refresh', 'Refresh')}</button>
+            </div>
+            {hist === null ? <SkeletonCard /> : !hist.length ? <EmptyState icon={Clock} title={t('eco.hist.empty.t', 'Nothing yet')} sub={t('eco.hist.empty.s', 'Earn, buy, play or gift and it shows up here.')} /> : (
+              <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
+                {hist.map((h) => { const m = h.meta || {}; const detail = h.kind === 'purchase' ? m.name : h.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : h.kind === 'gift_out' ? `→ ${m.toName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'gift_in' ? `← ${m.fromName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'levelup' ? `Lv ${m.level}` : m.name || m.reason || ''; return (
+                  <div key={h.id} className="px-3 py-2 flex items-center gap-3 text-xs">
+                    <span className="text-[var(--faint)] tabular-nums shrink-0 w-32">{new Date(h.createdAt).toLocaleString()}</span>
+                    <span className="flex-1 min-w-0 truncate"><span className="font-medium">{LK[h.kind] || h.kind}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</span>
+                    <span className={`tabular-nums font-semibold shrink-0 ${h.delta > 0 ? 'text-success' : h.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{h.delta > 0 ? '+' : ''}{h.delta.toLocaleString()}</span>
+                    <span className="tabular-nums text-[var(--faint)] shrink-0 w-20 text-end">{h.balance.toLocaleString()}</span>
+                  </div>
+                ); })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

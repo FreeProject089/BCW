@@ -202,6 +202,15 @@ and sends are admin-triggered only (no auto-send on publish).
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | POST | `/bot/economy/buy` | bot | A `/shop` purchase from Discord. Runs the SAME `buyShopItem()` (`lib/economy-shop.mjs`) as the site's `/me/economy/buy`: price re-read, fulfilment before debit, an `EconomyPurchase` row (the inventory). Badges / pool / boost / hosting / fixed promo codes are delivered by the API; roles and custom rewards are recorded `pending` for an admin. |
+| POST | `/me/economy/purchases/:id/reveal` | user | Mint the code of a sealed purchase (promo row assigned to the holder unless the item is giftable; expiry = item.codeDays from now). |
+| POST | `/me/economy/purchases/:id/gift` | user | Hand a giftable purchase `{ to }` (id, BC id, e-mail or display name) to another member. |
+| POST | `/me/economy/gift` | user | Send points `{ to, points, note? }` — min / daily cap from `economy.gifts`. Both sides get a ledger row; the recipient is notified. |
+| GET | `/me/economy/history?kind=` | user | The member's ledger (levelup · grant · purchase · casino · gift_out · gift_in · gift_item_out · gift_item_in). |
+| GET | `/admin/economy/history?q=&kind=` | admin | The whole ledger, by member. Retention: `economy.historyDays` (sweeper). |
+| POST | `/bot/economy/reveal` · `/bot/economy/gift` · GET `/bot/economy/history/:discordId` | bot | The same three, for /inventory Reveal / Gift, /gift and /history. |
+| GET | `/bot/economy/leaderboard?guildId=&discordId=` | bot | Top 10 — global, or a server's linked members with `guildId`; `me` = the caller's rank. `GET /og/leaderboard.png?guildId=&me=` draws it. |
+| GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | The bot's button icons: the key list, one PNG, the whole pack to upload on the app's Emojis page. Mapped in `economy.icons`. |
+| POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Now also `role_add` / `role_remove` with `roleId` (+ `guildId` for the admin route). An owner may only name a role the heartbeat lists for that guild. |
 | GET | `/bot/economy/purchases/:discordId` | bot | The member's purchases — the `/inventory` command. |
 | GET | `/bot/economy/leaderboard?discordId=` | bot | Top 10 by level (+ avatar, userId, total). With `discordId`, also `me: { rank, level, xp, points }` for the caller. |
 | GET | `/me/economy` | user | Level, XP, points, stats, rates — plus `shopItems`, `purchases`, `pendingDeliveries` for the dashboard card. |

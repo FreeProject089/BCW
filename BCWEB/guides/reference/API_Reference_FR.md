@@ -208,6 +208,15 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
 | POST | `/bot/economy/buy` | bot | Un achat `/shop` depuis Discord. Exécute la MÊME `buyShopItem()` (`lib/economy-shop.mjs`) que le `/me/economy/buy` du site : prix relu, livraison avant débit, une ligne `EconomyPurchase` (l'inventaire). Badges / pool / boost / hébergement / codes promo fixes sont livrés par l'API ; rôles et récompenses perso sont enregistrés `pending` pour un admin. |
+| POST | `/me/economy/purchases/:id/reveal` | user | Crée le code d'un achat scellé (ligne promo assignée au détenteur sauf si l'article est offrable ; expiration = item.codeDays à partir de maintenant). |
+| POST | `/me/economy/purchases/:id/gift` | user | Remet un achat offrable `{ to }` (id, BC id, e-mail ou pseudo) à un autre membre. |
+| POST | `/me/economy/gift` | user | Envoie des points `{ to, points, note? }` — minimum / plafond quotidien depuis `economy.gifts`. Les deux côtés ont une ligne de registre ; le destinataire est notifié. |
+| GET | `/me/economy/history?kind=` | user | Le registre du membre (levelup · grant · purchase · casino · gift_out · gift_in · gift_item_out · gift_item_in). |
+| GET | `/admin/economy/history?q=&kind=` | admin | Tout le registre, par membre. Rétention : `economy.historyDays` (sweeper). |
+| POST | `/bot/economy/reveal` · `/bot/economy/gift` · GET `/bot/economy/history/:discordId` | bot | Les trois mêmes, pour Révéler / Offrir dans /inventory, /gift et /history. |
+| GET | `/bot/economy/leaderboard?guildId=&discordId=` | bot | Top 10 — global, ou les membres liés d'un serveur avec `guildId` ; `me` = le rang de l'appelant. `GET /og/leaderboard.png?guildId=&me=` le dessine. |
+| GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | Les icônes des boutons du bot : la liste des clés, un PNG, tout le pack à téléverser sur la page Emojis de l'app. Associées dans `economy.icons`. |
+| POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Aussi `role_add` / `role_remove` avec `roleId` (+ `guildId` pour la route admin). Un propriétaire ne peut nommer qu'un rôle listé par le heartbeat pour ce serveur. |
 | GET | `/bot/economy/purchases/:discordId` | bot | Les achats du membre — la commande `/inventory`. |
 | GET | `/bot/economy/leaderboard?discordId=` | bot | Top 10 par niveau (+ avatar, userId, total). Avec `discordId`, aussi `me: { rank, level, xp, points }` pour l'appelant. |
 | GET | `/me/economy` | user | Niveau, XP, points, stats, taux — plus `shopItems`, `purchases`, `pendingDeliveries` pour la carte du tableau de bord. |
