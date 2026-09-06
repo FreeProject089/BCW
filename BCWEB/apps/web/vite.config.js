@@ -31,6 +31,7 @@ export default defineConfig({
       { find: /^@bettercommunity\/bmd\/ast$/, replacement: `${BMD}/ast.js` },
       { find: /^@bettercommunity\/bmd\/links$/, replacement: `${BMD}/links.js` },
       { find: /^@bettercommunity\/bmd-editor$/, replacement: `${BMD}/../../bmd-editor/src/index.jsx` },
+      { find: /^@bettercommunity\/bmd-editor\/snippets$/, replacement: `${BMD}/../../bmd-editor/src/snippets.js` },
       { find: /^@bettercommunity\/bmd\/markdown\.css$/, replacement: `${BMD}/markdown.css` },
       { find: /^@bettercommunity\/bmd\/src\/(.*)$/, replacement: `${BMD}/$1` },
     ],

@@ -10,7 +10,7 @@
 // see here is what a post looks like.
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen, Download, FileCode, Link2, FileDown, PenLine } from 'lucide-react';
+import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen, Download, FileCode, Link2, FileDown, PenLine, Plus, LayoutGrid } from 'lucide-react';
 import { Card, Button, Textarea, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
@@ -18,6 +18,7 @@ import { KIT_PARTS, KIT_FLAVOURS, buildKit, zipKit } from './kit-pack.js';
 import { validateLinks } from '@bettercommunity/bmd/links';
 import { documentHtml, cssUrl } from '@bettercommunity/bmd/export';
 import { extractHeadings } from '@bettercommunity/bmd/ast';
+import { SNIPPET_GROUPS, expandSnippet } from '@bettercommunity/bmd-editor/snippets';
 
 const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex mermaid';
@@ -246,6 +247,15 @@ export default function DevMarkdown() {
   const toast = useToast();
   const [linkReport, setLinkReport] = useState(null);
   const checkLinks = () => { try { setLinkReport(validateLinks(src)); } catch (e) { toast.error(String(e?.message || e)); } };
+  // One chip per block, by family — the same list the editor package's menu uses, so the
+  // playground and the editor cannot disagree about what exists. A chip appends the block's
+  // starter text to the playground and scrolls to it; the point is to try, not to read.
+  const addBlock = (md) => {
+    const { text } = expandSnippet(md, '');
+    setSrc((prev) => `${prev.replace(/\s+$/, '')}\n\n${text}\n`);
+    requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); el.scrollTop = el.scrollHeight; el.setSelectionRange(el.value.length, el.value.length); } });
+  };
+  const openInEditor = () => { try { localStorage.setItem('bcw.dev.editor.draft', src); } catch { /* private mode */ } };
   const exportHtml = async () => {
     let css = '';
     try { css = await fetch(cssUrl).then((r) => (r.ok ? r.text() : '')); } catch { css = ''; }
@@ -299,9 +309,33 @@ export default function DevMarkdown() {
         <p className="mt-2 text-[11px] text-[var(--muted)]">
           {t('devmd.tryNote', 'Nothing here is saved. The full vocabulary, block by block, is in the Markdown guide.')}{' '}
           <Link to="/blog/markdown-guide" className="underline">{t('devmd.guide', 'Open the guide')}</Link>{' · '}
-          <Link to="/dev/editor" className="underline">{t('devmd.editor', 'The full editor')}</Link>{' · '}
+          <Link to="/dev/editor" className="underline" onClick={openInEditor}>{t('devmd.editor.take', 'Open this text in the full editor')}</Link>{' · '}
           <Link to="/dev/bmd" className="underline">{t('devmd.installpage', 'Install in your framework')}</Link>
         </p>
+      </section>
+
+      {/* ── Every block, by family ── */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold flex items-center gap-2"><LayoutGrid size={16} /> {t('devmd.fam', 'Every block, by family')}</h2>
+        <p className="text-sm text-[var(--muted)] max-w-2xl">{t('devmd.fam.d', 'Click one to drop its starter text into the playground above. The syntax and attributes of each are in the guide; the same list is the editor package’s Insert menu.')}</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {SNIPPET_GROUPS.map((g) => (
+            <Card key={g.id} className="p-4">
+              <div className="text-sm font-semibold mb-2 flex items-center justify-between gap-2">
+                <span>{t(`devmd.fam.${g.id}`, g.label)}</span>
+                <Link to="/blog/markdown-guide" className="text-[11px] text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><BookOpen size={11} /> {t('devmd.fam.guide', 'guide')}</Link>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {g.items.map((it) => (
+                  <button key={it.id} type="button" onClick={() => addBlock(it.md)} title={it.md.split('\n')[0]}
+                    className="inline-flex items-center gap-1 text-[12px] px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:text-[var(--primary-2)] transition">
+                    <Plus size={11} /> {it.label}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          ))}
+        </div>
       </section>
 
       {/* ── Install ── */}
