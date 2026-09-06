@@ -38,6 +38,20 @@ export const ICONS = Object.freeze({
   claim: { fallback: '🙋', label: 'Claim room', color: '#22c55e', icon: 'hand' },
   export: { fallback: '📤', label: 'Export preset', color: '#64748b', icon: 'upload' },
   import: { fallback: '📥', label: 'Import preset', color: '#64748b', icon: 'download' },
+  // The casino games (the list, each game's page, the result cards).
+  coinflip: { fallback: '🪙', label: 'Coin flip', color: '#f59e0b', icon: 'coins' },
+  dice: { fallback: '🎲', label: 'Dice', color: '#ef4444', icon: 'dice-5' },
+  slots: { fallback: '🎰', label: 'Slots', color: '#a855f7', icon: 'cherry' },
+  roulette: { fallback: '🎡', label: 'Roulette', color: '#22c55e', icon: 'circle-dot' },
+  wheel: { fallback: '🎯', label: 'Wheel', color: '#3b82f6', icon: 'target' },
+  plinko: { fallback: '🟡', label: 'Plinko', color: '#eab308', icon: 'circle' },
+  // The history's kinds and the odd title.
+  levelup: { fallback: '⬆️', label: 'Level-up', color: '#22c55e', icon: 'arrow-up' },
+  staff: { fallback: '🛡️', label: 'Staff grant', color: '#0ea5e9', icon: 'shield' },
+  purchase: { fallback: '🧾', label: 'Purchase', color: '#64748b', icon: 'receipt' },
+  games: { fallback: '🎮', label: 'Games', color: '#8b5cf6', icon: 'gamepad-2' },
+  profile: { fallback: '👤', label: 'Profile', color: '#64748b', icon: 'user' },
+  done: { fallback: '✅', label: 'Done', color: '#22c55e', icon: 'check' },
 });
 
 /** The set-wide style, and what one key may override. */

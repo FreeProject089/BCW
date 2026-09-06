@@ -54,6 +54,8 @@ import announcementRoutes from './routes/announcements.mjs';
 import roleRoutes from './routes/roles.mjs';
 import myoRoutes from './routes/myo.mjs';
 import accessPolicyRoutes from './routes/access-policy.mjs';
+import siteBanRoutes from './routes/site-bans.mjs';
+import { installSiteBans } from './lib/siteban.mjs';
 import serverControlRoutes from './routes/server-control.mjs';
 import telemetryRoutes from './routes/telemetry.mjs';
 import serverPerfRoutes from './routes/server-perf.mjs';
@@ -278,6 +280,8 @@ app.setErrorHandler((err, req, reply) => {
 // Anti-bot / anti-scan guards (bad-UA denylist + repeat-offender soft block),
 // running before any route. Runs after rate-limit so a banned IP is cheap.
 installAbuseGuards(app);
+// Site-wide bans (admin lists) + the shield that blocks an address after too many 429s.
+installSiteBans(app);
 
 // ── Health probes ─────────────────────────────────────────────────────────────
 // Split on purpose, for load-balancer / Kubernetes semantics:
@@ -355,6 +359,7 @@ await app.register(announcementRoutes);
 await app.register(roleRoutes); // custom roles + per-project edit grants
 await app.register(myoRoutes); // "Make Your Own" commission service
 await app.register(accessPolicyRoutes);
+await app.register(siteBanRoutes);
 await app.register(serverControlRoutes);
 await app.register(telemetryRoutes);
 await app.register(serverPerfRoutes);

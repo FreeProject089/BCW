@@ -61,17 +61,18 @@ function EconomyWidget({ onOpenShop }) {
     try { await api.put('/me/economy/stats-public', { public: next }); } catch { setD((v) => ({ ...v, stats: { ...v.stats, public: !next } })); }
   };
   const r = d.rates || { message: 5, reaction: 1, voiceMinute: 3 };
+  // The three sources, each with a colour that is its own — the bar and the legend share it.
   const src = [
-    { key: 'msg', label: t('eco.w.src.msg', 'Messages'), xp: (stats.messages || 0) * r.message, Icon: MessageSquare, count: (stats.messages || 0).toLocaleString(), rate: t('eco.w.rate.msg', '{n} XP each').replace('{n}', r.message) },
-    { key: 'rea', label: t('eco.w.src.rea', 'Reactions'), xp: (stats.reactions || 0) * r.reaction, Icon: Sparkles, count: (stats.reactions || 0).toLocaleString(), rate: t('eco.w.rate.rea', '{n} XP each').replace('{n}', r.reaction) },
-    { key: 'voi', label: t('eco.w.src.voi', 'Voice'), xp: Math.floor((stats.voiceSeconds || 0) / 60) * r.voiceMinute, Icon: Mic, count: `${Math.floor((stats.voiceSeconds || 0) / 3600)}h`, rate: t('eco.w.rate.voi', '{n} XP / min').replace('{n}', r.voiceMinute) },
+    { key: 'msg', label: t('eco.w.src.msg', 'Messages'), xp: (stats.messages || 0) * r.message, Icon: MessageSquare, count: (stats.messages || 0).toLocaleString(), rate: t('eco.w.rate.msg', '{n} XP each').replace('{n}', r.message), color: 'var(--primary)' },
+    { key: 'rea', label: t('eco.w.src.rea', 'Reactions'), xp: (stats.reactions || 0) * r.reaction, Icon: Sparkles, count: (stats.reactions || 0).toLocaleString(), rate: t('eco.w.rate.rea', '{n} XP each').replace('{n}', r.reaction), color: 'color-mix(in srgb, var(--primary) 45%, var(--text))' },
+    { key: 'voi', label: t('eco.w.src.voi', 'Voice'), xp: Math.floor((stats.voiceSeconds || 0) / 60) * r.voiceMinute, Icon: Mic, count: `${Math.floor((stats.voiceSeconds || 0) / 3600)}h`, rate: t('eco.w.rate.voi', '{n} XP / min').replace('{n}', r.voiceMinute), color: 'var(--line-strong)' },
   ];
   const total = src.reduce((s, x) => s + x.xp, 0);
-  // A ring drawn with a conic gradient: the progress to the next level around the level itself.
+  const share = (x) => (total > 0 ? Math.round((x.xp / total) * 100) : 0);
   const ring = `conic-gradient(var(--primary) ${pct * 3.6}deg, var(--surface-2) 0)`;
   return (
     <Card className="p-0 overflow-hidden mb-6">
-      <div className="grid md:grid-cols-[auto_1fr_auto] gap-5 p-5 items-center">
+      <div className="p-5 grid gap-5 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
         <div className="flex items-center gap-4">
           <div className="relative w-[76px] h-[76px] rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={`${pct}%`}>
             <div className="w-[62px] h-[62px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
@@ -81,24 +82,37 @@ function EconomyWidget({ onOpenShop }) {
           <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.level.k', 'Discord level')}</div>
             <div className="text-lg font-bold leading-tight">{t('eco.w.level', 'Level {n}').replace('{n}', d.level)}</div>
-            <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}% {t('eco.w.next2', 'to level {n}').replace('{n}', d.level + 1)}</div>
+            <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5 whitespace-nowrap">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}% {t('eco.w.next2', 'to level {n}').replace('{n}', d.level + 1)}</div>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:border-x md:border-[var(--line)] md:px-5">
-          {src.map((x) => (
-            <div key={x.key} className="rounded-xl bg-[var(--surface-2)]/60 px-3 py-2.5 min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
-              {/* Wrapping, not truncating: a 90-px tile was cutting "Reactions" to "Reac…" and
-                  the rate line to nothing. Two short lines beat one clipped one. */}
-              <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] leading-tight"><x.Icon size={12} className="text-[var(--primary-2)] shrink-0" /> <span className="min-w-0 break-words">{x.label}</span></div>
-              <div className="text-base font-semibold tabular-nums leading-tight mt-0.5">{x.count}</div>
-              <div className="text-[10px] text-[var(--faint)] tabular-nums leading-tight break-words">{total > 0 ? Math.round((x.xp / total) * 100) : 0}% {t('eco.w.ofxp', 'of your XP')} · {x.rate}</div>
-            </div>
-          ))}
+
+        {/* One bar, three colours: where the XP came from, in proportion. A row of three
+            tiles was breaking its own labels in half at the widths this column really has. */}
+        <div className="min-w-0 md:border-x md:border-[var(--line)] md:px-5">
+          <div className="flex items-center justify-between gap-2 text-[11px] mb-1.5">
+            <span className="uppercase tracking-wider text-[var(--faint)]">{t('eco.w.src.title', 'Where your XP comes from')}</span>
+            <span className="tabular-nums text-[var(--muted)]">{total.toLocaleString()} XP</span>
+          </div>
+          <div className="flex h-2.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="img" aria-label={src.map((x) => `${x.label} ${share(x)}%`).join(', ')}>
+            {src.map((x) => (share(x) > 0 ? <div key={x.key} style={{ width: `${share(x)}%`, background: x.color }} title={`${x.label} · ${share(x)}%`} /> : null))}
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-2.5">
+            {src.map((x) => (
+              <div key={x.key} className="min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
+                <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] min-w-0">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.color }} /><x.Icon size={12} className="shrink-0" /><span className="truncate">{x.label}</span>
+                </div>
+                <div className="text-sm font-semibold tabular-nums leading-tight mt-0.5">{x.count} <span className="text-[10px] font-normal text-[var(--faint)]">· {share(x)}%</span></div>
+                <div className="text-[10px] text-[var(--faint)] truncate">{x.rate}</div>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex md:flex-col items-center md:items-end gap-2 justify-between">
+
+        <div className="flex md:flex-col items-center md:items-end justify-between gap-3">
           <div className="text-end">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
-            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()} <span className="text-sm font-medium text-[var(--muted)]">{cur}</span></div>
+            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()} <span className="text-xs font-medium text-[var(--muted)]">{cur}</span></div>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="primary" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={14} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[10px] opacity-80"> · {d.shopItems}</span> : null}</Button>

@@ -306,6 +306,7 @@ const GUIDE_MORE = {
   },
   access: {
     steps: [
+      { en: 'Bans & shield (bottom of this screen): IP addresses and CIDR ranges, User-Agent fragments and BMM creator ids kept out of EVERY service; the shield blocks an address on its own after N rate-limits in ten minutes. Live within 15 s, audited.', fr: 'Bans & bouclier (bas de cet écran) : adresses IP et plages CIDR, fragments de User-Agent et identifiants créateur BMM tenus hors de TOUS les services ; le bouclier bloque seul une adresse après N limitations en dix minutes. Actif sous 15 s, journalisé.' },
       { en: 'Create a custom role: name it, tick the capabilities it bundles (manage_repos, manage_myo, manage_analytics, translator roles…).', fr: 'Crée un rôle personnalisé : nomme-le, coche les capacités qu’il regroupe (manage_repos, manage_myo, manage_analytics, rôles de traducteur…).' },
       { en: 'Assign it from the account panel (Accounts → user → Roles). Effective permissions = the union of every role held.', fr: 'Attribue-le depuis la fiche du compte (Comptes → utilisateur → Rôles). Permissions effectives = l’union de tous les rôles détenus.' },
       { en: 'Per-project grants (Projects → a project → Permissions) scope a capability to ONE project — for a contributor who should edit one blog and nothing else.', fr: 'Les droits par projet (Projets → un projet → Permissions) limitent une capacité à UN projet — pour un contributeur qui doit éditer un blog et rien d’autre.' },

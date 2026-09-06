@@ -24,6 +24,8 @@ const DEFAULT_ICONS = {
   level: '⭐', shop: '🛒', inventory: '🎒', leaderboard: '🏆', casino: '🎰', again: '🔁', refresh: '🔄', link: '🔗', buy: '🛍️',
   gift: '🎁', coin: '🪙', reveal: '✉️', history: '📜', enter: '🎉', site: '🌐', voice: '🎙️', rename: '✏️', limit: '👥', region: '🌍',
   lock: '🔒', unlock: '🔓', private: '🙈', public: '👁️', claim: '🙋', export: '📤', import: '📥',
+  coinflip: '🪙', dice: '🎲', slots: '🎰', roulette: '🎡', wheel: '🎯', plinko: '🟡',
+  levelup: '⬆️', staff: '🛡️', purchase: '🧾', games: '🎮', profile: '👤', done: '✅',
 };
 let ICONS = { ...DEFAULT_ICONS };
 export function setIcons(map) {

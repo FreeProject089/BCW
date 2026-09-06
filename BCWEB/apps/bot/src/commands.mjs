@@ -253,17 +253,17 @@ const PAGE = 8;
 async function cmdShop(i, page = 0, isUpdate = false) {
   const [{ t }, eco, me] = await Promise.all([tr(i), api.economyConfig(), api.economyUser(i.user.id)]);
   const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts));
-  if (!eco.enabled) return respond({ title: `🛒 ${t('shop.title')}`, body: t('shop.off') });
+  if (!eco.enabled) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.off') });
   const now = Date.now();
   const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
-  if (!items.length) return respond({ title: `🛒 ${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
+  if (!items.length) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
   const pages = Math.ceil(items.length / PAGE);
   page = Math.max(0, Math.min(pages - 1, page));
   const slice = items.slice(page * PAGE, page * PAGE + PAGE);
   const balance = me.linked ? Number(me.points || 0) : null;
   return respond({
-    title: `🛒 ${t('shop.title')}`,
+    title: `${ui.ic('shop')} ${t('shop.title')}`,
     body: balance != null ? t('shop.balance', { n: n(balance), cur }) : t('shop.link'),
     sections: slice.map((x) => {
       const cost = Number(x.cost) || 0;
@@ -296,7 +296,7 @@ async function handleShopBuy(i) {
     else if (d.revealed === false) lines.push(`✉️ Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
     else lines.push('🎁 An admin has been notified to deliver it — *pending* in your inventory until then.');
-    return ui.reply(i, { title: '✅ Purchase complete', color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+    return ui.reply(i, { title: `${ui.ic('done')} Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
   }
   if (r.error === 'not_linked') return notLinked(i);
   const why = r.error === 'insufficient' ? `You need **${n(r.cost)}** points — you have ${n(r.points)}.`
@@ -306,7 +306,7 @@ async function handleShopBuy(i) {
     : r.error === 'no_such_item' ? 'That item is gone from the shop.'
     : r.error === 'economy_off' ? 'The economy is currently off.'
     : 'That purchase could not be completed.';
-  return ui.reply(i, { title: '🛒 Shop', color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+  return ui.reply(i, { title: `${ui.ic('shop')} Shop`, color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
 }
 
 // Everything bought with points, newest first: sealed codes to reveal, giftable items to gift.
@@ -315,7 +315,7 @@ async function cmdInventory(i) {
   if (!e.linked) return notLinked(i);
   const r = await api.economyPurchases(i.user.id);
   const rows = Array.isArray(r.purchases) ? r.purchases : [];
-  if (!rows.length) return ui.reply(i, { title: `🎒 ${t('inv.title')}`, body: t('inv.empty'), buttons: ecoButtons('inventory', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.ic('inventory')} ${t('inv.title')}`, body: t('inv.empty'), buttons: ecoButtons('inventory', t) });
   const pending = rows.filter((x) => x.status === 'pending').length;
   const sections = rows.slice(0, 10).map((x) => {
     const when = `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d>`;
@@ -329,7 +329,7 @@ async function cmdInventory(i) {
     return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ' · 🎁 a gift' : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
   });
   return ui.reply(i, {
-    title: `🎒 ${t('inv.title')}`,
+    title: `${ui.ic('inventory')} ${t('inv.title')}`,
     body: pending ? t('inv.pending', { n: pending }) : t('inv.count', { n: rows.length }),
     sections,
     footer: rows.length > 10 ? t('inv.more', { n: rows.length - 10 }) : t('inv.footer'),
@@ -343,7 +343,7 @@ async function invReveal(i) {
   if (!r.ok) return ui.line(i, r.error === 'not_found' ? 'That item is not in your inventory (was it gifted?).' : r.error === 'nothing_to_reveal' ? 'There is no code behind this one.' : 'Could not reveal that right now.', { color: ui.BAD });
   const d = r.delivery || {};
   return ui.reply(i, {
-    title: '✉️ Your code', color: ui.GOOD,
+    title: `${ui.ic('reveal')} Your code`, color: ui.GOOD,
     body: [`# ${d.code}`, `Redeem it on the site${d.target ? ` (${d.target})` : ''}.`, r.expiresAt ? `-# Valid until <t:${Math.floor(new Date(r.expiresAt).getTime() / 1000)}:f>` : '-# No expiry.', '-# It is kept in your inventory — only you can see this message.'],
     buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
   });
@@ -362,7 +362,7 @@ async function invGiftSubmit(i) {
   if (/^\d{15,22}$/.test(to)) body.toDiscordId = to; else body.to = to;
   const r = await api.economyGift(body);
   if (!r.ok) return ui.line(i, giftError(r), { color: ui.BAD });
-  return ui.reply(i, { title: '🎁 Gifted', color: ui.GOOD, body: `Handed to **${r.to?.displayName || to}** — it is in their inventory now, unopened.`, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })] });
+  return ui.reply(i, { title: `${ui.ic('gift')} Gifted`, color: ui.GOOD, body: `Handed to **${r.to?.displayName || to}** — it is in their inventory now, unopened.`, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })] });
 }
 const giftError = (r) => r.error === 'not_linked' ? 'Link your account first — **/link**.'
   : r.error === 'recipient_not_linked' ? 'They have not linked a BetterCommunity account yet.'
@@ -384,25 +384,28 @@ async function cmdGift(i) {
   const r = await api.economyGift({ discordId: i.user.id, toDiscordId: member.id, points, note });
   if (!r.ok) return r.error === 'not_linked' ? notLinked(i) : ui.line(i, giftError(r), { color: ui.BAD });
   return ui.reply(i, {
-    title: '🎁 Gift sent', color: ui.GOOD,
+    title: `${ui.ic('gift')} Gift sent`, color: ui.GOOD,
     body: [`**${n(points)}** points to **${member.username}**${note ? ` — “${note}”` : ''}.`, `Your balance: **${n(r.points)}**.`],
     buttons: [ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })],
   }, { ephemeral: false });
 }
 
-const KIND_LABEL = { levelup: '⬆️ Level-up', grant: '🛡️ Staff', purchase: '🛒 Purchase', casino: '🎰 Casino', gift_out: '🎁 Gift sent', gift_in: '🎁 Gift received', gift_item_out: '🎁 Item given', gift_item_in: '🎁 Item received', refund: '↩️ Refund' };
+const KIND_TEXT = { levelup: 'Level-up', grant: 'Staff', purchase: 'Purchase', casino: 'Casino', gift_out: 'Gift sent', gift_in: 'Gift received', gift_item_out: 'Item given', gift_item_in: 'Item received', refund: 'Refund' };
+const KIND_ICON = { levelup: 'levelup', grant: 'staff', purchase: 'purchase', casino: 'casino', gift_out: 'gift', gift_in: 'gift', gift_item_out: 'coin', gift_item_in: 'coin', refund: 'coin' };
+// The emoji comes from the icon catalogue, so an admin's custom emoji reaches the ledger too.
+const kindLabel = (k) => (KIND_TEXT[k] ? `${ui.ic(KIND_ICON[k] || 'coin')} ${KIND_TEXT[k]}` : '');
 async function cmdHistory(i, kind = '') {
   const [{ t }, r] = await Promise.all([tr(i), api.economyHistory(i.user.id, kind)]);
   if (r.linked === false) return notLinked(i);
   const rows = Array.isArray(r.history) ? r.history : [];
-  if (!rows.length) return ui.reply(i, { title: `📜 ${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: ecoButtons('', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.ic('history')} ${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: ecoButtons('', t) });
   const lines = rows.slice(0, 20).map((x) => {
     const m = x.meta || {};
     const who = x.kind === 'gift_out' ? ` → ${m.toName || '?'}` : x.kind === 'gift_in' ? ` ← ${m.fromName || '?'}` : x.kind === 'purchase' ? ` · ${m.name || ''}` : x.kind === 'casino' ? ` · ${m.game || ''} ×${m.multiplier ?? '?'}` : x.kind === 'levelup' ? ` · Lv ${m.level}` : '';
     const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
-    return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${KIND_LABEL[x.kind] || x.kind}${who} — ${d} → ${n(x.balance)}`;
+    return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${kindLabel(x.kind) || x.kind}${who} — ${d} → ${n(x.balance)}`;
   });
-  return ui.reply(i, { title: `📜 ${t('hist.title')}${kind ? ` · ${KIND_LABEL[kind] || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
+  return ui.reply(i, { title: `${ui.ic('history')} ${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
 }
 
 async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
@@ -419,7 +422,7 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
   const body = rows.length ? rows.map((m, k) => `${medal(k)} **${m.displayName}** — Lv **${m.level}** · ${n(m.points)} pts`) : [t('lb.empty')];
   const you = r.me ? `\n${t('lb.you', { r: r.me.rank, l: r.me.level, p: n(r.me.points) })}` : '';
   return respond({
-    title: `🏆 ${t('lb.title', { scope: guildId ? (i.guild?.name || t('lb.thisServer')) : t('lb.global') })}`,
+    title: `${ui.ic('leaderboard')} ${t('lb.title', { scope: guildId ? (i.guild?.name || t('lb.thisServer')) : t('lb.global') })}`,
     body: png ? [you || null] : [...body, you],
     image: png ? 'attachment://leaderboard.png' : null, files: png ? [ui.attach(png, 'leaderboard.png')] : [],
     footer: r.total ? t('lb.footer', { n: n(r.total) }) : null,
@@ -499,7 +502,7 @@ async function playCasino(i, opts) {
       : r.error === 'insufficient' ? "You don't have enough points for that bet."
       : r.error === 'bad_bet' ? `Your bet must be between ${r.min} and ${r.max}.`
       : 'Could not place that bet.';
-    return ui.reply(i, { title: '🎰 Casino', body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
+    return ui.reply(i, { title: `${ui.ic('casino')} Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
   }
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
@@ -607,13 +610,13 @@ async function casinoList(i, st, { update = false } = {}) {
   const S = (patch) => packCas({ ...st, ...patch });
   const first = CASINO_GAMES[0].id, last = CASINO_GAMES[CASINO_GAMES.length - 1].id;
   const opts = {
-    title: `🎰 ${t('cas.title')}`,
+    title: `${ui.ic('casino')} ${t('cas.title')}`,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: [
       e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: n(max) }) : t('cas.bets', { a: n(min), b: n(max), cur }),
       !enabled ? t('cas.off') : t('cas.pick'),
     ],
-    sections: CASINO_GAMES.map((g) => ({ text: `## ${g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
+    sections: CASINO_GAMES.map((g) => ({ text: `## ${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
     footer: t('cas.footer'),
     buttons: [
       // `:p` / `:n` after the payload: every custom id on a message must be unique, and the
@@ -674,7 +677,7 @@ async function casinoMenu(i, st, { update = false } = {}) {
     e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
   ];
   const opts = {
-    title: `${g.emoji} ${t(`game.${g.id}`)}`,
+    title: `${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}`,
     body: [
       `### ${t('cas.howTo')}`,
       t(`game.${g.id}.how`),
@@ -697,7 +700,7 @@ async function casinoSetup(i) {
   const [, verb, ...rest] = i.customId.split(':');
   if (verb === 'noop') return i.deferUpdate();
   const st = unpackCas(rest);
-  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `🎰 ${t('cas.title')}` }); }
+  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.ic('casino')} ${t('cas.title')}` }); }
   st.owner = i.user.id;
   if (verb === 'list') { st.view = 'list'; return casinoMenu(i, st, { update: true }); }
   if (verb === 'open') {
@@ -743,7 +746,7 @@ function casinoNumberModal(i, st) {
 async function casinoModal(i) {
   const [, kind, ...rest] = i.customId.split(':');
   const st = unpackCas(rest);
-  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `🎰 ${t('cas.title')}` }); }
+  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.ic('casino')} ${t('cas.title')}` }); }
   const raw = (i.fields.getTextInputValue('v') || '').replace(/[^0-9]/g, '');
   const v = raw === '' ? NaN : Number(raw);
   if (kind === 'bet') st.bet = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : st.bet;

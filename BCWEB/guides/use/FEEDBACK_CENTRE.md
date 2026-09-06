@@ -58,20 +58,29 @@ Responses:
 
 ## Settings (per project)
 
-Switch, accepted kinds, crash sampling (% kept), max text KB, max attachments (count + total
-MB), dedupe window, minimum version, refused versions, refused words, anonymous-needs-e-mail,
-open a thread for linked senders, mail fallback for anonymous senders.
+The essentials on the card — switch, accepted kinds, crash sampling (% kept), attachments
+(count + total MB) — and, folded under **Advanced**: max text KB, dedupe window, minimum
+version, refused versions, refused words, anonymous-needs-e-mail, open a thread for linked
+senders, mail fallback for anonymous senders. Everything that is not about ONE project lives
+elsewhere (below).
 
-## Rate limits (global)
+## Rate limits (global) — Public API → Limits
 
-Feedback endpoint: per IP, per account, per project per day. Platform-wide API ceilings (every
-route): **requests / min per IP** (`hosting.apiRateLimitMax`) and **requests / min per signed-in
-account** (`hosting.apiRateLimitPerAccount`, new). Both re-read every 15 s — no restart.
+Feedback endpoint: per IP, per account, per project per day (the feedback card's own
+limits). Platform-wide API ceilings (every route) moved to **Public API → Limits**:
+**requests / min per IP** (`hosting.apiRateLimitMax`) and **requests / min per signed-in
+account** (`hosting.apiRateLimitPerAccount`), with the last 24 h of 429 / 403 answers. Both
+re-read every 15 s — no restart. Site-wide bans and the automatic shield are under
+**Roles & access → Bans & shield**.
 
-## Storage
+## Storage — Hosting settings → Feedback storage
 
 Attachments live in object storage under `feedback/<project>/<id>/` and are served only
 through `GET /api/admin/feedback/:id/attachments/:i` (staff). Deleting a report deletes them.
+**Hosting settings → Feedback storage** holds the retention (days a report's attachments are
+kept), the total cap (MB — oldest attachments go first), how long closed reports stay, a
+**Purge now** button, and the hourly sweeper does the rest (`GET/PUT /admin/feedback/storage`,
+`POST /admin/feedback/storage/purge`).
 
 ## From BMM
 

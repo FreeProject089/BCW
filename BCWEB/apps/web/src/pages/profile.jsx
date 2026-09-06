@@ -1234,7 +1234,11 @@ function DiscordLinks() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const load = () => api.get('/me/discord/links').then((d) => setLinks(d.links || [])).catch(() => {});
-  useEffect(() => { load(); }, []);
+  // Whether Discord sign-in is configured: then the app can link the account in one click
+  // (the OAuth callback attaches the identity AND the bot link), and the /link code is the
+  // fallback for somebody who would rather not authorise the app.
+  const [prov, setProv] = useState(null);
+  useEffect(() => { load(); api.get('/auth/oauth/providers').then(setProv).catch(() => setProv({})); }, []);
   const link = async () => {
     if (!code.trim()) return;
     setBusy(true); setMsg('');
@@ -1263,6 +1267,16 @@ function DiscordLinks() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><DiscordIcon size={15} className="text-[var(--primary-2)]" /> Discord</div>
+      {prov?.discord && (
+        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 p-3 mb-3 flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-[12rem]">
+            <div className="text-sm font-medium">{t('disl.viaApp', 'Link with Discord')}</div>
+            <div className="text-[11px] text-[var(--muted)]">{t('disl.viaApp.h', 'Opens Discord’s sign-in; the account is linked to the bot right away — nothing to copy.')}</div>
+          </div>
+          <Button variant="primary" size="sm" onClick={() => { window.location.href = '/api/auth/oauth/discord/start'; }}><DiscordIcon size={14} /> {t('disl.viaApp.btn', 'Continue with Discord')}</Button>
+        </div>
+      )}
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{prov?.discord ? t('disl.orcode', 'Or with a code') : t('disl.withcode', 'With a code')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('disl.desc1', 'Link your Discord account. In the server, run')} <code>/link</code> {t('disl.desc2', 'to get a code, then paste it here — it unlocks gated channels and shows your account in the community.')}</p>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (

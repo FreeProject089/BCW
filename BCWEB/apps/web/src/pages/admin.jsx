@@ -1191,6 +1191,91 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
 // Site-wide whitelist/blacklist applied identically to every hosted repo (see
 // GlobalAccessPolicy in schema.prisma + hosting-content.mjs's sandboxGate). MOD can
 // see it (GET is MOD+); only ADMIN+ can change it (PUT enforces that server-side).
+// Who is kept out of EVERY service — the API, the site, the hosted repos, the bot's
+// webhooks — by address, by client, by BMM creator id; and the shield that blocks an address
+// on its own after it has been rate-limited too often. The repo access policy above is per
+// hosted content; this one is the front door.
+function SiteBansCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/security/bans'), []);
+  const [raw, setRaw] = useState(null);
+  const [shield, setShield] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [nowIp, setNowIp] = useState('');
+  const lines = (arr) => (arr || []).map((e) => [e.v, e.note ? `# ${e.note}` : ''].filter(Boolean).join('  ')).join('\n');
+  useEffect(() => { if (data?.policy) { setRaw({ ips: lines(data.policy.ips), uas: lines(data.policy.uas), creators: lines(data.policy.creators) }); setShield({ ...data.policy.shield }); } }, [data]); // eslint-disable-line
+  if (loading || !raw || !shield) return null;
+  const parse = (txt) => String(txt || '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const i = l.indexOf('#'); const v = (i >= 0 ? l.slice(0, i) : l).trim(); const note = i >= 0 ? l.slice(i + 1).trim() : ''; return { v, note }; }).filter((e) => e.v);
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/security/bans', { ips: parse(raw.ips), uas: parse(raw.uas), creators: parse(raw.creators), shield }); toast.success(t('bans.saved', 'Bans saved — live within 15 s.')); reload(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const lift = async (ip) => { try { await api.del(`/admin/security/bans/live/${encodeURIComponent(ip)}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const blockNow = async () => { if (!nowIp.trim()) return; try { await api.post('/admin/security/bans/live', { ip: nowIp.trim(), minutes: shield.minutes || 30 }); setNowIp(''); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const ta = 'w-full font-mono text-xs rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 min-h-[96px] outline-none focus:border-[var(--primary)]';
+  const live = data?.live || [];
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2"><Ban size={16} className="text-error" /> {t('bans.title', 'Bans & shield')}</h2>
+          <p className="text-sm text-[var(--muted)] max-w-2xl">{t('bans.desc', 'Kept out of every service: the site, the API, hosted repos, the bot’s endpoints. One entry per line; a note after #. Applies within 15 seconds, no restart.')}</p>
+        </div>
+        <Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={14} /> {t('common.save', 'Save')}</>}</Button>
+      </div>
+      <div className="grid md:grid-cols-3 gap-3 mt-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('bans.ips', 'IP addresses & ranges')}</div>
+          <textarea className={ta} value={raw.ips} onChange={(e) => setRaw((r) => ({ ...r, ips: e.target.value }))} placeholder={'203.0.113.7  # scraper\n198.51.100.0/24\n2001:db8::/32'} spellCheck={false} />
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('bans.uas', 'User agents (contains)')}</div>
+          <textarea className={ta} value={raw.uas} onChange={(e) => setRaw((r) => ({ ...r, uas: e.target.value }))} placeholder={'EvilBot/1.0\ncurl/7.  # a script hammering the feed'} spellCheck={false} />
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('bans.creators', 'BMM creator ids')}</div>
+          <textarea className={ta} value={raw.creators} onChange={(e) => setRaw((r) => ({ ...r, creators: e.target.value }))} placeholder={'bc_9f2e…  # X-Creator-ID header'} spellCheck={false} />
+        </div>
+      </div>
+      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3 mt-4">
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Shield size={12} /> {t('bans.shield', 'Automatic shield')}</div>
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" className="accent-[var(--primary)]" checked={shield.enabled !== false} onChange={(e) => setShield((x) => ({ ...x, enabled: e.target.checked }))} /> {t('common.enabled', 'Enabled')}</label>
+          </div>
+          <p className="text-[11px] text-[var(--muted)] mb-2">{t('bans.shield.d', 'An address that gets rate-limited this many times in ten minutes is blocked outright for a while — cheaper than answering it. Known scanners and attack tools are already refused before this.')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t('bans.after429', 'Block after N rate-limits')} className="!mb-0"><Input type="number" min="0" max="100000" value={shield.after429 ?? 30} onChange={(e) => setShield((x) => ({ ...x, after429: Math.max(0, Number(e.target.value) || 0) }))} /></Field>
+            <Field label={t('bans.minutes', 'For (minutes)')} className="!mb-0"><Input type="number" min="1" max="10080" value={shield.minutes ?? 30} onChange={(e) => setShield((x) => ({ ...x, minutes: Math.max(1, Number(e.target.value) || 1) }))} /></Field>
+          </div>
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer mt-2"><input type="checkbox" className="accent-[var(--primary)]" checked={!!shield.blockNoUA} onChange={(e) => setShield((x) => ({ ...x, blockNoUA: e.target.checked }))} /> {t('bans.noua', 'Refuse page requests that send no User-Agent at all')}</label>
+          <div className="text-[11px] text-[var(--faint)] mt-2 leading-snug">{t('bans.ddos', 'This is the application layer. A volumetric flood has to be absorbed BEFORE it reaches the server — a CDN / DDoS front (Cloudflare, the VPS provider’s protection) — and Caddy’s connection limits sit between the two.')}</div>
+        </div>
+        <div className="rounded-xl border border-[var(--line)] p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('bans.live', 'Blocked right now')} <span className="font-normal normal-case text-[var(--muted)]">· {live.length}</span></div>
+          <div className="flex gap-1.5 mb-2">
+            <Input className="!py-1 text-xs font-mono flex-1" placeholder="203.0.113.7" value={nowIp} onChange={(e) => setNowIp(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') blockNow(); }} />
+            <Button size="sm" onClick={blockNow}><Ban size={13} /> {t('bans.blocknow', 'Block now')}</Button>
+          </div>
+          {live.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('bans.live.none', 'Nobody — the shield has not had to fire.')}</div> : (
+            <div className="space-y-1 max-h-48 overflow-auto">
+              {live.map((b) => (
+                <div key={b.ip} className="flex items-center gap-2 text-xs rounded-lg bg-[var(--surface-2)] px-2 py-1">
+                  <code className="font-mono flex-1 min-w-0 truncate">{b.ip}</code>
+                  <span className="text-[var(--faint)]">{b.reason}</span>
+                  <span className="text-[var(--faint)] tabular-nums">{Math.max(0, Math.round((b.until - Date.now()) / 60000))} min</span>
+                  <button type="button" onClick={() => lift(b.ip)} className="text-[var(--primary-2)] hover:underline">{t('bans.lift', 'Lift')}</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function GlobalAccessPolicyCard() {
   const toast = useToast();
   const { t } = useI18n();
@@ -4652,6 +4737,8 @@ function AdminAccess({ isSuperAdmin }) {
       {isSuperAdmin && <RoleManager roles={roles} />}
 
       <GlobalAccessPolicyCard />
+
+      <SiteBansCard />
 
       {allProjGrants.length > 0 && <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('acc.allproj.title', 'All project-edit grants')}</h2>
@@ -20999,6 +21086,25 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
 // printed here (frame, backdrop, overflow layer with its bleed, sticker), uploads each layer,
 // and the preview below is the very component the home page renders — with this month's
 // pot numbers — so the artwork is judged on the real card, not a mock-up.
+// The preview is the REAL card at its real size, scaled down to whatever width this column
+// has. A 768-px frame plus its overflow never fitted the admin column; it used to scroll
+// sideways, which read as "the layout is broken" rather than as a preview.
+function useFitScale(outerRef, innerRef) {
+  const [st, setSt] = useState({ k: 1, h: 0 });
+  useEffect(() => {
+    const outer = outerRef.current; const inner = innerRef.current;
+    if (!outer || !inner) return undefined;
+    const measure = () => {
+      const k = Math.min(1, Math.max(0.2, (outer.clientWidth - 16) / Math.max(1, inner.scrollWidth)));
+      setSt({ k, h: inner.scrollHeight * k });
+    };
+    measure();
+    const ro = new ResizeObserver(measure); ro.observe(outer); ro.observe(inner);
+    return () => ro.disconnect();
+  }, [outerRef, innerRef]);
+  return st;
+}
+
 function CharityDesignEditor({ design, onChange, pot, currency }) {
   const { t } = useI18n();
   const toast = useToast();
@@ -21015,73 +21121,118 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
     i.click();
   };
   const px = (o) => `${o.w} × ${o.h} px`;
-  // A plain render function, not a nested component: a component declared inside render
-  // remounts on every keystroke and the URL box would lose focus while typing.
-  const layer = (k, title, hint, size) => (
-    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-[11px] text-[var(--muted)] leading-snug">{hint}</div>
-        </div>
-        {d[k] ? <img src={d[k]} alt="" className="w-14 h-14 rounded-md object-contain bg-[var(--bg-solid)] border border-[var(--line)] shrink-0" /> : null}
-      </div>
-      <div className="text-[11px] tabular-nums"><span className="text-[var(--faint)]">{t('chc.design.canvas', 'Canvas to draw')}:</span> <b>{size}</b> <span className="text-[var(--faint)]">{t('chc.design.2x', '(2× for sharp rendering — transparent PNG or WebP)')}</span></div>
-      <div className="flex flex-wrap gap-2 items-center">
-        <Button size="sm" onClick={() => pick(k)}><Upload size={14} /> {d[k] ? t('chc.design.replace', 'Replace') : t('chc.design.upload', 'Upload')}</Button>
-        <Input className="flex-1 min-w-[10rem] !py-1 text-xs" placeholder={t('chc.design.urlph', '…or paste an image URL')} value={d[k]} onChange={(e) => set(k, e.target.value)} />
-        {d[k] ? <Button size="sm" variant="ghost" onClick={() => set(k, '')}><X size={14} /></Button> : null}
-      </div>
-    </div>
-  );
-  // The preview uses the real pot when there is one, else a plausible month so the artwork is
-  // judged with numbers on it.
+  const num = (k, min, max) => (e) => set(k, Math.max(min, Math.min(max, Number(e.target.value) || min)));
+  const outerRef = useRef(null); const innerRef = useRef(null);
+  const fit = useFitScale(outerRef, innerRef);
+  const bleed = Number(d.bleed) || 0;
   const previewPot = pot ? { ...pot, currency, poll: pot.pollId ? { id: pot.pollId, question: t('chc.design.pollph', 'Which association this month?'), open: true } : null, presets: [] }
     : { totalCents: 42000, orgContribCents: 30000, communityCents: 12000, currency, association: '', percent: 10, status: 'open', poll: null, presets: [] };
+  const LAYERS = [
+    ['backdrop', t('chc.design.backdrop', 'Backdrop'), t('chc.design.backdrop.h', 'Fills the frame edge to edge, behind the text.'), px(sizes.backdrop)],
+    ['overflow', t('chc.design.overflow', 'Overflow layer'), t('chc.design.overflow.h2', 'A transparent image laid over the frame that may spill past it — a mascot leaning out, a ribbon, confetti. Keep the middle clear: the text sits on top.'), `${px(sizes.overflow)} · ${t('chc.design.bleedof', '{n} px of bleed each side').replace('{n}', sizes.overflow.bleed)}`],
+    ['sticker', t('chc.design.sticker', 'Corner sticker'), t('chc.design.sticker.h', 'A small image pinned to one corner, sticking out of the frame.'), px(sizes.sticker)],
+  ];
+  const MODES = [
+    ['default', t('chc.design.mode.default', 'Default card'), t('chc.design.mode.default.h', 'The glowing card, drawn by the site. Nothing to upload.')],
+    ['custom', t('chc.design.mode.custom', 'Custom artwork'), t('chc.design.mode.custom.h', 'Your own backdrop, an overflow layer and a corner sticker, at the sizes printed below.')],
+  ];
+  const secTitle = (txt) => <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{txt}</div>;
+  const corners = [['tl', 'rounded-tl-md', 'top-1 left-1'], ['tr', 'rounded-tr-md', 'top-1 right-1'], ['bl', 'rounded-bl-md', 'bottom-1 left-1'], ['br', 'rounded-br-md', 'bottom-1 right-1']];
   return (
     <div className="mt-5 pt-4 border-t border-[var(--line)]">
       <h3 className="font-medium mb-1 flex items-center gap-2"><Palette size={15} /> {t('chc.design.t', 'Landing design')}</h3>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('chc.design.sub', 'Make the charity card yours: pick the frame size, draw the artwork at the canvas sizes printed below, upload each layer. The overflow layer is allowed to spill out of the card; the sticker hangs off a corner. The preview is the exact card the home page shows.')}</p>
-      <div className="flex flex-wrap gap-2 mb-3">
-        {[['default', t('chc.design.mode.default', 'Default card')], ['custom', t('chc.design.mode.custom', 'Custom artwork')]].map(([v, l]) => (
-          <button key={v} type="button" onClick={() => set('mode', v)} className={`px-3 py-1.5 rounded-lg text-sm border ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/10 font-medium' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>{l}</button>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('chc.design.sub2', 'How the charity card looks on the home page. Pick a style; with custom artwork, upload the layers and watch the preview — it is the card exactly as the page draws it.')}</p>
+
+      <div className="grid sm:grid-cols-2 gap-2 mb-4">
+        {MODES.map(([v, l, h]) => (
+          <button key={v} type="button" onClick={() => set('mode', v)}
+            className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+            <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)]/30 to-transparent border-[var(--primary)]/40' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
+              {v === 'default' ? <Heart size={14} className="text-[var(--primary-2)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
+            </span>
+            <span className="min-w-0"><span className="block text-sm font-medium">{l}</span><span className="block text-[11px] text-[var(--muted)] leading-snug">{h}</span></span>
+          </button>
         ))}
       </div>
+
       {d.mode === 'custom' && (
-        <>
-          <div className="grid gap-2 sm:grid-cols-4 mb-3">
-            <Field label={t('chc.design.width', 'Frame width')} className="!mb-0"><Dropdown value={d.width} onChange={(v) => set('width', v)} options={Object.entries(CHARITY_WIDTHS).map(([k, w]) => ({ value: k, label: `${w} px` }))} /></Field>
-            <Field label={t('chc.design.height', 'Frame min height (px)')} className="!mb-0"><Input type="number" min="200" max="720" value={d.height} onChange={(e) => set('height', Number(e.target.value) || 360)} /></Field>
-            <Field label={t('chc.design.ink', 'Text ink')} className="!mb-0"><Dropdown value={d.ink} onChange={(v) => set('ink', v)} options={[{ value: 'auto', label: t('chc.design.ink.auto', 'Theme (auto)') }, { value: 'light', label: t('chc.design.ink.light', 'Light — over dark artwork') }, { value: 'dark', label: t('chc.design.ink.dark', 'Dark — over light artwork') }]} /></Field>
-            <Field label={t('chc.design.align', 'Text & buttons')} className="!mb-0"><Dropdown value={d.align} onChange={(v) => set('align', v)} options={[{ value: 'center', label: t('chc.design.align.center', 'Centered') }, { value: 'left', label: t('chc.design.align.left', 'Left — artwork on the right') }, { value: 'right', label: t('chc.design.align.right', 'Right — artwork on the left') }]} /></Field>
-          </div>
-          <label className="flex items-center gap-2 text-sm cursor-pointer select-none mb-3">
-            <input type="checkbox" className="accent-[var(--primary)]" checked={d.frame} onChange={(e) => set('frame', e.target.checked)} /> {t('chc.design.frame', 'Keep the card frame (border + background) under the artwork')}
-          </label>
-          <div className="text-[11px] text-[var(--muted)] mb-2 tabular-nums">{t('chc.design.framesize', 'The frame on the page is {w} px wide and at least {h} px tall.').replace('{w}', sizes.frame.w).replace('{h}', sizes.frame.h)}</div>
-          <div className="grid gap-2 md:grid-cols-3">
-            {layer('backdrop', t('chc.design.backdrop', 'Backdrop'), t('chc.design.backdrop.h', 'Fills the frame edge to edge, behind the text.'), px(sizes.backdrop))}
-            {layer('overflow', t('chc.design.overflow', 'Overflow layer'), t('chc.design.overflow.h', 'Transparent image laid OVER the frame that spills past it by the bleed on every side — a mascot leaning out, a ribbon, confetti. Keep the middle clear: text sits on top.'), `${px(sizes.overflow)} · ${t('chc.design.bleedis', 'bleed {b} px on each side').replace('{b}', sizes.overflow.bleed)}`)}
-            {layer('sticker', t('chc.design.sticker', 'Corner sticker'), t('chc.design.sticker.h', 'A small image pinned to one corner, sticking out of the frame.'), px(sizes.sticker))}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-4 mt-2">
-            <Field label={t('chc.design.fit', 'Backdrop fit')} className="!mb-0"><Dropdown value={d.backdropFit} onChange={(v) => set('backdropFit', v)} options={[{ value: 'cover', label: t('chc.design.fit.cover', 'Cover (crop)') }, { value: 'contain', label: t('chc.design.fit.contain', 'Contain (letterbox)') }]} /></Field>
-            <Field label={t('chc.design.bleed', 'Overflow bleed (px)')} className="!mb-0"><Input type="number" min="0" max="200" value={d.bleed} onChange={(e) => set('bleed', Number(e.target.value) || 0)} /></Field>
-            <Field label={t('chc.design.stickersize', 'Sticker size (px)')} className="!mb-0"><Input type="number" min="48" max="320" value={d.stickerSize} onChange={(e) => set('stickerSize', Number(e.target.value) || 160)} /></Field>
-            <Field label={t('chc.design.stickercorner', 'Sticker corner · overhang')} className="!mb-0">
-              <div className="flex gap-1.5">
-                <Dropdown className="flex-1" value={d.stickerCorner} onChange={(v) => set('stickerCorner', v)} options={[{ value: 'tl', label: '↖' }, { value: 'tr', label: '↗' }, { value: 'bl', label: '↙' }, { value: 'br', label: '↘' }]} />
-                <Input type="number" min="0" max="160" className="w-20" value={d.stickerOffset} onChange={(e) => set('stickerOffset', Number(e.target.value) || 0)} />
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+          <div className="space-y-2 min-w-0">
+            {secTitle(t('chc.design.grp.layers', 'Layers'))}
+            {LAYERS.map(([key, title, hint, canvas]) => (
+              <div key={key} className="rounded-xl border border-[var(--line)] p-3 flex gap-3 items-start min-w-0">
+                <button type="button" onClick={() => pick(key)} title={t('chc.design.upload', 'Upload')}
+                  className="w-16 h-16 rounded-lg border border-dashed border-[var(--line-strong)] bg-[var(--bg-solid)] grid place-items-center shrink-0 overflow-hidden hover:border-[var(--primary)]">
+                  {d[key] ? <img src={d[key]} alt="" className="w-full h-full object-contain" /> : <Upload size={16} className="text-[var(--faint)]" />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium">{title}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--muted)] tabular-nums" title={t('chc.design.canvas', 'Canvas to draw')}>{canvas}</span>
+                  </div>
+                  <div className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{hint}</div>
+                  <div className="flex gap-1.5 mt-2 flex-wrap items-center">
+                    <Button size="sm" onClick={() => pick(key)}><Upload size={13} /> {d[key] ? t('chc.design.replace', 'Replace') : t('chc.design.upload', 'Upload')}</Button>
+                    <Input className="flex-1 min-w-[9rem] !py-1 text-xs" placeholder={t('chc.design.urlph', '…or paste an image URL')} value={d[key]} onChange={(e) => set(key, e.target.value)} />
+                    {d[key] ? <Button size="sm" variant="ghost" onClick={() => set(key, '')} title={t('common.remove', 'Remove')}><X size={13} /></Button> : null}
+                  </div>
+                </div>
               </div>
-            </Field>
+            ))}
+            <Field label={t('chc.design.alt', 'Artwork description (accessibility)')} className="!mb-0 pt-1"><Input maxLength={200} value={d.alt} onChange={(e) => set('alt', e.target.value)} placeholder={t('chc.design.altph', 'e.g. Our mascot holding a piggy bank')} /></Field>
           </div>
-          <Field label={t('chc.design.alt', 'Artwork description (accessibility)')} className="mt-2 !mb-0"><Input maxLength={200} value={d.alt} onChange={(e) => set('alt', e.target.value)} placeholder={t('chc.design.altph', 'e.g. Our mascot holding a donation jar')} /></Field>
-        </>
+
+          <div className="space-y-3">
+            <Card className="p-3 space-y-2.5">
+              {secTitle(t('chc.design.grp.frame', 'Frame'))}
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('chc.design.width', 'Width')} className="!mb-0"><Dropdown value={d.width} onChange={(v) => set('width', v)} options={Object.entries(CHARITY_WIDTHS).map(([k, w]) => ({ value: k, label: `${w} px` }))} /></Field>
+                <Field label={t('chc.design.height2', 'Min height (px)')} className="!mb-0"><Input type="number" min="200" max="720" value={d.height} onChange={num('height', 200, 720)} /></Field>
+                <Field label={t('chc.design.ink', 'Text ink')} className="!mb-0"><Dropdown value={d.ink} onChange={(v) => set('ink', v)} options={[{ value: 'auto', label: t('chc.design.ink.auto', 'Theme (auto)') }, { value: 'light', label: t('chc.design.ink.light', 'Light') }, { value: 'dark', label: t('chc.design.ink.dark', 'Dark') }]} /></Field>
+                <Field label={t('chc.design.align', 'Text & buttons')} className="!mb-0"><Dropdown value={d.align} onChange={(v) => set('align', v)} options={[{ value: 'center', label: t('chc.design.align.center', 'Centred') }, { value: 'left', label: t('chc.design.align.left', 'Left') }, { value: 'right', label: t('chc.design.align.right', 'Right') }]} /></Field>
+              </div>
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input type="checkbox" className="accent-[var(--primary)]" checked={d.frame} onChange={(e) => set('frame', e.target.checked)} /> {t('chc.design.frame2', 'Keep the card frame under the artwork')}
+              </label>
+              <div className="text-[11px] text-[var(--faint)] tabular-nums">{t('chc.design.framesize', 'The frame on the page is {w} px wide and at least {h} px tall.').replace('{w}', sizes.frame.w).replace('{h}', sizes.frame.h)}</div>
+            </Card>
+            <Card className="p-3 space-y-2.5">
+              {secTitle(t('chc.design.grp.place', 'Placement'))}
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('chc.design.fit', 'Backdrop fit')} className="!mb-0"><Dropdown value={d.backdropFit} onChange={(v) => set('backdropFit', v)} options={[{ value: 'cover', label: t('chc.design.fit.cover', 'Cover (crop)') }, { value: 'contain', label: t('chc.design.fit.contain', 'Contain') }, { value: 'fill', label: t('chc.design.fit.fill', 'Stretch') }]} /></Field>
+                <Field label={t('chc.design.bleed', 'Overflow bleed (px)')} className="!mb-0"><Input type="number" min="0" max="200" value={d.bleed} onChange={num('bleed', 0, 200)} /></Field>
+              </div>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 items-start">
+                <div>
+                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('chc.design.corner', 'Sticker corner')}</div>
+                  <div className="relative w-[84px] h-[64px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]">
+                    {corners.map(([c, , pos]) => (
+                      <button key={c} type="button" onClick={() => set('stickerCorner', c)} aria-label={c}
+                        className={`absolute ${pos} w-7 h-6 rounded-md border transition ${d.stickerCorner === c ? 'border-[var(--primary)] bg-[var(--primary)]' : 'border-[var(--line)] bg-[var(--bg-solid)] hover:border-[var(--line-strong)]'}`} />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Field label={t('chc.design.stickersize', 'Sticker size (px)')} className="!mb-0"><Input type="number" min="48" max="320" value={d.stickerSize} onChange={num('stickerSize', 48, 320)} /></Field>
+                  <Field label={t('chc.design.overhang', 'Overhang (px)')} className="!mb-0"><Input type="number" min="0" max="160" value={d.stickerOffset} onChange={num('stickerOffset', 0, 160)} /></Field>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
       )}
+
       <div className="mt-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('chc.design.preview', 'Preview — the card as the home page draws it')}</div>
-        <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)] p-4 overflow-x-auto">
-          <CharityCard pot={previewPot} design={d} t={t} onGive={() => {}} preview />
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          {secTitle(t('chc.design.preview', 'Preview — the card as the home page draws it'))}
+          {fit.k < 0.995 && <span className="text-[10px] text-[var(--faint)] tabular-nums">{t('chc.design.scaled', 'Shown at {p} % — the page draws it full size.').replace('{p}', Math.round(fit.k * 100))}</span>}
+        </div>
+        <div ref={outerRef} className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)] p-2 overflow-hidden">
+          <div style={{ height: fit.h || undefined }}>
+            <div ref={innerRef} style={{ transform: `scale(${fit.k})`, transformOrigin: 'top left', width: 'max-content', padding: `${bleed + 12}px` }}>
+              <CharityCard pot={previewPot} design={d} t={t} onGive={() => {}} preview />
+            </div>
+          </div>
         </div>
       </div>
     </div>
