@@ -4026,6 +4026,7 @@ const DICT = {
     'chc.design.height2': 'Hauteur min (px)', 'chc.design.frame2': 'Garder le cadre de la carte sous le visuel', 'chc.design.corner': 'Coin du sticker', 'chc.design.overhang': 'Dépassement (px)', 'chc.design.scaled': 'Affiché à {p} % — la page le dessine en taille réelle.', 'chc.design.fit.fill': 'Étirer', 'common.enabled': 'Activé',
     'eco.w.src.title': 'D’où vient ton XP',
     'disl.viaApp': 'Lier avec Discord', 'disl.viaApp.h': 'Ouvre la connexion Discord ; le compte est lié au bot tout de suite — rien à copier.', 'disl.viaApp.btn': 'Continuer avec Discord', 'disl.orcode': 'Ou avec un code', 'disl.withcode': 'Avec un code',
+    'myo.eyebrow': 'Sur mesure', 'hosting.eyebrow': 'Hébergement', 'hosting.trust1': 'Dépôts & catalogues dans un pool', 'hosting.trust2': 'On héberge et on sauvegarde', 'hosting.trust3': 'Prépayé — pas de renouvellement surprise',
     'nq.feedback': 'Nouveaux retours & rapports de plantage', 'nq.k.feedback': 'Retour', 'adm.tab.feedback': 'Retours & plantages',
     'fb.title': 'Retours & plantages', 'fb.sub': 'Ce que les applis envoient au centre de retours : suggestions, rapports de bug, plantages — une boîte par projet, répondue d’ici.',
     'fb.off': 'off', 'fb.settings': 'Réglages du projet & limites', 'fb.disabled': 'Ce projet n’accepte pas encore de rapports — ouvre les réglages et active-le. Les applis reçoivent une réponse « pas activé » propre en attendant, rien ne casse de leur côté.',

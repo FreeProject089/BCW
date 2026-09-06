@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
-  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send,
+  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send, Sparkles,
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -86,9 +86,12 @@ export function MyoPage() {
     <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14">
       {/* ── Hero ── */}
       <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
-        <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-20 w-[620px] max-w-[130%] h-72 rounded-full bg-[var(--primary)]/15 blur-3xl -z-10" />
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-[1.1]">{t('myo.title', 'We build it for you')}</h1>
-        <p className="text-[var(--muted)] mt-3 text-[15px] leading-relaxed">{t('myo.sub', 'A Discord bot, an app, a website — or something else entirely. Start with a paid consultation: real advice and a fixed quote. Nothing is built until you approve it.')}</p>
+        <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full bg-[var(--primary)]/15 blur-3xl -z-10" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] bg-[var(--primary)]/[0.08] border border-[var(--primary)]/25 mb-4">
+          <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
+        </span>
+        <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>
+        <p className="text-[var(--muted)] mt-3.5 text-[15px] leading-relaxed">{t('myo.sub', 'A Discord bot, an app, a website — or something else entirely. Start with a paid consultation: real advice and a fixed quote. Nothing is built until you approve it.')}</p>
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-5 text-xs text-[var(--muted)]">
           {[[FileText, t('myo.trust1', 'Fixed, itemised quote')], [Check, t('myo.trust2', 'You approve before we build')], [Globe, t('myo.trust3', 'English or French')], [ShieldCheck, t('myo.trust4', 'Source on request')]].map(([Ic, tx], i) => (
             <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]"><Ic size={13} className="text-[var(--primary-2)] shrink-0" /> {tx}</span>
