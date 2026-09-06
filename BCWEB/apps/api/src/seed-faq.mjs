@@ -231,6 +231,30 @@ const FAQ = [
     answerFr: 'Oui — c\'est le rôle de **Planification & automatisation**. Une tâche, c\'est un déclencheur et une liste d\'étapes : synchroniser un dépôt chaque nuit à trois heures, chercher les mises à jour au démarrage, lancer quelque chose quand un fichier change ou quand BMM signale lui-même un problème.\n\nDeux choses à savoir avant d\'en écrire une. Une tâche est créée **désactivée**, pour que tu puisses lire ce qu\'elle fait avant qu\'elle puisse le faire. Et elle ne peut faire que ce que tu lui accordes : lancer un programme, exécuter un script, déclencher un deeplink, arrêter un programme et supprimer des choses sont cinq permissions distinctes, chacune désactivée tant que tu ne l\'actives pas — et une étape qui en réclame une qu\'elle n\'a pas échoue avec un message au lieu de s\'exécuter.\n\n:::card{title="Les automatisations, et comment les partager" href=/docs/bmmscript icon=book}\nLa même tâche écrite en texte, pour être lue, relue et envoyée à quelqu\'un.\n:::',
   },
 
+  {
+    category: 'General', order: 300,
+    categoryFr: 'Général',
+    question: 'What is the casino, and how do points work?',
+    questionFr: 'C’est quoi le casino, et comment marchent les points ?',
+    answer: 'The community Discord bot has a `/casino` where you wager **points** on small games (coin flip, dice, slots, roulette, wheel, plinko). Points are earned by being active on the server and are **not** bought with money — the casino is entertainment, not gambling for real stakes. The house edge is taken only from the **profit** of a win, never from your stake, and each game shows its odds before you bet. See [Levels, XP & points](/docs/economy).',
+    answerFr: 'Le bot Discord communautaire a un `/casino` où tu mises des **points** sur de petits jeux (pile ou face, dé, machine à sous, roulette, roue, plinko). Les points se gagnent en étant actif sur le serveur et ne s’achètent **pas** avec de l’argent — le casino est un divertissement, pas un jeu d’argent réel. L’avantage de la maison n’est pris que sur le **gain** d’une victoire, jamais sur ta mise, et chaque jeu montre ses cotes avant que tu mises. Voir [Niveaux, XP & points](/docs/economy).',
+  },
+  {
+    category: 'General', order: 310,
+    categoryFr: 'Général',
+    question: 'How do I earn badges?',
+    questionFr: 'Comment gagner des badges ?',
+    answer: 'Badges are granted automatically when you hit a milestone — reaching a level, sending a number of messages, publishing items, hosting a repo, linking Discord, enabling 2FA, and so on — or bought in the points shop. They show on your public profile. The exact rules are set by the community admins.',
+    answerFr: 'Les badges sont accordés automatiquement quand tu atteins un palier — un niveau, un nombre de messages, des items publiés, un dépôt hébergé, Discord lié, 2FA activée, etc. — ou achetés dans la boutique de points. Ils s’affichent sur ton profil public. Les règles exactes sont fixées par les admins de la communauté.',
+  },
+  {
+    category: 'General', order: 320,
+    categoryFr: 'Général',
+    question: 'What are the charity pot, promo codes and the newsletter?',
+    questionFr: 'C’est quoi la cagnotte solidaire, les codes promo et la newsletter ?',
+    answer: 'The **charity pot** on the home page collects a share of eligible revenue plus community donations for an association chosen by a community vote; the final payment is sent manually and shown as proof. **Promo codes** are redeemed on the Hosting page or your dashboard for a discount, free hosting or a storage/boost grant. The **newsletter** is a double-opt-in mailing you can subscribe to (and leave) from the footer; new blog posts can be announced through it.',
+    answerFr: 'La **cagnotte solidaire** sur l’accueil récolte une part des revenus éligibles plus les dons de la communauté pour une association choisie par un vote communautaire ; le paiement final est envoyé manuellement et affiché comme preuve. Les **codes promo** se rentrent sur la page Hébergement ou ton tableau de bord pour une remise, de l’hébergement gratuit ou un octroi de stockage/boost. La **newsletter** est un envoi à double opt-in auquel tu t’abonnes (et te désabonnes) depuis le pied de page ; les nouveaux articles de blog peuvent y être annoncés.',
+  },
 ];
 
 // A stable slug from the question so re-runs upsert instead of duplicating. FaqItem has no

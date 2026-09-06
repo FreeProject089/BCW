@@ -2117,6 +2117,261 @@ Endpoints, secrets and the delivery log.
 :::
 `,
   },
+  {
+    slug: 'feedback-reports', category: 'BetterCommunity', title: 'Feedback, bugs & crash reports', icon: 'bug', order: 305,
+    titleFr: 'Retours, bugs & rapports de plantage', categoryFr: 'BetterCommunity',
+    body: `::toc[On this page]
+
+# Feedback, bugs & crash reports
+
+Every Better* app can send a **suggestion**, a **bug report** or a **crash report** to the
+BetterCommunity feedback centre. This is where they land, and what happens to them.
+
+## From the app
+
+In BMM: **Settings → Feedback & bug reports**, or the button on the crash dialog. Pick a kind,
+write what happened, and optionally attach screenshots, the app log, a crash zip, or a DxDiag
+report. Nothing leaves your machine until you press Send.
+
+:::note[Linked vs anonymous]
+If your BetterCommunity account is linked, a report opens a **thread in your dashboard** and you
+are notified when staff reply. Otherwise you can leave an e-mail or Discord so they can reach you.
+:::
+
+## Where reports go
+
+Staff read them in **Admin → Feedback & crash reports**. New reports are grouped by kind — a
+crash first, since it is the one you could not work around — with the oldest untriaged one shown
+so nothing rots. Each report can be triaged, replied to, resolved or ignored.
+
+## If the site is down
+
+A report the app could not send is **kept locally and retried on the next launch**. The app also
+limits itself (a handful per ten minutes, a couple of dozen a day) so a stuck loop cannot flood
+the centre.
+
+See also: [Levels, XP & points](/docs/economy) · the app's own privacy policy for exactly what a
+report attaches.`,
+    bodyFr: `::toc[Sur cette page]
+
+# Retours, bugs & rapports de plantage
+
+Chaque app Better* peut envoyer une **suggestion**, un **rapport de bug** ou un **rapport de
+plantage** au centre de retours BetterCommunity. Voici où ils arrivent et ce qu'ils deviennent.
+
+## Depuis l'app
+
+Dans BMM : **Réglages → Retours & rapports de bug**, ou le bouton du dialogue de plantage. Choisis
+un type, décris ce qui s'est passé, et joins au besoin des captures, le journal de l'appli, un zip
+de plantage ou un rapport DxDiag. Rien ne quitte ta machine tant que tu n'as pas appuyé sur Envoyer.
+
+:::note[Lié ou anonyme]
+Si ton compte BetterCommunity est lié, un rapport ouvre un **fil dans ton tableau de bord** et tu
+es notifié des réponses. Sinon tu peux laisser un e-mail ou un Discord pour être recontacté.
+:::
+
+## Où vont les rapports
+
+L'équipe les lit dans **Admin → Retours & plantages**. Les nouveaux sont groupés par type — un
+plantage d'abord, car c'est celui qu'on ne peut pas contourner — avec le plus ancien non traité en
+évidence. Chaque rapport peut être trié, répondu, résolu ou ignoré.
+
+## Si le site est injoignable
+
+Un rapport que l'appli n'a pas pu envoyer est **gardé localement et renvoyé au prochain démarrage**.
+L'appli se limite aussi elle-même (quelques-uns par dix minutes, quelques dizaines par jour) pour
+qu'une boucle bloquée ne noie pas le centre.
+
+Voir aussi : [Niveaux, XP & points](/docs/economy).`,
+  },
+  {
+    slug: 'economy', category: 'BetterCommunity', title: 'Levels, XP, points & the shop', icon: 'coins', order: 306,
+    titleFr: 'Niveaux, XP, points & boutique', categoryFr: 'BetterCommunity',
+    body: `::toc[On this page]
+
+# Levels, XP, points & the shop
+
+Being active on a Discord server the community bot is in earns **XP**. XP raises your **level**,
+and every few levels grant **points** you can spend in the shop. Your level and balance show on
+your BetterCommunity profile.
+
+## How XP is earned
+
+Messages, reactions and time in voice each grant XP at a rate the server sets. Only a **linked**
+account accrues — link Discord from **Profile → Connections** first. Nothing is retroactive.
+
+## The shop
+
+Spend points on badges, a storage boost, a hosting code, or a discount, from the Discord \`/shop\`
+or the site. Some items are **sealed**: you buy them now and **reveal** the code when you want it,
+and a giftable item can be handed to another member before it is revealed.
+
+:::tip[Fair play]
+Points are entertainment, not currency: they are earned by taking part and spent on cosmetic or
+convenience items. They are never bought with money.
+:::
+
+## The casino
+
+The bot's \`/casino\` lets you wager points on small games. The house edge is taken from the
+**profit** of a win, never from your stake, and every game's page shows its odds before you bet.
+
+See also: [Feedback, bugs & crash reports](/docs/feedback-reports).`,
+    bodyFr: `::toc[Sur cette page]
+
+# Niveaux, XP, points & boutique
+
+Être actif sur un serveur Discord où se trouve le bot communautaire gagne de l'**XP**. L'XP fait
+monter ton **niveau**, et tous les quelques niveaux accordent des **points** à dépenser en boutique.
+Ton niveau et ton solde s'affichent sur ton profil BetterCommunity.
+
+## Comment l'XP est gagnée
+
+Messages, réactions et temps en vocal donnent de l'XP à un taux fixé par le serveur. Seul un compte
+**lié** accumule — lie Discord depuis **Profil → Connexions** d'abord. Rien n'est rétroactif.
+
+## La boutique
+
+Dépense des points en badges, un boost de stockage, un code d'hébergement ou une remise, depuis le
+\`/shop\` Discord ou le site. Certains articles sont **scellés** : tu les achètes maintenant et tu
+**révèles** le code quand tu veux, et un article offrable peut être donné à un autre membre avant
+d'être révélé.
+
+:::tip[Fair-play]
+Les points sont un divertissement, pas une monnaie : ils se gagnent en participant et se dépensent
+en articles cosmétiques ou pratiques. Ils ne s'achètent jamais avec de l'argent.
+:::
+
+## Le casino
+
+Le \`/casino\` du bot permet de miser des points sur de petits jeux. L'avantage de la maison est
+pris sur le **gain** d'une victoire, jamais sur ta mise, et chaque page de jeu montre ses cotes
+avant que tu mises.
+
+Voir aussi : [Retours, bugs & rapports de plantage](/docs/feedback-reports).`,
+  },
+  {
+    slug: 'make-your-own', category: 'BetterCommunity', title: 'Make Your Own — paid commissions', icon: 'wand-2', order: 307,
+    titleFr: 'Make Your Own — commandes sur mesure', categoryFr: 'BetterCommunity',
+    body: `::toc[On this page]
+
+# Make Your Own — paid commissions
+
+**Make Your Own** (/myo) is where you commission something built for you: a Discord bot, an app, a
+website, a security audit, or anything else. It runs in two clearly separated stages so you never
+pay for a product before you have agreed its price.
+
+## Stage 1 — the consultation
+
+You pay a **fixed consultation fee** and describe what you want. That opens a private thread with
+someone who advises you and writes a **fixed, itemised quote**. The fee buys advice and the quote;
+it is **not** the price of the product.
+
+## Stage 2 — the build
+
+Building starts only once you **approve the quote and pay it**. You say no and it stops there, with
+the advice already yours. Whether **source code** is included is stated on the quote, so it is
+never a surprise.
+
+:::warning[Read before you start]
+The consultation fee and the quote are two different payments. The fee is never refunded once the
+advice is given, and the product is only built after the quote is paid.
+:::
+
+## Following your request
+
+Your open requests, their status and any replies are on the /myo page and in your dashboard
+notifications.`,
+    bodyFr: `::toc[Sur cette page]
+
+# Make Your Own — commandes sur mesure
+
+**Make Your Own** (/myo) sert à commander quelque chose de construit pour toi : un bot Discord, une
+app, un site, un audit de sécurité, ou autre chose. Ça se passe en deux étapes bien séparées pour
+que tu ne paies jamais un produit avant d'en avoir validé le prix.
+
+## Étape 1 — la consultation
+
+Tu paies des **frais de consultation fixes** et tu décris ce que tu veux. Ça ouvre un fil privé avec
+un conseiller qui t'oriente et rédige un **devis ferme, ligne par ligne**. Les frais achètent le
+conseil et le devis ; ce n'est **pas** le prix du produit.
+
+## Étape 2 — la réalisation
+
+La réalisation ne commence qu'une fois que tu as **validé le devis et payé**. Tu dis non et ça
+s'arrête là, le conseil déjà acquis. Que le **code source** soit inclus ou non est écrit sur le
+devis, donc jamais une surprise.
+
+:::warning[À lire avant de démarrer]
+Les frais de consultation et le devis sont deux paiements distincts. Les frais ne sont pas
+remboursés une fois le conseil donné, et le produit n'est construit qu'après paiement du devis.
+:::
+
+## Suivre ta demande
+
+Tes demandes ouvertes, leur statut et les réponses sont sur la page /myo et dans les notifications
+de ton tableau de bord.`,
+  },
+  {
+    slug: 'site-bans', category: 'Reference', title: 'Site bans & the auto-shield', icon: 'shield', order: 505,
+    titleFr: 'Bans du site & bouclier automatique', categoryFr: 'Référence',
+    body: `::toc[On this page]
+
+# Site bans & the auto-shield
+
+Admins can keep an address, a client or a creator out of **every** service — the site, the API, the
+hosted repos, the bot's endpoints — from **Admin → Roles & access → Bans & shield**. It is separate
+from a per-repo access policy: this is the front door.
+
+## What you can ban
+
+- **IP addresses and ranges** — a single address or a CIDR range.
+- **User-agent fragments** — a substring; a client whose UA contains it is refused.
+- **BMM creator ids** — the id an app sends as \`X-Creator-ID\`.
+
+One entry per line, an optional note after a \`#\`. Changes apply within about fifteen seconds — no
+restart.
+
+## The automatic shield
+
+The shield blocks an address on its own after it is rate-limited too many times in a short window —
+cheaper than answering it. Known scanners and attack tools are refused before this. You set how many
+strikes and for how long, and can block or lift an address by hand from the same screen.
+
+:::note[This is the application layer]
+A volumetric flood has to be absorbed **before** it reaches the server — a CDN or the VPS provider's
+DDoS protection — with the edge (Caddy) connection limits between the two. The shield handles abusive
+clients, not a network flood.
+:::`,
+    bodyFr: `::toc[Sur cette page]
+
+# Bans du site & bouclier automatique
+
+Les admins peuvent tenir une adresse, un client ou un créateur hors de **tous** les services — le
+site, l'API, les dépôts hébergés, les endpoints du bot — depuis **Admin → Rôles & accès → Bans &
+bouclier**. C'est distinct d'une politique d'accès par dépôt : c'est la porte d'entrée.
+
+## Ce qu'on peut bannir
+
+- **Adresses IP et plages** — une adresse seule ou une plage CIDR.
+- **Fragments de User-Agent** — une sous-chaîne ; un client dont le UA la contient est refusé.
+- **Identifiants créateur BMM** — l'id qu'une app envoie en \`X-Creator-ID\`.
+
+Une entrée par ligne, une note optionnelle après un \`#\`. Les changements s'appliquent en une
+quinzaine de secondes — sans redémarrage.
+
+## Le bouclier automatique
+
+Le bouclier bloque seul une adresse après qu'elle a été limitée trop de fois en peu de temps — moins
+cher que de lui répondre. Les scanners et outils d'attaque connus sont refusés avant. Tu règles le
+nombre de coups et la durée, et tu peux bloquer ou lever une adresse à la main depuis le même écran.
+
+:::note[C'est la couche applicative]
+Une inondation volumétrique doit être absorbée **avant** d'atteindre le serveur — un CDN ou la
+protection anti-DDoS du fournisseur VPS — avec les limites de connexion de la bordure (Caddy) entre
+les deux. Le bouclier gère les clients abusifs, pas une inondation réseau.
+:::`,
+  },
 ];
 
 const run = async () => {
