@@ -20,7 +20,7 @@ import Markdown from '@bettercommunity/bmd';
 import { validateLinks } from '@bettercommunity/bmd/links';
 import { parseMarkdown, extractHeadings } from '@bettercommunity/bmd/ast';
 import { documentHtml, cssUrl } from '@bettercommunity/bmd/export';
-import { SNIPPET_GROUPS, expandSnippet } from './snippets.js';
+import { SNIPPET_GROUPS, expandSnippet, localizeSnippetGroups } from './snippets.js';
 import './editor.css';
 
 export { SNIPPET_GROUPS, SNIPPETS, expandSnippet } from './snippets.js';
@@ -267,7 +267,8 @@ export default function BmdEditor({
   };
 
   const q = query.trim().toLowerCase();
-  const allGroups = [...snippetGroups, ...(Array.isArray(extraGroups) ? extraGroups : [])];
+  // Localise the block-menu labels (fr → French) before filtering, so search matches what is shown.
+  const allGroups = localizeSnippetGroups([...snippetGroups, ...(Array.isArray(extraGroups) ? extraGroups : [])], lang);
   const groups = allGroups.map((g) => ({ ...g, items: (g.items || []).filter((it) => !q || String(it.label).toLowerCase().includes(q) || String(it.id || '').includes(q) || String(it.keywords || '').toLowerCase().includes(q)) })).filter((g) => g.items.length);
 
   const h = typeof height === 'number' ? `${height}px` : height;

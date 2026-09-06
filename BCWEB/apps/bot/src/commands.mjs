@@ -490,6 +490,24 @@ function rollGame({ game, betOn, num, target, risk }) {
 
 const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko' };
 
+// The "Play again" button re-runs the same bet with the same options. Its custom id carries
+// them plus the player's id, so nobody spends someone else's points from their button.
+async function casinoAgain(i) {
+  const [, , game, bet, betOn, num, target, risk, userId] = i.customId.split(':');
+  if (userId && userId !== i.user.id) {
+    const { t } = await tr(i);
+    return i.reply({ content: t('cas.notyours', 'That is not your game — start your own with /casino.'), ephemeral: true }).catch(() => {});
+  }
+  return playCasino(i, {
+    game: GAME_NAME[game] ? game : 'coinflip',
+    bet: Math.max(1, parseInt(bet, 10) || 0),
+    betOn: ['red', 'black', 'green', 'number'].includes(betOn) ? betOn : 'red',
+    num: num === '' || num == null ? null : (parseInt(num, 10) || 0),
+    target: parseInt(target, 10) || 2,
+    risk: ['low', 'medium', 'high'].includes(risk) ? risk : 'medium',
+  });
+}
+
 async function playCasino(i, opts) {
   const { bet, game } = opts;
   const { t } = await tr(i);
@@ -526,12 +544,14 @@ async function playCasino(i, opts) {
   // the player's id, so nobody spends somebody else's points from their button).
   const again = ['casino', 'again', game, bet, opts.betOn || '', opts.num ?? '', opts.target || '', opts.risk || '', i.user.id].join(':');
   return ui.editReply(i, {
+    // Deliberately NOT green/red: the accent colour would spoil the result before you read it
+    // (and it is the whole point of the reveal). One calm neutral for win, push and loss alike.
     title: won ? t('cas.win', { g: gameName }) : push ? t('cas.push', { g: gameName }) : t('cas.lose', { g: gameName }),
-    color: won ? 0x248046 : push ? ui.INFO : 0xda373c,
+    color: 0x6b7280,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: line,
     image: gif ? 'attachment://casino.gif' : null, files,
-    buttons: [ui.btn(again, t('btn.again', { n: n(bet) }), won ? ButtonStyle.Success : ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, view: 'game', bet: 0, owner: i.user.id })}`, t('btn.change'), ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' })],
+    buttons: [ui.btn(again, t('btn.again', { n: n(bet) }), ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, view: 'game', bet: 0, owner: i.user.id })}`, t('btn.change'), ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' })],
   });
 }
 

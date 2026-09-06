@@ -93,6 +93,26 @@ export const SNIPPET_GROUPS = [
   },
 ];
 
+// French labels, keyed by the English one (ids collide across groups — `quote`, `api` — so the
+// label is the stable key). The editor localises the block menu with this; anything absent falls
+// back to the English, so a new snippet is never blank, just untranslated until a line is added.
+export const SNIPPET_FR = {
+  Text: 'Texte', Heading: 'Titre', Bold: 'Gras', Italic: 'Italique', 'Inline code': 'Code en ligne', Highlight: 'Surligné', Strikethrough: 'Barré', Link: 'Lien', 'Wiki link': 'Lien wiki', Footnote: 'Note de bas de page', Keys: 'Touches', Badge: 'Badge', Icon: 'Icône', Emoji: 'Emoji', Quote: 'Citation', 'Code block': 'Bloc de code', Maths: 'Maths',
+  Callouts: 'Encadrés', Note: 'Note', Tip: 'Astuce', Warning: 'Avertissement', Danger: 'Danger', Custom: 'Personnalisé', Collapsible: 'Repliable', Spoiler: 'Spoiler',
+  Layout: 'Mise en page', 'Card grid': 'Grille de cartes', Card: 'Carte', Columns: 'Colonnes', Grid: 'Grille', Tabs: 'Onglets', Steps: 'Étapes', Hero: 'Héro', Centered: 'Centré', 'Styled table': 'Tableau stylé',
+  Content: 'Contenu', Timeline: 'Chronologie', Changelog: 'Journal des versions', Stats: 'Statistiques', 'Pull quote': 'Citation en exergue', FAQ: 'FAQ', Checklist: 'Liste à cocher', 'Before / after': 'Avant / après', Roadmap: 'Feuille de route', Schedule: 'Horaires', Instant: 'Instant', Tag: 'Étiquette', 'Styled link': 'Lien stylé', Divider: 'Séparateur', 'Align right': 'Aligner à droite', Meter: 'Jauge', 'Table of contents': 'Table des matières',
+  Media: 'Média', Image: 'Image', File: 'Fichier', Button: 'Bouton', Audio: 'Audio', YouTube: 'YouTube', Spotify: 'Spotify', 'BMM replay': 'Rejeu BMM', Diagram: 'Diagramme',
+  'API & live': 'API & direct', Endpoint: 'Endpoint', 'OpenAPI document': 'Document OpenAPI', 'Live value (inline)': 'Valeur live (en ligne)', 'Live value (block)': 'Valeur live (bloc)', 'Live stats row': 'Ligne de stats live', 'Action button': "Bouton d'action", Include: 'Inclure',
+};
+
+/** Groups with their labels in `lang` (fr → SNIPPET_FR, else unchanged). Host-added groups that
+ *  already carry translated labels pass through untouched (their labels are not in the map). */
+export function localizeSnippetGroups(groups, lang) {
+  if (lang !== 'fr') return groups;
+  const tr = (s) => SNIPPET_FR[s] || s;
+  return (groups || []).map((g) => ({ ...g, label: tr(g.label), items: (g.items || []).map((it) => ({ ...it, label: tr(it.label) })) }));
+}
+
 /** Every snippet, flat, for a palette or a search box. */
 export const SNIPPETS = SNIPPET_GROUPS.flatMap((g) => g.items.map((it) => ({ ...it, group: g.id })));
 

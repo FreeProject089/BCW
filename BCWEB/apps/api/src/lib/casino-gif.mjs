@@ -19,9 +19,11 @@ const clamp01 = (t) => Math.min(1, Math.max(0, t));
 const easeOut = (t) => 1 - Math.pow(1 - clamp01(t), 4); // quartic: a long, satisfying settle
 const easeOutBack = (t) => { const c = 1.4; const u = clamp01(t) - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 
-function felt(x, win) {
+function felt(x, _win) {
+  // ONE neutral table, win or lose: a green/red background from the first frame told you the
+  // outcome before the spin finished, which is the whole thing the animation is for.
   const bg = x.createLinearGradient(0, 0, W, H);
-  bg.addColorStop(0, win ? '#0b2a1c' : '#25101a'); bg.addColorStop(1, '#0a0f1e');
+  bg.addColorStop(0, '#14212c'); bg.addColorStop(1, '#0a0f1e');
   x.fillStyle = bg; x.fillRect(0, 0, W, H);
   const vg = x.createRadialGradient(W / 2, H / 2, 40, W / 2, H / 2, 330);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
@@ -33,9 +35,10 @@ function felt(x, win) {
 function banner(x, win, amount, t) {
   if (t <= 0.8) return;
   const k = easeOut((t - 0.8) / 0.2); const bh = BANNER_H * k;
-  x.fillStyle = win ? 'rgba(46,204,113,0.96)' : 'rgba(231,76,60,0.96)'; x.fillRect(0, H - bh, W, bh);
+  // A neutral banner too: the +/- amount is the reveal, the colour was just a spoiler.
+  x.fillStyle = 'rgba(107,114,128,0.96)'; x.fillRect(0, H - bh, W, bh);
   if (t <= 0.86) return;
-  x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#0a0f1e';
+  x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#ffffff';
   x.fillText(win ? `YOU WIN  +${amount}` : `YOU LOSE  −${amount}`, W / 2, H - 15);
 }
 function label(x, text, cx, cy, size = 22) {
