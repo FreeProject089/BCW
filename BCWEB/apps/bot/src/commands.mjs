@@ -616,9 +616,12 @@ async function casinoList(i, st, { update = false } = {}) {
     sections: CASINO_GAMES.map((g) => ({ text: `## ${g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
     footer: t('cas.footer'),
     buttons: [
-      ui.btn(`cas:open:${S({ view: 'game', game: last })}`, '◀', ButtonStyle.Secondary),
+      // `:p` / `:n` after the payload: every custom id on a message must be unique, and the
+      // arrows' targets are also the first and last section's Open button. unpackCas reads
+      // eight fields and ignores the ninth.
+      ui.btn(`cas:open:${S({ view: 'game', game: last })}:p`, '◀', ButtonStyle.Secondary),
       ui.btn('cas:noop', t('btn.games'), ButtonStyle.Secondary, { disabled: true }),
-      ui.btn(`cas:open:${S({ view: 'game', game: first })}`, '▶', ButtonStyle.Secondary),
+      ui.btn(`cas:open:${S({ view: 'game', game: first })}:n`, '▶', ButtonStyle.Secondary),
       e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
     ],
   };
@@ -665,9 +668,9 @@ async function casinoMenu(i, st, { update = false } = {}) {
   const buttons = [betSel, optSel,
     ui.btn(`cas:play:${S({})}`, canPlay ? t('btn.play', { n: n(bet), cur }) : t('btn.playPlain'), ButtonStyle.Success, { emoji: 'casino', disabled: !canPlay }),
     ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? t('btn.pickNumber') : t('btn.number', { n: st.num }), ButtonStyle.Primary)] : []),
-    ui.btn(`cas:open:${S({ game: prev })}`, '◀', ButtonStyle.Secondary),
+    ui.btn(`cas:open:${S({ game: prev })}:p`, '◀', ButtonStyle.Secondary),
     ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary),
-    ui.btn(`cas:open:${S({ game: next })}`, '▶', ButtonStyle.Secondary),
+    ui.btn(`cas:open:${S({ game: next })}:n`, '▶', ButtonStyle.Secondary),
     e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
   ];
   const opts = {

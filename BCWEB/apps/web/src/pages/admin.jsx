@@ -14214,9 +14214,10 @@ function AdminBot() {
           </div>
         </ModuleCard>
 
-        <div className="grid xl:grid-cols-3 gap-4 items-start">
-        {/* Casino — the wide one: its payout table needs the room. */}
-        <div className="xl:col-span-2">
+        <div className="space-y-4">
+        {/* Casino — full width: its payout table needs the room, and a three-column grid put
+            two short cards in a narrow column that wrapped their titles one word per line. */}
+        <div>
         <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account — the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
           <div className="grid grid-cols-3 gap-2">
             <Field label={t('db.eco.minbet', 'Min bet')} className="!mb-0"><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
@@ -14258,8 +14259,8 @@ function AdminBot() {
         </ModuleCard>
         </div>
 
-        {/* Gifts and history — two short cards, stacked beside the casino. */}
-        <div className="space-y-4">
+        {/* Gifts and history — two short cards side by side under the casino. */}
+        <div className="grid md:grid-cols-2 gap-4 items-start">
           <ModuleCard id="sec-gifts" icon={Gift} title={t('db.eco.gifts', 'Gifts between members')} desc={t('db.eco.gifts.d', '/gift on Discord and the Boutique on the site. Points move between two linked accounts; giftable shop items change hands unopened.')} enabled={eco.gifts?.enabled !== false} onToggle={(v) => set('economy.gifts.enabled', v)}>
             <div className="grid grid-cols-2 gap-2">
               <Field label={t('db.eco.gifts.min', 'Minimum per gift')} className="!mb-0"><Input type="number" min="1" value={eco.gifts?.min ?? 1} onChange={(e) => set('economy.gifts.min', Number(e.target.value))} /></Field>
@@ -14293,7 +14294,9 @@ function AdminBot() {
         <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d2', 'What members buy with points, on Discord (/shop) and on the site (Dashboard → Shop & inventory). Every item needs a linked BCWEB account: that is where the badge, the code or the perk lands. Codes are sealed until the holder reveals them, so an unopened item can be gifted.')} onToggle={null}
           action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge', giftable: true, active: true }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
           {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
-          <div className="grid xl:grid-cols-2 gap-3">
+          {/* One item per row, full width: the seven kind chips, the kind's own fields and the
+              lifetime grid need the whole line; halved, every label wrapped. */}
+          <div className="space-y-3">
           {shop.map((it, i) => {
             const kind = it.kind || 'badge';
             const bound = kind === 'badge' || kind === 'role';
@@ -14301,7 +14304,7 @@ function AdminBot() {
             const KIcon = K[1];
             const tag = it.exclusive ? t('db.eco.tag.excl', 'Exclusive') : it.stock != null && it.stock !== '' ? t('db.eco.tag.lim', 'Limited · {n}').replace('{n}', it.stock) : it.availableUntil ? t('db.eco.tag.timed', 'Timed') : null;
             return (
-            <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
+            <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative bg-[var(--surface-2)]/30 ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
               <div className="flex items-center gap-2 pr-6">
                 <KIcon size={14} className="text-[var(--primary-2)] shrink-0" />
                 <Input className="!py-1.5 flex-1" value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
