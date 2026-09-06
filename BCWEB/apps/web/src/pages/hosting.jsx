@@ -257,11 +257,6 @@ export function Hosting() {
         </span>
         <h1 className="text-3xl sm:text-[2.5rem] font-extrabold tracking-tight leading-[1.08]">{t('hosting.title2', 'Hosting storage')}</h1>
         <p className="text-[var(--muted)] mt-3.5 text-[15px] leading-relaxed max-w-xl mx-auto">{t('hosting.sub2', 'Buy a pool of storage and fill it with repos and catalogs — we run it, you manage it.')}</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-5 text-xs text-[var(--muted)]">
-          {[[Layers, t('hosting.trust1', 'Repos & catalogs in one pool')], [ShieldCheck, t('hosting.trust2', 'We host and back it up')], [Receipt, t('hosting.trust3', 'Prepaid — no surprise renewals')]].map(([Ic, tx], i) => (
-            <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]"><Ic size={13} className="text-[var(--primary-2)] shrink-0" /> {tx}</span>
-          ))}
-        </div>
       </div>
 
       {soldOut && (

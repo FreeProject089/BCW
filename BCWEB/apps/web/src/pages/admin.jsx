@@ -6535,6 +6535,15 @@ function UserDetailModal({ id, onClose }) {
   useEffect(() => { setClosureForm(null); setTab('overview'); }, [id]);
   const hosted = (u?.serverRepos || []).filter((r) => r.hosted);
   const listed = (u?.serverRepos || []).filter((r) => !r.hosted);
+  // Unlink one identity from this account (a creator id / Discord / an OAuth provider). Removes
+  // the connection only — the account keeps working through its other sign-in methods.
+  const unlink = async (kind, ref, label) => {
+    const ok = await dialog.confirm({ title: t('ud.unlink.t', 'Unlink this identity?'), body: t('ud.unlink.b', 'This removes {x} from the account. The account itself is untouched and keeps its other sign-in methods.').replace('{x}', label), confirmLabel: t('ud.unlink.c', 'Unlink'), danger: true });
+    if (!ok) return;
+    try { await api.del(`/admin/users/${id}/link`, { kind, ref }); toast.success(t('ud.unlinked', 'Unlinked.')); reload(); }
+    catch (e) { toast.error(e?.data?.error === 'not_linked' ? t('ud.notlinked', 'Already gone.') : t('common.failed', 'Failed.')); }
+  };
+  const OA_META = { google: ['Google', '#ea4335'], github: ['GitHub', 'var(--text)'], discord: ['Discord', '#5865F2'] };
   const fdate = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
   // Per-element unique BC id chip (copyable) — shown on each repo / catalog item.
   const BcChip = ({ code }) => code ? (
@@ -6579,7 +6588,7 @@ function UserDetailModal({ id, onClose }) {
             const tabs = [
               ['overview', t('ud.tab.overview', 'Overview'), Users, null],
               ['access', t('ud.tab.access', 'Access'), KeyRound, null],
-              ['links', t('ud.tab.links', 'Links'), Link2, (u.creatorLinks?.length || 0) + (u.discordLinks?.length || 0)],
+              ['links', t('ud.tab.links', 'Links'), Link2, (u.creatorLinks?.length || 0) + (u.discordLinks?.length || 0) + (u.oauthAccounts?.length || 0)],
               ['content', t('ud.tab.content', 'Content'), Package, (u.serverRepos?.length || 0) + (u.items?.length || 0)],
               ['billing', t('ud.tab.billing', 'Billing'), Receipt, (u.subscriptions?.length || 0) + (u.payments?.length || 0)],
               ['security', t('ud.tab.security', 'Security'), Shield, (u.sessions?.length || 0) + (u.apiKeys?.length || 0)],
@@ -6607,9 +6616,28 @@ function UserDetailModal({ id, onClose }) {
           <UserPermissionsCard user={u} onChange={reload} />
           </>)}
           {tab === 'links' && (<>
+          <p className="text-xs text-[var(--muted)] -mt-1">{t('ud.links.d', 'Every identity tied to this account. Unlinking removes the connection only — the account keeps its other sign-in methods.')}</p>
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><KeyRound size={12} /> {t('ud.signin', 'Sign-in providers')}</div>
+            {u.oauthAccounts?.length ? <div className="space-y-1">{u.oauthAccounts.map((o) => { const [nm, col] = OA_META[o.provider] || [o.provider, 'var(--muted)']; return (
+              <div key={o.provider} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
+                <span className="font-medium">{nm}</span>
+                {o.username && <code className="text-xs text-[var(--faint)] truncate">{o.username}</code>}
+                <button type="button" onClick={() => unlink('oauth', o.provider, nm)} className="ms-auto shrink-0 text-[11px] text-[var(--faint)] hover:text-error inline-flex items-center gap-1"><X size={12} /> {t('ud.unlink.c', 'Unlink')}</button>
+              </div>
+            ); })}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nooauth', 'No sign-in provider linked (e-mail + password only).')}</div>}
+          </div>
+
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><BadgeCheck size={12} /> {t('ud.creatorids', 'Linked creator ids')}</div>
-            {u.creatorLinks.length ? <div className="flex flex-wrap gap-1.5">{u.creatorLinks.map((c) => <Badge key={c.creatorId} tone="green"><code>{c.creatorId}</code>{c.displayName ? ` · ${c.displayName}` : ''}</Badge>)}</div>
+            {u.creatorLinks.length ? <div className="space-y-1">{u.creatorLinks.map((c) => (
+              <div key={c.creatorId} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
+                <Fingerprint size={13} className="text-success shrink-0" />
+                <code className="text-xs">{c.creatorId}</code>{c.displayName ? <span className="text-[var(--faint)] truncate">· {c.displayName}</span> : null}
+                <button type="button" onClick={() => unlink('creator', c.creatorId, t('ud.thiscreator', 'this creator id'))} className="ms-auto shrink-0 text-[11px] text-[var(--faint)] hover:text-error inline-flex items-center gap-1"><X size={12} /> {t('ud.unlink.c', 'Unlink')}</button>
+              </div>
+            ))}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.nocreator', 'No creator id linked.')}</div>}
           </div>
 
@@ -6620,7 +6648,8 @@ function UserDetailModal({ id, onClose }) {
                 <DiscordIcon size={13} className="text-[#5865F2] shrink-0" />
                 <span className="font-medium">{d.username || '—'}</span>
                 <code className="text-xs text-[var(--faint)]">{d.discordId}</code>
-                <span className="text-[11px] text-[var(--faint)] ms-auto shrink-0">{t('ud.linked', 'linked {d}').replace('{d}', fdate(d.linkedAt))}</span>
+                <span className="text-[11px] text-[var(--faint)] shrink-0">{t('ud.linked', 'linked {d}').replace('{d}', fdate(d.linkedAt))}</span>
+                <button type="button" onClick={() => unlink('discord', d.discordId, d.username || 'Discord')} className="ms-auto shrink-0 text-[11px] text-[var(--faint)] hover:text-error inline-flex items-center gap-1"><X size={12} /> {t('ud.unlink.c', 'Unlink')}</button>
               </div>
             ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nodiscord', 'No Discord linked.')}</div>}
           </div>

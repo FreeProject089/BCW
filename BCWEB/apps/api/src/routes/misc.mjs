@@ -2608,6 +2608,26 @@ export default async function miscRoutes(app) {
     return { ok: true, to: doc.subject.email, bytes: json.length, tables: Object.keys(doc.data).length, couldNotRead: doc.couldNotRead.length };
   });
 
+  // Unlink one identity from an account — a Creator ID, a Discord link, or an OAuth sign-in
+  // provider (Google / GitHub / Discord). Admin housekeeping (a wrong link, a shared machine,
+  // a takeover being unwound): it removes the CONNECTION only, never the account, and is
+  // guarded by manage_users and audited. The account keeps working through its other methods.
+  app.delete('/admin/users/:id/link', { preHandler: requireCap('manage_users') }, async (req, reply) => {
+    const b = z.object({ kind: z.enum(['creator', 'discord', 'oauth']), ref: z.string().min(1).max(128) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const uid = req.params.id;
+    if (!(await p.user.findUnique({ where: { id: uid }, select: { id: true } }))) return reply.code(404).send({ error: 'not_found' });
+    const { kind, ref } = b.data;
+    let n = 0;
+    if (kind === 'creator') n = (await p.creatorLink.deleteMany({ where: { userId: uid, creatorId: ref } })).count;
+    else if (kind === 'discord') n = (await p.discordLink.deleteMany({ where: { userId: uid, discordId: ref } })).count;
+    else if (kind === 'oauth') n = (await p.oAuthAccount.deleteMany({ where: { userId: uid, provider: ref } })).count;
+    if (!n) return reply.code(404).send({ error: 'not_linked' });
+    await logAudit(p, req.user.uid, 'user.unlink', `${kind}:${ref} from ${uid}`, clientIp(req));
+    return { ok: true, kind, ref };
+  });
+
   app.get('/admin/users/:id', { preHandler: requireCap('manage_users', 'MOD') }, async (req, reply) => {
     const p = await db();
     const u = await p.user.findUnique({ where: { id: req.params.id }, select: {
@@ -2622,6 +2642,7 @@ export default async function miscRoutes(app) {
       items: { select: { id: true, name: true, slug: true, kind: true, status: true }, orderBy: { updatedAt: 'desc' } },
       creatorLinks: { select: { creatorId: true, displayName: true, linkedAt: true, unlinkableAt: true } },
       discordLinks: { select: { discordId: true, username: true, linkedAt: true } },
+      oauthAccounts: { select: { provider: true, providerAccountId: true, username: true } },
       payments: { select: { id: true, kind: true, description: true, amountCents: true, currency: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 20 },
     } });
     if (!u) return reply.code(404).send({ error: 'not_found' });

@@ -92,11 +92,6 @@ export function MyoPage() {
         </span>
         <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>
         <p className="text-[var(--muted)] mt-3.5 text-[15px] leading-relaxed">{t('myo.sub', 'A Discord bot, an app, a website — or something else entirely. Start with a paid consultation: real advice and a fixed quote. Nothing is built until you approve it.')}</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 mt-5 text-xs text-[var(--muted)]">
-          {[[FileText, t('myo.trust1', 'Fixed, itemised quote')], [Check, t('myo.trust2', 'You approve before we build')], [Globe, t('myo.trust3', 'English or French')], [ShieldCheck, t('myo.trust4', 'Source on request')]].map(([Ic, tx], i) => (
-            <span key={i} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]"><Ic size={13} className="text-[var(--primary-2)] shrink-0" /> {tx}</span>
-          ))}
-        </div>
       </div>
 
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}
