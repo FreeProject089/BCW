@@ -416,6 +416,35 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const [iconPick, setIconPick] = useState(false);
   const [badgePick, setBadgePick] = useState(false);
   const [kbdPick, setKbdPick] = useState(false);
+  // What THIS site can do that the editor package cannot know about: upload an image or a
+  // replay to our storage, and the three pickers. They join the package's own block menu, so
+  // there is one Insert menu with everything in it rather than a package menu next to a
+  // host menu. `onPick` receives the package's `insert`, which lands text at the caret.
+  const hostGroups = [
+    { id: 'site', icon: 'upload', label: t('be.grp.site', 'This site'), items: [
+      { id: 'upload-image', icon: 'image', label: t('be.upimg', 'Upload an image'), onPick: ({ insert: ins }) => pickImage((u) => ins(`:img[${'${sel|Image}'}]{src=${u} width=640 align=center}`)) },
+      { id: 'upload-replay', icon: 'play', label: t('be.replay.upload', 'Session replay (upload .bmmreplay)'), onPick: ({ insert: ins }) => {
+        const i = document.createElement('input'); i.type = 'file'; i.accept = '.bmmreplay,application/json';
+        i.onchange = async () => {
+          const f = i.files?.[0]; if (!f) return;
+          try {
+            toast.info(t('be.uploading', 'Uploading…'));
+            const url = await uploadReplay(f);
+            const title = await dialog.prompt({ title: t('be.replay.title', 'Replay caption'), label: t('be.replay.titlelabel', 'Optional caption shown above the player'), placeholder: t('be.replay.titleph', 'e.g. Installing a plugin') });
+            ins(`:::replay${title ? `[${title}]` : ''}{src="${url}"}\n:::`);
+          } catch (x) { toast.error(x?.status === 413 ? t('be.replay.toolarge', 'Replay too large (max 40 MB).') : t('be.uploadfail', 'Upload failed.')); }
+        };
+        i.click();
+      } },
+      { id: 'yt-prompt', icon: 'video', label: 'YouTube', onPick: async ({ insert: ins }) => { const url = await dialog.prompt({ title: 'YouTube', label: 'Video URL or ID', placeholder: 'https://youtu.be/…' }); if (!url) return; const m = url.match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/) || [null, url.trim()]; ins(`::youtube{id=${m[1]}}`); } },
+      { id: 'pick-icon', icon: 'smile', label: t('be.pickicon', 'Icon (picker)'), onPick: ({ insert: ins }) => { insRef.current = ins; setIconPick(true); } },
+      { id: 'pick-badge', icon: 'tag', label: t('be.pickbadge', 'Badge (picker)'), onPick: ({ insert: ins }) => { insRef.current = ins; setBadgePick(true); } },
+      { id: 'pick-kbd', icon: 'keyboard', label: t('be.pickkbd', 'Shortcut (picker)'), onPick: ({ insert: ins }) => { insRef.current = ins; setKbdPick(true); } },
+    ] },
+  ];
+  // The picker modals close the menu first, so the `insert` they need is remembered here.
+  const insRef = useRef(null);
+  const insAny = (text) => { if (insRef.current) { insRef.current(text); insRef.current = null; } else insert(text); };
   // B.MD block snippets (remark-directive). `insertBlock` closes the menu.
   const BLOCKS = [
     { icon: TagIcon, label: 'Callout', snip: '\n:::tip[Good to know]\nSomething worth highlighting.\n:::\n' },
@@ -477,6 +506,16 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     setBlocksOpen(false);
     setTimeout(() => { if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = before.length + chunk.length; } }, 0);
   };
+  if (!full) {
+    return (
+      <>
+        <BmdEditor compact value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 96)} placeholder={placeholder} extraGroups={hostGroups} exportTitle="document" />
+        {iconPick && <IconPicker onPick={(n) => insAny(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
+        {badgePick && <BadgePicker onPick={(label, color) => insAny(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insAny(txt)} onClose={() => setBadgePick(false)} />}
+        {kbdPick && <KbdPicker onPick={(combo) => insAny(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}
+      </>
+    );
+  }
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-[var(--line)]">
@@ -516,20 +555,20 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             </div>
           </>}
         </>}
-        <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
-        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
+        {mode !== 'rich' && <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>}
+        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className={`btn btn-sm${mode === 'rich' ? ' ms-auto' : ''}`} title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {mode === 'rich' && !preview
-        ? <BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" />
+        ? <BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} />
         : preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
         : mode === 'visual'
           ? <div className="max-h-[52vh] overflow-auto"><VisualEditor value={value} onChange={onChange} minHeight={minHeight} /></div>
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
             <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}
-      {iconPick && <IconPicker onPick={(n) => insert(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
-      {badgePick && <BadgePicker onPick={(label, color) => insert(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insert(txt)} onClose={() => setBadgePick(false)} />}
-      {kbdPick && <KbdPicker onPick={(combo) => insert(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}
+      {iconPick && <IconPicker onPick={(n) => insAny(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
+      {badgePick && <BadgePicker onPick={(label, color) => insAny(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insAny(txt)} onClose={() => setBadgePick(false)} />}
+      {kbdPick && <KbdPicker onPick={(combo) => insAny(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}
     </div>
   );
 }

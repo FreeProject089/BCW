@@ -727,7 +727,7 @@ export default function AdminGuide() {
         .map((it) => {
           const o = overrides[it.id];
           if (!o) return { ...it, kind: 'builtin' };
-          return { ...it, kind: 'builtin', title: mergeLoc(it.title, o.title), body: mergeLoc(it.body, o.body), bodyIsMd: !!((o.body?.en || '').trim() || (o.body?.fr || '').trim()), extra: o.extra || null, edited: true };
+          return { ...it, kind: 'builtin', title: mergeLoc(it.title, o.title), body: mergeLoc(it.body, o.body), bodyIsMd: !!((o.body?.en || '').trim() || (o.body?.fr || '').trim()), extra: o.extra || null, hideMore: !!o.hideMore, edited: true };
         }),
     })).filter((g) => g.items.length);
     if (custom && custom.length) {
@@ -837,7 +837,7 @@ export default function AdminGuide() {
                     </ul>
                   )}
                   {/* Depth: a numbered how-to and the rules/traps for this screen. */}
-                  {GUIDE_MORE[activeItem.id] && (
+                  {GUIDE_MORE[activeItem.id] && !activeItem.hideMore && (
                     <div className="grid md:grid-cols-2 gap-4 mt-5 pt-4 border-t border-[var(--line)]">
                       <div>
                         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2">{t('ag.steps', 'Step by step')}</div>
@@ -916,7 +916,24 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
   const setOvField = (field, patch) => setOv((o) => ({ ...o, [sel]: { ...(o[sel] || {}), [field]: { ...((o[sel] || {})[field] || {}), ...patch } } }));
   const setOvFlag = (k, v) => setOv((o) => ({ ...o, [sel]: { ...(o[sel] || {}), [k]: v } }));
   const resetOv = () => setOv((o) => { const n = { ...o }; delete n[sel]; return n; });
-  const isEdited = (id) => { const o = ov[id]; return !!(o && (o.hidden || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim()))); };
+  const isEdited = (id) => { const o = ov[id]; return !!(o && (o.hidden || o.hideMore || ['title', 'body', 'extra'].some((k) => (o[k]?.en || o[k]?.fr || '').trim()))); };
+  // "Edit what is there" rather than "write it again": the built-in paragraph is copied into
+  // the field, and the built-in steps and traps can be pulled in as B.MD under it — in which
+  // case the built-in ones are hidden, so nothing shows twice.
+  const startFromBody = () => setOvField('body', { [tab]: cur.body[tab] || cur.body.en || '' });
+  const pullMore = () => {
+    const more = GUIDE_MORE[cur.id]; if (!more) return;
+    const pick = (o) => (tab === 'fr' ? (o.fr || o.en || '') : (o.en || o.fr || ''));
+    const steps = (more.steps || []).map((st, i) => `:::step[${i + 1}]\n${pick(st)}\n:::`).join('\n');
+    const traps = (more.traps || []).map((tr) => `- ${pick(tr)}`).join('\n');
+    const md = [
+      steps ? `::::steps[${tab === 'fr' ? 'Pas à pas' : 'Step by step'}]\n${steps}\n::::` : '',
+      traps ? `:::warning[${tab === 'fr' ? 'Règles & pièges' : 'Rules & traps'}]\n${traps}\n:::` : '',
+    ].filter(Boolean).join('\n\n');
+    const curExtra = ((curOv.extra || {})[tab] || '').trim();
+    setOvField('extra', { [tab]: curExtra ? `${curExtra}\n\n${md}` : md });
+    setOvFlag('hideMore', true);
+  };
   const editedCount = entries.filter((it) => isEdited(it.id)).length;
 
   const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
@@ -935,6 +952,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
       ...(o.body ? { body: { en: o.body.en || '', fr: o.body.fr || '' } } : {}),
       ...(o.extra ? { extra: { en: o.extra.en || '', fr: o.extra.fr || '' } } : {}),
       ...(o.hidden ? { hidden: true } : {}),
+      ...(o.hideMore ? { hideMore: true } : {}),
     }]));
     setBusy(true);
     try {
@@ -998,11 +1016,18 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
                   <Input value={(curOv.title || {})[tab] || ''} onChange={(e) => setOvField('title', { [tab]: e.target.value })} placeholder={cur.title[tab] || cur.title.en} />
                 </div>
                 <div>
-                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.body.l', 'Body — replaces the built-in paragraph (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.body.l', 'Body — replaces the built-in paragraph (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                    {!((curOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromBody} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
+                  </div>
                   <MarkdownEditor value={(curOv.body || {})[tab] || ''} onChange={(v) => setOvField('body', { [tab]: v })} minHeight={110} placeholder={cur.body[tab] || cur.body.en} />
                 </div>
                 <div>
-                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.extra.l', 'Your section under it — house rules, who to ask, a checklist (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.extra.l', 'Your section under it — house rules, who to ask, a checklist (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                    {GUIDE_MORE[cur.id] && !curOv.hideMore && <button type="button" onClick={pullMore} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.pullmore', 'Pull the built-in steps & traps in here to edit them')}</button>}
+                    {curOv.hideMore && <span className="text-[11px] text-[var(--faint)]">{t('ag.edit.morehidden', 'Built-in steps & traps hidden — yours replace them')}</span>}
+                  </div>
                   <MarkdownEditor value={(curOv.extra || {})[tab] || ''} onChange={(v) => setOvField('extra', { [tab]: v })} minHeight={160} placeholder={tab === 'fr' ? ':::tip[Chez nous]\nCe que ton équipe doit savoir sur cet écran…\n:::' : ':::tip[Here]\nWhat your team should know about this screen…\n:::'} />
                 </div>
                 <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.builtin.h', 'An empty field keeps the built-in text for that language. The built-in bullet points, step-by-step and traps stay under your text; “Back to built-in” drops every change on this entry.')}</div>

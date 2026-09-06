@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Code2, Shield, KeyRound, BookOpen, Send, Copy, Sliders, FlaskConical, ArrowRight, FileJson } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Code2, Shield, KeyRound, BookOpen, Send, Copy, Sliders, FlaskConical, ArrowRight, FileJson, Puzzle } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { highlightCode, useAsync } from './pages.jsx';
@@ -387,6 +387,7 @@ export function devCards(cfg, t) {
 
 export default function DevHub() {
   const { t } = useI18n(); const toast = useToast();
+  const nav = useNavigate();
   const { user } = useAuth();
   // What this visitor already has. Only asked for when signed in — a signed-out developer is
   // the one this page was written for, and should not pay for a request that can only answer
@@ -488,7 +489,7 @@ export default function DevHub() {
           builder all still live at /dev/tools; they are no longer inlined onto the front
           door, so arriving here reads as "here is what you can build" rather than "here is a
           control panel". */}
-      <div className="grid sm:grid-cols-2 gap-4 mb-12">
+      <div className="grid sm:grid-cols-3 gap-4 mb-12">
         <Link to="/dev/tools" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-1">
             <FlaskConical size={16} className="text-[var(--primary-2)]" />
@@ -504,6 +505,23 @@ export default function DevHub() {
             <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
           </div>
           <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks — the full written reference.')}</p>
+        </Link>
+        {/* The third door: the markdown kit this whole site is written in. It had a card in
+            the old nine-tile wall and lost it when the wall went — so /dev/bmd, /dev/editor
+            and the playground were reachable only by typing the address. */}
+        <Link to="/dev/bmd" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
+          <div className="flex items-center gap-2 mb-1">
+            <Puzzle size={16} className="text-[var(--primary-2)]" />
+            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.bmdT', 'B.MD — the markdown kit')}</span>
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+          </div>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.bmdS', 'Callouts, cards, tabs, API cards, live values, diagrams — install it, try the playground, open the editor.')}</p>
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {[['/dev/bmd', t('dev.hub.md.install', 'Install it')], ['/dev/markdown', t('dev.hub.md.play', 'Playground')], ['/dev/editor', t('dev.hub.md.editor', 'The editor')], ['/dev/tools#openapi', t('dvt.oa.title', 'OpenAPI → B.MD')]].map(([to, label]) => (
+              <span key={to} role="link" tabIndex={0} onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav(to); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); nav(to); } }}
+                className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)] hover:text-[var(--text)]">{label}</span>
+            ))}
+          </div>
         </Link>
       </div>
 

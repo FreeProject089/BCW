@@ -169,6 +169,10 @@ html, body, #root { overflow-x: clip; max-width: 100%; }
 img, svg, video, canvas { max-width: 100%; }
 pre { max-width: 100%; overflow-x: auto; }
 table { display: block; max-width: 100%; overflow-x: auto; }
+/* The kit wraps every table in a scrolling `.md-table-wrap`, so the table itself must be a
+   TABLE: as a block its 100 % width painted a rounded border across the column while the
+   cells stopped where their text did — a frame with half a table inside it. */
+.md-body table { display: table; }
 /* Long unbreakable tokens (URLs, ids, sha, emails) wrap instead of overflowing. */
 code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 

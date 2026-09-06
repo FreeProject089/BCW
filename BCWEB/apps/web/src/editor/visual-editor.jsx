@@ -11,6 +11,7 @@ import IconPicker from './icon-picker.jsx';
 import Markdown, { IconGlyph } from '../ui/md.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
 import { uid, blank, parse, serialize, blockMd, CALLOUT_KINDS } from './md-blocks.js';
+import { SNIPPET_GROUPS, expandSnippet } from '@bettercommunity/bmd-editor';
 
 // Small "pick an icon" field: shows the chosen glyph + name, opens the picker.
 function IconField({ value, onChange, placeholder = 'Pick icon' }) {
@@ -63,7 +64,8 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   const { t } = useI18n();
   const [blocks, setBlocks] = useState(() => parse(value));
   const lastOut = useRef(serialize(blocks));
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false); // false | true (append) | index (insert after)
+  const [addQ, setAddQ] = useState('');
   // Which blocks are showing their preview, by id. Per block rather than one switch for
   // the page: you check the callout you are writing, not all twenty at once.
   const [peek, setPeek] = useState({});
@@ -78,7 +80,17 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   const push = (next) => { setBlocks(next); const md = serialize(next); lastOut.current = md; onChange(md); };
   const update = (id, patch) => push(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const remove = (id) => push(blocks.filter((b) => b.id !== id));
-  const add = (type) => { push([...blocks, blank(type)]); setAddOpen(false); };
+  // Where a new block lands: after the block whose "+" was pressed, else at the end.
+  const place = (b) => { const at = typeof addOpen === 'number' ? addOpen + 1 : blocks.length; const n = [...blocks]; n.splice(at, 0, b); push(n); setAddOpen(false); setAddQ(''); };
+  const add = (type) => place(blank(type));
+  // Any B.MD block the package's menu knows — inserted as its markdown, so the whole 3.0
+  // vocabulary is one click away here too. It lands as a text block with its preview open,
+  // which is what "raw directive, editable, visible" looks like in this editor.
+  const addSnippet = (it) => { const { text } = expandSnippet(it.md, ''); const b = { id: uid(), type: 'text', text }; place(b); setPeek((pk) => ({ ...pk, [b.id]: true })); };
+  const aq = addQ.trim().toLowerCase();
+  const typeMatches = BLOCK_TYPES.filter((bt) => !aq || bt.label.toLowerCase().includes(aq) || bt.type.includes(aq));
+  const snippetGroups = SNIPPET_GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => it.md && !it.inline && (!aq || it.label.toLowerCase().includes(aq) || it.id.includes(aq))) })).filter((g) => g.items.length);
+  const typeLabel = (b) => { if (b.type === 'text' && /^\s*:{2,4}[a-z]/.test(b.text || '')) { const m = (b.text || '').match(/:{2,4}([a-z0-9-]+)/); return `B.MD · ${m ? m[1] : 'block'}`; } return (BLOCK_TYPES.find((x) => x.type === b.type) || {}).label || b.type; };
   const move = (from, to) => { if (to < 0 || to >= blocks.length || from === to) return; const n = [...blocks]; const [x] = n.splice(from, 1); n.splice(to, 0, x); push(n); };
   const onDrop = (id) => { const from = blocks.findIndex((b) => b.id === dragId.current); const to = blocks.findIndex((b) => b.id === id); if (from >= 0 && to >= 0) move(from, to); dragId.current = null; };
 
@@ -93,6 +105,10 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
             <button type="button" className="hover:text-[var(--text)] disabled:opacity-30" disabled={idx === blocks.length - 1} onClick={() => move(idx, idx + 1)}><ChevronDown size={13} /></button>
           </div>
           <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)]">{typeLabel(b)}</span>
+              <button type="button" onClick={() => { setAddOpen(idx); setAddQ(''); }} className="ms-auto text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1" title={t('ve.addHere', 'Add a block after this one')}><Plus size={11} /> {t('ve.here', 'here')}</button>
+            </div>
             <BlockFields block={b} onChange={(patch) => update(b.id, patch)} />
             {/* What this block will look like, from the SAME serialiser that writes the
                 document. A preview built any other way is a second renderer, and the day the
@@ -120,19 +136,34 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
           </div>
         </div>
       ))}
-      <button type="button" onClick={() => setAddOpen(true)} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]">
+      <button type="button" onClick={() => { setAddOpen(true); setAddQ(''); }} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]">
         <Plus size={15} /> Add block
       </button>
-      {addOpen && (
+      {addOpen !== false && (
         <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onClick={() => setAddOpen(false)}>
-          <div className="card modal-card w-full max-w-sm p-0 overflow-hidden anim-pop" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--line)]"><span className="font-semibold">{t('ve.addBlock', 'Add a block')}</span><button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
-            <div className="p-2 grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              {BLOCK_TYPES.map((bt) => (
-                <button key={bt.type} type="button" onClick={() => add(bt.type)} className="flex flex-col items-center gap-1.5 px-2 py-3 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] text-sm">
-                  <bt.icon size={18} className="text-[var(--muted)]" /> {bt.label}
-                </button>
+          <div className="card modal-card w-full max-w-2xl p-0 overflow-hidden anim-pop max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
+              <span className="font-semibold">{t('ve.addBlock', 'Add a block')}</span>
+              <input autoFocus value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder={t('ve.search', 'Search a block…')} className="ms-auto text-sm px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] outline-none focus:border-[var(--primary)] w-40 sm:w-56" />
+              <button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
+            <div className="p-2 overflow-auto">
+              {typeMatches.length > 0 && <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-1 mb-1.5">{t('ve.grp.forms', 'With a form')}</div>}
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mb-3">
+                {typeMatches.map((bt) => (
+                  <button key={bt.type} type="button" onClick={() => add(bt.type)} className="flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] text-xs">
+                    <bt.icon size={17} className="text-[var(--muted)]" /> {bt.label}
+                  </button>
+                ))}
+              </div>
+              {snippetGroups.map((g) => (
+                <div key={g.id} className="mb-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-1 mb-1">{g.label} <span className="normal-case font-normal">· B.MD</span></div>
+                  <div className="flex flex-wrap gap-1">
+                    {g.items.map((it) => <button key={it.id} type="button" onClick={() => addSnippet(it)} className="text-xs px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">{it.label}</button>)}
+                  </div>
+                </div>
               ))}
+              {!typeMatches.length && !snippetGroups.length && <div className="text-sm text-[var(--faint)] p-3">—</div>}
             </div>
           </div>
         </div>

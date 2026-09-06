@@ -417,9 +417,16 @@ export function remarkDocBlocks() {
         const value = String(attrs.value ?? '');
         const delta = String(attrs.delta ?? attrs.trend ?? '');
         const dir = delta.startsWith('-') ? 'down' : delta.startsWith('+') ? 'up' : 'flat';
+        // `src=` + `path=` makes the number LIVE — the same reader `:counter` uses, so a
+        // stats row over `/api/stats` shows today's figures, not the ones typed in.
+        const live = attrs.src ? {
+          type: 'paragraph', data: { hName: 'doc-fetch', hProperties: { className: ['doc-fetch', 'doc-fetch-block', 'doc-stat-value'],
+            'data-src': attrs.src, 'data-path': attrs.path || attrs.key || '', 'data-refresh': String(Math.max(0, parseInt(attrs.refresh || attrs.every, 10) || 0)),
+            'data-format': attrs.format || 'number', 'data-label': '', 'data-prefix': attrs.prefix || '', 'data-suffix': attrs.suffix || '', 'data-counter': attrs.name || attrs.id || '' } }, children: [],
+        } : null;
         node.children = [
           ...(attrs.icon ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-icon'] } }, children: [iconNode(String(attrs.icon).toLowerCase())] }] : []),
-          textEl('div', 'doc-stat-value', value),
+          live || textEl('div', 'doc-stat-value', value),
           ...(label ? [textEl('div', 'doc-stat-label', label)] : []),
           ...(delta ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-delta', `doc-stat-${dir}`] } }, children: [{ type: 'text', value: delta }] }] : []),
           ...(node.children.length ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-stat-note'] } }, children: node.children }] : []),
