@@ -267,6 +267,10 @@ export default function Profile() {
 
           {tab === 'links' && <div className="space-y-4">
           <SectionLabel icon={Link2}>{t('prof.sec.connections', 'Connections')}</SectionLabel>
+          {/* Sign in with Google / GitHub / Discord: the same card as Security, surfaced here
+              because "link an account" is what people come to Connections for. It only shows a
+              provider the server has configured, so nothing appears when none is set up. */}
+          <SignInMethods />
           <CreatorLinks />
           <DiscordLinks />
           <SocialConnections />
