@@ -26,6 +26,10 @@ export const MarkdownConfig = createContext({
   Roadmap: null,
   /** ({ src, title, autoplay, loop }) => node — replaces the built-in `:::replay`. */
   Replay: null,
+  /** The renderer itself, for the blocks that render a document inside a document. */
+  Nested: null,
+  /** How many documents deep this one is — `::include` stops at two. */
+  depth: 0,
 });
 
 const DEFAULTS = {
@@ -47,7 +51,19 @@ const DEFAULTS = {
     // Phosphor, drawn as a mask like lucide. `name` arrives as `<weight>/<file>` — see
     // phosphorRef in icons.jsx — so a project can point this at its own copy of the assets.
     phosphor: (path) => `https://cdn.jsdelivr.net/npm/@phosphor-icons/core@2/assets/${path}.svg`,
+    // Where mermaid comes from when the host did not supply `loadMermaid`. An ES module URL,
+    // imported on the first diagram; null draws diagrams as their source text.
+    mermaid: 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs',
   },
+  /**
+   * Corner radius for every block, as a CSS length (`'8px'`, `'0'`). Null keeps each block's
+   * own. A single `{radius=…}` attribute on a block wins over this.
+   */
+  radius: null,
+  /** async (src) => markdown — how `::include{src=…}` gets its text. Default: fetch it. */
+  resolveInclude: null,
+  /** () => Promise<mermaid module> — `() => import('mermaid')` when the package is installed. */
+  loadMermaid: null,
   /**
    * Where authored URLs may point. See url.js for what each field does.
    *
@@ -65,7 +81,7 @@ const DEFAULTS = {
     rewrite: null,
   },
   /** Which iframes survive sanitising. One regexp, because the answer is a list of hosts. */
-  allowIframes: /^https:\/\/(www\.)?youtube(-nocookie)?\.com\//i,
+  allowIframes: /^https:\/\/(?:(?:www\.)?youtube(?:-nocookie)?\.com\/|open\.spotify\.com\/embed\/)/i,
 };
 
 let CURRENT = { ...DEFAULTS };

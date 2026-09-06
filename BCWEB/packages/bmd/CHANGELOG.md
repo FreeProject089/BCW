@@ -1,5 +1,32 @@
 # Changelog
 
+## 3.0.0 — 2026-09-07
+
+### Added
+- **Tables**: `:::table[Caption]{style="striped bordered compact hover plain wide sticky numbers" align= width=}` around a GFM table; cells keep holding markdown.
+- **Images**: `:img[Alt]{src= width= height= align= caption= link= zoom=false lazy=false border rounded}`; a plain `![alt](src "title")` gets its title as a caption.
+- **Media**: `:audio[Title]{src=}`, `::youtube{src=}` / `::yt{id=}`, `::spotify{src=}` (track, album, playlist, episode, show, artist).
+- **API docs**: `:::api[GET /path]{auth= summary= deprecated}` with `:::params` / `:::request` / `:::response{status=}` sections; `::openapi{src= tag= filter=}` draws a whole OpenAPI document as those cards; `openapiToBmd()` is exported for the generator.
+- **Live and interactive**: `:counter[Label]{src= path= refresh= format=}` / `::live{…}` read a value from a URL; `:action[Label]{href= method= body= confirm= done= counter= once}` calls one when pressed and refreshes the named counter.
+- **Includes**: `::include{src=…}` renders another document in place (two levels deep; `resolveInclude` in the config decides how it is fetched).
+- **Diagrams**: ```` ```mermaid ```` fences and `:::mermaid` blocks, rendered by Mermaid under its strict level — `loadMermaid: () => import('mermaid')` when the package is installed, a CDN module otherwise.
+- **Text**: `==marked==` → `<mark>`; `[[Page]]`, `[[Page|text]]`, `[[Page#section]]` resolve against `pageMap` (a missing page stays as text with `doc-ref-missing`); GFM strikethrough, footnotes and autolinks documented and styled.
+- **Table of contents**: `::toc{depth=4 numbered}`; `<Markdown toc="auto">` adds one when a document has three headings and none written.
+- **Radius**: `{radius=8}` on any block, `<Markdown radius="10px">` or `configureMarkdown({ radius })` for all of them — every block reads `--r` then `--bmd-radius`.
+- **Every block**: `variant=` (→ `doc-variant-<name>` for a project's own styles), `class=`, `.class` / `#id` shorthands.
+- **Public AST**: `parseMarkdown()`, `walkAst()`, `extractHeadings()`, `extractLinks()`, `extractText()`.
+- **Link checker**: `validateLinks(md, { pageMap })` — anchors against the document's headings, paths against the page map, refused and insecure URLs.
+- **Export**: `renderHtml()` and `documentHtml()` (react-dom/server) with `cssUrl`.
+- **Plugins**: `registerBlocks()`, `definePlugin({ name, blocks, css })`.
+- **Editor**: `@bettercommunity/bmd-editor` — `<BmdEditor>` with a block palette, live preview, phone and desktop layouts, link check and HTML export. Separate package; the core stays a renderer.
+- Sanitiser: `mark`, `ins`, `sup`, `sub`, `time`, `figure` attributes, image `width`/`height`; the iframe allowlist now reads `configureMarkdown({ allowIframes })` and includes Spotify's embed.
+
+### Changed
+- README, package description and keywords no longer describe the kit by another product's name.
+
+### Unchanged
+- Every 1.x and 2.x directive, class name and attribute. Existing documents render identically.
+
 ## 2.0.0 — 2026-09-06
 
 The kit becomes a package: `packages/bmd` with `package.json`, `exports`, `docs/`, this file.

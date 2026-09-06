@@ -151,3 +151,76 @@ The header counts the ticked items and draws a bar; all ticked turns it green.
 ```
 :::center   :::left   :::right
 ```
+
+## Tables (3.0)
+```
+:::table[Caption]{style="striped bordered compact hover plain wide sticky numbers" align=center width=100%}
+| Column | Column |
+|---|---|
+| **markdown** in cells | :icon[rocket] :badge[x] `code` [link](/) |
+:::
+```
+The table inside is ordinary GFM; the wrapper adds the look and the caption.
+
+## Images and media (3.0)
+```
+:img[Alt]{src=/a.png width=480 height=320 align=center caption="…" link=/big.png zoom=false lazy=false border rounded}
+![alt](/a.png "A title becomes a caption")
+:audio[Title]{src=/ep.mp3}          ::audio{src=/ep.mp3 title="…"}
+::youtube{src=https://youtu.be/ID start=90}       ::yt{id=ID}
+::spotify{src=https://open.spotify.com/track/ID compact theme=light}
+```
+
+## API (3.0)
+```
+:::api[GET /api/things/:id]{auth=key summary="One thing" deprecated}
+:::params
+| Name | In | Type | Required | Description |
+|---|---|---|---|---|
+| `id` | path | string | yes | Which one |
+:::
+:::request
+`application/json` · object {name}
+:::
+:::response{status=200}
+```json
+{ "id": "…" }
+```
+:::
+:::
+
+::openapi{src=/api/openapi.json tag=feedback filter=/feedback toc}
+```
+`::openapi` fetches a spec (OpenAPI 3 / Swagger 2, JSON) and draws every operation as an
+`:::api` card. `openapiToBmd(spec)` is the same function, for a generator.
+
+## Live values and actions (3.0)
+```
+:counter[Downloads]{src=/api/stats.json path=stats.downloads refresh=60 format=number prefix= suffix=}
+::live{src=/api/status.json path=message format=text}
+:action[Vote]{href=/api/vote method=POST body='{"id":1}' confirm="Sure?" done="Thanks!" counter=Downloads once icon=thumbs-up color=#0a7}
+```
+`format`: `number`, `compact`, `text`, `json`. An action fires `bmd:action` on `window` and, with
+`counter=`, `bmd:refresh` so the named counter re-reads. Every URL goes through the policy.
+
+## Includes and diagrams (3.0)
+```
+::include{src=/docs/partials/install.md}
+:::mermaid[Caption]
+```
+graph TD; A-->B
+```
+:::
+```
+A bare ```` ```mermaid ```` fence is a diagram too.
+
+## Text (3.0)
+```
+==marked==   ~~struck~~   text[^1]   [[Page]]  [[Page|shown]]  [[Page#section]]  [[#section]]
+::toc{depth=4 numbered}
+```
+
+## On every block (3.0)
+```
+{radius=8}  {variant=quiet}  {class="a b"}  {.a #intro}
+```

@@ -4,8 +4,10 @@
 // their inputs off `node.properties`, in both the camelCased hast form and the dashed form,
 // because which one arrives depends on whether the value survived sanitising.
 import { useContext, useState, useEffect, useMemo, useId, useRef, Children } from 'react';
-import { MarkdownConfig } from './config.js';
+import { MarkdownConfig, urlPolicy, markdownConfig } from './config.js';
 import { IconGlyph } from './icons.jsx';
+import { safeUrl } from './url.js';
+import { openapiToBmd } from './openapi.js';
 
 /* kit:injected:start */
 /** A block whose component was not supplied. Says which, rather than rendering nothing. */
@@ -304,3 +306,219 @@ export function DocTabs({ children }) {
   );
 }
 
+
+/* ── B.MD 3.0: the blocks that talk to the network ──────────────────────────
+   Every URL below goes through the policy first (kind `api`), and nothing fetches during a
+   static render: what `renderHtml()` sees is each block's resting state — a label with no
+   number, a button that has not been pressed, a diagram as its source text. */
+
+/** A URL the policy accepts, or '' — and '' is what every component below draws as "—". */
+function apiUrl(raw) {
+  const r = safeUrl(raw, { kind: 'api', policy: urlPolicy() });
+  return r.ok ? r.href : '';
+}
+const pick = (obj, path) => {
+  if (!path) return obj;
+  let cur = obj;
+  for (const k of String(path).split('.')) { if (cur == null) return undefined; cur = cur[k]; }
+  return cur;
+};
+function fmtValue(v, format, lang) {
+  if (v == null) return '';
+  if (format === 'number' || format === 'compact') {
+    const n = Number(v);
+    return Number.isFinite(n) ? new Intl.NumberFormat(lang || undefined, format === 'compact' ? { notation: 'compact' } : {}).format(n) : String(v);
+  }
+  if (format === 'json') return JSON.stringify(v);
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+const classList = (p) => (Array.isArray(p.className) ? p.className : String(p.className || '').split(/\s+/));
+
+/** `:counter[Label]{src= path= refresh=}` / `::live{…}` — a value read from JSON, kept fresh. */
+export function DocFetch({ node }) {
+  const { lang } = useContext(MarkdownConfig);
+  const p = node?.properties || {};
+  const src = apiUrl(p.dataSrc || p['data-src'] || '');
+  const path = p.dataPath || p['data-path'] || '';
+  const refresh = Math.max(0, parseInt(p.dataRefresh || p['data-refresh'], 10) || 0);
+  const format = p.dataFormat || p['data-format'] || 'text';
+  const label = p.dataLabel || p['data-label'] || '';
+  const prefix = p.dataPrefix || p['data-prefix'] || '';
+  const suffix = p.dataSuffix || p['data-suffix'] || '';
+  const name = p.dataCounter || p['data-counter'] || label;
+  const block = classList(p).includes('doc-fetch-block');
+  const [state, setState] = useState({ value: undefined, err: !src });
+  useEffect(() => {
+    if (!src) return undefined;
+    let alive = true;
+    const load = () => fetch(src, { headers: { Accept: 'application/json, text/plain' } })
+      .then(async (r) => { if (!r.ok) throw new Error('http'); const ct = r.headers.get('content-type') || ''; return ct.includes('json') ? r.json() : r.text(); })
+      .then((j) => { if (alive) setState({ value: pick(j, path), err: false }); })
+      .catch(() => { if (alive) setState((st) => ({ ...st, err: true })); });
+    load();
+    const id = refresh ? setInterval(load, Math.max(5, refresh) * 1000) : null;
+    // A `:action{counter=…}` naming this one asks for a fresh read once its call succeeds.
+    const onRefresh = (e) => { const want = e?.detail?.counter; if (!want || want === name) load(); };
+    window.addEventListener('bmd:refresh', onRefresh);
+    return () => { alive = false; if (id) clearInterval(id); window.removeEventListener('bmd:refresh', onRefresh); };
+  }, [src, path, refresh, name]);
+  const Tag = block ? 'div' : 'span';
+  const shown = state.err ? '—' : state.value === undefined ? '…' : `${prefix}${fmtValue(state.value, format, lang)}${suffix}`;
+  return (
+    <Tag className={`doc-fetch${block ? ' doc-fetch-block' : ' doc-fetch-inline'}${state.err ? ' doc-fetch-err' : ''}`} title={src || undefined}>
+      {label ? <span className="doc-fetch-label">{label}</span> : null}
+      <span className="doc-fetch-value">{shown}</span>
+    </Tag>
+  );
+}
+
+/** `:action[Vote]{href= method= body= confirm= done= counter= once}` — a button that calls a URL. */
+export function DocAction({ node }) {
+  const p = node?.properties || {};
+  const href = apiUrl(p.dataHref || p['data-href'] || '');
+  const method = String(p.dataMethod || p['data-method'] || 'POST').toUpperCase();
+  const body = p.dataBody || p['data-body'] || '';
+  const confirmMsg = p.dataConfirm || p['data-confirm'] || '';
+  const doneMsg = p.dataDone || p['data-done'] || '';
+  const label = p.dataLabel || p['data-label'] || 'Go';
+  const color = p.dataColor || p['data-color'] || '';
+  const once = (p.dataOnce || p['data-once']) === 'true';
+  const icon = p.dataIcon || p['data-icon'] || '';
+  const counter = p.dataCounter || p['data-counter'] || '';
+  const [st, setSt] = useState('idle'); // idle | busy | done | err
+  const [reply, setReply] = useState('');
+  const run = async () => {
+    if (!href || st === 'busy' || (once && st === 'done')) return;
+    if (confirmMsg && typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+    setSt('busy');
+    try {
+      const init = { method, headers: { Accept: 'application/json, text/plain' } };
+      if (method !== 'GET' && method !== 'HEAD' && body) { init.headers['Content-Type'] = 'application/json'; init.body = body; }
+      const r = await fetch(href, init);
+      const text = await r.text().catch(() => '');
+      if (!r.ok) throw new Error(text.slice(0, 120) || String(r.status));
+      let msg = doneMsg;
+      if (!msg) { try { const j = JSON.parse(text); if (j && typeof j === 'object' && typeof j.message === 'string') msg = j.message; } catch { if (text.length < 80) msg = text; } }
+      setReply(msg); setSt('done');
+      window.dispatchEvent(new CustomEvent('bmd:action', { detail: { href, method, ok: true } }));
+      if (counter) window.dispatchEvent(new CustomEvent('bmd:refresh', { detail: { counter } }));
+    } catch (e) {
+      setReply(String(e?.message || 'failed').slice(0, 120)); setSt('err');
+      window.dispatchEvent(new CustomEvent('bmd:action', { detail: { href, method, ok: false } }));
+    }
+  };
+  return (
+    <span className={`doc-action doc-action-${st}`}>
+      <button type="button" className="doc-btn doc-btn-md doc-action-btn" style={color ? { '--btn': color } : undefined}
+        disabled={!href || st === 'busy' || (once && st === 'done')} onClick={run} title={href || 'No destination'}>
+        {icon ? <IconGlyph name={icon} size={14} className="doc-icon-svg" /> : null}{label}
+      </button>
+      {reply ? <span className={`doc-action-reply doc-action-reply-${st}`}>{reply}</span> : null}
+    </span>
+  );
+}
+
+/** `::include{src=…}` — another document, rendered here. Two levels deep at most. */
+export function DocInclude({ node }) {
+  const { lang, Nested, depth = 0 } = useContext(MarkdownConfig);
+  const p = node?.properties || {};
+  const raw = p.dataSrc || p['data-src'] || '';
+  const [text, setText] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let alive = true;
+    if (!raw) { setErr('empty'); return undefined; }
+    if (depth >= 2) { setErr('depth'); return undefined; }
+    const resolver = markdownConfig().resolveInclude;
+    const go = typeof resolver === 'function'
+      ? Promise.resolve(resolver(raw))
+      : (() => { const u = apiUrl(raw); return u ? fetch(u).then((r) => { if (!r.ok) throw new Error('http'); return r.text(); }) : Promise.reject(new Error('refused')); })();
+    go.then((t) => { if (alive) { setText(String(t ?? '')); setErr(''); } }).catch((e) => { if (alive) setErr(String(e?.message || 'failed')); });
+    return () => { alive = false; };
+  }, [raw, depth]);
+  if (err) return <div className="doc-include doc-include-err">{lang === 'fr' ? `Inclusion impossible : ${raw}` : `Could not include ${raw}`}{err === 'depth' ? (lang === 'fr' ? ' (trop profond)' : ' (too deep)') : ''}</div>;
+  if (text == null) return <div className="doc-include doc-include-loading">…</div>;
+  if (!Nested) return <pre className="doc-include">{text}</pre>;
+  return <div className="doc-include"><Nested lang={lang} depth={depth + 1}>{text}</Nested></div>;
+}
+
+/** `::openapi{src=…}` — a spec, fetched and drawn as `:::api` cards. */
+export function DocOpenapi({ node }) {
+  const { lang, Nested, depth = 0 } = useContext(MarkdownConfig);
+  const p = node?.properties || {};
+  const src = apiUrl(p.dataSrc || p['data-src'] || '');
+  const tag = p.dataTag || p['data-tag'] || '';
+  const filter = p.dataFilter || p['data-filter'] || '';
+  const title = p.dataTitle || p['data-title'] || '';
+  const toc = (p.dataToc || p['data-toc']) === 'true';
+  const [md, setMd] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let alive = true;
+    if (!src) { setErr('refused'); return undefined; }
+    fetch(src, { headers: { Accept: 'application/json' } })
+      .then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
+      .then((spec) => { if (alive) { setMd(openapiToBmd(spec, { tag, filter, toc, header: !title })); setErr(''); } })
+      .catch((e) => { if (alive) setErr(String(e?.message || 'failed')); });
+    return () => { alive = false; };
+  }, [src, tag, filter, toc, title]);
+  if (err) return <div className="doc-openapi doc-openapi-err">{lang === 'fr' ? 'Spécification OpenAPI introuvable.' : 'Could not load the OpenAPI document.'}{src ? ` (${src})` : ''}</div>;
+  if (md == null) return <div className="doc-openapi doc-openapi-loading">…</div>;
+  return (
+    <div className="doc-openapi">
+      {title ? <div className="doc-openapi-title">{title}</div> : null}
+      {Nested && depth < 2 ? <Nested lang={lang} depth={depth + 1}>{md}</Nested> : <pre>{md}</pre>}
+    </div>
+  );
+}
+
+/* Mermaid, loaded once and only when a page has a diagram. The host supplies `loadMermaid`
+   (`() => import('mermaid')`) when the package is installed; otherwise the ES module comes
+   from `cdn.mermaid`. Rendered under mermaid's `strict` level, which is what keeps a diagram's
+   labels from carrying markup into the page. */
+let _mermaid = null;
+let _mermaidPromise = null;
+function loadMermaid() {
+  if (_mermaid) return Promise.resolve(_mermaid);
+  if (!_mermaidPromise) {
+    _mermaidPromise = (async () => {
+      const cfg = markdownConfig();
+      let mod;
+      if (typeof cfg.loadMermaid === 'function') mod = await cfg.loadMermaid();
+      else if (cfg.cdn?.mermaid) mod = await import(/* @vite-ignore */ String(cfg.cdn.mermaid));
+      else throw new Error('mermaid is switched off');
+      const m = mod?.default || mod;
+      const dark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
+      m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default' });
+      _mermaid = m;
+      return m;
+    })().catch((e) => { _mermaidPromise = null; throw e; });
+  }
+  return _mermaidPromise;
+}
+/** ```mermaid fences and `:::mermaid` blocks. The source is shown until the diagram is ready. */
+export function DocMermaid({ node }) {
+  const p = node?.properties || {};
+  const code = String(p.dataCode || p['data-code'] || '').trim();
+  const title = p.dataTitle || p['data-title'] || '';
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const [svg, setSvg] = useState('');
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!code) return undefined;
+    let alive = true;
+    loadMermaid().then((m) => m.render(`bmd-mmd-${uid}`, code))
+      .then((r) => { if (alive) { setSvg(r?.svg || ''); setErr(''); } })
+      .catch((e) => { if (alive) setErr(String(e?.message || 'mermaid failed').split('\n')[0].slice(0, 160)); });
+    return () => { alive = false; };
+  }, [code, uid]);
+  return (
+    <figure className={`doc-mermaid${svg ? ' doc-mermaid-ready' : ''}`}>
+      {/* The SVG comes from mermaid's own renderer under `strict`, which escapes the labels
+          the author wrote — the only author-controlled text in it. */}
+      {svg ? <div className="doc-mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <pre className="doc-mermaid-src"><code>{code}</code></pre>}
+      {err ? <div className="doc-mermaid-err">{err}</div> : null}
+      {title ? <figcaption className="doc-mermaid-cap">{title}</figcaption> : null}
+    </figure>
+  );
+}

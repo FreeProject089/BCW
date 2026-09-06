@@ -1,7 +1,7 @@
 // B.MD — better.markdown
 //
-// A GitBook-style block system on top of GitHub-flavoured Markdown, as a React component you
-// copy into a project. This file is the ASSEMBLY: the pipeline, the component map, and the
+// A block system on top of GitHub-flavoured Markdown — callouts, cards, tabs, steps, embeds,
+// live values, diagrams — as a React component you install or copy into a project. This file is the ASSEMBLY: the pipeline, the component map, and the
 // `<Markdown>` everything else imports. The work is next door —
 //
 //   directives.js  markdown-with-directives → an mdast tree     (no React)
@@ -11,6 +11,10 @@
 //   url.js         the URL policy itself
 //   config.js      everything a host application points at itself
 //   plugins.js     a block B.MD does not have, added without editing B.MD
+//   openapi.js     an OpenAPI document, written out as :::api cards
+//   export.jsx     a document as an HTML string (react-dom/server)
+//   ast.js         the public syntax tree, headings and links without rendering
+//   links.js       does every link go somewhere
 //   roadmap.jsx    the built-in `:::roadmap`
 //   replay.jsx     the built-in `:::replay`
 //   nesting.js     the pre-pass that makes `:::` nest the way people write it
@@ -37,7 +41,7 @@ import { remarkDocBlocks } from './directives.js';
 import { rehypeSanitize, SANITIZE_SCHEMA, rehypeAnchorPrefix, rehypeIframeAllowlist, rehypeSafeUrls, rehypeSafeStyle } from './sanitize.js';
 import { MarkdownConfig } from './config.js';
 import { DocIcon, IconGlyph } from './icons.jsx';
-import { DocKbd, DocComment, DocTabs, DocSchedule, DocTime } from './blocks.jsx';
+import { DocKbd, DocComment, DocTabs, DocSchedule, DocTime, DocFetch, DocAction, DocInclude, DocOpenapi, DocMermaid } from './blocks.jsx';
 import { blockComponents } from './plugins.js';
 /* kit:injected:start */
 import { DocRoadmap, DocReplay } from './blocks.jsx';
@@ -53,8 +57,12 @@ export { ANCHOR_PREFIX, anchorEl } from './sanitize.js';
 export { ICON_NAMES, ShowcaseIcon, IconGlyph, DocIcon } from './icons.jsx';
 export { matchesLang } from './blocks.jsx';
 export { MarkdownConfig, configureMarkdown, appIconKeys, appIconLabel, registerAppIcons, markdownConfig } from './config.js';
-export { registerBlock } from './plugins.js';
+import { markdownConfig } from './config.js';
+export { registerBlock, registerBlocks, definePlugin } from './plugins.js';
 export { safeUrl, linkAttrs } from './url.js';
+export { openapiToBmd, openapiSummary } from './openapi.js';
+export { validateLinks } from './links.js';
+export { parseMarkdown, extractHeadings, extractLinks, extractText } from './ast.js';
 /* kit:injected:start */
 export { default as Roadmap } from './roadmap.jsx';
 export { default as Replay } from './replay.jsx';
@@ -128,12 +136,13 @@ function useRehypeHighlight() {
 const COMPONENTS = {
   'doc-icon': DocIcon, 'doc-kbd': DocKbd, 'doc-comment': DocComment, 'doc-tabs': DocTabs,
   'doc-schedule': DocSchedule, 'doc-time': DocTime,
+  'doc-fetch': DocFetch, 'doc-action': DocAction, 'doc-include': DocInclude, 'doc-openapi': DocOpenapi, 'doc-mermaid': DocMermaid,
 /* kit:injected:start */
   'doc-roadmap': DocRoadmap, 'doc-replay': DocReplay,
 /* kit:injected:end */
 };
 
-// Internal link with a GitBook-style hover-preview card (title + category), shown
+// Internal link with a hover-preview card (title + category), shown
 // only when the href is a known page in `pageMap`.
 function MdLink({ pageMap, href, children, ...rest }) {
   const info = href && (pageMap[href] || pageMap[String(href).replace(/#.*$/, '')]);
@@ -169,7 +178,10 @@ function MdLink({ pageMap, href, children, ...rest }) {
  * `roadmap` and `replay` are OVERRIDES. B.MD draws both itself — pass one only to replace it
  * (the site passes its rrweb player, which this file has no business bundling).
  */
-export default function Markdown({ children, className = '', pageMap, lang = 'en', roadmap = null, replay = null }) {
+/** Enough headings for a table of contents to be worth having, and none written by hand. */
+const wantsAutoToc = (src) => !/^::toc\b/m.test(src) && (src.match(/^#{2,4}\s/gm) || []).length >= 3;
+
+export default function Markdown({ children, className = '', pageMap, lang = 'en', roadmap = null, replay = null, toc = null, radius = null, depth = 0 }) {
   const [zoom, setZoom] = useState(null);
   // The two blocks that used to render a "component not supplied" box now have one. A host
   // that passes its own still wins — `roadmap`/`replay` are overrides, not requirements.
@@ -179,7 +191,9 @@ export default function Markdown({ children, className = '', pageMap, lang = 'en
     Roadmap: roadmap || BuiltInRoadmap,
     Replay: replay || BuiltInReplay,
     /* kit:injected:end */
-  }), [lang, roadmap, replay]);
+    Nested: Markdown,
+    depth,
+  }), [lang, roadmap, replay, depth]);
   const rehypeHighlight = useRehypeHighlight();
   const math = useMath(children);
   // Click any non-card image to open it full-screen (lightbox).
@@ -195,8 +209,22 @@ export default function Markdown({ children, className = '', pageMap, lang = 'en
     ...blockComponents(),
     ...COMPONENTS,
     img: ({ node, ...props }) => {
-      if (/doc-card-media|doc-comment-img/.test(props.className || '')) return <img loading="lazy" {...props} />;
-      return <img loading="lazy" {...props} className={`${props.className || ''} md-zoomable`} onClick={(e) => { e.stopPropagation(); e.preventDefault(); setZoom(props.src); }} />;
+      if (/doc-card-media|doc-comment-img|doc-img-nozoom/.test(props.className || '')) return <img loading="lazy" {...props} />;
+      const img = <img loading="lazy" {...props} title={undefined} className={`${props.className || ''} md-zoomable`} onClick={(e) => { e.stopPropagation(); e.preventDefault(); setZoom(props.src); }} />;
+      // `![alt](src "A caption")` — the title becomes a caption under the picture, which is
+      // what people mean when they write one; a tooltip nobody hovers for is not it.
+      if (props.title && !/doc-img-el/.test(props.className || '')) return <span className="doc-img doc-img-auto">{img}<span className="doc-img-caption">{props.title}</span></span>;
+      return img;
+    },
+    // A ```mermaid fence is a diagram, not a code block.
+    pre: ({ node, ...props }) => {
+      const c = node?.children?.[0];
+      const cls = c?.properties?.className || [];
+      if (c?.tagName === 'code' && (Array.isArray(cls) ? cls : [cls]).some((x) => String(x).includes('language-mermaid'))) {
+        const text = (c.children || []).map((x) => x.value ?? (x.children || []).map((y) => y.value || '').join('')).join('');
+        return <DocMermaid node={{ properties: { dataCode: text } }} />;
+      }
+      return <pre {...props} />;
     },
     // A table scrolls inside its own wrapper. Without it a wide one widens the article and
     // the whole page scrolls sideways — on a phone that moves the text you are reading.
@@ -206,10 +234,20 @@ export default function Markdown({ children, className = '', pageMap, lang = 'en
 
   // The pre-parser walks the whole document with half a dozen regexes. It ran again on every
   // render for a string that had not changed.
-  const source = useMemo(() => preprocessMd(children || ''), [children]);
+  const source = useMemo(() => {
+    let src = preprocessMd(children || '', { pageMap });
+    // `toc="auto"`: a table of contents at the top when the document is long enough to need
+    // one and the author did not place one. `toc={true}` forces it.
+    if (toc === true || (toc === 'auto' && wantsAutoToc(src))) src = `::toc\n\n${src}`;
+    return src;
+  }, [children, pageMap, toc]);
+  const wrapStyle = useMemo(() => {
+    const r = radius ?? markdownConfig().radius;
+    return r != null && r !== '' ? { '--bmd-radius': /^\d+(?:\.\d+)?$/.test(String(r)) ? `${r}px` : String(r) } : undefined;
+  }, [radius]);
   return (
     <MarkdownConfig.Provider value={cfg}>
-    <div className={`md-body ${className}`}>
+    <div className={`md-body ${className}`} style={wrapStyle}>
       <ReactMarkdown
         // remark-math BEFORE the directive plugins: `$x$` has to become a math node before
         // anything else looks at the text, or a formula containing a colon is read as a

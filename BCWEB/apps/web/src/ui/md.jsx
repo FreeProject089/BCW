@@ -24,6 +24,8 @@ export {
 // These paths are this site's asset layout, and they are the only thing in the kit that was
 // specific to it by value. Set once, at import time, before anything renders.
 configureMarkdown({
+  // Diagrams: the package is installed here, so no CDN request.
+  loadMermaid: () => import('mermaid'),
   appIcons: { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', bi: '/icons/bi.png', installer: '/icons/bi.png', bc: '/logo.png' },
 });
 

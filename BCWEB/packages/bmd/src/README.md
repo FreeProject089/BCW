@@ -1,6 +1,6 @@
 # B.MD — better.markdown
 
-A GitBook-style block system on top of GitHub-flavoured Markdown, as a **React component** —
+A block system on top of GitHub-flavoured Markdown, as a **React component** —
 the `@bettercommunity/bmd` package. Seventy-odd directives — callouts, cards, tabs, steps, columns,
 buttons with brand logos, file downloads, a roadmap, a media embed, a table of contents,
 maths — and no build step of its own.
@@ -286,6 +286,26 @@ $$E = mc^2$$                                        maths
 :rocket: :tada: :+1:                                emoji, by GitHub's names
 ```
 
+B.MD 3.0 adds, in the same spirit:
+
+```
+:::table[Caption]{style="striped bordered" align=}   a styled GFM table (compact hover plain wide sticky numbers)
+:img[Alt]{src= width= height= align= caption= link=}  an image with its options (:image; zoom=false lazy=false border rounded)
+:audio[Title]{src=}                                 an audio player (::audio on its own line)
+::youtube{src=} / ::yt{id=}                         a YouTube embed
+::spotify{src=}                                     a Spotify embed (track, album, playlist, episode, show, artist)
+:::api[GET /path]{auth= summary= deprecated}        an endpoint card (:::endpoint)
+:::params / :::request / :::response{status=}       its sections
+::openapi{src= tag= filter=}                        a whole OpenAPI document as endpoint cards (::swagger)
+:counter[Label]{src= path= refresh= format=}        a live value read from JSON (:fetch; ::live for a block)
+:action[Label]{href= method= body= confirm= done=}  a button that calls a URL (counter= refreshes one; once)
+::include{src=}                                     another document, rendered here (::embed-md)
+:::mermaid[Caption] / ```mermaid                    a diagram (:::diagram)
+==marked==   [[Page]]  [[Page|text]]  [[#section]]  a mark; wiki links resolved against pageMap
+::toc{depth=4 numbered}                             a deeper or numbered table of contents
+{radius=8} {variant=quiet} {class=x}                on any block
+```
+
 **The two timezone blocks are not two spellings of one idea.** `:::schedule` states hours that
 repeat, and its rows are NOT converted: "Monday 09:00 Europe/Paris" is 09:00 in Paris every
 week of the year, and what moves across a daylight-saving boundary is how far that is from the
@@ -303,3 +323,24 @@ which side of a daylight-saving change the moment falls on.
 It does not parse or store anything: `<Markdown>` takes a string and returns elements. Where
 the string comes from, who may edit it, and how it is saved are your application's problem —
 which is why this folder has no API client, no auth, and no router in it.
+
+## 3.0 — what was added and what it needs
+
+The AST (`ast.js`) and the link checker (`links.js`) parse without rendering, which is why the
+package now lists `unified` and `remark-parse` — the two pieces react-markdown already carried.
+`export.jsx` uses `react-dom/server`, which is `react-dom`. Diagrams need `mermaid`: install it
+and pass `configureMarkdown({ loadMermaid: () => import('mermaid') })`, or leave it out and the
+module is fetched from `cdn.mermaid` on the first diagram (null switches diagrams off — they
+render as their source).
+
+| Import | What it is |
+|---|---|
+| `@bettercommunity/bmd/ast` | `parseMarkdown`, `walkAst`, `extractHeadings`, `extractLinks`, `extractText` |
+| `@bettercommunity/bmd/links` | `validateLinks` |
+| `@bettercommunity/bmd/export` | `renderHtml`, `documentHtml`, `cssUrl` |
+| `@bettercommunity/bmd/openapi` | `openapiToBmd`, `openapiSummary` |
+| `@bettercommunity/bmd/plugins` | `registerBlock`, `registerBlocks`, `definePlugin` |
+
+The blocks that fetch (`:counter`, `::live`, `:action`, `::include`, `::openapi`) put their URL
+through the same policy as a link (`kind: 'api'`), so `policy.allowHosts` is what decides which
+servers a document may talk to.

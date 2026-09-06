@@ -351,9 +351,15 @@ export const DEFAULT_DEV_CARDS = [
   },
   {
     id: 'markdown', icon: 'puzzle', to: '/dev/markdown', ctaKey: 'dev.hub.open',
-    titleKey: 'dev.hub.md', title: 'The markdown kit',
-    bodyKey: 'dev.hub.md.s',
-    body: 'The block system this site renders with — callouts, cards, tabs, steps, brand buttons — as four files you copy into your own project. With a live editor.',
+    titleKey: 'dev.hub.md', title: 'B.MD — the markdown kit',
+    bodyKey: 'dev.hub.md.s3',
+    body: 'The block system this site renders with — callouts, cards, tabs, steps, API cards, embeds, live values, diagrams — as the @bettercommunity/bmd package, with an editor package beside it.',
+    chips: [
+      { to: '/dev/markdown', labelKey: 'dev.hub.md.play', label: 'Playground', icon: 'puzzle', hintKey: 'dev.hub.md.play.h', hint: 'Type a block, see it, take the folder.' },
+      { to: '/dev/bmd', labelKey: 'dev.hub.md.install', label: 'Install it', icon: 'package', hintKey: 'dev.hub.md.install.h', hint: 'Vite, Next.js, Remix, Astro, Node — the wiring for each.' },
+      { to: '/dev/editor', labelKey: 'dev.hub.md.editor', label: 'The editor', icon: 'pen-line', hintKey: 'dev.hub.md.editor.h', hint: 'Block menu, live preview, link check, export.' },
+      { to: '/dev/tools#openapi', labelKey: 'dvt.oa.title', label: 'OpenAPI → B.MD', icon: 'file-json', hintKey: 'dev.hub.md.oa.h', hint: 'Paste a spec, get endpoint cards to publish.' },
+    ],
   },
   {
     id: 'docs', icon: 'book-open', to: '/docs', ctaKey: 'dev.hub.open',

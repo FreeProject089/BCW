@@ -13,6 +13,8 @@ import { useAuth } from './auth.jsx';
 import { ApiConsole } from './dev.jsx';
 import CodeMap from '../ui/code-map.jsx';
 import { lintBmmScript } from '../lib/bmmscript-lint.js';
+import { openapiToBmd, openapiSummary } from '@bettercommunity/bmd/openapi';
+import Markdown from '../ui/md.jsx';
 
 // /dev/tools — the two things a developer wants that are not "call an endpoint".
 //
@@ -20,6 +22,57 @@ import { lintBmmScript } from '../lib/bmmscript-lint.js';
 // publish it and watch BMM refuse: a loop with a human, a deploy and somebody else's app in
 // it. The call log exists because the owner of a key was the only person who could not see
 // what it had been doing — which is backwards, since they are the one who can fix a 403.
+
+// An OpenAPI document → B.MD endpoint cards, to paste into a doc page. The same function the
+// `::openapi` block renders with, so what is pasted looks like what the block would have drawn
+// — and can then be edited, which a block that fetches the spec every time cannot be.
+function OpenApiTool() {
+  const { t } = useI18n(); const toast = useToast();
+  const [mode, setMode] = useState('url');
+  const [url, setUrl] = useState('/api/openapi.json');
+  const [body, setBody] = useState('');
+  const [tag, setTag] = useState(''); const [filter, setFilter] = useState('');
+  const [out, setOut] = useState(''); const [sum, setSum] = useState(null); const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true); setOut(''); setSum(null);
+    try {
+      let spec;
+      if (mode === 'url') {
+        const r = await fetch(url.trim(), { headers: { Accept: 'application/json' } });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        spec = await r.json();
+      } else spec = JSON.parse(body);
+      setSum(openapiSummary(spec));
+      setOut(openapiToBmd(spec, { tag: tag.trim() || undefined, filter: filter.trim() || undefined, toc: true }));
+    } catch (e) { toast.error(`${t('dvt.oa.fail', 'Could not read that spec')}: ${e?.message || e}`); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('dvt.oa.title', 'OpenAPI → B.MD')}</div>
+      <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">{t('dvt.oa.s', 'Paste an OpenAPI 3 (or Swagger 2) document — a URL or the JSON — and get its endpoints as :::api cards you can publish on a doc page and edit. A ::openapi{src=…} block draws the same thing live, without the editing.')}</p>
+      <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 mb-2">
+        {[['url', t('dvt.byurl', 'By URL')], ['paste', t('dvt.paste', 'Paste it')]].map(([k, l]) => (
+          <button key={k} onClick={() => setMode(k)} className={`px-2.5 py-1 rounded-[8px] text-[12px] ${mode === k ? 'bg-[var(--bg-solid)] font-medium' : 'text-[var(--muted)]'}`}>{l}</button>
+        ))}
+      </div>
+      {mode === 'url'
+        ? <Field label={t('dvt.oa.url', 'Spec URL (same origin, or a server that allows it)')}><Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/api/openapi.json" /></Field>
+        : <Field label={t('dvt.json', 'The JSON')}><Textarea rows={8} value={body} onChange={(e) => setBody(e.target.value)} placeholder='{ "openapi": "3.0.0", "paths": { … } }' /></Field>}
+      <div className="grid sm:grid-cols-2 gap-2 mt-2">
+        <Field label={t('dvt.oa.tag', 'Only this tag (optional)')}><Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="feedback" /></Field>
+        <Field label={t('dvt.oa.filter', 'Only paths starting with (optional)')}><Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="/feedback" /></Field>
+      </div>
+      <Button className="mt-2" variant="primary" disabled={busy} onClick={run}>{busy ? <Spinner /> : t('dvt.oa.go', 'Generate')}</Button>
+      {sum && <p className="text-xs text-[var(--muted)] mt-3">{t('dvt.oa.sum', '{t} {v} — {p} paths, {o} operations, {n} tags').replace('{t}', sum.title).replace('{v}', sum.version).replace('{p}', sum.paths).replace('{o}', sum.operations).replace('{n}', sum.tags.length)}</p>}
+      {out && <div className="mt-3 space-y-2">
+        <div className="flex items-center gap-2"><span className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider">{t('dvt.oa.md', 'The markdown')}</span><Button size="sm" onClick={() => { navigator.clipboard?.writeText(out); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /> {t('common.copy', 'Copy')}</Button></div>
+        <Textarea rows={12} value={out} readOnly className="!font-mono !text-[12px]" />
+        <details><summary className="text-xs cursor-pointer text-[var(--muted)]">{t('dvt.oa.preview', 'Preview')}</summary><Card className="p-4 mt-2 overflow-x-auto"><Markdown>{out}</Markdown></Card></details>
+      </div>}
+    </Card>
+  );
+}
 
 function Validator() {
   const { t } = useI18n(); const toast = useToast();
@@ -612,6 +665,8 @@ export default function DevTools() {
       id: 'code', k: 'dvt.grp.code', label: 'Code',
       tools: [
         { id: 'codemap', label: t('dvt.cm', 'Map a repository'), el: <CodeMapTool />, wide: true, needsAuth: true },
+        // No account needed: it reads a spec you give it and calls nothing of ours.
+        { id: 'openapi', label: t('dvt.oa.title', 'OpenAPI → B.MD'), el: <OpenApiTool />, wide: true },
       ],
     },
     {

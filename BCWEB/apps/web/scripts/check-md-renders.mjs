@@ -65,6 +65,17 @@ const FORM = {
   version: ':::changelog\n:::version[1.0.0]{date=2026-09-01}\n- [NEW] x\n:::\n:::', release: ':::changelog\n:::release[1.0.0]\nx\n:::\n:::',
   q: ':::faq\n:::q[Why?]\nx\n:::\n:::', question: ':::faq\n:::question[Why?]{open}\nx\n:::\n:::',
   checklist: ':::checklist[Launch]\n- [x] a\n- [ ] b\n:::',
+  // 3.0
+  table: ':::table[Cap]{style="striped bordered"}\n| a | b |\n|---|---|\n| c | d |\n:::',
+  audio: 'x :audio[Ep]{src=/a.mp3}', spotify: '::spotify{src=https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC}',
+  youtube: '::youtube{src=https://youtu.be/dQw4w9WgXcQ}', yt: '::yt{id=dQw4w9WgXcQ}',
+  img: 'x :img[Alt]{src=/a.png width=120}', image: '::image{src=/a.png caption="c"}',
+  api: ':::api[GET /api/x]{auth=key summary="s"}\nx\n:::', endpoint: ':::endpoint[POST /api/y]\nx\n:::',
+  request: ':::api[POST /api/y]\n:::request\nx\n:::\n:::', response: ':::api[GET /api/y]\n:::response{status=200}\nx\n:::\n:::', params: ':::api[GET /api/y]\n:::params\n| a | b |\n|---|---|\n| c | d |\n:::\n:::',
+  openapi: '::openapi{src=/api/openapi.json}', swagger: '::swagger{src=/api/openapi.json}',
+  counter: 'x :counter[Downloads]{src=/api/stats.json path=n}', fetch: 'x :fetch[Status]{src=/api/s.json path=m}', live: '::live{src=/api/s.json path=m}',
+  action: 'x :action[Vote]{href=/api/vote}', include: '::include{src=/docs/x.md}', 'embed-md': '::embed-md{src=/docs/x.md}',
+  mermaid: ':::mermaid[Flow]\n```\ngraph TD; A-->B\n```\n:::', diagram: ':::diagram\n```\ngraph TD; A-->B\n```\n:::',
 };
 const formOf = (n) => FORM[n] || `:::${n}[T]\nx\n:::`;
 

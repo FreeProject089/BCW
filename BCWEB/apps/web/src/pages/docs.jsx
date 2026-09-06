@@ -13,7 +13,7 @@ import Markdown, { IconGlyph, anchorEl, ANCHOR_PREFIX } from '../ui/md.jsx';
 import { MarkdownEditor, useSectionComments, useSectionCommentPills, AuthorsRow } from './blog.jsx';
 import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from '../ui/ui.jsx';
 
-// BCWEB documentation — a GitBook-style space rendered with the doc-block markdown
+// BCWEB documentation — a docs space rendered with the B.MD block markdown
 // system. Public read; ADMIN/SUPERADMIN (the "special role") get an inline editor.
 export default function Docs() {
   const { slug } = useParams();
@@ -305,7 +305,7 @@ function PageTocMobile({ body }) {
   );
 }
 
-/* GitBook-style right rail: the current page's headings, with the section in view
+/* Right rail: the current page's headings, with the section in view
    highlighted (IntersectionObserver against the anchor ids the renderer emits). */
 function PageToc({ body }) {
   const { t } = useI18n();

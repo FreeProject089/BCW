@@ -411,7 +411,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const [iconPick, setIconPick] = useState(false);
   const [badgePick, setBadgePick] = useState(false);
   const [kbdPick, setKbdPick] = useState(false);
-  // GitBook-style block snippets (remark-directive). `insertBlock` closes the menu.
+  // B.MD block snippets (remark-directive). `insertBlock` closes the menu.
   const BLOCKS = [
     { icon: TagIcon, label: 'Callout', snip: '\n:::tip[Good to know]\nSomething worth highlighting.\n:::\n' },
     { icon: Sparkles, label: 'Custom callout', snip: '\n:::callout[Custom]{icon=rocket color="#7c3aed"}\nYour own icon and colour.\n:::\n' },

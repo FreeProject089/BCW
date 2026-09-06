@@ -124,7 +124,7 @@ export function remarkDocBlocks() {
     visit(tree, 'heading', (node) => {
       const text = nodeText(node); const id = slugify(text);
       node.data = node.data || {}; node.data.hProperties = { ...(node.data.hProperties || {}), id };
-      if (node.depth >= 2 && node.depth <= 3) headings.push({ depth: node.depth, text, id });
+      if (node.depth >= 2 && node.depth <= 4) headings.push({ depth: node.depth, text, id });
     });
     // Pass 2 — directives.
     visit(tree, (node) => {
@@ -517,12 +517,182 @@ export function remarkDocBlocks() {
           ] },
           textEl('span', 'doc-meter-text', `${attrs.label ? `${attrs.label} ` : ''}${pct}%`),
         ];
+      } else if (name === 'table') {
+        // A styled wrapper around an ordinary GFM table — the table itself is written the way
+        // it always was, so the cells keep holding markdown (links, code, emphasis, icons).
+        //   :::table[Caption]{style="striped bordered" align=center width=100%}
+        //   | A | B |
+        //   |---|---|
+        //   :::
+        const styles = String(attrs.style || attrs.variant || attrs.look || '').toLowerCase().split(/[\s,+]+/).filter(Boolean);
+        const known = new Set(['striped', 'bordered', 'compact', 'hover', 'plain', 'wide', 'sticky', 'numbers']);
+        const props = {};
+        if (attrs.width) props.style = `--tw:${/^\d+$/.test(attrs.width) ? `${attrs.width}px` : attrs.width}`;
+        if (['left', 'center', 'right'].includes(String(attrs.align))) props['data-align'] = String(attrs.align);
+        setEl('figure', ['doc-table', ...styles.filter((x) => known.has(x)).map((x) => `doc-table-${x}`)], props);
+        const cap = labelText || attrs.caption || attrs.title;
+        if (cap) node.children.push(textEl('figcaption', 'doc-table-caption', cap));
+      } else if (name === 'audio') {
+        //   :audio[Episode 12]{src=/ep12.mp3}   or, on its own line, ::audio{src=… title=…}
+        const src = attrs.src || attrs.href || '';
+        const title = (nodeText(node) || labelText || attrs.title || '').trim();
+        const inline = node.type === 'textDirective';
+        setEl(inline ? 'span' : 'figure', ['doc-audio', ...(inline ? ['doc-audio-inline'] : [])]);
+        node.children = [
+          ...(title ? [textEl(inline ? 'span' : 'figcaption', 'doc-audio-title', title)] : []),
+          { type: 'paragraph', data: { hName: 'audio', hProperties: { src, controls: true, preload: 'none', className: ['doc-audio-player'] } }, children: [] },
+        ];
+      } else if (name === 'spotify') {
+        // `::spotify{src=https://open.spotify.com/track/…}` → the official embed. A full URL,
+        // an `open.spotify.com/embed/…` URL, or `track:ID` / `album:ID` / `playlist:ID` /
+        // `episode:ID` / `show:ID` / `artist:ID` all work. Anything else says so in place of
+        // the player rather than drawing an empty frame.
+        const raw = String(attrs.src || attrs.href || nodeText(node) || '').trim();
+        let m = raw.match(/open\.spotify\.com\/(?:embed\/)?(?:intl-[a-z]+\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
+        if (!m) m = raw.match(/^(?:spotify:)?(track|album|playlist|episode|show|artist)[:/]([A-Za-z0-9]+)$/);
+        const compact = attrs.compact != null || attrs.size === 'sm';
+        setEl('div', ['doc-embed', 'doc-embed-spotify', ...(compact ? ['doc-embed-compact'] : [])]);
+        node.children = m
+          ? [{ type: 'paragraph', data: { hName: 'iframe', hProperties: { src: `https://open.spotify.com/embed/${m[1]}/${m[2]}${attrs.theme === 'light' ? '?theme=0' : ''}`, loading: 'lazy', allow: 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture', frameBorder: '0', className: ['doc-embed-frame'] } }, children: [] }]
+          : [textEl('span', 'doc-embed-bad', `Spotify: unrecognised link${raw ? ` (${raw})` : ''}`)];
+      } else if (name === 'youtube' || name === 'yt') {
+        //   ::youtube{src=https://youtu.be/ID start=90}   ::yt{id=ID}
+        const raw = String(attrs.src || attrs.href || attrs.id || nodeText(node) || '').trim();
+        const m = raw.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{6,})/) || raw.match(/^([A-Za-z0-9_-]{6,})$/);
+        const start = parseInt(attrs.start || attrs.t, 10) || 0;
+        setEl('div', ['doc-embed', 'doc-embed-video']);
+        node.children = m
+          ? [{ type: 'paragraph', data: { hName: 'iframe', hProperties: { src: `https://www.youtube-nocookie.com/embed/${m[1]}${start ? `?start=${start}` : ''}`, loading: 'lazy', allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen', allowFullScreen: true, frameBorder: '0', className: ['doc-embed-frame'] } }, children: [] }]
+          : [textEl('span', 'doc-embed-bad', `YouTube: unrecognised link${raw ? ` (${raw})` : ''}`)];
+      } else if (name === 'img' || name === 'image') {
+        // The image with everything `![alt](src)` cannot carry:
+        //   :img[Alt text]{src=/a.png width=480 height=320 align=center caption="…" link=/big.png zoom=false lazy=false border}
+        // A number is pixels; anything else (`50%`, `20rem`) is passed through.
+        const src = attrs.src || attrs.href || '';
+        const alt = (nodeText(node) || labelText || attrs.alt || '').trim();
+        const inline = node.type === 'textDirective';
+        const align = ['left', 'center', 'right'].includes(String(attrs.align)) ? attrs.align : '';
+        const dim = (v) => (v == null || v === '' ? '' : /^\d+$/.test(String(v)) ? `${v}px` : String(v));
+        const style = [];
+        if (attrs.width) style.push(`width:${dim(attrs.width)}`);
+        if (attrs.height) style.push(`height:${dim(attrs.height)}`);
+        if (attrs.max || attrs.maxwidth) style.push(`max-width:${dim(attrs.max || attrs.maxwidth)}`);
+        const imgProps = { src, alt, className: ['doc-img-el', ...(attrs.zoom === 'false' || attrs.nozoom != null ? ['doc-img-nozoom'] : [])], loading: attrs.lazy === 'false' ? 'eager' : 'lazy', decoding: 'async' };
+        if (/^\d+$/.test(String(attrs.width || ''))) imgProps.width = String(attrs.width);
+        if (/^\d+$/.test(String(attrs.height || ''))) imgProps.height = String(attrs.height);
+        if (style.length) imgProps.style = style.join(';');
+        let img = { type: 'paragraph', data: { hName: 'img', hProperties: imgProps }, children: [] };
+        const link = attrs.link || '';
+        if (link) img = { type: 'paragraph', data: { hName: 'a', hProperties: { href: link, className: ['doc-img-link'] } }, children: [img] };
+        const cap = attrs.caption || attrs.title || '';
+        setEl(inline ? 'span' : 'figure', ['doc-img', ...(inline ? ['doc-img-inline'] : []), ...(align ? [`doc-img-${align}`] : []), ...(attrs.border != null ? ['doc-img-border'] : []), ...(attrs.rounded != null ? ['doc-img-rounded'] : [])]);
+        node.children = [img, ...(cap && !inline ? [textEl('figcaption', 'doc-img-caption', cap)] : [])];
+      } else if (name === 'api' || name === 'endpoint') {
+        // One endpoint, as a card: the method, the path, who may call it, then whatever the
+        // author writes — a parameters table, examples, `:::request` / `:::response` sections.
+        //   :::api[GET /api/feedback/:project]{auth=session summary="…" deprecated}
+        // `::openapi{src=…}` draws a whole spec as these, so a hand-written one and a generated
+        // one look the same on the page.
+        const sig = (labelText || attrs.title || `${attrs.method || ''} ${attrs.path || ''}`).trim();
+        const mm = sig.match(/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|WS|SSE)\s+(\S.*)$/i);
+        const method = (mm ? mm[1] : attrs.method || 'GET').toUpperCase();
+        const path = mm ? mm[2] : (attrs.path || sig);
+        setEl('div', ['doc-api', `doc-api-${method.toLowerCase()}`, ...(attrs.deprecated != null ? ['doc-api-deprecated'] : [])]);
+        const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-api-head'] } }, children: [
+          textEl('span', 'doc-api-method', method),
+          textEl('code', 'doc-api-path', path),
+          ...(attrs.auth ? [textEl('span', 'doc-api-auth', String(attrs.auth))] : []),
+          ...(attrs.deprecated != null ? [textEl('span', 'doc-badge', 'deprecated')] : []),
+        ] }];
+        if (attrs.summary) head.push(textEl('div', 'doc-api-summary', attrs.summary));
+        node.children = [...head, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-api-body'] } }, children: node.children }];
+      } else if (name === 'request' || name === 'response' || name === 'params') {
+        // The sections an endpoint card is made of. `:::response{status=200}`.
+        const status = String(attrs.status || attrs.code || '').trim();
+        const fallback = name === 'params' ? 'Parameters' : name === 'request' ? 'Request' : `Response${status ? ` ${status}` : ''}`;
+        const cls = ['doc-api-section', `doc-api-${name}`];
+        if (status) cls.push(`doc-api-status-${status[0]}xx`);
+        setEl('div', cls, status ? { 'data-status': status } : {});
+        node.children.unshift(textEl('div', 'doc-api-section-title', labelText || attrs.title || fallback));
+      } else if (name === 'openapi' || name === 'swagger') {
+        //   ::openapi{src=/api/openapi.json tag=feedback filter=/feedback}
+        // Fetched and drawn by a component: the spec is turned into `:::api` cards (openapi.js)
+        // and rendered through the same pipeline, so it is styled, sanitised and searchable
+        // like anything else on the page.
+        setEl('doc-openapi', ['doc-openapi'], {
+          'data-src': attrs.src || attrs.href || '', 'data-tag': attrs.tag || '', 'data-filter': attrs.filter || attrs.path || '',
+          'data-title': (labelText || nodeText(node) || attrs.title || '').trim(), 'data-toc': attrs.toc != null ? 'true' : '',
+        });
+        node.children = [];
+      } else if (name === 'counter' || name === 'fetch' || name === 'live') {
+        // A value read from a URL, kept fresh:
+        //   :counter[Downloads]{src=/api/stats.json path=downloads refresh=60 format=number}
+        //   ::live{src=/api/status.json path=message}      (a block)
+        // The component fetches; the parser only records what to fetch. The URL goes through
+        // the policy like any other, and a refused one renders an em-dash rather than a request.
+        setEl('doc-fetch', ['doc-fetch', name === 'live' ? 'doc-fetch-block' : 'doc-fetch-inline'], {
+          'data-src': attrs.src || attrs.href || '', 'data-path': attrs.path || attrs.key || '',
+          'data-refresh': String(Math.max(0, parseInt(attrs.refresh || attrs.every, 10) || 0)),
+          'data-format': attrs.format || (name === 'counter' ? 'number' : 'text'),
+          'data-label': (nodeText(node) || labelText || attrs.label || '').trim(),
+          'data-prefix': attrs.prefix || '', 'data-suffix': attrs.suffix || '', 'data-counter': attrs.name || attrs.id || '',
+        });
+        node.children = [];
+      } else if (name === 'action') {
+        // A button that calls a URL when pressed — a vote, a "notify me", a webhook:
+        //   :action[Vote]{href=https://api.example/vote method=POST body='{"id":1}' confirm="Sure?" done="Thanks!" counter=votes once}
+        // `counter=` names a `:counter{name=…}` to refresh once the call succeeds.
+        setEl('doc-action', ['doc-action'], {
+          'data-href': attrs.href || attrs.url || attrs.src || '', 'data-method': String(attrs.method || 'POST').toUpperCase(),
+          'data-body': attrs.body || attrs.payload || '', 'data-confirm': attrs.confirm || '', 'data-done': attrs.done || attrs.success || '',
+          'data-label': (nodeText(node) || labelText || attrs.label || 'Go').trim(), 'data-color': attrs.color || '',
+          'data-once': attrs.once != null ? 'true' : '', 'data-icon': attrs.icon || '', 'data-counter': attrs.counter || attrs.refresh || '',
+        });
+        node.children = [];
+      } else if (name === 'include' || name === 'embed-md') {
+        //   ::include{src=/docs/partials/install.md}
+        // Fetched by the component (through `resolveInclude` when the host set one) and rendered
+        // as a nested document, two levels deep at most.
+        setEl('doc-include', ['doc-include'], { 'data-src': (attrs.src || attrs.href || nodeText(node) || '').trim() });
+        node.children = [];
+      } else if (name === 'mermaid' || name === 'diagram') {
+        //   :::mermaid[Caption]
+        //   ```
+        //   graph TD; A-->B
+        //   ```
+        //   :::
+        // A bare ```mermaid fence works as well, with no directive at all. The text is handed
+        // to the component untouched; mermaid draws it in the browser under its strict setting.
+        const code = (node.children || []).find((c) => c.type === 'code');
+        const text = code ? String(code.value || '') : nodeText(node);
+        setEl('doc-mermaid', ['doc-mermaid'], { 'data-code': text, 'data-title': labelText || attrs.title || '' });
+        node.children = [];
       } else if (name === 'toc') {
-        data.hName = 'nav'; data.hProperties = { className: ['doc-toc'] };
+        // `{depth=4}` reaches h4 (default h3); `{numbered}` counts the entries.
+        const maxDepth = Math.min(4, Math.max(2, parseInt(attrs.depth || attrs.max, 10) || 3));
+        data.hName = 'nav'; data.hProperties = { className: ['doc-toc', ...(attrs.numbered != null ? ['doc-toc-numbered'] : [])] };
         node.children = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-toc-title'] } }, children: [{ type: 'text', value: labelText || 'On this page' }] },
-          { type: 'list', ordered: false, data: { hName: 'ul' }, children: headings.map((h) => ({
+          { type: 'list', ordered: attrs.numbered != null, data: { hName: attrs.numbered != null ? 'ol' : 'ul' }, children: headings.filter((h) => h.depth <= maxDepth).map((h) => ({
             type: 'listItem', data: { hName: 'li', hProperties: { className: [`doc-toc-l${h.depth}`] } },
             children: [{ type: 'paragraph', data: { hName: 'a', hProperties: { href: `#${h.id}` } }, children: [{ type: 'text', value: h.text }] }] })) }];
+      }
+      // ── Attributes every block understands ──
+      // `radius=` (a number is px), `variant=` (a class hook for a project's own styles),
+      // `.class` / `#id` in remark-directive's own shorthand, `class=`. Applied after the
+      // branch above so a block cannot forget to honour them. `--r` cascades: the radius set
+      // on a card is the radius of the buttons inside it, which is what "round this block"
+      // means to the person writing it.
+      if (data.hName) {
+        const hp = data.hProperties || (data.hProperties = {});
+        const cls = Array.isArray(hp.className) ? hp.className : hp.className ? [hp.className] : [];
+        if (attrs.variant) cls.push(`doc-variant-${String(attrs.variant).toLowerCase().replace(/[^a-z0-9-]/g, '')}`);
+        if (attrs.class) for (const c of String(attrs.class).split(/\s+/)) if (/^[a-zA-Z][\w-]*$/.test(c) && !cls.includes(c)) cls.push(c);
+        hp.className = cls;
+        if (attrs.radius != null) {
+          const r = String(attrs.radius).trim();
+          if (/^\d+(?:\.\d+)?(px|em|rem|%)?$/.test(r)) hp.style = `${hp.style ? `${hp.style};` : ''}--r:${/^\d+(?:\.\d+)?$/.test(r) ? `${r}px` : r}`;
+        }
+        if (attrs.id && /^[a-zA-Z][\w-]*$/.test(String(attrs.id))) hp.id = String(attrs.id);
       }
     });
     // Pass 3 — safety net: drop orphan directive-fence lines that remark-directive left

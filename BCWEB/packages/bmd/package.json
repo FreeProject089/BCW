@@ -1,7 +1,7 @@
 {
   "name": "@bettercommunity/bmd",
-  "version": "2.0.0",
-  "description": "B.MD — better.markdown: GitBook-style blocks (callouts, cards, tabs, steps, timelines, stats, FAQ…) on GitHub-flavoured Markdown, as one React component. The renderer behind BetterCommunity's blog, docs and pages.",
+  "version": "3.0.0",
+  "description": "B.MD — better.markdown: a block system on GitHub-flavoured Markdown (callouts, cards, tabs, steps, timelines, stats, FAQ, API cards, embeds, live values, diagrams…) as one React component, with a public AST, a link checker and an HTML exporter. The renderer behind BetterCommunity's blog, docs and pages.",
   "license": "MIT",
   "type": "module",
   "main": "./src/index.jsx",
@@ -12,6 +12,10 @@
     "./icons": "./src/icons.jsx",
     "./brands": "./src/brands.jsx",
     "./plugins": "./src/plugins.js",
+    "./openapi": "./src/openapi.js",
+    "./export": "./src/export.jsx",
+    "./ast": "./src/ast.js",
+    "./links": "./src/links.js",
     "./markdown.css": "./src/markdown.css",
     "./src/*": "./src/*",
     "./package.json": "./package.json"
@@ -28,7 +32,8 @@
   "keywords": [
     "markdown",
     "react",
-    "gitbook",
+    "openapi",
+    "mermaid",
     "directives",
     "remark",
     "blocks",
@@ -51,12 +56,18 @@
     "remark-directive": "^3",
     "remark-gfm": "^4",
     "unist-util-visit": "^5",
+    "unified": "^11",
+    "remark-parse": "^11",
+    "mermaid": ">=10",
     "rehype-highlight": "^7",
     "remark-math": "^6",
     "rehype-katex": "^7",
     "katex": ">=0.16"
   },
   "peerDependenciesMeta": {
+    "mermaid": {
+      "optional": true
+    },
     "rehype-highlight": {
       "optional": true
     },

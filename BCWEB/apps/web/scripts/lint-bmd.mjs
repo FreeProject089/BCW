@@ -14,6 +14,7 @@ const r = spawnSync(process.execPath, [
   resolve(web, 'node_modules/eslint/bin/eslint.js'),
   '--config', resolve(web, 'eslint.config.js'),
   'packages/bmd/src',
+  'packages/bmd-editor/src',
 ], { cwd: root, stdio: 'inherit' });
 if (r.status !== 0) process.exit(r.status ?? 1);
-console.log('✓ B.MD package lint OK (packages/bmd/src)');
+console.log('✓ B.MD package lint OK (packages/bmd/src, packages/bmd-editor/src)');

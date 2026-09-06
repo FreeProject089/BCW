@@ -1,0 +1,39 @@
+{
+  "name": "@bettercommunity/bmd-editor",
+  "version": "3.0.0",
+  "description": "The editor for B.MD documents: a block menu, a live preview, phone and desktop layouts, a link checker and an HTML export — as one React component, separate from the renderer.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.jsx",
+  "exports": {
+    ".": "./src/index.jsx",
+    "./snippets": "./src/snippets.js",
+    "./editor.css": "./src/editor.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "keywords": [
+    "markdown",
+    "editor",
+    "react",
+    "bmd",
+    "bettercommunity"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BetterDCS/BCW",
+    "directory": "BCWEB/packages/bmd-editor"
+  },
+  "homepage": "https://bettercommunity.ch/dev/editor",
+  "peerDependencies": {
+    "@bettercommunity/bmd": ">=3",
+    "react": ">=18",
+    "react-dom": ">=18"
+  }
+}

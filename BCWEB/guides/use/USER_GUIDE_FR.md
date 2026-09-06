@@ -109,7 +109,7 @@ confiance à une source Communauté non identifiable — vérifie le profil et l
 
 - **Blog** (`/blog`) — actus et articles, avec réactions et co-auteurs. Les nouveaux articles
   peuvent être annoncés par e-mail si tu es abonné à la **newsletter** (double opt-in).
-- **Docs** (`/docs`) — guides catégorisés, mise en page façon GitBook.
+- **Docs** (`/docs`) — guides catégorisés, avec barre latérale, rail des titres à droite et blocs B.MD.
 - **FAQ** (`/faq`) — réponses rapides. Page introuvable ? Profite du petit jeu **« Orb Fall »**
   sur la page 404 (il y a un classement 😉).
 

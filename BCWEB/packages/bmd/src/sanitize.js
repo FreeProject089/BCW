@@ -6,7 +6,7 @@
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { visit } from 'unist-util-visit';
 import { safeUrl } from './url.js';
-import { urlPolicy } from './config.js';
+import { urlPolicy, markdownConfig } from './config.js';
 
 export { rehypeSanitize };
 
@@ -18,13 +18,15 @@ export const SANITIZE_SCHEMA = {
   tagNames: [...new Set([...(defaultSchema.tagNames || []),
     'div', 'span', 'section', 'details', 'summary', 'nav', 'figure', 'figcaption',
     'video', 'audio', 'source', 'iframe', 'kbd', 'doc-icon', 'doc-kbd', 'doc-comment', 'doc-roadmap', 'doc-replay',
-    'doc-tabs', 'doc-schedule', 'doc-time'])],
+    'doc-tabs', 'doc-schedule', 'doc-time',
+    // B.MD 3.0
+    'mark', 'ins', 'sup', 'sub', 'time', 'doc-fetch', 'doc-action', 'doc-include', 'doc-openapi', 'doc-mermaid'])],
   attributes: {
     ...defaultSchema.attributes,
     // data-* here are hast (camelCased) property names — rehype-sanitize matches those,
     // so `data-comment` in the source must be allowed as `dataComment` (the DocComment
     // component reads both forms). Without this the whole <doc-comment> was stripped.
-    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo', 'dataSrc', 'dataJson', 'dataTitle'])],
+    '*': [...new Set([...((defaultSchema.attributes || {})['*'] || []), 'className', 'id', 'style', 'dataName', 'dataKeys', 'dataComment', 'dataLink', 'dataImg', 'dataVideo', 'dataSrc', 'dataJson', 'dataTitle', 'dataAlign', 'dataStatus'])],
     // `a` needs its className tuple REMOVED, not merely extended.
     //
     // The GitHub default schema lists it as ['className', 'data-footnote-backref'] — an
@@ -41,9 +43,11 @@ export const SANITIZE_SCHEMA = {
       ...(((defaultSchema.attributes || {}).a) || []).filter((x) => !(Array.isArray(x) && x[0] === 'className')),
       'className', 'href', 'target', 'rel', 'download',
     ])],
-    img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className'])],
+    img: [...new Set([...(((defaultSchema.attributes || {}).img) || []), 'src', 'alt', 'loading', 'className', 'width', 'height', 'decoding'])],
     video: ['src', 'controls', 'poster', 'className', 'style', 'loading'],
-    audio: ['src', 'controls', 'className'],
+    audio: ['src', 'controls', 'className', 'preload'],
+    figure: ['className', 'style', 'dataAlign'],
+    figcaption: ['className'],
     source: ['src', 'type'],
     iframe: ['src', 'allow', 'allowFullScreen', 'frameBorder', 'loading', 'className'],
     'doc-icon': ['className', 'dataName'],
@@ -54,17 +58,25 @@ export const SANITIZE_SCHEMA = {
     'doc-tabs': ['className'],
     'doc-schedule': ['className', 'dataTz', 'dataTitle'],
     'doc-time': ['className', 'dataAt', 'dataTz', 'dataFormat'],
+    'doc-fetch': ['className', 'dataSrc', 'dataPath', 'dataRefresh', 'dataFormat', 'dataLabel', 'dataPrefix', 'dataSuffix', 'dataCounter'],
+    'doc-action': ['className', 'dataHref', 'dataMethod', 'dataBody', 'dataConfirm', 'dataDone', 'dataLabel', 'dataColor', 'dataOnce', 'dataIcon', 'dataCounter'],
+    'doc-include': ['className', 'dataSrc'],
+    'doc-openapi': ['className', 'dataSrc', 'dataTag', 'dataFilter', 'dataTitle', 'dataToc'],
+    'doc-mermaid': ['className', 'dataCode', 'dataTitle'],
   },
 };
 
-// After sanitising, drop any iframe whose src isn't YouTube — only embeds we vouch for
-// (the docs guide) survive; an author can't smuggle an arbitrary/phishing frame.
+// After sanitising, drop any iframe whose src is not on the allowlist — YouTube and the
+// Spotify embed by default, whatever `configureMarkdown({ allowIframes })` says otherwise.
+// Only embeds the host vouches for survive; an author can't smuggle an arbitrary frame.
 export function rehypeIframeAllowlist() {
   return (tree) => {
+    const allow = markdownConfig().allowIframes;
     visit(tree, 'element', (node, index, parent) => {
       if (node.tagName !== 'iframe' || !parent) return;
       const src = String(node.properties?.src || '');
-      if (!/^https:\/\/(www\.)?youtube(-nocookie)?\.com\//i.test(src)) { parent.children.splice(index, 1); return index; }
+      const ok = allow instanceof RegExp ? allow.test(src) : typeof allow === 'function' ? !!allow(src) : false;
+      if (!ok) { parent.children.splice(index, 1); return index; }
     });
   };
 }

@@ -10,14 +10,17 @@
 // see here is what a post looks like.
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen, Download, FileCode } from 'lucide-react';
+import { Copy, Package, Palette, ShieldCheck, Puzzle, ExternalLink, RotateCcw, BookOpen, Download, FileCode, Link2, FileDown, PenLine } from 'lucide-react';
 import { Card, Button, Textarea, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown from '../ui/md.jsx';
 import { KIT_PARTS, KIT_FLAVOURS, buildKit, zipKit } from './kit-pack.js';
+import { validateLinks } from '@bettercommunity/bmd/links';
+import { documentHtml, cssUrl } from '@bettercommunity/bmd/export';
+import { extractHeadings } from '@bettercommunity/bmd/ast';
 
-const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit lucide-react';
-const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex';
+const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react';
+const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex mermaid';
 
 const USAGE = `import Markdown from '@bettercommunity/bmd';
 
@@ -92,6 +95,32 @@ now. A single moment is: the stream starts at :time[2026-09-01T20:00]{tz=Europe/
 :::
 
 Progress: :meter[60]{label=Done} · :icon[ph-bold:rocket] Phosphor works everywhere an icon does.
+
+## New in 3.0
+
+:::table[Tables keep their markdown]{style="striped bordered" radius=6}
+| Block | Inline |
+|---|---|
+| \`:::api\` cards, \`::openapi\` | :counter[Live]{src=/api/health path=ok} :action[Ping]{href=/api/health method=GET done="Alive"} |
+| ==marks== and [[wiki links]] | :kbd[Ctrl+K] :badge[3.0]{color=#7c3aed} |
+:::
+
+:::api[GET /api/feedback/:project/config]{auth=none summary="What a client may send"}
+:::response{status=200}
+\`\`\`json
+{ "enabled": true, "maxAttachMB": 25 }
+\`\`\`
+:::
+:::
+
+:img[A captioned picture]{src=/logo.png width=72 align=center caption="Every block takes radius=, variant= and class=" rounded}
+
+\`\`\`mermaid
+graph LR
+  A[Write] --> B[Preview] --> C[Export]
+\`\`\`
+
+::youtube{src=https://youtu.be/dQw4w9WgXcQ}
 `;
 
 function Snippet({ code, lang = 'bash' }) {
@@ -214,6 +243,15 @@ export default function DevMarkdown() {
   const { t } = useI18n();
   const [src, setSrc] = useState(SAMPLE);
   const ta = useRef(null);
+  const toast = useToast();
+  const [linkReport, setLinkReport] = useState(null);
+  const checkLinks = () => { try { setLinkReport(validateLinks(src)); } catch (e) { toast.error(String(e?.message || e)); } };
+  const exportHtml = async () => {
+    let css = '';
+    try { css = await fetch(cssUrl).then((r) => (r.ok ? r.text() : '')); } catch { css = ''; }
+    const html = documentHtml(src, { title: (extractHeadings(src)[0]?.text) || 'B.MD', css });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = 'bmd-export.html'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
 
   return (
     <div className="max-w-5xl mx-auto py-8 sm:py-12 space-y-10">
@@ -223,10 +261,11 @@ export default function DevMarkdown() {
           {t('devmd.title', 'B.MD — better.markdown')}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
-          {t('devmd.lede', 'A GitBook-style block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, a roadmap, opening hours, maths. It is a React component you copy into your project, and it is the same one every page on this site renders with.')}
+          {t('devmd.lede3', 'A block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, a roadmap, opening hours, API cards, embeds, live values, diagrams, maths. It is a React component you install or copy into your project, and it is the same one every page on this site renders with.')}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Badge>{t('devmd.b1', '48 directives')}</Badge>
+          <Badge>{t('devmd.b1b', '92 directives')}</Badge>
+          <Badge>3.0</Badge>
           <Badge>{t('devmd.b2', 'No build step')}</Badge>
           <Badge>{t('devmd.b3', 'Sanitised by default')}</Badge>
           <Badge>{t('devmd.b4', 'Extensible')}</Badge>
@@ -237,10 +276,17 @@ export default function DevMarkdown() {
       <section>
         <div className="flex items-baseline gap-2 mb-2">
           <h2 className="text-lg font-semibold">{t('devmd.try', 'Try it')}</h2>
-          <button type="button" onClick={() => setSrc(SAMPLE)} className="ms-auto text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1">
-            <RotateCcw size={12} /> {t('devmd.reset', 'Reset')}
-          </button>
+          <div className="ms-auto flex items-center gap-3 flex-wrap">
+            <button type="button" onClick={checkLinks} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><Link2 size={12} /> {t('devmd.links', 'Check links')}</button>
+            <button type="button" onClick={exportHtml} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><FileDown size={12} /> {t('devmd.export', 'Export HTML')}</button>
+            <button type="button" onClick={() => setSrc(SAMPLE)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RotateCcw size={12} /> {t('devmd.reset', 'Reset')}</button>
+          </div>
         </div>
+        {linkReport && <div className="mb-2 text-xs rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2">
+          {linkReport.issues.length
+            ? <ul className="space-y-0.5">{linkReport.issues.map((i, n) => <li key={n} className={i.level === 'error' ? 'text-[var(--error)]' : 'text-[var(--warning)]'}><code>{i.href || '(empty)'}</code> — {i.hint}{i.line ? ` · l.${i.line}` : ''}</li>)}</ul>
+            : <span className="text-[var(--success)]">✓ {t('devmd.links.ok', 'Every link goes somewhere')} ({linkReport.count})</span>}
+        </div>}
         <div className="grid lg:grid-cols-2 gap-3 items-start">
           <Textarea ref={ta} rows={22} value={src} onChange={(e) => setSrc(e.target.value)}
             className="!font-mono !text-[12.5px] !leading-relaxed" spellCheck={false} />
@@ -252,7 +298,9 @@ export default function DevMarkdown() {
         </div>
         <p className="mt-2 text-[11px] text-[var(--muted)]">
           {t('devmd.tryNote', 'Nothing here is saved. The full vocabulary, block by block, is in the Markdown guide.')}{' '}
-          <Link to="/blog/markdown-guide" className="underline">{t('devmd.guide', 'Open the guide')}</Link>
+          <Link to="/blog/markdown-guide" className="underline">{t('devmd.guide', 'Open the guide')}</Link>{' · '}
+          <Link to="/dev/editor" className="underline">{t('devmd.editor', 'The full editor')}</Link>{' · '}
+          <Link to="/dev/bmd" className="underline">{t('devmd.installpage', 'Install in your framework')}</Link>
         </p>
       </section>
 
@@ -314,6 +362,8 @@ export default function DevMarkdown() {
 
       <div className="flex flex-wrap gap-2 pt-2">
         <Link to="/blog/markdown-guide"><Button variant="primary"><BookOpen size={15} /> {t('devmd.cta.guide', 'The full vocabulary')}</Button></Link>
+        <Link to="/dev/bmd"><Button><Package size={15} /> {t('devmd.cta.install', 'Install in your framework')}</Button></Link>
+        <Link to="/dev/editor"><Button><PenLine size={15} /> {t('devmd.cta.editor', 'The editor')}</Button></Link>
         <Link to="/dev"><Button><ExternalLink size={15} /> {t('devmd.cta.dev', 'Back to the developer hub')}</Button></Link>
       </div>
     </div>

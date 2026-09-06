@@ -20,6 +20,10 @@ import nestingSrc from '../../../../packages/bmd/src/nesting.js?raw';
 import shorthandSrc from '../../../../packages/bmd/src/shorthand.js?raw';
 import emojiSrc from '../../../../packages/bmd/src/emoji.js?raw';
 import brandsSrc from '../../../../packages/bmd/src/brands.jsx?raw';
+import openapiSrc from '../../../../packages/bmd/src/openapi.js?raw';
+import exportSrc from '../../../../packages/bmd/src/export.jsx?raw';
+import astSrc from '../../../../packages/bmd/src/ast.js?raw';
+import linksSrc from '../../../../packages/bmd/src/links.js?raw';
 import cssSrc from '../../../../packages/bmd/src/markdown.css?raw';
 // The TypeScript half. Not an optional part: types cost nothing at runtime, and a kit packed
 // without them is a kit that silently stops type-checking on the receiving end.
@@ -67,7 +71,7 @@ export const KIT_PARTS = [
 // missing from this list is silently left out of the download, which is how a kit that
 // builds here ships as a folder with nine missing imports.
 const CORE = ('index.jsx config.js url.js plugins.js sanitize.js directives.js blocks.jsx '
-  + 'icons.jsx nesting.js shorthand.js markdown.css').split(' ');
+  + 'icons.jsx nesting.js shorthand.js markdown.css openapi.js export.jsx ast.js links.js').split(' ');
 
 /**
  * The two flavours, and what actually differs.
@@ -154,6 +158,10 @@ export function buildKit(on, flavour = 'ts') {
     'shorthand.js': shorthandSrc,
     'emoji.js': emojiSrc,
     'brands.jsx': brandsSrc,
+    'openapi.js': openapiSrc,
+    'export.jsx': exportSrc,
+    'ast.js': astSrc,
+    'links.js': linksSrc,
     'markdown.css': cssSrc,
   };
   const dropped = new Set(off.flatMap((p) => p.files || [p.file]).filter(Boolean));

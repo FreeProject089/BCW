@@ -24,6 +24,7 @@
     "katex": "^0.16.47",
     "lucide-react": "^0.439.0",
     "maplibre-gl": "^5.24.0",
+    "mermaid": "^11.17.2",
     "prismjs": "^1.30.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
@@ -37,8 +38,10 @@
     "remark-directive": "^3.0.1",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
     "rrweb": "^2.0.0-alpha.18",
     "three": "^0.168.0",
+    "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {

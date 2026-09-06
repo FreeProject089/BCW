@@ -71,3 +71,38 @@ export function blockSanitizeRules() {
   }
   return { tagNames, attributes };
 }
+
+/** Several blocks at once: `registerBlocks({ pricing: {…}, team: {…} })`. Returns one remover. */
+export function registerBlocks(map = {}) {
+  const undo = Object.entries(map).map(([name, spec]) => registerBlock(name, spec));
+  return () => { for (const u of undo) u(); };
+}
+
+/**
+ * A plugin: a name, its blocks, and optionally a stylesheet to inject once.
+ *
+ *   const pricing = definePlugin({ name: 'pricing', blocks: { pricing: {…}, plan: {…} }, css: '.doc-x-plan{…}' });
+ *   pricing.install();
+ *
+ * The CSS is a string so a plugin stays one file; it is added to the document head under an
+ * id, so installing twice adds it once and `uninstall` removes it.
+ */
+export function definePlugin({ name, blocks = {}, css = '' } = {}) {
+  const id = `bmd-plugin-${String(name || 'plugin').toLowerCase().replace(/[^a-z0-9-]/g, '')}`;
+  let undo = null;
+  return {
+    name,
+    install() {
+      if (undo) return this;
+      undo = registerBlocks(blocks);
+      if (css && typeof document !== 'undefined' && !document.getElementById(id)) {
+        const el = document.createElement('style'); el.id = id; el.textContent = css; document.head.appendChild(el);
+      }
+      return this;
+    },
+    uninstall() {
+      if (undo) { undo(); undo = null; }
+      if (typeof document !== 'undefined') document.getElementById(id)?.remove();
+    },
+  };
+}

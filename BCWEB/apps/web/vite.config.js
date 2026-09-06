@@ -12,7 +12,9 @@ import { resolve, dirname } from 'node:path';
 // directory. The result is one React, one renderer, and a kit that is also a package.
 const BMD = resolve(dirname(fileURLToPath(import.meta.url)), '../../packages/bmd/src');
 const BMD_DEPS = ['react', 'react-dom', 'react-markdown', 'remark-gfm', 'remark-directive', 'rehype-raw', 'rehype-sanitize',
-  'unist-util-visit', 'lucide-react', 'rehype-highlight', 'remark-math', 'rehype-katex', 'katex'];
+  'unist-util-visit', 'lucide-react', 'rehype-highlight', 'remark-math', 'rehype-katex', 'katex',
+  'unified', 'remark-parse', 'mermaid',
+];
 
 // Dev proxies /api -> the API container so the SPA + API share an origin.
 export default defineConfig({
@@ -24,6 +26,11 @@ export default defineConfig({
       { find: /^@bettercommunity\/bmd\/brands$/, replacement: `${BMD}/brands.jsx` },
       { find: /^@bettercommunity\/bmd\/icons$/, replacement: `${BMD}/icons.jsx` },
       { find: /^@bettercommunity\/bmd\/plugins$/, replacement: `${BMD}/plugins.js` },
+      { find: /^@bettercommunity\/bmd\/openapi$/, replacement: `${BMD}/openapi.js` },
+      { find: /^@bettercommunity\/bmd\/export$/, replacement: `${BMD}/export.jsx` },
+      { find: /^@bettercommunity\/bmd\/ast$/, replacement: `${BMD}/ast.js` },
+      { find: /^@bettercommunity\/bmd\/links$/, replacement: `${BMD}/links.js` },
+      { find: /^@bettercommunity\/bmd-editor$/, replacement: `${BMD}/../../bmd-editor/src/index.jsx` },
       { find: /^@bettercommunity\/bmd\/markdown\.css$/, replacement: `${BMD}/markdown.css` },
       { find: /^@bettercommunity\/bmd\/src\/(.*)$/, replacement: `${BMD}/$1` },
     ],

@@ -29,6 +29,10 @@ export interface MarkdownConfigValue {
   lang?: string;
   Roadmap?: ComponentType<Record<string, unknown>> | null;
   Replay?: ComponentType<Record<string, unknown>> | null;
+  /** The renderer itself, for `::include` and `::openapi`. */
+  Nested?: ComponentType<Record<string, unknown>> | null;
+  /** How many documents deep this one is. */
+  depth?: number;
 }
 export const MarkdownConfig: Context<MarkdownConfigValue>;
 
@@ -88,7 +92,7 @@ export function appIconKeys(): string[];
 export function matchesLang(name: string, lang: string): boolean;
 
 /** Re-exported from `shorthand.js` so a consumer needs one import. */
-export function preprocessMd(src: string): string;
+export function preprocessMd(src: string, opts?: { pageMap?: Record<string, unknown> | null }): string;
 
 /**
  * Render markdown.
@@ -99,10 +103,16 @@ export function preprocessMd(src: string): string;
 export default function Markdown(props: {
   children?: string | null;
   className?: string;
-  pageMap?: Record<string, string> | null;
+  pageMap?: Record<string, string | { title?: string; category?: string; desc?: string; icon?: string; anchors?: string[] }> | null;
   lang?: string;
   roadmap?: ComponentType<Record<string, unknown>> | null;
   replay?: ComponentType<Record<string, unknown>> | null;
+  /** `'auto'` adds a table of contents when there are three or more headings and none written; `true` always. */
+  toc?: 'auto' | boolean | null;
+  /** Corner radius for every block — a CSS length, or a number of pixels. */
+  radius?: string | number | null;
+  /** Nesting depth; set by `::include`, not by callers. */
+  depth?: number;
 }): ReactElement;
 
 /* ── nesting.js ────────────────────────────────────────────────────────── */
@@ -117,8 +127,8 @@ export function normalizeDirectiveNesting(src: string): string;
 
 /* ── shorthand.js ──────────────────────────────────────────────────────── */
 
-/** `[NEW]` chips, `> [!NOTE]` alerts, and the rest, expanded before the parser sees them. */
-export function preprocessMd(src: string): string;
+/** `[NEW]` chips, `> [!NOTE]` alerts, `==marks==`, `[[wiki links]]` and the rest, expanded before the parser sees them. */
+export function preprocessMd(src: string, opts?: { pageMap?: Record<string, unknown> | null }): string;
 
 /* ── emoji.js ──────────────────────────────────────────────────────────── */
 
@@ -165,11 +175,17 @@ export interface MarkdownUrlPolicy {
 export interface MarkdownOptions {
   /** `app:<key>` → an image URL. */
   appIcons?: Record<string, string>;
-  /** Where a non-bundled icon comes from. `null` for a family switches it off entirely. */
-  cdn?: { lucide?: ((name: string) => string) | null; brand?: ((slug: string) => string) | null };
+  /** Where a non-bundled icon comes from. `null` for a family switches it off entirely. `mermaid` is an ES-module URL. */
+  cdn?: { lucide?: ((name: string) => string) | null; brand?: ((slug: string) => string) | null; phosphor?: ((path: string) => string) | null; mermaid?: string | null };
   policy?: MarkdownUrlPolicy;
-  /** Which iframes survive sanitising. */
-  allowIframes?: RegExp;
+  /** Which iframes survive sanitising — a RegExp on the src, or a predicate. */
+  allowIframes?: RegExp | ((src: string) => boolean);
+  /** Corner radius for every block, as a CSS length. Null keeps each block's own. */
+  radius?: string | null;
+  /** How `::include{src=…}` gets its text. Default: fetch it, subject to the URL policy. */
+  resolveInclude?: ((src: string) => Promise<string> | string) | null;
+  /** `() => import('mermaid')` when the package is installed; otherwise `cdn.mermaid` is used. */
+  loadMermaid?: (() => Promise<unknown>) | null;
 }
 
 /** Point B.MD at your project. Call once, at import time. */
@@ -185,7 +201,7 @@ export function urlPolicy(): MarkdownUrlPolicy;
 export function appIcon(key: string): string;
 
 /** The URL for a remote icon, or '' when that family is switched off. */
-export function cdnIconUrl(family: 'lucide' | 'brand' | 'phosphor', name: string): string;
+export function cdnIconUrl(family: 'lucide' | 'brand' | 'phosphor' | 'mermaid', name: string): string;
 
 /**
  * Register the `app:<key>` icons from a list ({ key, url, label }) — what a host that loads
@@ -209,7 +225,7 @@ export interface SafeUrlResult {
 }
 
 /** Is this a URL the kit is willing to emit, and in what form? */
-export function safeUrl(raw: string, opt?: { kind?: 'link' | 'media' | 'download'; policy?: MarkdownUrlPolicy }): SafeUrlResult;
+export function safeUrl(raw: string, opt?: { kind?: 'link' | 'media' | 'download' | 'api'; policy?: MarkdownUrlPolicy }): SafeUrlResult;
 
 /** The attributes an anchor needs, given where it points. `null` when the URL is refused. */
 export function linkAttrs(url: string, opt?: { kind?: 'link' | 'media' | 'download'; policy?: MarkdownUrlPolicy }): { href: string; target?: string; rel?: string } | null;
@@ -241,6 +257,12 @@ export function blockComponents(): Record<string, ComponentType<unknown>>;
 
 /** The tags and attributes the sanitiser must keep for the registered blocks. */
 export function blockSanitizeRules(): { tagNames: string[]; attributes: Record<string, string[]> };
+
+/** Several blocks at once. Returns one function that removes them all. */
+export function registerBlocks(map?: Record<string, BlockSpec>): () => void;
+
+/** A plugin: a name, its blocks, an optional stylesheet injected once on install. */
+export function definePlugin(spec?: { name?: string; blocks?: Record<string, BlockSpec>; css?: string }): { name?: string; install(): unknown; uninstall(): void };
 
 /* ── directives.js ─────────────────────────────────────────────────────── */
 
@@ -286,6 +308,16 @@ export const DocSchedule: DocBlock;
 export const DocTime: DocBlock;
 export const DocRoadmap: DocBlock;
 export const DocReplay: DocBlock;
+/** `:counter` / `::live` — a value read from a URL. */
+export const DocFetch: DocBlock;
+/** `:action` — a button that calls a URL. */
+export const DocAction: DocBlock;
+/** `::include` — another document, rendered here. */
+export const DocInclude: DocBlock;
+/** `::openapi` — a spec, drawn as `:::api` cards. */
+export const DocOpenapi: DocBlock;
+/** ```mermaid fences and `:::mermaid`. */
+export const DocMermaid: DocBlock;
 
 /** The box a block draws when its component was not supplied. */
 export const MissingBlock: ComponentType<{ name: string }>;
@@ -297,3 +329,52 @@ export const Roadmap: ComponentType<{ data: unknown; title?: string; lang?: stri
 
 /** The built-in `:::replay`. Pass `replay={…}` to `<Markdown>` to replace it. */
 export const Replay: ComponentType<{ src: string; title?: string; autoplay?: boolean; loop?: boolean; lang?: string }>;
+
+/* ── openapi.js ────────────────────────────────────────────────────────── */
+
+/** An OpenAPI 3.x / Swagger 2 document, written out as B.MD (`:::api` cards). */
+export function openapiToBmd(spec: unknown, opt?: { tag?: string; filter?: string; header?: boolean; toc?: boolean }): string;
+
+/** Counts: title, version, paths, operations, tags. */
+export function openapiSummary(spec: unknown): { title: string; version: string; paths: number; operations: number; tags: string[] };
+
+/** A schema in a few words (`array<Item>`, `integer (int64)`). */
+export function schemaLabel(spec: unknown, schema: unknown, depth?: number): string;
+
+/** An example value for a schema — the spec's own, or a sketch. */
+export function schemaExample(spec: unknown, schema: unknown, depth?: number): unknown;
+
+/* ── export.jsx ────────────────────────────────────────────────────────── */
+
+/** Where markdown.css lives, for whoever wants to inline it. */
+export const cssUrl: string;
+
+/** The document as HTML — the `.md-body` element and nothing around it. */
+export function renderHtml(md: string, opt?: { lang?: string; pageMap?: Record<string, unknown> | null; toc?: 'auto' | boolean; radius?: string | number; className?: string }): string;
+
+/** A whole standalone page: doctype, tokens, the kit's CSS when given, the document. */
+export function documentHtml(md: string, opt?: { title?: string; css?: string; extraCss?: string; scheme?: 'light' | 'dark'; lang?: string; render?: Record<string, unknown> }): string;
+
+/* ── ast.js ────────────────────────────────────────────────────────────── */
+
+/** A parsed document, as mdast, after the same transform the renderer runs. */
+export function parseMarkdown(md: string, opt?: { pageMap?: Record<string, unknown> | null; raw?: boolean }): unknown;
+
+/** Depth-first walk. Return `false` to skip a node's children. */
+export function walkAst(tree: unknown, fn: (node: any, parent: any) => unknown, parent?: unknown): void;
+
+/** Every heading with the id the renderer gives it. */
+export function extractHeadings(md: string, opt?: { pageMap?: Record<string, unknown> | null }): Array<{ depth: number; text: string; id: string }>;
+
+/** Every link, image and directive destination. */
+export function extractLinks(md: string, opt?: { pageMap?: Record<string, unknown> | null }): Array<{ href: string; text: string; kind: string; line?: number }>;
+
+/** The document's plain text. */
+export function extractText(md: string, opt?: { pageMap?: Record<string, unknown> | null }): string;
+
+/* ── links.js ──────────────────────────────────────────────────────────── */
+
+export interface LinkIssue { level: 'error' | 'warning'; code: string; href: string; text: string; line?: number; hint: string }
+
+/** Anchors against the document's headings, internal paths against the page map, and the shapes that are wrong on their face. */
+export function validateLinks(md: string, opt?: { pageMap?: Record<string, unknown> | null; anchors?: string[]; policy?: MarkdownUrlPolicy; warnHttp?: boolean }): { ok: boolean; issues: LinkIssue[]; count: number };

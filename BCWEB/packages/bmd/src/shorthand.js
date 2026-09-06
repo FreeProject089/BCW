@@ -19,7 +19,35 @@ const ALERT_TITLE = { note: 'Note', tip: 'Tip', important: 'Important', warning:
 
 function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
-export function preprocessMd(md) {
+/**
+ * `[[Page]]`, `[[Page|shown text]]`, `[[Page#section]]`, `[[#section]]` → a link.
+ *
+ * Resolved against the host's page map — the same one `<Markdown pageMap>` uses for hover
+ * cards — by title, by path, or by the last segment of a path, case-insensitively. A reference
+ * that resolves to nothing is kept as text with a class, so the page still reads and the
+ * author (or the link checker) can see which one to fix.
+ */
+function wikiLinks(s, pageMap) {
+  const index = new Map();
+  if (pageMap && typeof pageMap === 'object') {
+    for (const [href, info] of Object.entries(pageMap)) {
+      const path = String(href).replace(/[?#].*$/, '');
+      const add = (k) => { const key = String(k || '').trim().toLowerCase(); if (key && !index.has(key)) index.set(key, path); };
+      add(path); add(path.replace(/\/+$/, '')); add(path.split('/').filter(Boolean).pop());
+      if (info && typeof info === 'object') { add(info.title); add(info.slug); }
+    }
+  }
+  return s.replace(/\[\[([^\]|#\n]*)(?:#([^\]|\n]+))?(?:\|([^\]\n]+))?\]\]/g, (whole, page, hash, text) => {
+    const target = String(page || '').trim();
+    const label = String(text || target || hash || '').trim();
+    if (!target) return hash ? `[${label}](#${hash.trim()})` : whole;
+    const href = index.get(target.toLowerCase()) || (target.startsWith('/') ? target : null);
+    if (!href) return `<span class="doc-ref doc-ref-missing" title="No page called “${esc(target)}”">${esc(label)}</span>`;
+    return `[${label}](${href}${hash ? `#${hash.trim()}` : ''})`;
+  });
+}
+
+export function preprocessMd(md, opts = {}) {
   // Re-count `:::` fences first, so a block written the obvious way keeps its children.
   // Everything below works on lines and must not see a document mid-rewrite.
   let s = normalizeDirectiveNesting(md || '');
@@ -43,7 +71,11 @@ export function preprocessMd(md) {
   // one. It shipped in the guide, in the docs page and in the /dev playground's sample,
   // where the broken example sat under a heading explaining how badges work.
   const parts = s.split(/(```[\s\S]*?```|`[^`]*`)/g);
-  s = parts.map((part, i) => (i % 2 === 1 ? part : part.replace(/\[([A-ZÀ-Ÿ]+)\]/g, (mm, w, at, whole) =>
+  // Outside code only, like the chips: `==marked==` → <mark>, and the `[[wiki links]]`.
+  s = parts.map((part, i) => (i % 2 === 1 ? part
+    : wikiLinks(part.replace(/==([^=\n]+?)==/g, (mm, inner) => `<mark>${inner}</mark>`), opts.pageMap))).join('');
+  const parts2 = s.split(/(```[\s\S]*?```|`[^`]*`)/g);
+  s = parts2.map((part, i) => (i % 2 === 1 ? part : part.replace(/\[([A-ZÀ-Ÿ]+)\]/g, (mm, w, at, whole) =>
     // `…:badge` or `…:::note` immediately before the bracket: this is a label, not a chip.
     (/:[a-zA-Z][\w-]*$/.test(whole.slice(0, at))
       ? mm

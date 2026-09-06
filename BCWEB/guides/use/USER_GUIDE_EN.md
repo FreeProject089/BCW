@@ -105,7 +105,7 @@ source you can't identify — check the owner's profile and BC id first.
 
 - **Blog** (`/blog`) — news and posts, with reactions and co-authors. New posts can be
   announced by email if you're subscribed to the **newsletter** (double opt-in).
-- **Docs** (`/docs`) — categorised guides with a GitBook-style layout.
+- **Docs** (`/docs`) — categorised guides with a sidebar, a right rail of headings and B.MD blocks.
 - **FAQ** (`/faq`) — quick answers. If a page is missing, enjoy the little **"Orb Fall"**
   game on the 404 page (there's a leaderboard 😉).
 
