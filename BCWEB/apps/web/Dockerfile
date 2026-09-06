@@ -6,6 +6,8 @@ WORKDIR /repo/apps/web
 COPY apps/web/package.json ./
 RUN npm install
 COPY packages/bmd /repo/packages/bmd
+# The editor package sits beside the kit and is aliased the same way (vite.config.js).
+COPY packages/bmd-editor /repo/packages/bmd-editor
 COPY apps/web/ ./
 # Vite bakes VITE_* vars into the bundle at build time (not readable at runtime),
 # so the Google Tag id has to come in as a build arg, not a container env var.
