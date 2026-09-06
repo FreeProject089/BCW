@@ -601,7 +601,7 @@ export function remarkDocBlocks() {
         const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-api-head'] } }, children: [
           textEl('span', 'doc-api-method', method),
           textEl('code', 'doc-api-path', path),
-          ...(attrs.auth ? [textEl('span', 'doc-api-auth', String(attrs.auth))] : []),
+          ...(attrs.auth ? [{ type: 'paragraph', data: { hName: 'span', hProperties: { className: ['doc-api-auth'] } }, children: [iconNode(String(attrs.authIcon || 'lock').toLowerCase()), { type: 'text', value: String(attrs.auth) }] }] : []),
           ...(attrs.deprecated != null ? [textEl('span', 'doc-badge', 'deprecated')] : []),
         ] }];
         if (attrs.summary) head.push(textEl('div', 'doc-api-summary', attrs.summary));

@@ -18,6 +18,7 @@ import {
   TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
   Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle,
 } from 'lucide-react';
+import { Bug as BugIcon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 import { Card, Input, Button, Spinner, useToast } from '../ui/ui.jsx';
@@ -47,6 +48,14 @@ const GUIDE = [
         [
           { en: 'It carries no badge of its own on purpose — each queue below has one, and summing them here would count every waiting item twice.', fr: 'Il ne porte pas de pastille propre, exprès — chaque file ci-dessous a la sienne, et les additionner ici compterait chaque élément deux fois.' },
           { en: 'Nothing is actioned here; every row links to the screen where the work is actually done.', fr: 'Rien ne se fait ici ; chaque ligne renvoie à l’écran où le travail se fait vraiment.' },
+        ]),
+      G('feedback', BugIcon, 'Feedback & crashes', 'Retours & plantages',
+        'What the apps send to the feedback centre: suggestions, bug reports and crash dumps, one inbox per project (BMM, BSM, a showcase). The tiles on top say what is new by kind — crashes first — and how old the oldest untriaged one is. Open a report to read it, download its attachments, answer in the sender’s thread or by mail, and mark it triaged, resolved or ignored.',
+        'Ce que les applis envoient au centre de retours : suggestions, rapports de bug et plantages, une boîte par projet (BMM, BSM, une vitrine). Les tuiles du haut disent ce qui est nouveau par genre — les plantages d’abord — et l’âge du plus vieux rapport non trié. Ouvre un rapport pour le lire, télécharger ses pièces jointes, répondre dans le fil de l’expéditeur ou par mail, et le marquer trié, résolu ou ignoré.',
+        [
+          { en: 'A project accepts nothing until its switch is on (Project settings & limits). Apps get a clean “not enabled” answer meanwhile — BMM keeps the report locally and retries later.', fr: 'Un projet n’accepte rien tant que son interrupteur est éteint (Réglages du projet & limites). Les applis reçoivent une réponse « pas activé » propre — BMM garde le rapport en local et réessaie plus tard.' },
+          { en: 'Essentials are on top (kinds, contact rule, thread, mail); caps, crash sampling, version and word filters are under Advanced. The platform-wide API ceilings live on Public API → Limits, attachment retention in Hosting settings → Feedback storage.', fr: 'L’essentiel est en haut (genres, règle de contact, fil, mail) ; plafonds, échantillonnage des plantages, filtres de version et de mots sont sous Avancé. Les plafonds API globaux sont dans API publique → Limites, la rétention des pièces jointes dans Réglages d’hébergement → Stockage des retours.' },
+          { en: 'Resolved or ignored closes the sender’s thread with a line saying so; the “Needs attention” digest counts new reports only.', fr: 'Résolu ou ignoré ferme le fil de l’expéditeur avec une ligne qui le dit ; le résumé « À traiter » ne compte que les nouveaux rapports.' },
         ]),
       G('moderation', Inbox, 'Moderation', 'Modération',
         'Submissions, Reports, Messages, Legal and Sanctions. Submissions are new catalogue/repo/project requests awaiting review; approving one creates the page UNPUBLISHED and unlisted — approval is a place in the queue, not going live.',

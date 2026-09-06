@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical, Undo2 } from 'lucide-react';
+import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical, Undo2, Gauge } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Badge, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
@@ -228,7 +228,7 @@ export function AdminApi() {
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 me-2"><KeyRound size={16} className="text-[var(--primary-2)]" /> {t('aapi.title', 'Public API')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
-          {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
+          {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['limits', t('aapi.tab.limits', 'Limits')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
               className={`px-3 py-1.5 rounded-[10px] text-sm ${view === k ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)]'}`}>{l}</button>
           ))}
@@ -285,6 +285,7 @@ export function AdminApi() {
       {view === 'requests' && <RequestsTable />}
 
       {view === 'sandbox' && <SandboxView />}
+      {view === 'limits' && <LimitsCard />}
 
       {view === 'settings' && (
         <Card className="p-4">
@@ -465,6 +466,33 @@ function RequestsTable() {
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+/* The platform ceilings: requests per minute per IP (every visitor) and per signed-in account.
+   Read by the API every 15 s — no restart. */
+function LimitsCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, reload } = useAsync(() => api.get('/admin/api/limits'), []);
+  const [v, setV] = useState(null); const [busy, setBusy] = useState(false);
+  if (data && !v) setV({ perIpMin: data.perIpMin, perAccountMin: data.perAccountMin });
+  if (!data || !v) return <Loading />;
+  const save = async () => { setBusy(true); try { await api.put('/admin/api/limits', v); toast.success(t('common.saved', 'Saved.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
+  return (
+    <Card className="p-4">
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Gauge size={14} className="text-[var(--primary-2)]" /> {t('aapi.lim.title', 'Request ceilings')}</div>
+      <p className="text-[12px] text-[var(--muted)] mb-3">{t('aapi.lim.sub', 'How many requests a minute the platform answers for one IP and for one signed-in account, on every route. The per-IP default comes from the environment ({n}); 0 keeps it. Per account is off at 0. Both take effect within 15 seconds.').replace('{n}', String(data.envDefault))}</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label={t('aapi.lim.ip', 'Requests / min per IP')}><Input type="number" min="0" value={v.perIpMin} onChange={(e) => setV({ ...v, perIpMin: Number(e.target.value) || 0 })} placeholder={String(data.envDefault)} /></Field>
+        <Field label={t('aapi.lim.acct', 'Requests / min per account')}><Input type="number" min="0" value={v.perAccountMin} onChange={(e) => setV({ ...v, perAccountMin: Number(e.target.value) || 0 })} placeholder="0" /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-[var(--line)]">
+        <Stat label={t('aapi.lim.429', 'Rate-limited (24 h)')} value={(data.last24h?.refused429 || 0).toLocaleString()} tone={data.last24h?.refused429 > 100 ? 'warn' : undefined} />
+        <Stat label={t('aapi.lim.403', 'Forbidden (24 h)')} value={(data.last24h?.forbidden403 || 0).toLocaleString()} />
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mt-2">{t('aapi.lim.fb', 'The feedback endpoint has its own, smaller limits — Moderation → Feedback & crashes → Project settings.')}</p>
+      <Button size="sm" variant="primary" className="mt-3" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
     </Card>
   );
 }

@@ -1140,7 +1140,7 @@ function Footer() {
           {/* Under the newsletter, because they are the same kind of thing: the two facts
               about the site itself that belong at the bottom of every page rather than in
               the middle of one. */}
-          {cfg?.brand?.status !== false && <FooterStatus />}
+          {cfg?.brand?.status !== false && <FooterStatus only={cfg?.brand?.statusServices || []} style={cfg?.brand?.statusStyle || 'line'} />}
         </div>
         )}
         {cols.length

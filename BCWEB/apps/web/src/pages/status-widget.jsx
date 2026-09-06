@@ -38,7 +38,7 @@ function pct(n) {
  * when" — a question whose answer is the status page, one click away. What belongs beside a
  * newsletter box is whether the site stays up.
  */
-export function FooterStatus() {
+export function FooterStatus({ only = [], style = 'line' }) {
   const { t } = useI18n();
   const [data, setData] = useState(null);
 
@@ -49,7 +49,8 @@ export function FooterStatus() {
   }, []);
 
   if (!data) return null;
-  const services = (data.services || []).filter((s) => s.state !== 'not_configured');
+  const picked = Array.isArray(only) && only.length ? new Set(only) : null;
+  const services = (data.services || []).filter((s) => s.state !== 'not_configured' && (!picked || picked.has(s.key)));
   if (!services.length) return null;
 
   const down = services.filter((s) => s.state === 'down');
@@ -64,6 +65,11 @@ export function FooterStatus() {
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('sw.foot', 'Service status')}</div>
       {/* One row that wraps rather than a grid: on a phone the sentence and the figure fall
           onto two lines by themselves, and there is no width at which this needs a rule. */}
+      {style === 'dots' && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 text-xs">
+          {services.map((s) => <Link key={s.key} to="/status" className="inline-flex items-center gap-1.5 text-[var(--muted)] hover:text-[var(--text)]"><span className={`h-1.5 w-1.5 rounded-full ${s.state === 'up' ? 'bg-success' : s.state === 'down' ? 'bg-error' : 'bg-warning'}`} />{s.label}</Link>)}
+        </div>
+      )}
       <Link to="/status" className="group inline-flex items-center gap-2 flex-wrap text-sm">
         <span className={`h-2 w-2 rounded-full shrink-0 ${allUp ? 'bg-success' : down.length ? 'bg-error' : 'bg-warning'}`} />
         <span className={allUp ? 'text-success' : down.length ? 'text-error' : 'text-warning'}>

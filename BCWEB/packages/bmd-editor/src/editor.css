@@ -48,3 +48,8 @@
   .bmde-quick { display: none; }
   .bmde-ta, .bmde-preview { padding: 10px 12px; }
 }
+
+.bmde-btn { display: inline-flex; align-items: center; gap: 5px; }
+.bmde-btn svg { flex-shrink: 0; }
+.bmde-menu-title { display: flex; align-items: center; gap: 5px; }
+.bmde-menu-title svg { width: 12px; height: 12px; }

@@ -23,6 +23,7 @@ import HistoryModal from '../editor/history-modal.jsx';
 import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
 import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, SkeletonGrid } from '../ui/ui.jsx';
+import BmdEditor from '@bettercommunity/bmd-editor';
 
 // Pick the reader's language version of a post. EN is the base (always present);
 // FR is optional — when it's missing the reader sees the base marked "not translated".
@@ -373,7 +374,11 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
 export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const ref = useRef(null); const [preview, setPreview] = useState(false);
-  const [mode, setMode] = useState('write'); // 'write' (markdown) | 'visual' (drag & drop)
+  // 'rich' is the editor package (block menu, live preview side by side or as tabs on a phone,
+  // link check, outline, export); 'write' the bare textarea with this toolbar; 'visual' the
+  // drag-and-drop composer. A document field opens in rich; a short one stays bare.
+  const [mode, setMode] = useState(full ? 'rich' : 'write'); // 'rich' | 'write' | 'visual'
+  const { lang: uiLang } = useI18n();
   const insert = (text) => {
     const ta = ref.current; const v = value || ''; const at = ta ? ta.selectionStart : v.length;
     const next = v.slice(0, at) + text + v.slice(at); onChange(next);
@@ -477,7 +482,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
       <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-[var(--line)]">
         {full && (
           <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 me-1">
-            {[['write', 'Markdown'], ['visual', 'Visual']].map(([m, label]) => (
+            {[['rich', t('be.mode.rich', 'Editor')], ['write', 'Markdown'], ['visual', t('be.mode.visual', 'Visual')]].map(([m, label]) => (
               <button key={m} type="button" onClick={() => { setMode(m); setPreview(false); }}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium ${mode === m ? 'bg-[var(--surface)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
             ))}
@@ -514,7 +519,9 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
         <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>
         {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
-      {preview
+      {mode === 'rich' && !preview
+        ? <BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" />
+        : preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
         : mode === 'visual'
           ? <div className="max-h-[52vh] overflow-auto"><VisualEditor value={value} onChange={onChange} minHeight={minHeight} /></div>

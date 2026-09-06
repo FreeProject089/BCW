@@ -18,6 +18,31 @@ import './editor.css';
 
 export { SNIPPET_GROUPS, SNIPPETS, expandSnippet } from './snippets.js';
 
+// A handful of inline glyphs, so the package brings no icon library of its own.
+const svg = (d) => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{d}</svg>;
+const ICO = {
+  plus: svg(<><path d="M5 12h14" /><path d="M12 5v14" /></>),
+  bold: svg(<path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" />),
+  italic: svg(<><line x1="19" x2="10" y1="4" y2="4" /><line x1="14" x2="5" y1="20" y2="20" /><line x1="15" x2="9" y1="4" y2="20" /></>),
+  code: svg(<><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>),
+  link: svg(<><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>),
+  heading: svg(<><path d="M6 12h12" /><path d="M6 20V4" /><path d="M18 20V4" /></>),
+  list: svg(<><line x1="8" x2="21" y1="6" y2="6" /><line x1="8" x2="21" y1="12" y2="12" /><line x1="8" x2="21" y1="18" y2="18" /><line x1="3" x2="3.01" y1="6" y2="6" /><line x1="3" x2="3.01" y1="12" y2="12" /><line x1="3" x2="3.01" y1="18" y2="18" /></>),
+  tip: svg(<><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></>),
+  image: svg(<><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></>),
+  table: svg(<><path d="M12 3v18" /><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /></>),
+  links: svg(<><path d="M9 17H7A5 5 0 0 1 7 7h2" /><path d="M15 7h2a5 5 0 1 1 0 10h-2" /><line x1="8" x2="16" y1="12" y2="12" /></>),
+  outline: svg(<><path d="M21 12h-8" /><path d="M21 6H8" /><path d="M21 18h-8" /><path d="M3 6v4c0 1.1.9 2 2 2h3" /><path d="M3 10v6c0 1.1.9 2 2 2h3" /></>),
+  tree: svg(<><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /><path d="M8 12h8" /><path d="M12 8v8" /></>),
+  download: svg(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></>),
+  layout: svg(<><rect width="18" height="7" x="3" y="3" rx="1" /><rect width="9" height="7" x="3" y="14" rx="1" /><rect width="5" height="7" x="16" y="14" rx="1" /></>),
+  'text-cursor': svg(<><path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1" /><path d="M7 22h1a4 4 0 0 0 4-4v-1" /><path d="M7 2h1a4 4 0 0 1 4 4v1" /></>),
+  info: svg(<><circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" /></>),
+  'layout-grid': svg(<><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></>),
+  'list-checks': svg(<><path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" /></>),
+  plug: svg(<><path d="M12 22v-5" /><path d="M9 8V2" /><path d="M15 8V2" /><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" /></>),
+};
+
 const STR = {
   en: { write: 'Write', preview: 'Preview', insert: 'Insert', links: 'Links', outline: 'Outline', ast: 'AST', export: 'Export HTML', words: 'words', chars: 'chars', noIssues: 'Every link goes somewhere.', issues: 'link issue(s)', empty: 'Start writing — or insert a block.', line: 'line', search: 'Search blocks…', close: 'Close', split: 'Side by side', tabs: 'Tabs', wrap: 'Wrap' },
   fr: { write: 'Écrire', preview: 'Aperçu', insert: 'Insérer', links: 'Liens', outline: 'Plan', ast: 'AST', export: 'Exporter en HTML', words: 'mots', chars: 'caractères', noIssues: 'Chaque lien mène quelque part.', issues: 'problème(s) de lien', empty: 'Commence à écrire — ou insère un bloc.', line: 'ligne', search: 'Chercher un bloc…', close: 'Fermer', split: 'Côte à côte', tabs: 'Onglets', wrap: 'Retour à la ligne' },
@@ -73,6 +98,7 @@ export default function BmdEditor({
   const [query, setQuery] = useState('');
   const [wrap, setWrap] = useState(true);
   const ta = useRef(null);
+  const root = useRef(null);
   const debounced = useDebounced(value, 350);
 
   const insert = useCallback((md) => {
@@ -131,7 +157,11 @@ export default function BmdEditor({
   const doExport = async () => {
     let css = '';
     try { css = await fetch(cssUrl).then((r) => (r.ok ? r.text() : '')); } catch { css = ''; }
-    const html = documentHtml(value, { title: exportTitle, css, lang, render: { pageMap, ...markdownProps } });
+    let html = documentHtml(value, { title: exportTitle, css, lang, render: { pageMap, ...markdownProps } });
+    // Diagrams: the static render carries each as its source in a <pre>; the live preview has
+    // drawn them. Substituted in order, so the exported page shows the picture.
+    const svgs = Array.from(root.current?.querySelectorAll('.bmde-preview .doc-mermaid-svg') || []).map((el) => el.innerHTML);
+    if (svgs.length) { let n = 0; html = html.replace(/<pre class="doc-mermaid-src">[\s\S]*?<\/pre>/g, (m) => (svgs[n] ? `<div class="doc-mermaid-svg">${svgs[n++]}</div>` : m)); }
     const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -170,11 +200,11 @@ export default function BmdEditor({
   );
 
   return (
-    <div className={`bmde${tabs ? ' bmde-tabs' : ' bmde-split'} ${className}`}>
+    <div ref={root} className={`bmde${tabs ? ' bmde-tabs' : ' bmde-split'} ${className}`}>
       {toolbar && (
         <div className="bmde-bar" role="toolbar">
           <div className="bmde-menu-wrap">
-            <button type="button" className="bmde-btn bmde-btn-primary" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-haspopup="menu">＋ {L.insert}</button>
+            <button type="button" className="bmde-btn bmde-btn-primary" onClick={() => setMenu((v) => !v)} aria-expanded={menu} aria-haspopup="menu">{ICO.plus} {L.insert}</button>
             {menu && (
               <div className="bmde-menu" role="menu">
                 <input className="bmde-search" placeholder={L.search} value={query} onChange={(e) => setQuery(e.target.value)} autoFocus
@@ -182,7 +212,7 @@ export default function BmdEditor({
                 <div className="bmde-menu-groups">
                   {groups.map((g) => (
                     <div key={g.id} className="bmde-menu-group">
-                      <div className="bmde-menu-title">{g.label}</div>
+                      <div className="bmde-menu-title">{ICO[g.icon] || null} {g.label}</div>
                       {g.items.map((it) => <button key={it.id} type="button" role="menuitem" className="bmde-menu-item" onClick={() => insert(it.md)}>{it.label}</button>)}
                     </div>
                   ))}
@@ -192,13 +222,15 @@ export default function BmdEditor({
             )}
           </div>
           <div className="bmde-quick">
-            <button type="button" className="bmde-btn" title="Ctrl+B" onClick={() => insert('**${sel|bold}**')}><b>B</b></button>
-            <button type="button" className="bmde-btn" title="Ctrl+I" onClick={() => insert('*${sel|italic}*')}><i>I</i></button>
-            <button type="button" className="bmde-btn" title="Ctrl+E" onClick={() => insert('`${sel|code}`')}><code>{'<>'}</code></button>
-            <button type="button" className="bmde-btn" title="Ctrl+K" onClick={() => insert('[${sel|text}](https://${cursor})')}>🔗</button>
-            <button type="button" className="bmde-btn" onClick={() => insert('## ${sel|Heading}')}>H</button>
-            <button type="button" className="bmde-btn" onClick={() => insert('- ${sel|item}')}>•</button>
-            <button type="button" className="bmde-btn" onClick={() => insert(':::tip[${cursor}Title]\n${sel|Body}\n:::')}>💡</button>
+            <button type="button" className="bmde-btn" title="Ctrl+B" onClick={() => insert('**${sel|bold}**')}>{ICO.bold}</button>
+            <button type="button" className="bmde-btn" title="Ctrl+I" onClick={() => insert('*${sel|italic}*')}>{ICO.italic}</button>
+            <button type="button" className="bmde-btn" title="Ctrl+E" onClick={() => insert('`${sel|code}`')}>{ICO.code}</button>
+            <button type="button" className="bmde-btn" title="Ctrl+K" onClick={() => insert('[${sel|text}](https://${cursor})')}>{ICO.link}</button>
+            <button type="button" className="bmde-btn" onClick={() => insert('## ${sel|Heading}')}>{ICO.heading}</button>
+            <button type="button" className="bmde-btn" onClick={() => insert('- ${sel|item}')}>{ICO.list}</button>
+            <button type="button" className="bmde-btn" onClick={() => insert(':::tip[${cursor}Title]\n${sel|Body}\n:::')}>{ICO.tip}</button>
+            <button type="button" className="bmde-btn" onClick={() => insert(':::table[${cursor}Caption]{style="striped bordered"}\n| Column | Column |\n|---|---|\n| ${sel|cell} | cell |\n:::')}>{ICO.table}</button>
+            <button type="button" className="bmde-btn" onClick={() => insert(':img[${sel|Alt text}]{src=https://${cursor} width=480 align=center caption="Caption"}')}>{ICO.image}</button>
           </div>
           <div className="bmde-spacer" />
           {tabs
@@ -208,14 +240,14 @@ export default function BmdEditor({
             </div>
             : null}
           {!narrow && layout === 'auto' && (
-            <button type="button" className="bmde-btn bmde-btn-ghost" title={mode === 'tabs' ? L.split : L.tabs} onClick={() => setMode(mode === 'tabs' ? 'split' : 'tabs')}>{mode === 'tabs' ? '◫' : '▭'}</button>
+            <button type="button" className="bmde-btn bmde-btn-ghost" title={mode === 'tabs' ? L.split : L.tabs} onClick={() => setMode(mode === 'tabs' ? 'split' : 'tabs')}>{ICO.layout}</button>
           )}
           <button type="button" className={`bmde-btn bmde-btn-ghost${panel === 'links' ? ' is-on' : ''}${links.issues.length ? ' bmde-warn' : ''}`} onClick={() => setPanel(panel === 'links' ? null : 'links')}>
-            {L.links}{links.issues.length ? ` · ${links.issues.length}` : ''}
+            {ICO.links} {L.links}{links.issues.length ? ` · ${links.issues.length}` : ''}
           </button>
-          <button type="button" className={`bmde-btn bmde-btn-ghost${panel === 'outline' ? ' is-on' : ''}`} onClick={() => setPanel(panel === 'outline' ? null : 'outline')}>{L.outline}</button>
-          <button type="button" className={`bmde-btn bmde-btn-ghost${panel === 'ast' ? ' is-on' : ''}`} onClick={() => setPanel(panel === 'ast' ? null : 'ast')}>{L.ast}</button>
-          <button type="button" className="bmde-btn bmde-btn-ghost" onClick={doExport}>{L.export}</button>
+          <button type="button" className={`bmde-btn bmde-btn-ghost${panel === 'outline' ? ' is-on' : ''}`} onClick={() => setPanel(panel === 'outline' ? null : 'outline')}>{ICO.outline} {L.outline}</button>
+          <button type="button" className={`bmde-btn bmde-btn-ghost${panel === 'ast' ? ' is-on' : ''}`} onClick={() => setPanel(panel === 'ast' ? null : 'ast')}>{ICO.tree} {L.ast}</button>
+          <button type="button" className="bmde-btn bmde-btn-ghost" onClick={doExport}>{ICO.download} {L.export}</button>
         </div>
       )}
 

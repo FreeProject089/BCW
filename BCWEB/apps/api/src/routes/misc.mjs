@@ -1227,18 +1227,26 @@ export default async function miscRoutes(app) {
       p.catalogItem.findMany({ where: { status: 'PUBLISHED' }, select: { slug: true, updatedAt: true }, take: 2000 }).catch(() => []),
       p.adminSetting.findUnique({ where: { key: 'seo.config' } }).catch(() => null),
     ]);
+    // Hosting settings → Sitemap: paths to add (a landing page the router serves but this
+    // list does not know) and paths to leave out.
+    const smRows = await p.adminSetting.findMany({ where: { key: { in: ['seo.sitemapExtra', 'seo.sitemapExclude'] } } }).catch(() => []);
+    const sm = Object.fromEntries(smRows.map((r) => [r.key, r.value]));
+    const extra = (Array.isArray(sm['seo.sitemapExtra']) ? sm['seo.sitemapExtra'] : []).map(String).filter((x) => /^\/[^\s]*$/.test(x));
+    const exclude = new Set((Array.isArray(sm['seo.sitemapExclude']) ? sm['seo.sitemapExclude'] : []).map(String));
     // A path an admin marked noindex must not be advertised here either — a sitemap that
     // lists a page the meta tag asks robots to skip is the site contradicting itself.
-    const noindex = new Set((seoRow?.value?.noindexPaths || []).map(String));
+    const noindex = new Set([...(seoRow?.value?.noindexPaths || []).map(String), ...exclude]);
     const urls = [
       ...staticRoutes.filter((r) => !noindex.has(r)).map((r) => ({ loc: site + r })),
+      ...extra.filter((r) => !noindex.has(r) && !staticRoutes.includes(r)).map((r) => ({ loc: site + r })),
       ...showcase.map((s) => ({ loc: `${site}/project/${s.slug}`, lastmod: s.updatedAt })),
       ...posts.map((b) => ({ loc: `${site}/blog/${b.slug}`, lastmod: b.updatedAt })),
       ...docs.map((d) => ({ loc: `${site}/docs/${d.slug}`, lastmod: d.updatedAt })),
       // The item page is /item/:slug — /catalog/:slug was a 404 offered to every crawler.
       ...cat.map((c) => ({ loc: `${site}/item/${c.slug}`, lastmod: c.updatedAt })),
     ];
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
+    const keep = urls.filter((u) => !exclude.has(u.loc.slice(site.length)));
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${keep.map((u) => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
   });
   app.get('/robots.txt', async (req, reply) => {

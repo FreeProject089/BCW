@@ -12612,6 +12612,9 @@ function HomePageEditor() {
     ['off', t('hp.f.off', 'Switched off'), grouped.filter((g) => !g.always && sections[g.id] === false).length],
   ];
 
+  // The page at a glance: one chip per section the chosen layout draws, on or off, in the
+  // order the page draws them. The long editor below is the words; this is the shape.
+  const glance = grouped.filter((g) => !g.always && inVariant(g.id));
   return (
     <div className="space-y-4 max-w-4xl pb-24">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -12634,6 +12637,21 @@ function HomePageEditor() {
           </a>
         </div>
       </div>
+
+      <Card className="p-3">
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hp.glance', 'The page, top to bottom')}</div>
+          <span className="text-[11px] text-[var(--muted)]">{t('hp.glance.d', 'Click a section to switch it off or on; the words are edited below.')}</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {glance.map((g, i) => { const on = sections[g.id] !== false; return (
+            <button key={g.id} type="button" onClick={() => setSections((x) => ({ ...x, [g.id]: !on }))}
+              className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition ${on ? 'border-[var(--primary)] text-[var(--text)] bg-[var(--primary)]/[0.06]' : 'border-dashed border-[var(--line)] text-[var(--muted)] line-through'}`}>
+              <span className="text-[10px] text-[var(--faint)] tabular-nums">{i + 1}</span>{g.label}
+            </button>
+          ); })}
+        </div>
+      </Card>
 
       {/* Which page the site opens with.
           Three cards rather than a dropdown, and each one DRAWS what it is made of. The
@@ -16329,6 +16347,31 @@ function AdminFeedback() {
         <Button size="sm" variant={showSettings ? 'primary' : 'default'} onClick={() => showSettings ? setShowSettings(false) : startEdit()}><Sliders size={14} /> {t('fb.settings', 'Project settings & limits')}</Button>
       </div>
       {!pc?.enabled && !showSettings && <Card className="p-4 text-sm text-[var(--muted)] flex items-center gap-3"><AlertTriangle size={16} className="text-[var(--warning)] shrink-0" /> {t('fb.disabled', 'This project does not accept reports yet — open the settings and switch it on. Apps get a clean “not enabled” answer meanwhile, nothing breaks on their side.')}</Card>}
+      {/* What is waiting, at a glance: new by kind — crashes first, since a crash is the one
+          somebody could not work around — plus the age of the oldest untriaged one. */}
+      {pc?.enabled && data && (() => {
+        const items = data.items || [];
+        const news = items.filter((f) => f.status === 'new');
+        const oldest = news.length ? news[news.length - 1] : null;
+        const by = (k) => news.filter((f) => f.kind === k).length;
+        const tiles = [
+          ['crash', by('crash'), 'red'], ['bug', by('bug'), 'warning'], ['feedback', by('feedback'), 'success'],
+        ];
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {tiles.map(([k, n, tone]) => (
+              <button key={k} type="button" onClick={() => { setKind(k); setStatus('new'); setPage(0); }} className={`fb-prio rounded-xl border px-3 py-2 text-left transition hover:bg-[var(--surface-2)] ${kind === k && status === 'new' ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t(`fb.kind.${k}`, k)} · {t('fb.st.new', 'new')}</div>
+                <div className={`text-xl font-extrabold tabular-nums ${n ? `text-${tone}` : 'text-[var(--faint)]'}`}>{n}</div>
+              </button>
+            ))}
+            <div className="rounded-xl border border-[var(--line)] px-3 py-2">
+              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('fb.oldest', 'Oldest untriaged')}</div>
+              <div className="text-xl font-extrabold tabular-nums">{oldest ? fmtAgo(oldest.createdAt) : '—'}</div>
+            </div>
+          </div>
+        );
+      })()}
       {showSettings && draft && <Card className="p-5 space-y-4">
         <div className="grid md:grid-cols-2 gap-5">
           <div className="space-y-3">
@@ -16337,7 +16380,12 @@ function AdminFeedback() {
             <div className="flex gap-4 text-sm">
               {['feedback', 'bug', 'crash'].map((k) => <label key={k} className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!draft.project.kinds[k]} onChange={(e) => pd('kinds', { ...draft.project.kinds, [k]: e.target.checked })} /> {t(`fb.kind.${k}`, k)}</label>)}
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.requireContact} onChange={(e) => pd('requireContact', e.target.checked)} /> {t('fb.cfg.contact', 'Anonymous senders must give an e-mail')}</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.openThread} onChange={(e) => pd('openThread', e.target.checked)} /> {t('fb.cfg.thread', 'Linked senders get a thread in Messages & reports')}</label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.mailFallback} onChange={(e) => pd('mailFallback', e.target.checked)} /> {t('fb.cfg.mail', 'Anonymous senders with an e-mail get a confirmation + replies by mail')}</label>
+            <details className="rounded-xl border border-[var(--line)] p-3">
+            <summary className="cursor-pointer text-sm font-medium">{t('fb.cfg.advanced', 'Advanced — caps, sampling, filters')}</summary>
+            <div className="grid grid-cols-2 gap-3 mt-3">
               <Field label={t('fb.cfg.sampling', 'Crash sampling (% kept)')}><Input type="number" min="0" max="100" value={draft.project.crashSampling} onChange={(e) => pd('crashSampling', num(e.target.value))} /></Field>
               <Field label={t('fb.cfg.dedupe', 'Dedupe window (min)')}><Input type="number" min="0" value={draft.project.dedupeMinutes} onChange={(e) => pd('dedupeMinutes', num(e.target.value))} /></Field>
               <Field label={t('fb.cfg.bodykb', 'Max text (KB)')}><Input type="number" min="1" value={draft.project.maxBodyKB} onChange={(e) => pd('maxBodyKB', num(e.target.value))} /></Field>
@@ -16347,22 +16395,21 @@ function AdminFeedback() {
             </div>
             <Field label={t('fb.cfg.blockedver', 'Refused versions (comma-separated)')}><Input value={draft.project.blockedVersions.join(', ')} onChange={(e) => pd('blockedVersions', list(e.target.value))} placeholder="1.3.2, 1.3.3" /></Field>
             <Field label={t('fb.cfg.blockedwords', 'Refused words (comma-separated, matched in title + text)')}><Input value={draft.project.blockedWords.join(', ')} onChange={(e) => pd('blockedWords', list(e.target.value))} /></Field>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.requireContact} onChange={(e) => pd('requireContact', e.target.checked)} /> {t('fb.cfg.contact', 'Anonymous senders must give an e-mail')}</label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.openThread} onChange={(e) => pd('openThread', e.target.checked)} /> {t('fb.cfg.thread', 'Linked senders get a thread in Messages & reports')}</label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.mailFallback} onChange={(e) => pd('mailFallback', e.target.checked)} /> {t('fb.cfg.mail', 'Anonymous senders with an e-mail get a confirmation + replies by mail')}</label>
+            </details>
           </div>
           <div className="space-y-3">
-            <div className="text-sm font-semibold">{t('fb.cfg.limits', 'Rate limits (all projects)')}</div>
-            <p className="text-xs text-[var(--muted)]">{t('fb.cfg.limits.d', 'The first three apply to the feedback endpoint. The last two are the platform-wide API ceilings — every route, per IP and per signed-in account, requests per minute; 0 = default / off.')}</p>
+            <div className="text-sm font-semibold">{t('fb.cfg.limits2', 'Feedback rate limits (all projects)')}</div>
+            <p className="text-xs text-[var(--muted)]">{t('fb.cfg.limits.d2', 'How many reports the feedback endpoint accepts. The platform-wide API ceilings (every route, per IP and per account) are on the Public API screen → Limits; attachment retention is in Hosting settings → Feedback storage.')}</p>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('fb.cfg.perip', 'Feedback per IP')}><Input type="number" min="0" value={draft.limits.perIp.max} onChange={(e) => ld('perIp', { ...draft.limits.perIp, max: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perIp.windowMin} onChange={(e) => ld('perIp', { ...draft.limits.perIp, windowMin: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.peracct', 'Feedback per account')}><Input type="number" min="0" value={draft.limits.perAccount.max} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, max: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAccount.windowMin} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, windowMin: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.perday', 'Feedback per project per day')}><Input type="number" min="0" value={draft.limits.perProjectDay} onChange={(e) => ld('perProjectDay', num(e.target.value))} /></Field>
-              <div />
-              <Field label={t('fb.cfg.apiip', 'API: requests / min per IP')}><Input type="number" min="0" value={draft.limits.apiPerIpMin} onChange={(e) => ld('apiPerIpMin', num(e.target.value))} placeholder="600" /></Field>
-              <Field label={t('fb.cfg.apiacct', 'API: requests / min per account')}><Input type="number" min="0" value={draft.limits.apiPerAccountMin} onChange={(e) => ld('apiPerAccountMin', num(e.target.value))} placeholder="0" /></Field>
+            </div>
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Link to="/admin?s=api" className="text-xs text-[var(--primary-2)] hover:underline">{t('fb.cfg.gotoapi', 'API ceilings → Public API')}</Link>
+              <Link to="/admin?s=hostingsettings" className="text-xs text-[var(--primary-2)] hover:underline">{t('fb.cfg.gotostorage', 'Attachment retention → Hosting settings')}</Link>
             </div>
           </div>
         </div>
@@ -16381,7 +16428,8 @@ function AdminFeedback() {
           {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>
             : !(data?.items || []).length ? <div className="py-10 text-center text-sm text-[var(--muted)]">{t('fb.empty', 'Nothing here.')}</div>
             : <div className="space-y-1.5">
-              {data.items.map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border px-3 py-2.5 hover:bg-[var(--surface-2)] ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+              {data.items.map((f) => <button key={f.id} onClick={() => openItem(f.id)} className={`w-full text-start rounded-xl border pl-4 pr-3 py-2.5 hover:bg-[var(--surface-2)] relative overflow-hidden ${open?.id === f.id ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+                <span aria-hidden="true" className={`absolute left-0 top-0 bottom-0 w-1 ${f.kind === 'crash' ? 'bg-error' : f.kind === 'bug' ? 'bg-warning' : 'bg-success'}`} />
                 <div className="flex items-center gap-2 flex-wrap"><Badge tone={FB_KIND_TONE[f.kind]}>{t(`fb.kind.${f.kind}`, f.kind)}</Badge><span className="font-medium text-sm truncate min-w-0 flex-1">{f.title || <span className="text-[var(--faint)]">{t('fb.untitled', '(untitled)')}</span>}</span>{f.count > 1 && <Badge>×{f.count}</Badge>}<Badge tone={FB_STATUS_TONE[f.status]}>{t(`fb.st.${f.status}`, f.status)}</Badge></div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 flex items-center gap-2 flex-wrap"><span>{fmtAgo(f.createdAt)}</span>{f.appVersion && <span>· v{f.appVersion}</span>}{f.os && <span>· {f.os}</span>}<span>· {f.userName ? f.userName : f.email ? f.email : t('fb.anon', 'anonymous')}</span>{f.attachments.length > 0 && <span>· 📎 {f.attachments.length}</span>}</div>
                 <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{f.body}</div>
@@ -17618,6 +17666,10 @@ function SeoHealthCard() {
     out.checks.push({ ok: smXml, label: t('seoh.sitemap', 'Sitemap'), detail: smXml ? t('seoh.sitemap.ok', '{n} URLs listed').replace('{n}', urls) : sm.ok ? t('seoh.sitemap.html', 'The app shell answered instead of XML — in production Caddy routes /sitemap.xml to the API; in dev this is expected.') : t('seoh.sitemap.no', 'Not reachable') });
     const rbOk = rb.ok && /Sitemap:/i.test(rb.body || '') && !/text\/html/i.test(rb.type || '');
     out.checks.push({ ok: rbOk, label: t('seoh.robots', 'robots.txt'), detail: rbOk ? t('seoh.robots.ok', 'Points at the sitemap; private screens disallowed') : t('seoh.robots.no', 'Not served by the API (dev) or missing the Sitemap line') });
+    // The tag: the env value is baked at build time; the saved one is what the site loads once
+    // analytics consent is given. Either counts, but the screen says which.
+    const envGtm = import.meta.env.VITE_GTM_ID || '';
+    out.checks.push({ ok: !!(envGtm || cfg?.gtmId), label: t('seoh.gtm', 'Google Tag Manager'), detail: envGtm ? t('seoh.gtm.env', 'From the build (VITE_GTM_ID)') : cfg?.gtmId ? t('seoh.gtm.saved', 'Saved here — loads after consent') : t('seoh.gtm.no', 'No container id — set it below'), soft: true });
     out.checks.push({ ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'), detail: cfg?.googleVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.gsc.no', 'No token — set it in Site settings to verify the property and submit the sitemap') });
     out.checks.push({ ok: !!cfg?.bingVerify, label: t('seoh.bing', 'Bing Webmaster'), detail: cfg?.bingVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.bing.no', 'No token (optional)'), soft: true });
     out.checks.push({ ok: !!cfg?.description, label: t('seoh.desc', 'Site description'), detail: cfg?.description ? `${cfg.description.length} ${t('seoh.chars', 'chars')}${cfg.descriptionFr ? ' · FR ✓' : ` · ${t('seoh.nofr', 'no FR')}`}` : t('seoh.desc.no', 'Empty — the built-in one is used') });
@@ -17691,6 +17743,7 @@ function SeoHealthCard() {
               </div>
             ))}
           </div>
+          <SeoTagsInline />
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <Field label={t('seoh.probe', 'Check any path')} className="!mb-0 flex-1 min-w-[14rem]"><Input placeholder="/blog/my-post" value={probe} onChange={(e) => setProbe(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') runProbe(); }} /></Field>
             <Button size="sm" disabled={probeBusy || !probe.trim().startsWith('/')} onClick={runProbe}>{probeBusy ? <Spinner /> : <><Search size={13} /> {t('seoh.probe.go', 'Show snippet')}</>}</Button>
@@ -17698,6 +17751,108 @@ function SeoHealthCard() {
           {probeRes && <div className="grid md:grid-cols-2 gap-2 mt-2"><div><div className="text-[10px] text-[var(--faint)] mb-1">EN</div><Snippet m={probeRes.en} /></div><div><div className="text-[10px] text-[var(--faint)] mb-1">FR</div><Snippet m={probeRes.fr} /></div></div>}
         </>
       )}
+    </Card>
+  );
+}
+
+/* The three ids the health check looks for, editable where the check is — not in a file. */
+function SeoTagsInline() {
+  const { t } = useI18n(); const toast = useToast();
+  const [v, setV] = useState(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get('/admin/settings').then((r) => { const st = r.settings || {}; setV({ gtmOn: st['seo.gtmOn'] === true, gtmId: st['seo.gtmId'] || '', googleVerify: st['seo.googleVerify'] || '', bingVerify: st['seo.bingVerify'] || '' }); }).catch(() => setV({ gtmOn: false, gtmId: '', googleVerify: '', bingVerify: '' })); }, []);
+  if (!v) return null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.put('/admin/settings/seo.gtmId', { value: v.gtmId.trim() });
+      await api.put('/admin/settings/seo.gtmOn', { value: !!v.gtmOn && !!v.gtmId.trim() });
+      await api.put('/admin/settings/seo.googleVerify', { value: v.googleVerify.trim() });
+      await api.put('/admin/settings/seo.bingVerify', { value: v.bingVerify.trim() });
+      toast.success(t('common.saved', 'Saved.'));
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  return (
+    <details className="mt-3 rounded-lg border border-[var(--line)] p-3">
+      <summary className="cursor-pointer text-xs font-medium">{t('seoh.tags', 'Tag Manager & ownership tokens — set them here')}</summary>
+      <div className="grid sm:grid-cols-2 gap-2 mt-2">
+        <Field label="GTM container id" className="!mb-0"><Input placeholder="GTM-XXXXXXX" value={v.gtmId} onChange={(e) => setV({ ...v, gtmId: e.target.value })} /></Field>
+        <label className="flex items-center gap-2 text-sm self-end pb-2"><input type="checkbox" checked={v.gtmOn} onChange={(e) => setV({ ...v, gtmOn: e.target.checked })} /> {t('seoh.gtm.on', 'Load the tag (after analytics consent)')}</label>
+        <Field label="google-site-verification" className="!mb-0"><Input value={v.googleVerify} onChange={(e) => setV({ ...v, googleVerify: e.target.value })} /></Field>
+        <Field label="msvalidate.01 (Bing)" className="!mb-0"><Input value={v.bingVerify} onChange={(e) => setV({ ...v, bingVerify: e.target.value })} /></Field>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mt-2">{t('seoh.tags.d', 'The env value VITE_GTM_ID, when set at build time, wins over the id saved here. Tokens are the content of the meta tag the console asks for, not the whole tag.')}</p>
+      <Button size="sm" variant="primary" className="mt-2" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+    </details>
+  );
+}
+
+/* The sitemap: what it lists, what to add, what to leave out, and the file itself. */
+function SitemapCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [count, setCount] = useState(null);
+  const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [busy, setBusy] = useState(false);
+  const refresh = () => fetch('/sitemap.xml', { cache: 'no-store' }).then((r) => r.text()).then((x) => setCount((x.match(/<loc>/g) || []).length)).catch(() => setCount(null));
+  useEffect(() => {
+    refresh();
+    api.get('/admin/settings').then((r) => { const st = r.settings || {}; setExtra((st['seo.sitemapExtra'] || []).join('\n')); setExclude((st['seo.sitemapExclude'] || []).join('\n')); }).catch(() => {});
+  }, []);
+  const lines = (v) => v.split(/\n|,/).map((x) => x.trim()).filter((x) => /^\/[^\s]*$/.test(x));
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/settings/seo.sitemapExtra', { value: lines(extra) }); await api.put('/admin/settings/seo.sitemapExclude', { value: lines(exclude) }); toast.success(t('common.saved', 'Saved.')); refresh(); }
+    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--primary-2)]" /> {t('sm.title', 'Sitemap')} {count != null && <Badge>{t('sm.n', '{n} URLs').replace('{n}', count)}</Badge>}</div>
+        <a href="/sitemap.xml" target="_blank" rel="noreferrer" className="btn btn-sm">{t('sm.open', 'Open sitemap.xml')}</a>
+        <a href="/robots.txt" target="_blank" rel="noreferrer" className="btn btn-sm">robots.txt</a>
+        <Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={13} /></Button>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('sm.sub', 'Built live from the published content: projects, posts, docs, catalogue items and the fixed pages. Add a path the router serves that this list cannot know, or leave one out. One per line.')}</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label={t('sm.extra', 'Also list')} className="!mb-0"><Textarea rows={4} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={'/landing\n/p/bsm/download'} /></Field>
+        <Field label={t('sm.exclude', 'Leave out')} className="!mb-0"><Textarea rows={4} value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder={'/2fa\n/polls'} /></Field>
+      </div>
+      <div className="flex items-center gap-2 mt-3"><Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><span className="text-[11px] text-[var(--faint)]">{t('sm.note', 'Search engines re-read the file on their own schedule; nothing to submit by hand.')}</span></div>
+    </Card>
+  );
+}
+
+/* Feedback centre attachments: where they are, what they weigh, how long they stay. */
+function FeedbackStorageCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, reload } = useAsync(() => api.get('/admin/feedback/storage'), []);
+  const [st, setSt] = useState(null); const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data?.storage && !st) setSt(data.storage); }, [data]); // eslint-disable-line
+  if (!data || !st) return null;
+  const mb = (b) => (b / 1024 / 1024).toFixed(1);
+  const save = async () => { setBusy(true); try { await api.put('/admin/feedback/storage', st); toast.success(t('common.saved', 'Saved.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
+  const purge = async (all) => { if (!confirm(all ? t('fbs.purge.all.c', 'Delete every attachment of every report? The reports themselves stay.') : t('fbs.purge.c', 'Apply the retention rules now?'))) return; setBusy(true); try { const r = await api.post('/admin/feedback/storage/purge', { all }); toast.success(t('fbs.purged', '{n} file(s) removed, {mb} MB freed').replace('{n}', r.deletedFiles).replace('{mb}', mb(r.freedBytes))); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
+  const pct = st.maxTotalMB ? Math.min(100, Math.round((data.usage.bytes / 1024 / 1024) / st.maxTotalMB * 100)) : 0;
+  return (
+    <Card className="p-4">
+      <div className="flex items-center gap-2 flex-wrap mb-1">
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><BugIcon size={15} className="text-[var(--primary-2)]" /> {t('fbs.title', 'Feedback storage')}</div>
+        <Link to="/admin?s=feedback" className="text-xs text-[var(--primary-2)] hover:underline">{t('fbs.open', 'Open the feedback centre')}</Link>
+      </div>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('fbs.sub', 'Screenshots, logs and crash zips sent with reports. They live in object storage under {p} and are served only to staff.').replace('{p}', data.prefix)}</p>
+      <div className="grid sm:grid-cols-3 gap-2 mb-3 text-sm">
+        <div className="rounded-lg border border-[var(--line)] px-3 py-2"><div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)]">{t('fbs.usage', 'In storage')}</div><div className="font-semibold tabular-nums">{mb(data.usage.bytes)} MB · {data.usage.count} {t('fbs.files', 'files')}</div>{st.maxTotalMB > 0 && <div className="h-1.5 rounded-full bg-[var(--line)] mt-1.5 overflow-hidden"><div className={`h-full ${pct > 90 ? 'bg-error' : 'bg-[var(--primary)]'}`} style={{ width: `${pct}%` }} /></div>}</div>
+        <div className="rounded-lg border border-[var(--line)] px-3 py-2"><div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)]">{t('fbs.rows', 'Reports')}</div><div className="font-semibold tabular-nums">{data.rows} · {data.closed} {t('fbs.closed', 'closed')}</div></div>
+        <div className="rounded-lg border border-[var(--line)] px-3 py-2"><div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)]">{t('fbs.sweep', 'Sweeper')}</div><div className="font-semibold">{t('fbs.hourly', 'every hour')}</div></div>
+      </div>
+      <div className="grid sm:grid-cols-3 gap-2">
+        <Field label={t('fbs.ret', 'Keep attachments (days, 0 = forever)')} className="!mb-0"><Input type="number" min="0" value={st.retentionDays} onChange={(e) => setSt({ ...st, retentionDays: Number(e.target.value) || 0 })} /></Field>
+        <Field label={t('fbs.cap', 'Total cap (MB, 0 = none)')} className="!mb-0"><Input type="number" min="0" value={st.maxTotalMB} onChange={(e) => setSt({ ...st, maxTotalMB: Number(e.target.value) || 0 })} /></Field>
+        <Field label={t('fbs.closed.d', 'Delete closed reports after (days, 0 = never)')} className="!mb-0"><Input type="number" min="0" value={st.closedRowDays} onChange={(e) => setSt({ ...st, closedRowDays: Number(e.target.value) || 0 })} /></Field>
+      </div>
+      <div className="flex items-center gap-2 mt-3 flex-wrap">
+        <Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
+        <Button size="sm" disabled={busy} onClick={() => purge(false)}>{t('fbs.purge', 'Apply retention now')}</Button>
+        <Button size="sm" variant="ghost" className="text-[var(--error)]" disabled={busy} onClick={() => purge(true)}>{t('fbs.purge.all', 'Remove every attachment')}</Button>
+      </div>
     </Card>
   );
 }
@@ -19723,6 +19878,32 @@ function SocialIconPreview({ icon }) {
   );
 }
 
+/* Which services the footer line reads (none picked = all), and whether it is one sentence or
+   one dot per service. */
+function FooterStatusPicker({ value, style, onChange }) {
+  const { t } = useI18n();
+  const { data } = useAsync(() => api.get('/status').catch(() => null), []);
+  const services = (data?.services || []).filter((x) => x.state !== 'not_configured');
+  const toggle = (k) => onChange({ statusServices: value.includes(k) ? value.filter((x) => x !== k) : [...value, k] });
+  return (
+    <div className="mt-2 pl-6 space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {services.length ? services.map((sv) => (
+          <button key={sv.key} type="button" onClick={() => toggle(sv.key)} className={`text-xs px-2 py-1 rounded-lg border ${!value.length || value.includes(sv.key) ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full me-1 ${sv.state === 'up' ? 'bg-success' : sv.state === 'down' ? 'bg-error' : 'bg-warning'}`} />{sv.label}
+          </button>
+        )) : <span className="text-[11px] text-[var(--faint)]">{t('afoot.status.none', 'No service is monitored yet — Server → Status page.')}</span>}
+      </div>
+      <p className="text-[11px] text-[var(--faint)]">{t('afoot.status.pick', 'Highlighted services are the ones the line reads; none highlighted = all of them.')}</p>
+      <div className="flex items-center gap-3 text-sm">
+        {[['line', t('afoot.status.line', 'One sentence')], ['dots', t('afoot.status.dots', 'One dot per service')]].map(([k, l]) => (
+          <label key={k} className="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="foot-status-style" checked={style === k} onChange={() => onChange({ statusStyle: k })} /> {l}</label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function AdminFooter() {
   const { t, lang } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/footer'), []);
@@ -19979,6 +20160,7 @@ function AdminFooter() {
         <p className="text-[11px] text-[var(--muted)] mt-1">
           {t('afoot.status.d', 'One line reading the same probes as the status page: a dot, whether everything is up, and the worst uptime of the last 90 days. Hidden entirely when no service is configured.')}
         </p>
+        {f.brand?.status !== false && <FooterStatusPicker value={f.brand?.statusServices || []} style={f.brand?.statusStyle || 'line'} onChange={(patch) => setBrand(patch)} />}
       </Card>
       )}
 
@@ -20657,6 +20839,12 @@ function SeedGeneratorCard() {
     <Card className="p-4 mt-4">
       <div className="text-sm font-medium flex items-center gap-2 mb-1"><Database size={14} className="text-[var(--primary-2)]" /> {t('sg.title', 'Custom seed generator')}</div>
       <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('sg.sub', 'Pick what to include and download a runnable, idempotent seed script that recreates this content on another install. Running it twice changes nothing the second time. The number is how many rows each section currently holds.')}</p>
+      <div className="flex items-center gap-2 mb-2 text-xs">
+        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => refresh(sectionsList.map((x) => x.key))}>{t('sg.all', 'Select all')}</button>
+        <span className="text-[var(--faint)]">·</span>
+        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => refresh([])}>{t('sg.none', 'None')}</button>
+        <span className="ms-auto text-[var(--muted)] tabular-nums">{t('sg.total', '{n} sections · {k} items').replace('{n}', selected.length).replace('{k}', sectionsList.filter((x) => selected.includes(x.key)).reduce((a, x) => a + (Number(preview?.summary?.[x.key]) || 0), 0))}</span>
+      </div>
       <div className="grid sm:grid-cols-2 gap-2 mb-3">
         {sectionsList.map((s) => (
           <label key={s.key} className="flex items-center gap-2 text-[13px] cursor-pointer select-none rounded-lg border border-[var(--line)] px-3 py-2">
@@ -21409,9 +21597,14 @@ function AdminSettings() {
       {/* Not a row in the table above: this one is a LIST an admin builds, not a single
           value, so it cannot be a key/label/type entry like the rest. The whole-site
           default preview now lives at the top of this same card. */}
-      <SeoHealthCard />
-      <SeoPagesCard />
-      <SeedGeneratorCard />
+      <div className="mt-8 space-y-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hs.seo.section', 'Search engines, feedback storage, seeds')}</div>
+        <SeoHealthCard />
+        <SitemapCard />
+        <SeoPagesCard />
+        <FeedbackStorageCard />
+        <SeedGeneratorCard />
+      </div>
     </div>
   );
 }

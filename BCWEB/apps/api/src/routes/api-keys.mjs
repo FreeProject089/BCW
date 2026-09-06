@@ -233,6 +233,35 @@ export default async function apiKeyRoutes(app) {
     return { requests: rows, total, sampled: true };
   });
 
+  // The platform-wide ceilings server.mjs re-reads every 15 s: requests per minute per IP
+  // and per signed-in account. Edited here, beside the keys they protect.
+  app.get('/admin/api/limits', { preHandler: requireCap('manage_api') }, async () => {
+    const p = await db();
+    const rows = await p.adminSetting.findMany({ where: { key: { in: ['hosting.apiRateLimitMax', 'hosting.apiRateLimitPerAccount'] } } });
+    const v = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    const since = new Date(Date.now() - 86_400_000);
+    const [refused, banned] = await Promise.all([
+      p.apiRequest.count({ where: { at: { gte: since }, status: 429 } }).catch(() => 0),
+      p.apiRequest.count({ where: { at: { gte: since }, status: 403 } }).catch(() => 0),
+    ]);
+    return {
+      perIpMin: Number(v['hosting.apiRateLimitMax']) || 0,
+      perAccountMin: Number(v['hosting.apiRateLimitPerAccount']) || 0,
+      envDefault: Number(process.env.RATE_LIMIT_MAX) || 600,
+      last24h: { refused429: refused, forbidden403: banned },
+    };
+  });
+  app.put('/admin/api/limits', { preHandler: requireCap('manage_api') }, async (req, reply) => {
+    const ip = parseInt(req.body?.perIpMin, 10), acct = parseInt(req.body?.perAccountMin, 10);
+    if (!Number.isFinite(ip) || ip < 0 || ip > 100000 || !Number.isFinite(acct) || acct < 0 || acct > 100000) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const upd = (key, value) => p.adminSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+    await upd('hosting.apiRateLimitMax', ip || null);
+    await upd('hosting.apiRateLimitPerAccount', acct || null);
+    await logAudit(p, req.user.uid, 'api.limits', `per IP ${ip || 'default'}/min, per account ${acct || 'off'}/min`, clientIp(req));
+    return { ok: true };
+  });
+
   app.put('/admin/api/config', { preHandler: requireCap('manage_api') }, async (req, reply) => {
     const rate = Number(req.body?.sampleRate);
     const retention = parseInt(req.body?.retentionDays, 10);

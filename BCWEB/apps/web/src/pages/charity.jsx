@@ -170,9 +170,11 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   );
   if (!custom) {
     return (
-      <Card className="p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
+      <Card className="charity-card-glow p-6 md:p-8 max-w-xl mx-auto text-center relative overflow-hidden">
         <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
+        <div className="absolute top-3 right-3 text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full bg-[var(--surface-2)] text-[var(--muted)]">{new Date().toLocaleString(undefined, { month: "long" })}</div>
         <div className="relative">
+          <div className="mx-auto mb-3 w-14 h-14 rounded-2xl grid place-items-center bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25"><Heart size={26} /></div>
           {heading}
           <PotSummary pot={pot} t={t} />
           {buttons}

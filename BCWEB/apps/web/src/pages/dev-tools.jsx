@@ -14,6 +14,8 @@ import { ApiConsole } from './dev.jsx';
 import CodeMap from '../ui/code-map.jsx';
 import { lintBmmScript } from '../lib/bmmscript-lint.js';
 import { openapiToBmd, openapiSummary } from '@bettercommunity/bmd/openapi';
+import { validateLinks } from '@bettercommunity/bmd/links';
+import { extractHeadings, extractLinks } from '@bettercommunity/bmd/ast';
 import Markdown from '../ui/md.jsx';
 
 // /dev/tools — the two things a developer wants that are not "call an endpoint".
@@ -70,6 +72,32 @@ function OpenApiTool() {
         <Textarea rows={12} value={out} readOnly className="!font-mono !text-[12px]" />
         <details><summary className="text-xs cursor-pointer text-[var(--muted)]">{t('dvt.oa.preview', 'Preview')}</summary><Card className="p-4 mt-2 overflow-x-auto"><Markdown>{out}</Markdown></Card></details>
       </div>}
+    </Card>
+  );
+}
+
+// A B.MD document, checked: its headings, its links, and whether each one goes somewhere.
+function DocCheckTool() {
+  const { t } = useI18n();
+  const [md, setMd] = useState('');
+  const [res, setRes] = useState(null);
+  const run = () => {
+    try { setRes({ links: validateLinks(md), headings: extractHeadings(md), all: extractLinks(md).length, err: null }); }
+    catch (e) { setRes({ err: String(e?.message || e) }); }
+  };
+  return (
+    <Card className="p-5">
+      <div className="text-sm font-semibold flex items-center gap-2"><LinkIcon size={15} className="text-[var(--primary-2)]" /> {t('dvt.dc.title', 'Check a document')}</div>
+      <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">{t('dvt.dc.s', 'Paste B.MD and get its outline plus every link judged: anchors against the headings, refused and insecure URLs, empty destinations. Nothing is fetched — the same check the editor runs as you type.')}</p>
+      <Textarea rows={8} value={md} onChange={(e) => setMd(e.target.value)} placeholder={'# Title\n\nSee [setup](#setup) and [[Install]].'} className="!font-mono !text-[12px]" />
+      <Button className="mt-2" variant="primary" onClick={run} disabled={!md.trim()}>{t('dvt.check', 'Check it')}</Button>
+      {res && (res.err ? <p className="text-xs text-error mt-3">{res.err}</p> : (
+        <div className="mt-3 space-y-2 text-xs">
+          <div className="flex flex-wrap gap-2"><Badge>{t('dvt.dc.h', '{n} headings').replace('{n}', res.headings.length)}</Badge><Badge>{t('dvt.dc.l', '{n} links').replace('{n}', res.all)}</Badge><Badge tone={res.links.issues.length ? 'amber' : 'green'}>{res.links.issues.length ? t('dvt.dc.issues', '{n} issue(s)').replace('{n}', res.links.issues.length) : t('dvt.dc.ok', 'every link goes somewhere')}</Badge></div>
+          {res.links.issues.length > 0 && <ul className="space-y-1">{res.links.issues.map((i, n) => <li key={n} className={i.level === 'error' ? 'text-error' : 'text-warning'}><code>{i.href || '(empty)'}</code> — {i.hint}{i.line ? ` · l.${i.line}` : ''}</li>)}</ul>}
+          {res.headings.length > 0 && <div className="text-[var(--muted)]">{res.headings.map((h, n) => <div key={n} style={{ paddingLeft: (h.depth - 1) * 12 }}>{h.text} <span className="text-[var(--faint)]">#{h.id}</span></div>)}</div>}
+        </div>
+      ))}
     </Card>
   );
 }
@@ -667,6 +695,7 @@ export default function DevTools() {
         { id: 'codemap', label: t('dvt.cm', 'Map a repository'), el: <CodeMapTool />, wide: true, needsAuth: true },
         // No account needed: it reads a spec you give it and calls nothing of ours.
         { id: 'openapi', label: t('dvt.oa.title', 'OpenAPI → B.MD'), el: <OpenApiTool />, wide: true },
+        { id: 'doccheck', label: t('dvt.dc.title', 'Check a document'), el: <DocCheckTool /> },
       ],
     },
     {

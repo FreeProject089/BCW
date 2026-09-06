@@ -5,7 +5,7 @@
 // text when there is one (a block wraps it, an inline one replaces it).
 export const SNIPPET_GROUPS = [
   {
-    id: 'text', label: 'Text', items: [
+    id: 'text', icon: 'text-cursor', label: 'Text', items: [
       { id: 'h2', label: 'Heading', inline: true, md: '## ${sel|Heading}' },
       { id: 'bold', label: 'Bold', inline: true, md: '**${sel|bold}**' },
       { id: 'italic', label: 'Italic', inline: true, md: '*${sel|italic}*' },
@@ -25,7 +25,7 @@ export const SNIPPET_GROUPS = [
     ],
   },
   {
-    id: 'callouts', label: 'Callouts', items: [
+    id: 'callouts', icon: 'info', label: 'Callouts', items: [
       { id: 'note', label: 'Note', md: ':::note[${cursor}Title]\n${sel|Body}\n:::' },
       { id: 'tip', label: 'Tip', md: ':::tip[${cursor}Title]\n${sel|Body}\n:::' },
       { id: 'warning', label: 'Warning', md: ':::warning[${cursor}Title]\n${sel|Body}\n:::' },
@@ -36,7 +36,7 @@ export const SNIPPET_GROUPS = [
     ],
   },
   {
-    id: 'layout', label: 'Layout', items: [
+    id: 'layout', icon: 'layout-grid', label: 'Layout', items: [
       { id: 'cards', label: 'Card grid', md: '::::cards\n:::card[First]{icon=rocket href=/}\n${sel|One.}\n:::\n:::card[Second]{icon=book}\nTwo.\n:::\n::::' },
       { id: 'card', label: 'Card', md: ':::card[${cursor}Title]{icon=rocket href=/}\n${sel|Body}\n:::' },
       { id: 'columns', label: 'Columns', md: '::::columns\n:::column\n${sel|Left}\n:::\n:::column\nRight\n:::\n::::' },
@@ -49,7 +49,7 @@ export const SNIPPET_GROUPS = [
     ],
   },
   {
-    id: 'content', label: 'Content', items: [
+    id: 'content', icon: 'list-checks', label: 'Content', items: [
       { id: 'timeline', label: 'Timeline', md: '::::timeline[${cursor}Title]\n:::event[Shipped]{date="2026-01-01" state=done}\n${sel|What happened.}\n:::\n:::event[Next]{date="2026-06-01" state=next}\nWhat is planned.\n:::\n::::' },
       { id: 'changelog', label: 'Changelog', md: '::::changelog\n:::version[1.0.0]{date="2026-01-01" label=latest}\n- [NEW] ${sel|Something}\n:::\n::::' },
       { id: 'stats', label: 'Stats', md: '::::stats\n:::stat[${cursor}Users]{value="12 400" delta="+8%" icon=users}\n:::\n:::stat[Uptime]{value="99.9%" icon=activity}\n:::\n::::' },
@@ -65,7 +65,7 @@ export const SNIPPET_GROUPS = [
     ],
   },
   {
-    id: 'media', label: 'Media', items: [
+    id: 'media', icon: 'image', label: 'Media', items: [
       { id: 'image', label: 'Image', md: ':img[${sel|Alt text}]{src=https://${cursor} width=480 align=center caption="Caption"}' },
       { id: 'file', label: 'File', inline: true, md: ':file[${sel|report.pdf}]{href=/${cursor} size="1.2 MB"}' },
       { id: 'button', label: 'Button', inline: true, md: ':button[${sel|Open}]{href=https://${cursor} brand=youtube}' },
@@ -77,7 +77,7 @@ export const SNIPPET_GROUPS = [
     ],
   },
   {
-    id: 'api', label: 'API & live', items: [
+    id: 'api', icon: 'plug', label: 'API & live', items: [
       { id: 'api', label: 'Endpoint', md: ':::api[${cursor}GET /api/things]{auth=key summary="What it does"}\n:::params\n| Name | In | Type | Required | Description |\n|---|---|---|---|---|\n| `id` | path | string | yes | ${sel|Which one} |\n:::\n:::response{status=200}\n```json\n{ "ok": true }\n```\n:::\n:::' },
       { id: 'openapi', label: 'OpenAPI document', md: '::openapi{src=${cursor}/api/openapi.json}' },
       { id: 'counter', label: 'Live value', inline: true, md: ':counter[${sel|Downloads}]{src=${cursor}/api/stats.json path=downloads refresh=60}' },

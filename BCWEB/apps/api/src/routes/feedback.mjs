@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireCap, optionalAuth, notify } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
-import { putObject, getObject, deleteObject } from '../lib/storage.mjs';
+import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
 // Feedback & crash centre. One inbox per project (BMM, BSM, whatever comes next) that any app
@@ -34,6 +34,12 @@ export const DEFAULT_PROJECT = {
   openThread: true,       // linked senders get a dashboard thread
   mailFallback: true,     // anonymous senders with an e-mail get a confirmation + replies by mail
 };
+/** Where the attachments live and how long — Hosting settings → Feedback storage. */
+export const DEFAULT_STORAGE = {
+  retentionDays: 90,      // attachments older than this are deleted (the report stays)
+  maxTotalMB: 2048,       // above this the oldest attachments go first
+  closedRowDays: 365,     // resolved / ignored reports older than this are deleted outright (0 = never)
+};
 export const DEFAULT_LIMITS = {
   perIp: { max: 10, windowMin: 60 },
   perAccount: { max: 20, windowMin: 60 },
@@ -51,7 +57,7 @@ export async function feedbackConfig(p) {
   const v = row?.value || {};
   const projects = {};
   for (const [k, pc] of Object.entries(v.projects || {})) projects[k] = { ...DEFAULT_PROJECT, ...pc, kinds: { ...DEFAULT_PROJECT.kinds, ...(pc?.kinds || {}) } };
-  const cfg = { projects, limits: { ...DEFAULT_LIMITS, ...(v.limits || {}), perIp: { ...DEFAULT_LIMITS.perIp, ...(v.limits?.perIp || {}) }, perAccount: { ...DEFAULT_LIMITS.perAccount, ...(v.limits?.perAccount || {}) } } };
+  const cfg = { projects, limits: { ...DEFAULT_LIMITS, ...(v.limits || {}), perIp: { ...DEFAULT_LIMITS.perIp, ...(v.limits?.perIp || {}) }, perAccount: { ...DEFAULT_LIMITS.perAccount, ...(v.limits?.perAccount || {}) } }, storage: { ...DEFAULT_STORAGE, ...(v.storage || {}) } };
   cache = { at: Date.now(), cfg };
   return cfg;
 }
@@ -238,10 +244,14 @@ export default async function feedbackRoutes(app) {
     apiPerIpMin: z.number().int().min(0).max(100000), apiPerAccountMin: z.number().int().min(0).max(100000),
   });
   app.put('/admin/feedback/config', { preHandler: WRITE }, async (req, reply) => {
-    const b = z.object({ projects: z.record(z.string().regex(/^[a-z0-9_-]{1,40}$/), projectIn), limits: limitsIn }).safeParse(req.body);
+    const storageIn = z.object({ retentionDays: z.number().int().min(0).max(3650), maxTotalMB: z.number().int().min(0).max(1_000_000), closedRowDays: z.number().int().min(0).max(3650) });
+    const b = z.object({ projects: z.record(z.string().regex(/^[a-z0-9_-]{1,40}$/), projectIn), limits: limitsIn, storage: storageIn.optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: b.error.issues?.[0] });
     const p = await db();
-    await p.adminSetting.upsert({ where: { key: 'feedback.config' }, create: { key: 'feedback.config', value: b.data }, update: { value: b.data } });
+    // Storage is edited on the Hosting screen; a save from the feedback screen keeps it.
+    const prev = await p.adminSetting.findUnique({ where: { key: 'feedback.config' } }).catch(() => null);
+    const value = { ...b.data, storage: b.data.storage || prev?.value?.storage || DEFAULT_STORAGE };
+    await p.adminSetting.upsert({ where: { key: 'feedback.config' }, create: { key: 'feedback.config', value }, update: { value } });
     // The platform-wide limiter reads its own keys (server.mjs polls them every 15 s).
     const upd = (key, v) => p.adminSetting.upsert({ where: { key }, create: { key, value: v }, update: { value: v } });
     await upd('hosting.apiRateLimitMax', b.data.limits.apiPerIpMin || null);
@@ -339,6 +349,41 @@ export default async function feedbackRoutes(app) {
     return reply.code(409).send({ error: 'no_channel' });
   });
 
+  // ── Storage: what the attachments weigh, the retention, and a purge ──
+  app.get('/admin/feedback/storage', { preHandler: READ }, async () => {
+    const p = await db();
+    const cfg = await feedbackConfig(p);
+    const [usage, rows, closed] = await Promise.all([
+      prefixUsage('feedback/').catch(() => ({ bytes: 0, count: 0 })),
+      p.feedback.count(),
+      p.feedback.count({ where: { status: { in: ['resolved', 'ignored'] } } }),
+    ]);
+    return { storage: cfg.storage, usage, rows, closed, prefix: 'feedback/' };
+  });
+  app.put('/admin/feedback/storage', { preHandler: WRITE }, async (req, reply) => {
+    const b = z.object({ retentionDays: z.number().int().min(0).max(3650), maxTotalMB: z.number().int().min(0).max(1_000_000), closedRowDays: z.number().int().min(0).max(3650) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const prev = (await p.adminSetting.findUnique({ where: { key: 'feedback.config' } }).catch(() => null))?.value || {};
+    const value = { ...prev, storage: b.data };
+    await p.adminSetting.upsert({ where: { key: 'feedback.config' }, create: { key: 'feedback.config', value }, update: { value } });
+    cache = { at: 0, cfg: null };
+    return { ok: true };
+  });
+  app.post('/admin/feedback/storage/purge', { preHandler: WRITE }, async (req) => {
+    const p = await db();
+    const cfg = await feedbackConfig(p);
+    const result = await sweepFeedbackStorage(p, cfg.storage, { force: !!req.body?.all });
+    return { ok: true, ...result };
+  });
+
+  // Hourly: attachments past their retention go, the oldest go when the total is over the
+  // cap, and closed reports past their own retention go with everything they carry.
+  const timer = setInterval(async () => {
+    try { const p = await db(); const cfg = await feedbackConfig(p); await sweepFeedbackStorage(p, cfg.storage, {}); } catch { /* next hour */ }
+  }, 60 * 60 * 1000);
+  timer.unref?.();
+
   app.delete('/admin/feedback/:id', { preHandler: WRITE }, async (req, reply) => {
     const p = await db();
     const r = await p.feedback.findUnique({ where: { id: req.params.id }, select: { attachments: true } });
@@ -347,4 +392,42 @@ export default async function feedbackRoutes(app) {
     await p.feedback.delete({ where: { id: req.params.id } });
     return { ok: true };
   });
+}
+
+/** The retention rules, applied. `force` drops every attachment regardless of age. */
+export async function sweepFeedbackStorage(p, storage = DEFAULT_STORAGE, { force = false } = {}) {
+  const st = { ...DEFAULT_STORAGE, ...(storage || {}) };
+  let deletedFiles = 0, freedBytes = 0, deletedRows = 0;
+  const strip = async (row, keep) => {
+    const gone = (row.attachments || []).filter((a) => !keep(a));
+    if (!gone.length) return;
+    for (const a of gone) { await deleteObject(a.key); deletedFiles++; freedBytes += Number(a.size) || 0; }
+    await p.feedback.update({ where: { id: row.id }, data: { attachments: (row.attachments || []).filter(keep) } }).catch(() => {});
+  };
+  // 1. Age.
+  if (force || st.retentionDays > 0) {
+    const cutoff = new Date(Date.now() - st.retentionDays * 86_400_000);
+    const rows = await p.feedback.findMany({ where: force ? {} : { createdAt: { lt: cutoff } }, select: { id: true, attachments: true } });
+    for (const r of rows) if ((r.attachments || []).length) await strip(r, () => false);
+  }
+  // 2. Closed reports past their retention.
+  if (st.closedRowDays > 0) {
+    const cutoff = new Date(Date.now() - st.closedRowDays * 86_400_000);
+    const rows = await p.feedback.findMany({ where: { status: { in: ['resolved', 'ignored'] }, updatedAt: { lt: cutoff } }, select: { id: true, attachments: true } });
+    for (const r of rows) { for (const a of r.attachments || []) { await deleteObject(a.key); deletedFiles++; freedBytes += Number(a.size) || 0; } await p.feedback.delete({ where: { id: r.id } }).catch(() => {}); deletedRows++; }
+  }
+  // 3. The cap: oldest attachments first until under it.
+  if (st.maxTotalMB > 0) {
+    const cap = st.maxTotalMB * 1024 * 1024;
+    const rows = await p.feedback.findMany({ orderBy: { createdAt: 'asc' }, select: { id: true, attachments: true } });
+    let total = rows.reduce((n, r) => n + (r.attachments || []).reduce((m, a) => m + (Number(a.size) || 0), 0), 0);
+    for (const r of rows) {
+      if (total <= cap) break;
+      const size = (r.attachments || []).reduce((m, a) => m + (Number(a.size) || 0), 0);
+      if (!size) continue;
+      await strip(r, () => false);
+      total -= size;
+    }
+  }
+  return { deletedFiles, freedBytes, deletedRows };
 }

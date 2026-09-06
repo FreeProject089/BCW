@@ -934,3 +934,9 @@ label:has(> input[type="radio"]) {
    what a phone gets — not a narrow column with desktop breakpoints still applied. */
 .pb-frame { width: 100%; }
 .pb-frame.is-mobile { max-width: 390px; margin-inline: auto; border: 1px solid var(--line); border-radius: 18px; padding: 12px; background: var(--bg-solid); }
+
+/* The home charity pot: a slow-breathing accent ring, so the one card that asks for something
+   is the one card that looks alive. Still one card — the ring is a border, not a banner. */
+.charity-card-glow { position: relative; border-color: color-mix(in srgb, var(--primary) 45%, var(--line)) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 18px 50px -20px color-mix(in srgb, var(--primary) 55%, transparent); animation: charity-breathe 4s ease-in-out infinite; }
+@keyframes charity-breathe { 0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 18px 50px -20px color-mix(in srgb, var(--primary) 55%, transparent); } 50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), 0 22px 60px -18px color-mix(in srgb, var(--primary) 75%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .charity-card-glow { animation: none; } }
