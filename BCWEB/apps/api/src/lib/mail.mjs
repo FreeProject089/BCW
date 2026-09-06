@@ -318,16 +318,20 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
         <td class="bc-brand" translate="no" style="padding-left:11px;font-weight:800;font-size:18px;color:#1a1714;letter-spacing:-.01em"><span style="color:#f97316">Better</span>Community</td>
       </tr></table>
     </td></tr>
-    <tr><td class="bc-card" style="background:#ffffff;border:1px solid #eae4da;border-radius:20px;padding:34px;box-shadow:0 12px 40px -18px rgba(30,20,5,.18)">
+    <tr><td class="bc-accent" style="background:#f97316;height:4px;line-height:4px;font-size:0;border-radius:20px 20px 0 0">&nbsp;</td></tr>
+    <tr><td class="bc-card" style="background:#ffffff;border:1px solid #eae4da;border-top:none;border-radius:0 0 20px 20px;padding:32px 34px 34px;box-shadow:0 12px 40px -18px rgba(30,20,5,.18)">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-        <tr><td style="border-bottom:3px solid #f97316;width:38px;padding-bottom:16px"></td></tr>
-        <tr><td style="padding-top:16px"><h1 class="bc-title" style="margin:0 0 12px;font-size:22px;color:#1a1714;letter-spacing:-.02em;font-weight:800">${safeTitle}</h1></td></tr>
+        <tr><td style="padding-bottom:6px"><h1 class="bc-title" style="margin:0 0 12px;font-size:22px;color:#1a1714;letter-spacing:-.02em;font-weight:800">${safeTitle}</h1></td></tr>
         <tr><td class="bc-text" style="color:#5d5750;font-size:15px;line-height:1.66">${body}</td></tr>
         ${btn}
       </table>
     </td></tr>
-    <tr><td style="padding:20px 4px 0;text-align:center;color:#a39b8f;font-size:12px">
-      © ${new Date().getFullYear()} BetterCommunity · <a href="${SITE}" style="color:#918a80;text-decoration:none">bettercommunity.ch</a>
+    <tr><td style="padding:22px 4px 0;text-align:center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="bc-hr" style="border-top:1px solid #eae4da;font-size:0;line-height:0">&nbsp;</td></tr></table>
+      <div class="bc-faint" translate="no" style="padding-top:16px;color:#a39b8f;font-size:12px;line-height:1.6">
+        <span class="bc-brand" style="font-weight:700;color:#5d5750"><span style="color:#f97316">Better</span>Community</span> · <a href="${SITE}" style="color:#918a80;text-decoration:none">bettercommunity.ch</a><br>
+        © ${new Date().getFullYear()} BetterCommunity — one account across the Better* apps.
+      </div>
     </td></tr>
   </table>
 </div>

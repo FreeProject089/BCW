@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { Copy, Package, Layers, ShieldCheck, ExternalLink, BookOpen, PenLine, Puzzle } from 'lucide-react';
 import { Card, Button, Badge, copyText, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
+import { highlightCode } from './pages.jsx';
 
 const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex mermaid';
@@ -108,11 +109,13 @@ script-src 'self' https://cdn.jsdelivr.net;                                   /*
 frame-src https://www.youtube-nocookie.com https://open.spotify.com;         /* ::youtube ::spotify */
 connect-src 'self';                                                          /* :counter :action ::include ::openapi */`;
 
-function Snippet({ code }) {
+const LANG_LABEL = { bash: 'shell', js: 'jsx', javascript: 'jsx', css: 'css', json: 'json' };
+function Snippet({ code, lang = 'bash' }) {
   const toast = useToast(); const { t } = useI18n();
   return (
-    <div className="relative group">
-      <pre className="text-[12px] leading-relaxed rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 overflow-x-auto"><code>{code}</code></pre>
+    <div className="relative group rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
+      <span className="absolute top-2 left-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] select-none pointer-events-none">{LANG_LABEL[lang] || lang}</span>
+      <pre className="text-[12px] leading-relaxed p-3 pt-7 overflow-x-auto m-0"><code dangerouslySetInnerHTML={{ __html: highlightCode(code, lang) }} /></pre>
       <button type="button" onClick={() => { copyText(code); toast.success(t('common.copied', 'Copied.')); }}
         className="absolute top-2 right-2 p-1.5 rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] text-[var(--muted)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition" aria-label={t('common.copy', 'Copy')}>
         <Copy size={13} />
@@ -158,19 +161,19 @@ export default function DevBmd() {
               className={`px-3 py-1.5 rounded-lg text-sm border ${fw === f.id ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>{f.label}</button>
           ))}
         </div>
-        <Snippet code={cur.code} />
+        <Snippet code={cur.code} lang="js" />
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><Puzzle size={16} /> {t('dvb.cfg', 'Everything configurable')}</h2>
         <p className="text-sm text-[var(--muted)] max-w-2xl">{t('dvb.cfg.d', 'Every value that was specific to this site is a knob: the app logos, the icon CDNs (null switches a family off and nothing is fetched), where authored links may point, which frames survive, the corner radius, how an include is resolved, where Mermaid comes from.')}</p>
-        <Snippet code={CONFIG} />
+        <Snippet code={CONFIG} lang="js" />
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><ShieldCheck size={16} /> {t('dvb.csp', 'Content Security Policy')}</h2>
         <p className="text-sm text-[var(--muted)] max-w-2xl">{t('dvb.csp.d', 'What the defaults reach for, so the policy can name them — or set the CDN knobs to null and list nothing.')}</p>
-        <Snippet code={CSP} />
+        <Snippet code={CSP} lang="css" />
       </section>
 
       <div className="flex flex-wrap gap-2 pt-2">

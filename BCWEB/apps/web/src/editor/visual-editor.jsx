@@ -3,7 +3,7 @@ import {
   GripVertical, Trash2, Plus, Heading as HeadingIcon, Type, TagIcon, LayoutGrid, ImagePlus,
   Code2, Quote, Minus, ChevronDown, ChevronUp, Table as TableIcon, X, FileDown, ListOrdered,
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
-  Eye, MousePointerClick, Sigma, PlayCircle, Clock,
+  Eye, MousePointerClick, Sigma, PlayCircle, Clock, Search,
 } from 'lucide-react';
 import { Input, Select } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -142,24 +142,28 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
       {addOpen !== false && (
         <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onClick={() => setAddOpen(false)}>
           <div className="card modal-card w-full max-w-2xl p-0 overflow-hidden anim-pop max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
-              <span className="font-semibold">{t('ve.addBlock', 'Add a block')}</span>
-              <input autoFocus value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder={t('ve.search', 'Search a block…')} className="ms-auto text-sm px-2.5 py-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] outline-none focus:border-[var(--primary)] w-40 sm:w-56" />
-              <button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={16} /></button></div>
-            <div className="p-2 overflow-auto">
-              {typeMatches.length > 0 && <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-1 mb-1.5">{t('ve.grp.forms', 'With a form')}</div>}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 mb-3">
+            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-[var(--line)]">
+              <span className="font-semibold text-[15px]">{t('ve.addBlock', 'Add a block')}</span>
+              <div className="relative ms-auto w-44 sm:w-60">
+                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+                <input autoFocus value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder={t('ve.search', 'Search a block…')} className="w-full text-sm ps-8 pe-2.5 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] outline-none focus:border-[var(--primary)]" />
+              </div>
+              <button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"><X size={16} /></button></div>
+            <div className="p-4 overflow-auto">
+              {typeMatches.length > 0 && <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-2">{t('ve.grp.forms', 'With a form')}</div>}
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
                 {typeMatches.map((bt) => (
-                  <button key={bt.type} type="button" onClick={() => add(bt.type)} className="flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] text-xs">
-                    <bt.icon size={17} className="text-[var(--muted)]" /> {bt.label}
+                  <button key={bt.type} type="button" onClick={() => add(bt.type)} className="group flex flex-col items-center gap-2 px-2 py-3 rounded-xl border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] hover:-translate-y-0.5 transition-all text-xs text-center">
+                    <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--primary)]/10 transition-colors"><bt.icon size={17} className="text-[var(--muted)] group-hover:text-[var(--primary-2)] transition-colors" /></span>
+                    <span className="leading-tight">{bt.label}</span>
                   </button>
                 ))}
               </div>
               {snippetGroups.map((g) => (
-                <div key={g.id} className="mb-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-1 mb-1">{g.label} <span className="normal-case font-normal">· B.MD</span></div>
-                  <div className="flex flex-wrap gap-1">
-                    {g.items.map((it) => <button key={it.id} type="button" onClick={() => addSnippet(it)} className="text-xs px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]">{it.label}</button>)}
+                <div key={g.id} className="mb-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-1.5">{g.label} <span className="normal-case font-normal">· B.MD</span></div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.items.map((it) => <button key={it.id} type="button" onClick={() => addSnippet(it)} className="text-xs px-2.5 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] transition-colors">{it.label}</button>)}
                   </div>
                 </div>
               ))}

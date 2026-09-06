@@ -14849,34 +14849,40 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
   return (
     <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d3', 'The bot’s buttons carry custom emoji instead of the unicode ones. Each icon is a coloured tile with a glyph from the same icon families as the site (lucide, Phosphor, or an image): pick the glyph and the colour per button, the shape and the glyph colour for the set, download the pack, upload it on the application’s Emojis page, then paste each emoji here.')}
       action={<a href="/api/admin/bot/emoji-pack.zip" download><Button size="sm" variant="ghost"><Download size={13} /> {t('db.eco.icons.pack', 'Icon pack')}</Button></a>}>
-      {/* Set-wide style */}
-      <div className="flex flex-wrap items-end gap-3">
-        <Field label={t('db.eco.icons.shape', 'Tile shape')} className="!mb-0 w-40"><Dropdown value={shape} onChange={(v) => onStyle('shape', v)} options={[{ value: 'rounded', label: t('db.eco.icons.shape.rounded', 'Rounded') }, { value: 'circle', label: t('db.eco.icons.shape.circle', 'Circle') }, { value: 'square', label: t('db.eco.icons.shape.square', 'Square') }, { value: 'none', label: t('db.eco.icons.shape.none', 'No tile (glyph only)') }]} /></Field>
-        <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><input type="color" value={fg} onChange={(e) => onStyle('fg', e.target.value)} className="h-9 w-14 rounded-md border border-[var(--line)] bg-transparent cursor-pointer" /></Field>
-        <div className="text-[11px] text-[var(--faint)] flex-1 min-w-[12rem]">
-          {t('db.eco.icons.h2', 'Save the page, then download the pack — it is drawn from the saved style. Developer Portal → your application → Emojis → Upload (keep the bc_<name> file names); then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> in the field.')}
-          {customised ? <> · <b>{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</b></> : null}
+      {/* Set-wide style — controls on one line, the help text as its own block below */}
+      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3.5 space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <Field label={t('db.eco.icons.shape', 'Tile shape')} className="!mb-0 w-40"><Dropdown value={shape} onChange={(v) => onStyle('shape', v)} options={[{ value: 'rounded', label: t('db.eco.icons.shape.rounded', 'Rounded') }, { value: 'circle', label: t('db.eco.icons.shape.circle', 'Circle') }, { value: 'square', label: t('db.eco.icons.shape.square', 'Square') }, { value: 'none', label: t('db.eco.icons.shape.none', 'No tile (glyph only)') }]} /></Field>
+            <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><input type="color" value={fg} onChange={(e) => onStyle('fg', e.target.value)} className="h-9 w-14 rounded-md border border-[var(--line)] bg-transparent cursor-pointer" /></Field>
+          </div>
+          <div className="flex items-center gap-2.5">
+            {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[var(--primary)]/12 text-[var(--primary-2)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
+            <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+          </div>
         </div>
-        <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+        <p className="text-[11px] leading-relaxed text-[var(--faint)] m-0">
+          {t('db.eco.icons.h2', 'Save the page, then download the pack — it is drawn from the saved style. Developer Portal → your application → Emojis → Upload (keep the bc_<name> file names); then right-click an emoji in Discord → Copy Text, and paste the <:bc_shop:123…> in the field.')}
+        </p>
       </div>
       {open && (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2.5 mt-3">
           {list.map((ic) => {
             const m = mine(ic.key);
             const changed = !!(m.icon || m.color);
             return (
-              <div key={ic.key} className={`rounded-lg border px-2.5 py-2 flex items-center gap-2 ${changed ? 'border-[var(--primary)]/40' : 'border-[var(--line)]'}`}>
-                <img src={preview(ic)} alt="" className="w-9 h-9 rounded shrink-0" />
+              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex items-center gap-2.5 transition-colors ${changed ? 'border-[var(--primary)]/40 bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+                <img src={preview(ic)} alt="" className="w-9 h-9 rounded-md shrink-0" />
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium truncate flex items-center gap-1" title={ic.key}>{ic.label} <span className="text-[var(--faint)] font-normal">{ic.fallback}</span></div>
-                  <div className="flex items-center gap-1.5 mt-1">
+                  <div className="flex items-center gap-1.5 mt-1.5">
                     <button type="button" onClick={() => setPicking(ic.key)} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] max-w-[9rem]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
                       <IconGlyph name={m.icon || ic.icon} size={12} /><span className="truncate">{m.icon || ic.icon}</span>
                     </button>
                     <input type="color" value={m.color || ic.color} onChange={(e) => onStyle(`${ic.key}.color`, e.target.value)} className="h-6 w-7 rounded border border-[var(--line)] bg-transparent cursor-pointer" title={t('db.eco.icons.color', 'Tile colour')} />
                     {changed && <button type="button" onClick={() => { onStyle(`${ic.key}.icon`, ''); onStyle(`${ic.key}.color`, ''); }} className="text-[10px] text-[var(--faint)] hover:text-[var(--text)]" title={t('db.eco.icons.reset', 'Back to the default')}><RotateCcw size={11} /></button>}
                   </div>
-                  <Input className="!py-0.5 !text-[11px] font-mono mt-1" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
+                  <Input className="!py-0.5 !text-[11px] font-mono mt-1.5" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
                 </div>
               </div>
             );
