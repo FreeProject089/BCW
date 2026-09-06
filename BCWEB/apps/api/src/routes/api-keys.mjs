@@ -13,6 +13,10 @@ import { apiUsageConfig } from '../lib/apiusage.mjs';
 import { charityCurrent } from './charity.mjs';
 import { economyView } from '../lib/economy-curve.mjs';
 import { listPurchases } from '../lib/economy-shop.mjs';
+// The ONE poll visibility rule and the ONE tally rule. Re-implementing either here is how the
+// staff-only-tally leak happened before (see the two files' own docstrings): keep it single.
+import { listWhere } from '../lib/poll-visibility.mjs';
+import { maySeeResults } from '../lib/poll-view.mjs';
 
 // Only the PREFIXED form (BCU-XXXX-XXXX). repofingerprint's looksLikeBcId also accepts a
 // bare 8-character string, and resolving one costs a scan over every account — it
@@ -590,7 +594,9 @@ export default async function apiKeyRoutes(app) {
   app.get('/v1/polls', { preHandler: apiAuth('polls:read'), ...RL_READ }, async (req) => {
     const p = await db();
     const polls = await p.poll.findMany({
-      where: { status: 'open' },
+      // A key is not staff: only PUBLIC polls are listed (unlisted/private are share-key or
+      // group scoped). `listWhere` is the same gate the website's list uses.
+      where: { ...listWhere({ role: null }), status: 'open' },
       orderBy: [{ pinned: 'desc' }, { createdAt: 'desc' }],
       take: 50,
       include: { options: { orderBy: { sort: 'asc' } }, votes: { select: { optionId: true, userId: true, wasLoggedIn: true } } },
@@ -601,7 +607,9 @@ export default async function apiKeyRoutes(app) {
         .filter((poll) => (!poll.opensAt || new Date(poll.opensAt).getTime() <= now) && (!poll.closesAt || new Date(poll.closesAt).getTime() > now))
         .map((poll) => {
           const mine = poll.votes.filter((v) => v.userId === req.user.uid).map((v) => v.optionId);
-          const counted = mine.length > 0 || poll.results === 'always';
+          // A key never counts as staff, so a `results:'staff'` tally stays hidden — the same
+          // rule maySeeResults enforces on the website (never a local re-derivation).
+          const counted = maySeeResults(poll, { isStaff: false, hasVoted: mine.length > 0 });
           const tally = new Map(poll.options.map((o) => [o.id, 0]));
           for (const v of poll.votes) tally.set(v.optionId, (tally.get(v.optionId) || 0) + 1);
           return {
@@ -674,7 +682,8 @@ export default async function apiKeyRoutes(app) {
     const now = Date.now();
     const open = poll.status === 'open' && (!poll.opensAt || new Date(poll.opensAt).getTime() <= now) && (!poll.closesAt || new Date(poll.closesAt).getTime() > now);
     const mine = poll.votes.filter((v) => v.userId === req.user.uid).map((v) => v.optionId);
-    const counted = mine.length > 0 || poll.results === 'always' || poll.status === 'closed';
+    // `results:'staff'` stays staff-only even on a closed poll — maySeeResults is the one rule.
+    const counted = maySeeResults(poll, { isStaff: false, hasVoted: mine.length > 0 });
     const tally = new Map(poll.options.map((o) => [o.id, 0]));
     for (const v of poll.votes) tally.set(v.optionId, (tally.get(v.optionId) || 0) + 1);
     return {
@@ -704,7 +713,7 @@ export default async function apiKeyRoutes(app) {
     ]);
     return economyView(e, cfg?.value?.economy || {});
   });
-  app.get('/v1/economy/purchases', { preHandler: apiAuth('economy:read'), ...RL_READ }, async (req) => ({ purchases: await listPurchases(await db(), req.user.uid, 200) }));
+  app.get('/v1/economy/purchases', { preHandler: apiAuth('economy:read'), ...RL_READ }, async (req) => ({ purchases: await listPurchases(await db(), null, req.user.uid, 200) }));
 
   // ── Badges ──────────────────────────────────────────────────────────────────
   app.get('/v1/badges', { preHandler: apiAuth('badges:read'), ...RL_READ }, async (req) => {

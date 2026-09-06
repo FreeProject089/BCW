@@ -13,8 +13,19 @@
 //   · EconomyLedger — every movement of points (level-up grants, staff grants, purchases,
 //     casino, gifts both ways). The histories the dashboards show are this table; retention
 //     is `economy.historyDays` (sweepEconomyHistory).
+import crypto from 'node:crypto';
 import { logAudit, notify } from './lib.mjs';
 import { emitWebhook } from './webhooks.mjs';
+
+// A shop reveal code that grants free hosting / storage / a discount is a bearer secret, so it
+// is drawn from a CSPRNG, not Math.random (whose state is recoverable from a few outputs — an
+// attacker who reveals a handful of their own codes could then predict later ones).
+const SHOP_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/0/1
+function newShopCode(len = 10) {
+  let s = 'SHOP';
+  for (let i = 0; i < len; i++) s += SHOP_CODE_ALPHABET[crypto.randomInt(SHOP_CODE_ALPHABET.length)];
+  return s;
+}
 
 // What each shop kind hands over. `site` kinds are fulfilled here; `admin` kinds are recorded
 // as pending and delivered by a person (a role needs the guild, a custom reward a human).
@@ -79,13 +90,34 @@ export async function ledger(p, { userId, kind, delta, balance, ref = null, meta
   return p.economyLedger.create({ data: { userId, kind, delta: Math.round(delta), balance: Math.round(balance), ref, meta } }).catch(() => null);
 }
 
-/** Move `delta` points on a balance and record it. Never below zero. Returns the new balance. */
-export async function movePoints(p, userId, delta, entry) {
-  const cur = await p.userEconomy.findUnique({ where: { userId }, select: { points: true } });
-  const next = Math.max(0, (cur?.points || 0) + delta);
-  await p.userEconomy.upsert({ where: { userId }, create: { userId, points: next }, update: { points: next } });
-  await ledger(p, { userId, delta: next - (cur?.points || 0), balance: next, ...entry });
-  return next;
+/**
+ * Move `delta` points on a balance and record it. ATOMIC: a debit is one conditional UPDATE,
+ * so two concurrent operations can never both read the same balance and lose an update — the
+ * bug that let a gift of the whole balance, fired twice, mint points from nothing, and let two
+ * concurrent buys be charged once for two items.
+ *
+ * A DEBIT (`delta < 0`) applies only if the balance covers it and returns `null` when it does
+ * not — the caller MUST treat `null` as "insufficient" and not proceed (credit the other side,
+ * hand over the item…). Pass `{ clamp: true }` for a settlement that should take whatever is
+ * there instead of failing (a casino loss, an admin zero-out): it never mints, only floors.
+ * A CREDIT (`delta > 0`) always applies. Returns the new balance (or `null` on a failed debit).
+ */
+export async function movePoints(p, userId, delta, entry, { clamp = false } = {}) {
+  await p.userEconomy.upsert({ where: { userId }, create: { userId, points: 0 }, update: {} });
+  const d = Math.round(Number(delta) || 0);
+  if (d < 0) {
+    const need = -d;
+    const r = await p.userEconomy.updateMany({ where: { userId, points: { gte: need } }, data: { points: { decrement: need } } });
+    if (r.count === 0) {
+      if (!clamp) return null;                       // insufficient — change nothing, no ledger
+      await p.userEconomy.updateMany({ where: { userId }, data: { points: 0 } });
+    }
+  } else if (d > 0) {
+    await p.userEconomy.update({ where: { userId }, data: { points: { increment: d } } });
+  }
+  const after = (await p.userEconomy.findUnique({ where: { userId }, select: { points: true } }))?.points || 0;
+  await ledger(p, { userId, delta: d, balance: after, ...entry });
+  return after;
 }
 
 // What the buyer may see of a delivery: never the fixed code before it is revealed.
@@ -110,15 +142,21 @@ export async function buyShopItem(p, eco, { userId, itemId, via = 'site', log = 
   // Stock and exclusivity are checked against the purchase table, so both doors count.
   if (item.stock != null && (await soldCount(p, item.id)) >= item.stock) return { ok: false, error: 'sold_out' };
   if (item.exclusive && (await p.economyPurchase.count({ where: { itemId: item.id, userId, status: { not: 'refunded' } } })) > 0) return { ok: false, error: 'already_owned' };
+  // Charge atomically FIRST, so two concurrent buys can never be charged once for two items.
+  // If the balance no longer covers it (a race lost between the check above and here), nothing
+  // is granted and no row is written.
+  const points = await movePoints(p, userId, -cost, { kind: 'purchase', ref: item.id, meta: { itemId: item.id, name: item.name, kind: item.kind, via } });
+  if (points == null) return { ok: false, error: 'insufficient', points: (await p.userEconomy.findUnique({ where: { userId }, select: { points: true } }))?.points || 0, cost };
+  // Put the points back if anything below refuses to complete the sale.
+  const refund = (why) => movePoints(p, userId, cost, { kind: 'refund', ref: item.id, meta: { itemId: item.id, name: item.name, reason: why } }, { clamp: true });
   let delivery = { kind: item.kind };
   let status = SHOP_KINDS[item.kind].fulfil === 'site' ? 'delivered' : 'pending';
-  // Fulfil what the API itself can grant BEFORE debiting, so a failed grant never charges the
-  // member. A code is NOT minted here: the purchase holds a sealed envelope until "Reveal".
+  // A code is NOT minted here: the purchase holds a sealed envelope until "Reveal".
   try {
     if (item.kind === 'badge') {
       const badge = await p.badge.findUnique({ where: { id: item.ref }, select: { id: true, name: true, active: true } });
-      if (!badge || !badge.active) return { ok: false, error: 'badge_unavailable' };
-      if (await p.userBadge.findUnique({ where: { userId_badgeId: { userId, badgeId: badge.id } } })) return { ok: false, error: 'already_owned' };
+      if (!badge || !badge.active) { await refund('badge_unavailable'); return { ok: false, error: 'badge_unavailable' }; }
+      if (await p.userBadge.findUnique({ where: { userId_badgeId: { userId, badgeId: badge.id } } })) { await refund('already_owned'); return { ok: false, error: 'already_owned' }; }
       await p.userBadge.create({ data: { userId, badgeId: badge.id, grantedBy: 'system' } });
       delivery = { kind: 'badge', badge: badge.name, badgeId: badge.id, revealed: true };
       emitWebhook(p, userId, 'badge.earned', { id: badge.id, name: badge.name, via: 'shop' }).catch(() => {});
@@ -127,13 +165,34 @@ export async function buyShopItem(p, eco, { userId, itemId, via = 'site', log = 
     }
   } catch (e) {
     log?.warn?.({ err: e?.message }, 'economy buy fulfil failed');
+    await refund('fulfil_failed');
     return { ok: false, error: 'fulfil_failed' };
   }
   const expiresAt = item.codeDays && SHOP_KINDS[item.kind].code ? null : null; // the clock starts at reveal
   const rec = await p.economyPurchase.create({ data: {
     userId, itemId: item.id, itemName: item.name, kind: item.kind, cost, via, status, delivery, expiresAt,
   } }).catch(() => null);
-  const points = await movePoints(p, userId, -cost, { kind: 'purchase', ref: rec?.id || item.id, meta: { itemId: item.id, name: item.name, kind: item.kind, via } });
+  // Compensating stock / exclusivity guard: the pre-check races (count-then-insert has no DB
+  // constraint behind it), so re-rank now that our row exists. Only the first `stock` rows by
+  // creation win; a `one-per-account` item allows only the user's earliest. A loser is unwound
+  // — row dropped, badge grant undone, points refunded — so the limit can never be oversold.
+  if (rec && (item.stock != null || item.exclusive)) {
+    let loser = false;
+    if (item.stock != null) {
+      const sold = await p.economyPurchase.findMany({ where: { itemId: item.id, status: { not: 'refunded' } }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+      loser = sold.findIndex((x) => x.id === rec.id) >= item.stock;
+    }
+    if (!loser && item.exclusive) {
+      const mine = await p.economyPurchase.findMany({ where: { itemId: item.id, userId, status: { not: 'refunded' } }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+      loser = mine.findIndex((x) => x.id === rec.id) >= 1;
+    }
+    if (loser) {
+      await p.economyPurchase.delete({ where: { id: rec.id } }).catch(() => {});
+      if (delivery.kind === 'badge' && delivery.badgeId) await p.userBadge.deleteMany({ where: { userId, badgeId: delivery.badgeId, grantedBy: 'system' } }).catch(() => {});
+      await refund(item.stock != null ? 'sold_out' : 'already_owned');
+      return { ok: false, error: item.stock != null ? 'sold_out' : 'already_owned' };
+    }
+  }
   await logAudit(p, 'system', 'economy.buy', `user=${userId} item=${item.id} kind=${item.kind} cost=${cost} via=${via}`);
   emitWebhook(p, userId, 'shop.purchased', { purchaseId: rec?.id || null, itemId: item.id, name: item.name, kind: item.kind, cost, status }).catch(() => {});
   return {
@@ -158,8 +217,8 @@ export async function revealPurchase(p, eco, { userId, purchaseId }) {
     code = d.fixedCode;
   } else {
     const promoKind = row.kind === 'pool' ? 'free_pool' : row.kind === 'boost' ? 'free_boost' : row.kind === 'hosting' ? 'free_hosting' : 'discount';
-    code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
-    for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = ('SHOP' + Math.random().toString(36).slice(2, 8)).toUpperCase();
+    code = newShopCode();
+    for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = newShopCode();
     const gb = item?.gb || item?.amount || 1, days = item?.days || item?.amount || 7;
     await p.promoCode.create({ data: {
       code, kind: promoKind,
@@ -222,7 +281,11 @@ export async function giftPoints(p, eco, { fromUserId, toUserId, points, note = 
   }
   const from = await p.user.findUnique({ where: { id: fromUserId }, select: { displayName: true } });
   const meta = { note: String(note || '').slice(0, 140), via };
+  // Debit the sender atomically; the recipient is credited ONLY if it succeeded. Without this
+  // ordering two concurrent gifts of the whole balance each "succeeded" on a stale read and the
+  // recipient was credited twice — points minted from nothing.
   const fromBalance = await movePoints(p, fromUserId, -points, { kind: 'gift_out', ref: to.id, meta: { ...meta, toName: to.displayName } });
+  if (fromBalance == null) return { ok: false, error: 'insufficient', points: (await p.userEconomy.findUnique({ where: { userId: fromUserId }, select: { points: true } }))?.points || 0 };
   await movePoints(p, to.id, points, { kind: 'gift_in', ref: fromUserId, meta: { ...meta, fromName: from?.displayName } });
   notify(p, to.id, 'promo_gift', `${from?.displayName || 'A member'} sent you ${points} ${eco.currencyName || 'points'}${note ? ` — “${String(note).slice(0, 140)}”` : ''}.`, { bodyFr: `${from?.displayName || 'Un membre'} t’a envoyé ${points} ${eco.currencyName || 'points'}${note ? ` — « ${String(note).slice(0, 140)} »` : ''}.`, href: '/dashboard?s=economy' }).catch(() => {});
   await logAudit(p, 'system', 'economy.gift', `${fromUserId} → ${to.id}: ${points}${via ? ` via=${via}` : ''}`);

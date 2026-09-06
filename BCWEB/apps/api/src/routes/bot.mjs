@@ -2160,7 +2160,7 @@ export default async function botRoutes(app) {
     const m = b.data.multiplier;
     const payout = Math.max(0, Math.round(m >= 1 ? b.data.bet + (b.data.bet * m - b.data.bet) * edge : b.data.bet * m));
     const delta = payout - b.data.bet;
-    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game || null, meta: { game: b.data.game || null, bet: b.data.bet, multiplier: b.data.multiplier, payout } });
+    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game || null, meta: { game: b.data.game || null, bet: b.data.bet, multiplier: b.data.multiplier, payout } }, { clamp: true });
     return { ok: true, delta, payout, points: newPts };
   });
 

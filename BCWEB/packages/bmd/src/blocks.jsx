@@ -31,9 +31,17 @@ export function DocKbd({ node }) {
 export function DocComment({ node, children }) {
   const p = node?.properties || {};
   const text = p.dataComment || p['data-comment'] || '';
-  const link = p.dataLink || p['data-link'] || '';
-  const img = p.dataImg || p['data-img'] || '';
-  const video = p.dataVideo || p['data-video'] || '';
+  // These come from data-* attributes the schema keeps, then get promoted to href/src at RENDER
+  // time — after rehype-safeUrls has already run — so a `data-link="javascript:…"` reached the
+  // DOM unfiltered (stored XSS). Route each through safeUrl, the same gate the pipeline applies
+  // to native <a>/<img> URLs, and drop anything it refuses.
+  const pol = urlPolicy();
+  const _l = safeUrl(p.dataLink || p['data-link'] || '', { kind: 'link', policy: pol });
+  const link = _l.ok ? _l.href : '';
+  const _i = safeUrl(p.dataImg || p['data-img'] || '', { kind: 'link', policy: pol });
+  const img = _i.ok ? _i.href : '';
+  const _v = safeUrl(p.dataVideo || p['data-video'] || '', { kind: 'link', policy: pol });
+  const video = _v.ok ? _v.href : '';
   const [open, setOpen] = useState(false);
   return (
     // `role="button"` and `aria-expanded` because this IS a disclosure and only looked like
@@ -351,7 +359,9 @@ export function DocFetch({ node }) {
   useEffect(() => {
     if (!src) return undefined;
     let alive = true;
-    const load = () => fetch(src, { headers: { Accept: 'application/json, text/plain' } })
+    // A displayed value is public data — read it WITHOUT the reader's cookies, so a directive
+    // authored by someone else cannot read a `/api/me/*` response into the reader's own page.
+    const load = () => fetch(src, { credentials: 'omit', headers: { Accept: 'application/json, text/plain' } })
       .then(async (r) => { if (!r.ok) throw new Error('http'); const ct = r.headers.get('content-type') || ''; return ct.includes('json') ? r.json() : r.text(); })
       .then((j) => { if (alive) setState({ value: pick(j, path), err: false }); })
       .catch(() => { if (alive) setState((st) => ({ ...st, err: true })); });
@@ -389,7 +399,12 @@ export function DocAction({ node }) {
   const [reply, setReply] = useState('');
   const run = async () => {
     if (!href || st === 'busy' || (once && st === 'done')) return;
-    if (confirmMsg && typeof window !== 'undefined' && !window.confirm(confirmMsg)) return;
+    // A state-changing action is never silent: an author-supplied confirm is used when present,
+    // otherwise the method + target is named. This is what stops a `:action{method=POST}` in
+    // someone else's content firing an authenticated request the reader never meant to make.
+    const mutating = method !== 'GET' && method !== 'HEAD';
+    const ask = confirmMsg || (mutating ? `${method} ${href}` : '');
+    if (ask && typeof window !== 'undefined' && !window.confirm(ask)) return;
     setSt('busy');
     try {
       const init = { method, headers: { Accept: 'application/json, text/plain' } };
@@ -432,7 +447,7 @@ export function DocInclude({ node }) {
     const resolver = markdownConfig().resolveInclude;
     const go = typeof resolver === 'function'
       ? Promise.resolve(resolver(raw))
-      : (() => { const u = apiUrl(raw); return u ? fetch(u).then((r) => { if (!r.ok) throw new Error('http'); return r.text(); }) : Promise.reject(new Error('refused')); })();
+      : (() => { const u = apiUrl(raw); return u ? fetch(u, { credentials: 'omit' }).then((r) => { if (!r.ok) throw new Error('http'); return r.text(); }) : Promise.reject(new Error('refused')); })();
     go.then((t) => { if (alive) { setText(String(t ?? '')); setErr(''); } }).catch((e) => { if (alive) setErr(String(e?.message || 'failed')); });
     return () => { alive = false; };
   }, [raw, depth]);
@@ -456,7 +471,7 @@ export function DocOpenapi({ node }) {
   useEffect(() => {
     let alive = true;
     if (!src) { setErr('refused'); return undefined; }
-    fetch(src, { headers: { Accept: 'application/json' } })
+    fetch(src, { credentials: 'omit', headers: { Accept: 'application/json' } })
       .then((r) => { if (!r.ok) throw new Error('http'); return r.json(); })
       .then((spec) => { if (alive) { setMd(openapiToBmd(spec, { tag, filter, toc, header: !title })); setErr(''); } })
       .catch((e) => { if (alive) setErr(String(e?.message || 'failed')); });

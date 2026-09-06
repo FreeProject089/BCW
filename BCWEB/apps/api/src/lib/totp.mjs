@@ -49,7 +49,12 @@ export function verifyTotp(secret, token, { step = 30, digits = 6, window = 1 } 
   if (!/^\d{6}$/.test(String(token || '').trim())) return false;
   const counter = Math.floor(Date.now() / 1000 / step);
   const t = String(token).trim();
-  for (let w = -window; w <= window; w++) { if (hotp(secret, counter + w, digits) === t) return true; }
+  // Constant-time compare so a code cannot be recovered a digit at a time by timing the check.
+  const tb = Buffer.from(t);
+  for (let w = -window; w <= window; w++) {
+    const cb = Buffer.from(hotp(secret, counter + w, digits));
+    if (cb.length === tb.length && crypto.timingSafeEqual(cb, tb)) return true;
+  }
   return false;
 }
 

@@ -1231,7 +1231,9 @@ export default async function miscRoutes(app) {
     // list does not know) and paths to leave out.
     const smRows = await p.adminSetting.findMany({ where: { key: { in: ['seo.sitemapExtra', 'seo.sitemapExclude'] } } }).catch(() => []);
     const sm = Object.fromEntries(smRows.map((r) => [r.key, r.value]));
-    const extra = (Array.isArray(sm['seo.sitemapExtra']) ? sm['seo.sitemapExtra'] : []).map(String).filter((x) => /^\/[^\s]*$/.test(x));
+    // A single leading slash, then no whitespace and none of the XML-significant characters — so
+    // a crafted entry can neither add a second <loc> nor break the document's well-formedness.
+    const extra = (Array.isArray(sm['seo.sitemapExtra']) ? sm['seo.sitemapExtra'] : []).map(String).filter((x) => /^\/(?!\/)[^\s<>&"']*$/.test(x));
     const exclude = new Set((Array.isArray(sm['seo.sitemapExclude']) ? sm['seo.sitemapExclude'] : []).map(String));
     // A path an admin marked noindex must not be advertised here either — a sitemap that
     // lists a page the meta tag asks robots to skip is the site contradicting itself.
@@ -1246,7 +1248,10 @@ export default async function miscRoutes(app) {
       ...cat.map((c) => ({ loc: `${site}/item/${c.slug}`, lastmod: c.updatedAt })),
     ];
     const keep = urls.filter((u) => !exclude.has(u.loc.slice(site.length)));
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${keep.map((u) => `  <url><loc>${u.loc}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
+    // Every <loc> is XML-escaped: slugs and admin-set extra paths are data, and an unescaped
+    // `&` (or a crafted extra path) would corrupt the feed for every crawler or inject a <loc>.
+    const xesc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${keep.map((u) => `  <url><loc>${xesc(u.loc)}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
   });
   app.get('/robots.txt', async (req, reply) => {

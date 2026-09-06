@@ -4,6 +4,21 @@
 // and a tree out, and the blocks half never has to know how a directive was written.
 import { visit } from 'unist-util-visit';
 import { safeUrl } from './url.js';
+
+// A directive's `color=` is written straight into an inline `style` as `--x:<value>`. Left raw
+// it is a CSS-injection hole: a value like `red;position:absolute;inset:0;width:100vw;height:100vh`
+// paints a full-viewport overlay (clickjacking / defacement) authored by whoever wrote the
+// content. The downstream style sanitiser only denylists a few properties and misses most, so
+// close it at the source with an ALLOWLIST — a real colour token or a CSS variable, nothing else.
+function safeColor(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (!s) return '';
+  if (/^#[0-9a-fA-F]{3,8}$/.test(s)) return s;
+  if (/^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.,%\s/]+\)$/.test(s)) return s;
+  if (/^[a-zA-Z]{1,24}$/.test(s)) return s;                       // a named colour
+  if (/^var\(\s*--[a-zA-Z0-9_-]{1,48}\s*\)$/.test(s)) return s;   // a theme token
+  return '';                                                      // reject → the CSS var falls back
+}
 /* kit:emoji:start */
 import { replaceEmoji } from './emoji.js';
 /* kit:emoji:end */
@@ -131,6 +146,9 @@ export function remarkDocBlocks() {
       if (node.type !== 'containerDirective' && node.type !== 'leafDirective' && node.type !== 'textDirective') return;
       const name = (node.name || '').toLowerCase();
       const attrs = node.attributes || {};
+      // One choke point for every `color=` on every directive: sanitise it once here so the
+      // ~15 `style: \`--x:${attrs.color}\`` sites below cannot emit attacker CSS.
+      if (attrs.color != null) attrs.color = safeColor(attrs.color);
       const data = node.data || (node.data = {});
       const setEl = (tag, className, props = {}) => { data.hName = tag; data.hProperties = { className, ...props }; };
       // label = the [Bracketed] part of the directive

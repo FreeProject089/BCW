@@ -506,7 +506,7 @@ export default async function hostingContentRoutes(app) {
     const origin = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     // Only OUR hosted, published repos have files we can serve; an externally-hosted repo
     // just points elsewhere, so there's nothing here to list or download.
-    if (!repo.hosted || !repo.published || !repo.hostPath) {
+    if (!repo.hosted || !repo.published || !repo.hostPath || repo.status === 'SUSPENDED' || repo.status === 'OFFLINE') {
       return { files: [], total: { count: 0, bytes: 0 }, access: { restricted: false, canDownload: false, reason: 'not_hosted', signedIn } };
     }
 
@@ -780,7 +780,10 @@ function generatedManifest(repo, ownerName) {
       where: { hostPath: `${req.params.owner}/${req.params.repo}` },
       include: { files: true, owner: { select: { displayName: true } } },
     });
-    if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
+    // `published` alone is not enough: a moderation take-down, an account closure and a lapsed
+    // subscription all set status to SUSPENDED/OFFLINE and leave `published` true, so serving on
+    // `published` only kept taken-down content (malware, DMCA) fully downloadable. Honour status.
+    if (!repo || !repo.published || repo.status === 'SUSPENDED' || repo.status === 'OFFLINE') return reply.code(404).send({ error: 'not_found' });
     // TWO manifests, and which one you get depends on the NAME you asked for:
     //
     //   /repo.json      the owner's, if they uploaded one — else the generated one.
@@ -813,7 +816,10 @@ function generatedManifest(repo, ownerName) {
   app.get('/hosting/:owner/:repo/files/*', { preHandler: optionalAuth() }, async (req, reply) => {
     const p = await db();
     const repo = await p.serverRepo.findUnique({ where: { hostPath: `${req.params.owner}/${req.params.repo}` }, include: { files: true } });
-    if (!repo || !repo.published) return reply.code(404).send({ error: 'not_found' });
+    // `published` alone is not enough: a moderation take-down, an account closure and a lapsed
+    // subscription all set status to SUSPENDED/OFFLINE and leave `published` true, so serving on
+    // `published` only kept taken-down content (malware, DMCA) fully downloadable. Honour status.
+    if (!repo || !repo.published || repo.status === 'SUSPENDED' || repo.status === 'OFFLINE') return reply.code(404).send({ error: 'not_found' });
     const [globalPolicy, ownerPolicy, identity] = await Promise.all([getGlobalAccessPolicy(p), getUserAccessPolicy(p, repo.ownerId), resolveIdentity(p, req)]);
     if (!sandboxGate(repo, req, reply, [globalPolicy, ownerPolicy], identity)) return; // banned / not whitelisted
     // The owner's own password, checked after the access lists: a banned requester should

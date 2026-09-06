@@ -82,6 +82,13 @@ const CASES = [
   // ── style, which the schema does allow ──
   { name: 'expression() in style', md: '<div style="width:expression(alert(1))">x</div>', forbid: [/expression\s*\(/i] },
   { name: 'javascript: in a style url', md: '<div style="background:url(javascript:alert(1))">x</div>', forbid: [/javascript:/i] },
+  // CSS injection through a directive `color=`: it is written into an inline style as `--x:<value>`,
+  // so an author who smuggles extra declarations could paint a full-viewport overlay (clickjacking)
+  // or pull an external resource. safeColor (directives.js) allows only a real colour token now.
+  { name: 'CSS overlay via hero color', md: ':::hero[t]{color="red;position:absolute;inset:0;width:100vw;height:100vh;z-index:9999"}\nx\n:::', forbid: [/position\s*:/i, /100vw/i, /z-index/i] },
+  { name: 'CSS overlay via badge color', md: ':badge[x]{color="red;transform:scale(9)"}', forbid: [/transform\s*:/i] },
+  { name: 'CSS background url via hero color', md: ':::hero[t]{color="red;background:url(https://evil.example/x)"}\nx\n:::', forbid: [/background\s*:/i, /evil\.example/i] },
+  { name: 'CSS injection via stat color', md: ':::stats\n:::stat[L]{value=1 color="red;position:fixed;inset:0"}\n:::\n:::', forbid: [/position\s*:/i] },
 
   // ── what must be PRESENT ──
   {

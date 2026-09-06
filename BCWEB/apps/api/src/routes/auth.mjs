@@ -214,6 +214,9 @@ export default async function authRoutes(app) {
     if (!pr || pr.usedAt || pr.expiresAt < new Date()) return reply.code(400).send({ error: 'invalid_token' });
     await p.user.update({ where: { id: pr.userId }, data: { passwordHash: await argon2.hash(b.data.password, { type: argon2.argon2id }) } });
     await p.passwordReset.update({ where: { id: pr.id }, data: { usedAt: new Date() } });
+    // A reset is the recovery path after a takeover: kill every existing session so an
+    // attacker's 7-day token dies the moment the real owner resets.
+    await p.session.updateMany({ where: { userId: pr.userId, revokedAt: null }, data: { revokedAt: new Date() } });
     return { ok: true };
   });
 
@@ -549,6 +552,10 @@ export default async function authRoutes(app) {
     if (!user) return reply.code(401).send({ error: 'wrong_password' });
     if (user.passwordHash && !(await argon2.verify(user.passwordHash, b.data.current))) return reply.code(401).send({ error: 'wrong_password' });
     await p.user.update({ where: { id: user.id }, data: { passwordHash: await argon2.hash(b.data.next, { type: argon2.argon2id }) } });
+    // Sign out every OTHER device: a password change is the standard response to a suspected
+    // compromise, and leaving old sessions live for their 7-day term would defeat it. The
+    // current session (this browser) is kept so the change does not log the owner out.
+    await p.session.updateMany({ where: { userId: user.id, revokedAt: null, ...(req.user?.sid ? { NOT: { id: req.user.sid } } : {}) }, data: { revokedAt: new Date() } });
     return { ok: true };
   });
 }

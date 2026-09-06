@@ -529,3 +529,194 @@ not the safer one.
 BetterInstaller. And on BMM, the ~67 remaining unescaped interpolations above still need
 triage — the CSP work is what makes them matter.
 
+
+
+# Pentest — 2026-09-07 (September cycle, `.Assets/PLAN-PENTEST-SEPT2026.md`)
+
+The whole plan run: twelve cards, the eight highest-impact ones (feedback, economy, B.MD, public
+API, auth, hosting-settings, bot, repos) reviewed in depth, the regression card re-run live. The
+new surfaces since 2026-08-22 (feedback centre, economy shop/casino/gifts, B.MD 3.0 live
+directives, the bans & shield I had just added, the OAuth link flow) were the focus. Findings
+proven by running against the local Docker stack where a request could show it, and by code where
+the exploit would have written to prod-linked data (the bot) or needed a seeded account.
+
+Ten issues fixed, most High. Everything else re-verified safe or documented below with a
+recommendation. No `git push`; changes committed locally.
+
+## Fixed
+
+### 1. Account takeover via the OAuth "add a sign-in method" callback (CWE-352, high)
+`routes/oauth.mjs`. The signed `state` bound **nothing** to the browser that started the flow —
+only `{provider, nonce, ts, next}`. The callback is a GET, `optionalAuth()` reads the session from
+the `bcw_session` cookie, and that cookie is `sameSite: lax`, so it is sent on a top-level GET
+navigation. An attacker completes the provider step as **themselves** (capturing a valid `state` —
+it comes back in the `/start` redirect — and a `code` for their own identity), then lures a
+logged-in victim to `…/auth/oauth/github/callback?code=<attacker>&state=<valid>`. The victim's
+cookie rides along; the `req.user?.uid` branch links the **attacker's** GitHub identity onto the
+**victim's** account. The attacker then "Sign in with GitHub" → the victim's account. The same
+missing binding was a login-CSRF on the logged-out branch.
+
+Fixed by binding the flow to the browser: `/start` now sets a random nonce in an httpOnly cookie
+(`bcw_oauth`) and embeds its SHA-256 in the signed state; the callback requires
+`sha256(cookie) === state.bind` and clears the cookie before any linking or session issue. The
+attacker cannot set that cookie in the victim's browser, so a lured callback carries no matching
+nonce and is refused. The social-**connect** flow was already safe (its state carries the acting
+`uid`, and it targets that uid, not the session) and is untouched.
+
+### 2. Economy: points minted from nothing, and double-charged items (race, high)
+`lib/economy-shop.mjs`. `movePoints` read the balance and wrote back an **absolute** value — a
+read-modify-write with no transaction or row lock. Two concurrent gifts of the whole balance each
+read the same figure; the sender was debited once (the second write lost) while the recipient was
+credited twice — net points created. The same primitive double-charged a buy (`C ≤ balance < 2C`,
+fired twice → two items, one debit).
+
+`movePoints` is now atomic: a debit is a single conditional `updateMany({ where: { points: { gte }
+}, data: { decrement } })` that returns `null` when the balance cannot cover it (a settlement that
+should floor instead — a casino loss — passes `{ clamp: true }`). `giftPoints` credits the
+recipient **only** if the sender debit succeeded; `buyShopItem` charges atomically **first** and
+refunds on any fulfilment failure. Stock/exclusivity had a count-then-insert race with no DB
+constraint behind it; a compensating post-insert re-rank now unwinds (row dropped, badge grant
+undone, points refunded) any purchase that pushed the item past its limit, so a limited item can
+no longer be oversold.
+
+### 3. `/v1/polls` leaked unlisted/private polls and staff-only tallies (broken access control, high)
+`routes/api-keys.mjs`. The `/v1/polls` list queried `where: { status: 'open' }` with **no**
+visibility filter, so any user's self-minted `polls:read` key read every unlisted/private open
+poll (id, question, description, options). Both `/v1/polls` and `/v1/polls/:id` computed `counted`
+locally (`mine.length > 0 || results === 'always' [|| status === 'closed']`), ignoring
+`results: 'staff'` — so a staff-only tally leaked on a closed poll (no vote needed) or after one
+vote. This is the third re-derivation of the rule the `two-rules-one-truth` memory is about.
+Fixed by routing both through the canonical `listWhere({ role: null })` and `maySeeResults(poll,
+{ isStaff: false, hasVoted })` — the same single rules the website uses.
+
+### 4. Suspended / taken-down repos kept serving every file (broken access control, high)
+`routes/hosting-content.mjs`. The three public serve paths (`serveManifest`, `files/*`,
+`/r/:id/contents`) gated on `published` only. Moderation take-down, account closure and lapsed
+subscriptions all set `status` to `SUSPENDED`/`OFFLINE` and leave `published` true, so a
+taken-down repo (malware, DMCA, non-payment) kept returning 200 with the full bytes — the
+take-down was cosmetic, freezing only the owner's dashboard. Catalogs already honoured `status`;
+repos were the outlier. All three paths now also refuse `SUSPENDED`/`OFFLINE`.
+
+### 5. Stored XSS in B.MD via `<doc-comment data-link="javascript:…">` (high)
+`packages/bmd/src/blocks.jsx`. `DocComment` promoted its `data-link`/`data-img`/`data-video`
+attributes to `href`/`src` at React render time — **after** the sanitiser's URL pass had run — so
+a `data-link="javascript:…"` reached the DOM. A non-staff author (project page config, a granted
+blog co-author, a public comment) could land arbitrary JS in the BCWEB origin for any reader,
+including an admin. Fixed by routing all three through `safeUrl` (the same gate native `<a>`/`<img>`
+URLs get) and dropping anything it refuses; verified `javascript:`/`data:`/protocol-relative are
+stripped while `https:`/paths/`mailto:` pass.
+
+### 6. CSS injection via any directive `color=` (medium)
+`packages/bmd/src/directives.js`. `color=` was written raw into an inline style as `--x:<value>`
+at ~15 sites; the downstream style sanitiser denylist missed most properties (it stripped
+`position:fixed` but allowed `position:absolute`, `transform`, `z-index`, `width:100vw`, external
+`url()`). A content author could paint a full-viewport overlay (clickjacking/defacement). Closed at
+the source with an **allowlist** `safeColor` (a real colour token or a `var(--…)` only), applied
+once where attributes are parsed. Four payloads added to the `check-md-security` gate (now 42
+hostile docs), each failing before the fix and passing after.
+
+### 7. B.MD live directives read credentialed same-origin data; `:action` was one-click CSRF (medium)
+`packages/bmd/src/blocks.jsx`. `:counter`/`:include`/`:openapi` fetched with the reader's cookies
+(default `same-origin`), so an author-supplied `src=/api/me/…` rendered the reader's own private
+data into a page the author controls. Those three now fetch with `credentials: 'omit'` (they show
+public data; unauthenticated is correct). `:action{method=POST}` was a silent one-click same-origin
+CSRF primitive; it now requires a confirmation for any state-changing method even when the author
+set none, naming the method and target. The deeper fix — CSRF tokens on cookie-authed mutating API
+routes — is recommended below (the API has none today).
+
+### 8. Sessions survived a password change / reset (session management, medium)
+`routes/auth.mjs`. `/me/password` and `/auth/reset/confirm` updated the hash but never touched the
+`session` table, so an attacker's 7-day token stayed live through the exact recovery step meant to
+kill it (the admin-set path already revoked everywhere — the safe pattern existed, unused).
+`/me/password` now revokes every **other** session (keeps the current one); `reset/confirm` revokes
+**all**.
+
+### 9. Shop reveal codes drawn from `Math.random()` (weak randomness, medium)
+`lib/economy-shop.mjs`. Codes granting free hosting / storage / a discount were `'SHOP' +
+Math.random().toString(36)…` — a non-cryptographic PRNG whose state is recoverable from a few
+outputs, and a giftable item's code is open (anyone-redeemable). Now `crypto.randomInt` over an
+unambiguous 10-char alphabet.
+
+### 10. Hardening batch (low, defence-in-depth)
+- **TOTP** (`lib/totp.mjs`): the code compare was `===`; now `crypto.timingSafeEqual`.
+- **Sitemap** (`routes/misc.mjs`): `seo.sitemapExtra` entries reached `<loc>` unescaped and the
+  filter (`/^\/[^\s]*$/`) allowed `<>&"'`, so an admin-capability holder could inject `<loc>`
+  entries or break the feed. `<loc>` is XML-escaped now and the filter rejects `//` and XML-special
+  characters.
+- **Key proof** (`lib/keyauth.mjs`): `verifyProof` enforced no ceiling on `exp` (a captured proof
+  is a bearer secret until it expires). Now refuses a proof valid for more than 10 minutes; the
+  honest client uses ~120s.
+- **`/v1/economy/purchases`** (`routes/api-keys.mjs`): an argument-shift (`listPurchases(db, uid,
+  200)` against `(p, eco, userId, take)`) queried `userId: 200` and always returned empty — a
+  correctness bug fixed in passing.
+
+## Reviewed and found safe (worth recording)
+
+- **Public API scopes** — every `/v1` data route carries a scope; `apiAuth` fails closed on
+  missing/expired/revoked key and suspended/banned owner; keys are SHA-256 at rest over 256-bit
+  random, revocation is immediate (no cache); `/admin/api/limits` clamps 0/negative/over-max.
+- **Webhooks** — delivery via `safeFetch`: scheme http/https only, private/loopback/link-local/
+  `169.254.169.254` blocked, DNS resolved and pinned into the agent (rebinding-proof), every
+  redirect hop re-checked; HMAC-SHA256 over `timestamp.body`; broadcast limited to public events.
+- **Feedback centre** — S3 key is `feedback/<project>/<id>/<i>-<safeName>` (project regex-validated,
+  id a random UUID, name stripped of separators/NUL); attachments served `Content-Disposition:
+  attachment` behind the edge's nosniff + `frame-ancestors 'self'`; storage-config values clamped,
+  `0` treated as off; every `/admin/feedback/*` route guarded; anonymous e-mail submissions give no
+  existence signal; admin renders title/body/steps as text, no HTML sink.
+- **Bot custom-id authorization** — every interaction derives the actor from `interaction.user.id`;
+  role-panel/voice-panel/giveaway/shop/inventory/casino ids are re-checked against fresh server
+  state (a crafted id cannot grant a role or operate another member's card); moderation and the
+  warn ladder re-check Discord hierarchy through the modqueue; all 46 mutating `/bot/*` routes carry
+  `botAuth` (constant-time), the one open route returns only the public invite.
+- **Repos / catalogs** — keypair auth enforced on every serve path (ed25519 + RSA-SHA2/ECDSA, alg
+  cross-checked, SHA-1/`none` rejected); sync-password Argon2 with a per-`(repo,sha256(pw))` verdict
+  cache; share keys `timingSafeEqual`, not logged; transfers are authenticated in-app actions to an
+  existing active account (no token-in-link, no pre-registration takeover); zip-slip closed on both
+  the server (`zip-path.mjs`) and the Rust client (`enclosed_name`/`is_unsafe_rel_path`).
+- **Auth** — OAuth link-proposal requires the account's own password or a code mailed to the
+  existing address (controlling a provider email is not enough), single-use + 15-min; already-linked
+  identity refused not moved; session `sid` checked every request; export reads only the subject's
+  rows and redacts credentials; OIDC rotates refresh tokens and revokes the family on reuse.
+- **Hosting settings → HTML** — `seo.gtmId` validated `^(GTM-…|G-…)$` server-side and
+  `encodeURIComponent`'d client-side; `googleVerify`/`bingVerify` reach the DOM via `setAttribute`
+  (no HTML parse); `/admin/settings/:key` is `requireRole('ADMIN')` (a capability alone is not
+  enough); the seed generator's exported prefixes never include the bot/Ko-fi tokens or env secrets.
+- **Regression (2026-08-22)** — the secret-in-query-string log leak stays fixed: a canary
+  `?k=…&password=…` against the running API wrote only `queryKeys:["k","password"]`, zero values.
+
+## Open — documented, not changed (recommendation, and why left)
+
+- **The API has no CSRF token on cookie-authed mutating routes.** `:action`'s one-click CSRF is
+  mitigated (forced confirm), but the class remains for any future same-origin content-injection.
+  Recommend a Sec-Fetch-Site / Origin check that applies only to cookie-authenticated (not
+  Bearer/API-key/bot-secret) state-changing requests — safe because the web app and API are
+  same-origin and token clients are exempt. Left out of this pass as a systemic change to validate
+  against every flow first.
+- **Bot shared secret is a god-credential, and `/bot/economy/casino` trusts a client `multiplier`.**
+  Anyone holding `BOT_SHARED_SECRET` (or on the bot container) can mint unlimited points or seize a
+  guild dashboard via a crafted heartbeat `ownerId`. By design (server-to-server trust) and gated by
+  the boot guard against the dev default; not member-reachable. Recommend moving the casino RNG
+  server-side and cross-checking heartbeat ownership against a Discord-verified value.
+- **Feedback storage cap evicts oldest-first.** One IP within the rate limit can push past the
+  global cap; the hourly sweeper then strips the *earliest* legitimate reports' attachments. A
+  per-sender share of the cap (or eviction by an abuse signal) would stop one submitter forcing
+  eviction of others'. Also: `POST /admin/feedback/storage/purge` and `DELETE /admin/feedback/:id`
+  are not written to the audit chain, and `/status` + `/reply` are guarded by the read capability
+  (MOD) not the write one — confirm that matches the intended MOD boundary.
+- **"Unlisted" repos are reachable at a guessable slug URL without the share key** — the byte routes
+  don't consult `shareKey`/`listed`, only `published` + the access lists. If this is meant to be
+  YouTube-unlisted (link-shareable, not private) it is working as intended; if users expect privacy
+  from unlisting alone, gate the byte routes on the share key too. A behaviour decision, left for you.
+- **Sealed shop purchases are repriced from live config at reveal** (`revealPurchase` reads the
+  current item's gb/days/percentOff), so an admin editing an item up or down after purchase changes
+  what an unrevealed purchase delivers, and a deleted item silently reveals as the `|| 1`GB/`|| 7`day
+  fallback. Snapshot the resolved delivery onto the purchase row at buy time.
+- **Erasure does not provably delete S3 blobs** (feedback attachments, avatars) — the DB pointer is
+  gone, the object may remain. Enumerate the subject's asset keys and issue S3 deletes in the erase
+  commit (GDPR completeness, not an access bug).
+
+## Not run
+No Postgres-backed API test suite run (it would mutate the dev DB); economy and poll fixes verified
+by code + syntax + the security gate, not by a live seeded race harness — worth one before sign-off.
+BMM and BetterInstaller only type-checked/gated, not launched (no Tauri here). The bot was never
+driven (prod-linked).

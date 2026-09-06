@@ -131,14 +131,28 @@ function redirectUri(provider) {
  */
 const safeNext = (n) => (typeof n === 'string' && /^\/[^/\\]/.test(n) && n.length <= 512 ? n : null);
 
-function signState(provider, next) {
+// `bind` is sha256 of a per-request nonce we also drop in an httpOnly cookie. It ties this
+// state to the ONE browser that started the flow, which is what stops an OAuth login CSRF:
+// without it the state binds nothing to the caller, so an attacker who completes the provider
+// step as themselves can lure a logged-in victim to the callback with the attacker's `code` and
+// a valid `state`, and — the callback being a GET with a sameSite:lax session cookie — link the
+// attacker's provider identity onto the victim's account (account takeover), or force the victim
+// into the attacker's session. The cookie the attacker cannot set in the victim's browser.
+function signState(provider, next, bind) {
   const claims = { provider, nonce: crypto.randomBytes(12).toString('hex'), ts: Date.now() };
   const ok = safeNext(next);
   if (ok) claims.next = ok;
+  if (bind) claims.bind = bind;
   const payload = Buffer.from(JSON.stringify(claims)).toString('base64url');
   const sig = crypto.createHmac('sha256', JWT_SECRET).update(payload).digest('hex').slice(0, 32);
   return `${payload}.${sig}`;
 }
+
+// Secure derived from the SITE scheme, exactly as the session cookie is (lib.mjs): over plain
+// HTTP dev a Secure cookie would never come back and the binding would always fail.
+const OAUTH_COOKIE_SECURE = /^https:/i.test(process.env.SITE_URL || process.env.SITE_DOMAIN || '');
+const OAUTH_BIND_COOKIE = 'bcw_oauth';
+const oauthBindCookie = { httpOnly: true, sameSite: 'lax', path: '/', secure: OAUTH_COOKIE_SECURE, maxAge: Math.floor(STATE_TTL_MS / 1000) };
 function verifyState(state, provider) {
   if (!state || typeof state !== 'string' || !state.includes('.')) return false;
   const [payload, sig] = state.split('.');
@@ -185,8 +199,11 @@ export default async function oauthRoutes(app) {
     url.searchParams.set('response_type', 'code');
     // Carried through the signed state, because the provider hands `state` back untouched and
     // there is nowhere else to keep it: this flow is deliberately stateless between /start and
-    // /callback.
-    url.searchParams.set('state', signState(req.params.provider, req.query?.next));
+    // /callback — EXCEPT the CSRF binding, which needs a per-browser secret the state cannot be
+    // the only holder of. A random nonce goes in an httpOnly cookie; its hash rides the state.
+    const bindNonce = crypto.randomBytes(16).toString('hex');
+    reply.setCookie(OAUTH_BIND_COOKIE, bindNonce, oauthBindCookie);
+    url.searchParams.set('state', signState(req.params.provider, req.query?.next, sha256(bindNonce)));
     return reply.redirect(url.toString());
   });
 
@@ -212,6 +229,14 @@ export default async function oauthRoutes(app) {
     }
     const stateClaims = verifyState(state, name);
     if (!stateClaims) return fail('bad_state');
+    // The CSRF binding: the state must carry the hash of the nonce this browser was given at
+    // /start. An attacker can mint a valid state (it comes back in the /start redirect) and hold
+    // a code, but cannot plant the matching cookie in the victim's browser — so a lured callback
+    // has no cookie, or a cookie for a different flow, and is refused here before any linking or
+    // session issue. Cleared either way so it is single-use.
+    const bindCookie = req.cookies?.[OAUTH_BIND_COOKIE];
+    reply.clearCookie(OAUTH_BIND_COOKIE, { path: '/' });
+    if (!stateClaims.bind || !bindCookie || !safeEqual(sha256(String(bindCookie)), stateClaims.bind)) return fail('bad_state');
     if (!code) return fail('no_code');
     try {
       const tokenRes = await fetch(provider.tokenUrl, {
