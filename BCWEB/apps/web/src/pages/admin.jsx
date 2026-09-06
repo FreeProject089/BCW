@@ -16471,19 +16471,22 @@ function AdminFeedback() {
         const oldest = news.length ? news[news.length - 1] : null;
         const by = (k) => news.filter((f) => f.kind === k).length;
         const tiles = [
-          ['crash', by('crash'), 'red'], ['bug', by('bug'), 'warning'], ['feedback', by('feedback'), 'success'],
+          ['crash', by('crash'), 'red', 'bg-error'], ['bug', by('bug'), 'warning', 'bg-warning'], ['feedback', by('feedback'), 'success', 'bg-success'],
         ];
         return (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {tiles.map(([k, n, tone]) => (
-              <button key={k} type="button" onClick={() => { setKind(k); setStatus('new'); setPage(0); }} className={`fb-prio rounded-xl border px-3 py-2 text-left transition hover:bg-[var(--surface-2)] ${kind === k && status === 'new' ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}>
+            {tiles.map(([k, n, tone, bar]) => { const active = kind === k && status === 'new'; return (
+              <button key={k} type="button" onClick={() => { setKind(k); setStatus('new'); setPage(0); }}
+                className={`fb-prio relative overflow-hidden rounded-xl border pl-4 pr-3 py-2.5 text-left transition hover:bg-[var(--surface-2)] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.04]' : n ? 'border-[var(--line-strong)]' : 'border-[var(--line)]'}`}>
+                <span aria-hidden="true" className={`absolute left-0 top-0 bottom-0 w-1 ${n ? bar : 'bg-[var(--line)]'}`} />
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t(`fb.kind.${k}`, k)} · {t('fb.st.new', 'new')}</div>
-                <div className={`text-xl font-extrabold tabular-nums ${n ? `text-${tone}` : 'text-[var(--faint)]'}`}>{n}</div>
+                <div className={`text-2xl font-extrabold tabular-nums leading-tight ${n ? `text-${tone}` : 'text-[var(--faint)]'}`}>{n}</div>
               </button>
-            ))}
-            <div className="rounded-xl border border-[var(--line)] px-3 py-2">
-              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('fb.oldest', 'Oldest untriaged')}</div>
-              <div className="text-xl font-extrabold tabular-nums">{oldest ? fmtAgo(oldest.createdAt) : '—'}</div>
+            ); })}
+            <div className="relative overflow-hidden rounded-xl border border-[var(--line)] pl-4 pr-3 py-2.5">
+              <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--line)]" />
+              <div className="text-[10.5px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1"><Clock size={11} /> {t('fb.oldest', 'Oldest untriaged')}</div>
+              <div className="text-2xl font-extrabold tabular-nums leading-tight">{oldest ? fmtAgo(oldest.createdAt) : '—'}</div>
             </div>
           </div>
         );
