@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { PubkeyList } from '../ui/access-lists.jsx';
 import { Link, useNavigate } from 'react-router-dom';
-import { Upload, Boxes, Server, ArrowLeft, Wand2, FileJson, Layers, Rocket, ChevronDown, CheckCircle2, Package } from 'lucide-react';
+import { Upload, Boxes, Server, ArrowLeft, ArrowRight, Check, Lock, Wand2, FileJson, Layers, Rocket, ChevronDown, CheckCircle2, Package } from 'lucide-react';
 import { PageHeader, Card, Button, Field, Input, Select, Textarea, Spinner, Badge, EmptyState } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
@@ -222,6 +222,7 @@ function HostCatalog({ onBack }) {
   const [groupId, setGroupId] = useState('');
   const [storageGB, setStorageGB] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState(0);
   const pool = (pools || []).find((g) => g.id === groupId);
   const poolFreeGB = pool ? (pool.poolBytes - pool.usedBytes) / 1e9 : 0;
   useEffect(() => {
@@ -306,90 +307,122 @@ function HostCatalog({ onBack }) {
     });
   };
 
+  // A wizard, not a wall of fields: the old screen asked for the name, a password, public keys,
+  // visibility, a description, the type, the hosting mode and a file all at once. Grouped into
+  // four steps (what it is → where the files live → who may sync it → confirm) each screen asks
+  // one thing, and you cannot reach the file step before the type that decides its shape.
+  const STEPS = [t('sub2.step.basics', 'Basics'), t('sub2.step.hosting', 'Hosting'), t('sub2.step.access', 'Access'), t('sub2.step.review', 'Review')];
+  const stepOk = (i) => (i === 0 ? form.name.trim().length >= 2
+    : i === 1 ? (form.mode === 'raw' ? !!rawJson : (!!groupId && storageGB <= poolFreeGB + 1e-6))
+      : true);
+  const kindText = kindLabel(String(form.kind).toUpperCase(), 'bmm');
+  const rawCount = rawJson ? (rawJson.plugins || rawJson.themes || rawJson.apps || rawJson.presets || rawJson[DOCUMENT_KIND_FIELD[String(form.kind).toUpperCase()]] || []).length : 0;
+  const rowSum = (label, value) => (<div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-[var(--line)] last:border-0"><span className="text-[var(--faint)]">{label}</span><span className="font-medium text-end min-w-0 truncate">{value}</span></div>);
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ArrowLeft size={14} /> {t('common.back', 'Back')}</button>
-      <Card className="p-5 space-y-3">
-        <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('sb.ph.name', "My Server Plugins")} /></Field>
-          {/* Optional, and blank means open — the same meaning it has everywhere else here. */}
-          <Field label={t('sub2.pw', 'Download password (optional)')} hint={t('sub2.pw.hint', 'Anyone syncing is asked for it. Leave empty for an open catalogue.')}>
-            <Input type="password" value={form.syncPassword} autoComplete="new-password"
-              onChange={(e) => setForm({ ...form, syncPassword: e.target.value })} />
-          </Field>
-          <PubkeyList items={pubkeys}
-            onAdd={(v) => setPubkeys([...new Set([...pubkeys, v])])}
-            onRemove={(v) => setPubkeys(pubkeys.filter((x) => x !== v))} />
-          <Field label={t('sub2.visibility', 'Visibility')}><Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public (listed)')}</option><option value="private">{t('sub2.private', 'Private (invite only)')}</option></Select></Field>
-        </div>
-        <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-
-        <Field label={t('sub2.kind', 'Catalog type')} hint={t('sub2.kind.h', 'A catalog serves one type. BMM reads plugins, themes and apps from separate URLs, each with its own format, so a mixed catalog is one no client can read — create a second catalog for another type.')}>
-          <Select value={form.kind} onChange={(e) => setKind(e.target.value)}>
-            {/* DERIVED, not listed. A hardcoded list here is the reason PRESET was
-                unreachable for months while the API accepted it all along, and then MODPACK
-                after it: this dropdown is the last place a kind has to be repeated, so it was
-                the last place to forget. kindLabel() also answers "Automations" rather than
-                "Presets" — "Preset" on a BMM page reads as a harmless settings bundle, and
-                these can ask to run PowerShell. */}
-            {/* 'bmm': a hosted community catalogue is read by BMM. HostCatalog has no project
-                picker, so naming it here is the honest version of what was already true. */}
-            {kindsFor('bmm').map((K) => (
-              <option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>
-            ))}
-            {/* Documents, in their own group: they are a different sort of thing — one JSON
-                file listing addresses, with no items and no payloads — and a flat list would
-                invite "host my plugins" and "host a list of other people's catalogues" to be
-                read as the same choice. */}
-            <optgroup label={t('sub2.kind.docs', 'Lists & indexes')}>
-              {DOCUMENT_KINDS.map((K) => (
-                <option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>
-              ))}
-            </optgroup>
-          </Select>
-        </Field>
-
-        <Field label={t('sub2.mode', 'Hosting mode')}>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
-              // A document has no items and no payloads, so there is nothing for a storage
-              // pool to hold. The option is REMOVED rather than shown-and-refused: an offer
-              // the server will reject is worse than no offer.
-              ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
-            ].map(([m, Icon, label, desc]) => (
-              <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
-                <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
-              </button>
-            ))}
+      {/* Step rail — click a done step to jump back; a future step is locked until this one is valid. */}
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar pb-0.5">
+        {STEPS.map((lbl, i) => (
+          <div key={i} className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button type="button" onClick={() => { if (i < step || (i === step + 1 && stepOk(step))) setStep(i); }} disabled={i > step && !stepOk(step)}
+              className="flex items-center gap-2 disabled:cursor-not-allowed">
+              <span className={`grid place-items-center w-7 h-7 rounded-full text-xs font-bold shrink-0 border transition ${i < step ? 'bg-[var(--primary)] text-[var(--text-on-accent)] border-[var(--primary)]' : i === step ? 'border-[var(--primary)] text-[var(--primary-2)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--faint)]'}`}>{i < step ? <Check size={14} /> : i + 1}</span>
+              <span className={`text-xs font-medium ${i === step ? 'text-[var(--text)]' : 'text-[var(--faint)]'} hidden sm:inline`}>{lbl}</span>
+            </button>
+            {i < STEPS.length - 1 && <span className={`w-4 sm:w-6 h-px ${i < step ? 'bg-[var(--primary)]' : 'bg-[var(--line)]'}`} />}
           </div>
-        </Field>
+        ))}
+      </div>
+      <Card className="p-5 space-y-3">
+        {step === 0 && (<>
+          <div className="text-sm font-semibold flex items-center gap-2"><Boxes size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.basics.t', 'What is this catalogue?')}</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('sb.ph.name', "My Server Plugins")} autoFocus /></Field>
+            <Field label={t('sub2.visibility', 'Visibility')}><Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public (listed)')}</option><option value="private">{t('sub2.private', 'Private (invite only)')}</option></Select></Field>
+          </div>
+          <Field label={t('sub2.kind', 'Catalog type')} hint={t('sub2.kind.h', 'A catalog serves one type. BMM reads plugins, themes and apps from separate URLs, each with its own format, so a mixed catalog is one no client can read — create a second catalog for another type.')}>
+            <Select value={form.kind} onChange={(e) => setKind(e.target.value)}>
+              {kindsFor('bmm').map((K) => (<option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>))}
+              <optgroup label={t('sub2.kind.docs', 'Lists & indexes')}>
+                {DOCUMENT_KINDS.map((K) => (<option key={K} value={K.toLowerCase()}>{kindLabel(K, 'bmm')}</option>))}
+              </optgroup>
+            </Select>
+          </Field>
+          <Field label={t('sub.desc', 'Description')}><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} /></Field>
+        </>)}
 
-        {form.mode === 'raw' ? (
-          <Field label={t('sub2.raw.file', 'Your catalog.json')} hint={t('sub2.raw.hint', 'The BMM-native feed you exported from BMM (plugins/themes/apps).')}>
-            <Input type="file" accept=".json,application/json" onChange={(e) => onRaw(e.target.files?.[0] || null)} />
-            {rawJson && <div className="text-xs text-success mt-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('sub2.raw.entries', '{n} entries').replace('{n}', (rawJson.plugins || rawJson.themes || rawJson.apps || []).length)}</div>}
+        {step === 1 && (<>
+          <div className="text-sm font-semibold flex items-center gap-2"><Rocket size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.hosting.t', 'Where do the files live?')}</div>
+          <Field label={t('sub2.mode', 'Hosting mode')}>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
+                ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
+              ].map(([m, Icon, label, desc]) => (
+                <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                  <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
+                  <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
+                </button>
+              ))}
+            </div>
           </Field>
-        ) : (
-          <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool — the same space your repos use.')}>
-            {pools == null ? <Spinner /> : pools.length === 0 ? (
-              <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
-            ) : (
-              <>
-                <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
-                  <option value="">{t('sub2.pool.choose', 'Choose a pool…')}</option>
-                  {pools.map((g) => <option key={g.id} value={g.id}>{g.name} — {((g.poolBytes - g.usedBytes) / 1e9).toFixed(1)} GB free</option>)}
-                </Select>
-                {groupId && <div className="mt-2 flex items-center gap-2 flex-wrap">
-                  <span className="text-sm text-[var(--muted)]">{t('sub2.reserve', 'Reserve')}</span>
-                  <Input type="number" min="0.5" step="0.5" value={storageGB} onChange={(e) => setStorageGB(Math.max(0.5, Number(e.target.value) || 0.5))} className="!w-24" />
-                  <span className="text-sm text-[var(--muted)]">{t('sub2.gboffree', 'GB of {n} GB free').replace('{n}', poolFreeGB.toFixed(1))}</span>
-                </div>}
-              </>
-            )}
+          {form.mode === 'raw' ? (
+            <Field label={t('sub2.raw.file', 'Your catalog.json')} hint={t('sub2.raw.hint', 'The BMM-native feed you exported from BMM (plugins/themes/apps).')}>
+              <Input type="file" accept=".json,application/json" onChange={(e) => onRaw(e.target.files?.[0] || null)} />
+              {rawJson && <div className="text-xs text-success mt-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('sub2.raw.entries', '{n} entries').replace('{n}', rawCount)}</div>}
+            </Field>
+          ) : (
+            <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool — the same space your repos use.')}>
+              {pools == null ? <Spinner /> : pools.length === 0 ? (
+                <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
+              ) : (
+                <>
+                  <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                    <option value="">{t('sub2.pool.choose', 'Choose a pool…')}</option>
+                    {pools.map((g) => <option key={g.id} value={g.id}>{g.name} — {((g.poolBytes - g.usedBytes) / 1e9).toFixed(1)} GB free</option>)}
+                  </Select>
+                  {groupId && <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <span className="text-sm text-[var(--muted)]">{t('sub2.reserve', 'Reserve')}</span>
+                    <Input type="number" min="0.5" step="0.5" value={storageGB} onChange={(e) => setStorageGB(Math.max(0.5, Number(e.target.value) || 0.5))} className="!w-24" />
+                    <span className="text-sm text-[var(--muted)]">{t('sub2.gboffree', 'GB of {n} GB free').replace('{n}', poolFreeGB.toFixed(1))}</span>
+                  </div>}
+                </>
+              )}
+            </Field>
+          )}
+        </>)}
+
+        {step === 2 && (<>
+          <div className="text-sm font-semibold flex items-center gap-2"><Lock size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.access.t', 'Who may sync it?')}</div>
+          <p className="text-xs text-[var(--faint)] -mt-1">{t('sub2.step.access.d', 'All optional — leave everything blank for an open catalogue anyone can sync.')}</p>
+          <Field label={t('sub2.pw', 'Download password (optional)')} hint={t('sub2.pw.hint', 'Anyone syncing is asked for it. Leave empty for an open catalogue.')}>
+            <Input type="password" value={form.syncPassword} autoComplete="new-password" onChange={(e) => setForm({ ...form, syncPassword: e.target.value })} />
           </Field>
+          <PubkeyList items={pubkeys} onAdd={(v) => setPubkeys([...new Set([...pubkeys, v])])} onRemove={(v) => setPubkeys(pubkeys.filter((x) => x !== v))} />
+        </>)}
+
+        {step === 3 && (
+          <div className="space-y-1">
+            <div className="text-sm font-semibold flex items-center gap-2 mb-2"><CheckCircle2 size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.review.t', 'Confirm and create')}</div>
+            <div className="text-sm rounded-xl border border-[var(--line)] px-3.5 py-1.5">
+              {rowSum(t('sub2.catname.l', 'Catalog name'), form.name.trim() || '—')}
+              {rowSum(t('sub2.kind', 'Catalog type'), kindText)}
+              {rowSum(t('sub2.visibility', 'Visibility'), form.visibility === 'public' ? t('sub2.public', 'Public (listed)') : t('sub2.private', 'Private (invite only)'))}
+              {rowSum(t('sub2.mode', 'Hosting mode'), form.mode === 'raw' ? t('sub2.mode.raw', 'Just my catalog.json') : t('sub2.mode.managed', 'Host files with us'))}
+              {form.mode === 'raw'
+                ? rowSum(t('sub2.raw.file', 'Your catalog.json'), rawJson ? t('sub2.raw.entries', '{n} entries').replace('{n}', rawCount) : t('sub2.review.nofile', 'not uploaded'))
+                : rowSum(t('sub2.pool', 'Storage pool'), groupId ? `${pool?.name || '—'} · ${storageGB} GB` : t('sub2.pool.choose', 'Choose a pool…'))}
+              {rowSum(t('sub2.review.protection', 'Protection'), [form.syncPassword.trim() && t('sub2.review.pw', 'password'), pubkeys.length && t('sub2.review.keys', '{n} key(s)').replace('{n}', pubkeys.length)].filter(Boolean).join(' · ') || t('sub2.review.open', 'open'))}
+            </div>
+          </div>
         )}
-        <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Server size={15} /> {t('sub2.create', 'Create catalog')}</>}</Button></div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-[var(--line)]">
+          <Button variant="ghost" disabled={step === 0 || busy} onClick={() => setStep((s) => Math.max(0, s - 1))}><ArrowLeft size={14} /> {t('common.back', 'Back')}</Button>
+          {step < STEPS.length - 1
+            ? <Button variant="primary" disabled={!stepOk(step)} onClick={() => setStep((s) => s + 1)}>{t('sub2.next', 'Next')} <ArrowRight size={14} /></Button>
+            : <Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Server size={15} /> {t('sub2.create', 'Create catalog')}</>}</Button>}
+        </div>
       </Card>
     </div>
   );
