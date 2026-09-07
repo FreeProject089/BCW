@@ -7,6 +7,7 @@
 // drift. Dependency-free (native HTML5 drag + touch-friendly buttons), so it drops into the
 // package without pulling a DnD library.
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 // parseDirectiveHead/setDirectiveHead were USED below and never imported, and `pickIcon` was
 // read off nothing at all — a free identifier the caller passed as a prop that was never
 // destructured. Both threw ReferenceError from inside the field row, which runs for every
@@ -59,7 +60,9 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
   const T = { ...EN, ...(labels || {}) };
   const [blocks, setBlocks] = useState(() => splitBlocks(value));
   const [preview, setPreview] = useState(true);
-  const [addAt, setAddAt] = useState(null);   // index where the palette is open
+  const [addAt, setAddAt] = useState(null);
+  // Where the floating palette sits, measured from the button that opened it.
+  const [menu, setMenu] = useState(null);
   const [q, setQ] = useState('');
   const emitted = useRef(value);
   const dragFrom = useRef(null);
@@ -114,29 +117,76 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
   }, [snippetGroups]);
   const shown = q.trim() ? palette.filter((p) => `${p.label} ${p.group}`.toLowerCase().includes(q.trim().toLowerCase())) : palette;
 
+  /**
+   * The insert palette, in a PORTAL.
+   *
+   * It was `position: absolute` inside the add button's row, so every ancestor with an
+   * `overflow` clipped it — and the canvas lives inside a scrolling editor panel inside a
+   * modal, so there are three of them. The reported symptom is the menu cut off mid-item, with
+   * the last entry sliced in half and nothing scrollable to reach it.
+   *
+   * The text editor's own block menu already learned this (see the note beside its
+   * createPortal in blog.jsx: an ancestor `transform` also makes itself the containing block,
+   * which moves a fixed element as well as clipping it). This is the same treatment: measured
+   * against the viewport, rendered at the document root, flipped above the button when there
+   * is no room below, and capped to the space actually available so it always scrolls rather
+   * than overflowing.
+   */
+  const openPalette = (i, el) => {
+    if (addAt === i) { setAddAt(null); return; }
+    const r = el.getBoundingClientRect();
+    // A hidden or background tab reports `innerWidth/innerHeight` as 0 in some browsers, and
+    // measuring against 0 puts the menu at a negative height in a zero-wide column. Fall back
+    // to the document element, then to a plausible window, so the menu is never positioned
+    // from a viewport that does not exist.
+    const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1200;
+    const below = vh - r.bottom - 12;
+    const above = r.top - 12;
+    const flip = below < 220 && above > below;
+    setMenu({
+      left: Math.max(8, Math.min(r.left + r.width / 2 - 150, vw - 308)),
+      top: flip ? undefined : r.bottom + 6,
+      bottom: flip ? vh - r.top + 6 : undefined,
+      maxH: Math.max(160, (flip ? above : below) - 8),
+    });
+    setAddAt(i); setQ('');
+  };
+
   const AddBar = ({ i }) => (
     <div className="bmdc-add">
-      <button type="button" className="bmdc-add-btn" onClick={() => { setAddAt(addAt === i ? null : i); setQ(''); }} title={T.insert}>
+      <button type="button" className="bmdc-add-btn" onClick={(e) => openPalette(i, e.currentTarget)} title={T.insert}>
         <Ico d={PLUS} />
       </button>
-      {addAt === i && (
-        <div className="bmdc-palette" role="menu">
-          <input autoFocus className="bmdc-palette-search" placeholder={T.search} value={q} onChange={(e) => setQ(e.target.value)} />
-          <div className="bmdc-palette-list">
-            {shown.map((p) => (
-              <button key={p.id} type="button" className="bmdc-palette-item" onClick={() => insertAt(i, p.md)}>
-                <span className="bmdc-palette-label">{p.label}</span><span className="bmdc-palette-group">{p.group}</span>
-              </button>
-            ))}
-            {!shown.length && <div className="bmdc-palette-empty">{T.noMatch}</div>}
-          </div>
-        </div>
-      )}
     </div>
   );
 
+  const Palette = () => (addAt == null || !menu ? null : createPortal(
+    <>
+      <div className="bmdc-palette-scrim" onMouseDown={() => setAddAt(null)} />
+      <div className="bmdc-palette is-floating" role="menu"
+        style={{ left: menu.left, top: menu.top, bottom: menu.bottom, maxHeight: menu.maxH }}>
+        <input autoFocus className="bmdc-palette-search" placeholder={T.search} value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); setAddAt(null); }
+            // Enter takes the first match, so a search can be finished without the mouse.
+            if (e.key === 'Enter' && shown.length) { e.preventDefault(); insertAt(addAt, shown[0].md); }
+          }} />
+        <div className="bmdc-palette-list">
+          {shown.map((p) => (
+            <button key={p.id} type="button" className="bmdc-palette-item" onClick={() => insertAt(addAt, p.md)}>
+              <span className="bmdc-palette-label">{p.label}</span><span className="bmdc-palette-group">{p.group}</span>
+            </button>
+          ))}
+          {!shown.length && <div className="bmdc-palette-empty">{T.noMatch}</div>}
+        </div>
+      </div>
+    </>, document.body));
+
   return (
     <div className="bmdc">
+      <Palette />
       <div className="bmdc-bar">
         <span className="bmdc-count">{T.count.replace('{n}', blocks.filter((b) => b.kind !== 'blank').length)}</span>
         <button type="button" className={`bmdc-toggle ${preview ? 'is-on' : ''}`} onClick={() => setPreview((v) => !v)} title={T.preview}>

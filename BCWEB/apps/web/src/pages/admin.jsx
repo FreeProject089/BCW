@@ -21437,7 +21437,7 @@ function AdminMarketplace() {
         </div>
       )}
       {draft && (
-        <Modal onClose={() => setDraft(null)} title={draft.id ? t('mkadm.edit', 'Edit product') : t('mkadm.new', 'New product')}>
+        <Modal open onClose={() => setDraft(null)} title={draft.id ? t('mkadm.edit', 'Edit product') : t('mkadm.new', 'New product')}>
           <div className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label={t('mkadm.f.name', 'Name')}><Input value={draft.name} onChange={(e) => set('name', e.target.value)} /></Field>
@@ -21474,7 +21474,7 @@ function AdminMarketplace() {
         </Modal>
       )}
       {keysFor && (
-        <Modal onClose={() => setKeysFor(null)} title={t('mkadm.addkeys', 'Add keys')}>
+        <Modal open onClose={() => setKeysFor(null)} title={t('mkadm.addkeys', 'Add keys')}>
           <Field label={t('mkadm.keys.l', 'One key per line')}><Textarea rows={8} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'KEY-AAAA-1111\nKEY-BBBB-2222'} /></Field>
           <div className="flex justify-end gap-2 mt-3"><Button variant="ghost" onClick={() => setKeysFor(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={addKeys}>{t('mkadm.addkeys', 'Add keys')}</Button></div>
         </Modal>

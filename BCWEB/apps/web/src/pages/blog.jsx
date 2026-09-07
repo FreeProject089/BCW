@@ -19,6 +19,7 @@ import { REACTION_OPTIONS, ReactionIcon } from '../ui/reactions.jsx';
 // editing round-trip the source byte-for-byte, where the local one re-serialised through a
 // block model that only knew the shapes it had forms for — anything else drifted on save.
 import { BmdBlockCanvas, BmdLivePreview, SNIPPET_GROUPS, localizeSnippetGroups } from '@bettercommunity/bmd-editor';
+import TableBuilder from '../editor/table-builder.jsx';
 import { parseBmdFile, serializeBmdFile } from '@bettercommunity/bmd/editor-blocks';
 import IconPicker from '../editor/icon-picker.jsx';
 import SelectionToolbar from '../editor/selection-toolbar.jsx';
@@ -428,6 +429,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const pickIconForCanvas = () => new Promise((resolve) => { iconResolve.current = resolve; setCanvasIcon(true); });
   const closeCanvasIcon = (name) => { setCanvasIcon(false); iconResolve.current?.(name); iconResolve.current = null; };
 
+  const [tableBuilder, setTableBuilder] = useState(false);
   const [blocksOpen, setBlocksOpen] = useState(false);
   const blocksBtnRef = useRef(null); const [blocksPos, setBlocksPos] = useState({ top: 0, left: 0 });
   // Open the Blocks menu as a FIXED overlay anchored under the button — the editor wrapper
@@ -493,7 +495,10 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     { icon: ImagePlus, label: 'Image card', snip: '\n:::card{title="With image" image="https://picsum.photos/400/200"}\nCaption or description.\n:::\n' },
     { icon: Columns2, label: 'Columns', snip: '\n::::columns\n:::column\nLeft column.\n:::\n:::column\nRight column.\n:::\n::::\n' },
     { icon: FileDown, label: 'File download', snip: '\n:::file[example.zip]{href="https://example.com/file.zip" size="10 KB"}\n:::\n' },
-    { icon: Table, label: 'Table', snip: '\n| Column A | Column B |\n| --- | --- |\n| Cell 1 | Cell 2 |\n| Cell 3 | Cell 4 |\n' },
+    // A table is the one block whose SHAPE you know before you write it, and a fixed 2×2 meant
+    // adding the third column by hand — in the header, in the separator and in every row, which
+    // is exactly the edit that turns a table into a paragraph full of pipes.
+    { icon: Table, label: t('be.b.table', 'Table…'), onPick: () => { setBlocksOpen(false); setTableBuilder(true); } },
     { icon: ImagePlus, label: 'Image', snip: '\n![alt text](https://picsum.photos/600/300)\n' },
     { icon: Video, label: 'Video (mp4/webm)', snip: '\n<video src="https://example.com/clip.mp4" controls></video>\n' },
     { icon: Youtube, label: 'YouTube embed', snip: '\n<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>\n' },
@@ -587,6 +592,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
                   which is why the menu was invisible at normal size and merely misplaced
                   once a smaller window moved the modal under the coordinates.
                   ActionBar's overflow menu portals for the same reason; this now matches. */}
+              {tableBuilder && <TableBuilder open onClose={() => setTableBuilder(false)} onInsert={(md) => insertBlock(md)} />}
               {blocksOpen && createPortal(<>
                 <div className="fixed inset-0 z-[60]" onClick={() => setBlocksOpen(false)} />
                 <div className="fixed z-[61] w-52 rounded-xl border border-[var(--line-strong)] shadow-xl py-1 overflow-auto" style={{ background: 'var(--bg-solid)', top: blocksPos.top, left: blocksPos.left, maxHeight: blocksPos.maxH || 288 }}>
