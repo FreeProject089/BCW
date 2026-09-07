@@ -5,7 +5,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, Tags as TagsIcon, Milestone, Columns2,
   Eye, MousePointerClick, Sigma, PlayCircle, Clock, Search,
 } from 'lucide-react';
-import { Input, Select } from '../ui/ui.jsx';
+import { Input, Select, ColorInput } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import IconPicker from './icon-picker.jsx';
 import Markdown, { IconGlyph } from '../ui/md.jsx';
@@ -220,7 +220,7 @@ function BlockFields({ block: b, onChange }) {
           <div><Select className="!w-auto !py-1.5 !text-sm" value={b.kind} onChange={(e) => onChange({ kind: e.target.value })}>{CALLOUT_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</Select></div>
           <Input value={b.title} onChange={(e) => onChange({ title: e.target.value })} placeholder={t('ve.ph.title', "Title")} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
           <IconField value={b.icon} onChange={(v) => onChange({ icon: v })} />
-          <input type="color" value={b.color || '#7c3aed'} onChange={(e) => onChange({ color: e.target.value })} title={t('ve.customcolour', "Custom colour")} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
+          <ColorInput value={b.color || '#7c3aed'} onChange={(v) => onChange({ color: v })} title={t('ve.customcolour', "Custom colour")} />
         </div>
         <MdField className={ta} rows={2} value={b.text} onChange={(v) => onChange({ text: v })} placeholder={t('ve.ph.callout', "Callout body \u2014 select to format")} />
       </div>
@@ -285,7 +285,7 @@ function BlockFields({ block: b, onChange }) {
               <div className="flex flex-wrap gap-2">
                 <Input value={cd.title} onChange={(e) => setCard(i, { title: e.target.value })} placeholder={t('ve.cardtitle', 'Card title')} className="!py-1.5 !text-sm flex-1 min-w-[120px]" />
                 <IconField value={cd.icon} onChange={(v) => setCard(i, { icon: v })} />
-                <input type="color" value={cd.color || '#f97316'} onChange={(e) => setCard(i, { color: e.target.value })} title={t('ve.cardaccent', 'Accent')} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0" />
+                <ColorInput value={cd.color || '#f97316'} onChange={(v) => setCard(i, { color: v })} title={t('ve.cardaccent', 'Accent')} className="shrink-0" />
                 <button type="button" className="btn btn-sm" title={t('ve.remove', 'Remove')} onClick={() => onChange({ cards: cards.filter((_, j) => j !== i) })}><Minus size={13} /></button>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -315,7 +315,7 @@ function BlockFields({ block: b, onChange }) {
                 <option value="">{t('ve.btnnobrand', 'No brand')}</option>
                 {['youtube', 'discord', 'kofi', 'github', 'twitch', 'x', 'reddit', 'telegram'].map((br) => <option key={br} value={br}>{br}</option>)}
               </select>
-              <input type="color" value={it.color || '#f97316'} disabled={!!it.brand} onChange={(e) => setItem(i, { color: e.target.value })} title={t('ve.btncolour', 'Colour')} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0 disabled:opacity-40" />
+              <ColorInput value={it.color || '#f97316'} onChange={(v) => setItem(i, { color: v })} title={t('ve.btncolour', 'Colour')} className={`shrink-0 ${it.brand ? 'opacity-40 pointer-events-none' : ''}`} />
               <select value={it.size || 'md'} onChange={(e) => setItem(i, { size: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
                 <option value="sm">S</option><option value="md">M</option><option value="lg">L</option>
               </select>
@@ -355,7 +355,7 @@ function BlockFields({ block: b, onChange }) {
             <select value={b.orientation || 'vertical'} onChange={(e) => onChange({ orientation: e.target.value })} className="!py-1.5 !text-sm rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-2">
               <option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>
             </select>
-            <input type="color" value={b.color || '#f97316'} onChange={(e) => onChange({ color: e.target.value })} title={t('ve.markercolour', "Marker colour")} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5" />
+            <ColorInput value={b.color || '#f97316'} onChange={(v) => onChange({ color: v })} title={t('ve.markercolour', "Marker colour")} />
           </div>
           {steps.map((st, i) => (
             <div key={i} className="rounded-lg border border-[var(--line)] p-2 space-y-1.5">
@@ -372,12 +372,8 @@ function BlockFields({ block: b, onChange }) {
                   <option value="">{t('ve.status.none', '\u2014')}</option>
                   <option value="done">{t('ve.status.done', 'Done')}</option>
                 </select>
-                <input
-                  type="color" value={st.color || b.color || '#f97316'}
-                  onChange={(e) => setStep(i, { color: e.target.value })}
-                  title={t('ve.stepcolour', 'This step\u2019s colour')}
-                  className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 shrink-0"
-                />
+                <ColorInput value={st.color || b.color || '#f97316'} onChange={(v) => setStep(i, { color: v })}
+                  title={t('ve.stepcolour', 'This step\u2019s colour')} className="shrink-0" />
                 <button type="button" className="btn btn-sm" title={t('ve.remove', "Remove")} onClick={() => onChange({ steps: steps.filter((_, j) => j !== i) })}><Minus size={13} /></button>
               </div>
               <MdField className={ta} rows={2} value={st.text} onChange={(v) => setStep(i, { text: v })} placeholder={t('ve.ph.stepbody', "Step body (markdown, callouts, code\u2026)")} />
@@ -465,7 +461,7 @@ function BlockFields({ block: b, onChange }) {
             {tags.map((tg, idx) => (
               <span key={idx} className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] ps-1 pe-1.5 py-0.5"
                 style={{ color: tg.color || 'var(--primary)', background: tg.color ? `color-mix(in srgb, ${tg.color} 14%, transparent)` : undefined }}>
-                <input type="color" value={tg.color || '#7c3aed'} onChange={(e) => setTag(idx, { color: e.target.value })} title={t('ve.colour', "Colour")} className="w-4 h-4 rounded-full border-0 bg-transparent p-0 cursor-pointer" />
+                <ColorInput value={tg.color || '#7c3aed'} onChange={(v) => setTag(idx, { color: v })} title={t('ve.colour', "Colour")} />
                 <input value={tg.text} onChange={(e) => setTag(idx, { text: e.target.value })} placeholder="Tag" className="bg-transparent border-0 outline-none text-xs font-semibold w-16" style={{ color: 'inherit' }} />
                 <button type="button" onClick={() => delTag(idx)} className="opacity-60 hover:opacity-100"><X size={11} /></button>
               </span>

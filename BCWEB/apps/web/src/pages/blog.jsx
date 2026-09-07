@@ -22,7 +22,7 @@ import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
 import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, SkeletonGrid } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, SkeletonGrid, ColorInput } from '../ui/ui.jsx';
 import BmdEditor from '@bettercommunity/bmd-editor';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -356,7 +356,7 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
           </>}
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-2">Custom</div>
           <div className="flex items-center gap-2 flex-wrap">
-            <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="w-9 h-9 rounded-lg border border-[var(--line)] bg-transparent p-0.5 cursor-pointer shrink-0" />
+            <ColorInput value={color} onChange={setColor} className="shrink-0" />
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('blg.ph.label', "Label")} className="input !py-1.5 !text-sm flex-1 min-w-[100px]" onKeyDown={(e) => e.key === 'Enter' && add(true)} />
             <span className="text-xs font-bold px-2.5 py-1 rounded-full border" style={chipStyle(color)}>{label || 'Label'}</span>
           </div>

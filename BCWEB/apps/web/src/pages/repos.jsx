@@ -9,7 +9,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { ReportButton } from '../ui/report.jsx';
 import { api, uploadRepoFile } from '../lib/api.js';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar, SkeletonGrid } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, PageHeader, EmptyState, Spinner, Modal, ActionBar, SkeletonGrid, ColorInput } from '../ui/ui.jsx';
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -504,10 +504,10 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
         return (
           <div key={g.id} className="card p-3.5" style={{ borderLeft: `3px solid ${accent}` }}>
             <div className="flex items-center gap-2 flex-wrap mb-2">
-              <label className="grid place-items-center w-8 h-8 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }} title={t('pools.color', 'Pool colour')}>
+              <ColorInput swatchOnly value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(v) => setColor(g, v)} title={t('pools.color', 'Pool colour')}
+                className="grid place-items-center w-8 h-8 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}>
                 <HardDrive size={15} style={{ color: accent }} />
-                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
-              </label>
+              </ColorInput>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{gb(g.usedBytes)} / {gb(g.poolBytes)} GB {t('pools.used', 'used')} · {gb(free)} GB {t('pools.freespace', 'free')}</div>

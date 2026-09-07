@@ -3,7 +3,7 @@ import {
   Server, GitBranch, Pencil, XCircle, Clock, ShieldCheck, Users, HardDrive, Rocket, Files, Search, X, Wifi, Zap, Copy, RefreshCw, LayoutDashboard, ChevronDown, Fingerprint, Sliders, Check,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal, ActionBar } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Select, Field, EmptyState, Spinner, Modal, ActionBar, ColorInput } from '../ui/ui.jsx';
 import { Loading } from './pages.jsx';
 import { api } from '../lib/api.js';
 import { ContentSanctionForm } from './admin-sanctions.jsx';
@@ -213,10 +213,10 @@ export function AdminPools() {
               {o.pools.map((g) => { const accent = g.color || '#f97316'; return (
                 <div key={g.id} className="flex items-center gap-2 flex-wrap rounded-lg border border-[var(--line)] p-2.5" style={{ borderLeft: `3px solid ${accent}` }}>
                   {o.pools.length > 1 && <input type="checkbox" checked={selected.has(g.id)} onChange={() => toggle(o.ownerId, g.id)} title={t('pools.selectmerge', 'Select to merge')} />}
-                  <label className="grid place-items-center w-7 h-7 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}>
+                  <ColorInput swatchOnly value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(v) => setColor(g, v)} title={t('pools.color', 'Pool colour')}
+                    className="grid place-items-center w-7 h-7 rounded-lg shrink-0 cursor-pointer relative" style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}>
                     <HardDrive size={13} style={{ color: accent }} />
-                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(accent) ? accent : '#f97316'} onChange={(e) => setColor(g, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
-                  </label>
+                  </ColorInput>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium flex items-center gap-1.5 flex-wrap min-w-0"><span className="truncate min-w-0">{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>} {g.subCount >= 2 && <Badge tone="primary">{g.subCount} {t('apools.subs', 'subs')}</Badge>}</div>
                     <div className="text-[11px] text-[var(--faint)]">{gb(g.poolBytes)} GB · {g.repos.length} {t('pools.repos', 'repos')} · {g.catalogs.length} {t('pools.catalogs', 'catalogs')}</div>

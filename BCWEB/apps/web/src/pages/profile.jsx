@@ -5,7 +5,7 @@ import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText, ColorInput } from '../ui/ui.jsx';
 import { DiscordIcon, KofiIcon, YoutubeIcon, GithubIcon, GoogleIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
@@ -147,9 +147,7 @@ export default function Profile() {
           {/* Fluid swatches: they share the row evenly at ANY width, with room to breathe. */}
           <div className="flex gap-2">
             {colors.map((col, i) => (
-              <label key={i} className="press relative flex-1 aspect-square max-w-[48px] rounded-lg overflow-hidden border border-[var(--line)] hover:border-[var(--line-strong)] cursor-pointer" title={`${t('prof.color', 'Color')} ${i + 1}`} style={{ background: col }}>
-                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(col) ? col : '#f97316'} onChange={(e) => setColorAt(i, e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
-              </label>
+              <ColorInput key={i} swatchOnly value={/^#[0-9a-fA-F]{6}$/.test(col) ? col : '#f97316'} onChange={(v) => setColorAt(i, v)} title={`${t('prof.color', 'Color')} ${i + 1}`} className="press flex-1 aspect-square max-w-[48px] rounded-lg border border-[var(--line)] hover:border-[var(--line-strong)] cursor-pointer" />
             ))}
           </div>
           <Button size="sm" className="w-full mt-3" onClick={randomPalette}><Sparkles size={14} /> {t('prof.randpalette', 'Random palette')}</Button>

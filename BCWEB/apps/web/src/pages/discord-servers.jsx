@@ -4,7 +4,7 @@ import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Lin
 import { DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select } from '../ui/ui.jsx';
+import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput } from '../ui/ui.jsx';
 
 // B10 — the user-facing copy of the per-server Discord dashboard. A logged-in user who owns
 // (or holds Manage-Server on) a Discord server the bot is in configures it here: no admin
@@ -514,7 +514,7 @@ function GuildConfig({ guildId, onSaved }) {
                 <Textarea rows={3} value={pnl.body} onChange={(e) => setP({ body: e.target.value.slice(0, 3800) })} placeholder={t('ds.rp.body', 'Message (Discord markdown — the rules go here)')} />
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={pnl.asEmbed} onChange={(e) => setP({ asEmbed: e.target.checked })} /> {t('ds.rp.embed', 'Embed')}</label>
-                  {pnl.asEmbed && <input type="color" value={pnl.color} onChange={(e) => setP({ color: e.target.value })} className="w-8 h-7 rounded border border-[var(--line)] bg-transparent p-0.5 cursor-pointer" title={t('ds.rp.color', 'Colour')} />}
+                  {pnl.asEmbed && <ColorInput value={pnl.color} onChange={(v) => setP({ color: v })} title={t('ds.rp.color', 'Colour')} />}
                   <Select className="!w-auto !py-1.5 text-xs" value={pnl.mode} onChange={(e) => setP({ mode: e.target.value })}>
                     <option value="buttons">{t('ds.rp.buttons', 'Buttons')}</option>
                     <option value="dropdown">{t('ds.rp.dropdown', 'Dropdown')}</option>

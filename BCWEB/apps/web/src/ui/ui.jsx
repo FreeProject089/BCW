@@ -660,3 +660,80 @@ const PREVIEW_CLASS = { remove: 'undo-going', add: 'undo-arriving' };
     </ToastCtx.Provider>
   );
 }
+
+/* ── ColorInput — a custom colour picker (no native <input type="color">) ─────────────
+   The browser's own picker is inconsistent across OSes and off-theme. This is a small
+   popover: HSL sliders, a preset row and a hex field, kept in sync both ways. Same
+   contract as the input it replaces — `value` is a #rrggbb string, `onChange(next)` gets
+   the new string. */
+const isHex6 = (v) => /^#[0-9a-fA-F]{6}$/.test(String(v || ''));
+function hexToHsl(hex) {
+  let h = String(hex).replace('#', ''); if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const r = parseInt(h.slice(0, 2), 16) / 255, g = parseInt(h.slice(2, 4), 16) / 255, b = parseInt(h.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b); let hh = 0, s = 0; const l = (max + min) / 2;
+  if (max !== min) { const d = max - min; s = l > 0.5 ? d / (2 - max - min) : d / (max + min); hh = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4; hh *= 60; }
+  return { h: Math.round(hh), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100; const k = (n) => (n + h / 30) % 12; const a = s * Math.min(l, 1 - l);
+  const f = (n) => Math.round(255 * (l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))))).toString(16).padStart(2, '0');
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+const COLOR_PRESETS = ['#f97316', '#ef4444', '#f59e0b', '#eab308', '#22c55e', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#64748b', '#78716c', '#111827', '#f8fafc'];
+
+export function ColorInput({ value, onChange, className = '', title, swatchOnly = false, style, children }) {
+  const { t } = useI18n();
+  const safe = isHex6(value) ? String(value) : '#000000';
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const [hex, setHex] = useState(safe);
+  const btnRef = useRef(null); const popRef = useRef(null);
+  useEffect(() => { setHex(safe); }, [safe]);
+  const hsl = hexToHsl(isHex6(hex) ? hex : safe);
+  const setHsl = (patch) => { const next = hslToHex(patch.h ?? hsl.h, patch.s ?? hsl.s, patch.l ?? hsl.l); setHex(next); onChange(next); };
+  const commit = (v) => { const s = String(v).startsWith('#') ? String(v) : `#${v}`; setHex(s); if (isHex6(s)) onChange(s); };
+  const openPop = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setRect(r); setOpen(true); };
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e) => { if (!popRef.current?.contains(e.target) && !btnRef.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc); document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const slider = (label, min, max, v, key, accent) => (
+    <label className="block mb-2">
+      <span className="block text-[10px] uppercase tracking-wide text-[var(--faint)] mb-0.5">{label}</span>
+      <input type="range" min={min} max={max} value={v} onChange={(e) => setHsl({ [key]: Number(e.target.value) })} className="w-full h-1.5 cursor-pointer" style={{ accentColor: accent }} />
+    </label>
+  );
+  return (
+    <>
+      {swatchOnly ? (
+        <button type="button" ref={btnRef} title={title || safe} onClick={() => (open ? setOpen(false) : openPop())}
+          className={className} style={style || { background: safe }}>{children}</button>
+      ) : (
+        <button type="button" ref={btnRef} title={title} onClick={() => (open ? setOpen(false) : openPop())}
+          className={`inline-flex items-center gap-2 h-9 px-2 rounded-md border border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--line-strong)] transition-colors ${className}`}>
+          <span className="w-5 h-5 rounded shrink-0 border border-black/15" style={{ background: safe }} />
+          <span className="text-[11px] font-mono uppercase text-[var(--muted)] leading-none">{safe}</span>
+        </button>
+      )}
+      {open && rect && createPortal(
+        <div ref={popRef} className="fixed z-[200] w-60 p-3 rounded-xl border border-[var(--line-strong)]"
+          style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55)', top: Math.min(rect.bottom + 6, window.innerHeight - 268), left: Math.max(8, Math.min(rect.left, window.innerWidth - 248)) }}>
+          <div className="h-9 rounded-lg mb-3 border border-black/15" style={{ background: isHex6(hex) ? hex : safe }} />
+          {slider(t('color.hue', 'Hue'), 0, 360, hsl.h, 'h', `hsl(${hsl.h} 90% 50%)`)}
+          {slider(t('color.sat', 'Saturation'), 0, 100, hsl.s, 's', `hsl(${hsl.h} ${hsl.s}% 50%)`)}
+          {slider(t('color.light', 'Lightness'), 0, 100, hsl.l, 'l', 'var(--text)')}
+          <div className="grid grid-cols-9 gap-1 my-2">
+            {COLOR_PRESETS.map((c) => (
+              <button key={c} type="button" onClick={() => commit(c)} title={c}
+                className="w-full aspect-square rounded" style={{ background: c, outline: safe.toLowerCase() === c ? '2px solid var(--primary)' : '1px solid rgba(120,120,120,0.25)', outlineOffset: '-1px' }} />
+            ))}
+          </div>
+          <input value={hex} spellCheck={false} maxLength={7} onChange={(e) => commit(e.target.value)}
+            className="w-full font-mono text-xs uppercase px-2 py-1.5 rounded-md border border-[var(--line)] bg-[var(--surface-2)] outline-none focus:border-[var(--primary)]" />
+        </div>, document.body)}
+    </>
+  );
+}

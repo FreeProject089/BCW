@@ -1015,6 +1015,7 @@ const DICT = {
     'cmp.sub': "Une promo à l'échelle du site, limitée dans le temps : applique automatiquement son % au checkout et affiche un badge d'annonce partout. Une seule campagne active à la fois (la plus récemment démarrée l'emporte).",
     'cmp.title': "Promotions (campagnes)",
     'common.copy': "Copier",
+    'color.hue': 'Teinte', 'color.sat': 'Saturation', 'color.light': 'Luminosité',
     'common.delete': "Supprimer", 'common.undo': "Annuler", 'common.clear': "Effacer",
     'common.done': "Terminé",
     'dash.allkinds': "Tous les types",

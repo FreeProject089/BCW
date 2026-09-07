@@ -11,7 +11,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
 import IconPicker from '../editor/icon-picker.jsx';
@@ -4861,9 +4861,7 @@ function RoleManager({ roles }) {
             </Field>
             <Field label={t('rm.color', 'Badge color')}>
               <div className="flex items-center gap-2 flex-wrap">
-                <label className="relative w-9 h-9 rounded-lg border border-[var(--line)] overflow-hidden cursor-pointer shrink-0" title={t('rm.colorpick', 'Pick a colour')} style={{ backgroundColor: isHex(color) ? color : '#3b82f6' }}>
-                  <input type="color" value={isHex(color) ? color : '#3b82f6'} onChange={(e) => setColor(e.target.value)} className="absolute inset-0 opacity-0 cursor-pointer" />
-                </label>
+                <ColorInput swatchOnly value={isHex(color) ? color : '#3b82f6'} onChange={setColor} title={t('rm.colorpick', 'Pick a colour')} className="w-9 h-9 rounded-lg border border-[var(--line)] cursor-pointer shrink-0" />
                 {ROLE_SWATCHES.map((c) => <button key={c} type="button" onClick={() => setColor(c)} className={`w-6 h-6 rounded-full border-2 transition ${color === c ? 'border-[var(--text)] scale-110' : 'border-transparent hover:scale-105'}`} style={{ backgroundColor: c }} title={c} />)}
                 <span className="ms-1"><RoleBadge color={color}>{name.trim() || t('rm.preview', 'Preview')}</RoleBadge></span>
               </div>
@@ -11833,7 +11831,7 @@ function AnnounceComposer({ guildList = [] }) {
         {f.format !== 'text' && (
           <Field label={t('db.ac.color', 'Colour')} hint={f.urgent ? t('db.ac.color.urgent', 'Ignored while urgent — urgent is always red.') : t('db.ac.color.h', 'Empty uses the colour for this kind.')}>
             <div className="flex items-center gap-1.5">
-              <Input type="color" value={f.color || '#64748b'} onChange={(e) => set('color', e.target.value)} className="w-14 !p-1" disabled={f.urgent} />
+              <ColorInput value={f.color || '#64748b'} onChange={(v) => set('color', v)} className={f.urgent ? 'opacity-50 pointer-events-none' : ''} />
               {f.color && !f.urgent && <button type="button" onClick={() => set('color', '')} className="text-[11px] text-[var(--muted)] hover:text-[var(--text)]">{t('common.reset', 'Reset')}</button>}
             </div>
           </Field>
@@ -13218,7 +13216,7 @@ function RolePanels({ panels, onChange, guildList }) {
                   </Field>
                   {p.asEmbed && (
                     <Field label={t('db.rp.color', 'Colour')}>
-                      <Input type="color" value={p.color || '#f59e0b'} onChange={(e) => set(i, { color: e.target.value })} className="w-16 !p-1" />
+                      <ColorInput value={p.color || '#f59e0b'} onChange={(v) => set(i, { color: v })} />
                     </Field>
                   )}
                   <Field label={t('db.rp.mode', 'Roles as')}>
@@ -14858,7 +14856,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
           <div className="flex flex-wrap items-end gap-4">
             <Field label={t('db.eco.icons.shape', 'Tile shape')} className="!mb-0 w-40"><Dropdown value={shape} onChange={(v) => onStyle('shape', v)} options={[{ value: 'rounded', label: t('db.eco.icons.shape.rounded', 'Rounded') }, { value: 'circle', label: t('db.eco.icons.shape.circle', 'Circle') }, { value: 'square', label: t('db.eco.icons.shape.square', 'Square') }, { value: 'none', label: t('db.eco.icons.shape.none', 'No tile (glyph only)') }]} /></Field>
-            <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><input type="color" value={fg} onChange={(e) => onStyle('fg', e.target.value)} className="h-9 w-14 rounded-md border border-[var(--line)] bg-transparent cursor-pointer" /></Field>
+            <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><ColorInput value={fg} onChange={(v) => onStyle('fg', v)} /></Field>
           </div>
           <div className="flex items-center gap-2.5">
             {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[var(--primary)]/12 text-[var(--primary-2)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
@@ -14883,7 +14881,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
                     <button type="button" onClick={() => setPicking(ic.key)} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] max-w-[9rem]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
                       <IconGlyph name={m.icon || ic.icon} size={12} /><span className="truncate">{m.icon || ic.icon}</span>
                     </button>
-                    <input type="color" value={m.color || ic.color} onChange={(e) => onStyle(`${ic.key}.color`, e.target.value)} className="h-6 w-7 rounded border border-[var(--line)] bg-transparent cursor-pointer" title={t('db.eco.icons.color', 'Tile colour')} />
+                    <ColorInput value={m.color || ic.color} onChange={(v) => onStyle(`${ic.key}.color`, v)} title={t('db.eco.icons.color', 'Tile colour')} />
                     {changed && <button type="button" onClick={() => { onStyle(`${ic.key}.icon`, ''); onStyle(`${ic.key}.color`, ''); }} className="text-[10px] text-[var(--faint)] hover:text-[var(--text)]" title={t('db.eco.icons.reset', 'Back to the default')}><RotateCcw size={11} /></button>}
                   </div>
                   <Input className="!py-0.5 !text-[11px] font-mono mt-1.5" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
@@ -19509,7 +19507,7 @@ function AdminBadges() {
           </div>
           {edit.iconType !== 'image' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.pickhint', 'Search every Lucide icon + every Simple Icons brand (YouTube, Twitch, Steam, GitHub…).')}</p>}
           <div className="grid sm:grid-cols-3 gap-3">
-            <Field label={t('ab.color', 'Colour')}><Input type="color" value={edit.color} onChange={(e) => setEdit({ ...edit, color: e.target.value })} className="!p-1 h-9" /></Field>
+            <Field label={t('ab.color', 'Colour')}><ColorInput value={edit.color} onChange={(v) => setEdit({ ...edit, color: v })} /></Field>
             <Field label={t('ab.priority', 'Priority')}><Input type="number" min="0" value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: Math.max(0, Number(e.target.value) || 0) })} /></Field>
             <Field label={t('ab.grantmode', 'How earned')}><Select value={edit.grant} onChange={(e) => setEdit({ ...edit, grant: e.target.value })}><option value="manual">{t('ab.manual', 'Manual (staff grant)')}</option><option value="easter_egg">{t('ab.easter', 'Easter egg (self-claim)')}</option><option value="auto">{t('ab.auto', 'Automatic (rule)')}</option></Select></Field>
           </div>
@@ -20622,13 +20620,13 @@ function AdminSiteTheme() {
         <div className="flex flex-wrap items-end gap-3">
           <Field label={t('st.accent', 'Accent')}>
             <div className="flex items-center gap-2">
-              <input type="color" value={f.accent} onChange={(e) => setF({ ...f, accent: e.target.value, preset: '' })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+              <ColorInput value={f.accent} onChange={(v) => setF({ ...f, accent: v, preset: '' })} />
               <Input className="!w-28 font-mono" value={f.accent} onChange={(e) => setF({ ...f, accent: e.target.value, preset: '' })} />
             </div>
           </Field>
           <Field label={t('st.accent2', 'Second accent (gradient)')}>
             <div className="flex items-center gap-2">
-              <input type="color" value={f.accent2} onChange={(e) => setF({ ...f, accent2: e.target.value, preset: '' })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+              <ColorInput value={f.accent2} onChange={(v) => setF({ ...f, accent2: v, preset: '' })} />
               <Input className="!w-28 font-mono" value={f.accent2} onChange={(e) => setF({ ...f, accent2: e.target.value, preset: '' })} />
             </div>
           </Field>
@@ -20683,7 +20681,7 @@ function AdminSiteTheme() {
                 {[['bg', t('st.page', 'Page')], ['text', t('st.textc', 'Text')]].map(([k, label]) => (
                   <Field key={k} label={label}>
                     <div className="flex items-center gap-2">
-                      <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(f[scope][k] || '') ? f[scope][k] : '#000000'} onChange={(e) => setF({ ...f, [scope]: { ...f[scope], [k]: e.target.value } })} className="w-10 h-9 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer" />
+                      <ColorInput swatchOnly value={/^#[0-9a-fA-F]{6}$/.test(f[scope][k] || '') ? f[scope][k] : '#000000'} onChange={(v) => setF({ ...f, [scope]: { ...f[scope], [k]: v } })} className="w-10 h-9 rounded-lg border border-[var(--line)] cursor-pointer" />
                       <Input className="!w-28 font-mono" value={f[scope][k] || ''} onChange={(e) => setF({ ...f, [scope]: { ...f[scope], [k]: e.target.value } })} />
                     </div>
                   </Field>
@@ -20719,8 +20717,8 @@ function AdminSiteTheme() {
                 <div className="space-y-1.5">
                   {glows.map((g, i) => (
                     <div key={i} className="flex items-center gap-1.5 flex-wrap">
-                      <input type="color" value={hexOf(g.color)} onChange={(e) => setG(i, { color: e.target.value })}
-                        className="w-8 h-8 rounded border border-[var(--line)] bg-transparent p-0.5 cursor-pointer" />
+                      <ColorInput swatchOnly value={hexOf(g.color)} onChange={(v) => setG(i, { color: v })}
+                        className="w-8 h-8 rounded border border-[var(--line)] cursor-pointer" />
                       <Input className="!w-40 !text-xs font-mono" value={g.color || ''} onChange={(e) => setG(i, { color: e.target.value })} placeholder="rgba(249,115,22,.14)" />
                       {NUM.map(([k, lb]) => (
                         <label key={k} className="text-[10px] text-[var(--faint)] flex flex-col">
@@ -20761,9 +20759,9 @@ function AdminSiteTheme() {
                         swatch must never do, since its job is to tell you what the token
                         currently paints. It now reads the live computed value, which is what
                         a visitor actually sees. */}
-                    <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(bag[tk.name] || '') ? bag[tk.name] : liveToken(tk.name)}
-                      onChange={(e) => setTok(tk.name, e.target.value)}
-                      className="w-8 h-8 mt-0.5 rounded-lg border border-[var(--line)] bg-transparent cursor-pointer shrink-0" />
+                    <ColorInput swatchOnly value={/^#[0-9a-fA-F]{6}$/.test(bag[tk.name] || '') ? bag[tk.name] : liveToken(tk.name)}
+                      onChange={(v) => setTok(tk.name, v)}
+                      className="w-8 h-8 mt-0.5 rounded-lg border border-[var(--line)] cursor-pointer shrink-0" />
                     <Input className="!w-40 font-mono !text-xs" placeholder={tk.derived ? t('st.derived', 'derived') : t('st.default', 'default')}
                       value={bag[tk.name] || ''} onChange={(e) => setTok(tk.name, e.target.value)} />
                     <div className="min-w-0 flex-1">
