@@ -13903,6 +13903,33 @@ function PanelSection({ title, right, first = false, children }) {
   );
 }
 
+// The prizes a giveaway actually runs, as one click each.
+//
+// Setting one up meant four nested decisions — prize kind, then gift kind, then which of
+// percentOff / freeMonths / storageGB / boostDays applies to that gift kind — inside a fold
+// that was shut by default. Every one of those is a real field, and none of them is a
+// DECISION: "one month of hosting free" is a single thing a person wants to give away.
+//
+// So the common ones are presets. Each fills the same state the fields do, and the fields stay
+// underneath for the giveaway that is not one of these.
+const GW_PRIZES = [
+  { id: 'discount20', label: '20% off', prize: '20% off hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 20, freeMonths: 0 } },
+  { id: 'discount50', label: '50% off', prize: '50% off hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 50, freeMonths: 0 } },
+  { id: 'month1', label: '1 month free', prize: '1 month of hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 0, freeMonths: 1 } },
+  { id: 'month3', label: '3 months free', prize: '3 months of hosting', prizeKind: 'promo', gift: { kind: 'discount', percentOff: 0, freeMonths: 3 } },
+  { id: 'hosting10', label: 'A free repo (10 GB)', prize: 'A hosted Server-Repo, 10 GB', prizeKind: 'promo', gift: { kind: 'free_hosting', storageGB: 10 } },
+  { id: 'pool50', label: 'A 50 GB pool', prize: 'A 50 GB storage pool', prizeKind: 'promo', gift: { kind: 'free_pool', storageGB: 50 } },
+  { id: 'boost7', label: 'A 7-day boost', prize: '7 days of boost', prizeKind: 'promo', gift: { kind: 'free_boost', boostDays: 7 } },
+  { id: 'custom', label: 'Something I type in', prizeKind: 'custom' },
+  { id: 'none', label: 'Bragging rights', prize: 'Bragging rights', prizeKind: 'none' },
+];
+// Durations people actually pick. It was a raw minutes box, so "one week" meant knowing that
+// a week is 10080 minutes — and a typo there is a giveaway that ends in seven hours or seventy
+// days, which nothing on screen would have questioned.
+const GW_DURATIONS = [
+  [60, '1 hour'], [360, '6 hours'], [720, '12 hours'], [1440, '1 day'],
+  [4320, '3 days'], [10080, '1 week'], [20160, '2 weeks'], [43200, '30 days'],
+];
 function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
@@ -13917,6 +13944,37 @@ function BotGiveawaysCard() {
     f.prizeKind === 'promo' ? t('gw.pk.promo2', 'promo code') : f.prizeKind === 'custom' ? t('gw.pk.custom2', 'custom content') : t('gw.pk.none2', 'no prize'),
     f.reqCreator ? t('gw.badge.creator', 'creator id') : f.reqLinked ? t('gw.badge.linked', 'linked') : null,
   ].filter(Boolean).join(' · ');
+  // A preset writes the same state the fields do, so it is a starting point and not a mode:
+  // everything it set stays editable underneath.
+  const applyPrize = (p) => setF((cur) => ({
+    ...cur,
+    prizeKind: p.prizeKind,
+    // The prize NAME is what entrants read on the Discord post; a preset fills it only when
+    // the field is still empty or still holds another preset's text, so a name somebody wrote
+    // themselves is never overwritten.
+    prize: p.prize && (!cur.prize.trim() || GW_PRIZES.some((x) => x.prize === cur.prize)) ? p.prize : cur.prize,
+    gift: p.gift ? { ...cur.gift, ...p.gift } : cur.gift,
+  }));
+
+  // What the winner ends up with, in one line, from whatever the fields say right now. The
+  // prize payload lives in a fold that is shut by default, so without this the card can show
+  // "20% off" as the title while the gift underneath is a 10 GB pool.
+  const winnerGets = (() => {
+    if (f.prizeKind === 'none') return t('gw.gets.none', 'nothing to claim — the title only');
+    if (f.prizeKind === 'custom') return f.prizeContent.trim()
+      ? t('gw.gets.custom', 'the text you typed, sealed until they reveal it')
+      : t('gw.gets.custom.empty', 'custom content — but you have not typed any yet');
+    const g = f.gift;
+    if (g.kind === 'discount') {
+      const bits = [Number(g.percentOff) ? `${Number(g.percentOff)}%` : null, Number(g.freeMonths) ? t('gw.gets.months', '{n} month(s) free').replace('{n}', Number(g.freeMonths)) : null].filter(Boolean);
+      return bits.length ? t('gw.gets.promo', 'a promo code: {x}').replace('{x}', bits.join(' + ')) : t('gw.gets.empty', 'a promo code worth nothing yet — set a discount below');
+    }
+    if (g.kind === 'free_hosting') return t('gw.gets.hosting', 'a free hosted repo, {n} GB').replace('{n}', Number(g.storageGB) || 0);
+    if (g.kind === 'free_pool') return t('gw.gets.pool', 'a free storage pool, {n} GB').replace('{n}', Number(g.storageGB) || 0);
+    if (g.kind === 'free_boost') return t('gw.gets.boost', '{n} day(s) of boost').replace('{n}', Number(g.boostDays) || 0);
+    return t('gw.gets.promo.plain', 'a promo code');
+  })();
+
   const create = async () => {
     const needChannel = f.audience !== 'site';
     if (!f.prize.trim() || (needChannel && !f.channelId.trim())) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
@@ -13968,11 +14026,49 @@ function BotGiveawaysCard() {
           {/* Four short fields across the row on a wide screen. A giveaway is prize + where +
               how long + how many winners; as two columns they wrapped into four rows of
               half-empty inputs. */}
+          {/* Pick the prize first, in one click. The fields below stay editable — a preset is a
+              starting point, not a mode. */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] me-1">{t('gw.presets', 'Prize')}</span>
+            {GW_PRIZES.map((p) => {
+              const on = f.prizeKind === p.prizeKind
+                && (!p.gift || (f.gift.kind === p.gift.kind
+                  && (p.gift.percentOff === undefined || Number(f.gift.percentOff) === p.gift.percentOff)
+                  && (p.gift.freeMonths === undefined || Number(f.gift.freeMonths) === p.gift.freeMonths)
+                  && (p.gift.storageGB === undefined || Number(f.gift.storageGB) === p.gift.storageGB)
+                  && (p.gift.boostDays === undefined || Number(f.gift.boostDays) === p.gift.boostDays)));
+              return (
+                <button key={p.id} type="button" onClick={() => applyPrize(p)}
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                  {t(`gw.p.${p.id}`, p.label)}
+                </button>
+              );
+            })}
+          </div>
+          {/* What the winner ends up with, from the fields as they stand. The payload lives in a
+              fold that is shut by default, so without this the title can say one thing and the
+              gift underneath be another. */}
+          <div className="text-[11px] text-[var(--muted)] mb-3">
+            <span className="text-[var(--faint)]">{t('gw.gets', 'The winner gets')}: </span>{winnerGets}
+          </div>
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
-            <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
+            <Field label={t('gw.prize', 'Prize')} hint={t('gw.prize.h', 'What entrants read on the post. The preset fills it; change it to whatever reads best.')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
             <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
             {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
-            <Field label={t('gw.duration', 'Duration (minutes)')}><Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} /></Field>
+            <Field label={t('gw.duration2', 'Runs for')}>
+              {GW_DURATIONS.some(([m]) => m === Number(f.durationMinutes))
+                ? <Dropdown className="w-full" value={String(f.durationMinutes)}
+                  onChange={(v) => setF({ ...f, durationMinutes: v === 'custom' ? '' : Number(v) })}
+                  options={[...GW_DURATIONS.map(([m, label]) => ({ value: String(m), label: t(`gw.d.${m}`, label) })), { value: 'custom', label: t('gw.d.custom', 'Custom…') }]} />
+                /* The escape hatch stays a plain minutes box, and says its unit — the field
+                   used to be only this, which is how "one week" became a question about how
+                   many minutes are in a week. */
+                : <div className="flex items-center gap-2">
+                  <Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} placeholder="90" />
+                  <span className="text-xs text-[var(--faint)] shrink-0">{t('gw.d.min', 'min')}</span>
+                  <Button size="sm" variant="ghost" onClick={() => setF({ ...f, durationMinutes: 1440 })}>{t('common.reset', 'Reset')}</Button>
+                </div>}
+            </Field>
             <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
           </div>
           {/* Everything past the four fields above is optional, and having it all on screen at
