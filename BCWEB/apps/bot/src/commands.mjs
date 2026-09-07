@@ -300,7 +300,7 @@ async function handleShopBuy(i) {
     if (d.kind === 'badge') lines.push(`🏅 The **${d.badge}** badge is now on your BCWEB profile.`);
     else if (d.revealed === false) lines.push(`${ui.ic('reveal')} Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
-    else lines.push('🎁 An admin has been notified to deliver it — *pending* in your inventory until then.');
+    else lines.push(`${ui.ic('gift')} An admin has been notified to deliver it — *pending* in your inventory until then.`);
     return ui.reply(i, { title: `${ui.ic('done')} Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
   }
   if (r.error === 'not_linked') return notLinked(i);
@@ -328,10 +328,10 @@ async function cmdInventory(i) {
     const state = x.status === 'pending' ? '⏳ waiting for an admin'
       : d.revealed && d.code ? `code \`${d.code}\`${x.expiresAt ? ` · until <t:${Math.floor(new Date(x.expiresAt).getTime() / 1000)}:d>` : ''}${x.expired ? ' · expired' : ''}`
       : d.badge ? `badge **${d.badge}**`
-      : x.canReveal ? '✉️ sealed — reveal when you want the code' : '✅ delivered';
+      : x.canReveal ? `${ui.ic('reveal')} sealed — reveal when you want the code` : `${ui.ic('done')} delivered`;
     const button = x.canReveal ? ui.btn(`inv:reveal:${x.id}`, t('btn.reveal'), ButtonStyle.Primary, { emoji: 'reveal' })
       : x.canGift ? ui.btn(`inv:gift:${x.id}`, t('btn.gift'), ButtonStyle.Secondary, { emoji: 'gift' }) : null;
-    return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ' · 🎁 a gift' : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
+    return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ` · ${ui.ic('gift')} a gift` : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
   });
   return ui.reply(i, {
     title: `${ui.ic('inventory')} ${t('inv.title')}`,
@@ -454,28 +454,28 @@ function rollGame({ game, betOn, num, target, risk }) {
     const pocket = Math.floor(Math.random() * 37);
     const reds = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
     const colour = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black';
-    if (betOn === 'number') { mult = pocket === num ? 35 : 0; detail = `🎡 You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`; }
-    else if (betOn === 'green') { mult = pocket === 0 ? 14 : 0; detail = `🎡 You bet on **green** — the ball landed on **${pocket} ${colour}**.`; }
-    else { mult = colour === betOn ? 2 : 0; detail = `🎡 You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`; }
+    if (betOn === 'number') { mult = pocket === num ? 35 : 0; detail = `${ui.ic('roulette')} You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`; }
+    else if (betOn === 'green') { mult = pocket === 0 ? 14 : 0; detail = `${ui.ic('roulette')} You bet on **green** — the ball landed on **${pocket} ${colour}**.`; }
+    else { mult = colour === betOn ? 2 : 0; detail = `${ui.ic('roulette')} You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`; }
     card = String(pocket);
   } else if (game === 'wheel') {
     const SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]];
     let roll = Math.random() * 100, landed = 2;
     for (const [m, w] of SLICES) { if (roll < w) { landed = m; break; } roll -= w; }
     mult = landed === target ? target : 0;
-    detail = `🎯 You went for **${target}×** — the wheel stopped on **${landed}×**.`;
+    detail = `${ui.ic('wheel')} You went for **${target}×** — the wheel stopped on **${landed}×**.`;
     card = `${landed}|${target}`;
   } else if (game === 'plinko') {
     const TABLES = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
     let path = '', rights = 0;
     for (let k = 0; k < 10; k++) { const rgt = Math.random() < 0.5; path += rgt ? 'R' : 'L'; if (rgt) rights++; }
     mult = TABLES[risk][rights];
-    detail = `🟡 Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
+    detail = `${ui.ic('plinko')} Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
     card = `${risk}|${path}|${rights}`;
   } else if (game === 'dice') {
     const roll = 1 + Math.floor(Math.random() * 6);
     mult = roll >= 4 ? 2 : 0;
-    detail = `🎲 You rolled a **${roll}** (win on 4-6).`; card = String(roll);
+    detail = `${ui.ic('dice')} You rolled a **${roll}** (win on 4-6).`; card = String(roll);
   } else if (game === 'slots') {
     const S = ['cherry', 'lemon', 'bell', 'star', 'diamond'];
     const E = { cherry: '🍒', lemon: '🍋', bell: '🔔', star: '⭐', diamond: '💎' };
@@ -867,9 +867,9 @@ async function cmdLink(i) {
   const { t } = await tr(i);
   try {
     const r = await api.issueLink(i.user.id, i.user.username);
-    if (r.linked) return ui.reply(i, { title: `🔗 ${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: ecoButtons('', t) });
+    if (r.linked) return ui.reply(i, { title: `${ui.ic('link')} ${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: ecoButtons('', t) });
     return ui.reply(i, {
-      title: `🔗 ${t('link.title')}`,
+      title: `${ui.ic('link')} ${t('link.title')}`,
       body: [t('link.body'), `# ${r.code}`, `-# ${t('link.expires')}`],
       buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' })],
     });

@@ -27,12 +27,12 @@ export async function pollGiveaways(client) {
         const endTs = Math.floor(new Date(gw.endsAt).getTime() / 1000);
         const gr = gw.requirements || {};
         const reqLine = gr.creator
-          ? `\n🔒 **Requires** a linked BetterCommunity account **with a BMM creator id** — link at ${SITE_URL}/profile`
+          ? `\n${ui.ic('lock')} **Requires** a linked BetterCommunity account **with a BMM creator id** — link at ${SITE_URL}/profile`
           : gr.linked
-            ? `\n🔒 **Requires** a linked BetterCommunity account — link at ${SITE_URL}/profile`
+            ? `\n${ui.ic('lock')} **Requires** a linked BetterCommunity account — link at ${SITE_URL}/profile`
             : '';
         const msg = await ch.send(ui.card({
-          title: '🎉 Giveaway!',
+          title: `${ui.ic('enter')} Giveaway!`,
           body: [`**Prize:** ${gw.prize}`, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
           buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' })],
         })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
@@ -49,12 +49,12 @@ export async function pollGiveaways(client) {
         const ch = await resolveChannel(client, gw.channelId);
         if (ch?.send) {
           await ch.send(winners.length
-            ? ui.card({ title: '🎉 Giveaway ended', color: ui.GOOD, body: [`Congratulations ${winners.map((w) => `<@${w}>`).join(', ')}!`, `You won **${gw.prize}**. Check your DMs.`], footer: `${pool.length} entr${pool.length === 1 ? 'y' : 'ies'}` })
-            : ui.card({ title: '🎉 Giveaway ended', color: 0x6b7280, body: `The giveaway for **${gw.prize}** ended with no entries.` })).catch(() => {});
+            ? ui.card({ title: `${ui.ic('enter')} Giveaway ended`, color: ui.GOOD, body: [`Congratulations ${winners.map((w) => `<@${w}>`).join(', ')}!`, `You won **${gw.prize}**. Check your DMs.`], footer: `${pool.length} entr${pool.length === 1 ? 'y' : 'ies'}` })
+            : ui.card({ title: `${ui.ic('enter')} Giveaway ended`, color: 0x6b7280, body: `The giveaway for **${gw.prize}** ended with no entries.` })).catch(() => {});
           // The original post stops inviting people: its button is retired in place.
           if (gw.messageId) {
             const orig = await ch.messages.fetch(gw.messageId).catch(() => null);
-            if (orig) await orig.edit(ui.card({ title: '🎉 Giveaway — ended', color: 0x6b7280, body: [`**Prize:** ${gw.prize}`, winners.length ? `**Winners:** ${winners.map((w) => `<@${w}>`).join(', ')}` : '**Winners:** nobody entered'], buttons: [ui.btn('gw:closed', 'Entries closed', ButtonStyle.Secondary, { disabled: true })] })).catch(() => {});
+            if (orig) await orig.edit(ui.card({ title: `${ui.ic('enter')} Giveaway — ended`, color: 0x6b7280, body: [`**Prize:** ${gw.prize}`, winners.length ? `**Winners:** ${winners.map((w) => `<@${w}>`).join(', ')}` : '**Winners:** nobody entered'], buttons: [ui.btn('gw:closed', 'Entries closed', ButtonStyle.Secondary, { disabled: true })] })).catch(() => {});
           }
         }
         // DM every winner the customizable message (English default), substituting the
@@ -93,13 +93,13 @@ export async function handleGiveawayButton(interaction) {
   const [, , id] = interaction.customId.split(':');
   try {
     const r = await api.giveawayEnter(id, interaction.user.id);
-    await ui.line(interaction, r.already ? "You're already entered — good luck! 🍀" : `You're in! 🎉 (${r.count} entrant${r.count === 1 ? '' : 's'})`, { color: ui.GOOD });
+    await ui.line(interaction, r.already ? "You're already entered — good luck! 🍀" : `You're in! ${ui.ic('enter')} (${r.count} entrant${r.count === 1 ? '' : 's'})`, { color: ui.GOOD });
   } catch (e) {
     const err = e.body?.error;
     const msg = err === 'need_link'
-      ? `🔒 You must link your Discord to a BetterCommunity account to enter. Link it at ${SITE_URL}/profile, then click Enter again.`
+      ? `${ui.ic('lock')} You must link your Discord to a BetterCommunity account to enter. Link it at ${SITE_URL}/profile, then click Enter again.`
       : err === 'need_creator'
-        ? `🔒 This giveaway requires a linked **BMM creator id** on your BetterCommunity account. Add one at ${SITE_URL}/profile, then click Enter again.`
+        ? `${ui.ic('lock')} This giveaway requires a linked **BMM creator id** on your BetterCommunity account. Add one at ${SITE_URL}/profile, then click Enter again.`
         : (err === 'not_active' || String(e.message || '').includes('409'))
           ? 'This giveaway has ended.'
           : 'Could not enter — try again in a moment.';
