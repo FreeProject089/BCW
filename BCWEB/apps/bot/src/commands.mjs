@@ -208,7 +208,7 @@ async function cmdLevel(i) {
     title: t('level.title', { n: e.level }),
     thumb: av.thumb || i.user.displayAvatarURL?.({ size: 128 }) || null, files: av.files,
     body: [
-      `**${e.displayName}**${e.badges?.length ? ` · 🏅 ${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
+      `**${e.displayName}**${e.badges?.length ? ` · ${ui.ic('medal')} ${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
       `${ui.bar(e.xpThisLevel, e.xpForNext)}  ${t('level.xp', { a: n(e.xpThisLevel), b: n(e.xpForNext) })}`,
       `-# ${t('level.next', { n: n(next), l: e.level + 1 })}`,
       `${ui.ic('coin')} **${n(e.points)}** ${cur}`,
@@ -235,20 +235,24 @@ async function cmdProfile(i) {
     thumb: av.thumb || target.displayAvatarURL?.({ size: 128 }) || null,
     body: [
       `**Level ${e.level}** · **${n(e.points)}** ${cur}`,
-      e.badges?.length ? `🏅 ${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
-      `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · ${ui.ic('voice')} ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
+      e.badges?.length ? `${ui.ic('medal')} ${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
+      `${ui.ic('messages')} ${n(e.stats?.messages)} messages · ${ui.ic('reactions')} ${n(e.stats?.reactions)} reactions · ${ui.ic('voice')} ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
     image: png ? 'attachment://profile.png' : null, files,
     buttons: [ui.btn(url, 'View full profile', ButtonStyle.Secondary, { emoji: 'site' }), ...(target.id === i.user.id ? ecoButtons('') : [])],
   });
 }
 
-// What each shop kind hands over, phrased for the buyer.
-const SHOP_KIND_LABEL = {
-  badge: '🏅 profile badge', role: '🎭 Discord role', pool: '💾 storage pool',
-  boost: '🚀 catalog / repo boost', hosting: '🖥️ free hosting', promo: '🎟️ promo code', custom: '🎁 reward',
+// What each shop kind hands over, phrased for the buyer. Functions, not a frozen map, so the
+// glyph resolves through ui.ic() at call time — an admin's custom icon wins, and the default
+// is the same unicode as before. (A module-load-time map would freeze the default.)
+const SHOP_KIND_WORD = {
+  badge: 'profile badge', role: 'Discord role', pool: 'storage pool',
+  boost: 'catalog / repo boost', hosting: 'free hosting', promo: 'promo code', custom: 'reward',
 };
-const TAG_LABEL = { exclusive: '💎 Exclusive', limited: '🔥 Limited', timed: '⏳ For a limited time' };
+const SHOP_KIND_ICON = { badge: 'badge', role: 'role', pool: 'pool', boost: 'boost', hosting: 'hosting', promo: 'promo', custom: 'gift' };
+const shopKindLabel = (k) => `${ui.ic(SHOP_KIND_ICON[k] || 'gift') || ''} ${SHOP_KIND_WORD[k] || 'reward'}`.trim();
+const tagLabel = (k) => `${ui.ic(k) || ''} ${k === 'exclusive' ? 'Exclusive' : k === 'limited' ? 'Limited' : 'For a limited time'}`.trim();
 const PAGE = 8;
 
 // The shop: one section per item with its own Buy button. Paged eight at a time — a section
@@ -273,8 +277,8 @@ async function cmdShop(i, page = 0, isUpdate = false) {
     sections: slice.map((x) => {
       const cost = Number(x.cost) || 0;
       const can = balance != null && balance >= cost;
-      const tag = x.exclusive ? TAG_LABEL.exclusive : x.stock != null && x.stock !== '' ? `${TAG_LABEL.limited} · ${x.stock} in stock` : x.availableUntil ? `${TAG_LABEL.timed} · until <t:${Math.floor(new Date(x.availableUntil).getTime() / 1000)}:d>` : '';
-      const extra = [SHOP_KIND_LABEL[x.kind] || '🎁 reward', x.giftable === false || x.kind === 'badge' || x.kind === 'role' ? 'bound to you' : 'giftable', x.codeDays ? `code valid ${x.codeDays} d` : null].filter(Boolean).join(' · ');
+      const tag = x.exclusive ? tagLabel('exclusive') : x.stock != null && x.stock !== '' ? `${tagLabel('limited')} · ${x.stock} in stock` : x.availableUntil ? `${tagLabel('timed')} · until <t:${Math.floor(new Date(x.availableUntil).getTime() / 1000)}:d>` : '';
+      const extra = [shopKindLabel(x.kind), x.giftable === false || x.kind === 'badge' || x.kind === 'role' ? 'bound to you' : 'giftable', x.codeDays ? `code valid ${x.codeDays} d` : null].filter(Boolean).join(' · ');
       return {
         text: `**${x.name}** — ${n(cost)} ${cur}${tag ? `  ${tag}` : ''}\n-# ${extra}${x.desc ? `\n${x.desc}` : ''}`,
         button: ui.btn(`shop:buy:${x.id}`, can ? t('btn.buy') : `${n(cost)}`, can ? ButtonStyle.Success : ButtonStyle.Secondary, { disabled: !can, emoji: can ? 'buy' : null }),
@@ -297,7 +301,7 @@ async function handleShopBuy(i) {
   if (r.ok) {
     const d = r.delivery || {};
     const lines = [`You bought **${r.item?.name || 'item'}**. Balance: **${n(r.points)}**.`];
-    if (d.kind === 'badge') lines.push(`🏅 The **${d.badge}** badge is now on your BCWEB profile.`);
+    if (d.kind === 'badge') lines.push(`${ui.ic('medal')} The **${d.badge}** badge is now on your BCWEB profile.`);
     else if (d.revealed === false) lines.push(`${ui.ic('reveal')} Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
     else lines.push(`${ui.ic('gift')} An admin has been notified to deliver it — *pending* in your inventory until then.`);
@@ -423,7 +427,7 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
   // accessible copy and what an old client falls back to.
   const meId = (await api.economyUser(i.user.id))?.userId || '';
   const png = rows.length ? await api.siteImage(`/og/leaderboard.png?guildId=${encodeURIComponent(guildId)}&me=${encodeURIComponent(meId)}&n=${Math.floor(Date.now() / 60000)}`) : null;
-  const medal = (k) => k === 0 ? '🥇' : k === 1 ? '🥈' : k === 2 ? '🥉' : `**${k + 1}.**`;
+  const medal = (k) => k === 0 ? ui.ic('gold') : k === 1 ? ui.ic('silver') : k === 2 ? ui.ic('bronze') : `**${k + 1}.**`;
   const body = rows.length ? rows.map((m, k) => `${medal(k)} **${m.displayName}** — Lv **${m.level}** · ${n(m.points)} pts`) : [t('lb.empty')];
   const you = r.me ? `\n${t('lb.you', { r: r.me.rank, l: r.me.level, p: n(r.me.points) })}` : '';
   return respond({

@@ -26,6 +26,12 @@ const DEFAULT_ICONS = {
   lock: '🔒', unlock: '🔓', private: '🙈', public: '👁️', claim: '🙋', export: '📤', import: '📥',
   coinflip: '🪙', dice: '🎲', slots: '🎰', roulette: '🎡', wheel: '🎯', plinko: '🟡',
   levelup: '⬆️', staff: '🛡️', purchase: '🧾', games: '🎮', profile: '👤', done: '✅',
+  // Economy card + leaderboard glyphs — admin-mappable like the rest, so the body emoji stop
+  // being hard-coded unicode (🏅 💬 ✨ …).
+  medal: '🏅', messages: '💬', reactions: '✨', streak: '🔥', gold: '🥇', silver: '🥈', bronze: '🥉',
+  // Shop-kind + tag glyphs, so the shop listing's emoji are admin-mappable too.
+  badge: '🏅', role: '🎭', pool: '💾', boost: '🚀', hosting: '🖥️', promo: '🎟️',
+  exclusive: '💎', limited: '🔥', timed: '⏳',
 };
 let ICONS = { ...DEFAULT_ICONS };
 export function setIcons(map) {
