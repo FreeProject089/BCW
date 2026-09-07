@@ -50,8 +50,24 @@ export function chunk(imp) {
 /** React.lazy() for a route chunk. */
 export const lazyChunk = (imp) => lazy(chunk(imp));
 
-/** React.lazy() for a NAMED export out of a shared chunk. */
-export const lazyNamed = (imp, key) => lazy(chunk(() => imp().then((m) => ({ default: m[key] }))));
+/** React.lazy() for a NAMED export out of a shared chunk.
+ *
+ *  A key that does not exist used to hand React `{ default: undefined }`, and React renders
+ *  that as "Minified React error #306 … args[]=undefined" — a white page with a stack pointing
+ *  at the bundler's chunk, naming neither the route nor the key. /giveaways shipped like that:
+ *  the page had only a default export while the route asked for the named one, so it crashed
+ *  on every visit and the trace said nothing about why.
+ *
+ *  Fall back to the module's default and say so. The route works, and the mistake is named in
+ *  the console instead of being a puzzle. It still throws when the module has neither. */
+export const lazyNamed = (imp, key) => lazy(chunk(() => imp().then((m) => {
+  if (m[key]) return { default: m[key] };
+  if (m.default) {
+    console.error(`lazyNamed: no export "${key}" in that module — using its default. Export it by name, or use lazyChunk().`);
+    return { default: m.default };
+  }
+  throw new Error(`lazyNamed: module has neither an export "${key}" nor a default export.`);
+})));
 
 /** Vite fires this when it cannot PRELOAD a chunk — same stale-build cause, a different
  *  moment, and it does not go through the lazy() paths above. Left unhandled it throws. */

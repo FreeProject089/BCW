@@ -10,7 +10,13 @@ import { useAsync, Loading } from './pages.jsx';
 // The public giveaways page (login required to enter). Lists the giveaways whose audience
 // includes the site; entering is the account, and a win lands in the inventory (dashboard →
 // Shop & inventory) to reveal. Discord-only giveaways don't appear here.
-export default function Giveaways() {
+// Exported BOTH ways on purpose. App.jsx loads this route with
+// `named(() => import('./pages/giveaways.jsx'), 'Giveaways')`, which reads the NAMED export —
+// and this file only had a default one, so the lazy component resolved to `{ default:
+// undefined }` and React rendered undefined: "Minified React error #306 … args[]=undefined".
+// Every visit to /giveaways hit it. The other 21 named() routes all export their component by
+// name; this one is now consistent with them.
+export function Giveaways() {
   const { t } = useI18n();
   const toast = useToast();
   const { user } = useAuth();
@@ -87,3 +93,5 @@ export default function Giveaways() {
     </div>
   );
 }
+
+export default Giveaways;
