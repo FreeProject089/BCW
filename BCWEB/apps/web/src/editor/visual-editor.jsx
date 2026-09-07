@@ -11,7 +11,7 @@ import IconPicker from './icon-picker.jsx';
 import Markdown, { IconGlyph } from '../ui/md.jsx';
 import SelectionToolbar from './selection-toolbar.jsx';
 import { uid, blank, parse, serialize, blockMd, CALLOUT_KINDS } from './md-blocks.js';
-import { SNIPPET_GROUPS, expandSnippet } from '@bettercommunity/bmd-editor';
+import { SNIPPET_GROUPS, expandSnippet, localizeSnippetGroups } from '@bettercommunity/bmd-editor';
 
 // Small "pick an icon" field: shows the chosen glyph + name, opens the picker.
 function IconField({ value, onChange, placeholder = 'Pick icon' }) {
@@ -61,7 +61,7 @@ const BLOCK_TYPES = [
 ];
 
 export default function VisualEditor({ value, onChange, minHeight = 300 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [blocks, setBlocks] = useState(() => parse(value));
   const lastOut = useRef(serialize(blocks));
   const [addOpen, setAddOpen] = useState(false); // false | true (append) | index (insert after)
@@ -77,6 +77,15 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
     // eslint-disable-next-line
   }, [value]);
 
+  // Escape closes the picker. It is a hand-rolled overlay rather than the app's modal, so it
+  // got none of the behaviour a modal carries by default.
+  useEffect(() => {
+    if (addOpen === false) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setAddOpen(false); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [addOpen]);
+
   const push = (next) => { setBlocks(next); const md = serialize(next); lastOut.current = md; onChange(md); };
   const update = (id, patch) => push(blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)));
   const remove = (id) => push(blocks.filter((b) => b.id !== id));
@@ -89,7 +98,11 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
   const addSnippet = (it) => { const { text } = expandSnippet(it.md, ''); const b = { id: uid(), type: 'text', text }; place(b); setPeek((pk) => ({ ...pk, [b.id]: true })); };
   const aq = addQ.trim().toLowerCase();
   const typeMatches = BLOCK_TYPES.filter((bt) => !aq || bt.label.toLowerCase().includes(aq) || bt.type.includes(aq));
-  const snippetGroups = SNIPPET_GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => it.md && !it.inline && (!aq || it.label.toLowerCase().includes(aq) || it.id.includes(aq))) })).filter((g) => g.items.length);
+  // Localised: this menu read the raw English SNIPPET_GROUPS, so a French editor listed
+  // "Callouts / Heading / Highlight" beside French chrome. The package ships the translation.
+  const snippetGroups = localizeSnippetGroups(SNIPPET_GROUPS, lang)
+    .map((g) => ({ ...g, items: g.items.filter((it) => it.md && !it.inline && (!aq || it.label.toLowerCase().includes(aq) || it.id.includes(aq))) }))
+    .filter((g) => g.items.length);
   const typeLabel = (b) => { if (b.type === 'text' && /^\s*:{2,4}[a-z]/.test(b.text || '')) { const m = (b.text || '').match(/:{2,4}([a-z0-9-]+)/); return `B.MD · ${m ? m[1] : 'block'}`; } return (BLOCK_TYPES.find((x) => x.type === b.type) || {}).label || b.type; };
   const move = (from, to) => { if (to < 0 || to >= blocks.length || from === to) return; const n = [...blocks]; const [x] = n.splice(from, 1); n.splice(to, 0, x); push(n); };
   const onDrop = (id) => { const from = blocks.findIndex((b) => b.id === dragId.current); const to = blocks.findIndex((b) => b.id === id); if (from >= 0 && to >= 0) move(from, to); dragId.current = null; };
@@ -137,7 +150,7 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
         </div>
       ))}
       <button type="button" onClick={() => { setAddOpen(true); setAddQ(''); }} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-[var(--line)] text-sm text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]">
-        <Plus size={15} /> Add block
+        <Plus size={15} /> {t('ve.addBlock', 'Add a block')}
       </button>
       {addOpen !== false && (
         <div className="fixed inset-0 z-[70] grid place-items-center p-4" style={{ background: 'rgba(4,5,8,0.55)', backdropFilter: 'blur(3px)' }} onClick={() => setAddOpen(false)}>
@@ -149,25 +162,40 @@ export default function VisualEditor({ value, onChange, minHeight = 300 }) {
                 <input autoFocus value={addQ} onChange={(e) => setAddQ(e.target.value)} placeholder={t('ve.search', 'Search a block…')} className="w-full text-sm ps-8 pe-2.5 py-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] outline-none focus:border-[var(--primary)]" />
               </div>
               <button onClick={() => setAddOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)] shrink-0"><X size={16} /></button></div>
-            <div className="p-4 overflow-auto">
-              {typeMatches.length > 0 && <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-2">{t('ve.grp.forms', 'With a form')}</div>}
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-4">
-                {typeMatches.map((bt) => (
-                  <button key={bt.type} type="button" onClick={() => add(bt.type)} className="group flex flex-col items-center gap-2 px-2 py-3 rounded-xl border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] hover:-translate-y-0.5 transition-all text-xs text-center">
-                    <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--primary)]/10 transition-colors"><bt.icon size={17} className="text-[var(--muted)] group-hover:text-[var(--primary-2)] transition-colors" /></span>
-                    <span className="leading-tight">{bt.label}</span>
-                  </button>
-                ))}
-              </div>
-              {snippetGroups.map((g) => (
-                <div key={g.id} className="mb-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-1.5">{g.label} <span className="normal-case font-normal">· B.MD</span></div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {g.items.map((it) => <button key={it.id} type="button" onClick={() => addSnippet(it)} className="text-xs px-2.5 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] transition-colors">{it.label}</button>)}
+            {/* One tile, one grid, one section header — for both families. The two halves of
+                this menu used to be drawn differently: the form-backed blocks as 5-up icon
+                tiles, the (far more numerous) B.MD blocks as bare text pills wrapped in a row.
+                Same menu, same click, two visual languages — which is what made it read as
+                unfinished. Snippets carry no per-item icon, so a tile shows its group's glyph;
+                that is enough to make the grid uniform. */}
+            <div className="p-4 overflow-auto space-y-4">
+              {typeMatches.length > 0 && (
+                <section>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-2">{t('ve.grp.forms', 'With a form')}</div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {typeMatches.map((bt) => (
+                      <button key={bt.type} type="button" onClick={() => add(bt.type)} className="group flex flex-col items-center gap-2 px-2 py-3 rounded-xl border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] hover:-translate-y-0.5 transition-all text-xs text-center">
+                        <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--primary)]/10 transition-colors"><bt.icon size={17} className="text-[var(--muted)] group-hover:text-[var(--primary-2)] transition-colors" /></span>
+                        <span className="leading-tight">{bt.label}</span>
+                      </button>
+                    ))}
                   </div>
-                </div>
+                </section>
+              )}
+              {snippetGroups.map((g) => (
+                <section key={g.id}>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-[var(--faint)] px-0.5 mb-2">{g.label} <span className="normal-case font-normal">· B.MD</span></div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {g.items.map((it) => (
+                      <button key={it.id} type="button" onClick={() => addSnippet(it)} title={it.md.split('\n')[0]} className="group flex flex-col items-center gap-2 px-2 py-3 rounded-xl border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] hover:-translate-y-0.5 transition-all text-xs text-center">
+                        <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--primary)]/10 transition-colors"><IconGlyph name={g.icon || 'square'} size={17} className="text-[var(--muted)] group-hover:text-[var(--primary-2)] transition-colors" /></span>
+                        <span className="leading-tight">{it.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
               ))}
-              {!typeMatches.length && !snippetGroups.length && <div className="text-sm text-[var(--faint)] p-3">—</div>}
+              {!typeMatches.length && !snippetGroups.length && <div className="text-sm text-[var(--faint)] p-3">{t('ve.noMatch', 'No block matches that.')}</div>}
             </div>
           </div>
         </div>

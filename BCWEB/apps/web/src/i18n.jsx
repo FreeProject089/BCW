@@ -4046,6 +4046,7 @@ const DICT = {
     'be.grp.site': 'Ce site', 'be.upimg': 'Importer une image', 'be.pickicon': 'Icône (sélecteur)', 'be.pickbadge': 'Badge (sélecteur)', 'be.pickkbd': 'Raccourci (sélecteur)',
     'ag.edit.startfrom': 'Partir du texte intégré', 'ag.edit.pullmore': 'Ramener ici le pas-à-pas et les pièges intégrés pour les modifier', 'ag.edit.morehidden': 'Pas-à-pas et pièges intégrés masqués — les tiens les remplacent',
     've.addHere': 'Ajouter un bloc après celui-ci', 've.here': 'ici', 've.search': 'Chercher un bloc…', 've.grp.forms': 'Avec un formulaire',
+    've.noMatch': 'Aucun bloc ne correspond.',
     'dev.landing.bmdT': 'B.MD — le kit markdown', 'dev.landing.bmdS': 'Encadrés, cartes, onglets, fiches d’API, valeurs en direct, diagrammes — installe-le, essaie le bac à sable, ouvre l’éditeur.',
     'bans.title': 'Bans & bouclier', 'bans.desc': 'Tenus hors de tous les services : le site, l’API, les dépôts hébergés, les endpoints du bot. Une entrée par ligne ; une note après #. Actif sous 15 secondes, sans redémarrage.', 'bans.saved': 'Bans enregistrés — actifs sous 15 s.',
     'bans.ips': 'Adresses IP & plages', 'bans.uas': 'User agents (contient)', 'bans.creators': 'Identifiants créateur BMM', 'bans.shield': 'Bouclier automatique', 'bans.shield.d': 'Une adresse limitée ce nombre de fois en dix minutes est bloquée net pour un moment — moins cher que de lui répondre. Les scanners et outils d’attaque connus sont déjà refusés avant.',
