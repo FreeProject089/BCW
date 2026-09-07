@@ -11,11 +11,13 @@
     "./editor.css": "./src/editor.css",
     "./package.json": "./package.json",
     "./block-canvas": "./src/block-canvas.jsx",
-    "./live-preview": "./src/live-preview.jsx"
+    "./live-preview": "./src/live-preview.jsx",
+    "./editor.d.ts": "./src/editor.d.ts"
   },
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": [
     "*.css"
@@ -29,7 +31,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/BetterDCS/BCW",
+    "url": "git+https://github.com/BetterDCS/BCW.git",
     "directory": "BCWEB/packages/bmd-editor"
   },
   "homepage": "https://bettercommunity.ch/dev/editor",
@@ -37,5 +39,9 @@
     "@bettercommunity/bmd": ">=3",
     "react": ">=18",
     "react-dom": ">=18"
-  }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./src/editor.d.ts"
 }

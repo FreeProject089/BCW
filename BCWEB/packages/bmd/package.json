@@ -25,7 +25,8 @@
     "src",
     "docs",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": [
     "*.css"
@@ -43,7 +44,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/BetterDCS/BCW",
+    "url": "git+https://github.com/BetterDCS/BCW.git",
     "directory": "BCWEB/packages/bmd"
   },
   "homepage": "https://bettercommunity.ch/dev/markdown",
@@ -84,5 +85,8 @@
   },
   "scripts": {
     "pack:check": "npm pack --dry-run"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
