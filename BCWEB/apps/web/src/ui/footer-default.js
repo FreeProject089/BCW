@@ -34,6 +34,7 @@ export const DEFAULT_FOOTER_COLUMNS = [
       { key: 'faq.title', label: 'FAQ', to: '/faq' },
       { key: 'nav.repos', label: 'Repos', to: '/repos' },
       { key: 'foot.members', label: 'Members', to: '/users' },
+      { key: 'gwp.title', label: 'Giveaways', to: '/giveaways' },
       { key: 'tfa.short', label: 'Authenticator (2FA)', to: '/2fa' },
       { key: null, label: 'Contact', to: '/contact' },
       // Beside Contact, and for the same reason people click Contact: something is not
