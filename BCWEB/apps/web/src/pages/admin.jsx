@@ -21332,6 +21332,20 @@ const MK_BLANK = { projectKey: '', name: '', description: '', priceCents: 0, cur
 function AdminMarketplace() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/products'), []);
+  // The two kinds of page a product can belong to. Both are needed and only one was reachable:
+  // the form asked for a typed "project key", so attaching a product to a SHOWCASE page was
+  // impossible, and a mistyped key produced a product that appeared on no page at all — with
+  // nothing to say so, because the storefront simply queries by that key and finds nothing.
+  const projs = useAsync(() => api.get('/projects').catch(() => null), []);
+  const shows = useAsync(() => api.get('/admin/showcase').catch(() => null), []);
+  const targets = [
+    ...((projs.data?.projects || []).map((pr) => ({ v: `p:${pr.key}`, label: pr.name || pr.key, group: 'project' }))),
+    ...((shows.data?.projects || shows.data?.showcase || []).map((sp) => ({ v: `s:${sp.id}`, label: sp.name || sp.slug, group: 'showcase' }))),
+  ];
+  const targetOf = (d) => (d?.showcaseProjectId ? `s:${d.showcaseProjectId}` : d?.projectKey ? `p:${d.projectKey}` : '');
+  const setTarget = (v) => setDraft((d) => ({ ...d,
+    projectKey: v.startsWith('p:') ? v.slice(2) : '',
+    showcaseProjectId: v.startsWith('s:') ? v.slice(2) : '' }));
   const [draft, setDraft] = useState(null);
   const [keysFor, setKeysFor] = useState(null);
   const [keysText, setKeysText] = useState('');
@@ -21340,7 +21354,7 @@ function AdminMarketplace() {
   const save = async () => {
     const body = { ...draft, priceCents: Math.max(0, Math.round(Number(draft.priceCents) || 0)), stock: draft.stock === '' || draft.stock == null ? null : Math.max(0, Math.round(Number(draft.stock))) };
     if (!body.name.trim()) return toast.error(t('mkadm.needname', 'Name required.'));
-    if (!body.projectKey.trim()) return toast.error(t('mkadm.needproj', 'Project key required.'));
+    if (!String(body.projectKey || '').trim() && !String(body.showcaseProjectId || '').trim()) return toast.error(t('mkadm.needproj2', 'Pick the page this product belongs to.'));
     try {
       if (draft.id) await api.patch(`/admin/marketplace/products/${draft.id}`, body);
       else await api.post('/admin/marketplace/products', body);
@@ -21382,7 +21396,21 @@ function AdminMarketplace() {
           <div className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label={t('mkadm.f.name', 'Name')}><Input value={draft.name} onChange={(e) => set('name', e.target.value)} /></Field>
-              <Field label={t('mkadm.f.project', 'Project key')} hint={t('mkadm.f.project.h', 'e.g. bmm, bsm')}><Input value={draft.projectKey} onChange={(e) => set('projectKey', e.target.value)} placeholder="bmm" /></Field>
+              <Field label={t('mkadm.f.project2', 'Sold on which page')} hint={t('mkadm.f.project2.h', 'Where the product appears. A product with no page is a product nobody can find.')}>
+                <Select value={targetOf(draft)} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="">{t('mkadm.f.pick', '— pick a page —')}</option>
+                  {targets.filter((x) => x.group === 'project').length > 0 && (
+                    <optgroup label={t('mkadm.g.projects', 'Projects')}>
+                      {targets.filter((x) => x.group === 'project').map((x) => <option key={x.v} value={x.v}>{x.label}</option>)}
+                    </optgroup>
+                  )}
+                  {targets.filter((x) => x.group === 'showcase').length > 0 && (
+                    <optgroup label={t('mkadm.g.showcase', 'Other projects')}>
+                      {targets.filter((x) => x.group === 'showcase').map((x) => <option key={x.v} value={x.v}>{x.label}</option>)}
+                    </optgroup>
+                  )}
+                </Select>
+              </Field>
             </div>
             <Field label={t('mkadm.f.desc', 'Description')}><Textarea rows={2} value={draft.description} onChange={(e) => set('description', e.target.value)} /></Field>
             <div className="grid sm:grid-cols-3 gap-3">

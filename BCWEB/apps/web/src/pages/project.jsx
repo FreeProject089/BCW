@@ -1311,6 +1311,15 @@ export function ShowcaseProjectPage() {
   const [sp, setSp] = useSearchParams();
   const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err, refetch } = useFetch(() => api.get(`/showcase/${slug}`), [slug]);
+  // The storefront existed only on the fixed project pages, so a product attached to a
+  // showcase page — which the admin form now makes possible — had nowhere to be sold. Keyed
+  // on the showcase id, which is what the product carries. `?.` because this runs before the
+  // page has loaded and `data.project` is not there yet on the first pass.
+  const scId = data?.project?.id || '';
+  const market = useFetch(() => (scId
+    ? api.get(`/marketplace/products?showcaseProjectId=${encodeURIComponent(scId)}`).catch(() => ({ products: [] }))
+    : Promise.resolve({ products: [] })), [scId]);
+  const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
   if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
@@ -1351,6 +1360,7 @@ export function ShowcaseProjectPage() {
     // offered at all (a tab that opens onto nothing is worse than a missing tab).
     ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
     ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
+    marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
   const activeTab = pickTab(sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview'), tabs);
@@ -1393,6 +1403,7 @@ export function ShowcaseProjectPage() {
           projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
       {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
+      {activeTab === 'market' && <Marketplace pkey={slug} products={marketProducts} onChanged={market.refetch} />}
       {activeTab.startsWith('c-') && (() => {
         const cv = canvasTabs.find((x) => `c-${x.id}` === activeTab);
         return cv ? <CanvasView canvas={cv} /> : null;
