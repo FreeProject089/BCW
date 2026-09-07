@@ -1,5 +1,5 @@
 import os from 'node:os';
-import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS } from '../lib/thresholds.mjs';
+import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS, readThresholds, serverVerdict } from '../lib/thresholds.mjs';
 import { z } from 'zod';
 import { db, requireRole, botAuth } from '../lib/lib.mjs';
 import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
@@ -252,7 +252,13 @@ export default async function serverPerfRoutes(app) {
     // refreshes to show a LIVE download/upload rate (the sampled history is tick-average).
     const nb = readNetBytes();
     const net = nb ? { rx: nb.rx, tx: nb.tx, at: Date.now() } : null;
-    return { history, latest, deps, depsDetail, depsAt, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: await getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
+    // "Is the server all right" — the whole of Simple mode, answered here rather than by the
+    // screen. It is the SAME comparison the monitor makes when it decides to raise an alert
+    // (same thresholds, read by the same function), so what the dashboard says and what fires
+    // an alert cannot disagree. Deriving it in the client would be the second opinion.
+    const activeThresholds = await readThresholds(p);
+    const verdict = serverVerdict(latest, activeThresholds);
+    return { history, latest, verdict, thresholds: activeThresholds, deps, depsDetail, depsAt, ssl, cgroupMemory: cgroupMemory(), downtime: downtime.slice(-20), totals, repoAllocations, net, bandwidthByCat: await getBandwidthByCat(), otherWriters, hosts, host: me, charted: wantHost === 'all' ? 'all' : (wantHost || me) };
   });
 
   // Check them again, now.
@@ -296,11 +302,7 @@ export default async function serverPerfRoutes(app) {
 
   app.get('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
-    const row = await p.adminSetting.findUnique({ where: { key: 'alerts.thresholds' } }).catch(() => null);
-    const stored = (row?.value && typeof row.value === 'object') ? row.value : {};
-    const out = { ...T_DEFAULTS };
-    for (const k of T_KEYS) { const n = Number(stored[k]); if (Number.isFinite(n) && n >= 0) out[k] = n; }
-    return { thresholds: out, defaults: T_DEFAULTS };
+    return { thresholds: await readThresholds(p), defaults: T_DEFAULTS };
   });
 
   app.put('/admin/server/thresholds', { preHandler: requireRole('ADMIN') }, async (req, reply) => {

@@ -2334,6 +2334,41 @@ function AdminServerPerf() {
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
 
+      {/* The verdict — what Simple mode is FOR.
+          Simple used to be this same screen with five sections collapsed: the numbers were all
+          there and the reader still had to know that 87% disk is fine and 91% is not. The
+          thresholds already encode that and the monitor already alerts on them, so the server
+          sends the same comparison against the live sample (`verdict`) and this states it in
+          one line. Advanced does not need it: someone reading the raw series is past the
+          question. */}
+      {mode === 'simple' && data?.verdict && (() => {
+        const V = data.verdict;
+        const tone = V.state === 'problem' ? 'error' : V.state === 'watch' ? 'warning' : V.state === 'unknown' ? 'muted' : 'success';
+        const ring = { error: 'border-[var(--error)]', warning: 'border-[var(--warning)]', success: 'border-[var(--success)]', muted: 'border-[var(--line)]' }[tone];
+        const dot = { error: 'bg-[var(--error)]', warning: 'bg-[var(--warning)]', success: 'bg-[var(--success)]', muted: 'bg-[var(--faint)]' }[tone];
+        const head = {
+          ok: t('sp.v.ok', 'The server is fine.'),
+          watch: t('sp.v.watch', 'Worth a look.'),
+          problem: t('sp.v.problem', 'The server needs attention.'),
+          unknown: t('sp.v.unknown', 'No current reading.'),
+        }[V.state] || '';
+        return (
+          <div className={`mb-4 rounded-xl border ${ring} p-3.5 flex items-start gap-3`}>
+            <span className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${dot}`} aria-hidden />
+            <div className="min-w-0">
+              <div className="text-sm font-semibold">{head}</div>
+              {V.reasons?.length
+                ? <ul className="mt-1 space-y-0.5">
+                    {V.reasons.map((r) => (
+                      <li key={r.key} className="text-xs text-[var(--muted)]">{r.text}</li>
+                    ))}
+                  </ul>
+                : <div className="text-xs text-[var(--muted)] mt-0.5">{t('sp.v.okdesc', 'CPU, memory and disk are all clear of their alert limits.')}</div>}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Placed straight under the live numbers: "is this normal" is the question the live
           numbers provoke, and it is the one they cannot answer. */}
       <div className="mb-4"><PerfCompare /></div>

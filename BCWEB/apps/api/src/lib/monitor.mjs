@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import tls from 'node:tls';
 import { Transform } from 'node:stream';
 import { realDiskStats, capacityStatus } from '../routes/hosting.mjs';
-import { ALERT_THRESHOLDS } from './thresholds.mjs';
+import { ALERT_THRESHOLDS, readThresholds } from './thresholds.mjs';
 import { getRedis } from './redis.mjs';
 import { checkStorageHealth } from './storage.mjs';
 import { notify } from './lib.mjs';
@@ -331,17 +331,9 @@ function netRate() {
 // installation that never touches them. Read per tick rather than cached: the tick is every
 // ten minutes, one settings read is free next to the sampling it accompanies, and a cached
 // copy would mean a threshold change quietly not taking effect until a restart.
-const T_DEFAULTS = ALERT_THRESHOLDS;
-async function thresholds(p) {
-  const row = await p.adminSetting.findUnique({ where: { key: 'alerts.thresholds' } }).catch(() => null);
-  const v = (row?.value && typeof row.value === 'object') ? row.value : {};
-  const out = { ...T_DEFAULTS };
-  for (const k of Object.keys(T_DEFAULTS)) {
-    const n = Number(v[k]);
-    if (Number.isFinite(n) && n >= 0) out[k] = n;
-  }
-  return out;
-}
+// Reading the configured thresholds lives in thresholds.mjs beside the thresholds
+// themselves — it used to be duplicated here and in the admin route.
+const thresholds = readThresholds;
 
 // ── Web Vitals ───────────────────────────────────────────────────────────────
 // Alerts on the SHARE of poor samples, not on any single bad one: a slow load happens, a
