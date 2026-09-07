@@ -9,6 +9,7 @@ import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
 import { api, uploadMedia } from '../lib/api.js';
 import CanvasStudio from './canvas-studio.jsx';
+import { MarkdownEditor } from './markdown-editor.jsx';
 import { CANVAS_PRESETS, presetBlocks } from '../lib/canvas.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
@@ -434,6 +435,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
   // Which studio page is open on its own surface, if any. A canvas is a page; editing one
   // inside a settings column meant designing at 1200px in 600px of room.
   const [studioAt, setStudioAt] = useState(null);
+  const [tabAt, setTabAt] = useState(null);
   // Who is allowed to turn the studio on. The SERVER is the authority (guardStudioFlag keeps
   // a grantee's flag out of the stored config whatever they send); this only decides whether
   // to draw a switch that would not work for them.
@@ -1043,18 +1045,32 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             desc="A tab of your own, written in B.MD. It appears after the built-in tabs. A tab with no title or no body is not shown at all.">
             <div className="space-y-3">
               {list.map((ct, i) => (
-                <div key={ct.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Input className="flex-1" value={ct.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.ctabs.title', 'Tab title')} />
-                    <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} title={t('common.up', 'Up')}>↑</Button>
-                    <Button size="sm" variant="ghost" disabled={i === list.length - 1} onClick={() => move(i, 1)} title={t('common.down', 'Down')}>↓</Button>
-                    <Button size="sm" variant="ghost" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
-                  </div>
-                  <Textarea rows={5} className="!text-[12px] font-mono" value={ct.body || ''}
-                    onChange={(e) => patch(i, { body: e.target.value })}
-                    placeholder={t('pce.ctabs.body', 'B.MD — the same blocks as the blog and the docs.')} />
+                <div key={ct.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2 flex-wrap">
+                  {/* An ICON. Every built-in tab has one; a custom tab passed `null` and sat in
+                      the row looking like the odd one out — while the description above this
+                      section had been promising "a title, an icon and a B.MD document" the
+                      whole time. The field was simply never built. */}
+                  <IconBtn value={ct.icon || ''} onChange={(name) => patch(i, { icon: name })} />
+                  <Input className="flex-1 min-w-[140px]" value={ct.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.ctabs.title', 'Tab title')} />
+                  <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
+                    {t('pce.ctabs.n', '{n} char(s)').replace('{n}', (ct.body || '').length)}
+                  </span>
+                  {/* The body is B.MD — the same document language as the blog and the docs —
+                      and it was edited in a five-row monospace box with no toolbar, no block
+                      menu and no preview. It gets the real editor, on a surface with room. */}
+                  <Button size="sm" variant="ghost" onClick={() => setTabAt(i)}><ListTodo size={13} /> {t('pce.ctabs.edit', 'Write it')}</Button>
+                  <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} title={t('common.up', 'Up')}>↑</Button>
+                  <Button size="sm" variant="ghost" disabled={i === list.length - 1} onClick={() => move(i, 1)} title={t('common.down', 'Down')}>↓</Button>
+                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
                 </div>
               ))}
+              {tabAt != null && list[tabAt] && (
+                <Modal open onClose={() => setTabAt(null)} icon={ListTodo} width="max-w-[96vw]"
+                  title={list[tabAt].title || t('pce.ctabs.untitled', 'Untitled tab')}>
+                  <MarkdownEditor value={list[tabAt].body || ''} onChange={(v) => patch(tabAt, { body: v })} full
+                    placeholder={t('pce.ctabs.body', 'B.MD — the same blocks as the blog and the docs.')} />
+                </Modal>
+              )}
               <Button size="sm" onClick={() => put([...list, { id: `t${Date.now().toString(36)}`, title: '', body: '' }])}>
                 + {t('pce.ctabs.add', 'Add a tab')}
               </Button>

@@ -6,7 +6,22 @@ import {
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
   Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate,
 } from 'lucide-react';
-import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
+import Markdown, { matchesLang, ShowcaseIcon, IconGlyph } from '../ui/md.jsx';
+
+/**
+ * A custom tab's stored icon name → the component the tab bar draws.
+ *
+ * Both tab bars passed `null` here, so a custom tab was the only one in the row without a
+ * glyph — while the editor's own description had been promising "a title, an icon and a B.MD
+ * document" since it was written. Returns null for an unset or unnamed icon, which is what the
+ * `{Icon ? … : null}` guard below expects: a tab that names no icon simply has none, and one
+ * that names a glyph nobody has is not a crash.
+ */
+const tabIcon = (name) => {
+  const n = String(name || '').trim();
+  if (!n) return null;
+  return (props) => <IconGlyph name={n} {...props} />;
+};
 import CanvasView from '../ui/canvas-view.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import { api, uploadPayload } from '../lib/api.js';
@@ -332,7 +347,7 @@ export default function ProjectPage() {
     (c.releaseNotes || c.links?.github || c.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
     // Last, so adding one never moves a tab somebody has already linked to.
-    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
+    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, tabIcon(ct.icon)]),
     ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
   ].filter(Boolean);
   const tab = pickTab(wantTab, tabs);
@@ -1378,7 +1393,7 @@ export function ShowcaseProjectPage() {
     // ones a project needs and nobody anticipated — a title, an icon and a B.MD document. They
     // come last so adding one never moves a tab somebody has linked to, and an empty one is not
     // offered at all (a tab that opens onto nothing is worse than a missing tab).
-    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
+    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, tabIcon(ct.icon)]),
     ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
     marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
   ].filter(Boolean);

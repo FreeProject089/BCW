@@ -3435,6 +3435,9 @@ const DICT = {
     'st.preview.both': 'Les deux modes, mis à jour pendant que tu édites.', 'st.editing': 'en cours',
     'st.pantonenote': 'Les noms Pantone servent uniquement d’étiquettes — ces valeurs hexadécimales sont les approximations largement publiées de chaque couleur de l’année, pas des données Pantone sous licence. Pour tout usage critique en couleur, réfère-toi à un vrai nuancier Pantone.',
     'st.contrastok': 'Contraste du texte du bouton {n}:1 — conforme WCAG AA (4,5:1).',
+    // Onglets personnalisés
+    'pce.ctabs.n': '{n} caractère(s)', 'pce.ctabs.edit': 'Rédiger',
+    'pce.ctabs.untitled': 'Onglet sans titre',
     // Studio — la liste et sa surface
     'pce.canvases.n': '{n} bloc(s)', 'pce.canvases.edit': 'Ouvrir le studio',
     'pce.canvases.untitled': 'Page sans titre',
