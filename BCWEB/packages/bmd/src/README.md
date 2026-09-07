@@ -254,7 +254,8 @@ short version:
 :::callout{icon=rocket color="#7c3aed"}             one of your own
 :::cards / :::card{title= href= icon= image=}       card and card grid (:::ref = :::card)
 :::tabs / :::tab{title="…"}                         tabs
-:::steps / :::step[Title]                           numbered steps
+:::steps / :::step[Title]                           numbered steps ({type=A}, or {marker=icon} + step icon= for an icon list)
+:::field[Label]{key= type= icon=}                   a labelled configuration row (:::setting is the same)
 :::columns / :::column                              responsive columns (:::row / :::col)
 :::collapse[Summary]                                a disclosure (:::details is the same)
 :::center :::left :::right                          alignment

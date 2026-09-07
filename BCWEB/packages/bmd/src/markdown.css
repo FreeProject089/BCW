@@ -113,6 +113,15 @@
 .md-body .doc-step-body { min-width: 0; flex: 1; }
 .md-body .doc-step-title { font-weight: 650; margin: 3px 0 .4em; display: flex; align-items: center; gap: 7px; }
 .md-body .doc-step-body > :last-child { margin-bottom: 0; }
+/* :::field / :::setting — a labelled configuration row (a settings card, as B.MD). */
+.md-body .doc-field { border: 1px solid var(--line); border-radius: 10px; padding: 11px 14px; margin: 8px 0; background: var(--surface-2); }
+.md-body .doc-field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+.md-body .doc-field-head .doc-icon { color: var(--field, var(--primary-2)); }
+.md-body .doc-field-label { font-weight: 700; }
+.md-body .doc-field-type { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-style: normal; padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, var(--field, var(--primary)) 14%, transparent); color: var(--field, var(--primary-2)); }
+.md-body .doc-field-key { margin-left: auto; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 12px; color: var(--muted); background: var(--surface); padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line); white-space: nowrap; }
+.md-body .doc-field-desc { color: var(--muted); font-size: .95em; }
+.md-body .doc-field-desc > :last-child { margin-bottom: 0; }
 .md-body .doc-step-done .doc-step-marker { background: var(--success); }
 .md-body .doc-steps-h > .doc-step::before { display: none; }
 .md-body .doc-steps-h { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 6px; }

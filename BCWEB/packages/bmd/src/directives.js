@@ -241,6 +241,22 @@ export function remarkDocBlocks() {
           ...node.children,
         ];
         node.children = [...head, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-body'] } }, children: body }];
+      } else if (name === 'field' || name === 'setting') {
+        // A labelled configuration ROW — the shape of a settings card, as B.MD:
+        //   `:::field[Tile shape]{key=icons.shape type=select icon=palette}` + a description body.
+        // A bold label, an optional TYPE tag, an optional monospace KEY on the right, then the
+        // description. Stack several to document a screen of settings without a table.
+        setEl('div', ['doc-field'], attrs.color ? { style: `--field:${attrs.color}` } : {});
+        const fLabel = labelText || attrs.label || '';
+        const fType = String(attrs.type || attrs.kind || '');
+        const fKey = String(attrs.key || attrs.name || attrs.id || '');
+        const fHead = { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-field-head'] } }, children: [
+          ...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []),
+          { type: 'strong', data: { hName: 'span', hProperties: { className: ['doc-field-label'] } }, children: [{ type: 'text', value: fLabel }] },
+          ...(fType ? [{ type: 'emphasis', data: { hName: 'span', hProperties: { className: ['doc-field-type'] } }, children: [{ type: 'text', value: fType }] }] : []),
+          ...(fKey ? [{ type: 'inlineCode', data: { hName: 'code', hProperties: { className: ['doc-field-key'] } }, value: fKey }] : []),
+        ] };
+        node.children = [fHead, { type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-field-desc'] } }, children: node.children }];
       } else if (name === 'tabs') {
         // `:::tabs` wrapping `:::tab{title="…"}` blocks.
         //
