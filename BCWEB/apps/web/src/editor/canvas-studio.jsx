@@ -20,7 +20,7 @@ import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
-  boundsOf, blocksInRect, moveMany, alignMany, distributeMany,
+  boundsOf, blocksInRect, moveMany, alignMany, distributeMany, readingOrder,
   DESIGN_WIDTH, GRID, HANDLES,
 } from '../lib/canvas.js';
 
@@ -44,6 +44,35 @@ export default function CanvasStudio({ value, onChange }) {
   const [marquee, setMarquee] = useState(null);
   const [snapOn, setSnapOn] = useState(true);
   const [preview, setPreview] = useState('');         // '' | 'desktop' | 'phone'
+  /**
+   * On a phone, edit the STACK — not a 1200px board shrunk to a third of its size.
+   *
+   * The public page already abandons the canvas below ~700px and renders the blocks as a
+   * column in reading order (`layoutFor` → mode 'stack'). Placement is therefore a
+   * desktop-only property, and a phone editor offering precise placement is offering the one
+   * thing that will not reach the reader it is being placed for — at a scale (390/1200 ≈ 0.32)
+   * where a 12px resize handle is under 4px of glass.
+   *
+   * What does reach that reader is the ORDER and the CONTENT, and those are exactly what a
+   * list edits. The board stays one tap away for anyone who wants it.
+   */
+  // matchMedia, not a width read: this pane lives inside a modal, and it is the VIEWPORT that
+  // decides whether the public page stacks, not the pane's own box. Read during the FIRST
+  // render, not in the effect afterwards — otherwise a phone opens on the board and swaps to
+  // the list a frame later, which reads as a glitch and loses whatever was tapped meanwhile.
+  const [narrow, setNarrow] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(max-width: 700px)').matches : false));
+  const [phoneMode, setPhoneMode] = useState('stack');   // 'stack' | 'canvas'
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(max-width: 700px)');
+    const read = () => setNarrow(mq.matches);
+    read();
+    mq.addEventListener?.('change', read);
+    return () => mq.removeEventListener?.('change', read);
+  }, []);
+  const stacked = narrow && phoneMode === 'stack' && !preview;
   const [guides, setGuides] = useState({ v: null, h: null });
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
@@ -242,9 +271,76 @@ export default function CanvasStudio({ value, onChange }) {
     );
   }
 
+  if (stacked) {
+    const order = readingOrder(canvas.blocks);
+    const swap = (i, dir) => {
+      const j = i + dir;
+      if (j < 0 || j >= order.length) return;
+      // Reading order is DERIVED from position, so "move up" is a swap of the two blocks'
+      // coordinates — the list has no order of its own to reorder, and pretending otherwise
+      // is how a phone edit fails to survive a reload. Two blocks of different sizes can end
+      // up overlapping on the board afterwards; the board is where that is visible and
+      // fixable, and the reader on a phone is unaffected either way.
+      const a = order[i], b = order[j];
+      emit(canvas.blocks.map((x) => (
+        x.id === a.id ? { ...x, x: b.x, y: b.y } : x.id === b.id ? { ...x, x: a.x, y: a.y } : x
+      )));
+    };
+    return (
+      <div>
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <span className="text-[11px] text-[var(--muted)] flex-1 min-w-0">{t('cst.stack.h', 'Reading order — what a phone shows. Placement is a desktop thing.')}</span>
+          <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely — easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setPreview('phone')} title={t('cst.phone', 'Phone preview')}><Eye size={14} /></Button>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap mb-2">
+          {[['text', Type], ['image', ImageIcon], ['box', Square]].map(([k, Icon]) => (
+            <Button key={k} size="sm" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
+          ))}
+          <div className="flex-1" />
+          <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} title={t('cst.undo', 'Undo')}><Undo2 size={14} /></Button>
+        </div>
+        <div className="space-y-2">
+          {order.map((b, i) => (
+            <div key={b.id}
+              className={`rounded-xl border p-2 ${selIds.includes(b.id) ? 'border-[var(--primary)]' : 'border-[var(--line)]'}`}
+              onClick={() => setSelId(b.id)}>
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] flex-1 min-w-0 truncate">{i + 1} · {t(`cst.kind.${b.kind}`, b.kind)}</span>
+                {/* 32px targets, not the 12px handles the board uses: this is the one surface
+                    that has to work with a thumb. */}
+                <Button size="sm" variant="ghost" className="!px-2" disabled={i === 0} onClick={(e) => { e.stopPropagation(); swap(i, -1); }} title={t('cst.up', 'Move up')}><ArrowUp size={14} /></Button>
+                <Button size="sm" variant="ghost" className="!px-2" disabled={i === order.length - 1} onClick={(e) => { e.stopPropagation(); swap(i, 1); }} title={t('cst.down', 'Move down')}><ArrowDown size={14} /></Button>
+                <Button size="sm" variant="ghost" className="!px-2 !text-[var(--error)]" onClick={(e) => { e.stopPropagation(); setSelIds([b.id]); remove(); }} title={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
+              </div>
+              {/* The block exactly as the reader gets it, stacked — the same component the
+                  public page paints with, so this is not a second opinion about how it looks.
+                  Not interactive: a tap anywhere on the row selects it. */}
+              <div className="rounded-lg overflow-hidden pointer-events-none"><CanvasBlock b={b} stacked /></div>
+            </div>
+          ))}
+          {!order.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.stack.empty', 'Nothing on this page yet — add a block above.')}</div>}
+        </div>
+        {/* The inspector, pinned to the bottom of the viewport and only while something is
+            selected — an empty panel over a list is just a shorter list. */}
+        {sel && (
+          <div className="sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t border-[var(--line-strong)] shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]" style={{ background: 'var(--bg-solid)' }}>
+            <Inspector {...{ t, sel, patch, canvas, emit, setSelId }} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
+      {narrow && !preview && (
+        <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
+          <span className="flex-1 min-w-0">{t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
+          <Button size="sm" variant="ghost" onClick={() => setPhoneMode('stack')}>{t('cst.board.list', 'List')}</Button>
+        </div>
+      )}
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-4 lg:items-start">
         {/* `touchAction: none` is what makes this usable with a finger at all: without it the
             browser claims the gesture and drags scroll the page instead of moving the block —

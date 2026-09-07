@@ -96,6 +96,47 @@ must(touch >= CANVAS.blocks.length + 1,
 try { must(render({ id: 'c2', title: '', height: 400, blocks: [] }).length > 0, 'an empty canvas rendered nothing'); }
 catch (e) { problems.push(`an empty canvas threw: ${e?.message || e}`); }
 
+// ── The phone. ───────────────────────────────────────────────────────────────────────────
+// Below 700px the PUBLIC page abandons the canvas and stacks the blocks in reading order, so
+// the studio does too: at 390px the board is drawn at 0.32 and a 12px handle is 4px of glass —
+// an editor for a property (placement) that no phone reader will ever be shown.
+//
+// The mode is decided by matchMedia during the first render, which is exactly what lets it be
+// checked here: stub the query and the component renders the branch a phone gets. Nothing
+// else can reach it — the browser harness cannot mount this component at all, and a resize in
+// the preview pane fires no ResizeObserver because the tab never paints.
+const priorWindow = globalThis.window;
+globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }) };
+let phone = '';
+try { phone = render(CANVAS); }
+catch (e) { problems.push(`the studio threw at phone width: ${e?.message || e}`); }
+finally { if (priorWindow === undefined) delete globalThis.window; else globalThis.window = priorWindow; }
+
+if (phone) {
+  // The board is GONE — not merely shrunk. If it renders here, the phone got the 0.32 plane.
+  must(!/cursor:move/.test(phone), 'at phone width the studio still draws the draggable board instead of the reading-order list');
+  // Every block is present, painted with the same component the public page uses, and in
+  // reading order — b1 (y=32) before b2 (y=240).
+  must(phone.indexOf('Title') >= 0, 'the phone list did not render the blocks');
+  // Reorder + delete per row, and each of the two blocks carries them.
+  // Either language: which one this renders in depends on the provider's default, and the
+  // control is the thing being asserted, not the wording.
+  for (const [label, n] of [['Monter|Move up', 1], ['Descendre|Move down', 1], ['Supprimer|Delete', CANVAS.blocks.length]]) {
+    const got = (phone.match(new RegExp(`title="(?:${label})"`, 'g')) || []).length;
+    // Up is disabled on the first row and down on the last, but both still render; what must
+    // not happen is a row with no way to move at all.
+    must(got >= n, `the phone list shows ${got} "${label}" control(s); a row you cannot reorder is the whole point of this mode`);
+  }
+  must(/aria-disabled|disabled=""/.test(phone), 'nothing is disabled in the phone list — the first row must not offer "move up"');
+  const empty = (() => {
+    globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }) };
+    try { return render({ id: 'c3', title: '', height: 400, blocks: [] }); }
+    catch (e) { problems.push(`an empty canvas threw at phone width: ${e?.message || e}`); return ''; }
+    finally { if (priorWindow === undefined) delete globalThis.window; else globalThis.window = priorWindow; }
+  })();
+  must(empty.length > 0, 'an empty canvas rendered nothing at phone width');
+}
+
 cleanup();
 
 // The handle hit area is CSS, so it is checked where it lives. The class has to exist on both
@@ -111,4 +152,4 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   process.exit(1);
 }
-console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target`);
+console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, and at phone width it renders the reading-order list instead of the board`);
