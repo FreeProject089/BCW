@@ -9,6 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Type, Image as ImageIcon, Square, Trash2, ArrowUp, ArrowDown, Eye, Smartphone, Monitor, Magnet, Copy,
   Undo2, Redo2, AlertTriangle, Upload,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
+  AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
 } from 'lucide-react';
 import { Button, Field, Input, Textarea, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -17,6 +20,7 @@ import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
+  boundsOf, blocksInRect, moveMany, alignMany, distributeMany,
   DESIGN_WIDTH, GRID, HANDLES,
 } from '../lib/canvas.js';
 
@@ -31,7 +35,13 @@ const NEW_BLOCK = {
 export default function CanvasStudio({ value, onChange }) {
   const { t } = useI18n();
   const canvas = useMemo(() => normalizeCanvas(value), [value]);
-  const [selId, setSelId] = useState(null);
+  // A SET of ids. Everything that was written for one block still works — `sel` is the single
+  // selection when there is exactly one — and the group operations read the whole set.
+  const [selIds, setSelIds] = useState([]);
+  const selId = selIds.length === 1 ? selIds[0] : null;
+  const setSelId = (id) => setSelIds(id == null ? [] : [id]);
+  // A marquee in flight, in DESIGN coordinates. In state because it has to draw.
+  const [marquee, setMarquee] = useState(null);
   const [snapOn, setSnapOn] = useState(true);
   const [preview, setPreview] = useState('');         // '' | 'desktop' | 'phone'
   const [guides, setGuides] = useState({ v: null, h: null });
@@ -104,13 +114,16 @@ export default function CanvasStudio({ value, onChange }) {
     setSelId(b.id);
   };
 
+  const chosen = canvas.blocks.filter((b) => selIds.includes(b.id));
   const duplicate = () => {
-    if (!sel) return;
-    const b = { ...sel, id: uid(), x: Math.min(sel.x + GRID * 3, DESIGN_WIDTH - sel.w), y: sel.y + GRID * 3 };
-    emit([...canvas.blocks, b]);
-    setSelId(b.id);
+    if (!chosen.length) return;
+    const copies = chosen.map((b) => ({ ...b, id: uid(), x: Math.min(b.x + GRID * 3, DESIGN_WIDTH - b.w), y: b.y + GRID * 3 }));
+    emit([...canvas.blocks, ...copies]);
+    setSelIds(copies.map((b) => b.id));
   };
-  const remove = () => { if (!sel) return; emit(canvas.blocks.filter((b) => b.id !== sel.id)); setSelId(null); };
+  const remove = () => { if (!chosen.length) return; emit(canvas.blocks.filter((b) => !selIds.includes(b.id))); setSelIds([]); };
+  const doAlign = (how) => emit(alignMany(canvas.blocks, selIds, how));
+  const doDistribute = (axis) => emit(distributeMany(canvas.blocks, selIds, axis));
 
   // ── Pointer ────────────────────────────────────────────────────────────────
   // Pointer events, not mouse: one code path covers a trackpad, a mouse and a stylus, and
@@ -118,8 +131,17 @@ export default function CanvasStudio({ value, onChange }) {
   // instead of dropping it wherever the pointer left.
   const onDown = (e, b, handle) => {
     e.preventDefault(); e.stopPropagation();
-    setSelId(b.id);
-    drag.current = { id: b.id, handle, sx: e.clientX, sy: e.clientY, start: { ...b } };
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+    let ids;
+    if (additive) ids = selIds.includes(b.id) ? selIds.filter((x) => x !== b.id) : [...selIds, b.id];
+    // A plain press on a block that is ALREADY part of the selection keeps the group. Without
+    // this, grabbing a selected block to drag the group instead collapses the selection to
+    // that one block and only it moves — which is the single most annoying way to get
+    // multi-select wrong.
+    else ids = selIds.includes(b.id) ? selIds : [b.id];
+    setSelIds(ids);
+    const startBB = boundsOf(canvas.blocks.filter((x) => ids.includes(x.id)));
+    drag.current = { id: b.id, ids, handle, sx: e.clientX, sy: e.clientY, start: { ...b }, startBB };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
   const onMove = (e) => {
@@ -128,6 +150,12 @@ export default function CanvasStudio({ value, onChange }) {
     const others = canvas.blocks.filter((b) => b.id !== d.id);
     if (d.handle) {
       patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn }), `resize:${d.id}:${d.handle}`);
+      return;
+    }
+    if (d.ids && d.ids.length > 1) {
+      // Resize is deliberately single-block; a group drag is the whole selection at once,
+      // clamped as one box so the arrangement cannot collapse against an edge.
+      emit(moveMany(canvas.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y }), {}, `drag:${d.ids.join(',')}`);
       return;
     }
     let next = dragTo(d.start, dx, dy, scale, { snap: snapOn });
@@ -142,6 +170,30 @@ export default function CanvasStudio({ value, onChange }) {
     patch(d.id, next, `drag:${d.id}`);
   };
   const onUp = () => { drag.current = null; setGuides({ v: null, h: null }); };
+
+  // ── Marquee ────────────────────────────────────────────────────────────────
+  // Pressing empty canvas starts a rubber band; releasing selects everything it TOUCHED.
+  // Without a threshold every plain click on the background would end as a zero-size marquee
+  // and clear the selection twice, which is harmless but makes the deselect feel twitchy.
+  const marqueeRef = useRef(null);
+  const onCanvasDown = (e) => {
+    const host = hostRef.current; if (!host) return;
+    const r = host.getBoundingClientRect();
+    const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
+    marqueeRef.current = { x, y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
+    if (!marqueeRef.current.additive) setSelIds([]);
+  };
+  const onMarqueeMove = (e) => {
+    const m = marqueeRef.current; if (!m) return;
+    const host = hostRef.current; if (!host) return;
+    const r = host.getBoundingClientRect();
+    const rect = { x: m.x, y: m.y, w: (e.clientX - r.left) / scale - m.x, h: (e.clientY - r.top) / scale - m.y };
+    if (Math.abs(rect.w) < 4 && Math.abs(rect.h) < 4) return;   // a click, not a drag
+    setMarquee(rect);
+    const hit = blocksInRect(canvas.blocks, rect).map((b) => b.id);
+    setSelIds(m.additive ? [...new Set([...m.base, ...hit])] : hit);
+  };
+  const onMarqueeUp = () => { marqueeRef.current = null; setMarquee(null); };
 
   // Keyboard nudging. A mouse cannot reliably move a block by exactly one grid step, and
   // "almost aligned" is the thing this whole file exists to avoid.
@@ -159,25 +211,30 @@ export default function CanvasStudio({ value, onChange }) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault(); doRedo(); return;
       }
-      if (!sel) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault(); setSelIds(canvas.blocks.map((b) => b.id)); return;
+      }
+      if (!selIds.length) return;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;   // typing, not nudging
       const step = e.shiftKey ? GRID * 4 : GRID;
       const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
       if (map[e.key]) {
         e.preventDefault();
-        patch(sel.id, dragTo(sel, map[e.key][0], map[e.key][1], 1, { snap: false }), `nudge:${sel.id}`);
+        // The whole selection, at scale 1 because a nudge is in DESIGN pixels — it is the
+        // gesture for "exactly one grid step", which is the point of having it.
+        emit(moveMany(canvas.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false }), {}, `nudge:${selIds.join(',')}`);
       } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
-      else if (e.key === 'Escape') setSelId(null);
+      else if (e.key === 'Escape') setSelIds([]);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sel, patch, doUndo, doRedo]);
+  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo]);
 
   if (preview) {
     return (
       <div>
-        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist }} />
+        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
         <div className={preview === 'phone' ? 'mx-auto border border-[var(--line)] rounded-2xl p-3' : ''} style={preview === 'phone' ? { width: 390 } : undefined}>
           <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
         </div>
@@ -187,11 +244,13 @@ export default function CanvasStudio({ value, onChange }) {
 
   return (
     <div>
-      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist }} />
+      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-4 lg:items-start">
         <div ref={hostRef} className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-2)]"
-          onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-          onPointerDown={() => setSelId(null)}>
+          onPointerMove={(e) => { onMarqueeMove(e); onMove(e); }}
+          onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
+          onPointerCancel={(e) => { onMarqueeUp(); onUp(e); }}
+          onPointerDown={onCanvasDown}>
           <div style={{ height: canvas.height * scale, position: 'relative' }}>
             <div style={{ width: DESIGN_WIDTH, height: canvas.height, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
               {/* The grid, drawn so placement is legible rather than guessed at. */}
@@ -201,14 +260,15 @@ export default function CanvasStudio({ value, onChange }) {
                 backgroundSize: `${GRID * 8}px ${GRID * 8}px`,
               }} />
               {paintOrder(canvas.blocks).map((b) => {
-                const on = b.id === selId;
+                const on = selIds.includes(b.id);
+                const only = selIds.length === 1 && on;
                 return (
                   <div key={b.id}
                     onPointerDown={(e) => onDown(e, b, null)}
                     style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: 'move' }}>
                     <BlockBody b={b} />
                     <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
-                    {on && Object.keys(HANDLES).map((hk) => (
+                    {only && Object.keys(HANDLES).map((hk) => (
                       <span key={hk} onPointerDown={(e) => onDown(e, b, hk)}
                         style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
                     ))}
@@ -218,6 +278,12 @@ export default function CanvasStudio({ value, onChange }) {
               {/* Guides, drawn only while a drag is snapping to something. */}
               {guides.v && <div aria-hidden style={{ position: 'absolute', left: guides.v.at, top: 0, bottom: 0, width: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
               {guides.h && <div aria-hidden style={{ position: 'absolute', top: guides.h.at, left: 0, right: 0, height: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
+              {marquee && (
+                <div aria-hidden style={{ position: 'absolute', pointerEvents: 'none',
+                  left: Math.min(marquee.x, marquee.x + marquee.w), top: Math.min(marquee.y, marquee.y + marquee.h),
+                  width: Math.abs(marquee.w), height: Math.abs(marquee.h),
+                  border: '1px solid var(--primary)', background: 'color-mix(in srgb, var(--primary) 12%, transparent)' }} />
+              )}
             </div>
           </div>
         </div>
@@ -290,7 +356,7 @@ function BlockBody({ b }) {
 
 // (the block painter is imported from canvas-view.jsx — see CanvasBlock there)
 
-function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist }) {
+function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 mb-3">
       <Button size="sm" variant="ghost" onClick={() => add('text')}><Type size={14} /> {t('cst.text', 'Text')}</Button>
@@ -300,8 +366,23 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
       <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} data-undo-key={String(hist.key)} title={`Ctrl+Z · ${hist.past.length}`}><Undo2 size={14} /></Button>
       <Button size="sm" variant="ghost" disabled={!hist.future.length} onClick={doRedo} title="Ctrl+Shift+Z"><Redo2 size={14} /></Button>
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
-      <Button size="sm" variant="ghost" disabled={!sel} onClick={duplicate}><Copy size={14} /> {t('cst.dup', 'Duplicate')}</Button>
-      <Button size="sm" variant="ghost" disabled={!sel} className="!text-error" onClick={remove}><Trash2 size={14} /></Button>
+      <Button size="sm" variant="ghost" disabled={!selCount} onClick={duplicate}><Copy size={14} /> {t('cst.dup', 'Duplicate')}</Button>
+      <Button size="sm" variant="ghost" disabled={!selCount} className="!text-error" onClick={remove}><Trash2 size={14} /></Button>
+      {selCount > 1 && (<>
+        <span className="w-px h-5 bg-[var(--line)] mx-1" />
+        <span className="text-[11px] text-[var(--faint)] tabular-nums">{t('cst.nsel', '{n} selected').replace('{n}', selCount)}</span>
+        {/* The English fallback is the real label, not the key. `t(k, fallback)` shows the
+            fallback when there is no entry for the language, so a bare `how` here meant the
+            tooltip on an icon-only button read "hcenter". */}
+        {[['left', AlignStartVertical, 'Align left'], ['hcenter', AlignCenterVertical, 'Centre horizontally'], ['right', AlignEndVertical, 'Align right'],
+          ['top', AlignStartHorizontal, 'Align top'], ['vmiddle', AlignCenterHorizontal, 'Centre vertically'], ['bottom', AlignEndHorizontal, 'Align bottom']].map(([how, I, label]) => (
+          <Button key={how} size="sm" variant="ghost" onClick={() => doAlign(how)} title={t(`cst.al.${how}`, label)} aria-label={t(`cst.al.${how}`, label)}><I size={14} /></Button>
+        ))}
+        {selCount > 2 && (<>
+          <Button size="sm" variant="ghost" onClick={() => doDistribute('x')} title={t('cst.dist.x', 'Even gaps across')}><AlignHorizontalSpaceAround size={14} /></Button>
+          <Button size="sm" variant="ghost" onClick={() => doDistribute('y')} title={t('cst.dist.y', 'Even gaps down')}><AlignVerticalSpaceAround size={14} /></Button>
+        </>)}
+      </>)}
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant={snapOn ? 'primary' : 'ghost'} onClick={() => setSnapOn((v) => !v)} title={t('cst.snap.h', 'Snap to the grid and to other blocks')}><Magnet size={14} /></Button>
       {/* A desktop author cannot otherwise ever see the stacked version, and the stacked

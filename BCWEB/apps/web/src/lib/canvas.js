@@ -292,3 +292,111 @@ export function redo(hist, current) {
   const value = h.future[h.future.length - 1];
   return { hist: { past: [...h.past, current].slice(-HISTORY_LIMIT), future, key: null, at: 0 }, value };
 }
+
+// ── Many at once ─────────────────────────────────────────────────────────────
+// Selecting several blocks is what turns a canvas from "place things" into "lay a page out":
+// nudge a header and its subtitle together, line six cards up on their left edges, space four
+// columns evenly. All of it is arithmetic over a set, so all of it is here and tested.
+
+/** The bounding box of a set of blocks. */
+export function boundsOf(blocks) {
+  if (!blocks.length) return null;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const b of blocks) {
+    x1 = Math.min(x1, num(b.x)); y1 = Math.min(y1, num(b.y));
+    x2 = Math.max(x2, num(b.x) + num(b.w)); y2 = Math.max(y2, num(b.y) + num(b.h));
+  }
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+
+/**
+ * Which blocks a marquee touches.
+ *
+ * INTERSECTION, not containment. A rubber band that only takes what it fully swallows means
+ * dragging across a wide hero to catch the two captions on it selects neither, and you learn
+ * to draw boxes bigger than the thing you want — which on a 1200px canvas often is not
+ * possible. Touching is what every design tool means by this gesture.
+ */
+export function blocksInRect(blocks, rect) {
+  const r = { x: num(rect.x), y: num(rect.y), w: Math.abs(num(rect.w)), h: Math.abs(num(rect.h)) };
+  // A drag up-and-left produces negative width/height; normalise before comparing.
+  if (num(rect.w) < 0) r.x = num(rect.x) + num(rect.w);
+  if (num(rect.h) < 0) r.y = num(rect.y) + num(rect.h);
+  return blocks.filter((b) => num(b.x) < r.x + r.w && num(b.x) + num(b.w) > r.x
+    && num(b.y) < r.y + r.h && num(b.y) + num(b.h) > r.y);
+}
+
+/**
+ * Move a whole selection by one pointer delta.
+ *
+ * The clamp is applied to the GROUP, not to each block. Clamping individually is the bug that
+ * makes a multi-select feel broken: drag a row of six cards at the right-hand edge and the
+ * leading ones stop while the trailing ones keep coming, so the row you carefully spaced
+ * collapses into a pile against the wall. Here the group stops as one and the shape survives.
+ */
+export function moveMany(blocks, ids, dxScreen, dyScreen, scale, opts = {}) {
+  const set = new Set(ids);
+  const chosen = blocks.filter((b) => set.has(b.id));
+  if (!chosen.length) return blocks;
+  const bb = boundsOf(chosen);
+  const s = Math.abs(num(scale, 1)) || 1;
+  const grid = opts.snap === false ? 1 : (opts.grid || GRID);
+  // Where the BOX wants to go, snapped, then clamped so the whole box stays on the canvas.
+  const wantX = Math.round((num(opts.startX ?? bb.x) + num(dxScreen) / s) / grid) * grid;
+  const wantY = Math.round((num(opts.startY ?? bb.y) + num(dyScreen) / s) / grid) * grid;
+  const nx = clamp(wantX, 0, Math.max(0, DESIGN_WIDTH - bb.w));
+  const ny = Math.max(0, wantY);
+  const dx = nx - bb.x, dy = ny - bb.y;
+  return blocks.map((b) => (set.has(b.id) ? { ...b, x: num(b.x) + dx, y: num(b.y) + dy } : b));
+}
+
+/** Where each alignment puts a block, given the selection's bounding box. */
+const ALIGN = {
+  left: (b, bb) => ({ x: bb.x }),
+  hcenter: (b, bb) => ({ x: Math.round((bb.x + (bb.w - num(b.w)) / 2) / GRID) * GRID }),
+  right: (b, bb) => ({ x: bb.x + bb.w - num(b.w) }),
+  top: (b, bb) => ({ y: bb.y }),
+  vmiddle: (b, bb) => ({ y: Math.round((bb.y + (bb.h - num(b.h)) / 2) / GRID) * GRID }),
+  bottom: (b, bb) => ({ y: bb.y + bb.h - num(b.h) }),
+};
+export const ALIGNMENTS = Object.keys(ALIGN);
+
+/** Line a selection up. Blocks outside it are never touched. */
+export function alignMany(blocks, ids, how) {
+  const fn = ALIGN[how];
+  const set = new Set(ids);
+  const chosen = blocks.filter((b) => set.has(b.id));
+  if (!fn || chosen.length < 2) return blocks;      // aligning one block to itself is a no-op
+  const bb = boundsOf(chosen);
+  return blocks.map((b) => (set.has(b.id) ? { ...b, ...fn(b, bb) } : b));
+}
+
+/**
+ * Even gaps between three or more blocks, along one axis.
+ *
+ * The two outermost stay put — they define the span — and the rest are spread between them.
+ * Spacing by equal CENTRES would look wrong the moment two blocks are different sizes, so the
+ * gaps between edges are what is equalised, which is what the eye actually reads.
+ */
+export function distributeMany(blocks, ids, axis = 'x') {
+  const set = new Set(ids);
+  const chosen = blocks.filter((b) => set.has(b.id));
+  if (chosen.length < 3) return blocks;             // two blocks have one gap; nothing to even out
+  const pos = axis === 'y' ? 'y' : 'x';
+  const size = axis === 'y' ? 'h' : 'w';
+  const sorted = [...chosen].sort((a, b) => num(a[pos]) - num(b[pos]));
+  const first = sorted[0], last = sorted[sorted.length - 1];
+  const span = (num(last[pos]) + num(last[size])) - num(first[pos]);
+  const used = sorted.reduce((a, b) => a + num(b[size]), 0);
+  const gap = (span - used) / (sorted.length - 1);
+  const at = new Map();
+  let cursor = num(first[pos]);
+  for (const b of sorted) {
+    at.set(b.id, Math.round(cursor / GRID) * GRID);
+    cursor += num(b[size]) + gap;
+  }
+  // The outermost two are pinned exactly, so rounding never shrinks or grows the span.
+  at.set(first.id, num(first[pos]));
+  at.set(last.id, num(last[pos]));
+  return blocks.map((b) => (at.has(b.id) ? { ...b, [pos]: at.get(b.id) } : b));
+}
