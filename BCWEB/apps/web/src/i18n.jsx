@@ -1686,7 +1686,8 @@ const DICT = {
     'auth.2fa.title': 'Code à deux facteurs', 'auth.2fa.sub': 'Entre le code à 6 chiffres de ton application d’authentification.',
     'auth.2fa.code': 'Code', 'auth.2fa.verify': 'Vérifier', 'auth.2fa.back': 'Retour à la connexion', 'auth.2fa.bad': 'Code invalide.',
 
-    'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal', 'proj.countdown': 'Compte à rebours',
+    'proj.overview': 'Aperçu', 'proj.releases': 'Notes de version', 'proj.community': 'Communauté', 'proj.legal': 'Légal', 'proj.countdown': 'Compte à rebours', 'proj.market': 'Boutique',
+    'mk.buy': 'Acheter', 'mk.get': 'Obtenir', 'mk.free': 'Gratuit', 'mk.done': 'C’est à toi.', 'mk.oos': 'Épuisé', 'mk.checkout': 'Paiement requis.', 'mk.login': 'Connecte-toi pour acheter.', 'mk.yours': 'À toi', 'mk.role': 'Un rôle Discord sera attribué sous peu.', 'mk.derr': 'Souci de livraison — contacte le projet.', 'mk.empty.t': 'Rien en vente pour l’instant', 'mk.empty.s': 'Ce projet n’a aucun article en boutique pour le moment.',
     'proj.activity': 'Activité',
     'act.err': "Impossible de charger l'activité", 'act.err.d': "Le dépôt est peut-être privé, ou GitHub limite les lectures pour le moment.",
     'act.computing': "Préparation de l'activité…", 'act.computing.d': "GitHub construit les statistiques de ce dépôt — rouvrez cet onglet dans un instant.",

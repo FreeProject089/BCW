@@ -4,7 +4,7 @@ import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
-  Play, Radio, Megaphone, GitBranch,
+  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
@@ -305,6 +305,9 @@ export default function ProjectPage() {
   const wantTab = sp.get('tab') || 'overview';
   const [showVersions, setShowVersions] = useState(false);
   const { data, loading, err } = useFetch(() => api.get(`/projects/${key}`), [key]);
+  // The project's marketplace — the tab only appears when it actually sells something.
+  const market = useFetch(() => api.get(`/marketplace/products?projectKey=${encodeURIComponent(key)}`).catch(() => ({ products: [] })), [key]);
+  const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
   if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
   if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
@@ -318,6 +321,7 @@ export default function ProjectPage() {
     // project page share so the rule cannot drift between them.
     stackTabEnabled(c.stack) && ['stack', c.stack.title || t('proj.stack', 'How it runs'), Network],
     data.showBlogTab && ['blog', t('proj.blog'), Newspaper],
+    marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
     (c.releaseNotes || c.links?.github || c.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
   ].filter(Boolean);
@@ -392,6 +396,7 @@ export default function ProjectPage() {
         </>
       )}
       {tab === 'blog' && <ProjectBlogTab project={key} />}
+      {tab === 'market' && <Marketplace pkey={key} products={marketProducts} onChanged={market.refetch} />}
       {tab === 'legal' && <Legal c={c} />}
     </div>
   );
@@ -1393,6 +1398,69 @@ function ProjectBlogTab({ project, page }) {
           </Card>
         </Link>
       ); })}
+    </div>
+  );
+}
+
+// ── A project's marketplace (public) ─────────────────────────────────────────
+// Products a project sells. A free product delivers on click; a paid one opens Stripe checkout
+// and the delivery lands (via the webhook) in the buyer's dashboard. What comes back — a key or
+// some content — is shown inline with a copy button.
+function Marketplace({ pkey, products = [], onChanged }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { user } = useAuth();
+  const [busy, setBusy] = useState('');
+  const [got, setGot] = useState({}); // productId → delivery (key/content) after a free buy
+
+  const buy = async (pr) => {
+    if (!user) { toast.error(t('mk.login', 'Sign in to buy.')); return; }
+    setBusy(pr.id);
+    try {
+      if (pr.priceCents > 0) {
+        const r = await api.post(`/marketplace/products/${pr.id}/checkout`, {});
+        if (r.url) { window.location.href = r.url; return; }
+        toast.error(t('common.failed', 'Failed.'));
+      } else {
+        const r = await api.post(`/marketplace/products/${pr.id}/buy`, {});
+        if (r.ok) { setGot((g) => ({ ...g, [pr.id]: r.purchase?.delivery || {} })); onChanged?.(); toast.success(t('mk.done', 'Done — it’s yours.')); }
+      }
+    } catch (x) {
+      const e = x?.data?.error;
+      toast.error(e === 'out_of_stock' ? t('mk.oos', 'Sold out.') : e === 'checkout_required' ? t('mk.checkout', 'Payment required.') : t('common.failed', 'Failed.'));
+    } finally { setBusy(''); }
+  };
+  const money = (pr) => (pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${(pr.currency || 'usd').toUpperCase()}` : t('mk.free', 'Free'));
+
+  if (!products.length) return <EmptyState icon={ShoppingBag} title={t('mk.empty.t', 'Nothing for sale yet')} sub={t('mk.empty.s', 'This project has no marketplace items right now.')} />;
+  return (
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {products.map((pr) => {
+        const d = got[pr.id];
+        const soldOut = !pr.inStock;
+        return (
+          <Card key={pr.id} className="p-4 flex flex-col">
+            <div className="flex items-start gap-2 mb-1">
+              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={16} /> : <ShoppingBag size={16} />}</span>
+              <div className="min-w-0 flex-1"><div className="font-semibold leading-tight">{pr.name}</div><div className="text-sm font-bold text-[var(--primary-2)] tabular-nums">{money(pr)}</div></div>
+            </div>
+            {pr.description && <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{pr.description}</p>}
+            {d ? (
+              <div className="mt-auto rounded-lg border border-[var(--success)]/30 bg-[var(--success)]/[0.06] p-2.5">
+                <div className="text-[11px] font-semibold text-[var(--success)] uppercase tracking-wide mb-1">{t('mk.yours', 'Yours')}</div>
+                {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate">{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
+                {d.content && <div className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{d.content}</div>}
+                {d.role && <div className="text-xs text-[var(--muted)]">{t('mk.role', 'A Discord role will be granted shortly.')}</div>}
+                {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue — contact the project.')}</div>}
+              </div>
+            ) : (
+              <Button variant="primary" className="mt-auto justify-center" disabled={busy === pr.id || soldOut} onClick={() => buy(pr)}>
+                {soldOut ? t('mk.oos', 'Sold out') : busy === pr.id ? <Spinner /> : <>{pr.priceCents > 0 ? <ShoppingBag size={14} /> : <Download size={14} />} {pr.priceCents > 0 ? t('mk.buy', 'Buy') : t('mk.get', 'Get')}</>}
+              </Button>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
