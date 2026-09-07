@@ -246,7 +246,10 @@ export function remarkDocBlocks() {
         //   `:::field[Tile shape]{key=icons.shape type=select icon=palette}` + a description body.
         // A bold label, an optional TYPE tag, an optional monospace KEY on the right, then the
         // description. Stack several to document a screen of settings without a table.
-        setEl('div', ['doc-field'], attrs.color ? { style: `--field:${attrs.color}` } : {});
+        const fProps = {};
+        if (attrs.color) fProps.style = `--field:${attrs.color}`;
+        if (attrs.anchor) fProps.id = String(attrs.anchor);   // a deep-link target for the row
+        setEl('div', ['doc-field'], fProps);
         const fLabel = labelText || attrs.label || '';
         const fType = String(attrs.type || attrs.kind || '');
         const fKey = String(attrs.key || attrs.name || attrs.id || '');

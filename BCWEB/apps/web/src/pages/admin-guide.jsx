@@ -567,6 +567,16 @@ const GUIDE_MORE = {
 };
 
 // Every other screen: its sections and controls, from lib/admin-screens-ref.js.
+// A screen/bot MODULE (a name, what it does, and its controls) authored as one B.MD `:::field`
+// row: the module name is the label, its description is the body, and each control is a
+// `**label** — what` bullet under it. One renderer for the whole guide instead of a bespoke
+// card list. `one()` collapses newlines so a value can never break the fence or the attr.
+const one = (s) => String(s ?? '').replace(/\s*\n+\s*/g, ' ').trim();
+function moduleFieldMd(m, L) {
+  const controls = (m.controls || []).map((c) => `- **${one(L(c.label))}** — ${one(L(c.what))}`).join('\n');
+  const body = [one(L(m.what)), controls].filter(Boolean).join('\n\n');
+  return `:::field{label="${one(L(m.name)).replace(/"/g, '”')}"}\n${body}\n:::`;
+}
 function ScreenReference({ sections }) {
   const { t, lang } = useI18n();
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
@@ -575,21 +585,7 @@ function ScreenReference({ sections }) {
     <div className="mt-5 pt-4 border-t border-[var(--line)]">
       <div className="text-[13px] font-bold mb-1">{t('ag.screen.ref', 'On this screen')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('ag.screen.refsub', 'Section by section: what each control does, and what it does not.')}</p>
-      <div className="space-y-2">
-        {sections.map((m) => (
-          <div key={m.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
-            <div className="text-[13px] font-semibold text-[var(--text)]">{L(m.name)}</div>
-            <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">{L(m.what)}</p>
-            {m.controls.length > 0 && (
-              <ul className="mt-2 space-y-1.5">
-                {m.controls.map((ctl, i) => (
-                  <li key={i} className="text-[12px] leading-relaxed"><b className="text-[var(--text)]">{L(ctl.label)}</b> <span className="text-[var(--muted)]">— {L(ctl.what)}</span></li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ))}
-      </div>
+      <Markdown>{sections.map((m) => moduleFieldMd(m, L)).join('\n')}</Markdown>
     </div>
   );
 }
@@ -600,32 +596,12 @@ function BotDashboardReference({ only }) {
   const { t, lang } = useI18n();
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
   const pages = only ? BOT_DASHBOARD_REF.filter((p) => only.includes(p.id)) : BOT_DASHBOARD_REF;
+  const md = pages.map((pg) => `## ${one(L(pg.page))}\n\n${pg.modules.map((m) => moduleFieldMd(m, L)).join('\n')}`).join('\n\n');
   return (
     <div className="mt-5 pt-4 border-t border-[var(--line)]">
       <div className="text-[13px] font-bold mb-1">{t('ag.bot.ref', 'Every page of the bot dashboard, in full')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-4">{t('ag.bot.refsub', 'Page by page, module by module: what each control does and what it does not.')}</p>
-      <div className="space-y-5">
-        {pages.map((pg) => (
-          <div key={pg.id}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#5865F2] mb-2">{L(pg.page)}</div>
-            <div className="space-y-2">
-              {pg.modules.map((m) => (
-                <div key={m.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
-                  <div className="text-[13px] font-semibold text-[var(--text)]">{L(m.name)}</div>
-                  <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">{L(m.what)}</p>
-                  {m.controls.length > 0 && (
-                    <ul className="mt-2 space-y-1.5">
-                      {m.controls.map((ctl, i) => (
-                        <li key={i} className="text-[12px] leading-relaxed"><b className="text-[var(--text)]">{L(ctl.label)}</b> <span className="text-[var(--muted)]">— {L(ctl.what)}</span></li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <Markdown>{md}</Markdown>
     </div>
   );
 }
@@ -635,42 +611,42 @@ function BotDashboardReference({ only }) {
 // by construction and can't fall behind the controls. A "Learn more →" carries the setting key
 // (?k=), which scrolls this list to that control and rings it.
 const HS_KIND_LABEL = { gbmb: 'size', number: 'number', bool: 'on / off', text: 'text' };
+// Every hosting setting, in full — authored now as B.MD `:::field` rows (the same block the
+// rest of the guide uses) rather than a hand-built card list. The static settings table maps
+// one-to-one onto `:::field[label]{key= type= anchor=}`, and the deep-link scroll still works:
+// the anchor id is on the rendered row, so a "Learn more" that opens the guide at a setting
+// scrolls to it and flashes it briefly.
+function hsReferenceMd(t) {
+  return HOSTING_SETTINGS_GROUPS.map((g) => {
+    const gt = t(`hs.g.${g.gk}`, g.title);
+    const gd = t(`hs.gd.${g.gk}`, HOSTING_GROUP_DESC[g.title] || '');
+    const fields = g.keys.map(([key, label, desc, kind]) => {
+      const lbl = String(t(`hs.l.${key}`, label)).replace(/"/g, '”');
+      const typ = String(HS_KIND_LABEL[kind] || kind);
+      const d = String(t(`hs.d.${key}`, desc)).replace(/\s*\n+\s*/g, ' ').trim();
+      return `:::field{label="${lbl}" key="${key}" type="${typ}" anchor="hs-${key}"}\n${d}\n:::`;
+    }).join('\n');
+    return `## ${gt}\n${gd}\n\n${fields}`;
+  }).join('\n\n');
+}
 function HostingSettingsReference({ highlight }) {
   const { t } = useI18n();
-  const ref = useRef(null);
   useEffect(() => {
     if (!highlight) return;
     const el = document.getElementById(`hs-${highlight}`);
-    if (el) { const id = setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120); return () => clearTimeout(id); }
+    if (!el) return undefined;
+    const id = setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('doc-field-hl');
+      setTimeout(() => el.classList.remove('doc-field-hl'), 2400);
+    }, 120);
+    return () => clearTimeout(id);
   }, [highlight]);
   return (
-    <div ref={ref} className="mt-5 pt-4 border-t border-[var(--line)]">
+    <div className="mt-5 pt-4 border-t border-[var(--line)]">
       <div className="text-[13px] font-bold mb-1">{t('ag.hs.ref', 'Every hosting setting, in full')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-4">{t('ag.hs.refsub', 'One entry per control on the Hosting screen — the same text the “Learn more” links point at, never truncated.')}</p>
-      <div className="space-y-5">
-        {HOSTING_SETTINGS_GROUPS.map((g) => (
-          <div key={g.gk}>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-1">{t(`hs.g.${g.gk}`, g.title)}</div>
-            <div className="text-[11.5px] text-[var(--faint)] mb-2.5 leading-snug">{t(`hs.gd.${g.gk}`, HOSTING_GROUP_DESC[g.title] || '')}</div>
-            <div className="space-y-2">
-              {g.keys.map(([key, label, desc, kind]) => {
-                const on = highlight === key;
-                return (
-                  <div key={key} id={`hs-${key}`}
-                    className={`rounded-lg border p-3 transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5 ring-2 ring-[var(--primary)]/30' : 'border-[var(--line)] bg-[var(--surface-2)]/30'}`}>
-                    <div className="flex items-baseline gap-2 flex-wrap mb-1">
-                      <span className="text-[13px] font-semibold text-[var(--text)]">{t(`hs.l.${key}`, label)}</span>
-                      <span className="text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[var(--surface-3,var(--line))] text-[var(--faint)]">{HS_KIND_LABEL[kind] || kind}</span>
-                      <code className="text-[10px] text-[var(--faint)] ms-auto">{key}</code>
-                    </div>
-                    <p className="text-[12.5px] text-[var(--muted)] leading-relaxed">{t(`hs.d.${key}`, desc)}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
+      <Markdown>{hsReferenceMd(t)}</Markdown>
     </div>
   );
 }
@@ -830,38 +806,29 @@ export default function AdminGuide() {
                   {activeItem.bodyIsMd
                     ? <div className="text-sm text-[var(--muted)] leading-relaxed mb-3 break-words"><Markdown>{L(activeItem.body) || '*—*'}</Markdown></div>
                     : <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{L(activeItem.body)}</p>}
+                  {/* The point list, the how-to and the traps are authored PROSE — rendered
+                      through B.MD like the rest of the guide, so `**bold**`, `code` and links in
+                      a point read the same here as everywhere else, and the whole screen is one
+                      renderer instead of three hand-built list styles. */}
                   {activeItem.points.length > 0 && (
-                    <ul className="space-y-2">
-                      {activeItem.points.map((p, i) => (
-                        <li key={i} className="text-[13.5px] text-[var(--muted)] leading-relaxed list-disc ms-5 marker:text-[var(--primary-2)]">{L(p)}</li>
-                      ))}
-                    </ul>
+                    <div className="text-[13.5px] text-[var(--muted)] leading-relaxed break-words">
+                      <Markdown>{activeItem.points.map((p) => `- ${L(p)}`).join('\n')}</Markdown>
+                    </div>
                   )}
-                  {/* Depth: a numbered how-to and the rules/traps for this screen. */}
+                  {/* Depth: a numbered how-to (a B.MD :::steps list) and the rules/traps (a
+                      :::caution callout), both authored prose rendered by the same component. */}
                   {GUIDE_MORE[activeItem.id] && !activeItem.hideMore && (
-                    <div className="grid md:grid-cols-2 gap-4 mt-5 pt-4 border-t border-[var(--line)]">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2">{t('ag.steps', 'Step by step')}</div>
-                        <ol className="space-y-2">
-                          {GUIDE_MORE[activeItem.id].steps.map((s, i) => (
-                            <li key={i} className="flex gap-2.5 text-[13px] text-[var(--muted)] leading-relaxed">
-                              <span className="grid place-items-center w-5 h-5 rounded shrink-0 mt-0.5 bg-[var(--primary)]/10 text-[var(--primary-2)] text-[10px] font-bold">{i + 1}</span>
-                              <span>{L(s)}</span>
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-warning mb-2">{t('ag.traps', 'Rules & traps')}</div>
-                        <ul className="space-y-2">
-                          {GUIDE_MORE[activeItem.id].traps.map((p, i) => (
-                            <li key={i} className="flex gap-2.5 text-[13px] text-[var(--muted)] leading-relaxed">
-                              <AlertTriangle size={13} className="text-warning shrink-0 mt-1" />
-                              <span>{L(p)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div className="mt-5 pt-4 border-t border-[var(--line)] text-sm break-words">
+                      <Markdown>{[
+                        `### ${t('ag.steps', 'Step by step')}`,
+                        ':::steps',
+                        GUIDE_MORE[activeItem.id].steps.map((s) => `:::step\n${L(s)}\n:::`).join('\n'),
+                        ':::',
+                        '',
+                        `:::caution[${t('ag.traps', 'Rules & traps')}]`,
+                        GUIDE_MORE[activeItem.id].traps.map((p) => `- ${L(p)}`).join('\n'),
+                        ':::',
+                      ].join('\n')}</Markdown>
                     </div>
                   )}
                   {/* The hosting screen keeps its cards terse and links here; THIS is where every
