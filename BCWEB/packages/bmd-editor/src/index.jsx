@@ -390,3 +390,5 @@ export default function BmdEditor({
     </div>
   );
 }
+
+export { default as BmdBlockCanvas } from './block-canvas.jsx';

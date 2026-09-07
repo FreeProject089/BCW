@@ -3909,7 +3909,7 @@ const DICT = {
     'devmd.b4': 'Extensible',
     'devmd.b2': 'Aucune étape de build',
     'devmd.b3': 'Assaini par défaut',
-    'devmd.try': 'Essaie',
+    'devmd.try': 'Essaie', 'devmd.mode.text': 'Texte', 'devmd.mode.blocks': 'Blocs',
     'devmd.reset': 'Réinitialiser',
     'devmd.tryNote': 'Rien n’est enregistré ici. Le vocabulaire complet, bloc par bloc, est dans le guide Markdown.',
     'devmd.guide': 'Ouvrir le guide',

@@ -9,7 +9,8 @@
     ".": "./src/index.jsx",
     "./snippets": "./src/snippets.js",
     "./editor.css": "./src/editor.css",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./block-canvas": "./src/block-canvas.jsx"
   },
   "files": [
     "src",

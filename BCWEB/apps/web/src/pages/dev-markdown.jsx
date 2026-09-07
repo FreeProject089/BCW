@@ -19,6 +19,8 @@ import { validateLinks } from '@bettercommunity/bmd/links';
 import { documentHtml, cssUrl } from '@bettercommunity/bmd/export';
 import { extractHeadings } from '@bettercommunity/bmd/ast';
 import { SNIPPET_GROUPS, expandSnippet } from '@bettercommunity/bmd-editor/snippets';
+import BmdBlockCanvas from '@bettercommunity/bmd-editor/block-canvas';
+import '@bettercommunity/bmd-editor/editor.css';
 
 const INSTALL = 'npm i @bettercommunity/bmd react react-dom react-markdown remark-gfm remark-directive rehype-raw rehype-sanitize unist-util-visit unified remark-parse lucide-react';
 const INSTALL_OPT = 'npm i rehype-highlight remark-math rehype-katex katex mermaid';
@@ -243,6 +245,7 @@ function KitPacker() {
 export default function DevMarkdown() {
   const { t } = useI18n();
   const [src, setSrc] = useState(SAMPLE);
+  const [editMode, setEditMode] = useState('text'); // 'text' (raw) | 'blocks' (drag-drop canvas)
   const ta = useRef(null);
   const toast = useToast();
   const [linkReport, setLinkReport] = useState(null);
@@ -287,6 +290,11 @@ export default function DevMarkdown() {
         <div className="flex items-baseline gap-2 mb-2">
           <h2 className="text-lg font-semibold">{t('devmd.try', 'Try it')}</h2>
           <div className="ms-auto flex items-center gap-3 flex-wrap">
+            <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
+              {[['text', t('devmd.mode.text', 'Text')], ['blocks', t('devmd.mode.blocks', 'Blocks')]].map(([m, l]) => (
+                <button key={m} type="button" onClick={() => setEditMode(m)} className={`px-2.5 py-1 ${editMode === m ? 'bg-[var(--primary)] text-white font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+              ))}
+            </div>
             <button type="button" onClick={checkLinks} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><Link2 size={12} /> {t('devmd.links', 'Check links')}</button>
             <button type="button" onClick={exportHtml} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><FileDown size={12} /> {t('devmd.export', 'Export HTML')}</button>
             <button type="button" onClick={() => setSrc(SAMPLE)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RotateCcw size={12} /> {t('devmd.reset', 'Reset')}</button>
@@ -298,8 +306,10 @@ export default function DevMarkdown() {
             : <span className="text-[var(--success)]">✓ {t('devmd.links.ok', 'Every link goes somewhere')} ({linkReport.count})</span>}
         </div>}
         <div className="grid lg:grid-cols-2 gap-3 items-start">
-          <Textarea ref={ta} rows={22} value={src} onChange={(e) => setSrc(e.target.value)}
-            className="!font-mono !text-[12.5px] !leading-relaxed" spellCheck={false} />
+          {editMode === 'blocks'
+            ? <div className="min-w-0"><BmdBlockCanvas value={src} onChange={setSrc} snippetGroups={SNIPPET_GROUPS} renderer={Markdown} /></div>
+            : <Textarea ref={ta} rows={22} value={src} onChange={(e) => setSrc(e.target.value)}
+                className="!font-mono !text-[12.5px] !leading-relaxed" spellCheck={false} />}
           {/* min-w-0: a long unbroken token in a rendered code block would otherwise blow the
               grid track and take the page's horizontal scroll with it. */}
           <Card className="p-4 min-w-0 overflow-x-auto">

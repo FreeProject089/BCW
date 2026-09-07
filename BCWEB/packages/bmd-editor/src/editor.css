@@ -74,3 +74,38 @@
 .bmde-btn svg { flex-shrink: 0; }
 .bmde-menu-title { display: flex; align-items: center; gap: 5px; }
 .bmde-menu-title svg { width: 12px; height: 12px; }
+
+/* ── Block canvas (drag-drop block editor) ─────────────────────────────────── */
+.bmdc { display: flex; flex-direction: column; gap: 0; }
+.bmdc-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.bmdc-count { font-size: 11px; color: var(--faint, #726b61); }
+.bmdc-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line, #e6e0d8); background: transparent; color: var(--muted, #57514a); cursor: pointer; }
+.bmdc-toggle.is-on { color: var(--primary-2, #ea580c); border-color: color-mix(in srgb, var(--primary, #f97316) 40%, var(--line, #e6e0d8)); }
+.bmdc-block { display: flex; gap: 8px; border: 1px solid var(--line, #e6e0d8); border-radius: 12px; background: var(--surface, #f3eee6); padding: 8px; transition: border-color .12s, box-shadow .12s; }
+.bmdc-block.is-over { border-color: var(--primary, #f97316); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #f97316) 25%, transparent); }
+.bmdc-block.is-blank { opacity: .55; }
+.bmdc-handle { flex: 0 0 auto; width: 22px; display: grid; place-items: center; color: var(--faint, #726b61); cursor: grab; border-radius: 8px; }
+.bmdc-handle:active { cursor: grabbing; }
+.bmdc-handle:hover { background: var(--surface-2, #ece5db); color: var(--muted, #57514a); }
+.bmdc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.bmdc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bmdc-kind { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--faint, #726b61); background: var(--surface-2, #ece5db); padding: 2px 7px; border-radius: 999px; }
+.bmdc-actions { display: flex; gap: 2px; }
+.bmdc-actions button { width: 26px; height: 26px; display: grid; place-items: center; border: 0; background: transparent; color: var(--muted, #57514a); border-radius: 7px; cursor: pointer; }
+.bmdc-actions button:hover:not(:disabled) { background: var(--surface-2, #ece5db); color: var(--text, #17140f); }
+.bmdc-actions button:disabled { opacity: .3; cursor: default; }
+.bmdc-actions .bmdc-del:hover { color: #dc2626; background: color-mix(in srgb, #dc2626 12%, transparent); }
+.bmdc-src { width: 100%; box-sizing: border-box; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; padding: 8px 10px; border: 1px solid var(--line, #e6e0d8); border-radius: 8px; background: var(--bg-solid, #fff); color: var(--text, #17140f); }
+.bmdc-src:focus { outline: none; border-color: var(--primary, #f97316); }
+.bmdc-preview { border-top: 1px dashed var(--line, #e6e0d8); padding-top: 8px; font-size: 13px; }
+.bmdc-add { display: flex; justify-content: center; position: relative; height: 18px; }
+.bmdc-add-btn { width: 24px; height: 18px; display: grid; place-items: center; border: 1px dashed var(--line, #e6e0d8); background: var(--bg-solid, #fff); color: var(--faint, #726b61); border-radius: 8px; cursor: pointer; opacity: .5; transition: opacity .12s, color .12s; }
+.bmdc-add:hover .bmdc-add-btn, .bmdc-add-btn:focus { opacity: 1; color: var(--primary-2, #ea580c); border-color: var(--primary, #f97316); }
+.bmdc-palette { position: absolute; top: 22px; z-index: 30; width: 300px; max-width: 92vw; background: var(--bg-solid, #fff); border: 1px solid var(--line, #e6e0d8); border-radius: 12px; box-shadow: 0 12px 30px rgba(0,0,0,.18); padding: 8px; }
+.bmdc-palette-search { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--line, #e6e0d8); border-radius: 8px; font-size: 13px; background: var(--surface, #f3eee6); color: var(--text, #17140f); margin-bottom: 6px; }
+.bmdc-palette-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.bmdc-palette-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; text-align: left; padding: 7px 9px; border: 0; background: transparent; color: var(--text, #17140f); border-radius: 8px; cursor: pointer; font-size: 13px; }
+.bmdc-palette-item:hover { background: var(--surface-2, #ece5db); }
+.bmdc-palette-group { font-size: 10.5px; color: var(--faint, #726b61); text-transform: uppercase; letter-spacing: .04em; }
+.bmdc-palette-empty { font-size: 12px; color: var(--faint, #726b61); padding: 8px; }
+.bmdc-empty { text-align: center; font-size: 13px; color: var(--faint, #726b61); padding: 24px; }
