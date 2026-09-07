@@ -129,7 +129,33 @@ export function generateSeedScript(sections, data, meta = {}) {
  * Read the current content for the selected sections + a summary of what will be included.
  * Returns { data, summary } — data feeds generateSeedScript, summary feeds the preview.
  */
-export async function readSeedContent(p, selected) {
+/**
+ * The individual rows each list-backed section holds, so the admin can pick precisely which
+ * ones to export rather than the whole section. `id` is the stable key used by the item filter
+ * (a slug / plan name / FAQ question); `label` is what to show.
+ */
+export async function listSeedItems(p) {
+  const out = {};
+  const map = async (model, sel, id, label) => {
+    if (!p[model]) return [];
+    const rows = await p[model].findMany({ select: sel }).catch(() => []);
+    return rows.map((r) => ({ id: String(r[id]), label: String(r[label] ?? r[id]) }));
+  };
+  out.docs = await map('docPage', { slug: true, title: true }, 'slug', 'title');
+  out.faq = await map('faqItem', { question: true }, 'question', 'question');
+  out.badges = await map('badge', { slug: true, name: true }, 'slug', 'name');
+  out.legal = await map('legalPage', { slug: true, title: true }, 'slug', 'title');
+  out.hostingPlans = await map('hostingPlan', { name: true }, 'name', 'name');
+  return out;
+}
+
+// A section's item filter: a Set of allowed ids, or null to mean "all of them".
+const allow = (itemFilter, key) => {
+  const v = itemFilter && itemFilter[key];
+  return Array.isArray(v) && v.length ? new Set(v.map(String)) : null;
+};
+
+export async function readSeedContent(p, selected, itemFilter = {}) {
   const data = { adminSettings: [], hostingPlans: [], legalPages: [], docPages: [], faqItems: [], badges: [] };
   const summary = {};
   const wantSettingKeys = new Set();
@@ -150,31 +176,41 @@ export async function readSeedContent(p, selected) {
     data.adminSettings = rows.filter((r) => wantSettingKeys.has(r.key) || wantSettingPrefixes.some((pre) => r.key.startsWith(pre)));
   }
   if (selected.includes('hostingPlans')) {
-    data.hostingPlans = (await p.hostingPlan.findMany()).map(({ id, createdAt, updatedAt, ...rest }) => ({ ...rest, storageGB: rest.storageGB }));
+    const only = allow(itemFilter, 'hostingPlans');
+    data.hostingPlans = (await p.hostingPlan.findMany()).map(({ id, createdAt, updatedAt, ...rest }) => ({ ...rest, storageGB: rest.storageGB }))
+      .filter((r) => !only || only.has(String(r.name)));
     summary.hostingPlans = data.hostingPlans.length;
   }
   if (selected.includes('legal') && p.legalPage) {
-    data.legalPages = (await p.legalPage.findMany().catch(() => [])).map(({ id, createdAt, updatedAt, ...rest }) => rest);
+    const only = allow(itemFilter, 'legal');
+    data.legalPages = (await p.legalPage.findMany().catch(() => [])).map(({ id, createdAt, updatedAt, ...rest }) => rest)
+      .filter((r) => !only || only.has(String(r.slug)));
     summary.legal = data.legalPages.length;
   }
   if (selected.includes('docs') && p.docPage) {
     // Content fields only — strip the row id, timestamps, the optimistic-concurrency `version`
     // and the "was this helpful" tallies (all runtime state, not authored content).
+    const only = allow(itemFilter, 'docs');
     data.docPages = (await p.docPage.findMany().catch(() => []))
       .map(({ slug, title, titleFr, category, categoryFr, icon, body, bodyFr, order, published }) =>
-        ({ slug, title, titleFr, category, categoryFr, icon, body, bodyFr, order, published }));
+        ({ slug, title, titleFr, category, categoryFr, icon, body, bodyFr, order, published }))
+      .filter((r) => !only || only.has(String(r.slug)));
     summary.docs = data.docPages.length;
   }
   if (selected.includes('faq') && p.faqItem) {
+    const only = allow(itemFilter, 'faq');
     data.faqItems = (await p.faqItem.findMany().catch(() => []))
       .map(({ question, questionFr, answer, answerFr, category, categoryFr, order, published }) =>
-        ({ question, questionFr, answer, answerFr, category, categoryFr, order, published }));
+        ({ question, questionFr, answer, answerFr, category, categoryFr, order, published }))
+      .filter((r) => !only || only.has(String(r.question)));
     summary.faq = data.faqItems.length;
   }
   if (selected.includes('badges') && p.badge) {
+    const only = allow(itemFilter, 'badges');
     data.badges = (await p.badge.findMany().catch(() => []))
       .map(({ slug, name, description, iconType, icon, color, grant, trigger, rule, earnMessage, priority, active }) =>
-        ({ slug, name, description, iconType, icon, color, grant, trigger, rule, earnMessage, priority, active }));
+        ({ slug, name, description, iconType, icon, color, grant, trigger, rule, earnMessage, priority, active }))
+      .filter((r) => !only || only.has(String(r.slug)));
     summary.badges = data.badges.length;
   }
   // Per-section AdminSetting counts for the preview.

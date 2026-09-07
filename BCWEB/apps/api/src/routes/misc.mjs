@@ -4,7 +4,7 @@ import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } fro
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
 import { recordErasure, emailHash as erasureEmailHash } from '../lib/erasure-log.mjs';
-import { SEED_SECTIONS, readSeedContent, generateSeedScript } from '../lib/seed-export.mjs';
+import { SEED_SECTIONS, readSeedContent, generateSeedScript, listSeedItems } from '../lib/seed-export.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
@@ -543,25 +543,35 @@ export default async function miscRoutes(app) {
   // what will be created before generating (the "ce qui sera créé / existe déjà" the ask wants).
   app.get('/admin/seed/preview', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
-    const selected = parseSections(req.query?.sections) ;
+    const selected = parseSections(req.query?.sections);
     const { summary } = await readSeedContent(p, selected);
+    // Every list-backed section's individual rows, so the admin can pick precisely which to
+    // export (docs/faq/badges/legal/plans). Sections without a list omit their entry.
+    const items = await listSeedItems(p).catch(() => ({}));
     return {
-      sections: Object.entries(SEED_SECTIONS).map(([key, s]) => ({ key, label: s.label })),
-      selected, summary,
+      sections: Object.entries(SEED_SECTIONS).map(([key, s]) => ({ key, label: s.label, hasItems: Array.isArray(items[key]) && items[key].length > 0 })),
+      selected, summary, items,
     };
   });
 
-  // The generated script itself, as a download.
-  app.get('/admin/seed/generate', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  // The generated script itself, as a download. POST so a precise per-item filter travels in
+  // the body — FAQ questions and titles are not query-safe.
+  const genSeed = async (req, reply) => {
     const p = await db();
-    const selected = parseSections(req.query?.sections);
-    const { data } = await readSeedContent(p, selected);
+    const selected = parseSections(req.body?.sections ?? req.query?.sections);
+    // items: { <sectionKey>: [ids…] } — a section absent here (or empty) exports in full.
+    const raw = req.body?.items && typeof req.body.items === 'object' ? req.body.items : {};
+    const itemFilter = {};
+    for (const [k, v] of Object.entries(raw)) if (Array.isArray(v)) itemFilter[k] = v.map(String).slice(0, 5000);
+    const { data } = await readSeedContent(p, selected, itemFilter);
     const script = generateSeedScript(selected, data, { by: req.user?.uid, generatedAtIso: new Date().toISOString() });
     await logAudit(p, req.user.uid, 'seed.generate', selected.join(',') || '(none)');
     reply.header('Content-Type', 'text/javascript; charset=utf-8');
     reply.header('Content-Disposition', 'attachment; filename="custom-seed.mjs"');
     return script;
-  });
+  };
+  app.post('/admin/seed/generate', { preHandler: requireRole('ADMIN') }, genSeed);
+  app.get('/admin/seed/generate', { preHandler: requireRole('ADMIN') }, genSeed); // back-compat (whole sections)
 
   app.get('/admin/site/showcase', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();

@@ -20992,16 +20992,35 @@ function EcoResetControl() {
 function SeedGeneratorCard() {
   const { t } = useI18n(); const toast = useToast();
   const [selected, setSelected] = useState([]);
+  const [itemSel, setItemSel] = useState({});   // { sectionKey: [ids] } — chosen rows per list section
+  const [expanded, setExpanded] = useState({});  // which list sections are unfolded
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.get('/admin/seed/preview?sections=').then(setPreview).catch(() => {}); }, []);
+  const itemsOf = (key) => preview?.items?.[key] || [];
+  const hasItems = (key) => itemsOf(key).length > 0;
   const refresh = (next) => { setSelected(next); api.get(`/admin/seed/preview?sections=${next.join(',')}`).then(setPreview).catch(() => {}); };
-  const toggle = (key) => refresh(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  // Toggling a section on selects all its rows by default (you then narrow it down); off clears them.
+  const toggle = (key) => {
+    const on = !selected.includes(key);
+    refresh(on ? [...selected, key] : selected.filter((k) => k !== key));
+    if (hasItems(key)) setItemSel((m) => ({ ...m, [key]: on ? itemsOf(key).map((i) => i.id) : [] }));
+  };
+  const toggleItem = (key, id) => setItemSel((m) => {
+    const cur = m[key] || itemsOf(key).map((i) => i.id);
+    return { ...m, [key]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+  });
+  const setAllItems = (key, all) => setItemSel((m) => ({ ...m, [key]: all ? itemsOf(key).map((i) => i.id) : [] }));
+  const chosenCount = (key) => (hasItems(key) ? (itemSel[key]?.length ?? itemsOf(key).length) : (Number(preview?.summary?.[key]) || 0));
+  // The sections that will actually export, and the per-item filter (only sent when a subset).
+  const effectiveSections = selected.filter((k) => !hasItems(k) || chosenCount(k) > 0);
   const download = async () => {
-    if (!selected.length) return;
+    if (!effectiveSections.length) return;
     setBusy(true);
     try {
-      const res = await fetch(`/api/admin/seed/generate?sections=${selected.join(',')}`, { credentials: 'include' });
+      const items = {};
+      for (const k of effectiveSections) if (hasItems(k)) { const chosen = itemSel[k] ?? itemsOf(k).map((i) => i.id); if (chosen.length < itemsOf(k).length) items[k] = chosen; }
+      const res = await fetch('/api/admin/seed/generate', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sections: effectiveSections, items }) });
       if (!res.ok) throw new Error('http');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -21015,23 +21034,50 @@ function SeedGeneratorCard() {
   return (
     <Card className="p-4 mt-4">
       <div className="text-sm font-medium flex items-center gap-2 mb-1"><Database size={14} className="text-[var(--primary-2)]" /> {t('sg.title', 'Custom seed generator')}</div>
-      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('sg.sub', 'Pick what to include and download a runnable, idempotent seed script that recreates this content on another install. Running it twice changes nothing the second time. The number is how many rows each section currently holds.')}</p>
+      <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('sg.sub2', 'Pick what to include — a whole section, or expand it and choose the exact rows — and download a runnable, idempotent seed script that recreates them on another install. Running it twice changes nothing the second time.')}</p>
       <div className="flex items-center gap-2 mb-2 text-xs">
-        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => refresh(sectionsList.map((x) => x.key))}>{t('sg.all', 'Select all')}</button>
+        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { const all = sectionsList.map((x) => x.key); refresh(all); setItemSel(Object.fromEntries(all.filter(hasItems).map((k) => [k, itemsOf(k).map((i) => i.id)]))); }}>{t('sg.all', 'Select all')}</button>
         <span className="text-[var(--faint)]">·</span>
-        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => refresh([])}>{t('sg.none', 'None')}</button>
-        <span className="ms-auto text-[var(--muted)] tabular-nums">{t('sg.total', '{n} sections · {k} items').replace('{n}', selected.length).replace('{k}', sectionsList.filter((x) => selected.includes(x.key)).reduce((a, x) => a + (Number(preview?.summary?.[x.key]) || 0), 0))}</span>
+        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { refresh([]); setItemSel({}); }}>{t('sg.none', 'None')}</button>
+        <span className="ms-auto text-[var(--muted)] tabular-nums">{t('sg.total2', '{n} section(s) · {k} row(s)').replace('{n}', effectiveSections.length).replace('{k}', effectiveSections.reduce((a, k) => a + chosenCount(k), 0))}</span>
       </div>
-      <div className="grid sm:grid-cols-2 gap-2 mb-3">
-        {sectionsList.map((s) => (
-          <label key={s.key} className="flex items-center gap-2 text-[13px] cursor-pointer select-none rounded-lg border border-[var(--line)] px-3 py-2">
-            <input type="checkbox" className="accent-[var(--primary)]" checked={selected.includes(s.key)} onChange={() => toggle(s.key)} />
-            <span className="flex-1">{s.label}</span>
-            {preview?.summary?.[s.key] != null && <Badge tone={preview.summary[s.key] ? 'primary' : ''}>{preview.summary[s.key]}</Badge>}
-          </label>
-        ))}
+      <div className="space-y-2 mb-3">
+        {sectionsList.map((s) => {
+          const on = selected.includes(s.key); const list = itemsOf(s.key); const withItems = list.length > 0;
+          const chosen = itemSel[s.key] ?? (on ? list.map((i) => i.id) : []);
+          return (
+            <div key={s.key} className="rounded-lg border border-[var(--line)]">
+              <div className="flex items-center gap-2 px-3 py-2 text-[13px]">
+                <label className="flex items-center gap-2 flex-1 cursor-pointer select-none">
+                  <input type="checkbox" className="accent-[var(--primary)]" checked={on} onChange={() => toggle(s.key)} />
+                  <span className="flex-1">{s.label}</span>
+                </label>
+                {withItems ? <Badge tone={on && chosen.length ? 'primary' : ''}>{on ? `${chosen.length}/${list.length}` : list.length}</Badge>
+                  : preview?.summary?.[s.key] != null && <Badge tone={on && preview.summary[s.key] ? 'primary' : ''}>{preview.summary[s.key]}</Badge>}
+                {withItems && <button type="button" onClick={() => setExpanded((e) => ({ ...e, [s.key]: !e[s.key] }))} className="text-[var(--faint)] hover:text-[var(--text)]" title={t('sg.pick', 'Choose rows')}>{expanded[s.key] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</button>}
+              </div>
+              {withItems && expanded[s.key] && (
+                <div className="border-t border-[var(--line)] px-3 py-2">
+                  <div className="flex items-center gap-2 mb-1.5 text-[11px]">
+                    <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { if (!on) toggle(s.key); setAllItems(s.key, true); }}>{t('sg.rowsall', 'All')}</button>
+                    <span className="text-[var(--faint)]">·</span>
+                    <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => setAllItems(s.key, false)}>{t('sg.rowsnone', 'None')}</button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 max-h-52 overflow-y-auto">
+                    {list.map((it) => (
+                      <label key={it.id} className="flex items-center gap-2 text-[12px] cursor-pointer select-none">
+                        <input type="checkbox" className="accent-[var(--primary)]" checked={on && chosen.includes(it.id)} onChange={() => { if (!on) toggle(s.key); toggleItem(s.key, it.id); }} />
+                        <span className="truncate" title={it.label}>{it.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <Button variant="primary" disabled={busy || !selected.length} onClick={download}>{busy ? <Spinner /> : <><Download size={14} /> {t('sg.download', 'Download seed script')}</>}</Button>
+      <Button variant="primary" disabled={busy || !effectiveSections.length} onClick={download}>{busy ? <Spinner /> : <><Download size={14} /> {t('sg.download', 'Download seed script')}</>}</Button>
     </Card>
   );
 }

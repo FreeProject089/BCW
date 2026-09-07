@@ -5839,6 +5839,8 @@ const DICT = {
     'sg.title': 'Générateur de seed personnalisé',
     'sg.sub': "Choisissez ce qu'il faut inclure et téléchargez un script de seed exécutable et idempotent qui recrée ce contenu sur une autre installation. L'exécuter deux fois ne change rien la seconde fois. Le nombre indique combien de lignes chaque section contient actuellement.",
     'sg.done': 'Script de seed téléchargé.', 'sg.download': 'Télécharger le script de seed',
+    'sg.sub2': "Choisissez ce qu'il faut inclure — une section entière, ou dépliez-la et cochez les lignes exactes — et téléchargez un script de seed exécutable et idempotent qui les recrée sur une autre installation. L'exécuter deux fois ne change rien la seconde fois.",
+    'sg.total2': '{n} section(s) · {k} ligne(s)', 'sg.pick': 'Choisir les lignes', 'sg.rowsall': 'Toutes', 'sg.rowsnone': 'Aucune',
     'db.sec.global': 'Global — s’applique à tous les serveurs', 'db.sec.global.sub': 'Les annonces sont routées par salon (fonctionnent dans n’importe quel serveur) ; les limites sont partagées.',
     'db.sec.perserver': 'Configuration par serveur', 'db.sec.perserver.sub': 'Modération, bienvenue, vocal à la demande et rôles réservés — configurés indépendamment pour chaque serveur où est le bot.',
     'db.page.overview': 'Vue d’ensemble', 'db.page.announcements': 'Annonces', 'db.page.community': 'Règles, panneaux & MP', 'db.page.servers': 'Par serveur', 'db.page.members': 'Membres', 'db.page.limits': 'Limites', 'db.page.economy': 'Niveaux & économie',
