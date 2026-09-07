@@ -6029,6 +6029,7 @@ const DICT = {
     'gw.ending': 'Tirage — gagnants annoncés sous ~30 s.', 'gw.gift': 'cadeau', 'gw.endsat': 'se termine {d}', 'gw.ended': 'terminé · {n} gagnant(s)',
     'gw.entries': '{n} participations', 'gw.drawbtn': 'Tirer', 'gw.none': 'Aucun concours pour l’instant.',
     'gw.sec.running': 'En cours', 'gw.sec.new': 'Nouveau concours',
+    'goal.prev.h': 'Période précédente : {n} conversions', 'goal.prev.none': 'nouveau',
     'bmdc.style': 'Style', 'bmdc.styleA': 'Style A', 'bmdc.styleB': 'Style B',
     'bmdc.space': 'Espace en dessous', 'bmdc.spaceAuto': 'Espace : auto',
     'bmdc.space.none': 'Aucun', 'bmdc.space.xs': 'Minuscule', 'bmdc.space.sm': 'Petit',

@@ -16600,7 +16600,23 @@ function AdminGoals() {
                 <div className="font-medium flex items-center gap-2">{g.name} <Badge tone="">{kindLabel(g.kind)}</Badge></div>
                 <div className="text-xs text-[var(--faint)] mt-0.5">{g.path ? <span className="font-mono">{g.path}</span> : t('goal.anypage', 'any page')}{g.label ? <> · “{g.label}”</> : ''}</div>
               </div>
-              <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.completions}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.completions', 'completions')}</div></div>
+              {/* Completions, and what they are up against. A goal reporting "412" answers
+                  nothing on its own: 412 versus what? The same window immediately before is
+                  the cheapest honest comparison and the one anybody looking at a conversion
+                  goal is actually making in their head. `delta` is null when there is nothing
+                  to compare to — a goal created yesterday has no previous period, and "0%"
+                  there would read as "flat" rather than "unknown". */}
+              <div className="text-center px-3">
+                <div className="text-lg font-bold tabular-nums">{g.completions}</div>
+                <div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.completions', 'completions')}</div>
+                {g.delta != null && g.prevCompletions != null && (
+                  <div className={`text-[10px] font-semibold tabular-nums mt-0.5 ${g.delta > 0 ? 'text-success' : g.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}
+                    title={t('goal.prev.h', 'Previous period: {n} completions').replace('{n}', g.prevCompletions)}>
+                    {g.delta > 0 ? '+' : ''}{g.delta}%
+                  </div>
+                )}
+                {g.delta == null && <div className="text-[10px] text-[var(--faint)] mt-0.5">{t('goal.prev.none', 'new')}</div>}
+              </div>
               <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.visitors}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.visitors', 'visitors')}</div></div>
               <div className="text-center px-3 min-w-[90px]"><div className="text-lg font-bold tabular-nums text-[var(--primary-2)]">{g.rate}%</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.rate', 'conv. rate')}</div></div>
               <div className="flex gap-1">

@@ -10,6 +10,9 @@ import { getRecentServerErrors } from '../lib/errorlog.mjs';
 // Client-origin helpers (IP / geo / user-agent). Moved to lib/ verbatim so the
 // Sessions panel answers these questions the same way this file does.
 import { clientIp, visitorHash, geoOf, parseUA } from '../lib/geo.mjs';
+// One goal over one range — shared so the current window and the previous one cannot be
+// measured by two slightly different pieces of code (see lib/goal-stats.mjs).
+import { measureGoal } from '../lib/goal-stats.mjs';
 
 // Push bus for the admin live events feed: ingestion emits normalized events, the SSE
 // endpoint (/admin/analytics/events/stream) relays them to connected admins in real time.
@@ -583,7 +586,6 @@ export default async function analyticsRoutes(app) {
   // ── Conversion goals ────────────────────────────────────────────────────────
   // Interaction goals count InteractionEvents; dimension goals count pageviews matching a
   // visitor attribute (referrer / geo / tech). Both share the same visitor-based rate.
-  const DIMENSION_KINDS = { referrer: 'ref', country: 'country', region: 'region', city: 'city', device: 'device', os: 'os', browser: 'browser' };
   const goalSchema = z.object({
     name: z.string().min(1).max(80),
     kind: z.enum(['pageview', 'click', 'submit', 'input', 'copy', 'referrer', 'country', 'region', 'city', 'device', 'os', 'browser']),
@@ -598,47 +600,34 @@ export default async function analyticsRoutes(app) {
     const hours = req.query?.hours ? Math.min(Math.max(Number(req.query.hours), 1), 168) : null;
     const days = Math.min(Math.max(Number(req.query?.days) || 30, 1), 365);
     const since = hours ? new Date(Date.now() - hours * 3600e3) : new Date(Date.now() - days * 864e5);
+    // The window immediately before this one, same length. A goal that reports "412" tells
+    // you nothing on its own — 412 against what? The previous period is the cheapest honest
+    // answer, and it is the question anyone looking at a conversion goal is actually asking.
+    const spanMs = Date.now() - since.getTime();
+    const prevSince = new Date(since.getTime() - spanMs);
     const goals = await p.analyticsGoal.findMany({ orderBy: { createdAt: 'asc' } });
     // Total unique visitors in the window (the conversion denominator).
     const totalVisitorsRow = await p.$queryRaw`SELECT count(DISTINCT visitor)::int AS n FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND visitor IS NOT NULL`;
     const totalVisitors = Number(totalVisitorsRow?.[0]?.n || 0);
+
     const withStats = await Promise.all(goals.map(async (g) => {
-      const pathCond = g.path ? { path: { contains: g.path, mode: 'insensitive' } } : {};
-      let completions = 0; let visitors = 0;
-      if (g.kind === 'pageview') {
-        const [c, v] = await Promise.all([
-          p.analyticsEvent.count({ where: { createdAt: { gte: since }, ...pathCond } }),
-          p.$queryRawUnsafe(`SELECT count(DISTINCT visitor)::int AS n FROM "AnalyticsEvent" WHERE "createdAt" >= $1 AND visitor IS NOT NULL ${g.path ? 'AND path ILIKE $2' : ''}`, ...(g.path ? [since, `%${g.path}%`] : [since])),
-        ]);
-        completions = c; visitors = Number(v?.[0]?.n || 0);
-      } else if (DIMENSION_KINDS[g.kind]) {
-        // A pageview-dimension goal: match visitors by referrer / geo / tech attribute.
-        const field = DIMENSION_KINDS[g.kind];
-        const val = (g.label || '').trim();
-        // country/device match exactly (short controlled vocab); the rest are contains.
-        const exact = g.kind === 'country' || g.kind === 'device';
-        const dimCond = val ? { [field]: exact ? { equals: val, mode: 'insensitive' } : { contains: val, mode: 'insensitive' } } : { [field]: { not: null } };
-        const where = { createdAt: { gte: since }, ...pathCond, ...dimCond };
-        const [c, vrows] = await Promise.all([
-          p.analyticsEvent.count({ where }),
-          p.analyticsEvent.findMany({ where, select: { visitor: true }, distinct: ['visitor'] }),
-        ]);
-        completions = c; visitors = vrows.filter((x) => x.visitor).length;
-      } else {
-        const labelCond = g.label ? { label: { contains: g.label, mode: 'insensitive' } } : {};
-        const [c, v] = await Promise.all([
-          p.interactionEvent.count({ where: { createdAt: { gte: since }, kind: g.kind, ...pathCond, ...labelCond } }),
-          p.$queryRawUnsafe(`SELECT count(DISTINCT visitor)::int AS n FROM "InteractionEvent" WHERE "createdAt" >= $1 AND kind = $2 AND visitor IS NOT NULL ${g.path ? 'AND path ILIKE $3' : ''} ${g.label ? `AND label ILIKE $${g.path ? 4 : 3}` : ''}`,
-            ...[since, g.kind, ...(g.path ? [`%${g.path}%`] : []), ...(g.label ? [`%${g.label}%`] : [])]),
-        ]);
-        completions = c; visitors = Number(v?.[0]?.n || 0);
-      }
-      // Progress toward an optional numeric target (based on raw completions).
+      const [now, prev] = await Promise.all([measureGoal(p, g, since, null), measureGoal(p, g, prevSince, since)]);
+      const { completions, visitors } = now;
+      // Percentage change, and null rather than a fake 0% when there is nothing to compare
+      // to — a goal created yesterday has no previous period, and "0%" would read as "flat".
+      const delta = prev.completions > 0
+        ? Math.round(((completions - prev.completions) / prev.completions) * 1000) / 10
+        : (completions > 0 ? null : 0);
       const progress = g.target ? Math.min(100, Math.round((completions / g.target) * 100)) : null;
-      return { ...g, completions, visitors, rate: totalVisitors ? Math.round((visitors / totalVisitors) * 1000) / 10 : 0, progress };
+      return {
+        ...g, completions, visitors,
+        rate: totalVisitors ? Math.round((visitors / totalVisitors) * 1000) / 10 : 0,
+        progress, prevCompletions: prev.completions, prevVisitors: prev.visitors, delta,
+      };
     }));
-    return { goals: withStats, totalVisitors };
+    return { goals: withStats, totalVisitors, since, prevSince };
   });
+
   app.post('/admin/analytics/goals', { preHandler: requireCap('manage_analytics') }, async (req, reply) => {
     const b = goalSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
