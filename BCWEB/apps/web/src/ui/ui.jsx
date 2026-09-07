@@ -361,13 +361,17 @@ export function ByteSize({ value, onChange, min = 0, step = 'any', className = '
   );
 }
 export function PageHeader({ icon: Icon, title, subtitle, actions }) {
+  // Stacks on a phone: the title and the action button used to share one row
+  // (justify-between), so a wide button ("Submit content") squeezed the greeting until the
+  // name wrapped awkwardly beside it. Column on mobile, row from sm; the title also steps down
+  // a size on mobile, and min-w-0 lets a long name/subtitle wrap instead of forcing overflow.
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
-      <div className="flex items-center gap-3">
-        {Icon && <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><Icon size={20} className="text-[var(--primary-2)]" /></div>}
-        <div><h1 className="text-2xl font-bold">{title}</h1>{subtitle && <p className="text-sm text-[var(--muted)] mt-0.5">{subtitle}</p>}</div>
+    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
+      <div className="flex items-center gap-3 min-w-0">
+        {Icon && <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={20} className="text-[var(--primary-2)]" /></div>}
+        <div className="min-w-0"><h1 className="text-xl sm:text-2xl font-bold leading-tight">{title}</h1>{subtitle && <p className="text-sm text-[var(--muted)] mt-0.5">{subtitle}</p>}</div>
       </div>
-      {actions}
+      {actions && <div className="shrink-0">{actions}</div>}
     </div>
   );
 }
