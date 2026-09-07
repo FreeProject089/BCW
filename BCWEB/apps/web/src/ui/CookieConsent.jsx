@@ -13,8 +13,12 @@ import { getConsent, setConsent } from '../lib/consent.js';
  * the one thing a privacy-minded visitor must always get. Blocked now costs the tag manager
  * and nothing else — which is the outcome that visitor was asking for anyway.
  */
-const loadGtmIfConsented = () =>
-  import('../lib/gtm.js').then((m) => m.loadGtmIfConsented()).catch(() => {});
+// Accepting has to start EVERYTHING the visitor just consented to, not only the tag
+// manager. This used to import gtm.js alone, which is why a first visit produced no
+// interaction events, no Web Vitals, no error reports and no replay: App.jsx starts them
+// on mount, and at mount the banner had not been answered yet.
+const startMeasurement = () =>
+  import('../lib/measure-boot.js').then((m) => m.startMeasurement()).catch(() => {});
 
 // GDPR cookie consent manager. Essential cookies (the session) are always on and can't
 // be refused; analytics is opt-in. Compliance points baked in here:
@@ -28,7 +32,7 @@ export default function CookieConsent() {
   const [customise, setCustomise] = useState(false);
   const [analytics, setAnalytics] = useState(false); // granular toggle in the customise view
   if (choice) return null;
-  const decide = (v) => { setConsent(v); setChoice(v); if (v === 'all') loadGtmIfConsented(); };
+  const decide = (v) => { setConsent(v); setChoice(v); if (v === 'all') startMeasurement(); };
 
   return (
     <div className="fixed bottom-4 left-4 right-4 sm:right-auto z-[55] sm:w-[28rem] anim-slide" role="dialog" aria-modal="false" aria-label={t('cookie.title', 'Cookies')}>

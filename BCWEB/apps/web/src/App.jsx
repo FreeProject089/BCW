@@ -33,7 +33,11 @@ import { ShowcaseIcon, IconGlyph } from './ui/md.jsx';
  */
 const telemetry = () => import('./lib/analytics.js').catch(() => null);
 const trackPageview = (p) => { void telemetry().then((m) => m?.trackPageview(p)); };
-const loadGtmIfConsented = () => { void import('./lib/gtm.js').then((m) => m.loadGtmIfConsented()).catch(() => {}); };
+// DYNAMIC, and caught, like everything else in this group. A static import here would put
+// the measurement graph in the entry chunk, and these filenames are on every ad-block filter
+// list: one blocked request would then be a white page instead of a missing chart. That has
+// already happened once here and is why consent.js was pulled out of analytics.js.
+const startMeasurement = () => { void import('./lib/measure-boot.js').then((m) => m.startMeasurement()).catch(() => {}); };
 import { applySeoHead, setCanonical, fetchRouteMeta, applyRouteMeta } from './lib/seo.js';
 import { getOrbTransitionPref, getLogoutConfirm } from './lib/prefs.js';
 import { canAdmin, effectiveCaps, hasProjectGrant, utilAllowed } from './lib/roles.js';
@@ -1272,11 +1276,11 @@ export default function App() {
   // Session replay is imported LAZILY and last: it is the only one of these that can pull in
   // rrweb, and a visitor who declined analytics or an install with the switch off must never
   // download it. initReplay() checks consent before the dynamic import resolves anything heavy.
-  useEffect(() => {
-    loadGtmIfConsented();
-    void telemetry().then((m) => { m?.initVitals(); m?.initInteractions(); m?.initErrors(); });
-    import('./lib/replay.js').then((m) => m.initReplay()).catch(() => {});
-  }, []);
+  // One call, and the cookie banner makes the SAME one when the visitor accepts. This used
+  // to be five separate starts here and a single `loadGtmIfConsented()` there — so on a first
+  // visit GTM started on accept and interactions, vitals, errors and replay did not, for the
+  // whole of the visit in which consent was actually given.
+  useEffect(() => { startMeasurement(); }, []);
   // Search-engine head tags. Separate from the block above because it is NOT analytics and
   // must not be consent-gated: a description and an ownership token are part of the page, not
   // something done to the visitor.
