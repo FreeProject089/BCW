@@ -11817,17 +11817,26 @@ function DmBroadcast() {
         <>
           {bc && <div className="text-[11px] text-[var(--faint)] mb-2">{t('db.dma.done', 'Last broadcast: {sent} delivered, {failed} unreachable, of {total}.')
             .replace('{sent}', String(bc.sent)).replace('{failed}', String(bc.failed)).replace('{total}', String(bc.total))}</div>}
-          <Field label={t('db.dma.msg', 'Message')} hint={t('db.dma.msg.h', '{username} and {server} are substituted per recipient. Plain text — a DM is not a channel post.')}>
-            <Textarea rows={4} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={1500} />
-          </Field>
-          <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} />
-            {t('db.dma.linked', 'Only members who linked a BetterCommunity account')}
-          </label>
-          {/* On by default, and the reason is stated: an unsolicited DM to somebody who never
-              connected anything is what gets a bot reported to Discord. */}
-          <p className="text-[11px] text-[var(--faint)]">{t('db.dma.linked.h', 'Recommended. An unsolicited direct message to somebody who never linked anything is what gets a bot reported.')}</p>
-          <Button variant="primary" onClick={start} disabled={busy}>{busy ? <Spinner /> : <Send size={14} />} {t('db.dma.send', 'Send to everyone')}</Button>
+          {/* The message and the decisions about it, side by side. Stacked, the send button
+              sat three scrolls under the box you had just typed in. */}
+          <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5 lg:items-start">
+            <Field label={t('db.dma.msg', 'Message')} hint={t('db.dma.msg.h', '{username} and {server} are substituted per recipient. Plain text — a DM is not a channel post.')}>
+              <Textarea rows={7} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={1500} />
+              <div className="text-[10px] text-[var(--faint)] tabular-nums text-end mt-1">{msg.length} / 1500</div>
+            </Field>
+            <div className="mt-3 lg:mt-0 space-y-3">
+              <label className="flex items-start gap-2 text-xs cursor-pointer">
+                <input type="checkbox" className="mt-0.5" checked={linkedOnly} onChange={(e) => setLinkedOnly(e.target.checked)} />
+                <span>{t('db.dma.linked', 'Only members who linked a BetterCommunity account')}</span>
+              </label>
+              {/* On by default, and the reason is stated: an unsolicited DM to somebody who
+                  never connected anything is what gets a bot reported to Discord. */}
+              <p className="text-[11px] text-[var(--faint)]">{t('db.dma.linked.h', 'Recommended. An unsolicited direct message to somebody who never linked anything is what gets a bot reported.')}</p>
+              <Button variant="primary" className="w-full justify-center" onClick={start} disabled={busy || !msg.trim()}>
+                {busy ? <Spinner /> : <Send size={14} />} {t('db.dma.send', 'Send to everyone')}
+              </Button>
+            </div>
+          </div>
         </>
       )}
     </>
@@ -13935,7 +13944,7 @@ function BotGiveawaysCard() {
           <PanelSection title={t('gw.sec.running', 'Running')}>
             {loading ? <Loading /> : giveaways.length ? <div className="space-y-2">
               {giveaways.map((g) => (
-                <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
+                <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2.5">
                   <Gift size={14} className={g.status === 'active' ? 'text-success shrink-0' : 'text-[var(--faint)] shrink-0'} />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
@@ -13949,7 +13958,10 @@ function BotGiveawaysCard() {
           </PanelSection>
 
           <PanelSection title={t('gw.sec.new', 'New giveaway')}>
-          <div className="grid sm:grid-cols-2 gap-3">
+          {/* Four short fields across the row on a wide screen. A giveaway is prize + where +
+              how long + how many winners; as two columns they wrapped into four rows of
+              half-empty inputs. */}
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
             <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
             {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
@@ -14442,12 +14454,13 @@ function AdminBot() {
 
       {page === 'community' && (<>
       <SectionTitle icon={ShieldCheck} title={t('db.sec.community', 'Rules, role panels & member DMs')} sub={t('db.sec.community.sub', 'Aimed at people rather than at a channel.')} />
-      {/* The panel editor is a tall form (a whole panel per entry, with a live preview) and the
-          DM composer is short: side by side, one column ran three screens past the other. So
-          the editor takes the full row and the composer sits under it — the same "tall card
-          spans the row" rule as the announcements grid, not a two-column grid that breaks. */}
-      <div className="grid md:grid-cols-2 gap-4 items-start">
-        <div className="md:col-span-2">
+      {/* One column of full-width cards, and each card is horizontal INSIDE.
+          The two-column grid put a tall form beside a collapsed card, so the page was a narrow
+          strip of controls against half a screen of nothing — which is what "full vertical"
+          meant. Width is better spent inside a card, where a message and its options can sit
+          side by side, than on a second column that is empty most of the time. */}
+      <div className="space-y-4">
+        <div>
         {/* No enable toggle of its own: an empty panel list already means "off", and a second
             switch on top of that is a way to have panels configured, saved, and silently not
             live. `enabled` is deliberately NOT the panel count either — ModuleCard hides its
