@@ -6022,6 +6022,7 @@ const DICT = {
     'gw.created': 'Concours créé — le bot le poste sous ~30 s.', 'gw.end.t': 'Tirer maintenant ?', 'gw.end.m': 'Terminer ce concours maintenant et tirer les gagnants ?', 'gw.end.ok': 'Tirer',
     'gw.ending': 'Tirage — gagnants annoncés sous ~30 s.', 'gw.gift': 'cadeau', 'gw.endsat': 'se termine {d}', 'gw.ended': 'terminé · {n} gagnant(s)',
     'gw.entries': '{n} participations', 'gw.drawbtn': 'Tirer', 'gw.none': 'Aucun concours pour l’instant.',
+    'gw.sec.running': 'En cours', 'gw.sec.new': 'Nouveau concours',
     'db.logs': 'Logs du bot en direct', 'db.logs.updated': 'màj {t}', 'db.logs.none': 'Aucun log pour l’instant — le bot les envoie à chaque heartbeat (≤60 s). Si vide, le bot est peut-être hors ligne.',
     'db.logs.note': 'Rafraîchi toutes les 5 s tant que c’est ouvert. Utilise « Envoyer un message test » ci-dessus et regarde ici pour voir si un paiement se poste.',
     'db.pay.test': 'Envoyer un message test', 'db.pay.testsent': 'Test en file — le bot le publie sous ~2 min. Vérifie le salon (et les logs du bot si rien n’apparaît).',

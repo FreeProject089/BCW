@@ -13838,17 +13838,41 @@ function BotDMCard() {
  *  A form that shows every optional field at once is not "complete", it is a wall — and the
  *  summary is what keeps the fold honest: closed, it still tells you what it is holding, so
  *  nothing set in there is invisible. */
+/**
+ * An optional block that collapses to a single hairline row.
+ *
+ * It used to draw itself as a rounded, bordered box. Inside a Card that is already a bordered
+ * box, holding two MORE bordered boxes of its own, the giveaway block came out as four nested
+ * frames — a card visibly chopped into pieces rather than one panel. A rule above the row does
+ * the same separating job with none of the chopping.
+ */
 function Fold({ title, summary, children, defaultOpen = false }) {
   const [on, setOn] = useState(defaultOpen);
   return (
-    <div className="rounded-lg border border-[var(--line)] overflow-hidden">
+    <div className="border-t border-[var(--line)]">
       <button type="button" onClick={() => setOn((v) => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-[var(--surface-2)]/50 transition-colors">
+        className="w-full flex items-center gap-2 py-2.5 text-start group">
         <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${on ? 'rotate-180' : ''}`} />
-        <span className="text-[12.5px] font-medium">{title}</span>
+        <span className="text-[12.5px] font-medium group-hover:text-[var(--fg)] transition-colors">{title}</span>
         {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]">{summary}</span> : null}
       </button>
-      {on && <div className="px-3 pb-3 pt-1 border-t border-[var(--line)]">{children}</div>}
+      {on && <div className="pb-3">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * A titled region inside a panel. A label and a rule — not another card.
+ * Used to tell "what is running" from "make a new one" without boxing either.
+ */
+function PanelSection({ title, right, first = false, children }) {
+  return (
+    <div className={first ? '' : 'border-t border-[var(--line)] mt-3 pt-3'}>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{title}</span>
+        {right ? <span className="ms-auto">{right}</span> : null}
+      </div>
+      {children}
     </div>
   );
 }
@@ -13892,8 +13916,29 @@ function BotGiveawaysCard() {
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="mt-3 space-y-3">
+        <div className="mt-3">
           <p className="text-[11px] text-[var(--faint)]">{t('gw.note2', 'Members can also start their own with /giveaway (Discord-only, max 5 per server). Staff giveaways here can run on Discord, on the site, and hand the winner a prize into their BCWEB inventory.')}</p>
+
+          {/* What is running comes FIRST. This is a management panel: the reason to open it is
+              usually to check or end a giveaway, and that list used to sit underneath the whole
+              creation form — past four fields, a fold and a Create button. */}
+          <PanelSection title={t('gw.sec.running', 'Running')}>
+            {loading ? <Loading /> : giveaways.length ? <div className="space-y-2">
+              {giveaways.map((g) => (
+                <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
+                  <Gift size={14} className={g.status === 'active' ? 'text-success shrink-0' : 'text-[var(--faint)] shrink-0'} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
+                    <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
+                  </div>
+                  {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}
+                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(g)}><Trash2 size={13} /></Button>
+                </div>
+              ))}
+            </div> : <div className="text-xs text-[var(--faint)]">{t('gw.none', 'No giveaways yet.')}</div>}
+          </PanelSection>
+
+          <PanelSection title={t('gw.sec.new', 'New giveaway')}>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
             <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
@@ -13916,8 +13961,9 @@ function BotGiveawaysCard() {
                   <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
                 </Field>
               )}
-              {/* Entry requirements — gate who can enter (enforced server-side on Enter). */}
-              <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
+              {/* Entry requirements — gate who can enter (enforced server-side on Enter).
+                  A label and a rule, not a fourth nested frame. */}
+              <div className="border-t border-[var(--line)] pt-3 space-y-2">
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
                 <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
                 <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
@@ -13929,7 +13975,7 @@ function BotGiveawaysCard() {
                 value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
                 placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
               {f.prizeKind === 'promo' && (
-                <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
+                <div className="border-t border-[var(--line)] pt-3 grid sm:grid-cols-2 gap-3">
                   <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize — the code is generated when the winner reveals it')}</div>
                   <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
                   {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
@@ -13939,21 +13985,8 @@ function BotGiveawaysCard() {
               )}
             </div>
           </Fold>
-          <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Plus size={14} /> {t('gw.create', 'Create giveaway')}</>}</Button></div>
-
-          {loading ? <Loading /> : giveaways.length ? <div className="space-y-2 pt-1">
-            {giveaways.map((g) => (
-              <div key={g.id} className="flex items-center gap-3 text-sm rounded-lg bg-[var(--surface-2)] px-3 py-2">
-                <Gift size={14} className={g.status === 'active' ? 'text-success shrink-0' : 'text-[var(--faint)] shrink-0'} />
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{g.prize} {g.hasGift && <Badge tone="primary"><Gift size={9} /> {t('gw.gift', 'gift')}</Badge>} {g.requirements?.creator ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.creator', 'creator id')}</Badge> : g.requirements?.linked ? <Badge tone="amber"><Lock size={9} /> {t('gw.badge.linked', 'linked')}</Badge> : null}</div>
-                  <div className="text-[11px] text-[var(--faint)]">{g.status === 'active' ? t('gw.endsat', 'ends {d}').replace('{d}', new Date(g.endsAt).toLocaleString()) : t('gw.ended', 'ended · {n} winner(s)').replace('{n}', g.winnerIds?.length || 0)} · {t('gw.entries', '{n} entries').replace('{n}', g.entryCount)}</div>
-                </div>
-                {g.status === 'active' && <Button size="sm" variant="ghost" onClick={() => end(g)}>{t('gw.drawbtn', 'Draw now')}</Button>}
-                <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(g)}><Trash2 size={13} /></Button>
-              </div>
-            ))}
-          </div> : <div className="text-xs text-[var(--faint)]">{t('gw.none', 'No giveaways yet.')}</div>}
+          <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Plus size={14} /> {t('gw.create', 'Create giveaway')}</>}</Button></div>
+          </PanelSection>
         </div>
       )}
     </Card>
