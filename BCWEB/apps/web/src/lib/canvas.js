@@ -237,3 +237,58 @@ export function bringTo(blocks, id, where) {
   const z = where === 'front' ? Math.max(0, ...zs) + 1 : Math.min(0, ...zs) - 1;
   return blocks.map((b) => (b.id === id ? { ...b, z } : b));
 }
+
+// ── Undo ─────────────────────────────────────────────────────────────────────
+// A canvas editor without undo is one bad drag away from losing work, and undo in a canvas
+// editor is not "one entry per change": a single drag fires a state update on every pointer
+// move, so the naive version needs sixty presses of Ctrl+Z to walk back one gesture.
+//
+// So entries COALESCE. A key identifies the gesture — "dragging block b7", "typing in b7's
+// text" — and consecutive pushes with the same key inside a short window collapse into the
+// one entry that was there when the gesture started. A different key, or a long enough pause,
+// starts a new entry. Kept pure so the rule can be tested rather than felt out by clicking.
+
+export const HISTORY_LIMIT = 50;
+export const COALESCE_MS = 700;
+
+export const emptyHistory = () => ({ past: [], future: [], key: null, at: 0 });
+
+/**
+ * Record `snapshot` (the state BEFORE the change being made) as an undo point.
+ *
+ * @param {object} hist
+ * @param {object} snapshot   the canvas as it was
+ * @param {string|null} key   the gesture. null = always a new entry (a discrete action)
+ * @param {number} now
+ */
+export function pushHistory(hist, snapshot, key = null, now = Date.now()) {
+  const h = hist || emptyHistory();
+  // Same gesture, still going: the entry already on the stack is the right one to come back
+  // to, so keep it and only refresh the clock.
+  if (key && h.key === key && now - h.at < COALESCE_MS && h.past.length) {
+    return { ...h, at: now };
+  }
+  const past = [...h.past, snapshot].slice(-HISTORY_LIMIT);
+  // Any new change abandons the redo branch — the future being undone into no longer exists.
+  return { past, future: [], key, at: now };
+}
+
+/** @returns {{hist: object, value: object}|null} null when there is nothing to undo. */
+export function undo(hist, current) {
+  const h = hist || emptyHistory();
+  if (!h.past.length) return null;
+  const past = h.past.slice(0, -1);
+  const value = h.past[h.past.length - 1];
+  // `key: null` so the next edit after an undo always starts a fresh entry rather than
+  // coalescing into the gesture that was just undone.
+  return { hist: { past, future: [...h.future, current].slice(-HISTORY_LIMIT), key: null, at: 0 }, value };
+}
+
+/** @returns {{hist: object, value: object}|null} null when there is nothing to redo. */
+export function redo(hist, current) {
+  const h = hist || emptyHistory();
+  if (!h.future.length) return null;
+  const future = h.future.slice(0, -1);
+  const value = h.future[h.future.length - 1];
+  return { hist: { past: [...h.past, current].slice(-HISTORY_LIMIT), future, key: null, at: 0 }, value };
+}

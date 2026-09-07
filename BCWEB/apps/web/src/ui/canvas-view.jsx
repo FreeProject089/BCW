@@ -11,8 +11,10 @@ import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
 import { normalizeCanvas, layoutFor, readingOrder, paintOrder, DESIGN_WIDTH } from '../lib/canvas.js';
 
-/** One block's own painting, shared by both modes so they cannot look different. */
-function Block({ b, stacked }) {
+/** One block's own painting, shared by both modes so they cannot look different.
+ *  Exported because the editor draws single blocks too, and a second implementation of
+ *  "what a block looks like" is exactly how an editor starts lying about the page. */
+export function CanvasBlock({ b, stacked }) {
   const p = b.props || {};
   const style = {
     background: p.bg || undefined,
@@ -80,7 +82,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false }) {
       <div ref={hostRef} className="space-y-4" style={{ background: canvas.bg || undefined }}>
         {readingOrder(canvas.blocks).map((b) => (
           <div key={b.id} className="min-w-0">
-            <Block b={b} stacked />
+            <CanvasBlock b={b} stacked />
           </div>
         ))}
       </div>
@@ -116,7 +118,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false }) {
               // to discover it.
               style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: b.z, overflow: 'hidden' }}
             >
-              <Block b={b} />
+              <CanvasBlock b={b} />
             </div>
           ))}
         </div>

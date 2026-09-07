@@ -6046,6 +6046,7 @@ const DICT = {
     'cst.src': 'URL de l’image', 'cst.alt': 'Texte alternatif',
     'cst.alt.h': 'Ce que dit l’image, pour qui ne peut pas la voir.',
     'cst.bg': 'Fond', 'cst.radius': 'Arrondi des coins', 'cst.deselect': 'Désélectionner',
+    'cst.upload': 'Téléverser une image', 'cst.uploading': 'Téléversement…',
     'pce.canvases': 'Pages studio', 'pce.canvases.title': 'Titre de l’onglet', 'pce.canvases.add': 'Ajouter une page studio',
     'dash.pay.market.m': 'Ton achat est dans « Ce que tu as acheté », plus bas — avec la clé ou le contenu livré.',
     'dash.pay.marketitem': 'Achat sur la marketplace',
