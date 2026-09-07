@@ -557,11 +557,15 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children 
           {/* Sub-tabs. Only when the current tab has them — a single-item row would be a
               label pretending to be a control. */}
           {current?.sub?.length > 1 && (
-            <div className="inline-flex flex-wrap rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-4">
+            // Self-contained bordered pills rather than one tinted segmented box: a segmented
+            // control that flex-wraps onto a second line reads as broken (a rounded strip with a
+            // gap through it). Each pill owns its border, so wrapping is clean; the active one is
+            // an accent tint + accent border, the rest sit on the surface.
+            <div className="flex flex-wrap gap-1.5 mb-4">
               {current.sub.map((lf) => (
                 <button key={lf.id} onClick={() => set(lf.id)}
-                  className={`px-3 py-1.5 rounded-[10px] text-sm flex items-center gap-1.5 ${activeLeaf === lf.id ? 'bg-[var(--bg-solid)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-                  {lf.icon && <lf.icon size={13} />} {lf.label}
+                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border transition-colors press ${activeLeaf === lf.id ? 'bg-[var(--primary)]/10 border-[var(--primary)]/40 text-[var(--text)] font-medium' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}>
+                  {lf.icon && <lf.icon size={13} className={activeLeaf === lf.id ? 'text-[var(--primary-2)]' : ''} />} {lf.label}
                   {lf.badge ? <Badge tone="primary">{lf.badge}</Badge> : null}
                 </button>
               ))}
