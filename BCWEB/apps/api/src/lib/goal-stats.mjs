@@ -54,7 +54,15 @@ export async function measureGoal(p, g, from, to = null) {
     return { completions: c, visitors: Number(v?.[0]?.n || 0) };
   }
 
-  if (DIMENSION_KINDS[g.kind]) {
+  // `Object.hasOwn`, not a bare `DIMENSION_KINDS[g.kind]`. That read is truthy for every
+  // member of Object.prototype — `constructor`, `toString`, `valueOf` — and `field` then
+  // becomes a FUNCTION that gets stringified into the SQL as a quoted column name
+  // (`"function toString() { [native code] }"`). No quote character survives that
+  // stringification so it is a 500 rather than an injection, and the write path's z.enum
+  // means no such row can be created through the API today — but a guard that is "is this
+  // key truthy" on a value read back from the database is the wrong shape for the thing
+  // standing in front of an interpolated column name.
+  if (Object.hasOwn(DIMENSION_KINDS, g.kind)) {
     // A pageview-dimension goal: match visitors by referrer / geo / tech attribute.
     const field = DIMENSION_KINDS[g.kind];
     const val = (g.label || '').trim();

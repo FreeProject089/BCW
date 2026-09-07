@@ -76,16 +76,11 @@ function surfaceVars(bg, text, lift) {
 // gives a middling wash rather than throwing on the way to painting the page.
 const hexish = (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '').trim()) ? v.trim() : '#808080');
 
-// A token value ends up inside a <style> element, so it is a place where a stray `}` would
-// end the rule and everything after it would be attacker-chosen CSS. Only colours are
-// allowed through, by shape: hex, rgb()/rgba(), hsl()/hsla(), and color-mix(in srgb, …).
-// The API enforces the same rule — this copy exists so the PREVIEW cannot render something
-// the server would refuse, which would be a preview that lies.
-const COLOUR = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|color-mix\(in srgb[^;{}]*\))$/;
-export function safeColour(v) {
-  const s = String(v ?? '').trim();
-  return s && s.length <= 120 && COLOUR.test(s) ? s : null;
-}
+// The colour allowlist lives in theme-colour.js (see there for why). Imported AND re-exported:
+// `export { x } from './y'` alone forwards the name without binding it here, and overrideVars
+// below calls it — which is a ReferenceError at the first themed page, not a build error.
+import { safeColour } from './theme-colour.js';
+export { safeColour };
 
 /** Explicit per-token overrides, filtered to what is safe to emit. */
 function overrideVars(map) {

@@ -18,17 +18,24 @@
 /** The accent references a stop may use by name, instead of freezing a hex. */
 export const STOP_REFS = ['var(--primary)', 'var(--primary-2)', 'var(--text)', 'var(--bg)'];
 
-// Same shape rule as every other themed value: these land inside a CSS declaration in a
-// <style> element, so a stray `}` would end the rule and everything after it would be
-// attacker-chosen CSS. Colour shapes and the four accent references, nothing else. The API
-// enforces the identical rule — this copy exists so the admin PREVIEW cannot render what the
-// server would refuse.
-const COLOUR = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|color-mix\(in srgb[^;{}]*\))$/;
+// Same rule as every other themed value, and it is the theme's own allowlist rather than a
+// second shape check — a gradient stop lands in `.btn-primary { background: … }`, which is
+// precisely a property that will fetch a `url()` if one reaches it. `safeColour` is the one
+// place that decides what a colour is; this file does not get its own opinion.
+import { safeColour } from './theme-colour.js';
+
 export function safeStop(v) {
   const s = String(v ?? '').trim();
   if (!s || s.length > 120) return null;
   if (STOP_REFS.includes(s)) return s;
-  return COLOUR.test(s) ? s : null;
+  // A BARE `var(--x)` is narrower here than in a page token. `safeColour` allows any theme
+  // token because a derived surface is legitimately `color-mix(in srgb, var(--text) 12%, …)`,
+  // but the API's gradient schema allows only the four accent references by exact string —
+  // and a client that accepted `var(--anything)` would render a preview the save then
+  // refuses. Which is the drift this whole allowlist exists to stop, so it does not get to
+  // start here. A var() INSIDE a color-mix still goes through, as the server allows.
+  if (/^var\(/i.test(s)) return null;
+  return safeColour(s);
 }
 
 /**

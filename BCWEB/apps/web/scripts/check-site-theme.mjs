@@ -56,6 +56,73 @@ for (const g of GRADIENTS) {
 // stylesheet, or deriving it does nothing.
 must(css.includes('var(--page-top,'), '--page-top is derived and offered in the editor but index.css never reads it');
 
+// ── 1b. the COLOUR allowlist, on both sides, against the same corpus ─────────────────
+//
+// The client copy exists so the admin preview cannot render what the server would refuse.
+// The failure that matters is the other direction: the client accepting what the server
+// would reject is a cosmetic annoyance, the client accepting what the server ALSO accepts
+// and neither should is a hole. That is what happened — the shape check's `color-mix` branch
+// read as "a colour" and meant "anything without a semicolon or a brace":
+// `color-mix(in srgb, red, blue) url(https://evil/x)` passed both copies, and
+// `background: <colour> <image>` is valid CSS, so one page token made every card on the site
+// fetch a third-party URL, on every page load, outside anything the cookie banner governs.
+//
+// So the payloads live here, and both implementations must agree on every one of them.
+const HOSTILE = [
+  'color-mix(in srgb, red, blue) url(https://evil/x)',   // the one that got through
+  'color-mix(in srgb) url(x)',
+  'color-mix(in srgb,red,blue),url(https://evil/x)',
+  'color-mix(in srgb, red, blue) image-set(a.png)',
+  'color-mix(in srgb, element(#x), blue)',
+  'color-mix(in srgb, url(https://evil/x), blue)',
+  'color-mix(in srgb, red, blue) 50% url(x)',
+  'red;}body{display:none',
+  'url(https://evil/x)',
+  'expression(1)',
+  '#fff}body{display:none',
+  'attr(data-x)',
+];
+// Every one of these is emitted by the engine itself or typed by a superadmin who means it.
+// A gate that refuses them is a gate that breaks the site, so they are pinned too.
+const LEGIT = [
+  '#f97316', '#fff', 'rgba(249, 115, 22, 0.4)', 'hsl(30, 90%, 50%)', 'transparent',
+  'currentColor', 'var(--primary)',
+  'color-mix(in srgb, #ffffff 4.8%, #f4efe8)',
+  'color-mix(in srgb, #17140f 72%, #f4efe8)',
+  'color-mix(in srgb, var(--text) 12%, transparent)',
+];
+
+const { safeColour: webColour } = await import(pathToFileURL(join(process.cwd(), 'src/ui/theme-colour.js')).href);
+const { safeColour: apiColour } = await import(pathToFileURL(join(process.cwd(), '../api/src/lib/config-schemas.mjs')).href);
+must(typeof apiColour === 'function', 'the API no longer exports safeColour — this check would pass vacuously');
+for (const v of HOSTILE) {
+  must(webColour(v) === null, `the web colour gate ACCEPTS a hostile value: ${v}`);
+  must(apiColour(v) === null, `the API colour gate ACCEPTS a hostile value: ${v}`);
+}
+for (const v of LEGIT) {
+  must(webColour(v) === v, `the web colour gate refuses a legitimate value: ${v}`);
+  must(apiColour(v) === v, `the API colour gate refuses a legitimate value: ${v}`);
+}
+// And a stop is the same gate, because a gradient lands in `background:` — the property that
+// will actually fetch a url() if one reaches it.
+const { safeStop } = await import(pathToFileURL(join(process.cwd(), 'src/ui/theme-gradients.js')).href);
+for (const v of HOSTILE) must(safeStop(v) === null, `a gradient stop ACCEPTS a hostile value: ${v}`);
+
+// The stop gate is NARROWER than the token gate on one point — a bare `var(--x)` may only be
+// one of the four accent references — and the two sides have to agree on that too. This is not
+// hypothetical tidiness: tightening the token gate silently WIDENED both stop gates (any
+// `var()` became acceptable), and then narrowing the client alone left the API the looser of
+// the two. Each drift was caught here rather than in a preview that renders what the save
+// refuses, so the agreement is what gets asserted, not either side's answer.
+const { gradients: apiGradients } = await import(pathToFileURL(join(process.cwd(), '../api/src/lib/config-schemas.mjs')).href);
+const STOPS = [...HOSTILE, ...LEGIT, 'var(--primary)', 'var(--primary-2)', 'var(--text)', 'var(--bg)',
+  'var(--anything)', 'var(--page-glows)', 'var(--surface)'];
+for (const v of STOPS) {
+  const web = safeStop(v) !== null;
+  const api2 = apiGradients.safeParse({ '--grad-primary': { stops: [{ color: v }, { color: '#fff' }] } }).success;
+  must(web === api2, `client and API disagree about the gradient stop ${JSON.stringify(v)}: client ${web ? 'accepts' : 'refuses'}, API ${api2 ? 'accepts' : 'refuses'}`);
+}
+
 // ── 2. the two token allowlists ──────────────────────────────────────────────────────
 const { TOKENS } = await import(pathToFileURL(join(process.cwd(), 'src/ui/theme-tokens.js')).href);
 const api = readFileSync('../api/src/lib/config-schemas.mjs', 'utf8');

@@ -720,3 +720,141 @@ No Postgres-backed API test suite run (it would mutate the dev DB); economy and 
 by code + syntax + the security gate, not by a live seeded race harness — worth one before sign-off.
 BMM and BetterInstaller only type-checked/gated, not launched (no Tauri here). The bot was never
 driven (prod-linked).
+
+# Pentest — 2026-09-07b (second pass over `.Assets/PLAN-PENTEST-SEPT2026.md`)
+
+A deliberate re-run of the same plan, on the user's instruction to insist rather than trust the
+first pass. It was aimed at the three places a second look is worth anything:
+
+1. **Code written after the first pass.** The site-theme rework (gradients as stored data,
+   per-scheme logos, ten new tokens), the studio permission flag, the raw-SQL goal measurement,
+   the canvas, the B.MD table ops and the feedback request ceiling all landed *after* the
+   2026-09-07 audit, so none of them had ever been looked at. This is where the finding was.
+2. **What the first pass recorded as "Not run".** Its own closing note said the economy fixes
+   were "verified by code + syntax + the security gate, not by a live seeded race harness —
+   worth one before sign-off". That harness exists now and has been run.
+3. **The cards that got the least depth** — 9 (BMM desktop), 12 (regression).
+
+## Fixed
+
+### 1. A site-theme token or gradient stop could make every visitor fetch a third-party URL (CSS injection, medium)
+`apps/web/src/ui/theme.jsx`, `apps/api/src/lib/config-schemas.mjs`.
+
+The theme's colour gate was a shape check whose third branch was
+`color-mix\(in srgb[^;{}]*\)` — which reads as "a colour" and means "anything at all, as long
+as it has no semicolon or brace and ends in a paren". `color-mix(in srgb, red, blue)
+url(https://evil/x)` satisfies it, and `background: <colour> <image>` is perfectly valid CSS,
+so a single page token turned every `.card` on the site into a request to a third party.
+
+Proven end to end rather than argued: the string passed the client gate, passed the API's copy
+of it (`pageColours.safeParse` → success), was emitted into the theme `<style>`, and the
+browser resolved `background` to `url("https://evil/x")`. The edge CSP does not stop it —
+`img-src` allows `https:`. It fires on every page load, for every visitor, and *outside*
+anything the cookie banner governs, because the banner gates scripts and knows nothing about
+stylesheets. The same value was accepted as a gradient stop, which lands in `.btn-primary`'s
+`background` — the property that actually performs the fetch.
+
+It needs the SUPERADMIN role, so it is not privilege escalation. It is recorded as a real
+finding anyway because of what it says about the first pass: that pass closed exactly this
+class for B.MD's directive `color=` with an allowlist (`safeColor`), and left the copy that
+reaches *every page* rather than one document. One of two gates hardened is the shape a second
+look is for.
+
+Now an allowlist, in `apps/web/src/ui/theme-colour.js` (its own import-free module so the
+gradient stops and the page tokens cannot each grow their own opinion, and so the check script
+can run it in plain node). A hex, an rgb/hsl function of numbers, a bare colour name, a
+`var(--token)`, or a `color-mix(in srgb, …)` whose arguments are themselves those things with
+an optional percentage. Nothing else — no `url()`, no `image-set()`, no `element()`, no
+`attr()`.
+
+`scripts/check-site-theme.mjs` now carries the payloads: 12 hostile values and 10 legitimate
+ones, asserted identically on **both** implementations, plus an assertion that the client and
+the API agree case-by-case on gradient stops. Mutation-verified: restoring the old regex on
+either side alone fails the check (exit 1) naming the value that got through.
+
+That agreement check earned its place immediately — it caught two drifts introduced *by this
+very fix*, before either could ship:
+
+- tightening the token gate silently **widened** both gradient-stop gates, because
+  `safeColour` accepts any `var(--token)` (a derived surface legitimately reads
+  `color-mix(in srgb, var(--text) 12%, …)`) while the stop rule had never allowed a bare
+  `var()` at all;
+- narrowing the client back then left the **API** the looser of the two.
+
+A bare `var(--x)` in a stop is now the four accent references only, on both sides.
+
+### 2. `measureGoal` guarded an interpolated column name with a bare property read (low)
+`apps/api/src/lib/goal-stats.mjs`. `if (DIMENSION_KINDS[g.kind])` is truthy for every member of
+`Object.prototype` — `constructor`, `toString`, `valueOf` — and `field` then stringifies a
+**function** into the SQL as a quoted identifier
+(`"function toString() { [native code] }"`). No quote character survives that stringification,
+so it is a 500 rather than an injection, and the write path's `z.enum` means no such row can be
+created through the API today. It is fixed regardless: a guard shaped "is this key truthy" is
+the wrong thing to put in front of an interpolated column name, and `Object.hasOwn` is the same
+line. Pinned by a test that needs no database, so it runs even when the rest of that suite
+skips.
+
+## Re-verified by RUNNING it — the first pass's "Not run" list
+
+### Economy concurrency (card 2's unmet "Done" criterion)
+A race harness now exists, run inside the api container against the real Postgres with its own
+throwaway users, removed afterwards. Twenty rounds each of: six concurrent debits of the whole
+balance; six 200-point debits against 1000; and a four-way gift race where each winner credits
+a second account.
+
+**Result: clean.** Exactly one whole-balance debit wins per round, the balance never goes
+negative, and the total number of points across both accounts is unchanged by the gift race.
+
+The result is only worth the mutation that backs it. Putting the pre-fix read-modify-write back
+**inside the container only** reproduces the original bug exactly: 6 of 6 debits of the whole
+balance succeed, the partial race ends at 800 where the arithmetic says −200, and the gift race
+leaves **4000 points where 1000 were seeded** — points minted from nothing, four times over.
+Restored, 20 clean rounds. The September fix holds under real concurrency; that is now a
+measurement rather than a reading.
+
+### Card 12 — regression, re-run live
+
+| Probe | Result |
+|---|---|
+| Secrets in a query string reaching the log | `"url":"/api/health","queryKeys":["k","password"]` — names only, no values. The log line is quoted here because a canary probe that was never logged proves nothing. |
+| Unsigned Stripe event | `POST /webhook` → **400** `{"error":"bad_signature"}` (the August note recorded 503; same refusal, clearer code). |
+| Admin routes without a session | `PUT /admin/theme` → 401, `GET /admin/feedback` → 401. |
+
+### Card 9 — BMM desktop, the two questions that were open
+
+- **`read_file_base64` has no path confinement at all** (`std::fs::read(&path)`, no guard) —
+  and no untrusted caller can reach it. Traced every surface: it is registered as a Tauri
+  command and called only from BMM's own feedback and BetaHub modals, where the path comes from
+  a native file dialog; it appears in no API action registry and no MCP tool; and custom
+  `bmmpage://` pages are sandboxed *without* `allow-same-origin`, so they have no `invoke` at
+  all. Not a finding by the plan's own exclusion ("no lack of hardening without a path"), but
+  recorded below as a recommendation, because the day it is exposed to a plugin or an MCP tool
+  it becomes arbitrary file read with no second gate.
+- **A scheduled task cannot grant itself permissions.** `sanitiseImportedTask` sets every
+  permission to false and imports the task **disabled**, then tells the user which ones it
+  asked for. So the hostile path card 9 asks about — a catalog or plugin shipping a task that
+  reads a file (`fs`) and posts it (`http`, gated behind `command`) — is closed at import, not
+  at execution.
+
+## Open — recommendations, unchanged from the first pass unless noted
+
+Everything in the 2026-09-07 "Open" section still stands and is not repeated. Added by this
+pass:
+
+- **Confine `read_file_base64` now, not when it is exposed.** The other disk commands carry the
+  CWE-22 guard; this one predates the plugin and MCP surfaces and has never needed it. Confining
+  it to the configured profile roots plus the crash/log directories costs nothing today and
+  removes the question permanently. (`external-drive-paths`: the confinement must be to the
+  *configured roots*, not to the app directory — absolute paths on other drives are legitimate
+  here.)
+- **The theme's colour gate and B.MD's are now two allowlists with the same job.** They are
+  deliberately separate (different value vocabularies: B.MD has no `color-mix`), and each is
+  now gated — but a third emitter of author-controlled CSS would start from neither. Worth one
+  shared module the next time one is added.
+
+## Not run
+The Postgres-backed API suite was not run in full (it writes to the dev database); the economy
+harness is the exception and cleans up after itself. BMM was not launched (no Tauri here) — its
+half is `tsc` + the gates + reading. The Discord bot was never driven (prod-linked), per the
+plan's rule 3. Cards 10 (BetterInstaller) and 11 (infra) were not re-run: nothing in them
+changed since the first pass, and re-reading unchanged files is not a second opinion.

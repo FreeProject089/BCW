@@ -36,14 +36,58 @@ export const HEX = /^#[0-9a-fA-F]{6}$/;
 export const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null, gradients: null, logoLight: '', logoDark: '' };
 // A token value is emitted into a <style> element on every visitor's page, so it is a CSS
 // injection point: a stray `}` would end the rule and everything after it would be
-// attacker-chosen CSS. Only colour SHAPES are accepted — hex, rgb/hsl functions, and
-// color-mix — and the token NAME is checked against an allowlist, not merely pattern-matched,
-// so a superadmin cannot set `--anything` the stylesheet does not already define.
+// attacker-chosen CSS. The token NAME is checked against an allowlist below, so a superadmin
+// cannot set `--anything` the stylesheet does not define — and the VALUE is checked by an
+// allowlist too, which it was not.
 //
-// The same regex lives in apps/web/src/ui/theme.jsx. Duplicated deliberately: the client copy
-// makes the admin PREVIEW refuse what the server would refuse, and a preview that renders
-// something the server rejects is a preview that lies.
-const COLOUR = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\([0-9.,%\s/-]+\)|color-mix\(in srgb[^;{}]*\))$/;
+// It used to be a shape check ending in
+// `color-mix\(in srgb[^;{}]*\)` — "anything without a semicolon or a brace, ending in a
+// paren" — which is far wider than it reads: `color-mix(in srgb, red, blue) url(https://evil/x)`
+// passed it, and `background: <colour> <image>` is valid CSS, so one page token turned every
+// card on the site into a request to a third party, on every page load, for every visitor,
+// and outside anything the cookie banner governs (it gates scripts, not stylesheets). The
+// edge CSP does not stop it either: `img-src` allows `https:`.
+//
+// The September pass closed exactly this class for B.MD's directive `color=` and left this
+// copy, which reaches every page rather than one document — so this is the same allowlist,
+// here. `apps/web/src/ui/theme-colour.js` is the client's copy, and
+// `apps/web/scripts/check-site-theme.mjs` asserts the two agree on a shared corpus, so
+// "duplicated deliberately" can no longer quietly become "duplicated and drifted".
+const CHEX = /^#[0-9a-fA-F]{3,8}$/;
+const CFUNC = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.,%\s/-]+\)$/;
+const NAMED = /^[a-zA-Z]{1,24}$/;
+const CVAR = /^var\(\s*--[a-zA-Z0-9_-]{1,48}\s*\)$/;
+const PCT = /^-?[0-9.]{1,8}%$/;
+const simpleColour = (s) => CHEX.test(s) || CFUNC.test(s) || NAMED.test(s) || CVAR.test(s);
+/** Split on commas at depth 0, so `rgb(1, 2, 3) 40%` stays one argument. */
+function splitArgs(s) {
+  const out = []; let depth = 0, cur = '';
+  for (const ch of s) {
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth -= 1;
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((x) => x.trim());
+}
+export function safeColour(v) {
+  const s = String(v ?? '').trim();
+  if (!s || s.length > 120) return null;
+  if (simpleColour(s)) return s;
+  const m = /^color-mix\(\s*in\s+srgb\s*,([\s\S]+)\)$/i.exec(s);
+  if (!m) return null;
+  const args = splitArgs(m[1]);
+  if (args.length < 2 || args.length > 3) return null;
+  for (const a of args) {
+    const parts = a.split(/\s+/).filter(Boolean);
+    if (!parts.length || parts.length > 2) return null;
+    const colour = parts.find((x) => !PCT.test(x));
+    const pcts = parts.filter((x) => PCT.test(x));
+    if (!colour || pcts.length > 1 || !simpleColour(colour)) return null;
+  }
+  return s;
+}
 const TOKEN_NAMES = new Set([
   '--primary', '--primary-2', '--on-primary',
   '--bg', '--bg-solid', '--surface', '--surface-2', '--surface-3', '--avatar-ring',
@@ -55,12 +99,12 @@ const TOKEN_NAMES = new Set([
   '--on-error', '--error-glow',
   '--ring', '--primary-glow', '--glow-a', '--glow-b', '--glow-c', '--page-top',
 ]);
-const colour = z.string().max(120).regex(COLOUR);
+const colour = z.string().max(120).refine((v) => safeColour(v) !== null, 'colour');
 // `bg` and `text` are the two inputs the surface set is derived from; every other key must be
 // a known token name.
 // One radial "light spot" in the page background. Geometry is numeric and clamped, so a
 // configured background cannot push a gradient somewhere that breaks the layout, and the
-// colour goes through the same COLOUR regex as every token — these end up inside a CSS
+// colour goes through the same allowlist as every token — these end up inside a CSS
 // declaration, and that regex is the thing standing between a stored value and `};`.
 const glowSpot = z.object({
   color: colour,
@@ -98,7 +142,13 @@ export const pageColours = z.object({
 const STOP_REFS = new Set(['var(--primary)', 'var(--primary-2)', 'var(--text)', 'var(--bg)']);
 const GRADIENT_NAMES = new Set(['--grad-primary', '--grad-text', '--grad-bar']);
 const stop = z.object({
-  color: z.string().max(120).refine((v) => STOP_REFS.has(v) || COLOUR.test(v), 'colour'),
+  // A BARE `var(--x)` is narrower here than in a page token: only the four accent references,
+  // by exact string. `safeColour` allows any theme token because a derived surface legitimately
+  // reads `color-mix(in srgb, var(--text) 12%, …)` — but a gradient stop that could name ANY
+  // custom property is a wider door than this needs, and the client enforces the same rule, so
+  // the two cannot drift into a preview that renders what the save refuses.
+  color: z.string().max(120).refine(
+    (v) => STOP_REFS.has(v) || (!/^var\(/i.test(v) && safeColour(v) !== null), 'colour'),
   at: z.number().min(-100).max(200).optional(),
 });
 const gradientSpec = z.object({

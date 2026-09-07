@@ -110,3 +110,18 @@ test('a dimension goal with no path is not restricted by one', { skip }, async (
   assert.equal(withPath.completions, 2, 'only the two CH rows on /checkout');
   assert.ok(noPath.completions >= 3, 'without a path it must also see the CH row on /other');
 });
+
+test('a goal kind that is a property of Object.prototype does not become a column name', async () => {
+  // No database needed — the map is a pure export, so this case runs even when the rest skips.
+  const { DIMENSION_KINDS } = await import('../src/lib/goal-stats.mjs');
+  // `if (DIMENSION_KINDS[g.kind])` is truthy for `constructor`, `toString`, `valueOf`… and
+  // `field` then stringifies a FUNCTION into the SQL as a quoted identifier. The write path's
+  // z.enum keeps such a row out today; this pins the guard rather than the caller.
+  for (const kind of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__']) {
+    assert.equal(Object.hasOwn(DIMENSION_KINDS, kind), false, kind);
+  }
+  for (const kind of ['referrer', 'country', 'region', 'city', 'device', 'os', 'browser']) {
+    assert.equal(Object.hasOwn(DIMENSION_KINDS, kind), true, kind);
+    assert.equal(typeof DIMENSION_KINDS[kind], 'string', `${kind} must resolve to a column NAME`);
+  }
+});
