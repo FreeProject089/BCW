@@ -602,7 +602,12 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
         {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {mode === 'rich' && !preview
-        ? <BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} />
+        // The floating select-to-format toolbar belongs in EVERY text mode, not just the
+        // raw one. `rich` is what a blog or docs editor opens in, so selecting a word
+        // and reaching for bold found nothing at all — the feature existed in the mode
+        // almost nobody switches to. Passing our ref down is all it needs.
+        ? <><BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} textareaRef={ref} />
+          <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>
         : preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
         : mode === 'visual'

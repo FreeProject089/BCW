@@ -145,10 +145,14 @@ function Popover({ anchor, onClose, sheet, className = '', children, width = 560
  * @param {(md: string) => void} [props.onSave]   Ctrl+S
  * @param {object} [props.markdownProps]     anything else for <Markdown> (roadmap, replay, radius…)
  * @param {React.ReactNode} [props.extraTools]  host buttons drawn at the end of the toolbar
+ * @param {React.RefObject<HTMLTextAreaElement>} [props.textareaRef]  the host's ref on the
+ *        textarea, so it can attach a floating select-to-format toolbar or measure a selection.
+ *        Omitted, the editor keeps its own.
  */
 export default function BmdEditor({
   value = '', onChange, lang = 'en', pageMap = null, layout = 'auto', breakpoint = 900, height = '60vh',
   toolbar = true, status = true, compact = false, snippetGroups = SNIPPET_GROUPS, extraGroups = [], placeholder, exportTitle = 'Document', onSave, markdownProps = {}, className = '', extraTools = null,
+  textareaRef = null,
 }) {
   const L = STR[lang] || STR.en;
   const narrow = useNarrow(breakpoint);
@@ -161,7 +165,12 @@ export default function BmdEditor({
   const [more, setMore] = useState(false);
   const [query, setQuery] = useState('');
   const [wrap, setWrap] = useState(true);
-  const ta = useRef(null);
+  // The host may want to hang something off the textarea — the floating
+  // select-to-format toolbar does, and it can only find a selection if it has the
+  // element. Without this the toolbar existed but only in the RAW markdown mode,
+  // which is not the mode the blog and docs editors open in.
+  const ownTa = useRef(null);
+  const ta = textareaRef || ownTa;
   const root = useRef(null);
   const insertBtn = useRef(null);
   const moreBtn = useRef(null);
