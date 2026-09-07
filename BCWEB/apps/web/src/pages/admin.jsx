@@ -14926,19 +14926,28 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
             const m = mine(ic.key);
             const changed = !!(m.icon || m.color);
             return (
-              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex items-center gap-2.5 transition-colors ${changed ? 'border-[var(--primary)]/40 bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
-                <EmojiPreview src={preview(ic)} glyph={m.icon || ic.icon} color={m.color || ic.color} shape={shape} fg={fg} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[11px] font-medium truncate flex items-center gap-1" title={ic.key}>{ic.label} <span className="text-[var(--faint)] font-normal">{ic.fallback}</span></div>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <button type="button" onClick={() => setPicking(ic.key)} className="inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)] max-w-[9rem]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
-                      <IconGlyph name={m.icon || ic.icon} size={12} /><span className="truncate">{m.icon || ic.icon}</span>
-                    </button>
-                    <ColorInput value={m.color || ic.color} onChange={(v) => onStyle(`${ic.key}.color`, v)} title={t('db.eco.icons.color', 'Tile colour')} />
-                    {changed && <button type="button" onClick={() => { onStyle(`${ic.key}.icon`, ''); onStyle(`${ic.key}.color`, ''); }} className="text-[10px] text-[var(--faint)] hover:text-[var(--text)]" title={t('db.eco.icons.reset', 'Back to the default')}><RotateCcw size={11} /></button>}
+              // One card per icon, stacked in three full-width rows. The previous layout put
+              // the tile, the label, the glyph button, the colour swatch AND the emoji-code
+              // input inside one horizontal flex; at three columns each of those got a
+              // fraction of ~230px, so every one of them ellipsised at once ("gl…", "u…",
+              // "<:bc_site:154…") — the card read as broken. Nothing shares a row with the
+              // controls now, so nothing truncates but the label.
+              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 transition-colors ${changed ? 'border-[var(--primary)]/40 bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <EmojiPreview src={preview(ic)} glyph={m.icon || ic.icon} color={m.color || ic.color} shape={shape} fg={fg} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11.5px] font-medium truncate" title={ic.label}>{ic.label}</div>
+                    <div className="text-[10px] text-[var(--faint)] font-mono truncate" title={ic.key}>{ic.key} <span className="font-sans">{ic.fallback}</span></div>
                   </div>
-                  <Input className="!py-0.5 !text-[11px] font-mono mt-1.5" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
+                  {changed && <button type="button" onClick={() => { onStyle(`${ic.key}.icon`, ''); onStyle(`${ic.key}.color`, ''); }} className="shrink-0 text-[var(--faint)] hover:text-[var(--text)] p-1 -m-1" title={t('db.eco.icons.reset', 'Back to the default')}><RotateCcw size={12} /></button>}
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => setPicking(ic.key)} className="min-w-0 flex-1 inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
+                    <IconGlyph name={m.icon || ic.icon} size={13} /><span className="truncate">{m.icon || ic.icon}</span>
+                  </button>
+                  <div className="shrink-0"><ColorInput value={m.color || ic.color} onChange={(v) => onStyle(`${ic.key}.color`, v)} title={t('db.eco.icons.color', 'Tile colour')} /></div>
+                </div>
+                <Input className="!py-1 !text-[11px] font-mono" value={icons[ic.key] || ''} onChange={(e) => onChange(ic.key, e.target.value)} placeholder={`<:bc_${ic.key}:id>`} />
               </div>
             );
           })}

@@ -406,7 +406,7 @@ export default async function ogRoutes(app) {
       where = { level: { gt: 0 }, userId: { in: userIds } };
       scopeName = (await p.botGuild.findFirst({ where: { guildId }, select: { name: true } }))?.name || 'Server';
     }
-    const rows = await p.userEconomy.findMany({ where, include: { user: { select: { id: true, displayName: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
+    const rows = await p.userEconomy.findMany({ where, include: { user: { select: { id: true, displayName: true, avatar: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
     const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
     try {
       const { createCanvas, loadImage } = await import('@napi-rs/canvas');
@@ -441,7 +441,20 @@ export default async function ogRoutes(app) {
         const ax = 108, ar = 22;
         x.save(); x.beginPath(); x.arc(ax, cy, ar + 2.5, 0, Math.PI * 2); x.fillStyle = i < 3 ? medals[i] : 'rgba(255,255,255,0.18)'; x.fill(); x.restore();
         let drew = false;
-        try { const av = await loadImage(`${SITE()}/avatar/${encodeURIComponent(r.user.id)}`); x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.clip(); x.drawImage(av, ax - ar, cy - ar, ar * 2, ar * 2); x.restore(); drew = true; } catch { /* fallback below */ }
+        // Render the avatar in-process. This used to fetch `${SITE()}/avatar/:id` over HTTP —
+        // two bugs in one line: that route answers **SVG**, which @napi-rs/canvas cannot
+        // decode (its sibling `/avatar/:id/png` exists precisely because "an SVG attached as
+        // .png simply does not show"), and it makes the API call its own public URL, which
+        // from inside the compose network need not resolve at all. Either way `loadImage`
+        // threw for every row and every member rendered as the fallback disc. `renderAvatarPng`
+        // is what /og/profile/:id already uses, so this is the same picture with no round-trip.
+        try {
+          const av = await loadAvatarImage(r.user, ar * 4);
+          if (!av) throw new Error('no avatar');
+          x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.clip();
+          const s = Math.max((ar * 2) / av.width, (ar * 2) / av.height), w = av.width * s, h = av.height * s;  // cover-fit, never squashed
+          x.drawImage(av, ax - w / 2, cy - h / 2, w, h); x.restore(); drew = true;
+        } catch { /* fallback below */ }
         if (!drew) {
           const hue = hueOf(String(r.user.id || r.user.displayName || 'x'));
           x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.fillStyle = `hsl(${hue} 55% 42%)`; x.fill();

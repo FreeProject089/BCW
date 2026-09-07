@@ -19,11 +19,11 @@ function panel(channel, state) {
   const present = ownerPresent(channel, state);
   const lines = [
     `Owner: <@${state.ownerId}>${present ? '' : ' *(not in the room — anyone here can claim it)*'}`,
-    `${state.locked ? '🔒 Locked' : '🔓 Unlocked'} · ${state.private ? '🙈 Private' : '👁️ Public'} · 👥 Limit: ${channel.userLimit || 'none'} · 🌍 ${channel.rtcRegion || 'auto'}`,
+    `${state.locked ? ui.ic('lock') : ui.ic('unlock')} ${state.locked ? 'Locked' : 'Unlocked'} · ${state.private ? ui.ic('private') : ui.ic('public')} ${state.private ? 'Private' : 'Public'} · ${ui.ic('limit')} Limit: ${channel.userLimit || 'none'} · ${ui.ic('region')} ${channel.rtcRegion || 'auto'}`,
     state.bans.size || state.kicks.size ? `-# ${state.bans.size} banned · ${state.kicks.size} kicked` : null,
   ];
   return ui.card({
-    title: '🎙️ Voice controls',
+    title: `${ui.ic('voice')} Voice controls`,
     body: lines,
     buttons: [
       ui.btn('vp:rename', 'Rename', ButtonStyle.Secondary, { emoji: 'rename' }), ui.btn('vp:limit', 'Limit', ButtonStyle.Secondary, { emoji: 'limit' }), ui.btn('vp:region', 'Region', ButtonStyle.Secondary, { emoji: 'region' }),

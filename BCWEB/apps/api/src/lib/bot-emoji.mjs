@@ -52,6 +52,31 @@ export const ICONS = Object.freeze({
   games: { fallback: '🎮', label: 'Games', color: '#8b5cf6', icon: 'gamepad-2' },
   profile: { fallback: '👤', label: 'Profile', color: '#64748b', icon: 'user' },
   done: { fallback: '✅', label: 'Done', color: '#22c55e', icon: 'check' },
+  // Body glyphs. These are drawn inside message text (the level card's stat lines, the
+  // leaderboard's places, the shop's kind tags, a casino result) rather than on a button.
+  // They lived only in the bot's own DEFAULT_ICONS, so `ic()` resolved them but this registry
+  // never listed them — which meant the dashboard could not map them and they stayed unicode
+  // (🏅 💬 ✨ …) no matter what an admin uploaded. Listing them here is what makes them
+  // configurable: the dashboard, the pack zip and the PNG renderer all read this object.
+  medal: { fallback: '🏅', label: 'Medal (rank)', color: '#eab308', icon: 'medal' },
+  messages: { fallback: '💬', label: 'Messages (stat)', color: '#3b82f6', icon: 'message-circle' },
+  reactions: { fallback: '✨', label: 'Reactions (stat)', color: '#a855f7', icon: 'sparkles' },
+  streak: { fallback: '🔥', label: 'Streak', color: '#f97316', icon: 'flame' },
+  gold: { fallback: '🥇', label: 'First place', color: '#eab308', icon: 'medal' },
+  silver: { fallback: '🥈', label: 'Second place', color: '#94a3b8', icon: 'medal' },
+  bronze: { fallback: '🥉', label: 'Third place', color: '#b45309', icon: 'medal' },
+  badge: { fallback: '🏅', label: 'Badge (shop kind)', color: '#eab308', icon: 'award' },
+  role: { fallback: '🎭', label: 'Role (shop kind)', color: '#8b5cf6', icon: 'venetian-mask' },
+  pool: { fallback: '💾', label: 'Storage pool (shop kind)', color: '#0ea5e9', icon: 'hard-drive' },
+  boost: { fallback: '🚀', label: 'Boost (shop kind)', color: '#ec4899', icon: 'rocket' },
+  hosting: { fallback: '🖥️', label: 'Hosting (shop kind)', color: '#64748b', icon: 'monitor' },
+  promo: { fallback: '🎟️', label: 'Promo code (shop kind)', color: '#f43f5e', icon: 'ticket' },
+  exclusive: { fallback: '💎', label: 'Exclusive (tag)', color: '#06b6d4', icon: 'gem' },
+  limited: { fallback: '🔥', label: 'Limited (tag)', color: '#f97316', icon: 'flame' },
+  timed: { fallback: '⏳', label: 'Timed (tag)', color: '#a16207', icon: 'hourglass' },
+  win: { fallback: '🎉', label: 'Casino win', color: '#22c55e', icon: 'party-popper' },
+  push: { fallback: '↩️', label: 'Casino push', color: '#64748b', icon: 'undo-2' },
+  wallet: { fallback: '💰', label: 'Points waiting', color: '#f59e0b', icon: 'wallet' },
 });
 
 /** The set-wide style, and what one key may override. */

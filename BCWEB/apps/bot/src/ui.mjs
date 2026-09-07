@@ -32,6 +32,8 @@ const DEFAULT_ICONS = {
   // Shop-kind + tag glyphs, so the shop listing's emoji are admin-mappable too.
   badge: '🏅', role: '🎭', pool: '💾', boost: '🚀', hosting: '🖥️', promo: '🎟️',
   exclusive: '💎', limited: '🔥', timed: '⏳',
+  // Body glyphs that used to be hard-coded inside the i18n strings ({i} placeholders now).
+  win: '🎉', push: '↩️', wallet: '💰',
 };
 let ICONS = { ...DEFAULT_ICONS };
 export function setIcons(map) {

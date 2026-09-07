@@ -177,9 +177,9 @@ async function cmdLevel(i) {
   const rates = e.rates || {};
   const rateLine = t('level.rates', { m: n(rates.message), r: n(rates.reaction), v: n(rates.voiceMinute) });
   const statsOf = (st) => [
-    { text: t('stat.messages', { n: n(st?.messages) }) },
-    { text: t('stat.reactions', { n: n(st?.reactions) }) },
-    { text: t('stat.voice', { h: Math.floor((st?.voiceSeconds || 0) / 3600), m: Math.floor(((st?.voiceSeconds || 0) % 3600) / 60) }) },
+    { text: t('stat.messages', { i: ui.ic('messages'), n: n(st?.messages) }) },
+    { text: t('stat.reactions', { i: ui.ic('reactions'), n: n(st?.reactions) }) },
+    { text: t('stat.voice', { i: ui.ic('voice'), h: Math.floor((st?.voiceSeconds || 0) / 3600), m: Math.floor(((st?.voiceSeconds || 0) % 3600) / 60) }) },
   ];
   // Not linked: the member still earns — the card shows what is waiting, and the one thing
   // to do about it. The old reply said "nothing accrues", which had become untrue.
@@ -189,7 +189,7 @@ async function cmdLevel(i) {
       ? [
         `**${i.user.displayName || i.user.username}** · ${t('level.unlinked')}`,
         `${ui.bar(sh.xpThisLevel, sh.xpForNext)}  ${t('level.xp', { a: n(sh.xpThisLevel), b: n(sh.xpForNext) })}`,
-        t('level.waiting', { n: n(sh.points), cur }),
+        t('level.waiting', { i: ui.ic('wallet'), n: n(sh.points), cur }),
       ]
       : [t('level.nothing'), '', t('level.nothing2')];
     return ui.reply(i, {
@@ -546,8 +546,8 @@ async function playCasino(i, opts) {
   const gif = await api.siteImage(`/og/casino/${encodeURIComponent(game)}/${won ? 'win' : 'lose'}.gif?${q}`);
   const files = gif ? [ui.attach(gif, 'casino.gif')] : [];
   const line = won
-    ? `${detail}\n${t('cas.won', { n: n(r.delta), b: n(r.points) })}`
-    : push ? `${detail}\n${t('cas.pushed', { n: n(bet), b: n(r.points) })}`
+    ? `${detail}\n${t('cas.won', { i: ui.ic('win'), n: n(r.delta), b: n(r.points) })}`
+    : push ? `${detail}\n${t('cas.pushed', { i: ui.ic('push'), n: n(bet), b: n(r.points) })}`
     : `${detail}\n${t('cas.lost', { n: n(lost), b: n(r.points), of: lost < bet ? t('cas.of', { n: n(bet) }) : '' })}`;
   // "Play again" re-runs the same bet with the same options — the custom id carries them (and
   // the player's id, so nobody spends somebody else's points from their button).
