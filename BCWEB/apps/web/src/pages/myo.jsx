@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AppWindow, Globe, Wand2, ShieldCheck, Check, Clock, Package, Download,
-  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send, Sparkles,
+  ExternalLink, Lock, ArrowLeft, ArrowRight, Plus, X, FileText, AlertTriangle, CreditCard, MessageSquare, Send, Sparkles, ChevronDown,
 } from 'lucide-react';
 import { api, uploadMyoDeliverable } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -111,12 +111,19 @@ export function MyoPage() {
             for, so this sits one click away instead of in front — but it is NOT hidden, because
             a paid consultation has to say so before anyone starts, and the recap states the fee
             in full before the payment button. */}
-        <details className="group">
-          <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2 list-none justify-center mb-3">
-            <Sparkles size={13} className="text-[var(--primary-2)]" />
-            <span className="underline decoration-dotted underline-offset-4">{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
+        {/* The summary used to be a dotted-underlined sentence floating over a four-column
+            grid: it did not read as the control that opens the grid, and once open there was
+            nothing tying the two together. A bordered pill that visibly toggles, and a panel
+            under it, so the sequence belongs to the thing you clicked. */}
+        <details className="group myo-deal">
+          <summary className="mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:border-[var(--primary)]/50 hover:text-[var(--text)] transition-colors">
+            <Sparkles size={13} className="text-[var(--primary-2)] shrink-0" />
+            <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
+            <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
           </summary>
-          <DealRail cfg={cfg} />
+          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4 sm:p-5">
+            <DealRail cfg={cfg} />
+          </div>
         </details>
         {/* FOLDED, not deleted.
             "The fee is not the product price" was said four times on one screen: in the
