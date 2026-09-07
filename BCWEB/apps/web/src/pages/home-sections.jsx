@@ -22,6 +22,7 @@ import { thumb } from '../lib/img.js';
 import { AppLogo } from '../ui/brand.jsx';
 import { PollTeaser } from './polls.jsx';
 import { useI18n } from '../i18n.jsx';
+import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
 
@@ -72,7 +73,20 @@ export function ProductRows({ products = [], style = 'rows' }) {
 
 /** The media panel, or a placeholder that keeps the layout when nothing is configured. */
 export function ShowcasePanel({ showcase }) {
-  if (showcase?.enabled) return <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>;
+  if (showcase?.enabled) {
+    // Wrapped: a bad showcase item (or a stale lazy chunk after a deploy — the classic
+    // "Element type is invalid" #306) must degrade to the placeholder, never take down the
+    // whole landing page. The panel is decorative; the page must survive it.
+    return (
+      <ErrorBoundary fallback={<ShowcaseFallback />}>
+        <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+      </ErrorBoundary>
+    );
+  }
+  return <ShowcaseFallback />;
+}
+
+function ShowcaseFallback() {
   return (
     <div className="rounded-2xl border border-[var(--line)] aspect-video grid place-items-center" style={{ background: 'var(--surface)' }}>
       <Sparkles size={28} className="text-[var(--faint)]" />

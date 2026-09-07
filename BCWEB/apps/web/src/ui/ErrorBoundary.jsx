@@ -26,6 +26,9 @@ export class ErrorBoundary extends React.Component {
 
   render() {
     if (!this.state.error) return this.props.children;
+    // A caller can pass a lightweight `fallback` to contain a crash to one widget (e.g. the
+    // landing-page showcase) instead of replacing the whole view with the recovery card.
+    if (this.props.fallback !== undefined) return this.props.fallback;
     // Class component can't use the i18n hook — read the saved language directly.
     let fr = false;
     try { fr = localStorage.getItem('bcw_lang') === 'fr'; } catch { /* ignore */ }

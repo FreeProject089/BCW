@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 // Lazily: the showcase pulls in rrweb the moment a `.bmmreplay` panel is shown, and a
 // visitor to a site with no showcase configured must not pay for any of it.
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
+import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
   Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus,
@@ -410,7 +411,9 @@ export function Home({ draft = null }) {
               visitor is deciding is whether the thing looks like something they want. */}
           {showcase?.enabled && (
             <div className="anim-slide mt-14" style={{ animationDelay: '320ms' }}>
-              <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+              <ErrorBoundary fallback={null}>
+                <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>
+              </ErrorBoundary>
             </div>
           )}
           {/* The headline counts are gone. They were the two numbers a visitor cannot
