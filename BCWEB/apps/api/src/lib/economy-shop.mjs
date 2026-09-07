@@ -131,7 +131,10 @@ export async function movePoints(p, userId, delta, entry, { clamp = false } = {}
 // What the buyer may see of a delivery: never the fixed code before it is revealed.
 export function pubDelivery(d) {
   if (!d || typeof d !== 'object') return d || null;
-  const { fixedCode, ...rest } = d;
+  // Never expose the fixed code seed or the giveaway's internal gift config, and keep a sealed
+  // prize's content/code hidden until it is actually revealed.
+  const { fixedCode, giftConfig, ...rest } = d;
+  if (!rest.revealed) { delete rest.content; delete rest.code; }
   return rest;
 }
 

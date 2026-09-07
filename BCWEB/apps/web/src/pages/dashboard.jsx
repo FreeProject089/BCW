@@ -167,7 +167,7 @@ function EconomyShop({ view = 'shop', onView }) {
   };
   const reveal = async (p) => {
     setBusy(p.id);
-    try { const r = await api.post(`/me/economy/purchases/${p.id}/reveal`); const code = r.delivery?.code; if (code) { copyText(code); toast.success(t('eco.revealed', 'Your code: {c} — copied.').replace('{c}', code)); } load(); }
+    try { const r = await api.post(`/me/economy/purchases/${p.id}/reveal`); const code = r.delivery?.code; const content = r.delivery?.content; if (code) { copyText(code); toast.success(t('eco.revealed', 'Your code: {c} — copied.').replace('{c}', code)); } else if (content) { copyText(content); toast.success(t('eco.revealed.content', 'Prize revealed — copied.')); } load(); }
     catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
   };
   const giftItem = async (p) => {
@@ -254,6 +254,7 @@ function EconomyShop({ view = 'shop', onView }) {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
+                    {dl.content && <button type="button" onClick={() => { copyText(dl.content); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40 max-w-[16rem]" title={t('eco.inv.copycontent', 'Copy the prize')}><Gift size={12} className="text-emerald-400 shrink-0" /> <span className="truncate">{dl.content}</span> <Copy size={11} className="opacity-60 shrink-0" /></button>}
                     {p.canReveal && <Button size="sm" variant="primary" disabled={busy === p.id} onClick={() => reveal(p)} title={t('eco.reveal.h', 'Mints the code now, for you. A revealed item that is not giftable stays yours.')}>{busy === p.id ? <Spinner /> : <><Ticket size={13} /> {t('eco.reveal', 'Reveal')}</>}</Button>}
                     {p.canGift && <Button size="sm" disabled={busy === p.id} onClick={() => giftItem(p)}><Gift size={13} /> {t('eco.giftitem.ok', 'Gift')}</Button>}
                   </div>

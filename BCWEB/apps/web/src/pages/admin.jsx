@@ -13755,18 +13755,22 @@ function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
-  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, withGift: false, winnerMessage: 'Congrats {user} — you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
+  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, audience: 'discord', prizeKind: 'promo', prizeContent: '', winnerMessage: 'Congrats {user} — you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
   const [busy, setBusy] = useState(false);
   const undo = useUndoableDelete(reload);
   const giveaways = (data?.giveaways || []).filter((g) => !undo.pending.has(g.id));
   const create = async () => {
-    if (!f.prize.trim() || !f.channelId.trim()) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
+    const needChannel = f.audience !== 'site';
+    if (!f.prize.trim() || (needChannel && !f.channelId.trim())) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
+    if (f.prizeKind === 'custom' && !f.prizeContent.trim()) return toast.error(t('gw.needcontent', 'Custom prizes need the content to reveal to the winner.'));
     setBusy(true);
     try {
-      const body = { prize: f.prize.trim(), channelId: f.channelId.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1 };
+      const body = { prize: f.prize.trim(), durationMinutes: Number(f.durationMinutes) || 60, winnersCount: Number(f.winnersCount) || 1, audience: f.audience, prizeKind: f.prizeKind };
+      if (needChannel) body.channelId = f.channelId.trim();
+      if (f.prizeKind === 'custom') body.prizeContent = f.prizeContent.trim();
       if (f.winnerMessage.trim()) body.winnerMessage = f.winnerMessage.trim();
       if (f.reqLinked || f.reqCreator) body.requirements = { linked: !!(f.reqLinked || f.reqCreator), creator: !!f.reqCreator };
-      if (f.withGift) { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
+      if (f.prizeKind === 'promo') { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
       await api.post('/admin/bot/giveaways', body);
       toast.success(t('gw.created', 'Giveaway created — the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
@@ -13781,13 +13785,20 @@ function BotGiveawaysCard() {
       </button>
       {open && (
         <div className="mt-3 space-y-3">
-          <p className="text-[11px] text-[var(--faint)]">{t('gw.note', 'Also available as /giveaway (Manage-Server perm). The bot posts an “Enter” button; winners are drawn at the end and DMed a gift code if you attach one.')}</p>
+          <p className="text-[11px] text-[var(--faint)]">{t('gw.note2', 'Members can also start their own with /giveaway (Discord-only, max 5 per server). Staff giveaways here can run on Discord, on the site, and hand the winner a prize into their BCWEB inventory.')}</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
-            <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>
+            <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
+            {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
+            <Field label={t('gw.prizekind', 'Prize kind')} hint={t('gw.prizekind.h', 'What the winner claims from their inventory')}><Dropdown className="w-full" value={f.prizeKind} onChange={(v) => setF({ ...f, prizeKind: v })} options={[{ value: 'promo', label: t('gw.pk.promo', 'Promo code (generated on reveal)') }, { value: 'custom', label: t('gw.pk.custom', 'Custom (you type the content)') }, { value: 'none', label: t('gw.pk.none', 'None (bragging rights)') }]} /></Field>
             <Field label={t('gw.duration', 'Duration (minutes)')}><Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} /></Field>
             <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
           </div>
+          {f.prizeKind === 'custom' && (
+            <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions — kept sealed in the winner’s inventory until they reveal it.')}>
+              <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
+            </Field>
+          )}
           {/* Entry requirements — gate who can enter (enforced server-side on Enter). */}
           <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
@@ -13799,10 +13810,10 @@ function BotGiveawaysCard() {
               + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
           <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
             value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
-            placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.withGift ? '' : undefined} />
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.withGift} onChange={(e) => setF({ ...f, withGift: e.target.checked })} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('gw.attachgift', 'DM each winner a gift code')}</label>
-          {f.withGift && (
+            placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
+          {f.prizeKind === 'promo' && (
             <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize — the code is generated when the winner reveals it')}</div>
               <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
               {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
               {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}

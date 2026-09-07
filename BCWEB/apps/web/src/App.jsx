@@ -85,6 +85,7 @@ const NotFound = lazyChunk(() => import('./pages/notfound.jsx'));
 const Auth = lazyChunk(() => import('./pages/signin.jsx').then((m) => ({ default: m.Auth })));
 const Admin = named(() => import('./pages/admin.jsx'), 'Admin');
 const Dashboard = named(() => import('./pages/dashboard.jsx'), 'Dashboard');
+const Giveaways = named(() => import('./pages/giveaways.jsx'), 'Giveaways');
 const ReposPage = named(() => import('./pages/repos.jsx'), 'ReposPage');
 const RepoDashboard = named(() => import('./pages/repo-dashboard.jsx'), 'RepoDashboard');
 const ProjectPage = lazyChunk(() => import('./pages/project.jsx'));
@@ -1385,6 +1386,7 @@ export default function App() {
               <Route path="/c/:slug" element={<CommunityCatalogPage />} />
               <Route path="/r/:id" element={<RepoPublicPage />} />
               <Route path="/item/:slug" element={<ItemDetail />} />
+              <Route path="/giveaways" element={<Giveaways />} />
               <Route path="/blog" element={<BlogList />} />
               <Route path="/blog/:slug" element={<BlogPostPage />} />
               <Route path="/docs" element={<Docs />} />
