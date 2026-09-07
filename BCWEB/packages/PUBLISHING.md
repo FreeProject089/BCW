@@ -53,6 +53,48 @@ means it works for half the people who install it and nobody finds out from us.
    pnpm add @bettercommunity/bmd @bettercommunity/bmd-editor react react-dom
    ```
 
+## Publishing with pnpm instead of npm
+
+Same registry, same tarball, three differences worth knowing.
+
+`pnpm publish` runs from the package directory exactly like npm:
+
+```bash
+cd packages/bmd && pnpm publish --access public
+```
+
+- **It refuses a dirty git tree** by default, where npm does not care. That is a feature here —
+  it stops a publish of files that are not in a commit — but it will stop you mid-release if
+  you have edited anything. Commit first; `--no-git-checks` exists and is the wrong answer
+  unless you know exactly why you are reaching for it.
+- **`--access public` on the command line** is worth passing even though `publishConfig` already
+  says it. Nothing breaks if both agree, and the flag is what the error message tells you to
+  add when they do not.
+- **It packs the same `files` list**, so `pnpm pack --dry-run` and `npm pack --dry-run` show the
+  same tarball. Either is a valid check.
+
+**You do not "publish to pnpm".** There is one registry (npmjs.com); pnpm, npm, yarn and bun are
+clients that install from it. What makes a package pnpm-*safe* is not how it was published — it
+is that every import it makes is declared, which is what `check-bmd-publish.mjs` enforces and
+what the table above explains.
+
+## Logging in
+
+```bash
+npm login          # or: pnpm login
+npm whoami         # the account has to own the @bettercommunity scope
+```
+
+The scope must exist and the account must be able to write to it. A first publish under a scope
+nobody owns fails with a 404 that reads like the package is missing, not like a permissions
+problem.
+
+## Unpublishing, and why to think first
+
+npm allows unpublish for 72 hours, and only when nothing depends on the version. After that the
+answer is `npm deprecate` plus a new version. A version number is cheap; a version that briefly
+existed and vanished breaks lockfiles for anyone who installed it in between.
+
 ## What consumers need to know
 
 **The packages ship source, not a build.** `main` is `./src/index.jsx`, and the tree contains
