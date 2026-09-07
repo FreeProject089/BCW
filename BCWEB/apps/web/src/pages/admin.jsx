@@ -4522,6 +4522,29 @@ function AdminAccess({ isSuperAdmin }) {
   // From the holder lists: search for the person rather than opening their summary row, which
   // carries a name and an email and none of the permission state the panels below edit.
   const openHolder = (u) => { const v = u.email || u.id; setQ(v); setPicked(null); searchFor(v); };
+  // A capability can reach this user two ways: granted directly (the toggles below) or carried
+  // by an assigned custom role. The toggles read ONLY the direct grants, so a capability held
+  // through a role showed as OFF — an admin reading this screen concluded the user could not do
+  // the thing, and switching the toggle off changed nothing because the role still granted it.
+  // On a permissions screen that is not a cosmetic mismatch.
+  //
+  // SCOPED roles are excluded, and that distinction is the whole correctness of this: the
+  // server unions a role's capabilities into the global set only when the role is NOT scoped
+  // (lib.mjs isScopedRole — a scoped role's rights are per element and live in projectGrants).
+  // Marking a scoped role's capabilities as "granted" here would be the same false claim in
+  // the other direction. Same predicate, kept in step by name.
+  const isScopedRole = (r) => {
+    const sc = r?.scope;
+    return !!(sc && typeof sc === 'object' && ((sc.projectKeys || []).length || (sc.showcaseIds || []).length || sc.allShowcase));
+  };
+  const roleCapSource = {};
+  for (const r of customRoles) {
+    if (!rolesSel.includes(r.id) || isScopedRole(r)) continue;
+    for (const cap of r.capabilities || []) (roleCapSource[cap] ||= []).push(r.name || r.id);
+  }
+  // Roles are only fetched for SUPERADMIN. Another admin cannot resolve what they carry, so say
+  // that plainly rather than showing toggles that quietly under-report.
+  const unresolvedRoles = !isSuperAdmin && (rolesSel.length > 0);
   const togglePerm = (cap) => setPermsSel((s) => s.includes(cap) ? s.filter((c) => c !== cap) : [...s, cap]);
   // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
   // might regret, not a safety mechanism — and for this action a six-second "maybe" is worse
@@ -4643,18 +4666,32 @@ function AdminAccess({ isSuperAdmin }) {
               <p className="text-xs text-[var(--muted)]">{t('acc.perms.isadmin', 'Admins already have every permission. Lower the role to USER or MOD to grant specific capabilities instead.')}</p>
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.perms.desc', 'Grant this user access to specific admin sections — each unlocks exactly that area of the dashboard and nothing else. Actions are still checked on the server.')} {!picked.totpEnabled && <span className="text-warning">{t('acc.perms.no2fa', 'They must enable 2FA before the dashboard will open.')}</span>}</p>
+              {unresolvedRoles && (
+                <div className="text-[11.5px] rounded-lg border border-warning-border bg-warning-bg/40 text-warning px-2.5 py-2 mb-2.5 flex items-start gap-2">
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                  <span>{t('acc.perms.unresolved', 'This account also holds {n} custom role(s). Their capabilities are not shown here — only a SUPERADMIN can read the role definitions, so the switches below may under-report what this user can do.').replace('{n}', rolesSel.length)}</span>
+                </div>
+              )}
               <div className="space-y-1.5 mb-3">
                 {ADMIN_CAPS.map((c) => {
-                  const on = permsSel.includes(c.id);
+                  const direct = permsSel.includes(c.id);
+                  const viaRoles = roleCapSource[c.id];
+                  const on = direct || !!viaRoles;
                   const Icon = c.icon;
                   return (
-                    <button key={c.id} onClick={() => togglePerm(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    // A role-carried capability is shown ON and is not togglable: the switch
+                    // would have written a direct grant that changes nothing, and switching it
+                    // "off" would have looked like a revoke it cannot perform. Take the role
+                    // away in Custom roles below to remove it.
+                    <button key={c.id} disabled={!!viaRoles && !direct} onClick={() => togglePerm(c.id)}
+                      className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'} ${viaRoles && !direct ? 'cursor-default' : ''}`}>
                       <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium">{t('acc.perm.' + c.id, c.label)}</span>
                         <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, c.desc)}</span>
+                        {viaRoles && <span className="block text-[11px] text-[var(--primary-2)] mt-0.5 inline-flex items-center gap-1"><ShieldCheck size={10} /> {t('acc.perm.viarole', 'From the role {r}').replace('{r}', viaRoles.join(', '))}</span>}
                       </span>
-                      <span className={`w-9 h-5 rounded-full relative shrink-0 transition ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></span>
+                      <span className={`w-9 h-5 rounded-full relative shrink-0 transition ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'} ${viaRoles && !direct ? 'opacity-60' : ''}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></span>
                     </button>
                   );
                 })}

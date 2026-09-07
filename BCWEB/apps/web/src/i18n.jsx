@@ -5813,6 +5813,9 @@ const DICT = {
     'acc.all.none.t': 'Aucun accès pour le moment', 'acc.all.none.s': 'Les utilisateurs normaux ne peuvent pas écrire d’articles tant que tu n’accordes pas l’accès ci-dessus.', 'acc.deleted': '(supprimé)',
     // Permissions granulaires du tableau de bord
     'acc.perms.title': 'Permissions du tableau de bord',
+    // Une capacité peut venir d'un rôle personnalisé, pas seulement d'une attribution directe.
+    'acc.perm.viarole': 'Vient du rôle {r}',
+    'acc.perms.unresolved': 'Ce compte porte aussi {n} rôle(s) personnalisé(s). Leurs capacités ne sont pas affichées ici — seul un SUPERADMIN peut lire les définitions de rôle, donc les interrupteurs ci-dessous peuvent sous-estimer ce que cet utilisateur peut faire.',
     'acc.perms.isadmin': 'Les admins ont déjà toutes les permissions. Rétrograde le rôle en USER ou MOD pour accorder des capacités précises.',
     'acc.perms.desc': 'Donne à cet utilisateur l’accès à des sections précises de l’admin — chacune ne débloque que cette zone du tableau de bord, rien d’autre. Les actions restent vérifiées côté serveur.',
     'acc.perms.no2fa': 'Il doit activer la 2FA avant que le tableau de bord ne s’ouvre.',
