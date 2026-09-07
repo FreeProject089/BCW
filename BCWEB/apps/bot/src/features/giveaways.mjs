@@ -61,6 +61,9 @@ export async function pollGiveaways(client) {
         // bot variables. {code} resolves to their minted gift code when a gift is attached
         // (else the token is stripped); a redeem line is appended when there's a code.
         const gifts = res?.gifts || {};
+        // Winners whose prize was placed in their BCWEB inventory (a linked account with a
+        // promo/custom prize). Codes are minted on REVEAL there now, not embedded in the DM.
+        const delivered = new Set(res?.delivered || []);
         const tpl = (gw.winnerMessage && gw.winnerMessage.trim()) || 'Congrats {user} — you won {prize}! 🎉';
         for (const did of winners) {
           const code = gifts[did];
@@ -75,6 +78,7 @@ export async function pollGiveaways(client) {
             if (code) content += tpl.includes('{code}')
               ? `\nRedeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`
               : `\nYour gift code: \`${code}\` — redeem it at ${SITE_URL}/dashboard (Billing → “Redeem a promo code”).`;
+            else if (delivered.has(did)) content += `\nYour prize is in your BetterCommunity inventory — reveal it at ${SITE_URL}/dashboard (Shop & inventory).`;
             await u.send({ content });
           } catch (e) { console.warn('[bot] giveaway winner DM failed', did, e.message); }
         }

@@ -33,11 +33,14 @@ export const commandData = [
   new SlashCommandBuilder().setName('warnings').setDescription('Show the warnings on a member')
     .addUserOption((o) => o.setName('member').setDescription('Who').setRequired(true))
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-  new SlashCommandBuilder().setName('giveaway').setDescription('Start a giveaway in this channel')
+  // A MEMBER giveaway (anyone can start one), Discord-only, capped at 5 active per server. Prize
+  // is whatever the host hands over — no site/inventory reward (staff giveaways on the dashboard
+  // do the inventory prizes). Not gated to Manage-Server; the 5/server cap is the guard.
+  new SlashCommandBuilder().setName('giveaway').setDescription('Start a giveaway in this channel (max 5 active per server)')
     .addStringOption((o) => o.setName('prize').setDescription('What to give away').setRequired(true))
     .addIntegerOption((o) => o.setName('minutes').setDescription('How long it runs (minutes)').setMinValue(1).setMaxValue(86400).setRequired(true))
     .addIntegerOption((o) => o.setName('winners').setDescription('Number of winners (default 1)').setMinValue(1).setMaxValue(50))
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+    .setDMPermission(false),
   // Always available — even in a banned server, since finding the appeal reference is the one
   // thing a moderator of a banned server needs the bot to still do.
   new SlashCommandBuilder().setName('appeal').setDescription('If this server is blocked from the bot, get your appeal reference and how to contest it'),
@@ -829,14 +832,19 @@ async function cmdWarnings(i) {
 }
 
 async function cmdGiveaway(i) {
+  if (!i.guildId) return eReply(i, 'Run this in a server.', { title: `${ui.ic('enter')} Giveaway` });
   const prize = i.options.getString('prize');
   const minutes = i.options.getInteger('minutes');
   const winners = i.options.getInteger('winners') || 1;
   try {
-    await api.giveawayCreate({ prize, channelId: i.channelId, durationMinutes: minutes, winnersCount: winners });
-    return eReply(i, `Giveaway for **${prize}** created (${winners} winner${winners === 1 ? '' : 's'}, ${minutes} min). It appears here within ~30s.`, { title: '🎉 Giveaway', color: ui.GOOD });
+    await api.giveawayCreate({ prize, channelId: i.channelId, guildId: i.guildId, hostDiscordId: i.user.id, durationMinutes: minutes, winnersCount: winners });
+    return eReply(i, `Giveaway for **${prize}** created (${winners} winner${winners === 1 ? '' : 's'}, ${minutes} min). It appears here within ~30s.`, { title: `${ui.ic('enter')} Giveaway`, color: ui.GOOD });
   } catch (e) {
-    return eReply(i, 'Could not create the giveaway — try again in a moment.', { title: '🎉 Giveaway', color: ui.BAD });
+    const err = e?.body?.error;
+    const msg = err === 'guild_giveaway_cap'
+      ? 'This server already has **5 active giveaways** — wait for one to end (or ask a mod to end one) before starting another.'
+      : 'Could not create the giveaway — try again in a moment.';
+    return eReply(i, msg, { title: `${ui.ic('enter')} Giveaway`, color: ui.BAD });
   }
 }
 

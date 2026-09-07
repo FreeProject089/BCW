@@ -348,13 +348,15 @@ export async function listPurchases(p, eco, userId, take = 100) {
  *  promo code (from the gift config) or the custom content the creator typed. Idempotent per
  *  (giveaway, user) so a re-draw or a double-call cannot hand out the same prize twice. */
 export async function deliverGiveawayPrize(p, { userId, giveaway, via = 'site' }) {
+  // A `none` prize (a member's own /giveaway — the host hands it over on Discord) has nothing
+  // to put in the inventory.
+  let delivery = null;
+  if (giveaway.prizeKind === 'custom' && giveaway.prizeContent) delivery = { custom: true, content: giveaway.prizeContent, name: giveaway.prize, revealed: false };
+  else if (giveaway.prizeKind === 'promo' && giveaway.giftConfig) delivery = { giftConfig: giveaway.giftConfig, revealed: false };
+  if (!delivery) return null;
   const itemId = `gw:${giveaway.id}`;
   const existing = await p.economyPurchase.findFirst({ where: { userId, itemId } });
   if (existing) return existing;
-  let delivery;
-  if (giveaway.prizeKind === 'custom' && giveaway.prizeContent) delivery = { custom: true, content: giveaway.prizeContent, name: giveaway.prize, revealed: false };
-  else if (giveaway.prizeKind !== 'none' && giveaway.giftConfig) delivery = { giftConfig: giveaway.giftConfig, revealed: false };
-  else delivery = { none: true, revealed: false };
   return p.economyPurchase.create({ data: {
     userId, itemId, itemName: giveaway.prize, kind: 'giveaway', cost: 0, via, status: 'delivered', delivery,
   } });

@@ -1190,7 +1190,8 @@ export default async function botRoutes(app) {
     for (const did of b.data.winnerIds) {
       const link = await p.discordLink.findUnique({ where: { discordId: did } });
       if (!link) continue;
-      await deliverGiveawayPrize(p, { userId: link.userId, giveaway: gw, via: 'discord' }).catch(() => {});
+      const row = await deliverGiveawayPrize(p, { userId: link.userId, giveaway: gw, via: 'discord' }).catch(() => null);
+      if (!row) continue; // prizeKind=none — nothing to put in the inventory
       notify(p, link.userId, 'giveaway_win', `You won “${gw.prize}” — it’s in your inventory; reveal it to claim.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est dans ton inventaire ; révèle-le pour le récupérer.`, href: '/dashboard?s=economy' }).catch(() => {});
       delivered.push(did);
     }
