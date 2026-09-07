@@ -86,12 +86,19 @@ export function card({ title = null, body = '', color = BRAND, thumb = null, sec
   if (image) c.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
   if (sections.length) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    // A Components-V2 SectionBuilder is only valid WITH an accessory (a button or a thumbnail).
+    // A row that carries neither — a plain stats line, as `/level` and `/casino` pass — must be
+    // a bare TextDisplay, or `SectionBuilder.toJSON()` throws "Received one or more errors" and
+    // the whole reply fails. Accessory-less rows are coalesced into one text block (fewer
+    // components, same look); rows with an accessory stay as their own section.
+    let buf = [];
+    const flush = () => { if (buf.length) { c.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(buf.join('\n'), 3500))); buf = []; } };
     for (const s of sections.slice(0, 12)) {
-      const sec = new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900)));
-      if (s.button) sec.setButtonAccessory(s.button);
-      else if (s.thumb) sec.setThumbnailAccessory(new ThumbnailBuilder().setURL(s.thumb));
-      c.addSectionComponents(sec);
+      if (s.button) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setButtonAccessory(s.button)); }
+      else if (s.thumb) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setThumbnailAccessory(new ThumbnailBuilder().setURL(s.thumb))); }
+      else { buf.push(s.text); }
     }
+    flush();
   }
   if (footer) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
