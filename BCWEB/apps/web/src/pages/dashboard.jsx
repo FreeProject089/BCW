@@ -72,17 +72,28 @@ function EconomyWidget({ onOpenShop }) {
   const ring = `conic-gradient(var(--primary) ${pct * 3.6}deg, var(--surface-2) 0)`;
   return (
     <Card className="p-0 overflow-hidden mb-6">
-      <div className="p-5 grid gap-5 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
-        <div className="flex items-center gap-4">
-          <div className="relative w-[76px] h-[76px] rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={`${pct}%`}>
-            <div className="w-[62px] h-[62px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
-              <span className="text-2xl font-extrabold tabular-nums leading-none">{d.level}</span>
+      {/* Below md the three columns stack, and the card was three tall blocks: level, then XP,
+          then a balance row with the two buttons beside it — long enough on a phone that the
+          shop buttons fell under the fold. The level and the balance are both one number and a
+          caption, so on a phone they share the top row and the buttons get their own full-width
+          one. Nothing is hidden that was not already hidden; the card is just shorter. */}
+      <div className="p-4 sm:p-5 grid gap-4 sm:gap-5 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="relative w-16 h-16 md:w-[76px] md:h-[76px] rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={`${pct}%`}>
+            <div className="w-[52px] h-[52px] md:w-[62px] md:h-[62px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
+              <span className="text-xl md:text-2xl font-extrabold tabular-nums leading-none">{d.level}</span>
             </div>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.level.k', 'Discord level')}</div>
             <div className="text-lg font-bold leading-tight">{t('eco.w.level', 'Level {n}').replace('{n}', d.level)}</div>
-            <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5 whitespace-nowrap">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}% {t('eco.w.next2', 'to level {n}').replace('{n}', d.level + 1)}</div>
+            <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}%</div>
+          </div>
+          {/* The balance rides along on the top row on phones; on md it lives in its own column. */}
+          <div className="md:hidden text-end shrink-0">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
+            <div className="text-xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={16} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()}</div>
+            <div className="text-[10px] text-[var(--faint)]">{cur}</div>
           </div>
         </div>
 
@@ -117,19 +128,23 @@ function EconomyWidget({ onOpenShop }) {
           </div>
         </div>
 
-        <div className="flex md:flex-col items-center md:items-end justify-between gap-3">
-          <div className="text-end">
+        <div className="flex flex-col gap-3 md:items-end">
+          <div className="hidden md:block text-end">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
             <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()} <span className="text-xs font-medium text-[var(--muted)]">{cur}</span></div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="primary" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={14} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[10px] opacity-80"> · {d.shopItems}</span> : null}</Button>
-            <Button size="sm" onClick={() => onOpenShop?.('inventory')}><Backpack size={14} /> {t('eco.w.inv', 'Inventory')}{d.pendingDeliveries ? <Badge tone="amber" className="ms-1">{d.pendingDeliveries}</Badge> : null}</Button>
+          {/* Two equal full-width buttons on a phone — 44px tall targets side by side beat two
+              small ones squeezed next to a number. */}
+          <div className="grid grid-cols-2 gap-2 md:flex md:items-center">
+            <Button size="sm" variant="primary" className="justify-center !min-h-[40px] md:!min-h-0" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={14} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[10px] opacity-80"> · {d.shopItems}</span> : null}</Button>
+            <Button size="sm" className="justify-center !min-h-[40px] md:!min-h-0" onClick={() => onOpenShop?.('inventory')}><Backpack size={14} /> {t('eco.w.inv', 'Inventory')}{d.pendingDeliveries ? <Badge tone="amber" className="ms-1">{d.pendingDeliveries}</Badge> : null}</Button>
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 flex-wrap px-5 py-2.5 border-t border-[var(--line)] bg-[var(--surface-2)]/30 text-[11px] text-[var(--muted)]">
-        <span>{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</span>
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 sm:px-5 py-2.5 border-t border-[var(--line)] bg-[var(--surface-2)]/30 text-[11px] text-[var(--muted)]">
+        {/* The explainer is for a first visit, not for every visit, and on a phone it was three
+            lines of prose under a card that is otherwise numbers. Kept from sm up. */}
+        <span className="hidden sm:inline">{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</span>
         <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
           <input type="checkbox" className="accent-[var(--primary)]" checked={stats.public !== false} onChange={toggleStats} /> {t('eco.w.pub', 'Stats public')}
         </label>
