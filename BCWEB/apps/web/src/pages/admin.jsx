@@ -14842,6 +14842,22 @@ function BotModerate({ member }) {
 // the set, and downloads the pack to upload on the application's Emojis page. The preview is
 // drawn by the API from the CURRENT draft (query overrides), so a choice is seen before it is
 // saved; the pack uses the SAVED style, which the card says.
+// The per-icon preview. The server draws it as a PNG; if that request fails (the "icons look
+// broken" case) it falls back to a clean CSS tile with the same glyph, so a card never shows a
+// broken-image placeholder.
+function EmojiPreview({ src, glyph, color, shape, fg }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    const radius = shape === 'circle' ? '50%' : shape === 'square' ? '2px' : '8px';
+    return (
+      <span className="w-9 h-9 shrink-0 grid place-items-center" style={{ background: shape === 'none' ? 'transparent' : color, borderRadius: radius, color: fg }}>
+        <IconGlyph name={glyph} size={18} />
+      </span>
+    );
+  }
+  return <img src={src} alt="" className="w-9 h-9 rounded-md shrink-0" onError={() => setFailed(true)} />;
+}
+
 function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
   const { t } = useI18n();
   const { data } = useAsync(() => api.get('/admin/bot/emoji-keys'), []);
@@ -14885,7 +14901,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
             const changed = !!(m.icon || m.color);
             return (
               <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex items-center gap-2.5 transition-colors ${changed ? 'border-[var(--primary)]/40 bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
-                <img src={preview(ic)} alt="" className="w-9 h-9 rounded-md shrink-0" />
+                <EmojiPreview src={preview(ic)} glyph={m.icon || ic.icon} color={m.color || ic.color} shape={shape} fg={fg} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[11px] font-medium truncate flex items-center gap-1" title={ic.key}>{ic.label} <span className="text-[var(--faint)] font-normal">{ic.fallback}</span></div>
                   <div className="flex items-center gap-1.5 mt-1.5">

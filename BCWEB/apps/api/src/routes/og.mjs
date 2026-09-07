@@ -410,32 +410,58 @@ export default async function ogRoutes(app) {
     const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
     try {
       const { createCanvas, loadImage } = await import('@napi-rs/canvas');
-      const W = 900, ROW = 58, TOP = 96, H = TOP + Math.max(1, rows.length) * ROW + 28;
+      // Redrawn clean: a header band, roomy rows, medal-ringed avatars for the podium, and a
+      // coloured-initial fallback so a member without a picture never shows a dead grey disc.
+      const W = 920, ROW = 66, TOP = 118, PAD = 26, H = TOP + Math.max(1, rows.length) * ROW + 24;
       const c = createCanvas(W, H); const x = c.getContext('2d');
-      const bg = x.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0f1420'); bg.addColorStop(1, '#1a1024'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-      x.fillStyle = 'rgba(245,158,11,0.9)'; x.fillRect(0, 0, W, 6);
-      x.fillStyle = '#fff'; x.font = 'bold 34px sans-serif'; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
-      x.fillText('🏆 Leaderboard', 32, 56);
-      x.font = '500 20px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillText(`${scopeName} · by level`, 32, 82);
-      x.textAlign = 'right'; x.fillText('BetterCommunity', W - 32, 56); x.textAlign = 'left';
+      const bg = x.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0e1118'); bg.addColorStop(0.55, '#12101c'); bg.addColorStop(1, '#1a1024'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+      // Header band + accent hairline.
+      const hb = x.createLinearGradient(0, 0, W, 0); hb.addColorStop(0, 'rgba(245,158,11,0.14)'); hb.addColorStop(1, 'rgba(245,158,11,0)'); x.fillStyle = hb; x.fillRect(0, 0, W, TOP - 24);
+      x.fillStyle = '#f59e0b'; x.fillRect(0, 0, W, 5);
+      x.fillStyle = '#fff'; x.font = 'bold 36px sans-serif'; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
+      x.fillText('Leaderboard', PAD, 58);
+      x.font = '500 19px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillText(`${scopeName} · by level`, PAD, 86);
+      x.textAlign = 'right'; x.font = '600 17px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.45)'; x.fillText('BetterCommunity', W - PAD, 56); x.textAlign = 'left';
       const cur = eco.currencyName || 'points';
-      const medals = ['#f5c542', '#c0c6d0', '#cd7f32'];
+      const medals = ['#f5c542', '#c9d0da', '#cd7f32'];
+      // Deterministic pleasant colour for the initial-fallback avatar (same id → same hue).
+      const hueOf = (s) => { let h = 0; for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) % 360; return h; };
+      const topXp = Math.max(1, rows[0]?.xp || 1);
       for (let i = 0; i < rows.length; i++) {
-        const r = rows[i]; const y = TOP + i * ROW;
+        const r = rows[i]; const y = TOP + i * ROW; const cy = y + (ROW - 10) / 2;
         const mine = meId && r.user.id === meId;
-        x.fillStyle = mine ? 'rgba(245,158,11,0.16)' : i % 2 ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)';
-        x.beginPath(); x.roundRect?.(20, y, W - 40, ROW - 8, 12); if (!x.roundRect) x.rect(20, y, W - 40, ROW - 8); x.fill();
-        // rank badge
-        x.fillStyle = medals[i] || 'rgba(255,255,255,0.14)'; x.beginPath(); x.arc(52, y + (ROW - 8) / 2, 16, 0, Math.PI * 2); x.fill();
-        x.fillStyle = i < 3 ? '#1a1206' : '#fff'; x.font = 'bold 17px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 52, y + (ROW - 8) / 2 + 1);
-        // avatar
-        try { const av = await loadImage(`${SITE()}/avatar/${encodeURIComponent(r.user.id)}`); x.save(); x.beginPath(); x.arc(98, y + (ROW - 8) / 2, 18, 0, Math.PI * 2); x.clip(); x.drawImage(av, 80, y + (ROW - 8) / 2 - 18, 36, 36); x.restore(); } catch { x.fillStyle = 'rgba(255,255,255,0.12)'; x.beginPath(); x.arc(98, y + (ROW - 8) / 2, 18, 0, Math.PI * 2); x.fill(); }
-        x.textAlign = 'left'; x.fillStyle = '#fff'; x.font = `${mine ? 'bold' : '600'} 21px sans-serif`; x.fillText(String(r.user.displayName || 'Member').slice(0, 26), 130, y + (ROW - 8) / 2);
-        x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.85)'; x.font = '600 18px sans-serif'; x.fillText(`${r.points.toLocaleString('en-US')} ${cur}`, W - 40, y + (ROW - 8) / 2);
-        x.fillStyle = '#f59e0b'; x.font = 'bold 18px sans-serif'; x.fillText(`Lv ${r.level}`, W - 230, y + (ROW - 8) / 2);
-        // xp bar under the name
-        x.fillStyle = 'rgba(255,255,255,0.08)'; x.fillRect(130, y + ROW - 18, 420, 4);
-        x.fillStyle = 'rgba(245,158,11,0.75)'; x.fillRect(130, y + ROW - 18, Math.max(6, Math.round(420 * (r.xp / Math.max(1, rows[0].xp)))), 4);
+        // Row card.
+        x.fillStyle = mine ? 'rgba(245,158,11,0.18)' : i % 2 ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.02)';
+        x.beginPath(); if (x.roundRect) x.roundRect(PAD - 6, y, W - (PAD - 6) * 2, ROW - 10, 14); else x.rect(PAD - 6, y, W - (PAD - 6) * 2, ROW - 10); x.fill();
+        if (mine) { x.strokeStyle = 'rgba(245,158,11,0.55)'; x.lineWidth = 1.5; x.stroke(); }
+        // Rank.
+        x.fillStyle = i < 3 ? medals[i] : 'rgba(255,255,255,0.85)'; x.font = i < 3 ? 'bold 24px sans-serif' : '600 20px sans-serif';
+        x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 52, cy);
+        // Avatar with a ring (medal for podium, subtle otherwise).
+        const ax = 108, ar = 22;
+        x.save(); x.beginPath(); x.arc(ax, cy, ar + 2.5, 0, Math.PI * 2); x.fillStyle = i < 3 ? medals[i] : 'rgba(255,255,255,0.18)'; x.fill(); x.restore();
+        let drew = false;
+        try { const av = await loadImage(`${SITE()}/avatar/${encodeURIComponent(r.user.id)}`); x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.clip(); x.drawImage(av, ax - ar, cy - ar, ar * 2, ar * 2); x.restore(); drew = true; } catch { /* fallback below */ }
+        if (!drew) {
+          const hue = hueOf(String(r.user.id || r.user.displayName || 'x'));
+          x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.fillStyle = `hsl(${hue} 55% 42%)`; x.fill();
+          x.fillStyle = '#fff'; x.font = 'bold 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+          x.fillText(String(r.user.displayName || 'M').trim().charAt(0).toUpperCase() || 'M', ax, cy + 1); x.restore();
+        }
+        // Name + level chip + points.
+        x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.font = `${mine ? 'bold' : '600'} 22px sans-serif`;
+        x.fillText(String(r.user.displayName || 'Member').slice(0, 24), 150, cy - 8);
+        // Lv chip.
+        const chip = `Lv ${r.level}`; x.font = 'bold 13px sans-serif'; const cw = x.measureText(chip).width + 18;
+        x.fillStyle = 'rgba(245,158,11,0.18)'; x.beginPath(); if (x.roundRect) x.roundRect(150, cy + 4, cw, 20, 10); else x.rect(150, cy + 4, cw, 20); x.fill();
+        x.fillStyle = '#f9b834'; x.textAlign = 'center'; x.fillText(chip, 150 + cw / 2, cy + 15);
+        // XP bar to the right of the chip.
+        const barX = 150 + cw + 12, barW = 300;
+        x.fillStyle = 'rgba(255,255,255,0.08)'; x.beginPath(); if (x.roundRect) x.roundRect(barX, cy + 10, barW, 6, 3); else x.rect(barX, cy + 10, barW, 6); x.fill();
+        x.fillStyle = 'rgba(245,158,11,0.8)'; const bw = Math.max(6, Math.round(barW * (r.xp / topXp))); x.beginPath(); if (x.roundRect) x.roundRect(barX, cy + 10, bw, 6, 3); else x.rect(barX, cy + 10, bw, 6); x.fill();
+        // Points.
+        x.textAlign = 'right'; x.fillStyle = '#fff'; x.font = 'bold 20px sans-serif'; x.fillText(r.points.toLocaleString('en-US'), W - PAD, cy - 6);
+        x.fillStyle = 'rgba(255,255,255,0.45)'; x.font = '500 12px sans-serif'; x.fillText(cur, W - PAD, cy + 12);
       }
       if (!rows.length) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.font = '500 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Nobody has a level yet.', W / 2, TOP + ROW / 2); }
       const png = await c.encode('png');
