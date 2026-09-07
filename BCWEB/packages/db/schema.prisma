@@ -2112,20 +2112,34 @@ model OAuthRefreshToken {
 model Giveaway {
   id            String   @id @default(cuid())
   prize         String
-  channelId     String
+  channelId     String? // Discord channel for the Enter button; null for a site-only giveaway
   messageId     String? // the Discord message carrying the Enter button (set once posted)
   endsAt        DateTime
   winnersCount  Int      @default(1)
   status        String   @default("active") // active | ended
   entries       String[] @default([]) // entrant Discord ids
+  siteEntrants  String[] @default([]) // BCWEB userIds who entered via the site (audience site/both)
   winnerIds     String[] @default([]) // drawn winner Discord ids
   giftConfig    Json? // optional promo gift for each winner ({ kind, percentOff, … })
   requirements  Json? // optional entry gate: { linked?: bool (Discord⇄BCWEB account), creator?: bool (linked BMM creator id) }
   winnerMessage String? // customizable winner DM template; bot substitutes {user}/{prize}/{code}
   createdBy     String?
   createdAt     DateTime @default(now())
+  // Who made it and where it can be entered. `kind=admin` is staff-created (dashboard/site);
+  // `kind=user` is a member's own giveaway from the bot's /giveaway (Discord-only). `audience`
+  // gates the entry surfaces. A user giveaway is capped at 5 active per guild.
+  kind          String   @default("admin") // "admin" | "user"
+  audience      String   @default("discord") // "discord" | "site" | "both"
+  guildId       String? // the Discord guild (user giveaways: for the 5/guild cap)
+  hostDiscordId String? // user giveaways: the member who created it
+  // The prize. `promo` mints a code on reveal (from giftConfig); `custom` reveals prizeContent
+  // (a code/link/text the creator typed); `none` is bragging rights only. A win lands in the
+  // winner's inventory (an EconomyPurchase kind="giveaway") and is revealed there.
+  prizeKind     String   @default("promo") // "promo" | "custom" | "none"
+  prizeContent  String? // prizeKind=custom: the content revealed to the winner
 
   @@index([status])
+  @@index([guildId, status])
 }
 
 // A hosting shopping-cart checkout, persisted while the user is at Stripe. The

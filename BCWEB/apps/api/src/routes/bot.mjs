@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { getObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
-import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
-import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser } from '../lib/economy-shop.mjs';
+import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
@@ -1040,28 +1040,42 @@ export default async function botRoutes(app) {
   app.get('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
-    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, createdAt: g.createdAt })) };
+    return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, guildId: g.guildId || null, createdAt: g.createdAt })) };
   });
   app.post('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({
       prize: z.string().min(1).max(200),
-      channelId: z.string().min(5).max(32),
+      channelId: z.string().min(5).max(32).optional(),
       durationMinutes: z.number().int().min(1).max(60 * 24 * 60),
       winnersCount: z.number().int().min(1).max(50).default(1),
       gift: giftShape.optional(),
       winnerMessage: z.string().max(1500).optional(),
+      // Where it can be entered: Discord, the site, or both. A site-only giveaway needs no
+      // channel and is drawn by the server, not the bot.
+      audience: z.enum(['discord', 'site', 'both']).default('discord'),
+      // The prize: `promo` mints a code from `gift` on reveal; `custom` reveals `prizeContent`
+      // (a code/link/text you type now); `none` is bragging rights. The win lands in inventory.
+      prizeKind: z.enum(['promo', 'custom', 'none']).default('promo'),
+      prizeContent: z.string().max(4000).optional(),
       // Entry gate: require a linked BetterCommunity account (Discord ⇄ BCWEB) and/or
       // a linked BMM creator id. Enforced server-side when a user clicks Enter.
       requirements: z.object({ linked: z.boolean().optional(), creator: z.boolean().optional() }).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const needsChannel = b.data.audience !== 'site';
+    if (needsChannel && !b.data.channelId) return reply.code(400).send({ error: 'channel_required' });
+    if (b.data.prizeKind === 'custom' && !b.data.prizeContent?.trim()) return reply.code(400).send({ error: 'prize_content_required' });
     const p = await db();
     // A creator-id requirement implies a linked account (creator ids live on BCWEB accounts).
-    const reqs = b.data.requirements ? { linked: !!(b.data.requirements.linked || b.data.requirements.creator), creator: !!b.data.requirements.creator } : null;
+    // A site or both giveaway needs a linked account to enter (that IS the account entering).
+    const rawReqs = b.data.requirements || {};
+    const linked = !!(rawReqs.linked || rawReqs.creator) || b.data.audience !== 'discord';
+    const reqs = (linked || rawReqs.creator) ? { linked, creator: !!rawReqs.creator } : null;
     const gw = await p.giveaway.create({ data: {
-      prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount,
+      prize: b.data.prize, channelId: needsChannel ? b.data.channelId : null, winnersCount: b.data.winnersCount,
       endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
-      giftConfig: b.data.gift || null, requirements: (reqs && (reqs.linked || reqs.creator)) ? reqs : null,
+      kind: 'admin', audience: b.data.audience, prizeKind: b.data.prizeKind, prizeContent: b.data.prizeContent?.trim() || null,
+      giftConfig: b.data.gift || null, requirements: reqs,
       winnerMessage: b.data.winnerMessage?.trim() || null, createdBy: req.user.uid,
     } });
     return { ok: true, id: gw.id };
@@ -1079,11 +1093,39 @@ export default async function botRoutes(app) {
     return { ok: true };
   });
 
+  // ── Site giveaways: a logged-in member lists and enters the ones whose audience includes the
+  // site. The entry is the ACCOUNT (userId) in `siteEntrants`; the server sweeper draws them. ──
+  app.get('/me/giveaways', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const list = await p.giveaway.findMany({ where: { status: 'active', audience: { in: ['site', 'both'] } }, orderBy: { endsAt: 'asc' }, take: 50 });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { _count: { select: { creatorLinks: true } } } });
+    const meetsCreator = (me?._count?.creatorLinks || 0) > 0;
+    return { giveaways: list.map((g) => ({
+      id: g.id, prize: g.prize, endsAt: g.endsAt, winnersCount: g.winnersCount, prizeKind: g.prizeKind,
+      entrantCount: g.siteEntrants.length + g.entries.length, entered: g.siteEntrants.includes(req.user.uid),
+      requiresCreator: !!g.requirements?.creator, meetsCreator,
+    })) };
+  });
+  app.post('/me/giveaways/:id/enter', { preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '5 minutes' } } }, async (req, reply) => {
+    const p = await db();
+    const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
+    if (!gw || gw.status !== 'active' || !['site', 'both'].includes(gw.audience)) return reply.code(409).send({ error: 'not_active' });
+    if (gw.requirements?.creator) {
+      const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { _count: { select: { creatorLinks: true } } } });
+      if (!(me?._count?.creatorLinks > 0)) return reply.code(403).send({ error: 'need_creator' });
+    }
+    if (gw.siteEntrants.includes(req.user.uid)) return { ok: true, already: true, count: gw.siteEntrants.length };
+    await p.giveaway.update({ where: { id: gw.id }, data: { siteEntrants: { push: req.user.uid } } });
+    return { ok: true, count: gw.siteEntrants.length + 1 };
+  });
+
   // Bot-facing giveaway sync
   app.get('/bot/giveaways/active', async (req, reply) => {
     if (!botAuth(req, reply)) return;
     const p = await db();
-    const list = await p.giveaway.findMany({ where: { status: 'active' }, take: 100 });
+    // Only the giveaways the bot owns: those with a Discord channel (audience discord|both).
+    // A site-only giveaway has no channel and is posted/drawn by the server, never the bot.
+    const list = await p.giveaway.findMany({ where: { status: 'active', audience: { in: ['discord', 'both'] }, channelId: { not: null } }, take: 100 });
     return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, messageId: g.messageId, endsAt: g.endsAt, winnersCount: g.winnersCount, entries: g.entries, requirements: g.requirements || null, winnerMessage: g.winnerMessage || null, due: new Date(g.endsAt) <= new Date() })) };
   });
   app.post('/bot/giveaways/:id/posted', async (req, reply) => {
@@ -1118,10 +1160,18 @@ export default async function botRoutes(app) {
   // the dashboard for gift-backed giveaways.
   app.post('/bot/giveaways/create', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    const b = z.object({ prize: z.string().min(1).max(200), channelId: z.string().min(5).max(32), durationMinutes: z.number().int().min(1).max(60 * 24 * 60), winnersCount: z.number().int().min(1).max(50).default(1) }).safeParse(req.body);
+    const b = z.object({ prize: z.string().min(1).max(200), channelId: z.string().min(5).max(32), guildId: z.string().min(5).max(32), hostDiscordId: z.string().min(5).max(32).optional(), durationMinutes: z.number().int().min(1).max(60 * 24 * 60), winnersCount: z.number().int().min(1).max(50).default(1) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const gw = await p.giveaway.create({ data: { prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount, endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000) } });
+    // A member's own giveaway (Discord-only, no inventory prize — the host hands the prize over):
+    // at most 5 active per server, so one member can't paper the channel with them.
+    const active = await p.giveaway.count({ where: { guildId: b.data.guildId, kind: 'user', status: 'active' } });
+    if (active >= 5) return reply.code(409).send({ error: 'guild_giveaway_cap' });
+    const gw = await p.giveaway.create({ data: {
+      prize: b.data.prize, channelId: b.data.channelId, winnersCount: b.data.winnersCount,
+      endsAt: new Date(Date.now() + b.data.durationMinutes * 60_000),
+      kind: 'user', audience: 'discord', prizeKind: 'none', guildId: b.data.guildId, hostDiscordId: b.data.hostDiscordId || null,
+    } });
     return { ok: true, id: gw.id };
   });
   app.post('/bot/giveaways/:id/drawn', async (req, reply) => {
@@ -1132,24 +1182,20 @@ export default async function botRoutes(app) {
     const gw = await p.giveaway.findUnique({ where: { id: req.params.id } });
     if (!gw) return reply.code(404).send({ error: 'not_found' });
     await p.giveaway.update({ where: { id: gw.id }, data: { status: 'ended', winnerIds: b.data.winnerIds } });
-    // Mint a gift code per winner that has a linked account (the bot DMs each one).
-    const gifts = {};
-    if (gw.giftConfig) {
-      for (const did of b.data.winnerIds) {
-        const link = await p.discordLink.findUnique({ where: { discordId: did } });
-        if (!link) continue;
-        const g = gw.giftConfig;
-        let code = genCode();
-        for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = genCode();
-        await p.promoCode.create({ data: {
-          code, kind: g.kind, percentOff: g.percentOff ?? null, freeMonths: g.freeMonths ?? null,
-          storageGB: g.storageGB ?? null, uploadMbps: g.uploadMbps ?? null, hostMonths: g.hostMonths ?? null, boostDays: g.boostDays ?? null,
-          maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [link.userId], note: `giveaway ${gw.id} winner`,
-        } });
-        gifts[did] = code;
-      }
+    // Each winner with a linked account gets the prize in their BCWEB INVENTORY (sealed) plus a
+    // dashboard notification; they reveal it there to mint the promo code, or to read the custom
+    // content the creator typed. The bot DMs them too (pointing at the inventory). A winner with
+    // no linked account gets only the DM — there is no inventory to deliver to.
+    const delivered = [];
+    for (const did of b.data.winnerIds) {
+      const link = await p.discordLink.findUnique({ where: { discordId: did } });
+      if (!link) continue;
+      await deliverGiveawayPrize(p, { userId: link.userId, giveaway: gw, via: 'discord' }).catch(() => {});
+      notify(p, link.userId, 'giveaway_win', `You won “${gw.prize}” — it’s in your inventory; reveal it to claim.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est dans ton inventaire ; révèle-le pour le récupérer.`, href: '/dashboard?s=economy' }).catch(() => {});
+      delivered.push(did);
     }
-    return { ok: true, gifts };
+    // `gifts` kept (empty) for the bot's DM code path — codes are now minted on reveal, not here.
+    return { ok: true, delivered, gifts: {} };
   });
 
   app.post('/bot/payments/announced', async (req, reply) => {

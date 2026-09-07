@@ -217,6 +217,32 @@ export async function revealPurchase(p, eco, { userId, purchaseId }) {
   if (!row) return { ok: false, error: 'not_found' };
   const d = row.delivery || {};
   if (d.revealed) return { ok: true, delivery: pubDelivery(d), expiresAt: row.expiresAt };
+  // A giveaway win in the inventory. Not a shop item (no eco.shop entry), so it reveals from
+  // what was stamped on it at draw time: a `custom` prize shows the content the creator typed;
+  // a `promo` prize mints its code now (from the attached gift config), bound to the winner.
+  if (row.kind === 'giveaway') {
+    if (d.custom) {
+      const delivery = { kind: 'giveaway', custom: true, revealed: true, content: String(d.content || ''), prizeName: d.name || row.itemName, revealedAt: new Date().toISOString() };
+      await p.economyPurchase.update({ where: { id: row.id }, data: { delivery, revealedAt: new Date() } });
+      await logAudit(p, 'system', 'economy.reveal', `user=${userId} giveaway=${row.itemId}`);
+      return { ok: true, delivery };
+    }
+    if (d.giftConfig) {
+      const g = d.giftConfig;
+      let code = newShopCode();
+      for (let i = 0; i < 5 && (await p.promoCode.findUnique({ where: { code } })); i++) code = newShopCode();
+      await p.promoCode.create({ data: {
+        code, kind: g.kind, percentOff: g.percentOff ?? null, freeMonths: g.freeMonths ?? null,
+        storageGB: g.storageGB ?? null, uploadMbps: g.uploadMbps ?? null, hostMonths: g.hostMonths ?? null, boostDays: g.boostDays ?? null,
+        maxRedemptions: 1, perUserLimit: 1, assignedUserIds: [userId], note: `Giveaway win ${row.id}`,
+      } });
+      const delivery = { kind: 'giveaway', revealed: true, code, revealedAt: new Date().toISOString() };
+      await p.economyPurchase.update({ where: { id: row.id }, data: { delivery, revealedAt: new Date() } });
+      await logAudit(p, 'system', 'economy.reveal', `user=${userId} giveaway=${row.itemId}`);
+      return { ok: true, delivery };
+    }
+    return { ok: false, error: 'nothing_to_reveal' };
+  }
   if (!SHOP_KINDS[row.kind]?.code) return { ok: false, error: 'nothing_to_reveal' };
   const item = (Array.isArray(eco?.shop) ? eco.shop : []).map(normItem).find((x) => x && x.id === row.itemId);
   const codeDays = item?.codeDays || null;
@@ -311,11 +337,48 @@ export async function listPurchases(p, eco, userId, take = 100) {
     return {
       id: r.id, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status,
       delivery: pubDelivery(d), createdAt: r.createdAt, expiresAt: r.expiresAt, giftedFromId: r.giftedFromId || null,
-      canReveal: !!SHOP_KINDS[r.kind]?.code && !d.revealed && r.status !== 'pending',
+      canReveal: (r.kind === 'giveaway' ? (!!d.custom || !!d.giftConfig) : !!SHOP_KINDS[r.kind]?.code) && !d.revealed && r.status !== 'pending',
       canGift: !!it?.giftable && r.status === 'delivered' && (!d.revealed || !!it?.giftable),
       expired: !!(r.expiresAt && new Date(r.expiresAt).getTime() < Date.now()),
     };
   });
+}
+
+/** Land a giveaway win in a member's inventory: a sealed EconomyPurchase they reveal to get the
+ *  promo code (from the gift config) or the custom content the creator typed. Idempotent per
+ *  (giveaway, user) so a re-draw or a double-call cannot hand out the same prize twice. */
+export async function deliverGiveawayPrize(p, { userId, giveaway, via = 'site' }) {
+  const itemId = `gw:${giveaway.id}`;
+  const existing = await p.economyPurchase.findFirst({ where: { userId, itemId } });
+  if (existing) return existing;
+  let delivery;
+  if (giveaway.prizeKind === 'custom' && giveaway.prizeContent) delivery = { custom: true, content: giveaway.prizeContent, name: giveaway.prize, revealed: false };
+  else if (giveaway.prizeKind !== 'none' && giveaway.giftConfig) delivery = { giftConfig: giveaway.giftConfig, revealed: false };
+  else delivery = { none: true, revealed: false };
+  return p.economyPurchase.create({ data: {
+    userId, itemId, itemName: giveaway.prize, kind: 'giveaway', cost: 0, via, status: 'delivered', delivery,
+  } });
+}
+
+/** Draw the SITE giveaways that are due — the bot draws the Discord ones, but a site-only
+ *  giveaway has no bot to pick winners, so the sweeper does it: shuffle `siteEntrants`, take N,
+ *  end it, land each win in the winner's inventory, and notify their dashboard. */
+export async function drawDueSiteGiveaways(p, log = null) {
+  const due = await p.giveaway.findMany({ where: { status: 'active', audience: 'site', endsAt: { lte: new Date() } }, take: 50 });
+  let drawn = 0;
+  for (const gw of due) {
+    const pool = [...new Set(gw.siteEntrants || [])];
+    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const winners = pool.slice(0, Math.min(gw.winnersCount, pool.length));
+    await p.giveaway.update({ where: { id: gw.id }, data: { status: 'ended', winnerIds: winners } });
+    for (const uid of winners) {
+      await deliverGiveawayPrize(p, { userId: uid, giveaway: gw, via: 'site' }).catch(() => {});
+      await notify(p, uid, 'giveaway_win', `You won “${gw.prize}” — it’s in your inventory; reveal it to claim.`, { bodyFr: `Tu as gagné « ${gw.prize} » — c’est dans ton inventaire ; révèle-le pour le récupérer.`, href: '/dashboard?s=economy' }).catch(() => {});
+    }
+    drawn += 1;
+    if (log) log.info?.(`[sweeper] site giveaway ${gw.id} drawn: ${winners.length} winner(s)`);
+  }
+  return drawn;
 }
 
 /** A member's point movements, newest first. */

@@ -5,7 +5,7 @@
 // their object-storage bytes. Runs periodically from the API process.
 import { db, notify, catalogLog, clearAccountLockCache, hostingGrace, humanHours } from './lib.mjs';
 import { sweepAutoBadges } from '../routes/social.mjs';
-import { sweepEconomyHistory } from './economy-shop.mjs';
+import { sweepEconomyHistory, drawDueSiteGiveaways } from './economy-shop.mjs';
 import { sweepAttention } from './attention.mjs';
 import { PENDING_QUEUES } from '../routes/misc.mjs';
 import { sendMail, mailShell, emailEnabled } from './mail.mjs';
@@ -643,6 +643,10 @@ export function startSweeper(app) {
       await awardSeason(p)
         .then((r) => { if (r.awarded?.length) app.log.info(`[sweeper] Orb Fall ${r.season}: awarded ${r.awarded.length} code(s)`); })
         .catch((e) => app.log.warn({ e: String(e) }, 'game season award failed'));
+      // Site-only giveaways (no bot to draw them) are drawn here when due.
+      await drawDueSiteGiveaways(p, app.log)
+        .then((n) => { if (n) app.log.info(`[sweeper] drew ${n} site giveaway(s)`); })
+        .catch((e) => app.log.warn({ e: String(e) }, 'site giveaway draw failed'));
       if (items || repos || cats || rejPayloads || expired || warned || pruned || backedUp || analytics) app.log.info(`[sweeper] hard-deleted ${items} item(s), ${repos} repo(s), ${cats} catalog(s) · purged ${rejPayloads} rejected payload(s) · suspended ${expired} expired term(s) · warned ${warned} · pruned ${pruned} old Discord member row(s) · aged out ${analytics} analytics row(s)${backedUp ? ' · took daily file backup snapshot' : ''}`);
     } catch (e) { app.log.warn({ e: String(e) }, 'sweeper run failed'); }
   };
