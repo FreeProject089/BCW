@@ -16689,6 +16689,14 @@ function AdminFeedback() {
             <Select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} className="!w-auto" title={t('fb.sort', 'Sort')}><option value="severity">{t('fb.sort.sev', 'By severity')}</option><option value="new">{t('fb.sort.new', 'Newest')}</option><option value="old">{t('fb.sort.old', 'Oldest')}</option></Select>
             <form className="flex-1 min-w-[160px] flex gap-1" onSubmit={(e) => { e.preventDefault(); setQApplied(q.trim()); setPage(0); }}><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fb.search', 'Search title, text, e-mail, fingerprint')} /><Button size="sm">{t('common.search', 'Search')}</Button></form>
           </div>
+          {/* Severity has no column to order on, so it ranks a bounded window in memory. Say so
+              when the window is smaller than the table, rather than letting the tail vanish. */}
+          {data?.windowed && (
+            <div className="mt-2 text-[11.5px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 text-[var(--muted)] px-2.5 py-2 flex items-start gap-2">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
+              <span>{t('fb.windowed', 'Sorting by severity ranks the {n} most recent of {all} reports. Switch to Newest or Oldest to page through all of them.').replace('{n}', data.windowSize).replace('{all}', data.totalAll)}</span>
+            </div>
+          )}
           {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>
             : !(data?.items || []).length ? <div className="py-10 text-center text-sm text-[var(--muted)]">{t('fb.empty', 'Nothing here.')}</div>
             : <div className="space-y-1.5">

@@ -276,11 +276,21 @@ export default async function feedbackRoutes(app) {
     const sort = ['new', 'old', 'severity'].includes(q.sort) ? q.sort : 'new';
     const total = await p.feedback.count({ where });
     let rows;
+    // Severity paginates over the WINDOW, so the page count has to follow the window, not the
+    // table. With more rows than the window, `total` sent the pager past where the slice can
+    // reach and every page beyond it came back empty — a pager offering pages that render
+    // nothing, with no way to tell that from "no results". `pageTotal` is what the pager counts
+    // against; `windowed` lets the screen say why the tail is missing instead of just losing it.
+    const SEV_WINDOW = 1000;
+    let pageTotal = total;
+    let windowed = false;
     if (sort === 'severity') {
       const RANK = { crash: 0, bug: 1, feedback: 2 };
-      const win = await p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, take: 1000 });
+      const win = await p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, take: SEV_WINDOW });
       win.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9)); // stable → keeps newest-first within a kind
       rows = win.slice(page * take, page * take + take);
+      pageTotal = win.length;
+      windowed = total > win.length;
     } else {
       rows = await p.feedback.findMany({ where, orderBy: { createdAt: sort === 'old' ? 'asc' : 'desc' }, skip: page * take, take });
     }
@@ -292,7 +302,7 @@ export default async function feedbackRoutes(app) {
     const uname = Object.fromEntries(users.map((u) => [u.id, u.displayName]));
     return {
       items: rows.map((r) => ({ ...pub(r), body: r.body.slice(0, 400), userName: r.userId ? uname[r.userId] || null : null })),
-      total, page, take,
+      total: pageTotal, totalAll: total, windowed, windowSize: SEV_WINDOW, page, take,
       counts: Object.fromEntries(byStatus.map((s) => [s.status, s._count._all])),
       versions: versions.map((v) => ({ version: v.appVersion, n: v._count._all })),
     };
