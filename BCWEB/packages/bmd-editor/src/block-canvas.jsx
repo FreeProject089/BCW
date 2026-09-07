@@ -13,7 +13,11 @@ import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 // block, so the visual editor died on any document that had one. It went unnoticed because
 // the tests covering that row exercise the two pure functions directly and the component
 // never appears in them, and because eslint runs from apps/web and does not reach packages/.
-import { splitBlocks, joinBlocks, newBlock, parseDirectiveHead, setDirectiveHead } from '@bettercommunity/bmd/editor-blocks';
+import {
+  splitBlocks, joinBlocks, newBlock, parseDirectiveHead, setDirectiveHead,
+  parseTable, tableAddColumn, tableRemoveColumn, tableAddRow, tableRemoveRow,
+  countChildren, addChild,
+} from '@bettercommunity/bmd/editor-blocks';
 
 // A short, human label + a glyph hint per block kind (directive:foo → "foo").
 function kindLabel(kind) {
@@ -34,12 +38,19 @@ const UP = 'M18 15l-6-6-6 6', DOWN = 'M6 9l6 6 6-6', X = 'M18 6 6 18M6 6l12 12',
  * @param {object} [labels]        UI strings, so a localised host is not stuck with English.
  *                                 Every key falls back to the English below.
  */
+// Containers whose children can be added from a button. The value is the child directive:
+// adding one by hand means matching the parent's colon count, which is the most common way
+// to break one of these blocks.
+const CHILD_OF = { tabs: 'tab', steps: 'step', cards: 'card', columns: 'column', row: 'col', roadmap: 'stage', grid: 'card' };
+
 const EN = {
   insert: 'Insert a block', search: 'Search blocks…', noMatch: 'No block matches.',
   count: '{n} block(s)', preview: 'Preview', drag: 'Drag to reorder',
   up: 'Move up', down: 'Move down', del: 'Delete',
   empty: 'Empty document — insert a block above.',
   title: 'Title', icon: 'Icon', noIcon: 'Pick an icon',
+  addCol: '+ column', delCol: '− column', addRow: '+ row', delRow: '− row',
+  addChild: 'Add {child}', childCount: '{n} × {child}',
   style: 'Style', styleA: 'Style A', styleB: 'Style B',
   space: 'Space below', spaceAuto: 'Space: auto',
   space_none: 'None', space_xs: 'Tiny', space_sm: 'Small', space_md: 'Medium', space_lg: 'Large', space_xl: 'Huge',
@@ -196,6 +207,40 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
                       <option value="">{T.spaceAuto}</option>
                       {['none', 'xs', 'sm', 'md', 'lg', 'xl'].map((s) => <option key={s} value={s}>{T[`space_${s}`] || s}</option>)}
                     </select>
+                  </div>
+                );
+              })()}
+              {/* Structure, where there is structure to edit.
+                  A markdown table is text, and editing it as text is why people give up on
+                  them: adding a column means retyping every row AND the separator, and one
+                  cell out of step silently stops it being a table — it renders as a paragraph
+                  full of pipes. Same for `:::tabs`: a new tab has to match the parent's colon
+                  count or the whole block breaks. */}
+              {(() => {
+                const table = parseTable(b.src);
+                if (table) {
+                  return (
+                    <div className="bmdc-struct">
+                      <span className="bmdc-struct-n">{table.header.length}&times;{table.rows.length}</span>
+                      <button type="button" onClick={() => editBlock(b.id, tableAddColumn(b.src))}>{T.addCol}</button>
+                      <button type="button" disabled={table.header.length <= 1}
+                        onClick={() => editBlock(b.id, tableRemoveColumn(b.src, table.header.length - 1))}>{T.delCol}</button>
+                      <button type="button" onClick={() => editBlock(b.id, tableAddRow(b.src))}>{T.addRow}</button>
+                      <button type="button" disabled={!table.rows.length}
+                        onClick={() => editBlock(b.id, tableRemoveRow(b.src, table.rows.length - 1))}>{T.delRow}</button>
+                    </div>
+                  );
+                }
+                const h = parseDirectiveHead(b.src);
+                const child = h && CHILD_OF[h.name];
+                if (!child) return null;
+                const n = countChildren(b.src, child);
+                return (
+                  <div className="bmdc-struct">
+                    <span className="bmdc-struct-n">{T.childCount.replace('{n}', String(n)).replace('{child}', child)}</span>
+                    <button type="button" onClick={() => editBlock(b.id, addChild(b.src, child, '', ''))}>
+                      {T.addChild.replace('{child}', child)}
+                    </button>
                   </div>
                 );
               })()}

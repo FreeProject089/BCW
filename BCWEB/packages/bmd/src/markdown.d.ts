@@ -411,3 +411,20 @@ export function setDirectiveHead(src: string, patch?: { label?: string; attrs?: 
 export const SPACE_STEPS: Record<'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl', number>;
 /** The two looks every block understands: `a` is the default and needs no attribute. */
 export const VARIANTS: readonly string[];
+
+/** A markdown table read as a structure. `null` when the source is not one. */
+export interface BmdTable { header: string[]; align: string[]; rows: string[][]; before: string; after: string }
+export function parseTable(src: string): BmdTable | null;
+/** Put a table back together, padded so the source stays readable by hand. */
+export function serializeTable(t: BmdTable): string;
+/** Column and row edits. `at` defaults to the end; an out-of-range index is clamped. */
+export function tableAddColumn(src: string, at?: number): string;
+export function tableRemoveColumn(src: string, at?: number): string;
+export function tableAddRow(src: string, at?: number): string;
+export function tableRemoveRow(src: string, at?: number): string;
+export function tableSetAlign(src: string, at: number, how: '' | 'left' | 'center' | 'right'): string;
+
+/** How many direct `child` directives a container block holds (`:::tabs` → 'tab'). */
+export function countChildren(src: string, child: string): number;
+/** Append a child, using one fewer colon than the parent — the rule that makes these nest. */
+export function addChild(src: string, child: string, label?: string, body?: string): string;

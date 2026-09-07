@@ -172,3 +172,14 @@
   border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
 .bmdlp-snippet:hover { background: var(--bmd-surface, #f4f4f5); }
 .bmdlp-empty, .bmdlp-none { font-size: 12.5px; color: var(--bmd-muted, #6b7280); padding: 12px; text-align: center; }
+
+/* The structural row: what a block IS made of, editable as structure.
+   Only drawn for blocks that have structure — a paragraph has none, and a row of
+   disabled buttons on every block would be noise on the thing you are writing in. */
+.bmdc-struct { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; }
+.bmdc-struct-n { font-size: 10.5px; font-variant-numeric: tabular-nums; color: var(--bmd-muted, #6b7280);
+  padding-inline-end: 2px; }
+.bmdc-struct button { font: inherit; font-size: 11.5px; padding: 3px 8px; cursor: pointer;
+  border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 7px; background: transparent; color: inherit; }
+.bmdc-struct button:hover:not(:disabled) { border-color: var(--bmd-accent, #f97316); color: var(--bmd-accent, #f97316); }
+.bmdc-struct button:disabled { opacity: .4; cursor: default; }

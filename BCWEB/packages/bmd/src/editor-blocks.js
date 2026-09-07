@@ -193,3 +193,137 @@ export function setDirectiveHead(src, patch = {}) {
   lines[0] = `${head.indent}${head.colons}${head.name}${label ? `[${label}]` : ''}${a ? `{${a}}` : ''}`;
   return lines.join('\n');
 }
+
+// ── Tables, as a structure ───────────────────────────────────────────────────
+// A markdown table is text, and editing it as text is why people give up on them: adding a
+// column means retyping every row and the separator, and one cell out of step silently stops
+// it being a table at all. These parse it into rows and put it back, so the editor can offer
+// "add a column" instead of "good luck".
+//
+// Deliberately forgiving on input and strict on output: a hand-written table with ragged pipes
+// and no trailing bar still parses, and what comes back is padded and aligned so the source
+// stays readable for whoever opens it next.
+
+const cellsOf = (line) => {
+  let s = String(line).trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|') && !s.endsWith('\\|')) s = s.slice(0, -1);
+  // Split on unescaped pipes only: `\|` is a literal pipe inside a cell, and splitting on it
+  // would tear one cell into two and shift every column after it.
+  return s.split(/(?<!\\)\|/).map((c) => c.trim());
+};
+const isSeparator = (line) => /^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$/.test(line) && line.includes('-');
+const alignOf = (c) => (c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : c.startsWith(':') ? 'left' : '');
+
+/**
+ * Read a markdown table. Returns null when `src` is not one — the caller uses that to decide
+ * whether to offer table controls at all.
+ * @returns {{ header: string[], align: string[], rows: string[][], before: string, after: string }|null}
+ */
+export function parseTable(src) {
+  const lines = String(src ?? '').split('\n');
+  const sep = lines.findIndex((l, i) => i > 0 && isSeparator(l) && lines[i - 1].includes('|'));
+  if (sep < 1) return null;
+  const header = cellsOf(lines[sep - 1]);
+  const align = cellsOf(lines[sep]).map(alignOf);
+  const rows = [];
+  let end = sep + 1;
+  for (; end < lines.length; end++) {
+    if (!lines[end].includes('|')) break;
+    rows.push(cellsOf(lines[end]));
+  }
+  return {
+    header, align, rows,
+    before: lines.slice(0, sep - 1).join('\n'),
+    after: lines.slice(end).join('\n'),
+  };
+}
+
+/** Put a table back together, padded so the source is readable by hand. */
+export function serializeTable(t) {
+  const cols = t.header.length;
+  const rows = t.rows.map((r) => Array.from({ length: cols }, (_, i) => r[i] ?? ''));
+  const w = Array.from({ length: cols }, (_, i) =>
+    Math.max(3, t.header[i]?.length || 0, ...rows.map((r) => r[i].length)));
+  const pad = (s, i) => String(s ?? '').padEnd(w[i]);
+  const sep = t.align.map((a, i) => {
+    const bar = '-'.repeat(Math.max(3, w[i] - (a === 'center' ? 2 : a ? 1 : 0)));
+    return a === 'center' ? `:${bar}:` : a === 'right' ? `${bar}:` : a === 'left' ? `:${bar}` : bar;
+  });
+  const line = (cs) => `| ${cs.join(' | ')} |`;
+  const body = [line(t.header.map(pad)), line(sep.map((s, i) => s.padEnd(w[i]))), ...rows.map((r) => line(r.map(pad)))];
+  return [t.before, ...body, t.after].filter((x, i) => !(i === 0 && !x) && !(x === '' && i === 3 + rows.length)).join('\n');
+}
+
+const clampIdx = (i, len) => Math.max(0, Math.min(len, Number.isFinite(i) ? i : len));
+
+/** Add a column. `at` defaults to the end. */
+export function tableAddColumn(src, at) {
+  const t = parseTable(src); if (!t) return src;
+  const i = clampIdx(at, t.header.length);
+  t.header.splice(i, 0, '');
+  t.align.splice(i, 0, '');
+  for (const r of t.rows) r.splice(i, 0, '');
+  return serializeTable(t);
+}
+
+/** Remove a column. A table needs one, so the last one is never removed. */
+export function tableRemoveColumn(src, at) {
+  const t = parseTable(src); if (!t || t.header.length <= 1) return src;
+  const i = clampIdx(at, t.header.length - 1);
+  t.header.splice(i, 1); t.align.splice(i, 1);
+  for (const r of t.rows) r.splice(i, 1);
+  return serializeTable(t);
+}
+
+/** Add a row. `at` defaults to the end. */
+export function tableAddRow(src, at) {
+  const t = parseTable(src); if (!t) return src;
+  const i = clampIdx(at, t.rows.length);
+  t.rows.splice(i, 0, Array.from({ length: t.header.length }, () => ''));
+  return serializeTable(t);
+}
+
+/** Remove a row. The header is not a row and cannot be removed this way. */
+export function tableRemoveRow(src, at) {
+  const t = parseTable(src); if (!t || !t.rows.length) return src;
+  const i = clampIdx(at, t.rows.length - 1);
+  t.rows.splice(i, 1);
+  return serializeTable(t);
+}
+
+/** Set a column's alignment: '' | 'left' | 'center' | 'right'. */
+export function tableSetAlign(src, at, how) {
+  const t = parseTable(src); if (!t) return src;
+  const i = clampIdx(at, t.header.length - 1);
+  t.align[i] = ['left', 'center', 'right'].includes(how) ? how : '';
+  return serializeTable(t);
+}
+
+// ── Container directives, as a structure ─────────────────────────────────────
+// `:::tabs` holds `:::tab`s, `::::steps` holds `:::step`s, `:::cards` holds `:::card`s. Adding
+// one by hand means matching the parent's colon count, which is the single most common way to
+// break one of these blocks.
+
+/** How many direct children of `child` a container block has. */
+export function countChildren(src, child) {
+  const re = new RegExp(`^\\s*:{3,}${child}\\b`, 'gm');
+  return (String(src ?? '').match(re) || []).length;
+}
+
+/**
+ * Append a child to a container, using ONE FEWER colon than the parent — which is the rule
+ * that makes these nest, and the one a person typing it out gets wrong.
+ */
+export function addChild(src, child, label = '', body = '') {
+  const head = parseDirectiveHead(src);
+  if (!head) return src;
+  const inner = ':'.repeat(Math.max(3, head.colons.length - 1));
+  const lines = String(src ?? '').split('\n');
+  // The parent's closing fence is the last line that is only colons.
+  let close = lines.length - 1;
+  while (close > 0 && !/^\s*:{3,}\s*$/.test(lines[close])) close--;
+  const block = [`${inner}${child}${label ? `[${label}]` : ''}`, body, inner];
+  if (close <= 0) return [...lines, ...block].join('\n');
+  return [...lines.slice(0, close), ...block, ...lines.slice(close)].join('\n');
+}
