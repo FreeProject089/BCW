@@ -572,20 +572,52 @@ const GUIDE_MORE = {
 // `**label** — what` bullet under it. One renderer for the whole guide instead of a bespoke
 // card list. `one()` collapses newlines so a value can never break the fence or the attr.
 const one = (s) => String(s ?? '').replace(/\s*\n+\s*/g, ' ').trim();
-function moduleFieldMd(m, L) {
+
+/**
+ * The `guide.overrides` key for one row of a screen reference.
+ *
+ * "On this screen" was the last part of the guide nobody could edit: it renders straight out
+ * of the ADMIN_SCREENS_REF catalog, so a team that wanted to add "ask Marc before touching
+ * this" had nowhere to put it. Giving each row a stable override id folds it into the SAME
+ * validated blob the built-in entries already use — no new endpoint, no new schema, and the
+ * existing "Back to built-in" is one click, because the catalog is never written to.
+ *
+ * The API validates `^[a-z0-9-]{1,60}$`, so the id is sanitised and clipped HERE. Left to the
+ * server, an entry whose id happened to be long would come back 400 on save with nothing to
+ * say which row caused it.
+ */
+const refOvId = (entryId, moduleId) =>
+  `ref-${entryId}-${moduleId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 60);
+
+/**
+ * A fence long enough to hold `body` whatever it contains.
+ *
+ * The row is a `:::field` block with the text inside it. Once the text is admin-written it can
+ * contain B.MD of its own, and a `:::tip` inside a three-colon `:::field` CLOSES the field
+ * early — the tip renders and the rest of the row spills out as loose text under it. Growing
+ * the fence past the longest run inside is how B.MD nests, and it costs nothing when the body
+ * is plain prose.
+ */
+const fenceFor = (body) => ':'.repeat(Math.max(3, ...[...String(body ?? '').matchAll(/^\s*(:{3,})/gm)].map((m) => m[1].length + 1)));
+
+function moduleFieldMd(m, L, ov) {
+  const label = (L(ov?.title) || '').trim() || L(m.name);
+  const written = (L(ov?.body) || '').trim();
   const controls = (m.controls || []).map((c) => `- **${one(L(c.label))}** — ${one(L(c.what))}`).join('\n');
-  const body = [one(L(m.what)), controls].filter(Boolean).join('\n\n');
-  return `:::field{label="${one(L(m.name)).replace(/"/g, '”')}"}\n${body}\n:::`;
+  const body = written || [one(L(m.what)), controls].filter(Boolean).join('\n\n');
+  const f = fenceFor(body);
+  return `${f}field{label="${one(label).replace(/"/g, '”')}"}\n${body}\n${f}`;
 }
-function ScreenReference({ sections }) {
+function ScreenReference({ entryId, sections, overrides }) {
   const { t, lang } = useI18n();
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
-  if (!sections?.length) return null;
+  const rows = (sections || []).filter((m) => !overrides?.[refOvId(entryId, m.id)]?.hidden);
+  if (!rows.length) return null;
   return (
     <div className="mt-5 pt-4 border-t border-[var(--line)]">
       <div className="text-[13px] font-bold mb-1">{t('ag.screen.ref', 'On this screen')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('ag.screen.refsub', 'Section by section: what each control does, and what it does not.')}</p>
-      <Markdown>{sections.map((m) => moduleFieldMd(m, L)).join('\n')}</Markdown>
+      <Markdown>{rows.map((m) => moduleFieldMd(m, L, overrides?.[refOvId(entryId, m.id)])).join('\n')}</Markdown>
     </div>
   );
 }
@@ -845,7 +877,7 @@ export default function AdminGuide() {
                   {activeItem.id === 'hostingsettings' && <HostingSettingsReference highlight={kParam} />}
                   {activeItem.id === 'bot' && <BotDashboardReference />}
                   {activeItem.id === 'economy' && <BotDashboardReference only={['economy', 'members']} />}
-                  {ADMIN_SCREENS_REF[activeItem.id] && <ScreenReference sections={ADMIN_SCREENS_REF[activeItem.id]} />}
+                  {ADMIN_SCREENS_REF[activeItem.id] && <ScreenReference entryId={activeItem.id} sections={ADMIN_SCREENS_REF[activeItem.id]} overrides={overrides} />}
                   {/* What the team added under the built-in text — B.MD, so a callout, a
                       checklist or a table of the house rules reads like the rest of the site. */}
                   {activeItem.extra && (L(activeItem.extra) || '').trim() && (
@@ -922,6 +954,30 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
     setOvFlag('hideMore', true);
   };
   const editedCount = entries.filter((it) => isEdited(it.id)).length;
+
+  // ── "On this screen" rows ──────────────────────────────────────────────────
+  // Every module of every screen reference, flattened into one editable list. They share the
+  // overrides blob with the built-in entries, so `isEdited`, the dirty check and save() all
+  // already cover them — this only has to name the rows and put a form on the selected one.
+  const refRows = useMemo(() => Object.entries(ADMIN_SCREENS_REF).flatMap(([eid, mods]) => {
+    const entry = entries.find((e) => e.id === eid);
+    return (mods || []).map((m) => ({ ovId: refOvId(eid, m.id), entryId: eid, mod: m, entryTitle: entry?.title || { en: eid, fr: eid } }));
+  }), [entries]);
+  const [refSel, setRefSel] = useState(() => null);
+  const curRef = refRows.find((r) => r.ovId === refSel) || refRows[0] || null;
+  const curRefOv = (curRef && ov[curRef.ovId]) || {};
+  const setRefField = (field, patch) => setOv((o) => ({ ...o, [curRef.ovId]: { ...(o[curRef.ovId] || {}), [field]: { ...((o[curRef.ovId] || {})[field] || {}), ...patch } } }));
+  const setRefFlag = (k, v) => setOv((o) => ({ ...o, [curRef.ovId]: { ...(o[curRef.ovId] || {}), [k]: v } }));
+  const resetRef = () => setOv((o) => { const n = { ...o }; delete n[curRef.ovId]; return n; });
+  // The built-in row, poured into the field so it is edited rather than retyped — the
+  // description AND its control bullets, which is the whole row as it renders today.
+  const startFromRef = () => {
+    const pick = (o) => (tab === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+    const m = curRef.mod;
+    const controls = (m.controls || []).map((c) => `- **${one(pick(c.label))}** — ${one(pick(c.what))}`).join('\n');
+    setRefField('body', { [tab]: [one(pick(m.what)), controls].filter(Boolean).join('\n\n') });
+  };
+  const refEditedCount = refRows.filter((r) => isEdited(r.ovId)).length;
 
   // Unsaved work, and the two ways it used to disappear.
   //
@@ -1005,7 +1061,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
       <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
-        {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
+        {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['ref', t('ag.edit.ref', 'On this screen'), refEditedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
           <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)]">{n}</span> : null}</button>
         ))}
       </div>
@@ -1056,6 +1112,57 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
                   <MarkdownEditor value={(curOv.extra || {})[tab] || ''} onChange={(v) => setOvField('extra', { [tab]: v })} minHeight={160} placeholder={tab === 'fr' ? ':::tip[Chez nous]\nCe que ton équipe doit savoir sur cet écran…\n:::' : ':::tip[Here]\nWhat your team should know about this screen…\n:::'} />
                 </div>
                 <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.builtin.h', 'An empty field keeps the built-in text for that language. The built-in bullet points, step-by-step and traps stay under your text; “Back to built-in” drops every change on this entry.')}</div>
+              </div>
+            </Card>
+          ) : <div className="text-sm text-[var(--faint)]">{t('ag.none', 'Nothing matches that.')}</div>}
+        </div>
+      )}
+
+      {/* The reference rows: same two-pane shape as the built-in entries, because they are the
+          same kind of edit — retitle, rewrite, hide, reset. No "extra section" field: a row IS
+          one section, so an addition belongs in its body. */}
+      {part === 'ref' && (
+        <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5 lg:items-start">
+          <nav className="mb-4 lg:mb-0 flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:max-h-[62vh] lg:overflow-y-auto no-scrollbar">
+            {refRows.map((r, i) => {
+              const on = curRef?.ovId === r.ovId;
+              const ed = isEdited(r.ovId);
+              const hid = !!ov[r.ovId]?.hidden;
+              const newGroup = i === 0 || refRows[i - 1].entryId !== r.entryId;
+              return (
+                <div key={r.ovId} className="contents">
+                  {newGroup && <div className="hidden lg:block text-[10px] uppercase tracking-wider text-[var(--faint)] px-2.5 pt-2 pb-0.5">{L(r.entryTitle)}</div>}
+                  <button type="button" onClick={() => setRefSel(r.ovId)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
+                    <span className="flex-1 min-w-0 truncate">{(L(ov[r.ovId]?.title) || '').trim() || L(r.mod.name)}</span>
+                    {ed && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" title={t('ag.edit.edited', 'edited')} />}
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+          {curRef ? (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 flex-wrap mb-3">
+                <span className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{L(curRef.entryTitle)}</span>
+                <span className="text-sm font-semibold">{L(curRef.mod.name)}</span>
+                <div className="ms-auto flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!curRefOv.hidden} onChange={(e) => setRefFlag('hidden', e.target.checked)} /> {t('ag.edit.ref.hide', 'Hide this row')}</label>
+                  {isEdited(curRef.ovId) && <Button size="sm" variant="ghost" onClick={resetRef}><RotateCcw size={13} /> {t('ag.edit.reset', 'Back to built-in')}</Button>}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="text-[11px] text-[var(--faint)] mb-1">{t('ag.edit.title.l', 'Title')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                  <Input value={(curRefOv.title || {})[tab] || ''} onChange={(e) => setRefField('title', { [tab]: e.target.value })} placeholder={curRef.mod.name[tab] || curRef.mod.name.en} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.ref.body', 'Row text — replaces the description AND its control list (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
+                    {!((curRefOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromRef} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
+                  </div>
+                  <MarkdownEditor value={(curRefOv.body || {})[tab] || ''} onChange={(v) => setRefField('body', { [tab]: v })} minHeight={160} placeholder={curRef.mod.what[tab] || curRef.mod.what.en} />
+                </div>
+                <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.ref.h', 'Writing here replaces the whole row for that language — the built-in control bullets included, so pull them in first if you want to keep them. An empty field keeps the built-in text.')}</div>
               </div>
             </Card>
           ) : <div className="text-sm text-[var(--faint)]">{t('ag.none', 'Nothing matches that.')}</div>}
