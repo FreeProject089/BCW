@@ -6041,6 +6041,8 @@ const DICT = {
     'lp.edit': 'Modifier ce bloc', 'lp.insert': 'Insérer ici', 'lp.remove': 'Supprimer ce bloc',
     'lp.empty': 'Rien pour l’instant. Déverrouille pour écrire.',
     'lp.back': 'Éditer',
+    'sel.h1': 'Titre 1', 'sel.h2': 'Titre 2', 'sel.h3': 'Titre 3',
+    'sel.ul': 'Liste à puces', 'sel.ol': 'Liste numérotée', 'sel.quote': 'Citation',
     'sp.v.ok': 'Le serveur va bien.', 'sp.v.watch': 'À surveiller.',
     'sp.v.problem': 'Le serveur demande ton attention.', 'sp.v.unknown': 'Pas de relevé récent.',
     'sp.v.okdesc': 'Processeur, mémoire et disque sont tous loin de leurs seuils d’alerte.',

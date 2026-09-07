@@ -620,7 +620,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
         // and reaching for bold found nothing at all — the feature existed in the mode
         // almost nobody switches to. Passing our ref down is all it needs.
         ? <><BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} textareaRef={ref} />
-          <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>
+          <SelectionToolbar key={mode} taRef={ref} value={value || ''} onChange={onChange} /></>
         : preview
         ? <div className="p-4 max-h-[52vh] overflow-auto">
             <BmdLivePreview value={value || ''} onChange={onChange} renderer={Markdown} lang={uiLang === 'fr' ? 'fr' : 'en'}
@@ -647,7 +647,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
                 space_md: t('bmdc.space.md', 'Medium'), space_lg: t('bmdc.space.lg', 'Large'), space_xl: t('bmdc.space.xl', 'Huge'),
               }} /></div>
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
-            <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}
+            <SelectionToolbar key={mode} taRef={ref} value={value || ''} onChange={onChange} /></>}
       {iconPick && <IconPicker onPick={(n) => insAny(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
       {badgePick && <BadgePicker onPick={(label, color) => insAny(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insAny(txt)} onClose={() => setBadgePick(false)} />}
       {kbdPick && <KbdPicker onPick={(combo) => insAny(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}

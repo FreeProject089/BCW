@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useI18n } from '../i18n.jsx';
 import { createPortal } from 'react-dom';
-import { Bold, Italic, Strikethrough, Code, Link2, Hash, MessageSquarePlus, Palette, X } from 'lucide-react';
+import { Bold, Italic, Strikethrough, Code, Link2, Hash, MessageSquarePlus, Palette, X,
+  Heading1, Heading2, Heading3, List, ListOrdered, Quote } from 'lucide-react';
+import { toggleHeading, toggleBullet, toggleOrdered, toggleQuote, expandToLines } from '../lib/md-lines.js';
 
 // Floating "select-to-format" toolbar for the markdown textarea. On a non-empty
 // selection it appears above the selected text and can wrap it with markdown
@@ -74,6 +76,27 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
     requestAnimationFrame(() => { if (ta) { ta.focus(); const c = caret ?? (s + text.length); ta.selectionStart = ta.selectionEnd = c; } });
   };
   const wrap = (b, a = b) => apply((sel) => ({ text: `${b}${sel}${a}` }));
+
+  /**
+   * Line-level formatting: heading, list, quote.
+   *
+   * These operate on whole LINES, not on the selected characters — applying `- ` to a
+   * character range would put the marker in the middle of a word. The selection is grown to
+   * its lines first, and put back covering the transformed range so the same press can be
+   * pressed again to toggle it off.
+   */
+  const applyLines = (fn) => {
+    const ta = taRef.current; const { s, e } = selRef.current;
+    const { start, end, lines } = expandToLines(value, s, e);
+    const next = fn(lines).join('\n');
+    onChange(value.slice(0, start) + next + value.slice(end));
+    setPos(null); setSub(null);
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.focus();
+      ta.selectionStart = start; ta.selectionEnd = start + next.length;
+    });
+  };
   const color = (c) => apply((sel) => ({ text: `<span style="color:${c}">${sel}</span>` }));
   const link = async () => { const url = window.prompt('Link URL'); if (url) apply((sel) => ({ text: `[${sel}](${url})` })); };
   const anchor = (h) => apply((sel) => ({ text: `[${sel}](#${h})` }));
@@ -98,6 +121,16 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
         {btn(Italic, () => wrap('*'), 'Italic')}
         {btn(Strikethrough, () => wrap('~~'), 'Strikethrough')}
         {btn(Code, () => wrap('`'), 'Inline code')}
+        <span className="w-px h-5 bg-[var(--line)] mx-0.5" />
+        {/* The structural half. It was missing entirely: everything here meant leaving the
+            mouse, finding the start of the line and typing the prefix by hand — and that is
+            the formatting people reach for most. Each one toggles. */}
+        {btn(Heading1, () => applyLines((l) => toggleHeading(l, 1)), t('sel.h1', 'Heading 1'))}
+        {btn(Heading2, () => applyLines((l) => toggleHeading(l, 2)), t('sel.h2', 'Heading 2'))}
+        {btn(Heading3, () => applyLines((l) => toggleHeading(l, 3)), t('sel.h3', 'Heading 3'))}
+        {btn(List, () => applyLines(toggleBullet), t('sel.ul', 'Bullet list'))}
+        {btn(ListOrdered, () => applyLines(toggleOrdered), t('sel.ol', 'Numbered list'))}
+        {btn(Quote, () => applyLines(toggleQuote), t('sel.quote', 'Quote'))}
         <span className="w-px h-5 bg-[var(--line)] mx-0.5" />
         {btn(Palette, () => setSub((v) => v === 'color' ? null : 'color'), 'Colour')}
         {btn(Link2, link, 'Link')}
