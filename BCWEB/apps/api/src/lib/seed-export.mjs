@@ -16,6 +16,13 @@ export const SEED_SECTIONS = {
   legal: { label: 'Legal pages', kind: 'legalPage' },
   siteSettings: { label: 'Site settings (home / scene / nav / footer)', kind: 'adminSetting', keys: ['site.home', 'site.scene', 'site.showcase', 'nav.config', 'footer.config', 'seo.config'] },
   hostingSettings: { label: 'Hosting settings', kind: 'adminSetting', prefixes: ['hosting.', 'pricing.', 'catalog.', 'telemetry.'] },
+  // Self-contained content: these carry no cross-model foreign key (a doc/badge is keyed by its
+  // own slug, a FAQ by its question), so they re-seed cleanly on any install. Blog posts are the
+  // exception still missing — they reference an author + a project, which the generated script
+  // would have to resolve first.
+  docs: { label: 'Documentation pages', kind: 'docPage' },
+  faq: { label: 'FAQ entries', kind: 'faqItem' },
+  badges: { label: 'Badges', kind: 'badge' },
 };
 
 /** JSON literal safe to paste into a JS source file — no `</script>` breakout, valid JS. */
@@ -77,6 +84,39 @@ export function generateSeedScript(sections, data, meta = {}) {
     p('  }');
   }
 
+  const docs = data.docPages || [];
+  if (docs.length) {
+    p('  // ── Documentation pages (matched by slug) ──');
+    p(`  const docs = ${jsLiteral(docs)};`);
+    p('  for (const d of docs) {');
+    p('    const before = await p.docPage.findUnique({ where: { slug: d.slug } }).catch(() => null);');
+    p('    await p.docPage.upsert({ where: { slug: d.slug }, create: d, update: d });');
+    p('    before ? updated++ : created++;');
+    p('  }');
+  }
+
+  const faq = data.faqItems || [];
+  if (faq.length) {
+    p('  // ── FAQ entries (matched by question — no unique column, so find-or-create) ──');
+    p(`  const faq = ${jsLiteral(faq)};`);
+    p('  for (const f of faq) {');
+    p('    const found = await p.faqItem.findFirst({ where: { question: f.question } });');
+    p('    if (found) { await p.faqItem.update({ where: { id: found.id }, data: f }); updated++; }');
+    p('    else { await p.faqItem.create({ data: f }); created++; }');
+    p('  }');
+  }
+
+  const badges = data.badges || [];
+  if (badges.length) {
+    p('  // ── Badges (matched by slug) ──');
+    p(`  const badges = ${jsLiteral(badges)};`);
+    p('  for (const b of badges) {');
+    p('    const before = await p.badge.findUnique({ where: { slug: b.slug } }).catch(() => null);');
+    p('    await p.badge.upsert({ where: { slug: b.slug }, create: b, update: b });');
+    p('    before ? updated++ : created++;');
+    p('  }');
+  }
+
   p('}');
   p('main()');
   p('  .then(() => console.log(`[seed] done — ${created} created, ${updated} updated.`))');
@@ -90,7 +130,7 @@ export function generateSeedScript(sections, data, meta = {}) {
  * Returns { data, summary } — data feeds generateSeedScript, summary feeds the preview.
  */
 export async function readSeedContent(p, selected) {
-  const data = { adminSettings: [], hostingPlans: [], legalPages: [] };
+  const data = { adminSettings: [], hostingPlans: [], legalPages: [], docPages: [], faqItems: [], badges: [] };
   const summary = {};
   const wantSettingKeys = new Set();
   const wantSettingPrefixes = [];
@@ -116,6 +156,26 @@ export async function readSeedContent(p, selected) {
   if (selected.includes('legal') && p.legalPage) {
     data.legalPages = (await p.legalPage.findMany().catch(() => [])).map(({ id, createdAt, updatedAt, ...rest }) => rest);
     summary.legal = data.legalPages.length;
+  }
+  if (selected.includes('docs') && p.docPage) {
+    // Content fields only — strip the row id, timestamps, the optimistic-concurrency `version`
+    // and the "was this helpful" tallies (all runtime state, not authored content).
+    data.docPages = (await p.docPage.findMany().catch(() => []))
+      .map(({ slug, title, titleFr, category, categoryFr, icon, body, bodyFr, order, published }) =>
+        ({ slug, title, titleFr, category, categoryFr, icon, body, bodyFr, order, published }));
+    summary.docs = data.docPages.length;
+  }
+  if (selected.includes('faq') && p.faqItem) {
+    data.faqItems = (await p.faqItem.findMany().catch(() => []))
+      .map(({ question, questionFr, answer, answerFr, category, categoryFr, order, published }) =>
+        ({ question, questionFr, answer, answerFr, category, categoryFr, order, published }));
+    summary.faq = data.faqItems.length;
+  }
+  if (selected.includes('badges') && p.badge) {
+    data.badges = (await p.badge.findMany().catch(() => []))
+      .map(({ slug, name, description, iconType, icon, color, grant, trigger, rule, earnMessage, priority, active }) =>
+        ({ slug, name, description, iconType, icon, color, grant, trigger, rule, earnMessage, priority, active }));
+    summary.badges = data.badges.length;
   }
   // Per-section AdminSetting counts for the preview.
   for (const key of selected) {
