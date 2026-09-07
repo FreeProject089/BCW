@@ -18,7 +18,7 @@ import { KIT_PARTS, KIT_FLAVOURS, buildKit, zipKit } from './kit-pack.js';
 import { validateLinks } from '@bettercommunity/bmd/links';
 import { documentHtml, cssUrl } from '@bettercommunity/bmd/export';
 import { extractHeadings } from '@bettercommunity/bmd/ast';
-import { SNIPPET_GROUPS, expandSnippet } from '@bettercommunity/bmd-editor/snippets';
+import { SNIPPET_GROUPS, expandSnippet, localizeSnippetGroups } from '@bettercommunity/bmd-editor/snippets';
 import BmdBlockCanvas from '@bettercommunity/bmd-editor/block-canvas';
 import '@bettercommunity/bmd-editor/editor.css';
 
@@ -243,7 +243,7 @@ function KitPacker() {
 }
 
 export default function DevMarkdown() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [src, setSrc] = useState(SAMPLE);
   const [editMode, setEditMode] = useState('text'); // 'text' (raw) | 'blocks' (drag-drop canvas)
   const ta = useRef(null);
@@ -307,7 +307,14 @@ export default function DevMarkdown() {
         </div>}
         <div className="grid lg:grid-cols-2 gap-3 items-start">
           {editMode === 'blocks'
-            ? <div className="min-w-0"><BmdBlockCanvas value={src} onChange={setSrc} snippetGroups={SNIPPET_GROUPS} renderer={Markdown} /></div>
+            ? <div className="min-w-0"><BmdBlockCanvas value={src} onChange={setSrc} snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, lang)} renderer={Markdown} lang={lang === 'fr' ? 'fr' : 'en'}
+                labels={{
+                  insert: t('bmdc.insert', 'Insert a block'), search: t('bmdc.search', 'Search blocks…'),
+                  noMatch: t('bmdc.nomatch', 'No block matches.'), count: t('bmdc.count', '{n} block(s)'),
+                  preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
+                  up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
+                  empty: t('bmdc.empty', 'Empty document — insert a block above.'),
+                }} /></div>
             : <Textarea ref={ta} rows={22} value={src} onChange={(e) => setSrc(e.target.value)}
                 className="!font-mono !text-[12.5px] !leading-relaxed" spellCheck={false} />}
           {/* min-w-0: a long unbroken token in a rendered code block would otherwise blow the

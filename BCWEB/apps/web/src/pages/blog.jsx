@@ -5,7 +5,7 @@ import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Milestone, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
-  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle,
+  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle, Upload, Download,
 } from 'lucide-react';
 import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
@@ -14,7 +14,12 @@ import { useI18n } from '../i18n.jsx';
 import Markdown, { anchorEl } from '../ui/md.jsx';
 import Avatar from '../ui/Avatar.jsx';
 import { REACTION_OPTIONS, ReactionIcon } from '../ui/reactions.jsx';
-import VisualEditor from '../editor/visual-editor.jsx';
+// The drag-and-drop composer now comes from the B.MD package rather than from a copy living
+// in this app: BmdBlockCanvas sits on the package's lossless block model, so reordering and
+// editing round-trip the source byte-for-byte, where the local one re-serialised through a
+// block model that only knew the shapes it had forms for — anything else drifted on save.
+import { BmdBlockCanvas, SNIPPET_GROUPS, localizeSnippetGroups } from '@bettercommunity/bmd-editor';
+import { parseBmdFile, serializeBmdFile } from '@bettercommunity/bmd/editor-blocks';
 import IconPicker from '../editor/icon-picker.jsx';
 import SelectionToolbar from '../editor/selection-toolbar.jsx';
 import KbdPicker from '../editor/kbd-picker.jsx';
@@ -389,6 +394,26 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const linkEmbed = async () => { const url = await dialog.prompt({ title: 'Link', label: 'URL', placeholder: 'https://…' }); if (!url) return; const txt = await dialog.prompt({ title: 'Link', label: 'Text', defaultValue: url }); insert(`[${txt || url}](${url})`); };
   const videoEmbed = async () => { const url = await dialog.prompt({ title: 'Video', label: 'Video file URL (mp4/webm)', placeholder: 'https://…' }); if (!url) return; insert(`\n<video controls src="${url}" style="width:100%;border-radius:12px"></video>\n`); };
   const tool = (Icon, fn, title) => <button type="button" title={title} onClick={fn} className="btn btn-sm"><Icon size={14} /></button>;
+  // .bmd in / out. Import replaces the body with the file's (its front matter is metadata about
+  // the FILE, not about this post, so it is read and dropped rather than written into the
+  // document); export wraps the current text with the format version.
+  const importBmd = () => {
+    const i = document.createElement('input');
+    i.type = 'file'; i.accept = '.bmd,.md,text/markdown,text/plain';
+    i.onchange = async () => {
+      const f = i.files?.[0]; if (!f) return;
+      try { onChange(parseBmdFile(await f.text()).body); toast.success(t('bmdf.imported', 'Loaded {n}.').replace('{n}', f.name)); }
+      catch { toast.error(t('bmdf.badfile', 'That file could not be read.')); }
+    };
+    i.click();
+  };
+  const exportBmd = () => {
+    const blob = new Blob([serializeBmdFile({ meta: { bmd: '1' }, body: value || '' })], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'document.bmd';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
   const [blocksOpen, setBlocksOpen] = useState(false);
   const blocksBtnRef = useRef(null); const [blocksPos, setBlocksPos] = useState({ top: 0, left: 0 });
   // Open the Blocks menu as a FIXED overlay anchored under the button — the editor wrapper
@@ -556,14 +581,29 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
           </>}
         </>}
         {mode !== 'rich' && <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>}
-        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className={`btn btn-sm${mode === 'rich' ? ' ms-auto' : ''}`} title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
+        {/* .bmd — B.MD's own file: the document plus a `---` front matter carrying its format
+            version. Round-trips through parseBmdFile / serializeBmdFile in the package, so a
+            document written here opens in the BMM app and in the docs the same way. */}
+        {full && <>
+          <button type="button" onClick={importBmd} className={`btn btn-sm${mode === 'rich' ? ' ms-auto' : ''}`} title={t('bmdf.import.h', 'Open a .bmd file into this editor')}><Upload size={14} /> <span className="hidden sm:inline">.bmd</span></button>
+          <button type="button" onClick={exportBmd} className="btn btn-sm" title={t('bmdf.export.h', 'Save this document as a .bmd file')}><Download size={14} /></button>
+        </>}
+        {full && <a href="/blog/markdown-guide" target="_blank" rel="noreferrer" className="btn btn-sm" title={t('blg.mdguide', "Markdown guide")}><HelpCircle size={14} /> <span className="hidden sm:inline">Guide</span></a>}
       </div>
       {mode === 'rich' && !preview
         ? <BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} />
         : preview
         ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
         : mode === 'visual'
-          ? <div className="max-h-[52vh] overflow-auto"><VisualEditor value={value} onChange={onChange} minHeight={minHeight} /></div>
+          ? <div className="max-h-[52vh] overflow-auto p-2"><BmdBlockCanvas value={value || ''} onChange={onChange}
+              snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, uiLang)} renderer={Markdown} lang={uiLang === 'fr' ? 'fr' : 'en'}
+              labels={{
+                insert: t('bmdc.insert', 'Insert a block'), search: t('bmdc.search', 'Search blocks…'),
+                noMatch: t('bmdc.nomatch', 'No block matches.'), count: t('bmdc.count', '{n} block(s)'),
+                preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
+                up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
+                empty: t('bmdc.empty', 'Empty document — insert a block above.'),
+              }} /></div>
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
             <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}
       {iconPick && <IconPicker onPick={(n) => insAny(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}

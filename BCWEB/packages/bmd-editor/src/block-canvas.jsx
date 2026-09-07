@@ -25,8 +25,17 @@ const UP = 'M18 15l-6-6-6 6', DOWN = 'M6 9l6 6 6-6', X = 'M18 6 6 18M6 6l12 12',
  * @param {Array} [snippetGroups]   the insert palette (SNIPPET_GROUPS shape: [{label, items:[{id,label,md}]}])
  * @param {React.ComponentType} [renderer]  the <Markdown> component, for the per-block preview
  * @param {string} [lang]
+ * @param {object} [labels]        UI strings, so a localised host is not stuck with English.
+ *                                 Every key falls back to the English below.
  */
-export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [], renderer: Markdown = null, lang = 'en' }) {
+const EN = {
+  insert: 'Insert a block', search: 'Search blocks…', noMatch: 'No block matches.',
+  count: '{n} block(s)', preview: 'Preview', drag: 'Drag to reorder',
+  up: 'Move up', down: 'Move down', del: 'Delete',
+  empty: 'Empty document — insert a block above.',
+};
+export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [], renderer: Markdown = null, lang = 'en', labels = null }) {
+  const T = { ...EN, ...(labels || {}) };
   const [blocks, setBlocks] = useState(() => splitBlocks(value));
   const [preview, setPreview] = useState(true);
   const [addAt, setAddAt] = useState(null);   // index where the palette is open
@@ -66,6 +75,10 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
   const palette = useMemo(() => {
     const out = [];
     for (const g of snippetGroups || []) for (const it of (g.items || [])) {
+      // Inline snippets (bold, italic, a link, :kbd[…]) wrap a SELECTION; they are not blocks.
+      // Offered here they inserted a lone `**bold**` as its own paragraph, which is never what
+      // "insert a block" means — the text editor's menu is where those belong.
+      if (it.inline || !it.md) continue;
       // Turn a snippet's placeholder template into concrete starter text.
       const md = String(it.md || '').replace(/\$\{sel\|([^}]*)\}/g, '$1').replace(/\$\{sel\}/g, '').replace(/\$\{cursor\}/g, '').replace(/\$\{[^}]*\}/g, '');
       out.push({ id: `${g.id || g.label}:${it.id}`, group: g.label, label: it.label, md: md.trim() });
@@ -76,19 +89,19 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
 
   const AddBar = ({ i }) => (
     <div className="bmdc-add">
-      <button type="button" className="bmdc-add-btn" onClick={() => { setAddAt(addAt === i ? null : i); setQ(''); }} title="Insert a block">
+      <button type="button" className="bmdc-add-btn" onClick={() => { setAddAt(addAt === i ? null : i); setQ(''); }} title={T.insert}>
         <Ico d={PLUS} />
       </button>
       {addAt === i && (
         <div className="bmdc-palette" role="menu">
-          <input autoFocus className="bmdc-palette-search" placeholder="Search blocks…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input autoFocus className="bmdc-palette-search" placeholder={T.search} value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="bmdc-palette-list">
             {shown.map((p) => (
               <button key={p.id} type="button" className="bmdc-palette-item" onClick={() => insertAt(i, p.md)}>
                 <span className="bmdc-palette-label">{p.label}</span><span className="bmdc-palette-group">{p.group}</span>
               </button>
             ))}
-            {!shown.length && <div className="bmdc-palette-empty">No block matches.</div>}
+            {!shown.length && <div className="bmdc-palette-empty">{T.noMatch}</div>}
           </div>
         </div>
       )}
@@ -98,9 +111,9 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
   return (
     <div className="bmdc">
       <div className="bmdc-bar">
-        <span className="bmdc-count">{blocks.filter((b) => b.kind !== 'blank').length} block(s)</span>
-        <button type="button" className={`bmdc-toggle ${preview ? 'is-on' : ''}`} onClick={() => setPreview((v) => !v)} title="Toggle per-block preview">
-          <Ico d={EYE} /> Preview
+        <span className="bmdc-count">{T.count.replace('{n}', blocks.filter((b) => b.kind !== 'blank').length)}</span>
+        <button type="button" className={`bmdc-toggle ${preview ? 'is-on' : ''}`} onClick={() => setPreview((v) => !v)} title={T.preview}>
+          <Ico d={EYE} /> {T.preview}
         </button>
       </div>
 
@@ -115,16 +128,16 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
             <div className="bmdc-handle" draggable
               onDragStart={() => { dragFrom.current = i; }}
               onDragEnd={() => { dragFrom.current = null; setDragOver(null); }}
-              title="Drag to reorder">
+              title={T.drag}>
               <DragIcon />
             </div>
             <div className="bmdc-body">
               <div className="bmdc-head">
                 <span className="bmdc-kind">{kindLabel(b.kind)}</span>
                 <div className="bmdc-actions">
-                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title="Move up"><Ico d={UP} /></button>
-                  <button type="button" onClick={() => move(i, 1)} disabled={i === blocks.length - 1} title="Move down"><Ico d={DOWN} /></button>
-                  <button type="button" onClick={() => removeBlock(b.id)} title="Delete" className="bmdc-del"><Ico d={X} /></button>
+                  <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title={T.up}><Ico d={UP} /></button>
+                  <button type="button" onClick={() => move(i, 1)} disabled={i === blocks.length - 1} title={T.down}><Ico d={DOWN} /></button>
+                  <button type="button" onClick={() => removeBlock(b.id)} title={T.del} className="bmdc-del"><Ico d={X} /></button>
                 </div>
               </div>
               <textarea
@@ -142,7 +155,7 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
           <AddBar i={i + 1} />
         </div>
       ))}
-      {!blocks.length && <div className="bmdc-empty">Empty document — insert a block above.</div>}
+      {!blocks.length && <div className="bmdc-empty">{T.empty}</div>}
     </div>
   );
 }

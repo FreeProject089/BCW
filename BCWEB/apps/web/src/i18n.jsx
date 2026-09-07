@@ -4077,6 +4077,13 @@ const DICT = {
     'ag.edit.startfrom': 'Partir du texte intégré', 'ag.edit.pullmore': 'Ramener ici le pas-à-pas et les pièges intégrés pour les modifier', 'ag.edit.morehidden': 'Pas-à-pas et pièges intégrés masqués — les tiens les remplacent',
     've.addHere': 'Ajouter un bloc après celui-ci', 've.here': 'ici', 've.search': 'Chercher un bloc…', 've.grp.forms': 'Avec un formulaire',
     've.noMatch': 'Aucun bloc ne correspond.',
+    // Le canvas drag-drop du package B.MD (ses libellés sont injectés depuis ici, sinon ils
+    // resteraient en anglais : le vérificateur i18n ne voit pas dans un package).
+    'bmdc.insert': 'Insérer un bloc', 'bmdc.search': 'Chercher un bloc…', 'bmdc.nomatch': 'Aucun bloc ne correspond.',
+    'bmdc.count': '{n} bloc(s)', 'bmdc.preview': 'Aperçu', 'bmdc.drag': 'Glisser pour réordonner',
+    'bmdc.up': 'Monter', 'bmdc.down': 'Descendre', 'bmdc.empty': 'Document vide — insère un bloc au-dessus.',
+    'bmdf.import.h': 'Ouvrir un fichier .bmd dans cet éditeur', 'bmdf.export.h': 'Enregistrer ce document en .bmd',
+    'bmdf.imported': '{n} chargé.', 'bmdf.badfile': 'Ce fichier n’a pas pu être lu.',
     'dev.landing.bmdT': 'B.MD — le kit markdown', 'dev.landing.bmdS': 'Encadrés, cartes, onglets, fiches d’API, valeurs en direct, diagrammes — installe-le, essaie le bac à sable, ouvre l’éditeur.',
     'bans.title': 'Bans & bouclier', 'bans.desc': 'Tenus hors de tous les services : le site, l’API, les dépôts hébergés, les endpoints du bot. Une entrée par ligne ; une note après #. Actif sous 15 secondes, sans redémarrage.', 'bans.saved': 'Bans enregistrés — actifs sous 15 s.',
     'bans.ips': 'Adresses IP & plages', 'bans.uas': 'User agents (contient)', 'bans.creators': 'Identifiants créateur BMM', 'bans.shield': 'Bouclier automatique', 'bans.shield.d': 'Une adresse limitée ce nombre de fois en dix minutes est bloquée net pour un moment — moins cher que de lui répondre. Les scanners et outils d’attaque connus sont déjà refusés avant.',
