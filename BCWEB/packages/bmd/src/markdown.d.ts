@@ -378,3 +378,27 @@ export interface LinkIssue { level: 'error' | 'warning'; code: string; href: str
 
 /** Anchors against the document's headings, internal paths against the page map, and the shapes that are wrong on their face. */
 export function validateLinks(md: string, opt?: { pageMap?: Record<string, unknown> | null; anchors?: string[]; policy?: MarkdownUrlPolicy; warnHttp?: boolean }): { ok: boolean; issues: LinkIssue[]; count: number };
+
+/* ── editor-blocks.js ──────────────────────────────────────────────────── */
+
+/** One top-level block of a B.MD document. `src` is the exact source, newlines included. */
+export interface BmdBlock { id: string; kind: string; src: string }
+
+/** Split into ordered, lossless blocks. Invariant: joinBlocks(splitBlocks(md)) === md. */
+export function splitBlocks(md: string): BmdBlock[];
+/** Back to one document, byte-for-byte. */
+export function joinBlocks(blocks: BmdBlock[]): string;
+/** A fresh block of a kind, with optional starter source. */
+export function newBlock(kind: string, src?: string): BmdBlock;
+
+/** A `.bmd` file: `---` front matter over the document body. */
+export function parseBmdFile(text: string): { meta: Record<string, string>; body: string };
+export function serializeBmdFile(file?: { meta?: Record<string, string>; body?: string }): string;
+export function bmdFileToBlocks(text: string): BmdBlock[];
+export function blocksToBmdFile(blocks: BmdBlock[], meta?: Record<string, string>): string;
+
+/** The head of a directive block, as named values — null when the block does not open with one. */
+export interface BmdDirectiveHead { name: string; label: string; attrs: Record<string, string>; indent: string; colons: string }
+export function parseDirectiveHead(src: string): BmdDirectiveHead | null;
+/** Rewrite ONLY the head; every other line comes back byte-identical. '' removes an attribute. */
+export function setDirectiveHead(src: string, patch?: { label?: string; attrs?: Record<string, string> }): string;

@@ -171,6 +171,11 @@ export default function CommandPalette() {
     return list;
   }, [t, lang, setLang, theme, auth, user, isStaff, nav]);
 
+  // Re-read on open, not once at mount: the list changes as you use the palette, and a stale
+  // copy would show you what you picked two sessions ago.
+  const [recent, setRecent] = useState(readRecent);
+  useEffect(() => { if (open) setRecent(readRecent()); }, [open]);
+
   const items = useMemo(() => {
     const n = q.trim().toLowerCase();
     const pages = pageDefs(t);
@@ -195,11 +200,6 @@ export default function CommandPalette() {
          ...pages.map((x) => ({ ...x, s: 1 })), ...actions];
     return out;
   }, [q, docs, actions, pageEls, recent, t]);
-
-  // Re-read on open, not once at mount: the list changes as you use the palette, and a stale
-  // copy would show you what you picked two sessions ago.
-  const [recent, setRecent] = useState(readRecent);
-  useEffect(() => { if (open) setRecent(readRecent()); }, [open]);
 
   useEffect(() => { setActive(0); }, [q, docs]);
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);

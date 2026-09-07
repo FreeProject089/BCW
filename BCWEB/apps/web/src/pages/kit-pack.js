@@ -24,6 +24,9 @@ import openapiSrc from '../../../../packages/bmd/src/openapi.js?raw';
 import exportSrc from '../../../../packages/bmd/src/export.jsx?raw';
 import astSrc from '../../../../packages/bmd/src/ast.js?raw';
 import linksSrc from '../../../../packages/bmd/src/links.js?raw';
+// The editor's lossless block model. In the kit since it was written, and never in this list —
+// so the /dev/markdown download shipped a folder whose editor imports a file that is not there.
+import editorBlocksSrc from '../../../../packages/bmd/src/editor-blocks.js?raw';
 import cssSrc from '../../../../packages/bmd/src/markdown.css?raw';
 // The TypeScript half. Not an optional part: types cost nothing at runtime, and a kit packed
 // without them is a kit that silently stops type-checking on the receiving end.
@@ -71,7 +74,8 @@ export const KIT_PARTS = [
 // missing from this list is silently left out of the download, which is how a kit that
 // builds here ships as a folder with nine missing imports.
 const CORE = ('index.jsx config.js url.js plugins.js sanitize.js directives.js blocks.jsx '
-  + 'icons.jsx nesting.js shorthand.js markdown.css openapi.js export.jsx ast.js links.js').split(' ');
+  + 'icons.jsx nesting.js shorthand.js markdown.css openapi.js export.jsx ast.js links.js '
+  + 'editor-blocks.js').split(' ');
 
 /**
  * The two flavours, and what actually differs.
@@ -162,6 +166,7 @@ export function buildKit(on, flavour = 'ts') {
     'export.jsx': exportSrc,
     'ast.js': astSrc,
     'links.js': linksSrc,
+    'editor-blocks.js': editorBlocksSrc,
     'markdown.css': cssSrc,
   };
   const dropped = new Set(off.flatMap((p) => p.files || [p.file]).filter(Boolean));

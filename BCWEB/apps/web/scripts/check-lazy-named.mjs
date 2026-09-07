@@ -27,13 +27,28 @@ function files(dir) {
 }
 
 // lazyNamed(() => import('./admin.jsx'), 'OwnerCatalogs')
-const CALL = /lazyNamed\(\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*['"]([^'"]+)['"]/g;
+//
+// ALIASES COUNT. This matched the literal name only, and App.jsx — which owns every route in
+// the app — does `const named = lazyNamed;` and then calls `named(...)`. So all 22 routes were
+// invisible to this check, and /giveaways shipped asking for an export its page never had:
+// error #306 on every visit, exactly the failure the file above says it exists to prevent.
+// A guard that only sees the call site nobody uses is not a guard.
+const ALIAS = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*lazyNamed\b/g;
+// ONE literal, and the callee is checked afterwards. Building this per alias with `new RegExp`
+// invites exactly one mistake — a doubled backslash, or a \b that became a real 0x08 byte,
+// makes it look for something no source contains: it matches nothing, silently, while the
+// script still prints its tick. Matching any identifier and filtering by name cannot fail
+// that way.
+const CALL = /\b([A-Za-z_$][\w$]*)\(\s*\(\)\s*=>\s*import\(\s*['"]([^'"]+)['"]\s*\)\s*,\s*['"]([^'"]+)['"]/g;
 
 const problems = [];
 for (const file of files(root)) {
   const src = readFileSync(file, 'utf8');
-  for (const m of src.matchAll(CALL)) {
-    const [, spec, name] = m;
+  const names = new Set(['lazyNamed']);
+  for (const a of src.matchAll(ALIAS)) names.add(a[1]);
+  const hits = [...src.matchAll(CALL)].filter((m) => names.has(m[1]));
+  for (const m of hits) {
+    const [, , spec, name] = m;
     const target = resolve(dirname(file), spec);
     let targetSrc;
     try {
