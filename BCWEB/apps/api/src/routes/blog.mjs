@@ -170,6 +170,19 @@ async function canPostTo(p, user, { projectKey, showcaseSlug }) {
   return false;
 }
 
+// Whether a user may edit/delete an EXISTING post: staff, its author, a co-author, or an
+// editor with a blog grant covering the post's OWN category. This is what makes a "blog editor
+// of category X" able to manage every post in X — and, by the same rule, unable to touch a
+// post in category Y they were not granted.
+async function canManageExisting(p, user, existing) {
+  if (STAFF.includes(user.role)) return true;
+  if (existing.authorId === user.uid || (existing.coAuthorIds || []).includes(user.uid)) return true;
+  let scope = null;
+  if (existing.projectId) { const pr = await p.project.findUnique({ where: { id: existing.projectId }, select: { key: true } }); if (pr) scope = { projectKey: pr.key }; }
+  else if (existing.showcaseProjectId) { const sp = await p.showcaseProject.findUnique({ where: { id: existing.showcaseProjectId }, select: { slug: true } }); if (sp) scope = { showcaseSlug: sp.slug }; }
+  return scope ? canPostTo(p, user, scope) : false;
+}
+
 const POST_SELECT = {
   id: true, slug: true, title: true, excerpt: true, cover: true, coverInBody: true, publishedAt: true, status: true, authorId: true,
   titleFr: true, excerptFr: true, bodyFr: true, reactionsEnabled: true, reactionTypes: true, coAuthorIds: true, showToc: true, tocTitle: true,
@@ -338,9 +351,9 @@ export default async function blogRoutes(app) {
     const p = await db();
     const existing = await p.blogPost.findUnique({ where: { id: req.params.id } });
     if (!existing) return reply.code(404).send({ error: 'not_found' });
-    // Non-staff can edit their own posts AND posts they're a co-author on (even with
-    // only a grant to post in that blog).
-    if (!STAFF.includes(req.user.role) && existing.authorId !== req.user.uid && !(existing.coAuthorIds || []).includes(req.user.uid)) return reply.code(403).send({ error: 'forbidden' });
+    // Own post, co-authored, staff, or an editor of THIS post's category (a category editor
+    // manages that category's blog, not only their own posts — and cannot touch another one).
+    if (!(await canManageExisting(p, req.user, existing))) return reply.code(403).send({ error: 'forbidden' });
     const d = b.data;
     const data = {};
     for (const k of ['title', 'excerpt', 'cover', 'body', 'titleFr', 'excerptFr', 'bodyFr']) if (d[k] !== undefined) data[k] = d[k];
@@ -415,7 +428,7 @@ export default async function blogRoutes(app) {
     const p = await db();
     const existing = await p.blogPost.findUnique({ where: { id: req.params.id } });
     if (!existing) return { ok: true };
-    if (!STAFF.includes(req.user.role) && existing.authorId !== req.user.uid) return reply.code(403).send({ error: 'forbidden' });
+    if (!(await canManageExisting(p, req.user, existing))) return reply.code(403).send({ error: 'forbidden' });
     await p.blogPost.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
   });
