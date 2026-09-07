@@ -626,7 +626,16 @@ function hsReferenceMd(t) {
       const d = String(t(`hs.d.${key}`, desc)).replace(/\s*\n+\s*/g, ' ').trim();
       return `:::field{label="${lbl}" key="${key}" type="${typ}" anchor="hs-${key}"}\n${d}\n:::`;
     }).join('\n');
-    return `## ${gt}\n${gd}\n\n${fields}`;
+    // A link to the tab this group now lives on. The guide described where a setting is
+    // ("Hosting settings → Security & audit logs") and left the reader to go and find it; the
+    // screen is sub-tabbed now, so the description can be the way there.
+    // Two ways this silently produces a dead button, both checked against the real parser:
+    //   · `:button` is INLINE (one colon). `:::button` is not a directive at all and renders as
+    //     literal text under every group heading.
+    //   · the href MUST be quoted. Unquoted, the `?` ends the attribute and remark-directive
+    //     returns `attributes: {}` — a button that looks right and goes nowhere.
+    const open = `:button[${t('ag.hs.open', 'Open this tab')}]{href="/admin?s=settings&hs=${g.gk}"}`;
+    return `## ${gt}\n${gd}\n\n${open}\n\n${fields}`;
   }).join('\n\n');
 }
 function HostingSettingsReference({ highlight }) {

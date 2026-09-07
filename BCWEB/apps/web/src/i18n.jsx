@@ -5136,7 +5136,7 @@ const DICT = {
     'ag.steps': 'Pas à pas', 'ag.traps': 'Règles & pièges',
     'ag.screen.ref': 'Sur cet écran', 'ag.screen.refsub': 'Section par section : ce que fait chaque contrôle, et ce qu’il ne fait pas.',
     'ag.bot.ref': 'Chaque page du dashboard bot, en détail', 'ag.bot.refsub': 'Page par page, module par module : ce que fait chaque contrôle, et ce qu’il ne fait pas.',
-    'ag.hs.ref': 'Chaque réglage d’hébergement, en détail', 'ag.hs.refsub': 'Une entrée par contrôle de l’écran Hébergement — le même texte que pointent les liens « En savoir plus », jamais tronqué.',
+    'ag.hs.open': 'Ouvrir cet onglet', 'ag.hs.ref': 'Chaque réglage d’hébergement, en détail', 'ag.hs.refsub': 'Une entrée par contrôle de l’écran Hébergement — le même texte que pointent les liens « En savoir plus », jamais tronqué.',
     'ag.edit.title': 'Éditer le guide admin', 'ag.edit.sub': 'Des sections en plus, écrites en Markdown, par-dessus le guide intégré. Elles apparaissent sous « Ajouté par ton équipe ». Les deux langues — un FR vide retombe sur l’EN.',
     'ag.save': 'Enregistrer', 'ag.icon': 'Icône', 'ag.addsection': 'Ajouter une section',
     // Garde-fou « travail non enregistré » de l'éditeur du guide.

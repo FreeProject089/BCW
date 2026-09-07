@@ -22024,7 +22024,19 @@ function AdminSettings() {
   // (localStorage bcw.hs.collapsed is no longer read or written).
   // Which group is on screen. Remembered, because an admin who came here to change one thing
   // usually comes back for the same thing.
-  const [tab, setTab] = useState(() => { try { return localStorage.getItem('bcw.hs.tab') || 'capacity'; } catch { return 'capacity'; } });
+  // ?s=settings&hs=<group> opens a tab directly, so the guide's "Hosting settings → Security &
+  // audit logs" can be a link rather than an instruction to go and find it. A URL that names a
+  // tab wins over the remembered one; an unknown name falls back rather than showing nothing.
+  const [hsSp] = useSearchParams();
+  const [tab, setTab] = useState(() => {
+    const want = hsSp.get('hs');
+    if (want && HS_TABS.some((x) => x.gk === want)) return want;
+    try { return localStorage.getItem('bcw.hs.tab') || 'capacity'; } catch { return 'capacity'; }
+  });
+  useEffect(() => {
+    const want = hsSp.get('hs');
+    if (want && HS_TABS.some((x) => x.gk === want)) setTab(want);
+  }, [hsSp]);
   useEffect(() => { try { localStorage.setItem('bcw.hs.tab', tab); } catch { /* private mode */ } }, [tab]);
   const [freePoolOpen, setFreePoolOpen] = useState(false);
   const [tempOpen, setTempOpen] = useState(false);
