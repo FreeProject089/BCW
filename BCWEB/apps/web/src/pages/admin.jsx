@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key} from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
@@ -226,6 +226,7 @@ export function Admin() {
         // "Other projects" had a tab of its own next to Projects, which read as a separate
         // subsystem rather than as the second kind of project it is.
         canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
+        isAdmin && { id: 'marketplace', label: t('adm.tab.marketplace', 'Marketplace'), icon: ShoppingBag },
       ].filter(Boolean) },
     isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes,
       sub: [
@@ -418,6 +419,7 @@ export function Admin() {
         {s === 'polls' && <AdminPolls />}
         {s === 'reactions' && <AdminReactions />}
         {s === 'storage' && <AdminStorage />}
+        {s === 'marketplace' && <AdminMarketplace />}
         {s === 'bot' && <AdminBot />}
         {s === 'analytics' && <AdminAnalytics />}
         {s === 'errors' && <AdminErrors />}
@@ -21041,6 +21043,97 @@ function EcoResetControl() {
 
 // Custom seed generator (Prmtp123 §3): pick content sections, see how much each holds, and
 // download a runnable idempotent seed script. Drives /admin/seed/preview + /generate.
+// Admin: per-project marketplace — create products, choose how each is delivered, and fill a
+// key pool. Products drive the storefront on each project page (project.jsx Marketplace tab).
+const DELIVERY_OPTS = [
+  { value: 'content', label: 'Revealed content' },
+  { value: 'key_static', label: 'Fixed key' },
+  { value: 'key_pool', label: 'Key from a pool' },
+  { value: 'key_external', label: 'External generator' },
+  { value: 'role', label: 'Discord role' },
+];
+const MK_BLANK = { projectKey: '', name: '', description: '', priceCents: 0, currency: 'usd', active: true, deliveryKind: 'content', staticKey: '', content: '', roleId: '', externalUrl: '', externalSecret: '', stock: '' };
+function AdminMarketplace() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/products'), []);
+  const [draft, setDraft] = useState(null);
+  const [keysFor, setKeysFor] = useState(null);
+  const [keysText, setKeysText] = useState('');
+  const rows = data?.products || [];
+  const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
+  const save = async () => {
+    const body = { ...draft, priceCents: Math.max(0, Math.round(Number(draft.priceCents) || 0)), stock: draft.stock === '' || draft.stock == null ? null : Math.max(0, Math.round(Number(draft.stock))) };
+    if (!body.name.trim()) return toast.error(t('mkadm.needname', 'Name required.'));
+    if (!body.projectKey.trim()) return toast.error(t('mkadm.needproj', 'Project key required.'));
+    try {
+      if (draft.id) await api.patch(`/admin/marketplace/products/${draft.id}`, body);
+      else await api.post('/admin/marketplace/products', body);
+      toast.success(t('common.saved', 'Saved.')); setDraft(null); reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+  const del = async (pr) => { if (!await dialog.confirm({ title: t('mkadm.del', 'Delete this product?'), message: pr.name, danger: true })) return; try { await api.del(`/admin/marketplace/products/${pr.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const addKeys = async () => {
+    const codes = keysText.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+    if (!codes.length) return;
+    try { const r = await api.post(`/admin/marketplace/products/${keysFor}/keys`, { codes }); toast.success(t('mkadm.keysadded', '{n} keys added ({f} free).').replace('{n}', r.added).replace('{f}', r.free)); setKeysFor(null); setKeysText(''); reload(); } catch { toast.error(t('common.failed', 'Failed.')); }
+  };
+  if (loading) return <Loading />;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="font-semibold flex items-center gap-2"><ShoppingBag size={16} className="text-[var(--primary-2)]" /> {t('mkadm.title', 'Project marketplace')}</h2>
+        <Button size="sm" variant="primary" onClick={() => setDraft({ ...MK_BLANK })}><Plus size={14} /> {t('mkadm.new', 'New product')}</Button>
+      </div>
+      <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('mkadm.sub', 'Each product appears in its project’s Marketplace tab. A free product delivers on click; a paid one goes through Stripe and delivers via the webhook. A static key or the external secret is never exposed to buyers.')}</p>
+      {!rows.length ? <div className="text-sm text-[var(--faint)]">{t('mkadm.none', 'No products yet.')}</div> : (
+        <div className="space-y-2">
+          {rows.map((pr) => (
+            <div key={pr.id} className="card p-3 flex items-center gap-3 flex-wrap">
+              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={15} /> : <ShoppingBag size={15} />}</span>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate">{pr.name} {!pr.active && <Badge>{t('mkadm.off', 'off')}</Badge>}</div>
+                <div className="text-xs text-[var(--faint)]">{pr.projectKey || pr.showcaseProjectId} · {pr.deliveryKind} · {pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${pr.currency}` : t('mk.free', 'Free')} · {t('mkadm.sold', '{n} sold').replace('{n}', pr.sold || 0)}{pr.deliveryKind === 'key_pool' ? ` · ${t('mkadm.keys', '{n} keys').replace('{n}', pr.keyCount || 0)}` : ''}</div>
+              </div>
+              {pr.deliveryKind === 'key_pool' && <Button size="sm" variant="ghost" onClick={() => { setKeysFor(pr.id); setKeysText(''); }}><Key size={13} /> {t('mkadm.addkeys', 'Add keys')}</Button>}
+              <Button size="sm" variant="ghost" onClick={() => setDraft({ ...MK_BLANK, ...pr, stock: pr.stock == null ? '' : pr.stock, staticKey: pr.staticKey || '', content: pr.content || '', roleId: pr.roleId || '', externalUrl: pr.externalUrl || '', externalSecret: '' })}><Pencil size={13} /></Button>
+              <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(pr)}><Trash2 size={13} /></Button>
+            </div>
+          ))}
+        </div>
+      )}
+      {draft && (
+        <Modal onClose={() => setDraft(null)} title={draft.id ? t('mkadm.edit', 'Edit product') : t('mkadm.new', 'New product')}>
+          <div className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label={t('mkadm.f.name', 'Name')}><Input value={draft.name} onChange={(e) => set('name', e.target.value)} /></Field>
+              <Field label={t('mkadm.f.project', 'Project key')} hint={t('mkadm.f.project.h', 'e.g. bmm, bsm')}><Input value={draft.projectKey} onChange={(e) => set('projectKey', e.target.value)} placeholder="bmm" /></Field>
+            </div>
+            <Field label={t('mkadm.f.desc', 'Description')}><Textarea rows={2} value={draft.description} onChange={(e) => set('description', e.target.value)} /></Field>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <Field label={t('mkadm.f.price', 'Price (0 = free)')}><Input type="number" min="0" step="0.01" value={draft.priceCents / 100} onChange={(e) => set('priceCents', Math.round((Number(e.target.value) || 0) * 100))} /></Field>
+              <Field label={t('mkadm.f.currency', 'Currency')}><Input value={draft.currency} onChange={(e) => set('currency', e.target.value)} /></Field>
+              <Field label={t('mkadm.f.stock', 'Stock (blank = ∞)')}><Input type="number" min="0" value={draft.stock} onChange={(e) => set('stock', e.target.value)} /></Field>
+            </div>
+            <Field label={t('mkadm.f.delivery', 'Delivery')}><Select value={draft.deliveryKind} onChange={(e) => set('deliveryKind', e.target.value)}>{DELIVERY_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></Field>
+            {draft.deliveryKind === 'content' && <Field label={t('mkadm.f.content', 'Content delivered')}><Textarea rows={2} value={draft.content} onChange={(e) => set('content', e.target.value)} /></Field>}
+            {draft.deliveryKind === 'key_static' && <Field label={t('mkadm.f.static', 'Fixed key')}><Input value={draft.staticKey} onChange={(e) => set('staticKey', e.target.value)} /></Field>}
+            {draft.deliveryKind === 'role' && <Field label={t('mkadm.f.role', 'Discord role id')}><Input value={draft.roleId} onChange={(e) => set('roleId', e.target.value)} /></Field>}
+            {draft.deliveryKind === 'key_external' && <><Field label={t('mkadm.f.exturl', 'External generator URL')}><Input value={draft.externalUrl} onChange={(e) => set('externalUrl', e.target.value)} placeholder="https://…/generate" /></Field><Field label={t('mkadm.f.extsecret', 'Shared secret (HMAC)')} hint={t('mkadm.f.extsecret.h', 'Sent as X-BC-Signature = HMAC-SHA256(body). Blank keeps the current one.')}><Input value={draft.externalSecret} onChange={(e) => set('externalSecret', e.target.value)} /></Field></>}
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} /> {t('mkadm.f.active', 'Active (visible in the storefront)')}</label>
+            <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
+          </div>
+        </Modal>
+      )}
+      {keysFor && (
+        <Modal onClose={() => setKeysFor(null)} title={t('mkadm.addkeys', 'Add keys')}>
+          <Field label={t('mkadm.keys.l', 'One key per line')}><Textarea rows={8} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'KEY-AAAA-1111\nKEY-BBBB-2222'} /></Field>
+          <div className="flex justify-end gap-2 mt-3"><Button variant="ghost" onClick={() => setKeysFor(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={addKeys}>{t('mkadm.addkeys', 'Add keys')}</Button></div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function SeedGeneratorCard() {
   const { t } = useI18n(); const toast = useToast();
   const [selected, setSelected] = useState([]);
