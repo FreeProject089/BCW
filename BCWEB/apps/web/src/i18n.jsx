@@ -3111,6 +3111,7 @@ const DICT = {
 
     // ── Admin : Réglages d'hébergement ──
     'hs.title': 'Réglages d’hébergement', 'hs.saveall': 'Tout enregistrer', 'hs.save': 'Enregistrer', 'hs.saved': 'Enregistré.',
+    'hs.tab.dirty': 'modifications non enregistrées dans cet onglet',
     'hs.guide': 'Explications complètes dans le guide admin', 'hs.more': 'En savoir plus',
     'hs.savefail': 'Échec de l’enregistrement.', 'hs.savepartial': 'Certaines modifications n’ont pas pu être enregistrées.',
     'hs.dcap.title': 'Stockage des membres (bot Discord)', 'hs.dcap.saved': 'Enregistré sur le bot Discord.', 'hs.dcap.fail': 'Échec de l’enregistrement.',

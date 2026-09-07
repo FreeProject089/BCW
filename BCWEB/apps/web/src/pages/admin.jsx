@@ -18293,6 +18293,9 @@ function SeoPagesCard() {
 // source and can never drift. Icons arrive as lucide names; resolve them to components.
 const HS_ICON = { HardDrive, Newspaper, ShieldCheck, Receipt, Sliders, Globe, Clock, Layers };
 const SETTINGS_GROUPS = HOSTING_SETTINGS_GROUPS.map((g) => ({ ...g, icon: HS_ICON[g.icon] || Sliders }));
+// The sub-tab strip. Same list, same order — the strip IS the groups, so a group added to
+// hosting-settings.js appears here without a second list to keep in step.
+const HS_TABS = SETTINGS_GROUPS.map((g) => ({ gk: g.gk, title: g.title, icon: g.icon }));
 const GROUP_DESC = HOSTING_GROUP_DESC;
 
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
@@ -21929,16 +21932,12 @@ function AdminSettings() {
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(null);
   const [unit, setUnit] = useState({}); // settingKey -> 'MB' | 'GB' (display unit only)
-  // Each settings group collapses independently (remembered per group), so a long screen of
-  // eight groups can be folded down to the one you came to change.
-  const [collapsed, setCollapsed] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('bcw.hs.collapsed') || '[]')); } catch { return new Set(); }
-  });
-  const toggleGroup = (gk) => setCollapsed((prev) => {
-    const next = new Set(prev); next.has(gk) ? next.delete(gk) : next.add(gk);
-    try { localStorage.setItem('bcw.hs.collapsed', JSON.stringify([...next])); } catch { /* private mode */ }
-    return next;
-  });
+  // The sub-tab strip below replaced the per-group collapse this screen used to have
+  // (localStorage bcw.hs.collapsed is no longer read or written).
+  // Which group is on screen. Remembered, because an admin who came here to change one thing
+  // usually comes back for the same thing.
+  const [tab, setTab] = useState(() => { try { return localStorage.getItem('bcw.hs.tab') || 'capacity'; } catch { return 'capacity'; } });
+  useEffect(() => { try { localStorage.setItem('bcw.hs.tab', tab); } catch { /* private mode */ } }, [tab]);
   const [freePoolOpen, setFreePoolOpen] = useState(false);
   const [tempOpen, setTempOpen] = useState(false);
   useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
@@ -21963,6 +21962,13 @@ function AdminSettings() {
     const saved = data?.settings?.[k] ?? (kind === 'bool' ? false : '');
     return JSON.stringify(cur) !== JSON.stringify(saved);
   });
+  // How many unsaved keys sit in a tab you are not looking at. Without this the sub-tabs would
+  // hide edits: "Save all (3)" is floating at the bottom and two of the three are on a tab that
+  // is off screen, with nothing saying where.
+  const KEYS_BY_GROUP = {};
+  SETTINGS_GROUPS.forEach((g) => { KEYS_BY_GROUP[g.gk] = g.keys.map(([k]) => k); });
+  const dirtyIn = (gk) => dirtyKeys.filter((k) => (KEYS_BY_GROUP[gk] || []).includes(k)).length;
+
   const undoSaveAll = useUndoableSave(() => { reload(); cap.reload?.(); });
   const saveAll = () => {
     // The key list and their values are snapshotted: the user can keep editing during the
@@ -21994,6 +22000,27 @@ function AdminSettings() {
           <Button variant="primary" disabled={busy === '__all__'} onClick={saveAll} className="shadow-lg">{busy === '__all__' ? <Spinner /> : <><CheckCheck size={15} /> {t('hs.saveall', 'Save all')} ({dirtyKeys.length})</>}</Button>
         </div>
       )}
+      {/* Sub-tabs, not one scroll.
+          Eight collapsible groups plus the capacity visuals made this the longest screen in the
+          admin: finding "how big can a blog post be" meant scrolling past every storage gauge,
+          the temp-margin manager and the Discord cap. One group at a time now, and STORAGE &
+          CAPACITY is its own tab holding every gauge and every ceiling — the question "what is
+          using the disk, and what stops it" has one place to be asked. The strip scrolls
+          sideways rather than wrapping, because the admin column is narrow. */}
+      <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 mb-4">
+        {HS_TABS.map((tb) => {
+          const on = tab === tb.gk;
+          return (
+            <button key={tb.gk} type="button" onClick={() => setTab(tb.gk)}
+              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] whitespace-nowrap transition-colors ${on ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`}>
+              <tb.icon size={13} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              {t(`hs.g.${tb.gk}`, tb.title)}
+              {dirtyIn(tb.gk) > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('hs.tab.dirty', 'unsaved changes in this tab')} />}
+            </button>
+          );
+        })}
+      </div>
+      {tab === 'capacity' && (<>
       {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
           (hosting quotas, approved submissions, temp margin, reserved, free) plus the
           separately-tracked free-plan pool. */}
@@ -22074,18 +22101,20 @@ function AdminSettings() {
       {/* Discord bot member-storage cap — same screen as every other service cap, even
           though it lives in the bot.config blob rather than a flat AdminSetting. */}
       <DiscordStorageCapCard />
+      </>)}
       <div className="space-y-5">
-        {SETTINGS_GROUPS.map((g) => {
-          const isOpen = !collapsed.has(g.gk);
+        {SETTINGS_GROUPS.filter((g) => g.gk === tab).map((g) => {
+          // Always open. The collapse was how you skipped past a group in a single long
+          // scroll; the tab already did the skipping, and a persisted `collapsed` entry would
+          // have opened a freshly-picked tab onto nothing but its own header.
+          const isOpen = true;
           return (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
-            <button type="button" onClick={() => toggleGroup(g.gk)} aria-expanded={isOpen}
-              className="w-full flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)] text-start hover:bg-[var(--surface-2)]/70 transition">
+            <div className="w-full flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)] text-start">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
-              <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)] truncate">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
+              <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)]">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
               <span className="text-[10px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
-              <ChevronDown size={16} className={`text-[var(--faint)] shrink-0 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
-            </button>
+            </div>
             {isOpen && (
             <div className="p-3 grid md:grid-cols-2 gap-3">
               {g.keys.map(([k, label, desc, kind, nativeUnit]) => {
