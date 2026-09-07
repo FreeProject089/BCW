@@ -6006,6 +6006,8 @@ const DICT = {
     'gw.audience': 'Où entrer', 'gw.aud.discord': 'Discord', 'gw.aud.site': 'Le site (bettercommunity.ch/giveaways)', 'gw.aud.both': 'Les deux',
     'gw.prizekind': 'Type de lot', 'gw.prizekind.h': 'Ce que le gagnant récupère depuis son inventaire',
     'gw.pk.promo': 'Code promo (généré au reveal)', 'gw.pk.custom': 'Personnalisé (tu tapes le contenu)', 'gw.pk.none': 'Aucun (juste la gloire)',
+    // Le résumé du volet replié « Lot & remise » (formulaire de concours admin).
+    'gw.fold.prize': 'Lot & remise', 'gw.pk.promo2': 'code promo', 'gw.pk.custom2': 'contenu personnalisé', 'gw.pk.none2': 'aucun lot',
     'gw.prizecontent': 'Contenu du lot (révélé au gagnant)', 'gw.prizecontent.h': 'Un code, un lien, des instructions — scellé dans l’inventaire du gagnant jusqu’au reveal.', 'gw.prizecontent.ph': 'ex. STEAM-KEY-XXXX-YYYY, ou un lien de téléchargement privé…',
     'gw.needcontent': 'Un lot personnalisé a besoin du contenu à révéler au gagnant.', 'gw.promoprize': 'Lot promo — le code est généré quand le gagnant le révèle',
     'gw.winnermsg': 'Message MP au gagnant', 'gw.winnermsg.h': 'Envoyé en MP à chaque gagnant à la fin du concours.', 'gw.winnermsg.ph': 'Félicitations {user} — tu as gagné {prize} ! 🎉',

@@ -13753,6 +13753,26 @@ function BotDMCard() {
 
 // Admin: create & manage Discord giveaways — the bot posts an Enter button, collects
 // entries, and draws winners at the end (DMing a gift code to each if configured).
+/** A shut-by-default section with a one-line summary of what is inside it.
+ *
+ *  A form that shows every optional field at once is not "complete", it is a wall — and the
+ *  summary is what keeps the fold honest: closed, it still tells you what it is holding, so
+ *  nothing set in there is invisible. */
+function Fold({ title, summary, children, defaultOpen = false }) {
+  const [on, setOn] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg border border-[var(--line)] overflow-hidden">
+      <button type="button" onClick={() => setOn((v) => !v)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-start hover:bg-[var(--surface-2)]/50 transition-colors">
+        <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${on ? 'rotate-180' : ''}`} />
+        <span className="text-[12.5px] font-medium">{title}</span>
+        {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]">{summary}</span> : null}
+      </button>
+      {on && <div className="px-3 pb-3 pt-1 border-t border-[var(--line)]">{children}</div>}
+    </div>
+  );
+}
+
 function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
@@ -13761,6 +13781,12 @@ function BotGiveawaysCard() {
   const [busy, setBusy] = useState(false);
   const undo = useUndoableDelete(reload);
   const giveaways = (data?.giveaways || []).filter((g) => !undo.pending.has(g.id));
+  // What the shut fold says it is holding. Named settings only — "promo · linked required"
+  // beats a chevron that could be hiding anything.
+  const prizeSummary = [
+    f.prizeKind === 'promo' ? t('gw.pk.promo2', 'promo code') : f.prizeKind === 'custom' ? t('gw.pk.custom2', 'custom content') : t('gw.pk.none2', 'no prize'),
+    f.reqCreator ? t('gw.badge.creator', 'creator id') : f.reqLinked ? t('gw.badge.linked', 'linked') : null,
+  ].filter(Boolean).join(' · ');
   const create = async () => {
     const needChannel = f.audience !== 'site';
     if (!f.prize.trim() || (needChannel && !f.channelId.trim())) return toast.error(t('gw.needfields', 'Prize and channel id are required.'));
@@ -13792,36 +13818,47 @@ function BotGiveawaysCard() {
             <Field label={t('gw.prize', 'Prize')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
             <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
             {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
-            <Field label={t('gw.prizekind', 'Prize kind')} hint={t('gw.prizekind.h', 'What the winner claims from their inventory')}><Dropdown className="w-full" value={f.prizeKind} onChange={(v) => setF({ ...f, prizeKind: v })} options={[{ value: 'promo', label: t('gw.pk.promo', 'Promo code (generated on reveal)') }, { value: 'custom', label: t('gw.pk.custom', 'Custom (you type the content)') }, { value: 'none', label: t('gw.pk.none', 'None (bragging rights)') }]} /></Field>
             <Field label={t('gw.duration', 'Duration (minutes)')}><Input type="number" value={f.durationMinutes} onChange={(e) => setF({ ...f, durationMinutes: e.target.value })} /></Field>
             <Field label={t('gw.winners', 'Winners')}><Input type="number" value={f.winnersCount} onChange={(e) => setF({ ...f, winnersCount: e.target.value })} /></Field>
           </div>
+          {/* Everything past the four fields above is optional, and having it all on screen at
+              once is what made this card exhausting: a giveaway is usually prize + channel +
+              duration + winners, and those were buried under the promo-gift editor, the entry
+              requirements, the winner DM and its live preview — most of which do not even apply
+              to the prize kind chosen. One fold, shut by default, holding the prize payload and
+              the entry rules; its header still says what is inside, so nothing set in there is
+              invisible. */}
+          <Fold title={t('gw.fold.prize', 'Prize & delivery')} summary={prizeSummary}>
+            <div className="space-y-3">
+              <Field label={t('gw.prizekind', 'Prize kind')} hint={t('gw.prizekind.h', 'What the winner claims from their inventory')}><Dropdown className="w-full" value={f.prizeKind} onChange={(v) => setF({ ...f, prizeKind: v })} options={[{ value: 'promo', label: t('gw.pk.promo', 'Promo code (generated on reveal)') }, { value: 'custom', label: t('gw.pk.custom', 'Custom (you type the content)') }, { value: 'none', label: t('gw.pk.none', 'None (bragging rights)') }]} /></Field>
           {f.prizeKind === 'custom' && (
-            <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions — kept sealed in the winner’s inventory until they reveal it.')}>
-              <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
-            </Field>
-          )}
-          {/* Entry requirements — gate who can enter (enforced server-side on Enter). */}
-          <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
-            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
-            <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
-            <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link — they can enter once linked.')}</div>
-          </div>
-          {/* Winner DM — customizable, English by default, with insert-at-cursor variables
-              + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
-          <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
-            value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
-            placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
-          {f.prizeKind === 'promo' && (
-            <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
-              <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize — the code is generated when the winner reveals it')}</div>
-              <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
-              {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
-              {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
-              {f.gift.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.gift.boostDays} onChange={(e) => setF({ ...f, gift: { ...f.gift, boostDays: e.target.value } })} /></Field>}
+                <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions — kept sealed in the winner’s inventory until they reveal it.')}>
+                  <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
+                </Field>
+              )}
+              {/* Entry requirements — gate who can enter (enforced server-side on Enter). */}
+              <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
+                <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
+                <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
+                <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link — they can enter once linked.')}</div>
+              </div>
+              {/* Winner DM — customizable, English by default, with insert-at-cursor variables
+                  + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
+              <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
+                value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
+                placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
+              {f.prizeKind === 'promo' && (
+                <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize — the code is generated when the winner reveals it')}</div>
+                  <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
+                  {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
+                  {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
+                  {f.gift.kind === 'free_boost' && <Field label={t('pc.f.boostdays', 'Boost days')}><Input type="number" value={f.gift.boostDays} onChange={(e) => setF({ ...f, gift: { ...f.gift, boostDays: e.target.value } })} /></Field>}
+                </div>
+              )}
             </div>
-          )}
+          </Fold>
           <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={create}>{busy ? <Spinner /> : <><Plus size={14} /> {t('gw.create', 'Create giveaway')}</>}</Button></div>
 
           {loading ? <Loading /> : giveaways.length ? <div className="space-y-2 pt-1">
