@@ -345,7 +345,15 @@ Cards sit side by side inside \`:::cards\`. One on its own works too.
 Numbered, in order.
 :::
 :::step[Then]
-\`:::steps\` wrapping \`:::step[Title]\`.
+\`:::steps\` wrapping \`:::step[Title]\`. Add \`{type=A}\` for A/B/C, or \`{marker=icon}\` to make each step's \`icon=\` its marker — an icon list instead of numbers.
+:::
+
+:::steps{marker=icon}
+:::step[Install]{icon=download}
+Each row is marked by its own icon, not a number.
+:::
+:::step[Configure]{icon=settings}
+Set \`marker=icon\` on \`:::steps\`, then give every \`:::step\` an \`icon=\`.
 :::
 :::
 
