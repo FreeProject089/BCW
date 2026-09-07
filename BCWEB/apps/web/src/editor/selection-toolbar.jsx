@@ -9,7 +9,15 @@ import { Bold, Italic, Strikethrough, Code, Link2, Hash, MessageSquarePlus, Pale
 // or an inline **comment** (text + optional link/image, shown on hover — rendered
 // by the DocComment component in md.jsx).
 
-const COLORS = ['#e11d48', '#ea580c', '#d97706', '#16a34a', '#0891b2', '#2563eb', '#7c3aed', '#db2777'];
+// Text colours. The first four are THEME TOKENS (var(--…)) that re-map between light and dark,
+// so text coloured with them stays legible in either theme — the previous fixed dark hues
+// (#e11d48, #d97706 …) vanished on the dark theme. The rest are mid-tone (Tailwind-500) hues,
+// chosen because they read on both a light and a dark background, unlike the darker 600/700
+// shades used before. `safeColor` in the B.MD kit accepts both a var() token and a #hex.
+const COLORS = [
+  'var(--primary-2)', 'var(--success)', 'var(--warning)', 'var(--error)',
+  '#ef4444', '#f97316', '#f59e0b', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6', '#6366f1', '#a855f7', '#ec4899',
+];
 
 function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
 function esc(s) { return String(s).replace(/"/g, '&quot;'); }
@@ -97,7 +105,7 @@ export default function SelectionToolbar({ taRef, value, onChange }) {
         {btn(MessageSquarePlus, () => { cmt.current = { text: '', link: '', img: '' }; setSub((v) => v === 'comment' ? null : 'comment'); }, 'Comment')}
       </div>
       {sub === 'color' && (
-        <div className="absolute top-full mt-1 left-0 flex items-center gap-1 p-1.5 rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
+        <div className="absolute top-full mt-1 left-0 flex flex-wrap items-center gap-1 p-1.5 w-[204px] rounded-lg border border-[var(--line-strong)] shadow-xl" style={{ background: 'var(--bg-solid)' }}>
           {COLORS.map((c) => <button key={c} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => color(c)} className="w-5 h-5 rounded-full border border-black/20" style={{ background: c }} />)}
           {/* full colour picker — applies when the native dialog closes */}
           <input type="color" defaultValue="#7c3aed" title={t('st.customcolour', "Custom colour")}
