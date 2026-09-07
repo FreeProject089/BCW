@@ -2088,27 +2088,10 @@ function AdminServerPerf() {
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
-  // Simple vs Advanced, the same split Analytics has.
-  //
-  // Everything on this screen is useful to somebody, and all of it at once is why it reads as a
-  // wall: the allocation breakdown, the alert history, every past outage and the Web Vitals are
-  // opened by default under the live numbers. Simple keeps what answers "is the server all
-  // right" — the health badge, the four totals, the chart — and leaves the rest as one-click
-  // headers. Advanced opens them all and brings back the maintenance actions, which are not
-  // things to have under the cursor while you are only looking.
-  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('bcw_sp_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; } });
-  const OPEN_ALL = { alloc: true, downtime: true, alerts: true, outages: true, vitals: true };
-  const OPEN_NONE = { alloc: false, downtime: false, alerts: false, outages: false, vitals: false };
-  const [sec, setSec] = useState(() => {
-    let m = 'simple';
-    try { m = localStorage.getItem('bcw_sp_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { /* private mode */ }
-    return m === 'advanced' ? { ...OPEN_ALL } : { ...OPEN_NONE };
-  });
-  const setMode = (m) => {
-    try { localStorage.setItem('bcw_sp_mode', m); } catch { /* private mode */ }
-    setModeState(m);
-    setSec(m === 'advanced' ? { ...OPEN_ALL } : { ...OPEN_NONE });
-  };
+  // Every section open, as it was before a Simple/Advanced switch was put in front of them.
+  // They are still individually collapsible — that is a reader folding away what they are not
+  // looking at, which is different from a mode deciding for them.
+  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, outages: true, vitals: true });
   const [outageOpen, setOutageOpen] = useState(null);
   // Ticks only while an outage is live. A timer that runs on a healthy page is a render a
   // second for nothing, and this screen is heavy enough already.
@@ -2313,23 +2296,15 @@ function AdminServerPerf() {
         </h2>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
-          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
-            {[['simple', t('an.mode.simple', 'Simple')], ['advanced', t('an.mode.advanced', 'Advanced')]].map(([m, l]) => (
-              <button key={m} type="button" onClick={() => setMode(m)}
-                className={`px-2.5 py-1 rounded-md ${mode === m ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
-            ))}
-          </div>
           {/* Sampling by hand and wiping the history are maintenance, not observation. They are
               one mode away, not one misclick away, while you are only looking at the numbers. */}
-          {mode === 'advanced' && <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>}
+          <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>
           {/* The case this exists for is the sawtooth: a second machine wrote into this
               database and half the history describes a host that was never the server.
               Once the other writer is gone that history cannot be repaired, only dropped. */}
-          {mode === 'advanced' && (
-            <Button size="sm" variant="ghost" disabled={clearing} onClick={clearHistory}>
-              {clearing ? <Spinner /> : <><Trash2 size={14} /> {t('sp.clear', 'Clear history')}</>}
-            </Button>
-          )}
+          <Button size="sm" variant="ghost" disabled={clearing} onClick={clearHistory}>
+            {clearing ? <Spinner /> : <><Trash2 size={14} /> {t('sp.clear', 'Clear history')}</>}
+          </Button>
         </div>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
@@ -2341,7 +2316,7 @@ function AdminServerPerf() {
           sends the same comparison against the live sample (`verdict`) and this states it in
           one line. Advanced does not need it: someone reading the raw series is past the
           question. */}
-      {mode === 'simple' && data?.verdict && (() => {
+      {data?.verdict && (() => {
         const V = data.verdict;
         const tone = V.state === 'problem' ? 'error' : V.state === 'watch' ? 'warning' : V.state === 'unknown' ? 'muted' : 'success';
         const ring = { error: 'border-[var(--error)]', warning: 'border-[var(--warning)]', success: 'border-[var(--success)]', muted: 'border-[var(--line)]' }[tone];
@@ -16540,12 +16515,16 @@ function AdminGoals() {
   const goals = data?.goals || [];
   const [f, setF] = useState({ name: '', kind: 'pageview', path: '', label: '', target: '' });
   const [editId, setEditId] = useState(null); const [busy, setBusy] = useState(false);
+  // You open Goals to read your goals; creating one is the occasional act. The form used to
+  // stand permanently above the list, so the thing you came for started below a screenful of
+  // fields you were not using.
+  const [formOpen, setFormOpen] = useState(false);
   // Optimistic undo state: goals mid-add (temp client ids) and mid-delete (real ids
   // hidden during the undo window). The real POST/DELETE is deferred to the toast's
   // onCommit; onCancel just drops the optimistic change. Restores immediately either way.
   const [pendingAdd, setPendingAdd] = useState([]);
   const undo = useUndoableDelete(reload);
-  const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '', target: '' }); setEditId(null); };
+  const reset = () => { setF({ name: '', kind: 'pageview', path: '', label: '', target: '' }); setEditId(null); setFormOpen(false); };
   // A sensible default name from what the goal targets, so the admin rarely has to type one.
   const autoName = () => {
     if (f.kind === 'pageview') return f.path.trim() ? t('goal.auto.visit', 'Visit {x}').replace('{x}', f.path.trim()) : t('goal.auto.anyvisit', 'Any page visit');
@@ -16583,7 +16562,7 @@ function AdminGoals() {
       onCancel: () => setPendingAdd((a) => a.filter((x) => x.id !== tmpId)),
     });
   };
-  const edit = (g) => { setEditId(g.id); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '', target: g.target ?? '' }); };
+  const edit = (g) => { setEditId(g.id); setFormOpen(true); setF({ name: g.name, kind: g.kind, path: g.path || '', label: g.label || '', target: g.target ?? '' }); };
   // Deleting: hide it and defer the DELETE behind an undo window — the undo replaces the old
   // confirm dialog. Uses the shared useUndoableDelete hook (this component predated it).
   const del = (g) => undo.del(g.id, () => api.del(`/admin/analytics/goals/${g.id}`), t('goal.deleted', 'Goal deleted.'));
@@ -16594,13 +16573,16 @@ function AdminGoals() {
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><Target size={16} className="text-[var(--primary-2)]" /> {t('goal.title', 'Goals')}</h2>
-        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-          {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
+          </div>
+          {!formOpen && <Button size="sm" onClick={() => { reset(); setFormOpen(true); }}><Plus size={14} /> {t('goal.addbtn', 'Add goal')}</Button>}
         </div>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('goal.sub', 'Define conversion goals and track how many visitors complete them. Completion = a matching event; the rate is unique goal visitors ÷ all visitors in the window.')}</p>
 
-      <Card className="p-4 mb-5">
+      {formOpen && <Card className="p-4 mb-5">
         <div className="text-sm font-semibold mb-3">{editId ? t('goal.editing', 'Edit goal') : t('goal.new', 'New goal')}</div>
         {/* Step 1 — pick what counts as a conversion (icon buttons, not a dropdown). */}
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('goal.step1', 'What counts as a conversion?')}</div>
@@ -16622,10 +16604,10 @@ function AdminGoals() {
         </div>
         <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--primary-2)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
-          {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
+          <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>
           <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
         </div>
-      </Card>
+      </Card>}
 
       {loading ? <Loading /> : shown.length ? <div className="space-y-2">
         {shown.map((g) => (
@@ -16641,8 +16623,8 @@ function AdminGoals() {
                   goal is actually making in their head. `delta` is null when there is nothing
                   to compare to — a goal created yesterday has no previous period, and "0%"
                   there would read as "flat" rather than "unknown". */}
-              <div className="text-center px-3">
-                <div className="text-lg font-bold tabular-nums">{g.completions}</div>
+              <div className="text-end px-3">
+                <div className="text-base font-semibold tabular-nums">{g.completions}</div>
                 <div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.completions', 'completions')}</div>
                 {g.delta != null && g.prevCompletions != null && (
                   <div className={`text-[10px] font-semibold tabular-nums mt-0.5 ${g.delta > 0 ? 'text-success' : g.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}
@@ -16652,8 +16634,16 @@ function AdminGoals() {
                 )}
                 {g.delta == null && <div className="text-[10px] text-[var(--faint)] mt-0.5">{t('goal.prev.none', 'new')}</div>}
               </div>
-              <div className="text-center px-3"><div className="text-lg font-bold tabular-nums">{g.visitors}</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.visitors', 'visitors')}</div></div>
-              <div className="text-center px-3 min-w-[90px]"><div className="text-lg font-bold tabular-nums text-[var(--primary-2)]">{g.rate}%</div><div className="text-[10px] text-[var(--faint)] uppercase">{t('goal.rate', 'conv. rate')}</div></div>
+              {/* The rate is the headline — it is the one number that is comparable between two
+                  goals of different sizes — so it is the biggest thing here, and the raw counts
+                  that produce it read as its supporting line rather than as three equal
+                  columns competing for the eye. */}
+              <div className="text-end px-3 min-w-[110px]">
+                <div className="text-2xl font-bold tabular-nums text-[var(--primary-2)] leading-none">{g.rate}%</div>
+                <div className="text-[10px] text-[var(--faint)] mt-1 tabular-nums">
+                  {t('goal.ofvisitors', '{n} of {tot} visitors').replace('{n}', g.visitors).replace('{tot}', data?.totalVisitors ?? '—')}
+                </div>
+              </div>
               <div className="flex gap-1">
                 {g._pending
                   ? <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] px-1.5 py-1">{t('goal.pending', 'saving…')}</span>
@@ -16663,7 +16653,7 @@ function AdminGoals() {
                     </>}
               </div>
             </div>
-            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
+            <div className="h-1 rounded-full bg-[var(--surface-2)] overflow-hidden mt-3"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${Math.min(100, g.rate)}%` }} /></div>
             {g.target != null && <div className="mt-2">
               <div className="flex items-center justify-between text-[11px] text-[var(--faint)] mb-1"><span className="flex items-center gap-1"><Target size={11} /> {t('goal.targetprog', 'Target progress')}</span><span className="tabular-nums font-medium text-[var(--muted)]">{g.completions} / {g.target} ({g.progress ?? 0}%)</span></div>
               <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style={{ width: `${g.progress ?? 0}%` }} /></div>
@@ -17264,10 +17254,6 @@ function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
   const [tab, setTab] = useState('overview'); // sub-tab: overview | sessions | geo | tech | perf
-  // Simple vs Advanced. Simple is a minimalist dashboard — the KPI row, the traffic chart and
-  // top pages/referrers, no sub-tabs; Advanced exposes every drill-down. Persisted per admin.
-  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('bcw_an_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; } });
-  const setMode = (m) => { try { localStorage.setItem('bcw_an_mode', m); } catch { /* ignore */ } setModeState(m); if (m === 'simple') setTab('overview'); };
   const toast = useToast();
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get(`/admin/analytics?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
@@ -17320,11 +17306,6 @@ function AdminAnalytics() {
           {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success ms-1"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
-            {[['simple', t('an.mode.simple', 'Simple')], ['advanced', t('an.mode.advanced', 'Advanced')]].map(([m, l]) => (
-              <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 text-xs ${mode === m ? 'bg-[var(--primary)] text-white font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
-            ))}
-          </div>
-          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
           </div>
           <Button size="sm" onClick={openTelemetry}><Gauge size={14} /> {t('an.telemetry', 'BMM telemetry')}</Button>
@@ -17341,9 +17322,10 @@ function AdminAnalytics() {
         {kpi(Zap, data?.live ?? '—', t('an.kpi.live', 'Live (30 min)'), 'text-success')}
       </div>
 
-      {/* Sub-tab bar — advanced mode only. In simple mode the view is just the overview block
-          below (KPI + chart + top pages/referrers), a clean at-a-glance dashboard. */}
-      {mode === 'advanced' && (
+      {/* Every drill-down, always reachable. A Simple/Advanced switch hid six of these seven
+          behind a preference nobody had asked for — and hiding a tab is not simplifying a
+          dashboard, it is making people remember where things went. */}
+      {(
         <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
           {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['replays', t('an.tab.replays', 'Replays'), PlayCircle], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
             <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>

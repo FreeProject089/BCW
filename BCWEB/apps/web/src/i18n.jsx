@@ -6030,6 +6030,7 @@ const DICT = {
     'gw.entries': '{n} participations', 'gw.drawbtn': 'Tirer', 'gw.none': 'Aucun concours pour l’instant.',
     'gw.sec.running': 'En cours', 'gw.sec.new': 'Nouveau concours',
     'goal.prev.h': 'Période précédente : {n} conversions', 'goal.prev.none': 'nouveau',
+    'goal.ofvisitors': '{n} sur {tot} visiteurs',
     'sp.v.ok': 'Le serveur va bien.', 'sp.v.watch': 'À surveiller.',
     'sp.v.problem': 'Le serveur demande ton attention.', 'sp.v.unknown': 'Pas de relevé récent.',
     'sp.v.okdesc': 'Processeur, mémoire et disque sont tous loin de leurs seuils d’alerte.',
