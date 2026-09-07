@@ -3020,6 +3020,11 @@ const DICT = {
     'er.bcidscopied': 'BC ids copiés.', 'er.copyall': 'tout copier', 'er.stackcopied': 'Stack copiée.', 'er.export': 'Exporter .json',
     'nq.errors': 'Erreurs à regarder (API + bot Discord, 24 h)', 'nq.k.errors': 'Erreur',
     'er.sub2': 'Erreurs serveur (API 5xx), échecs des handlers du bot Discord et erreurs JavaScript non interceptées de vraies visites, groupées par message. Une nouvelle erreur serveur ou bot déclenche une alerte (salon d’alertes Discord + notification dans l’app) et reste dans « À traiter » jusqu’à être marquée traitée.',
+    // Recherche plein-texte + tri (côté client) sur l'écran Erreurs.
+    'er.needleph': 'Chercher dans le message et la trace…',
+    'er.sort.recent': 'Plus récentes', 'er.sort.occ': 'Plus d’occurrences',
+    'er.sort.sess': 'Plus de sessions touchées', 'er.sort.first': 'Vues en premier',
+    'er.matched': '{n} sur {m}',
     'er.fresh': '{n} groupe(s) d’erreurs nouveaux depuis ta dernière visite de cette page.', 'er.src.bot': 'Bot Discord', 'er.showhandled': 'Voir les traitées ({n})', 'er.handledchip': 'traitée', 'er.newchip': 'nouveau', 'er.where': 'Où', 'er.markhandled': 'Marquer traitée', 'er.handled.ok': 'Marquée traitée — elle quitte aussi le résumé À traiter.', 'er.ctx.guild': 'serveur', 'er.ctx.member': 'membre',
     'er.title': 'Erreurs', 'er.sub': 'Erreurs serveur (5xx de l’API) et erreurs JavaScript non gérées captées lors de vraies visites, regroupées par message. Les erreurs serveur identiques répétées sont regroupées en une entrée par minute — le compteur d’occurrences porte sur l’entrée, pas sur les requêtes.',
     'er.dbdown.t': '{n} erreur(s) serveur récente(s) n’ont pas pu être écrites en base', 'er.dbdown.s': 'La couche de données elle-même est peut-être en panne — c’est pourquoi elles n’apparaissent pas dans la liste ci-dessous. Cette trace est gardée en mémoire. La plus récente :',

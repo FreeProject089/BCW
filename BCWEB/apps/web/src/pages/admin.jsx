@@ -16666,6 +16666,34 @@ function AdminFeedback() {
   );
 }
 
+// A stack trace where OUR frames stand out.
+//
+// A real trace is mostly other people's code — node_modules, node:internal, the React
+// scheduler, a minified vendor chunk — and the two or three lines that say which of our files
+// threw are buried in it. Reading one meant scanning for a path you recognise. Vendor frames
+// are dimmed to half opacity and app frames keep full contrast with a left rule, so the shape
+// of the trace does the finding. Nothing is hidden: a dimmed line is still selectable, still
+// copied by "copy", still there when the answer turns out to be in a library.
+const VENDOR_RE = /node_modules|node:internal|\/dist\/|\.min\.js|webpack|vite\/|react-dom|scheduler\.production/i;
+function StackTrace({ text }) {
+  const lines = String(text || '').split('\n');
+  return (
+    <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words max-h-[60vh]">
+      {lines.map((ln, i) => {
+        const isFrame = /^\s*at\s/.test(ln) || /:\d+:\d+/.test(ln);
+        const vendor = isFrame && VENDOR_RE.test(ln);
+        return (
+          <div key={i} className={vendor
+            ? 'opacity-45 text-[var(--muted)]'
+            : isFrame ? 'text-[var(--text)] border-s-2 border-[var(--primary)]/50 ps-2 -ms-2' : 'text-[var(--muted)]'}>
+            {ln || ' '}
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
 function AdminErrors() {
   const { t } = useI18n(); const toast = useToast();
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState('');
@@ -16675,7 +16703,25 @@ function AdminErrors() {
   const qs = `${rq.hours ? `hours=${rq.hours}` : `days=${rq.days}`}${qApplied ? `&path=${encodeURIComponent(qApplied)}` : ''}${source ? `&source=${source}` : ''}`;
   const { data, loading, reload } = useAsync(() => api.get(`/admin/analytics/errors?${qs}`), [qs]);
   const [showHandled, setShowHandled] = useState(false);
-  const errors = (data?.errors || []).filter((e) => showHandled || !e.handled);
+  // Text filter and sort, both client-side over the window the API already returned. The
+  // server-side `path` filter answers "this page is broken"; it cannot answer "where is that
+  // TypeError about undefined", which is the question you actually arrive with — so this one
+  // searches the message AND the stack, and is what makes a 200-row window usable.
+  const [needle, setNeedle] = useState('');
+  const [sort, setSort] = useState('recent'); // recent | occurrences | sessions | first
+  const errors = useMemo(() => {
+    const n = needle.trim().toLowerCase();
+    const list = (data?.errors || [])
+      .filter((e) => showHandled || !e.handled)
+      .filter((e) => !n || `${e.message || ''} ${e.stack || ''} ${e.path || ''}`.toLowerCase().includes(n));
+    const by = {
+      recent: (a, b) => new Date(b.lastSeen) - new Date(a.lastSeen),
+      first: (a, b) => new Date(a.firstSeen) - new Date(b.firstSeen),
+      occurrences: (a, b) => (b.occurrences || 0) - (a.occurrences || 0),
+      sessions: (a, b) => (b.sessions || 0) - (a.sessions || 0),
+    };
+    return [...list].sort(by[sort] || by.recent);
+  }, [data, showHandled, needle, sort]);
   const handledCount = (data?.errors || []).filter((e) => e.handled).length;
   // "New since you last looked": the page remembers when it was last opened (this browser)
   // and counts the groups seen after that — the notification an admin who does not read
@@ -16741,6 +16787,19 @@ function AdminErrors() {
         <Button variant="primary" onClick={() => setQApplied(q.trim())}><Search size={15} /> {t('ev.filter', 'Filter')}</Button>
         <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer ms-auto"><input type="checkbox" checked={showHandled} onChange={(e) => setShowHandled(e.target.checked)} /> {t('er.showhandled', 'Show handled ({n})').replace('{n}', handledCount)}</label>
       </div>
+      {/* Second row: the two controls that turn a list into a debugging tool — find the trace
+          you are thinking of, and decide whether "worst" means newest or loudest. */}
+      <div className="flex flex-wrap gap-2 mb-4 items-center">
+        <div className="relative flex-1 min-w-[220px]"><FileText size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Input className="!ps-9" placeholder={t('er.needleph', 'Search the message and the stack trace…')} value={needle} onChange={(e) => setNeedle(e.target.value)} /></div>
+        <Dropdown value={sort} onChange={setSort} options={[
+          { value: 'recent', label: t('er.sort.recent', 'Most recent') },
+          { value: 'occurrences', label: t('er.sort.occ', 'Most occurrences') },
+          { value: 'sessions', label: t('er.sort.sess', 'Most sessions affected') },
+          { value: 'first', label: t('er.sort.first', 'Oldest first seen') },
+        ]} />
+        {needle.trim() && <span className="text-xs text-[var(--faint)]">{t('er.matched', '{n} of {m}').replace('{n}', errors.length).replace('{m}', (data?.errors || []).filter((e) => showHandled || !e.handled).length)}</span>}
+      </div>
       {loading ? <Loading /> : errors.length ? <div className="space-y-2">
         {errors.map((e, i) => { const isOpen = open === i; return (
           <Card key={i} className="overflow-hidden">
@@ -16789,7 +16848,7 @@ function AdminErrors() {
               ) : null; })()}
               {e.stack ? <div>
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')} <button onClick={() => copy(e.stack, t('er.stackcopied', 'Stack copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('common.copy', 'copy')}</button></div>
-                <pre className="text-[11px] font-mono bg-[var(--surface-2)] rounded-lg p-3 overflow-x-auto whitespace-pre-wrap break-words text-[var(--muted)] max-h-[60vh]">{splitCtx(e.stack).rest || e.stack}</pre>
+                <StackTrace text={splitCtx(e.stack).rest || e.stack} />
               </div> : <div className="text-xs text-[var(--faint)]">{t('er.nostack', 'No stack trace captured.')}</div>}
             </div>}
           </Card>
