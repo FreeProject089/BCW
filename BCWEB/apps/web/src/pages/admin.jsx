@@ -16479,13 +16479,13 @@ function AdminFeedback() {
   const { t } = useI18n(); const toast = useToast();
   const [cfg, setCfg] = useState(null);
   const [project, setProject] = useState(() => { try { return new URLSearchParams(location.search).get('p') || ''; } catch { return ''; } });
-  const [kind, setKind] = useState(''); const [status, setStatus] = useState('new'); const [version, setVersion] = useState('');
+  const [kind, setKind] = useState(''); const [status, setStatus] = useState('new'); const [version, setVersion] = useState(''); const [sort, setSort] = useState('severity');
   const [q, setQ] = useState(''); const [qApplied, setQApplied] = useState(''); const [page, setPage] = useState(0);
   const [open, setOpen] = useState(null); const [reply, setReply] = useState(''); const [busy, setBusy] = useState(false);
   const [showSettings, setShowSettings] = useState(false); const [draft, setDraft] = useState(null); const [savingCfg, setSavingCfg] = useState(false);
   const loadCfg = () => api.get('/admin/feedback/config').then((c) => { setCfg(c); if (!project) { const first = Object.keys(c.projects)[0] || c.knownProjects[0]?.key || ''; setProject(first); } }).catch(() => toast.error(t('common.failed', 'Failed.')));
   useEffect(() => { loadCfg(); }, []); // eslint-disable-line
-  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&page=${page}`;
+  const qs = `project=${encodeURIComponent(project)}${kind ? `&kind=${kind}` : ''}${status ? `&status=${status}` : ''}${version ? `&version=${encodeURIComponent(version)}` : ''}${qApplied ? `&q=${encodeURIComponent(qApplied)}` : ''}&sort=${sort}&page=${page}`;
   const { data, loading, reload } = useAsync(() => project ? api.get(`/admin/feedback?${qs}`) : Promise.resolve(null), [qs]);
   const openItem = async (id) => { try { const r = await api.get(`/admin/feedback/${id}`); setOpen(r.item); setReply(''); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const setSt = async (id, st) => { setBusy(true); try { const r = await api.post(`/admin/feedback/${id}/status`, { status: st }); setOpen((o) => o && o.id === id ? { ...o, status: r.item.status } : o); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
@@ -16603,6 +16603,7 @@ function AdminFeedback() {
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={kind} onChange={(e) => { setKind(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.kind.all', 'All kinds')}</option>{['feedback', 'bug', 'crash'].map((k) => <option key={k} value={k}>{t(`fb.kind.${k}`, k)}</option>)}</Select>
             <Select value={version} onChange={(e) => { setVersion(e.target.value); setPage(0); }} className="!w-auto"><option value="">{t('fb.ver.all', 'All versions')}</option>{(data?.versions || []).filter((v) => v.version).map((v) => <option key={v.version} value={v.version}>{v.version} ({v.n})</option>)}</Select>
+            <Select value={sort} onChange={(e) => { setSort(e.target.value); setPage(0); }} className="!w-auto" title={t('fb.sort', 'Sort')}><option value="severity">{t('fb.sort.sev', 'By severity')}</option><option value="new">{t('fb.sort.new', 'Newest')}</option><option value="old">{t('fb.sort.old', 'Oldest')}</option></Select>
             <form className="flex-1 min-w-[160px] flex gap-1" onSubmit={(e) => { e.preventDefault(); setQApplied(q.trim()); setPage(0); }}><Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('fb.search', 'Search title, text, e-mail, fingerprint')} /><Button size="sm">{t('common.search', 'Search')}</Button></form>
           </div>
           {loading ? <div className="py-10 flex justify-center text-[var(--muted)]"><Spinner /></div>

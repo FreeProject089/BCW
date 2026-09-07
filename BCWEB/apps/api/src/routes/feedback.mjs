@@ -270,9 +270,21 @@ export default async function feedbackRoutes(app) {
     if (q.version) where.appVersion = String(q.version).slice(0, 40);
     if (q.q) { const s = String(q.q).slice(0, 120); where.OR = [{ title: { contains: s, mode: 'insensitive' } }, { body: { contains: s, mode: 'insensitive' } }, { email: { contains: s, mode: 'insensitive' } }, { fingerprint: { contains: s } }]; }
     const page = Math.max(0, parseInt(q.page, 10) || 0); const take = 50;
-    const [rows, total, byStatus, versions] = await Promise.all([
-      p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, skip: page * take, take }),
-      p.feedback.count({ where }),
+    // Sort: newest (default), oldest, or BY SEVERITY (crash > bug > feedback, newest within a
+    // kind). Severity has no DB column to order on, so it ranks a bounded window in memory —
+    // feedback volumes per project are small, so a 1000-row window covers it comfortably.
+    const sort = ['new', 'old', 'severity'].includes(q.sort) ? q.sort : 'new';
+    const total = await p.feedback.count({ where });
+    let rows;
+    if (sort === 'severity') {
+      const RANK = { crash: 0, bug: 1, feedback: 2 };
+      const win = await p.feedback.findMany({ where, orderBy: { createdAt: 'desc' }, take: 1000 });
+      win.sort((a, b) => (RANK[a.kind] ?? 9) - (RANK[b.kind] ?? 9)); // stable → keeps newest-first within a kind
+      rows = win.slice(page * take, page * take + take);
+    } else {
+      rows = await p.feedback.findMany({ where, orderBy: { createdAt: sort === 'old' ? 'asc' : 'desc' }, skip: page * take, take });
+    }
+    const [byStatus, versions] = await Promise.all([
       p.feedback.groupBy({ by: ['status'], where: where.projectKey ? { projectKey: where.projectKey } : {}, _count: { _all: true } }),
       p.feedback.groupBy({ by: ['appVersion'], where: where.projectKey ? { projectKey: where.projectKey } : {}, _count: { _all: true }, orderBy: { _count: { appVersion: 'desc' } }, take: 30 }).catch(() => []),
     ]);
