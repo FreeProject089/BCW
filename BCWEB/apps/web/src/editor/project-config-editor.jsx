@@ -3,7 +3,7 @@ import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
   Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles, LayoutTemplate,
 } from 'lucide-react';
-import { Button, Input, Textarea, Field, Badge, Spinner, Select } from '../ui/ui.jsx';
+import { Button, Input, Textarea, Field, Badge, Spinner, Select, Modal } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from '../pages/auth.jsx';
@@ -431,6 +431,9 @@ function CommitImport({ slug }) {
 }
 
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
+  // Which studio page is open on its own surface, if any. A canvas is a page; editing one
+  // inside a settings column meant designing at 1200px in 600px of room.
+  const [studioAt, setStudioAt] = useState(null);
   // Who is allowed to turn the studio on. The SERVER is the authority (guardStudioFlag keeps
   // a grantee's flag out of the stored config whatever they send); this only decides whether
   // to draw a switch that would not work for them.
@@ -1086,15 +1089,27 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               ) : c.studioEnabled !== true ? (
                 <p className="text-xs text-[var(--muted)]">{t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}</p>
               ) : null}
+              {/* A ROW per page, and the studio opens on its own surface.
+                  It used to render a full studio inline for every canvas at once: each one got
+                  whatever width was left in a settings column — a page designed at 1200px,
+                  edited at 600 — and several of them stacked made the form unnavigable. A
+                  canvas is a page; it wants a page's worth of room. */}
               {c.studioEnabled === true && list.map((cv, i) => (
-                <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Input className="flex-1" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
-                    <Button size="sm" variant="ghost" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
-                  </div>
-                  <CanvasStudio value={cv} onChange={(next) => patch(i, next)} />
+                <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 flex items-center gap-2 flex-wrap">
+                  <Input className="flex-1 min-w-[140px]" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
+                  <span className="text-[11px] text-[var(--faint)] tabular-nums whitespace-nowrap">
+                    {t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv.blocks || []).length)}
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => setStudioAt(i)}><LayoutTemplate size={13} /> {t('pce.canvases.edit', 'Open the studio')}</Button>
+                  <Button size="sm" variant="ghost" className="!text-error" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
                 </div>
               ))}
+              {studioAt != null && list[studioAt] && (
+                <Modal open onClose={() => setStudioAt(null)} icon={LayoutTemplate} width="max-w-[96vw]"
+                  title={list[studioAt].title || t('pce.canvases.untitled', 'Untitled page')}>
+                  <CanvasStudio value={list[studioAt]} onChange={(next) => patch(studioAt, next)} />
+                </Modal>
+              )}
               {/* Start from something. A blank canvas is the worst thing to hand somebody who
                   has never used one — every preset is ordinary blocks the moment it lands. */}
               {c.studioEnabled === true && (

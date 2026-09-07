@@ -953,3 +953,11 @@ label:has(> input[type="radio"]) {
 .charity-card-glow { position: relative; border-color: color-mix(in srgb, var(--primary) 45%, var(--line)) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 18px 50px -20px color-mix(in srgb, var(--primary) 55%, transparent); animation: charity-breathe 4s ease-in-out infinite; }
 @keyframes charity-breathe { 0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 20%, transparent), 0 18px 50px -20px color-mix(in srgb, var(--primary) 55%, transparent); } 50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), 0 22px 60px -18px color-mix(in srgb, var(--primary) 75%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .charity-card-glow { animation: none; } }
+
+/* Studio resize handles, on a touch screen.
+   12px is right for a mouse and far under the ~24px a fingertip can reliably hit — so on a
+   coarse pointer the HIT AREA grows without the handle itself getting bigger and burying the
+   block underneath: an invisible outset ring does the catching. */
+@media (pointer: coarse) {
+  .cst-handle::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; }
+}

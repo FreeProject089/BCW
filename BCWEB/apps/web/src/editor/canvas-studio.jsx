@@ -246,7 +246,12 @@ export default function CanvasStudio({ value, onChange }) {
     <div>
       <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_280px] lg:gap-4 lg:items-start">
+        {/* `touchAction: none` is what makes this usable with a finger at all: without it the
+            browser claims the gesture and drags scroll the page instead of moving the block —
+            and a design surface you cannot drag on is not a design surface. The modal body
+            around it still scrolls, so nothing is trapped. */}
         <div ref={hostRef} className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-2)]"
+          style={{ touchAction: 'none' }}
           onPointerMove={(e) => { onMarqueeMove(e); onMove(e); }}
           onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
           onPointerCancel={(e) => { onMarqueeUp(); onUp(e); }}
@@ -265,11 +270,12 @@ export default function CanvasStudio({ value, onChange }) {
                 return (
                   <div key={b.id}
                     onPointerDown={(e) => onDown(e, b, null)}
-                    style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: 'move' }}>
+                    style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: 'move', touchAction: 'none' }}>
                     <BlockBody b={b} />
                     <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
                     {only && Object.keys(HANDLES).map((hk) => (
                       <span key={hk} onPointerDown={(e) => onDown(e, b, hk)}
+                        className="cst-handle"
                         style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
                     ))}
                   </div>
@@ -287,7 +293,17 @@ export default function CanvasStudio({ value, onChange }) {
             </div>
           </div>
         </div>
-        <Inspector {...{ t, sel, patch, canvas, emit, setSelId }} />
+        {/* The inspector.
+            On a wide screen it is the right-hand column of the grid above. Below `lg` the grid
+            collapses and it lands UNDER the canvas — which on a phone means scrolling past the
+            whole page you are editing to change the block you just tapped, then scrolling back
+            to see what happened. So on narrow screens it sticks to the bottom of the viewport
+            instead, and only while something is selected: an empty panel pinned over the
+            canvas would just be a smaller canvas. */}
+        <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
+          style={sel ? { background: 'var(--bg-solid)' } : undefined}>
+          <Inspector {...{ t, sel, patch, canvas, emit, setSelId }} />
+        </div>
       </div>
     </div>
   );
