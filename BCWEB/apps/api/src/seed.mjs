@@ -357,6 +357,16 @@ Set \`marker=icon\` on \`:::steps\`, then give every \`:::step\` an \`icon=\`.
 :::
 :::
 
+## Configuration rows
+Document a screen of settings without a table — one \`:::field\` per option: a bold label, an optional TYPE tag, a monospace key, and a description.
+
+:::field[Tile shape]{key=icons.shape type=select icon=palette}
+Rounded, circle, square, or no tile — the shape of every button icon in the set.
+:::
+:::field[Glyph colour]{key=icons.fg type=colour}
+The colour of the glyph inside each tile.
+:::
+
 ## Collapse and details
 :::collapse[Click to open]
 Hidden until asked for. \`:::collapse[Summary]\` — \`:::details\` is the same.
