@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Rocket, Upload, CheckCircle2, XCircle, ShieldCheck, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, Building2, ShoppingCart, Save, MessageSquare,
+  Rocket, Upload, Check, CheckCircle2, XCircle, ShieldCheck, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, Building2, ShoppingCart, Save, MessageSquare,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -181,7 +181,6 @@ export function Hosting() {
   const { user } = useAuth(); const nav = useNavigate(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
   const cap = useAsync(() => api.get('/hosting/capacity'), []);
-  const [customOpen, setCustomOpen] = useState(false);
   // Every purchase is now a storage POOL you fill freely with repos and/or catalogs —
   // the single-repo layout toggle was removed. `mode` stays 'multi' throughout.
   const [mode] = useState('multi');
@@ -269,29 +268,12 @@ export function Hosting() {
         </div>
       )}
 
-      {/* One tidy "configure your order" card: repo layout + billing term +
-          capacity in a single block, instead of three stacked config panels
-          before the user has even seen a price. */}
-      <Card className="p-4 sm:p-5 mb-6 relative z-30">
-        <div className="flex flex-col sm:flex-row sm:items-start gap-5">
-          <div className="sm:flex-1 min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Layers size={13} /> {t('hosting.storagespace', 'Storage space')}</div>
-            <p className="text-sm text-[var(--muted)]">{t('hosting.storage.d', 'You buy a pool of storage. Once it\'s yours, fill it however you like — one repo, several repos, catalogs, or a mix — and resize the split anytime.')}</p>
-          </div>
-          <div className="sm:flex-1 min-w-0">
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('hosting.term', 'Billing term')}</div>
-            <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
-          </div>
-        </div>
-        <p className="text-xs text-[var(--muted)] mt-4 flex items-center gap-1.5"><ShoppingCart size={13} className="text-[var(--primary-2)]" /> {t('hosting.cart.hint', 'Add repos and boosts to your cart, apply promo codes, then check out — all in one payment. Auto-renew is available per repo afterwards.')}</p>
-        {c && (
-          <div className="flex items-center gap-3 text-sm mt-4 pt-4 border-t border-[var(--line)]">
-            <Gauge size={16} className="text-[var(--primary-2)] shrink-0" />
-            <div className="flex-1"><div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${c.usableGB ? 100 - (c.freeGB / c.usableGB) * 100 : 0}%` }} /></div></div>
-            <span className="text-xs text-[var(--muted)] whitespace-nowrap tabular-nums">{c.freeGB.toFixed(0)} / {c.usableGB.toFixed(0)} GB {t('hosting.free', 'free')}</span>
-          </div>
-        )}
-      </Card>
+      {/* The configurator replaces the old "storage space + billing term" text card. That
+          card explained the model and then asked for nothing; this asks for the two numbers
+          that decide the price, and shows the price while you choose them. */}
+      <PoolConfigurator months={months} setMonths={setMonths} termDisc={TERM_DISC} soldOut={soldOut} capacity={c}
+        onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
+
       {/* Free tier — a real $0 plan, called out on its own instead of blending into
           the paid grid below (it isn't really "one of the four tiers", it's the
           answer to "can I try this for free?"). Paid plans never draw from this
@@ -385,14 +367,6 @@ export function Hosting() {
           ); })}
       </div>}
 
-      {/* Custom plan */}
-      <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
-        <Sliders size={26} className="text-[var(--primary-2)]" />
-        <div className="flex-1 text-center sm:text-start"><div className="font-semibold text-lg">{t('hosting.custom.title', 'Need a different size?')}</div>
-          <div className="text-sm text-[var(--muted)]">{t('hosting.custom.sub2', 'Build a custom plan — pick your storage and upload speed. Price adapts instantly.')}</div></div>
-        <Button variant="default" disabled={soldOut} onClick={() => setCustomOpen(true)}><Sliders size={16} /> {soldOut ? t('hosting.soldout.short', 'Sold out') : t('hosting.custom.cta', 'Build custom plan')}</Button>
-      </Card>
-
       {/* Enterprise / bespoke — no fixed price, contact us for a tailored quote. Two ways in:
           the contact page (email, works signed-out) or, signed in, the same form becomes a
           tracked thread you follow in your dashboard → Reports. */}
@@ -419,7 +393,6 @@ export function Hosting() {
       )}
 
       <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
-      <CustomPlanModal open={customOpen} onClose={() => setCustomOpen(false)} months={months} setMonths={setMonths} termDisc={TERM_DISC} onCheckout={(custom) => { setCustomOpen(false); addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) }); }} />
       <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} setItemAutoRenew={setItemAutoRenew} setItemGift={setItemGift} clearCart={clearCart} />
     </div>
   );
@@ -589,78 +562,133 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
   ), document.body);
 }
 
-function CustomPlanModal({ open, onClose, onCheckout, months = 12, setMonths, termDisc = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 } }) {
+/**
+ * The pool configurator, inline.
+ *
+ * This used to be a modal behind a "Need a different size?" card two thirds down the page, so
+ * the one interactive thing on a pricing page — drag a slider, watch the price move — was the
+ * thing you had to go looking for. Everything above it was static text and a term dropdown,
+ * which is what made the page read as a stack of cards rather than something you buy from.
+ *
+ * It also answers "what does 20 GB actually hold", because gigabytes are not a unit anybody
+ * shops in. The estimate is deliberately coarse and labelled as an estimate — it is a sense
+ * of scale, not a promise.
+ */
+function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAdd }) {
   const { t } = useI18n();
   const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8 });
   const [price, setPrice] = useState(null);
-  const [factors, setFactors] = useState(null); // { maxUploadMbps } — admin/scarcity caps
+  const [factors, setFactors] = useState(null);
   const [promo, setPromo] = useState(null);
   const disc = termDisc[months] || 0;
   const afterTerm = price == null ? null : Math.round(price * months * (1 - disc));
   const termTotal = afterTerm == null ? null : promo?.percentOff ? Math.round(afterTerm * (1 - promo.percentOff / 100)) : afterTerm;
   useEffect(() => {
-    if (!open) return;
     const id = setTimeout(() => {
       api.get(`/hosting/price?${new URLSearchParams({ storageGB: spec.storageGB, uploadMbps: spec.uploadMbps })}`)
-        .then((r) => { setPrice(r.priceMonthlyCents); setFactors(r.factors || null); }).catch(() => setPrice(null));
+        .then((r) => { setPrice(r.priceMonthlyCents); setFactors(r.factors || null); })
+        .catch(() => setPrice(null));
     }, 200);
     return () => clearTimeout(id);
-  }, [open, spec]);
-  // Clamp the upload slider to the current per-repo ceiling (admin + scarcity).
+  }, [spec]);
   const upMax = Math.min(200, factors?.maxUploadMbps ?? 200);
-  useEffect(() => {
-    setSpec((sp) => (sp.uploadMbps > upMax) ? { ...sp, uploadMbps: Math.min(sp.uploadMbps, upMax) } : sp);
-  }, [upMax]);
+  useEffect(() => { setSpec((sp) => (sp.uploadMbps > upMax ? { ...sp, uploadMbps: upMax } : sp)); }, [upMax]);
+  // No capacity for this size — say so on the button rather than at checkout.
+  const tooBig = !!capacity && spec.storageGB > capacity.freeGB;
   const sliders = [
     { key: 'storageGB', label: t('hosting.s.storage', 'Storage'), min: 1, max: 200, step: 1, fmt: (v) => `${v} GB`, icon: HardDrive },
     { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
   ];
+  // Rough, honest scale. A mod is ~15 MB, a modpack ~400 MB, a catalog entry ~2 MB.
+  const mb = spec.storageGB * 1024;
+  const fits = [
+    { n: Math.round(mb / 15), label: t('hosting.fits.mods', 'mods') },
+    { n: Math.round(mb / 400), label: t('hosting.fits.packs', 'modpacks') },
+    { n: Math.round(mb / 2), label: t('hosting.fits.entries', 'catalog entries') },
+  ].filter((x) => x.n >= 1);
+
   return (
-    <Modal open={open} onClose={onClose} title={t('hosting.custom.modaltitle', 'Build a custom plan')} icon={Sliders} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={() => onCheckout(spec, promo?.code)}><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</Button></>}>
-      <div className="space-y-5">
-        {/* Live spec summary chips — see the whole plan at a glance while dragging */}
-        <div className="flex flex-wrap gap-2">
-          {sliders.map((s) => <Badge key={s.key} tone="primary"><s.icon size={11} /> {s.fmt(spec[s.key])}</Badge>)}
-        </div>
-        {sliders.map((s) => (
-          <div key={s.key}>
-            <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><s.icon size={14} /> {s.label}</span><span className="font-semibold">{s.fmt(spec[s.key])}</span></div>
-            <input type="range" min={s.min} max={s.max} step={s.step} value={spec[s.key]} className="bcw-range"
-              onChange={(e) => setSpec({ ...spec, [s.key]: Number(e.target.value) })} />
+    <Card className="p-0 mb-6 overflow-hidden">
+      <div className="grid md:grid-cols-[1fr_290px]">
+        {/* left: the controls */}
+        <div className="p-5 sm:p-6 space-y-5">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Sliders size={13} /> {t('hosting.cfg.eyebrow', 'Build your pool')}</div>
+            <h2 className="text-xl font-bold mt-1.5 mb-0">{t('hosting.cfg.title', 'Pick your size — the price follows')}</h2>
+            <p className="text-sm text-[var(--muted)] mt-1 mb-0">{t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')}</p>
           </div>
-        ))}
-
-        {/* prepaid term — same discounts, as a dropdown */}
-        <div>
-          <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Receipt size={14} /> {t('hosting.term', 'Billing term')}</div>
-          <TermSelect months={months} setMonths={setMonths} termDisc={termDisc} t={t} />
-        </div>
-
-        <div>
-          <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Ticket size={14} /> {t('hosting.promo.label', 'Promo code')}</div>
-          <PromoCodeField months={months} onChange={setPromo} />
-        </div>
-
-        <div className="pt-3 border-t border-[var(--line)] space-y-1.5">
-          {price != null && (
-            <div className="flex items-center justify-between text-xs text-[var(--faint)]">
-              <span>{t('hosting.baseprice', 'Base price')}</span>
-              <span className={disc > 0 || promo?.percentOff ? 'line-through' : ''}>${(price * months / 100).toFixed(2)}</span>
+          {sliders.map((s) => (
+            <div key={s.key}>
+              <div className="flex items-center justify-between mb-1.5 text-sm">
+                <span className="flex items-center gap-1.5 text-[var(--muted)]"><s.icon size={14} /> {s.label}</span>
+                <span className="font-semibold tabular-nums">{s.fmt(spec[s.key])}</span>
+              </div>
+              <input type="range" min={s.min} max={s.max} step={s.step} value={spec[s.key]} className="bcw-range"
+                aria-label={s.label} onChange={(e) => setSpec({ ...spec, [s.key]: Number(e.target.value) })} />
+            </div>
+          ))}
+          {fits.length > 0 && (
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('hosting.fits.title', 'Roughly what that holds')}</div>
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+                {fits.map((f) => (
+                  <span key={f.label} className="text-sm"><b className="tabular-nums">≈ {f.n.toLocaleString()}</b> <span className="text-[var(--muted)]">{f.label}</span></span>
+                ))}
+              </div>
+              <div className="text-[10.5px] text-[var(--faint)] mt-1.5">{t('hosting.fits.note', 'An estimate, to give a sense of scale — your files decide.')}</div>
             </div>
           )}
-          {disc > 0 && <div className="flex items-center justify-between text-xs text-success"><span>{t('hosting.termdiscount', 'Term discount')}</span><span>−{Math.round(disc * 100)}%</span></div>}
-          {promo?.percentOff && <div className="flex items-center justify-between text-xs text-success"><span>{t('hosting.promo.label', 'Promo code')} ({promo.code})</span><span>−{promo.percentOff}%</span></div>}
-          <div className="flex items-end justify-between pt-1.5">
+          <div className="grid lg:grid-cols-2 gap-4">
             <div>
-              <span className="text-sm text-[var(--muted)]">{t('hosting.estprice', 'Estimated price')}</span>
-              {termTotal != null && months > 1 && <div className="text-xs text-[var(--faint)] mt-0.5">${(termTotal / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</div>}
+              <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Receipt size={14} /> {t('hosting.term', 'Billing term')}</div>
+              <TermSelect months={months} setMonths={setMonths} termDisc={termDisc} t={t} />
             </div>
-            <span className="text-3xl font-bold gradient-text">{termTotal == null ? '—' : `$${(termTotal / 100 / months).toFixed(2)}`}<span className="text-sm text-[var(--muted)] font-medium">{t('hosting.permo', '/mo')}</span></span>
+            <div>
+              <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Ticket size={14} /> {t('hosting.promo.label', 'Promo code')}</div>
+              <PromoCodeField months={months} onChange={setPromo} />
+            </div>
+          </div>
+        </div>
+        {/* right: the price, always in view while dragging */}
+        <div className="p-5 sm:p-6 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hosting.estprice', 'Estimated price')}</div>
+          <div className="mt-2 flex items-end gap-1.5">
+            <span className="text-4xl font-extrabold gradient-text leading-none">{termTotal == null ? '—' : `$${(termTotal / 100 / months).toFixed(2)}`}</span>
+            <span className="text-sm text-[var(--muted)] font-medium mb-0.5">{t('hosting.permo', '/mo')}</span>
+          </div>
+          {termTotal != null && months > 1 && (
+            <div className="text-xs text-[var(--faint)] mt-1">${(termTotal / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</div>
+          )}
+          <div className="mt-3 space-y-1">
+            {disc > 0 && <div className="flex items-center justify-between text-xs text-success"><span>{t('hosting.termdiscount', 'Term discount')}</span><span>−{Math.round(disc * 100)}%</span></div>}
+            {promo?.percentOff ? <div className="flex items-center justify-between text-xs text-success"><span>{promo.code}</span><span>−{promo.percentOff}%</span></div> : null}
+          </div>
+          <Button variant="primary" className="w-full mt-4" disabled={soldOut || tooBig || price == null}
+            onClick={() => onAdd(spec)}>
+            {soldOut ? t('hosting.soldout.short', 'Sold out')
+              : tooBig ? t('hosting.nospace', 'Not enough space')
+              : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}
+          </Button>
+          {capacity && (
+            <div className="mt-4 pt-3 border-t border-[var(--line)]">
+              <div className="flex items-center justify-between text-[11px] text-[var(--muted)] mb-1">
+                <span className="flex items-center gap-1.5"><Gauge size={12} /> {t('hosting.free', 'free')}</span>
+                <span className="tabular-nums">{capacity.freeGB.toFixed(0)} / {capacity.usableGB.toFixed(0)} GB</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${capacity.usableGB ? 100 - (capacity.freeGB / capacity.usableGB) * 100 : 0}%` }} />
+              </div>
+            </div>
+          )}
+          <div className="mt-5 pt-4 border-t border-[var(--line)] space-y-1.5 text-[11px] text-[var(--muted)]">
+            {[
+              t('hosting.cfg.p1', 'Prepaid — no rolling charge unless you turn auto-renew on'),
+              t('hosting.cfg.p2', 'Repos and catalogs share the same pool'),
+              t('hosting.cfg.p3', 'Resize the split at any time'),
+            ].map((line) => <div key={line} className="flex items-start gap-1.5"><Check size={12} className="shrink-0 mt-0.5 text-success" /><span>{line}</span></div>)}
           </div>
         </div>
       </div>
-    </Modal>
+    </Card>
   );
 }
-
