@@ -15,6 +15,7 @@
     "./openapi": "./src/openapi.js",
     "./export": "./src/export.jsx",
     "./ast": "./src/ast.js",
+    "./editor-blocks": "./src/editor-blocks.js",
     "./links": "./src/links.js",
     "./markdown.css": "./src/markdown.css",
     "./src/*": "./src/*",
