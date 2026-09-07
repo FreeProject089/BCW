@@ -18258,46 +18258,135 @@ function SeoTagsInline() {
   );
 }
 
-/* The sitemap: what it lists, what to add, what to leave out, and the file itself. */
+/* The sitemap: what it lists, what to add, what to leave out, and the file itself.
+   It used to show a COUNT and three textareas — so managing it meant knowing the file by
+   heart, and excluding a page meant typing its path exactly right with nothing to check it
+   against. The file is fetched and listed now, grouped the way it is built, with a filter and
+   a one-click exclude. */
+const SM_GROUPS = [
+  ['/blog/', 'sm.g.blog', 'Blog posts'],
+  ['/docs/', 'sm.g.docs', 'Docs pages'],
+  ['/item/', 'sm.g.catalog', 'Catalogue items'],
+  ['/project/', 'sm.g.projects', 'Other projects'],
+];
 function SitemapCard() {
   const { t } = useI18n(); const toast = useToast();
-  const [count, setCount] = useState(null);
-  const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [robots, setRobots] = useState(''); const [busy, setBusy] = useState(false);
-  const refresh = () => fetch('/sitemap.xml', { cache: 'no-store' }).then((r) => r.text()).then((x) => setCount((x.match(/<loc>/g) || []).length)).catch(() => setCount(null));
+  const [urls, setUrls] = useState(null);
+  const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [robots, setRobots] = useState('');
+  const [busy, setBusy] = useState(false); const [q, setQ] = useState(''); const [openG, setOpenG] = useState(null);
+  const refresh = () => fetch('/sitemap.xml', { cache: 'no-store' })
+    .then((r) => r.text())
+    .then((x) => setUrls([...x.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])))
+    .catch(() => setUrls(null));
   useEffect(() => {
     refresh();
     api.get('/admin/settings').then((r) => { const st = r.settings || {}; setExtra((st['seo.sitemapExtra'] || []).join('\n')); setExclude((st['seo.sitemapExclude'] || []).join('\n')); setRobots((st['seo.robotsExtra'] || []).join('\n')); }).catch(() => {});
   }, []);
-  const lines = (v) => v.split(/\n|,/).map((x) => x.trim()).filter((x) => /^\/[^\s]*$/.test(x));
-  // robots.txt rules: keep only real directives; the server re-validates and always keeps the
-  // safe defaults, so a bad line here can only be ignored, never break the file.
-  const robotLines = (v) => v.split('\n').map((x) => x.trim()).filter((x) => /^(User-agent|Allow|Disallow|Crawl-delay|Sitemap|Host)\s*:/i.test(x)).slice(0, 50);
+
+  // Split a textarea into entries, and say which ones are NOT paths.
+  //
+  // These were silently dropped: the filter ran, the save succeeded, the toast said "Saved",
+  // and `landing` (no leading slash) was simply gone. A rejected line has to be shown as
+  // rejected — a form that quietly discards what you typed is worse than one that refuses.
+  const split = (v) => v.split(/\n|,/).map((x) => x.trim()).filter(Boolean);
+  const badPaths = (v) => split(v).filter((x) => !/^\/[^\s]*$/.test(x));
+  const okPaths = (v) => split(v).filter((x) => /^\/[^\s]*$/.test(x));
+  const ROBOT_LINE = /^(User-agent|Allow|Disallow|Crawl-delay|Sitemap|Host)\s*:/i;
+  const robotLines = (v) => v.split('\n').map((x) => x.trim()).filter((x) => ROBOT_LINE.test(x)).slice(0, 50);
+  const badRobots = (v) => v.split('\n').map((x) => x.trim()).filter(Boolean).filter((x) => !ROBOT_LINE.test(x));
+  const bad = [...badPaths(extra), ...badPaths(exclude)];
+  const badR = badRobots(robots);
+
   const save = async () => {
+    if (bad.length) return toast.error(t('sm.badpath', 'Not a path: {x}. Every entry starts with / and has no spaces.').replace('{x}', bad.slice(0, 3).join(', ')));
+    if (badR.length) return toast.error(t('sm.badrobot', 'Not a robots directive: {x}. Use “Disallow: /path”, “Crawl-delay: 5”, and so on.').replace('{x}', badR.slice(0, 2).join(' · ')));
     setBusy(true);
     try {
-      await api.put('/admin/settings/seo.sitemapExtra', { value: lines(extra) });
-      await api.put('/admin/settings/seo.sitemapExclude', { value: lines(exclude) });
+      await api.put('/admin/settings/seo.sitemapExtra', { value: okPaths(extra) });
+      await api.put('/admin/settings/seo.sitemapExclude', { value: okPaths(exclude) });
       await api.put('/admin/settings/seo.robotsExtra', { value: robotLines(robots) });
       toast.success(t('common.saved', 'Saved.')); refresh();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
+
+  // Paths, not absolute URLs: the exclude list is matched against the path, so that is what the
+  // list shows and what the button writes.
+  const paths = (urls || []).map((u) => { try { return new URL(u).pathname; } catch { return u; } });
+  const excluded = new Set(split(exclude));
+  const toggleExclude = (path) => {
+    if (excluded.has(path)) setExclude(split(exclude).filter((x) => x !== path).join('\n'));
+    else setExclude([...split(exclude), path].join('\n'));
+  };
+  const filtered = q.trim() ? paths.filter((x) => x.toLowerCase().includes(q.trim().toLowerCase())) : paths;
+  const groupOf = (path) => SM_GROUPS.find(([pre]) => path.startsWith(pre)) || null;
+  const groups = [
+    ...SM_GROUPS.map(([pre, key, en]) => [key, en, filtered.filter((x) => x.startsWith(pre))]),
+    ['sm.g.fixed', 'Fixed pages', filtered.filter((x) => !groupOf(x))],
+  ].filter((g) => g[2].length);
+
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--primary-2)]" /> {t('sm.title', 'Sitemap')} {count != null && <Badge>{t('sm.n', '{n} URLs').replace('{n}', count)}</Badge>}</div>
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--primary-2)]" /> {t('sm.title', 'Sitemap')} {urls && <Badge>{t('sm.n', '{n} URLs').replace('{n}', urls.length)}</Badge>}</div>
         <a href="/sitemap.xml" target="_blank" rel="noreferrer" className="btn btn-sm">{t('sm.open', 'Open sitemap.xml')}</a>
         <a href="/robots.txt" target="_blank" rel="noreferrer" className="btn btn-sm">robots.txt</a>
         <Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={13} /></Button>
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('sm.sub', 'Built live from the published content: projects, posts, docs, catalogue items and the fixed pages. Add a path the router serves that this list cannot know, or leave one out. One per line.')}</p>
+
+      {/* WHAT IS IN IT. The count alone meant knowing the file by heart to manage it, and
+          typing a path exactly right to leave one out. */}
+      <div className="rounded-xl border border-[var(--line)] p-3 mb-3">
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sm.listed', 'Listed right now')}</span>
+          <div className="flex-1" />
+          <Input className="!w-48 !py-1 !text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('sm.filter', 'Filter…')} />
+        </div>
+        {urls == null ? <div className="text-xs text-[var(--faint)]">{t('sm.unreach', 'sitemap.xml is not reachable from here — in dev the app shell answers instead of the API.')}</div>
+          : !groups.length ? <div className="text-xs text-[var(--faint)]">{t('sm.nomatch', 'Nothing matches.')}</div>
+            : (
+              <div className="space-y-1.5">
+                {groups.map(([key, en, list]) => {
+                  const open = openG === key || !!q.trim();
+                  return (
+                    <div key={key}>
+                      <button type="button" onClick={() => setOpenG(openG === key ? null : key)}
+                        className="w-full flex items-center gap-2 text-xs py-1 text-start hover:text-[var(--text)] text-[var(--muted)]">
+                        <ChevronRight size={12} className={`transition-transform ${open ? 'rotate-90' : ''}`} />
+                        <span className="font-medium">{t(key, en)}</span>
+                        <span className="text-[var(--faint)] tabular-nums">{list.length}</span>
+                      </button>
+                      {open && (
+                        <div className="ps-5 space-y-0.5 max-h-56 overflow-auto">
+                          {list.map((path) => (
+                            <div key={path} className="flex items-center gap-2 text-[11px] group">
+                              <code className={`flex-1 truncate font-mono ${excluded.has(path) ? 'line-through text-[var(--faint)]' : 'text-[var(--muted)]'}`}>{path}</code>
+                              <button type="button" onClick={() => toggleExclude(path)}
+                                className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--line-strong)] shrink-0">
+                                {excluded.has(path) ? t('sm.reinclude', 'put back') : t('sm.excludeone', 'leave out')}
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+        {excluded.size > 0 && <div className="text-[11px] text-warning mt-2">{t('sm.pending', '{n} exclusion(s) — press Save to apply them.').replace('{n}', excluded.size)}</div>}
+      </div>
+
       <div className="grid sm:grid-cols-2 gap-3">
         <Field label={t('sm.extra', 'Also list')} className="!mb-0"><Textarea rows={4} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={'/landing\n/p/bsm/download'} /></Field>
         <Field label={t('sm.exclude', 'Leave out')} className="!mb-0"><Textarea rows={4} value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder={'/2fa\n/polls'} /></Field>
       </div>
+      {bad.length > 0 && <div className="text-[11px] text-error mt-1.5">{t('sm.badpath', 'Not a path: {x}. Every entry starts with / and has no spaces.').replace('{x}', bad.slice(0, 3).join(', '))}</div>}
       <Field label={t('sm.robots', 'robots.txt — extra rules')} className="!mb-0 mt-3"
         hint={t('sm.robots.h', 'Appended after the built-in rules (private screens stay disallowed, the sitemap stays advertised). One directive per line, e.g. “Disallow: /beta” or “Crawl-delay: 5”.')}>
         <Textarea rows={3} value={robots} onChange={(e) => setRobots(e.target.value)} placeholder={'Disallow: /beta\nCrawl-delay: 5'} />
       </Field>
+      {badR.length > 0 && <div className="text-[11px] text-error mt-1.5">{t('sm.badrobot', 'Not a robots directive: {x}. Use “Disallow: /path”, “Crawl-delay: 5”, and so on.').replace('{x}', badR.slice(0, 2).join(' · '))}</div>}
       <div className="flex items-center gap-2 mt-3"><Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><span className="text-[11px] text-[var(--faint)]">{t('sm.note', 'Search engines re-read the file on their own schedule; nothing to submit by hand.')}</span></div>
     </Card>
   );

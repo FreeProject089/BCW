@@ -3435,6 +3435,16 @@ const DICT = {
     'st.preview.both': 'Les deux modes, mis à jour pendant que tu édites.', 'st.editing': 'en cours',
     'st.pantonenote': 'Les noms Pantone servent uniquement d’étiquettes — ces valeurs hexadécimales sont les approximations largement publiées de chaque couleur de l’année, pas des données Pantone sous licence. Pour tout usage critique en couleur, réfère-toi à un vrai nuancier Pantone.',
     'st.contrastok': 'Contraste du texte du bouton {n}:1 — conforme WCAG AA (4,5:1).',
+    // Plan du site — la liste et les saisies refusées
+    'sm.listed': 'Ce qui est listé en ce moment', 'sm.filter': 'Filtrer…',
+    'sm.g.blog': 'Articles du blog', 'sm.g.docs': 'Pages de doc', 'sm.g.catalog': 'Objets du catalogue',
+    'sm.g.projects': 'Autres projets', 'sm.g.fixed': 'Pages fixes',
+    'sm.excludeone': 'laisser de côté', 'sm.reinclude': 'remettre',
+    'sm.pending': '{n} exclusion(s) — appuie sur Enregistrer pour les appliquer.',
+    'sm.nomatch': 'Rien ne correspond.',
+    'sm.unreach': 'sitemap.xml est injoignable d’ici — en dev, c’est la coquille de l’app qui répond à la place de l’API.',
+    'sm.badpath': 'Ce n’est pas un chemin : {x}. Chaque entrée commence par / et ne contient pas d’espace.',
+    'sm.badrobot': 'Ce n’est pas une directive robots : {x}. Utilise « Disallow: /chemin », « Crawl-delay: 5 », etc.',
     // Onglets personnalisés
     'pce.ctabs.n': '{n} caractère(s)', 'pce.ctabs.edit': 'Rédiger',
     'pce.ctabs.untitled': 'Onglet sans titre',

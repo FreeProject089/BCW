@@ -294,20 +294,49 @@ export const SkeletonGrid = ({ count = 6, className = 'grid sm:grid-cols-2 lg:gr
 
 // A long hint (a paragraph of caveats under one input) folds to two lines with a "more"
 // toggle, so a form reads as a form and not as a manual — the full text is one click away
-// and the Admin guide carries the same explanation in full. Short hints render as before.
-const LONG_HINT = 150;
+// and the Admin guide carries the same explanation in full.
+//
+// The toggle appears only when the text is ACTUALLY clipped, which is not the same question as
+// "is it long". It used to be `hint.length >= 150`, and 150 characters fits inside two lines at
+// most of the widths these fields get — so "more" showed up under hints that were already
+// whole, and clicking it changed nothing on screen. Reported exactly that way: the plus/minus
+// thing that shows nothing when you click it.
+//
+// Measured instead: does the clamped element overflow its own box? That depends on the width,
+// the font and the language (the French of a hint is reliably longer than the English), none of
+// which a character count knows about — hence the ResizeObserver, so the toggle appears and
+// disappears as the column narrows.
 export function Field({ label, hint, children, className = '' }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const long = typeof hint === 'string' && hint.length >= LONG_HINT;
+  const [clipped, setClipped] = useState(false);
+  const hintRef = useRef(null);
+
+  useEffect(() => {
+    const el = hintRef.current;
+    if (!el || !hint) { setClipped(false); return undefined; }
+    // Only while COLLAPSED. Open, the clamp is off and the element never overflows — measuring
+    // then would decide it is not clipped, hide the toggle, and leave no way to fold it back.
+    const read = () => { if (!open) setClipped(el.scrollHeight > el.clientHeight + 1); };
+    read();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hint, open]);
+
+  // Clamped unless the reader opened it. The class carries the whole clamp (display, orient,
+  // overflow); the inline `display` that used to sit beside it was a second opinion on one of
+  // those three and nothing else.
+  const folded = !open;
   return (
     <label className={`block ${className}`}>
       <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{label}</div>
       {children}
       {hint && (
         <div className="text-xs text-[var(--faint)] mt-1">
-          <span className={long && !open ? 'line-clamp-2' : ''} style={long && !open ? { display: '-webkit-box' } : undefined}>{hint}</span>
-          {long && (
+          <span ref={hintRef} className={folded ? 'line-clamp-2' : ''}>{hint}</span>
+          {(clipped || open) && (
             <button type="button" onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }} className="text-[var(--primary-2)] hover:underline font-medium ms-1">
               {open ? t('common.less', 'less') : t('common.more', 'more')}
             </button>
