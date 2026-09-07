@@ -7,7 +7,7 @@
 // "feels semantic" part without a vector index. Ranking is a fuzzy scorer over label + aliases.
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, CornerDownLeft, FileText, ArrowRight, Hash, Compass, Zap, Target } from 'lucide-react';
+import { Search, CornerDownLeft, FileText, ArrowRight, Hash, Compass, Zap, Target, Clock } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import { useTheme } from './theme.jsx';
@@ -46,6 +46,23 @@ function flashElement(el) {
   el.classList.add('cmdk-flash');
   setTimeout(() => el.classList.remove('cmdk-flash'), 1400);
   if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch { /* not focusable */ } }
+}
+
+// What you picked last, so an empty palette opens on the four things you actually use rather
+// than on an alphabet of every page. Only destinations are remembered — an action carries a
+// closure, which does not survive a page load, and a half-restored action is worse than none.
+const RECENT_KEY = 'bcw.cmdk.recent';
+const RECENT_MAX = 4;
+function readRecent() {
+  try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); return Array.isArray(v) ? v.slice(0, RECENT_MAX) : []; }
+  catch { return []; }
+}
+function pushRecent(item) {
+  if (!item?.to) return;
+  try {
+    const next = [{ to: item.to, label: item.label }, ...readRecent().filter((r) => r.to !== item.to)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch { /* private mode */ }
 }
 
 // PAGES — every destination, with concept aliases (EN+FR) so a search by intent lands the page.
@@ -167,10 +184,22 @@ export default function CommandPalette() {
     // Content of the page you're ON — the most contextual result, so it leads when querying.
     const onpage = n ? pageEls.map((x) => ({ kind: 'onpage', label: x.text, el: x.el, s: score(n, x.text.toLowerCase()) }))
       .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, 6) : [];
-    // No query → show the pages as a directory + actions. Query → on-page first, then everything.
-    const out = n ? [...onpage, ...p.slice(0, 6), ...d, ...a.slice(0, 5)] : [...pages.map((x) => ({ ...x, s: 1 })), ...actions];
+    // Docs are capped like everything else. Uncapped, a broad word ("hosting") returned every
+    // matching heading in the manual and pushed the actions off the bottom of the list — the
+    // palette answered a question nobody asked and hid the one they did.
+    // No query → what you used last, then the directory + actions. Query → on-page first
+    // (the most contextual answer), then pages, docs, actions.
+    const out = n
+      ? [...onpage, ...p.slice(0, 6), ...d.slice(0, 6), ...a.slice(0, 5)]
+      : [...recent.map((r) => ({ kind: 'recent', label: r.label, to: r.to, s: 1 })),
+         ...pages.map((x) => ({ ...x, s: 1 })), ...actions];
     return out;
-  }, [q, docs, actions, pageEls, t]);
+  }, [q, docs, actions, pageEls, recent, t]);
+
+  // Re-read on open, not once at mount: the list changes as you use the palette, and a stale
+  // copy would show you what you picked two sessions ago.
+  const [recent, setRecent] = useState(readRecent);
+  useEffect(() => { if (open) setRecent(readRecent()); }, [open]);
 
   useEffect(() => { setActive(0); }, [q, docs]);
   useEffect(() => { listRef.current?.querySelector('[data-active="1"]')?.scrollIntoView({ block: 'nearest' }); }, [active]);
@@ -178,6 +207,7 @@ export default function CommandPalette() {
   const run = useCallback((it) => {
     if (!it) return;
     setOpen(false);
+    pushRecent(it);
     if (it.kind === 'action') it.run?.();
     else if (it.kind === 'onpage') { setTimeout(() => flashElement(it.el), 30); }
     else if (it.to) nav(it.to);
@@ -190,7 +220,9 @@ export default function CommandPalette() {
   };
 
   if (!open) return null;
-  const icon = (k) => k === 'doc' ? <FileText size={15} /> : k === 'action' ? <Zap size={15} /> : k === 'onpage' ? <Target size={15} /> : <Compass size={15} />;
+  const icon = (k) => k === 'doc' ? <FileText size={15} /> : k === 'action' ? <Zap size={15} /> : k === 'onpage' ? <Target size={15} /> : k === 'recent' ? <Clock size={15} /> : <Compass size={15} />;
+  const kindLabel = (k) => k === 'doc' ? t('cmdk.doc', 'Docs') : k === 'action' ? t('cmdk.action', 'Action')
+    : k === 'onpage' ? t('cmdk.onpage', 'On this page') : k === 'recent' ? t('cmdk.recent', 'Recent') : t('cmdk.page', 'Page');
   return (
     <div className="cmdk-overlay fixed inset-0 z-[200] flex items-start justify-center pt-[12vh] px-4" role="dialog" aria-modal="true"
       style={{ background: 'rgba(0,0,0,0.45)' }} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
@@ -206,7 +238,14 @@ export default function CommandPalette() {
         <div ref={listRef} className="max-h-[54vh] overflow-auto py-1.5">
           {items.length === 0 && <div className="px-4 py-6 text-sm text-[var(--faint)] text-center">{t('cmdk.none', 'No matches')}</div>}
           {items.map((it, i) => (
-            <button key={`${it.kind}:${it.to || it.label}:${i}`} data-active={i === active ? '1' : '0'}
+            <div key={`${it.kind}:${it.to || it.label}:${i}`}>
+            {/* A header when the kind changes. The rows carried only a small icon and a right-
+                hand tag, so a mixed list read as one undifferentiated column — you could not see
+                where "things on this page" ended and "the manual" began. */}
+            {(i === 0 || items[i - 1].kind !== it.kind) && (
+              <div className="px-4 pt-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{kindLabel(it.kind)}</div>
+            )}
+            <button data-active={i === active ? '1' : '0'}
               onMouseEnter={() => setActive(i)} onClick={() => run(it)}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${i === active ? 'bg-[var(--surface-2)]' : ''}`}>
               <span className="text-[var(--primary-2)] shrink-0">{icon(it.kind)}</span>
@@ -214,11 +253,9 @@ export default function CommandPalette() {
                 <span className="block text-sm text-[var(--text)] truncate">{it.label}</span>
                 {it.kind === 'doc' && it.section && <span className="block text-[11px] text-[var(--faint)] truncate flex items-center gap-1"><Hash size={10} /> {it.section}</span>}
               </span>
-              <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] shrink-0">
-                {it.kind === 'doc' ? t('cmdk.doc', 'Docs') : it.kind === 'action' ? t('cmdk.action', 'Action') : it.kind === 'onpage' ? t('cmdk.onpage', 'On this page') : t('cmdk.page', 'Page')}
-              </span>
               {i === active && <CornerDownLeft size={13} className="text-[var(--faint)] shrink-0" />}
             </button>
+            </div>
           ))}
         </div>
         <div className="px-4 py-2 border-t border-[var(--line)] text-[10px] text-[var(--faint)] flex items-center gap-3">

@@ -3617,7 +3617,7 @@ const DICT = {
     'nav.users': 'Membres', 'nav.contact': 'Contact', 'nav.status': 'Statut',
     'lang.search': 'Rechercher une langue…', 'lang.none': 'Aucun résultat',
     'cmdk.placeholder': 'Rechercher pages, actions, docs…', 'cmdk.none': 'Aucun résultat',
-    'cmdk.doc': 'Docs', 'cmdk.action': 'Action', 'cmdk.page': 'Page', 'cmdk.onpage': 'Sur cette page', 'cmdk.navigate': 'naviguer', 'cmdk.open': 'ouvrir',
+    'cmdk.doc': 'Docs', 'cmdk.action': 'Action', 'cmdk.page': 'Page', 'cmdk.recent': 'Récent', 'cmdk.onpage': 'Sur cette page', 'cmdk.navigate': 'naviguer', 'cmdk.open': 'ouvrir',
     'cmdk.switchLang': 'Changer de langue', 'cmdk.kofi': 'Soutenir sur Ko-fi',
     'cmdk.theme': 'Basculer thème sombre / clair', 'cmdk.copyLink': 'Copier le lien de cette page', 'cmdk.top': 'Remonter en haut',
     'cmdk.dashboard': 'Mon tableau de bord', 'cmdk.redeem': 'Utiliser un code promo', 'cmdk.logout': 'Se déconnecter', 'cmdk.admin': 'Tableau de bord admin',
