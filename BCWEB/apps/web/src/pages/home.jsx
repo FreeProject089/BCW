@@ -19,7 +19,7 @@ import { fmtNum, fmtInt } from '../lib/format.js';
 import Avatar from '../ui/Avatar.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { AuthorsRow } from './blog.jsx';
+import { AuthorsRow } from '../ui/post-bits.jsx';
 import { PollTeaser } from './polls.jsx';
 import { AppLogo, KofiIcon, DiscordIcon } from '../ui/brand.jsx';
 import { useAsync } from './pages.jsx';

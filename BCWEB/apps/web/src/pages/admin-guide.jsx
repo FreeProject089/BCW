@@ -24,7 +24,7 @@ import { useAuth } from './auth.jsx';
 import { Card, Input, Button, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
-import { MarkdownEditor } from './blog.jsx';
+import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
 import { BOT_DASHBOARD_REF } from '../lib/bot-dashboard-ref.js';
 import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';

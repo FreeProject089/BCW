@@ -4,7 +4,7 @@ import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select }
 import { useI18n } from '../i18n.jsx';
 import UserAvatar from '../ui/Avatar.jsx';
 import Markdown from '../ui/md.jsx';
-import { MarkdownEditor } from '../pages/blog.jsx';
+import { MarkdownEditor } from './markdown-editor.jsx';
 import DiffMergeModal from './diff-merge-modal.jsx';
 import { MessageSquare, CornerDownRight, Check, Pencil, Trash2, Send, Tag, Globe, Lock, Hash, History, Clock, ChevronRight, ChevronsDownUp, ChevronsUpDown } from 'lucide-react';
 

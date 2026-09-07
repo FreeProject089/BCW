@@ -3435,6 +3435,10 @@ const DICT = {
     'st.preview.both': 'Les deux modes, mis à jour pendant que tu édites.', 'st.editing': 'en cours',
     'st.pantonenote': 'Les noms Pantone servent uniquement d’étiquettes — ces valeurs hexadécimales sont les approximations largement publiées de chaque couleur de l’année, pas des données Pantone sous licence. Pour tout usage critique en couleur, réfère-toi à un vrai nuancier Pantone.',
     'st.contrastok': 'Contraste du texte du bouton {n}:1 — conforme WCAG AA (4,5:1).',
+    // /dev/editor — les deux éditeurs
+    'dve.m.site': 'Comme BetterCommunity l’utilise', 'dve.m.pkg': 'Le paquet',
+    'dve.m.site.h': 'Le composant exact qu’utilisent le blog et la doc — un seul module, un seul chemin de code, pas de seconde copie qui dérive. Son envoi d’images et son sélecteur d’icônes sont ceux de ce site ; tout le reste est le paquet.',
+    'dve.m.pkg.h': '`BmdEditor` tel que `npm i @bettercommunity/bmd-editor` le donne, sans rien de ce site.',
     // Constructeur de tableau
     'be.b.table': 'Tableau…',
     'tb.title': 'Insérer un tableau', 'tb.size': 'Taille',

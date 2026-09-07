@@ -10,7 +10,8 @@ import CommentsModal from '../editor/comments-modal.jsx';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
 import Markdown, { IconGlyph, anchorEl, ANCHOR_PREFIX } from '../ui/md.jsx';
-import { MarkdownEditor, useSectionComments, useSectionCommentPills, AuthorsRow } from './blog.jsx';
+import { useSectionComments, useSectionCommentPills, AuthorsRow } from '../ui/post-bits.jsx';
+import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from '../ui/ui.jsx';
 
 // BCWEB documentation — a docs space rendered with the B.MD block markdown

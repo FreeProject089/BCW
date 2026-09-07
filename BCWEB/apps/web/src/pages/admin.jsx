@@ -46,7 +46,7 @@ import { useTheme } from '../ui/theme.jsx';
 import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { MarkdownEditor } from './blog.jsx';
+import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 // The built-in legal text, so the import button copies the SAME words the public page
 // renders. A second hand-typed copy here is how the two would drift apart.
 import { LEGAL } from './legal.jsx';
