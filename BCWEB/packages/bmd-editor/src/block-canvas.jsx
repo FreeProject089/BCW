@@ -140,6 +140,31 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
                   <button type="button" onClick={() => removeBlock(b.id)} title={T.del} className="bmdc-del"><Ico d={X} /></button>
                 </div>
               </div>
+              {/* Fields, where there are fields.
+                  A block editor that shows `:::tip[Careful]{icon=star}` in a textarea is a text
+                  editor with extra steps. When a block opens with a directive, its title and its
+                  icon are edited as themselves — the body stays exactly as typed, because
+                  setDirectiveHead only ever rewrites line 1. */}
+              {(() => {
+                const head = parseDirectiveHead(b.src);
+                if (!head) return null;
+                return (
+                  <div className="bmdc-fields">
+                    <input className="bmdc-field" value={head.label} placeholder={T.title}
+                      onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { label: e.target.value }))} />
+                    {pickIcon && (
+                      <button type="button" className="bmdc-field-btn" title={T.icon}
+                        onClick={async () => {
+                          const picked = await pickIcon(head.attrs.icon || '');
+                          if (picked == null) return;   // cancelled — '' is a real answer (clear it)
+                          editBlock(b.id, setDirectiveHead(b.src, { attrs: { icon: picked } }));
+                        }}>
+                        {head.attrs.icon || T.noIcon}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
               <textarea
                 className="bmdc-src"
                 value={b.src}

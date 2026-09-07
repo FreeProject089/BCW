@@ -138,3 +138,58 @@ export function serializeBmdFile({ meta = {}, body = '' } = {}) {
 /** Convenience: a .bmd file's body straight to editable blocks, and back. */
 export const bmdFileToBlocks = (text) => splitBlocks(parseBmdFile(text).body);
 export const blocksToBmdFile = (blocks, meta = {}) => serializeBmdFile({ meta, body: joinBlocks(blocks) });
+
+// ── Directive heads, for editing a block as fields instead of as text ──────────────────
+//
+// A block editor that shows `:::tip[Careful]{icon=alert-triangle}` in a textarea is a text
+// editor with extra steps. These two turn that first line into named values and back, so a
+// host can offer a title box and an icon picker over the same source — without a second
+// parser, and without touching the body, which stays exactly as typed.
+
+const HEAD_RE = /^(\s*)(:{2,})([A-Za-z][\w-]*)(?:\[([^\]]*)\])?(?:\{([^}]*)\})?[ \t]*$/;
+
+/** Attributes of a directive head: `a=1 b="two words" c` → { a:'1', b:'two words', c:'' }. */
+function parseAttrs(raw) {
+  const out = {};
+  const re = /([A-Za-z_][\w-]*)(?:=(?:"([^"]*)"|'([^']*)'|([^\s]+)))?/g;
+  let m;
+  while ((m = re.exec(String(raw || '')))) {
+    if (!m[1]) continue;
+    out[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
+  }
+  return out;
+}
+/** Back to a head string. A value with whitespace, or any of `}"'`, is quoted. */
+function formatAttrs(attrs) {
+  return Object.entries(attrs || {})
+    .filter(([, v]) => v !== undefined && v !== null && String(v) !== '')
+    .map(([k, v]) => (/[\s}"']/.test(String(v)) ? `${k}="${String(v).replace(/"/g, '')}"` : `${k}=${v}`))
+    .join(' ');
+}
+
+/**
+ * Read a block's directive head.
+ * @returns {{name:string, label:string, attrs:Object, indent:string, colons:string}|null}
+ *          null when the block does not open with one — a paragraph has no fields to edit.
+ */
+export function parseDirectiveHead(src) {
+  const first = String(src ?? '').split('\n')[0] ?? '';
+  const m = first.match(HEAD_RE);
+  if (!m) return null;
+  return { indent: m[1], colons: m[2], name: m[3], label: m[4] ?? '', attrs: parseAttrs(m[5]) };
+}
+
+/**
+ * Rewrite a block's head with new label/attrs, leaving every other line byte-identical.
+ * A patch value of '' removes the attribute; the label is set as given.
+ */
+export function setDirectiveHead(src, patch = {}) {
+  const head = parseDirectiveHead(src);
+  if (!head) return src;
+  const lines = String(src ?? '').split('\n');
+  const label = patch.label !== undefined ? patch.label : head.label;
+  const attrs = { ...head.attrs, ...(patch.attrs || {}) };
+  const a = formatAttrs(attrs);
+  lines[0] = `${head.indent}${head.colons}${head.name}${label ? `[${label}]` : ''}${a ? `{${a}}` : ''}`;
+  return lines.join('\n');
+}

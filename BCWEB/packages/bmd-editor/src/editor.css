@@ -109,3 +109,13 @@
 .bmdc-palette-group { font-size: 10.5px; color: var(--faint, #726b61); text-transform: uppercase; letter-spacing: .04em; }
 .bmdc-palette-empty { font-size: 12px; color: var(--faint, #726b61); padding: 8px; }
 .bmdc-empty { text-align: center; font-size: 13px; color: var(--faint, #726b61); padding: 24px; }
+
+/* Block canvas — the per-directive field row (title + icon), above the raw source. */
+.bmdc-fields { display: flex; gap: 6px; align-items: center; margin: 0 0 6px; }
+.bmdc-field { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 5px 8px;
+  border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 8px; background: transparent; color: inherit; }
+.bmdc-field:focus { outline: none; border-color: var(--bmd-accent, #f97316); }
+.bmdc-field-btn { flex: 0 0 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer;
+  border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 8px; background: transparent; color: inherit; }
+.bmdc-field-btn:hover { border-color: var(--bmd-accent, #f97316); }

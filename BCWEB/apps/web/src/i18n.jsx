@@ -4094,7 +4094,7 @@ const DICT = {
     // resteraient en anglais : le vérificateur i18n ne voit pas dans un package).
     'bmdc.insert': 'Insérer un bloc', 'bmdc.search': 'Chercher un bloc…', 'bmdc.nomatch': 'Aucun bloc ne correspond.',
     'bmdc.count': '{n} bloc(s)', 'bmdc.preview': 'Aperçu', 'bmdc.drag': 'Glisser pour réordonner',
-    'bmdc.up': 'Monter', 'bmdc.down': 'Descendre', 'bmdc.empty': 'Document vide — insère un bloc au-dessus.',
+    'bmdc.title': 'Titre', 'bmdc.icon': 'Icône', 'bmdc.noicon': 'Choisir une icône', 'bmdc.up': 'Monter', 'bmdc.down': 'Descendre', 'bmdc.empty': 'Document vide — insère un bloc au-dessus.',
     'bmdf.import.h': 'Ouvrir un fichier .bmd dans cet éditeur', 'bmdf.export.h': 'Enregistrer ce document en .bmd',
     'bmdf.imported': '{n} chargé.', 'bmdf.badfile': 'Ce fichier n’a pas pu être lu.',
     'dev.landing.bmdT': 'B.MD — le kit markdown', 'dev.landing.bmdS': 'Encadrés, cartes, onglets, fiches d’API, valeurs en direct, diagrammes — installe-le, essaie le bac à sable, ouvre l’éditeur.',

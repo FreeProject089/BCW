@@ -414,6 +414,15 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   };
+  // The site's icon picker, handed to the block canvas as a promise. The package takes a
+  // `pickIcon(current) -> Promise<string|null>` rather than importing a picker: it stays
+  // dependency-free, and the site keeps ONE picker instead of growing a second one that knows
+  // a different set of icons. null = cancelled; '' is a real answer (clear the icon).
+  const iconResolve = useRef(null);
+  const [canvasIcon, setCanvasIcon] = useState(false);
+  const pickIconForCanvas = () => new Promise((resolve) => { iconResolve.current = resolve; setCanvasIcon(true); });
+  const closeCanvasIcon = (name) => { setCanvasIcon(false); iconResolve.current?.(name); iconResolve.current = null; };
+
   const [blocksOpen, setBlocksOpen] = useState(false);
   const blocksBtnRef = useRef(null); const [blocksPos, setBlocksPos] = useState({ top: 0, left: 0 });
   // Open the Blocks menu as a FIXED overlay anchored under the button — the editor wrapper
@@ -536,6 +545,8 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
       <>
         <BmdEditor compact value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 96)} placeholder={placeholder} extraGroups={hostGroups} exportTitle="document" />
         {iconPick && <IconPicker onPick={(n) => insAny(` :icon[${n}] `)} onClose={() => setIconPick(false)} />}
+      {/* Same picker, different destination: this one answers the block canvas's promise. */}
+      {canvasIcon && <IconPicker onPick={(n) => closeCanvasIcon(n)} onClose={() => closeCanvasIcon(null)} />}
         {badgePick && <BadgePicker onPick={(label, color) => insAny(` :badge[${label}]${color ? `{color="${color}"}` : ''} `)} onPickRaw={(txt) => insAny(txt)} onClose={() => setBadgePick(false)} />}
         {kbdPick && <KbdPicker onPick={(combo) => insAny(` :kbd[${combo}] `)} onClose={() => setKbdPick(false)} />}
       </>
@@ -597,11 +608,13 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
         : mode === 'visual'
           ? <div className="max-h-[52vh] overflow-auto p-2"><BmdBlockCanvas value={value || ''} onChange={onChange}
               snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, uiLang)} renderer={Markdown} lang={uiLang === 'fr' ? 'fr' : 'en'}
+              pickIcon={pickIconForCanvas}
               labels={{
                 insert: t('bmdc.insert', 'Insert a block'), search: t('bmdc.search', 'Search blocks…'),
                 noMatch: t('bmdc.nomatch', 'No block matches.'), count: t('bmdc.count', '{n} block(s)'),
                 preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
                 up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
+                title: t('bmdc.title', 'Title'), icon: t('bmdc.icon', 'Icon'), noIcon: t('bmdc.noicon', 'Pick an icon'),
                 empty: t('bmdc.empty', 'Empty document — insert a block above.'),
               }} /></div>
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
