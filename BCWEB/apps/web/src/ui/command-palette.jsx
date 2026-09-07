@@ -10,6 +10,8 @@ import { useNavigate } from 'react-router-dom';
 import { Search, CornerDownLeft, FileText, ArrowRight, Hash, Compass, Zap, Target } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
+import { useTheme } from './theme.jsx';
+import { useAuth } from '../pages/auth.jsx';
 
 // Snapshot the CURRENT view's searchable content — headings, buttons, links, labels, table
 // headers, list rows — so ⌘K can find "the thing on this page" and jump to it. Scoped to the
@@ -67,6 +69,8 @@ function pageDefs(t) {
     ['/contact', t('nav.contact', 'Contact'), 'contact support help aide'],
     ['/status', t('nav.status', 'Status'), 'status uptime incidents statut disponibilité'],
     ['/dev', t('nav.dev', 'Developers'), 'dev developers api développeurs'],
+    ['/myo', t('nav.myo', 'Make your own'), 'myo commission custom build made to order sur mesure commande création'],
+    ['/2fa', t('nav.twofa', '2FA authenticator'), '2fa two factor authenticator totp code sécurité authentification'],
   ].map(([to, label, kw]) => ({ kind: 'page', to, label, kw: `${label} ${kw}`.toLowerCase() }));
 }
 
@@ -94,6 +98,8 @@ function score(q, text) {
 export default function CommandPalette() {
   const { t, lang, setLang } = useI18n();
   const nav = useNavigate();
+  const theme = useTheme();
+  const auth = useAuth();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
@@ -124,12 +130,29 @@ export default function CommandPalette() {
     return () => clearTimeout(id);
   }, [q, open]);
 
-  const actions = useMemo(() => [
-    { kind: 'action', label: t('cmdk.switchLang', 'Switch language'), kw: `${t('cmdk.switchLang', 'switch language')} langue lang traduction`.toLowerCase(),
-      run: () => setLang(lang === 'fr' ? 'en' : 'fr') },
-    { kind: 'action', label: t('cmdk.kofi', 'Support on Ko-fi'), kw: 'kofi support donate tip soutenir don'.toLowerCase(),
-      run: () => window.open('https://ko-fi.com/bettercommunity', '_blank', 'noreferrer') },
-  ], [t, lang, setLang]);
+  const user = auth?.user;
+  const isStaff = user && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(user.role);
+  const actions = useMemo(() => {
+    const list = [
+      { kind: 'action', label: t('cmdk.switchLang', 'Switch language'), kw: `${t('cmdk.switchLang', 'switch language')} langue lang traduction english français`.toLowerCase(),
+        run: () => setLang(lang === 'fr' ? 'en' : 'fr') },
+      { kind: 'action', label: t('cmdk.theme', 'Toggle dark / light theme'), kw: 'theme dark light mode toggle thème sombre clair mode'.toLowerCase(),
+        run: () => theme?.toggle?.() },
+      { kind: 'action', label: t('cmdk.copyLink', 'Copy link to this page'), kw: 'copy link url share copier lien url partager'.toLowerCase(),
+        run: () => { try { navigator.clipboard?.writeText(location.href); } catch { /* denied */ } } },
+      { kind: 'action', label: t('cmdk.top', 'Scroll to top'), kw: 'scroll top haut début'.toLowerCase(),
+        run: () => window.scrollTo({ top: 0, behavior: 'smooth' }) },
+      { kind: 'action', label: t('cmdk.kofi', 'Support on Ko-fi'), kw: 'kofi support donate tip soutenir don'.toLowerCase(),
+        run: () => window.open('https://ko-fi.com/bettercommunity', '_blank', 'noreferrer') },
+    ];
+    if (user) {
+      list.push({ kind: 'action', label: t('cmdk.dashboard', 'My dashboard'), kw: 'dashboard billing account tableau de bord compte facturation'.toLowerCase(), run: () => nav('/dashboard') });
+      list.push({ kind: 'action', label: t('cmdk.redeem', 'Redeem a promo code'), kw: 'promo code redeem coupon gift code promo cadeau'.toLowerCase(), run: () => nav('/dashboard?tab=billing#redeem') });
+      list.push({ kind: 'action', label: t('cmdk.logout', 'Sign out'), kw: 'logout sign out disconnect déconnexion se déconnecter quitter'.toLowerCase(), run: () => auth?.logout?.() });
+    }
+    if (isStaff) list.push({ kind: 'action', label: t('cmdk.admin', 'Admin dashboard'), kw: 'admin back office moderation administration'.toLowerCase(), run: () => nav('/admin') });
+    return list;
+  }, [t, lang, setLang, theme, auth, user, isStaff, nav]);
 
   const items = useMemo(() => {
     const n = q.trim().toLowerCase();
@@ -145,7 +168,7 @@ export default function CommandPalette() {
     const onpage = n ? pageEls.map((x) => ({ kind: 'onpage', label: x.text, el: x.el, s: score(n, x.text.toLowerCase()) }))
       .filter((x) => x.s > 0).sort((x, y) => y.s - x.s).slice(0, 6) : [];
     // No query → show the pages as a directory + actions. Query → on-page first, then everything.
-    const out = n ? [...onpage, ...p.slice(0, 6), ...d, ...a.slice(0, 2)] : [...pages.map((x) => ({ ...x, s: 1 })), ...actions];
+    const out = n ? [...onpage, ...p.slice(0, 6), ...d, ...a.slice(0, 5)] : [...pages.map((x) => ({ ...x, s: 1 })), ...actions];
     return out;
   }, [q, docs, actions, pageEls, t]);
 
