@@ -1935,7 +1935,7 @@ export default async function botRoutes(app) {
       p.economyPurchase.count({ where: { userId: req.user.uid } }),
       p.economyPurchase.count({ where: { userId: req.user.uid, status: 'pending' } }),
     ]);
-    return { ...economyView(e, eco), shopItems: visibleShopItems(eco).length, purchases, pendingDeliveries: pending };
+    return { ...economyView(e, eco), shopItems: visibleShopItems(eco, 'site').length, purchases, pendingDeliveries: pending };
   });
 
   // Toggle whether the member's activity stats are public (level itself is always public).
@@ -1983,6 +1983,24 @@ export default async function botRoutes(app) {
     return { ok: true, points: newPts, xp: newXp, level: newLevel };
   });
 
+  // Reset points (a season reset, or fixing one member) — set to zero rather than granting a
+  // negative delta, which is fiddly to get exactly right. `scope:'all'` zeroes every member;
+  // `scope:'user'` one. `xp:true` also resets XP + level (a full wipe), otherwise points only.
+  app.post('/admin/economy/reset', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      scope: z.enum(['all', 'user']).default('user'),
+      userId: z.string().min(1).max(64).optional(),
+      xp: z.boolean().default(false),
+    }).safeParse(req.body);
+    if (!b.success || (b.data.scope === 'user' && !b.data.userId)) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const data = b.data.xp ? { points: 0, xp: 0, level: 0 } : { points: 0 };
+    const where = b.data.scope === 'all' ? {} : { userId: b.data.userId };
+    const r = await p.userEconomy.updateMany({ where, data });
+    await logAudit(p, req.user.uid, 'economy.reset', `scope=${b.data.scope}${b.data.scope === 'user' ? ` user=${b.data.userId}` : ''} ${b.data.xp ? 'points+xp+level' : 'points'} affected=${r.count}`);
+    return { ok: true, affected: r.count };
+  });
+
   // A member spends points in the bot shop. The bot posts this on a /shop purchase; the API
   // debits the balance atomically (refusing when short) and returns the item so the bot can
   // deliver it (mint a promo code, assign a role, …). Kept server-authoritative so a client
@@ -2015,7 +2033,7 @@ export default async function botRoutes(app) {
     ]);
     const heldIds = new Set(held.map((x) => x.badgeId));
     const mineIds = new Set(mine.map((x) => x.itemId));
-    const items = await Promise.all(visibleShopItems(eco).map(async (x) => {
+    const items = await Promise.all(visibleShopItems(eco, 'site').map(async (x) => {
       const sold = x.stock != null || x.exclusive ? await soldCount(p, x.id) : 0;
       const { tag, remaining } = itemTag(x, sold);
       return {

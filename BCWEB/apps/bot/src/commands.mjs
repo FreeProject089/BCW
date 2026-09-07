@@ -255,7 +255,9 @@ async function cmdShop(i, page = 0, isUpdate = false) {
   const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts));
   if (!eco.enabled) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.off') });
   const now = Date.now();
-  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
+  // `onBot !== false`: an admin can hide an item from the Discord shop while keeping it on the
+  // site (and vice-versa). Undefined = shown, so existing items are unaffected.
+  const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && x.onBot !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
   if (!items.length) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
   const pages = Math.ceil(items.length / PAGE);

@@ -14498,6 +14498,8 @@ function AdminBot() {
                   <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.exclusive} onChange={(e) => upd(i, { exclusive: e.target.checked })} /> {t('db.eco.exclusive', 'One per account')}</label>
                   <label className={`flex items-center gap-1.5 ${bound ? 'opacity-50' : 'cursor-pointer'}`}><input type="checkbox" disabled={bound} checked={!bound && it.giftable !== false} onChange={(e) => upd(i, { giftable: e.target.checked })} /> {t('db.eco.giftable', 'Giftable')}</label>
                   <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={it.active !== false} onChange={(e) => upd(i, { active: e.target.checked })} /> {t('db.eco.listed', 'Listed')}</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('db.eco.onbot.h', 'Show this item in the Discord /shop')}><input type="checkbox" checked={it.onBot !== false} onChange={(e) => upd(i, { onBot: e.target.checked })} /> {t('db.eco.onbot', 'Discord /shop')}</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('db.eco.onsite.h', 'Show this item in the site Boutique')}><input type="checkbox" checked={it.onSite !== false} onChange={(e) => upd(i, { onSite: e.target.checked })} /> {t('db.eco.onsite', 'Site shop')}</label>
                 </div>
               </div>
               {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Pick the badge — the item is hidden until then.')}</p>}
@@ -14513,6 +14515,8 @@ function AdminBot() {
           <span className="flex-1">{t('db.eco.ledger.moved2', 'Balances, the leaderboard, purchases to hand out and the full point history are on the Members page → Levels & economy.')}</span>
           <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
         </div>
+
+        <EcoResetControl />
         </div>);
       })()}
 
@@ -20932,6 +20936,34 @@ function TempStorageManager({ open, onClose, onChange }) {
         </>
       )}
     </Modal>
+  );
+}
+
+// Season reset: zero every member's points in one action (resetting ONE member is the negative
+// grant already on the Members page). `xp` also wipes XP + level. Confirmed, and audit-logged.
+function EcoResetControl() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [busy, setBusy] = useState(false); const [xp, setXp] = useState(false);
+  const resetAll = async () => {
+    if (!await dialog.confirm({
+      title: t('db.eco.reset.title', 'Reset everyone’s points?'),
+      message: xp
+        ? t('db.eco.reset.m.all', 'Sets every member’s points, XP and level back to zero. This cannot be undone.')
+        : t('db.eco.reset.m.pts', 'Sets every member’s points back to zero (XP and levels are kept). This cannot be undone.'),
+      confirmLabel: t('db.eco.reset.ok', 'Reset all'), danger: true,
+    })) return;
+    setBusy(true);
+    try { const r = await api.post('/admin/economy/reset', { scope: 'all', xp }); toast.success(t('db.eco.reset.done', 'Reset {n} member(s).').replace('{n}', r.affected)); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="rounded-xl border border-dashed border-error/40 p-3 flex items-center gap-3 flex-wrap text-sm">
+      <RotateCcw size={16} className="text-error shrink-0" />
+      <span className="flex-1 text-[var(--muted)] min-w-[12rem]">{t('db.eco.reset.desc', 'Season reset — zero every member’s points at once. To reset a single member, use a negative grant on the Members page.')}</span>
+      <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={xp} onChange={(e) => setXp(e.target.checked)} /> {t('db.eco.reset.xp', 'Also XP & level')}</label>
+      <Button size="sm" variant="ghost" disabled={busy} onClick={resetAll} className="!text-error">{t('db.eco.reset.btn', 'Reset all points')}</Button>
+    </div>
   );
 }
 

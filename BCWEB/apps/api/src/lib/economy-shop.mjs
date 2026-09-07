@@ -62,14 +62,22 @@ export function normItem(x) {
     codeDays: x.codeDays == null || x.codeDays === '' ? null : Math.max(1, Math.round(num(x.codeDays))), // code validity after reveal
     availableUntil: x.availableUntil ? new Date(x.availableUntil).toISOString() : null,
     active: x.active !== false,
+    // Per-door availability: an item can be listed on the Discord bot's /shop, on the site's
+    // Boutique, or both. Default both true so every existing item stays exactly where it was.
+    onBot: x.onBot !== false,
+    onSite: x.onSite !== false,
   };
 }
 
-/** The shop items a member may see: named, active, still listed, with a badge that exists. */
-export function visibleShopItems(eco) {
+/** The shop items a member may see: named, active, still listed, with a badge that exists.
+ *  `via` ('discord' | 'site') scopes it to that door — a bot-only item never shows on the site
+ *  and vice-versa. Omit `via` for the admin preview, which sees everything. */
+export function visibleShopItems(eco, via = null) {
   const now = Date.now();
+  const door = via === 'discord' ? 'onBot' : via === 'site' ? 'onSite' : null;
   return (Array.isArray(eco?.shop) ? eco.shop : []).map(normItem)
-    .filter((x) => x && x.name && x.active && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
+    .filter((x) => x && x.name && x.active && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now))
+    .filter((x) => !door || x[door]);
 }
 
 /** How many of an item were sold (a refunded row does not count). */
@@ -134,7 +142,8 @@ export function pubDelivery(d) {
  */
 export async function buyShopItem(p, eco, { userId, itemId, via = 'site', log = null }) {
   if (!eco?.enabled) return { ok: false, error: 'economy_off' };
-  const item = visibleShopItems(eco).find((i) => i.id === itemId);
+  // Scope to the door the buy came through — a bot-only item can't be bought from the site.
+  const item = visibleShopItems(eco, via).find((i) => i.id === itemId);
   if (!item) return { ok: false, error: 'no_such_item' };
   const cur = await p.userEconomy.findUnique({ where: { userId } });
   const cost = item.cost;
