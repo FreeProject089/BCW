@@ -16,8 +16,32 @@ const BMD_DEPS = ['react', 'react-dom', 'react-markdown', 'remark-gfm', 'remark-
   'unified', 'remark-parse', 'mermaid',
 ];
 
+// Which port the API container actually got. Compose publishes it as a RANGE
+// (`ports: ["3000-3009:3000"]`, so `--scale api=3` does not collide) and Docker hands out the
+// next FREE one — an already-busy 3000 puts the API on 3005 and a proxy pinned to 3000 gets
+// ECONNREFUSED for every call. The site still renders, because each request is caught and
+// falls back, so what you get is every page showing its offline state at once: it reads as a
+// broken app, and the port is the last thing anyone suspects.
+//
+// So probe the range once at dev-server start instead of guessing. BCWEB_API_URL still wins
+// outright, and a failed probe keeps the old :3000 default rather than refusing to start.
+async function findApi() {
+  if (process.env.BCWEB_API_URL) return process.env.BCWEB_API_URL;
+  for (let port = 3000; port <= 3009; port++) {
+    const url = `http://localhost:${port}`;
+    try {
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 400);
+      const r = await fetch(`${url}/live`, { signal: ac.signal }).finally(() => clearTimeout(to));
+      if (r.ok) { if (port !== 3000) console.log(`[vite] API found on :${port}`); return url; }
+    } catch { /* next port */ }
+  }
+  console.warn('[vite] no API answered on :3000-3009 — proxying to :3000 anyway');
+  return 'http://localhost:3000';
+}
+
 // Dev proxies /api -> the API container so the SPA + API share an origin.
-export default defineConfig({
+export default defineConfig(async () => ({
   plugins: [react()],
   resolve: {
     alias: [
@@ -59,7 +83,7 @@ export default defineConfig({
     port: 5176,
     proxy: {
       '/api': {
-        target: process.env.BCWEB_API_URL || 'http://localhost:3000',
+        target: await findApi(),
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api/, ''),
       },
@@ -108,4 +132,4 @@ export default defineConfig({
     },
     chunkSizeWarningLimit: 900,
   },
-});
+}));
