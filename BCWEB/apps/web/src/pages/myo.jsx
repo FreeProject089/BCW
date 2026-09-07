@@ -14,6 +14,9 @@ import { ReportComposer } from '../ui/report.jsx';
 // The deal, drawn once and shared with the landing band — two copies of "when do I pay"
 // is how the page and the front page end up quoting different prices.
 import DealRail from './myo-deal.jsx';
+// The intake is a guided questionnaire, not a seven-field form — its own file, because the
+// question catalogue (scope per product kind, budgets, deadlines) is most of its length.
+import MyoIntakeWizard from './myo-intake.jsx';
 import { DiscordIcon } from '../ui/brand.jsx';
 
 // ── shared helpers ──────────────────────────────────────────────────────────────
@@ -207,7 +210,7 @@ export function MyoPage() {
         </>
       )}
 
-      {intake && <IntakeModal intake={intake} cfg={cfg} onClose={() => setIntake(null)} />}
+      {intake && <MyoIntakeWizard intake={{ ...intake, icon: kindMeta(intake.kind).icon }} cfg={cfg} onClose={() => setIntake(null)} />}
     </div>
   );
 }
@@ -294,92 +297,6 @@ function CustomFeatureCard({ card, cfg, onStart }) {
       </div>
       <Button variant="primary" onClick={onStart} className="relative shrink-0 w-full self-stretch md:w-auto md:self-center !px-5 !py-2.5 !min-h-[44px] justify-center">{t('myo.cta.btn', 'Start a custom request')} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" /></Button>
     </Card>
-  );
-}
-
-const TARGETS = ['personal', 'friends', 'community', 'nonprofit', 'commercial', 'other'];
-function IntakeModal({ intake, cfg, onClose }) {
-  const { t, lang } = useI18n(); const toast = useToast();
-  const [f, setF] = useState({ name: '', logo: '', objective: '', target: 'personal', description: '', lang: lang === 'fr' ? 'fr' : 'en', urgent: false });
-  const [busy, setBusy] = useState(false);
-  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
-  const fee = f.urgent ? cfg.urgentConsultationCents : cfg.consultationCents;
-  const submit = async () => {
-    if (f.name.trim().length < 2) return toast.error(t('myo.e.name', 'Give your product a name.'));
-    setBusy(true);
-    try {
-      const res = await api.post('/myo/requests', { productId: intake.productId, productKind: intake.kind, name: f.name.trim(), logo: f.logo.trim() || null, objective: f.objective.trim(), target: f.target, description: f.description.trim(), lang: f.lang, urgent: f.urgent });
-      if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
-      toast.error(t('myo.e.pay', 'Could not start checkout.')); setBusy(false);
-    } catch (x) {
-      const e = x.data?.error;
-      toast.error(
-        e === 'myo_disabled' ? t('myo.off.t', 'Not accepting requests right now')
-        : e === 'stripe_unconfigured' ? t('myo.e.stripe', 'Payments are not configured yet.')
-        // Three different "full", three different next moves: drop the urgent flag, come
-        // back later, or finish what you already have open. One generic message would
-        // leave the customer guessing which.
-        : e === 'urgent_full' ? t('myo.e.urgentfull', 'Every urgent slot is taken. Untick "urgent" to start now, or try again later.')
-        : e === 'queue_full' ? t('myo.e.queuefull', 'The commission queue is full right now — please try again in a few days.')
-        : e === 'too_many_own' ? t('myo.e.ownfull', 'You already have {n} request(s) open. Finish or close one first.').replace('{n}', x.data?.limit ?? '')
-        : t('myo.e.pay', 'Could not start checkout.'));
-      setBusy(false);
-    }
-  };
-  const K = kindMeta(intake.kind).icon;
-  return (
-    <Modal open onClose={onClose} title={t('myo.intake.title', 'Start a request')} icon={K} width="max-w-lg"
-      footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
-        <Button variant="primary" disabled={busy || cfg.queueFull} onClick={submit}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('myo.intake.pay', 'Pay {p} & start').replace('{p}', fmtMoney(fee, cfg.currency))}</>}</Button></>}>
-      <div className="space-y-3">
-        {/* Said BEFORE the brief is written, not after it is submitted.
-            The endpoint has always computed this and its own comment says why — "discovering
-            the option is unavailable after writing a brief and reaching the payment step is
-            the version of this that wastes the customer's time". The page fetched the field
-            and used only the urgent half of it, so a full queue was still discovered at the
-            payment button. */}
-        {cfg.queueFull && (
-          <div className="text-xs rounded-lg p-2.5 flex items-start gap-2 border border-[var(--warning)] text-[var(--warning)]">
-            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-            <span>{t('myo.queuefull.note', 'The queue is full right now, so new requests are not being taken. Nothing is lost if you write your brief — but the payment button stays off until a slot frees up.')}</span>
-          </div>
-        )}
-        <div className="text-xs text-[var(--faint)] flex items-start gap-2 bg-[var(--surface-2)] rounded-lg p-2.5">
-          <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
-          <span>{t('myo.intake.note', "You're paying {p} for a consultation (advice + a quote) about “{name}”. This is not the product price — building starts after you approve the quote.").replace('{p}', fmtMoney(fee, cfg.currency)).replace('{name}', kindMeta(intake.kind)[lang === 'fr' ? 'fr' : 'en'])}</span>
-        </div>
-        <div className="grid grid-cols-[1fr_130px] gap-3">
-          <Field label={t('myo.f.name', 'Product name')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} maxLength={120} placeholder={t('myo.f.nameph', 'e.g. My Community Bot')} /></Field>
-          <Field label={t('myo.f.lang', 'Reply language')}><Select value={f.lang} onChange={(e) => set('lang', e.target.value)}><option value="en">English</option><option value="fr">Français</option></Select></Field>
-        </div>
-        <Field label={t('myo.f.logo', 'Logo URL (optional)')}><Input value={f.logo} onChange={(e) => set('logo', e.target.value)} maxLength={500} placeholder="https://…/logo.png" /></Field>
-        <Field label={t('myo.f.objective', 'Objective (one line)')}><Input value={f.objective} onChange={(e) => set('objective', e.target.value)} maxLength={200} placeholder={t('myo.f.objph', 'What should it accomplish?')} /></Field>
-        <Field label={t('myo.f.target', 'Who is it for?')}>
-          <Select value={f.target} onChange={(e) => set('target', e.target.value)}>
-            {TARGETS.map((tg) => <option key={tg} value={tg}>{t(`myo.target.${tg}`, { personal: 'Just me / personal', friends: 'Between friends', community: 'For my community', nonprofit: 'Non-profit', commercial: 'Commercial (for-profit)', other: 'Other' }[tg])}</option>)}
-          </Select>
-        </Field>
-        <Field label={t('myo.f.desc', 'Describe your product')} hint={`${f.description.length}/2000`}>
-          <Textarea rows={5} value={f.description} onChange={(e) => set('description', e.target.value.slice(0, 2000))} placeholder={t('myo.f.descph', 'Features, style, references, deadline, anything useful…')} />
-        </Field>
-        {/* Disabled up front rather than refused at the end. The server says whether an
-            urgent slot is free; finding out after writing a brief is the version of this
-            that wastes the customer's evening. */}
-        <label className={`flex items-center gap-2.5 text-sm rounded-lg border border-[var(--line)] p-3 ${cfg.urgentAvailable === false ? 'opacity-60' : 'cursor-pointer'}`}>
-          <input type="checkbox" checked={f.urgent} disabled={cfg.urgentAvailable === false} onChange={(e) => set('urgent', e.target.checked)} />
-          <span className="flex-1"><span className="font-medium flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('myo.f.urgent', 'Urgent request')}</span>
-            <span className="text-xs text-[var(--faint)]">{cfg.urgentAvailable === false
-              ? t('myo.f.urgentfull', 'All urgent slots are taken right now — a normal request can still start today.')
-              : t('myo.f.urgentnote', 'Prioritised — a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span></span>
-        </label>
-        <div className="text-[11px] text-[var(--faint)] text-center pt-1">
-          {t('myo.intake.legalpre', 'By paying you accept our')}{' '}
-          <Link to="/legal/terms" className="underline hover:text-[var(--text)]">{t('foot.terms', 'Terms')}</Link>
-          {' · '}
-          <Link to="/legal/refunds" className="underline hover:text-[var(--text)]">{t('foot.refunds', 'Payments & Refunds')}</Link>
-        </div>
-      </div>
-    </Modal>
   );
 }
 
