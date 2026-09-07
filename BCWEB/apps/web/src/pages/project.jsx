@@ -1490,6 +1490,19 @@ function Marketplace({ pkey, products = [], onChanged }) {
   const { user } = useAuth();
   const [busy, setBusy] = useState('');
   const [got, setGot] = useState({}); // productId → delivery (key/content) after a free buy
+  const [dl, setDl] = useState(null);
+  // The purchase id is what authorises the download, so it has to come back from the buy —
+  // a product id would let anybody who knows it ask for the file.
+  const download = async (pr, d) => {
+    if (!d?.purchaseId) return;
+    setDl(pr.id);
+    try {
+      const r = await api.get(`/marketplace/purchases/${d.purchaseId}/download`);
+      if (r?.url) window.open(r.url, '_blank', 'noopener');
+      else toast.error(t('mk.dlfail', 'That download could not be prepared.'));
+    } catch { toast.error(t('mk.dlfail', 'That download could not be prepared.')); }
+    finally { setDl(null); }
+  };
 
   const buy = async (pr) => {
     if (!user) { toast.error(t('mk.login', 'Sign in to buy.')); return; }
@@ -1501,7 +1514,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
         toast.error(t('common.failed', 'Failed.'));
       } else {
         const r = await api.post(`/marketplace/products/${pr.id}/buy`, {});
-        if (r.ok) { setGot((g) => ({ ...g, [pr.id]: r.purchase?.delivery || {} })); onChanged?.(); toast.success(t('mk.done', 'Done — it’s yours.')); }
+        if (r.ok) { setGot((g) => ({ ...g, [pr.id]: { ...(r.purchase?.delivery || {}), purchaseId: r.purchase?.id } })); onChanged?.(); toast.success(t('mk.done', 'Done — it’s yours.')); }
       }
     } catch (x) {
       const e = x?.data?.error;
@@ -1529,6 +1542,16 @@ function Marketplace({ pkey, products = [], onChanged }) {
                 {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate">{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
                 {d.content && <div className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{d.content}</div>}
                 {d.role && <div className="text-xs text-[var(--muted)]">{t('mk.role', 'A Discord role will be granted shortly.')}</div>}
+                {/* A file is fetched through the purchase, not linked from the product: the URL
+                    is minted per click and expires, which is the whole reason this delivery
+                    exists instead of a link pasted into the content field. */}
+                {d.fileKey && (
+                  <Button size="sm" className="mt-1" disabled={dl === pr.id} onClick={() => download(pr, d)}>
+                    {dl === pr.id ? <Spinner /> : <><Download size={13} /> {d.fileName || t('mk.dl', 'Download')}</>}
+                  </Button>
+                )}
+                {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="btn btn-sm mt-1"><ExternalLink size={13} /> {t('mk.open', 'Open')}</a>}
+                {d.licensed && <div className="text-[11px] text-[var(--faint)] mt-1">{t('mk.licensed', 'This key is yours alone — keep it, it is recorded against this purchase.')}</div>}
                 {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue — contact the project.')}</div>}
               </div>
             ) : (

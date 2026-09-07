@@ -20975,11 +20975,25 @@ function AdminSiteTheme() {
   const pick = (p) => {
     const had = !!(f.shared || f.light || f.dark || f.gradients);
     const prev = { shared: f.shared, light: f.light, dark: f.dark, gradients: f.gradients };
-    setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id, shared: null, light: null, dark: null, gradients: null });
+    // A preset APPLIES its look; it does not merely clear. Clearing alone was right when a
+    // preset was two colours and everything else was the stylesheet's — but the theme now
+    // carries page colours and gradients, so a two-colour preset put a new accent on the old
+    // page and called it a look. Whatever the preset defines is applied; whatever it does not
+    // define goes back to the built-in, which is what makes "Default" still mean default.
+    setF({
+      ...f,
+      accent: p.accent,
+      accent2: p.accent2,
+      preset: p.id,
+      shared: null,
+      light: p.light ? { ...p.light } : null,
+      dark: p.dark ? { ...p.dark } : null,
+      gradients: p.gradients ? JSON.parse(JSON.stringify(p.gradients)) : null,
+    });
     if (had) {
       toast.action({
         tone: 'warning', duration: 8000, cancelLabel: t('common.undo', 'Undo'),
-        msg: t('st.preset.cleared', 'Preset applied — your token overrides were cleared so it renders as designed.'),
+        msg: t('st.preset.applied', 'Preset applied — it brings its own page colours and gradients, so your overrides were replaced.'),
         onCommit: () => {},
         onCancel: () => setF((cur) => ({ ...cur, ...prev })),
       });
@@ -21073,7 +21087,17 @@ function AdminSiteTheme() {
           {THEME_PRESETS.map((p) => (
             <button key={p.id} type="button" onClick={() => pick(p)}
               className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-start transition-colors ${f.preset === p.id ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-              <span className="w-9 h-9 rounded-lg shrink-0" style={{ background: `linear-gradient(120deg, ${p.accent}, ${p.accent2})` }} />
+              {/* The swatch shows the LOOK, not just the accent: the preset's own light and dark
+                  page colours beside the accent sweep, so picking one is not a guess about what
+                  the page turns into. A preset with no page colours (the default) shows the
+                  shipped pair, which is what it gives you. */}
+              <span className="w-9 h-9 rounded-lg shrink-0 overflow-hidden grid grid-rows-[1fr_auto]" style={{ background: `linear-gradient(120deg, ${p.accent}, ${p.accent2})` }}>
+                <span />
+                <span className="h-2.5 flex">
+                  <span className="flex-1" style={{ background: p.light?.bg || '#f4efe8' }} />
+                  <span className="flex-1" style={{ background: p.dark?.bg || '#0a0907' }} />
+                </span>
+              </span>
               <span className="min-w-0">
                 <span className="block text-sm font-medium truncate">{p.name}</span>
                 <span className="block text-[11px] text-[var(--faint)] truncate">{p.sub}</span>
@@ -21448,14 +21472,22 @@ function EcoResetControl() {
 // download a runnable idempotent seed script. Drives /admin/seed/preview + /generate.
 // Admin: per-project marketplace — create products, choose how each is delivered, and fill a
 // key pool. Products drive the storefront on each project page (project.jsx Marketplace tab).
+// What a product hands over. The order is the order somebody picks in: the two most ordinary
+// things a project sells (a file, some text) first, then the four flavours of key, then the
+// Discord role. `file` and `key_license` were the gaps — selling a download meant pasting a
+// link into `content`, which is a public address for ever, and a per-buyer key had no home at
+// all between one fixed key and a finite pool.
 const DELIVERY_OPTS = [
+  { value: 'file', label: 'A file (stored here, links expire)' },
   { value: 'content', label: 'Revealed content' },
+  { value: 'link', label: 'A link' },
+  { value: 'key_license', label: 'A unique key per buyer' },
   { value: 'key_static', label: 'Fixed key' },
   { value: 'key_pool', label: 'Key from a pool' },
   { value: 'key_external', label: 'External generator' },
   { value: 'role', label: 'Discord role' },
 ];
-const MK_BLANK = { projectKey: '', name: '', description: '', priceCents: 0, currency: 'usd', active: true, deliveryKind: 'content', staticKey: '', content: '', roleId: '', externalUrl: '', externalSecret: '', stock: '' };
+const MK_BLANK = { projectKey: '', name: '', description: '', priceCents: 0, currency: 'usd', active: true, deliveryKind: 'content', staticKey: '', content: '', roleId: '', externalUrl: '', externalSecret: '', linkUrl: '', fileName: '', stock: '' };
 function AdminMarketplace() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/products'), []);
@@ -21483,6 +21515,22 @@ function AdminMarketplace() {
   const [draft, setDraft] = useState(null);
   const [keysFor, setKeysFor] = useState(null);
   const [keysText, setKeysText] = useState('');
+  const mkFileRef = useRef(null);
+  const [mkUp, setMkUp] = useState(false);
+  // The file travels base64 in the JSON body, the way the feedback attachments do, so there is
+  // one upload path on this API rather than a second multipart one for a single field.
+  const uploadProductFile = async (file) => {
+    if (!file || !draft?.id) return;
+    setMkUp(true);
+    try {
+      const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(file); });
+      const r = await api.post(`/admin/marketplace/products/${draft.id}/file`, { fileName: file.name, contentType: file.type || 'application/octet-stream', data });
+      setDraft((d) => ({ ...d, fileName: r.fileName }));
+      toast.success(t('mkadm.f.file.ok', 'Attached: {n}').replace('{n}', r.fileName));
+      reload();
+    } catch (x) { toast.error(x?.status === 413 ? t('mkadm.f.file.big', 'That file is too large (64 MB max).') : t('common.failed', 'Failed.')); }
+    finally { setMkUp(false); }
+  };
   const rows = data?.products || [];
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const save = async () => {
@@ -21557,6 +21605,21 @@ function AdminMarketplace() {
             {draft.deliveryKind === 'key_static' && <Field label={t('mkadm.f.static', 'Fixed key')}><Input value={draft.staticKey} onChange={(e) => set('staticKey', e.target.value)} /></Field>}
             {draft.deliveryKind === 'role' && <Field label={t('mkadm.f.role', 'Discord role id')}><Input value={draft.roleId} onChange={(e) => set('roleId', e.target.value)} /></Field>}
             {draft.deliveryKind === 'key_external' && <><Field label={t('mkadm.f.exturl', 'External generator URL')}><Input value={draft.externalUrl} onChange={(e) => set('externalUrl', e.target.value)} placeholder="https://…/generate" /></Field><Field label={t('mkadm.f.extsecret', 'Shared secret (HMAC)')} hint={t('mkadm.f.extsecret.h', 'Sent as X-BC-Signature = HMAC-SHA256(body). Blank keeps the current one.')}><Input value={draft.externalSecret} onChange={(e) => set('externalSecret', e.target.value)} /></Field></>}
+            {draft.deliveryKind === 'key_license' && <p className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] p-2.5">{t('mkadm.f.license.h', 'Nothing to set: every buyer gets a key nobody else has, minted at purchase and recorded on it. Unlimited supply, unlike a pool, and traceable, unlike a fixed key.')}</p>}
+            {draft.deliveryKind === 'link' && <Field label={t('mkadm.f.link', 'Link handed over')} hint={t('mkadm.f.link.h', 'Shown as a button after the purchase. Use this for a page you control; for a file, the File delivery keeps the address from being forwardable.')}><Input value={draft.linkUrl} onChange={(e) => set('linkUrl', e.target.value)} placeholder="https://…" /></Field>}
+            {draft.deliveryKind === 'file' && (
+              draft.id
+                ? <Field label={t('mkadm.f.file', 'File handed over')} hint={t('mkadm.f.file.h', 'Held in the platform’s own storage. Each download is a fresh link that expires in ten minutes, so it cannot be passed on to somebody who did not buy it.')}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input type="file" className="hidden" ref={mkFileRef} onChange={(e) => uploadProductFile(e.target.files?.[0])} />
+                    <Button size="sm" onClick={() => mkFileRef.current?.click()} disabled={mkUp}>{mkUp ? <Spinner /> : <><UploadIcon size={13} /> {t('mkadm.f.file.pick', 'Choose a file')}</>}</Button>
+                    <span className="text-xs text-[var(--muted)]">{draft.fileName || t('mkadm.f.file.none', 'No file attached yet.')}</span>
+                  </div>
+                </Field>
+                /* A product has to exist before a file can hang off it — the upload posts to
+                   /admin/marketplace/products/<id>/file, and there is no id until the first save. */
+                : <p className="text-xs text-warning rounded-lg border border-[var(--line)] p-2.5">{t('mkadm.f.file.first', 'Save the product first, then re-open it to attach the file.')}</p>
+            )}
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} /> {t('mkadm.f.active', 'Active (visible in the storefront)')}</label>
             <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
           </div>

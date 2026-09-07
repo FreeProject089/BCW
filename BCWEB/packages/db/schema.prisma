@@ -3732,10 +3732,17 @@ model ProjectProduct {
   priceCents        Int      @default(0)
   currency          String   @default("usd")
   active            Boolean  @default(true)
-  deliveryKind      String   @default("content") // key_static | key_pool | key_external | content | role
+  // key_static | key_pool | key_license | key_external | content | file | link | role
+  deliveryKind      String   @default("content")
   staticKey         String?
   content           String?
   roleId            String?
+  // `file`: the object-storage KEY, never a URL — a signed link is minted per download and
+  // expires, so what sits in a purchase row cannot be forwarded to somebody who did not buy.
+  fileKey           String?
+  fileName          String?
+  // `link`: a plain URL, handed over as a real button rather than a paragraph of text.
+  linkUrl           String?
   externalUrl       String?
   externalSecret    String?
   stock             Int?     // null = unlimited

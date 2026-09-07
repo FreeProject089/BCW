@@ -6,9 +6,30 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireRole } from '../lib/lib.mjs';
+import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
+import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
 
-const DELIVERY_KINDS = ['key_static', 'key_pool', 'key_external', 'content', 'role'];
+// What a product HANDS OVER. The first five were the whole of it, and between them they
+// could not sell the most ordinary thing a project sells — a file. The workaround was to paste
+// a download link into `content`, which makes it a public URL: it is in the buyer's purchase
+// row, and in anybody else's the moment they share it, for ever.
+//
+//   key_static    one key, the same for everyone
+//   key_pool      one key drawn from a finite list, claimed race-safely
+//   key_license   a UNIQUE key minted per buyer — infinite supply, traceable to the purchase
+//   key_external  a key fetched from the project's own system
+//   content       revealed text (a code, instructions, a coupon)
+//   file          a file held in the platform's own storage, handed over as a SHORT-LIVED
+//                 signed URL re-issued per buyer rather than a link that never expires
+//   link          a plain URL, as a real button rather than a paragraph
+//   role          a Discord role
+const DELIVERY_KINDS = ['key_static', 'key_pool', 'key_license', 'key_external', 'content', 'file', 'link', 'role'];
+/** Where a product's file lives. Private: nothing under this prefix is publicly served. */
+const FILE_PREFIX = 'marketplace';
+/** How long a download link stays good. Long enough to click, short enough not to be a
+ *  distributable URL — the reason the file kind exists rather than a pasted link. */
+const DOWNLOAD_TTL = 600;
 
 const productSchema = z.object({
   projectKey: z.string().max(60).nullish(),
@@ -22,6 +43,9 @@ const productSchema = z.object({
   staticKey: z.string().max(400).nullish(),
   content: z.string().max(4000).nullish(),
   roleId: z.string().max(32).nullish(),
+  fileKey: z.string().max(300).nullish(),
+  fileName: z.string().max(200).nullish(),
+  linkUrl: z.string().url().max(600).nullish(),
   externalUrl: z.string().url().max(400).nullish(),
   externalSecret: z.string().max(200).nullish(),
   stock: z.number().int().min(0).max(1_000_000).nullish(),
@@ -73,6 +97,20 @@ export async function fulfilProduct(p, product, buyerId) {
       }
       const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e;
     }
+    case 'key_license': {
+      // A key nobody else has, minted here. Unlike a static key it cannot be shared back into
+      // the wild without being traceable, and unlike a pool it never runs out. The alphabet
+      // drops the characters people misread out loud (0/O, 1/I/L).
+      const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+      const part = () => Array.from({ length: 5 }, () => A[crypto.randomInt(A.length)]).join('');
+      return { key: `${part()}-${part()}-${part()}-${part()}`, licensed: true };
+    }
+    case 'file':
+      // The KEY is stored, never the URL: a signed link is minted per download and expires, so
+      // what sits in the purchase row cannot be forwarded to somebody who did not buy it.
+      if (!product.fileKey) { const e = new Error('no_file'); e.code = 'no_file'; throw e; }
+      return { fileKey: product.fileKey, fileName: product.fileName || 'download' };
+    case 'link': return { url: product.linkUrl || '' };
     case 'key_external': return externalKey(product, buyerId);
     default: return {};
   }
@@ -181,6 +219,51 @@ export default async function marketplaceRoutes(app) {
   });
 
   // ── Admin: add keys to a product's pool ─────────────────────────────────────
+  // ── Buyer: download a file they bought ───────────────────────────────────────
+  //
+  // The signed URL is minted HERE, per request, against a purchase that exists — not stored on
+  // the product and not handed out at purchase time. A link that never expires is the thing
+  // this delivery kind exists to avoid: pasted into `content` it would be forwardable for ever.
+  app.get('/marketplace/purchases/:id/download', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const purchase = await p.projectProductPurchase.findUnique({ where: { id: req.params.id }, include: { product: true } });
+    if (!purchase || purchase.buyerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (purchase.status !== 'paid') return reply.code(409).send({ error: 'not_paid' });
+    // The key comes from the PURCHASE, so replacing the product's file later does not silently
+    // hand an old buyer a different file than the one they paid for.
+    const key = purchase.delivery?.fileKey || purchase.product?.fileKey;
+    if (!key) return reply.code(409).send({ error: 'no_file' });
+    const url = await presignGet(key, DOWNLOAD_TTL).catch(() => null);
+    if (!url) return reply.code(503).send({ error: 'storage_unavailable' });
+    return { url, expiresInSec: DOWNLOAD_TTL, fileName: purchase.delivery?.fileName || purchase.product?.fileName || 'download' };
+  });
+
+  // ── Admin: attach the file a `file` product hands over ───────────────────────
+  app.post('/admin/marketplace/products/:id/file', { preHandler: requireRole('ADMIN'), bodyLimit: 64 * 1024 * 1024 }, async (req, reply) => {
+    const b = z.object({
+      fileName: z.string().min(1).max(200),
+      contentType: z.string().max(100).optional().default('application/octet-stream'),
+      data: z.string().min(1), // base64
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
+    if (!product) return reply.code(404).send({ error: 'not_found' });
+    let buf;
+    try { buf = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'bad_file' }); }
+    // The name is sanitised for the KEY only; the original is kept for the download's filename,
+    // so a buyer gets back what the admin uploaded rather than a mangled version of it.
+    const safe = String(b.data.fileName).replace(/[^\w.-]+/g, '_').slice(0, 80) || 'file';
+    const key = `${FILE_PREFIX}/${product.id}/${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}-${safe}`;
+    try { await putObject(key, buf, b.data.contentType); }
+    catch (e) { req.log.warn({ e: String(e) }, 'marketplace file store failed'); return reply.code(503).send({ error: 'storage_unavailable' }); }
+    // The previous file is removed only after the new one is safely stored — the other order
+    // loses the old file when the upload fails.
+    if (product.fileKey && product.fileKey !== key) await deleteObject(product.fileKey).catch(() => {});
+    const row = await p.projectProduct.update({ where: { id: product.id }, data: { fileKey: key, fileName: b.data.fileName.slice(0, 200) } });
+    return { ok: true, fileName: row.fileName, bytes: buf.length };
+  });
+
   app.post('/admin/marketplace/products/:id/keys', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const codes = z.object({ codes: z.array(z.string().min(1).max(400)).max(5000) }).safeParse(req.body);
     if (!codes.success) return reply.code(400).send({ error: 'invalid_input' });
