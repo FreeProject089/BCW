@@ -4302,7 +4302,7 @@ const DICT = {
     'adm.tab.history': "Historique",
     'hist.title': "Historique du site",
     'hist.desc': "Tous les événements enregistrés, équipe comme utilisateurs, fusionnés depuis les journaux que le site tient déjà — rien n’est stocké deux fois. Filtre par source, cherche du texte, ou élargis la fenêtre.",
-    'hist.search': "Chercher une action, un détail, une personne…",
+    'hist.search': "Chercher une action, un détail, une personne, un ID/hash…",
     'hist.d': "j", 'hist.1y': "1 an",
     'hist.clear': "tout afficher",
     'hist.system': "système",

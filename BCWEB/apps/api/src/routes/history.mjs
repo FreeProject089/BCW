@@ -179,7 +179,16 @@ export default async function historyRoutes(app) {
     let merged = out;
     if (search) {
       const s = search.toLowerCase();
-      merged = merged.filter((e) => `${e.action} ${e.detail} ${e.actorName || ''} ${byId[e.actorId]?.displayName || ''} ${byId[e.actorId]?.email || ''}`.toLowerCase().includes(s));
+      // The haystack used to be action/detail/person only, so a precise lookup — an audit
+      // entry HASH, a repo or catalog ID, a slug, a payment id, an IP — matched nothing, which
+      // is exactly what you reach for the history to find. Every id/hash/slug lives in `meta`
+      // (entryId, hash, prevHash, repoId, itemId, slug, postId, pageId, amount…), plus the raw
+      // actorId, the IP and the link — fold all of them in so a checksum or an id is findable.
+      merged = merged.filter((e) => {
+        const metaBits = e.meta ? Object.values(e.meta).filter((v) => v != null).join(' ') : '';
+        return `${e.action} ${e.detail} ${e.actorName || ''} ${byId[e.actorId]?.displayName || ''} ${byId[e.actorId]?.email || ''} ${e.actorId || ''} ${e.ip || ''} ${e.link || ''} ${metaBits}`
+          .toLowerCase().includes(s);
+      });
     }
     merged.sort((a, b) => new Date(b.at) - new Date(a.at));
     const total = merged.length;

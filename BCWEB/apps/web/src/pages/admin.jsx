@@ -6973,7 +6973,7 @@ function AdminHistory() {
 
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person…')} value={q}
+          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('hist.search', 'Search action, detail, person, ID/hash…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (setTake(60), setQApplied(q))} /></div>
         <Button size="sm" variant="primary" onClick={() => { setTake(60); setQApplied(q); }}><Search size={14} /> {t('common.search', 'Search')}</Button>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
