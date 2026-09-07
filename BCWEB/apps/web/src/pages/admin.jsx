@@ -17928,17 +17928,24 @@ function SeoTagsInline() {
 function SitemapCard() {
   const { t } = useI18n(); const toast = useToast();
   const [count, setCount] = useState(null);
-  const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [busy, setBusy] = useState(false);
+  const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [robots, setRobots] = useState(''); const [busy, setBusy] = useState(false);
   const refresh = () => fetch('/sitemap.xml', { cache: 'no-store' }).then((r) => r.text()).then((x) => setCount((x.match(/<loc>/g) || []).length)).catch(() => setCount(null));
   useEffect(() => {
     refresh();
-    api.get('/admin/settings').then((r) => { const st = r.settings || {}; setExtra((st['seo.sitemapExtra'] || []).join('\n')); setExclude((st['seo.sitemapExclude'] || []).join('\n')); }).catch(() => {});
+    api.get('/admin/settings').then((r) => { const st = r.settings || {}; setExtra((st['seo.sitemapExtra'] || []).join('\n')); setExclude((st['seo.sitemapExclude'] || []).join('\n')); setRobots((st['seo.robotsExtra'] || []).join('\n')); }).catch(() => {});
   }, []);
   const lines = (v) => v.split(/\n|,/).map((x) => x.trim()).filter((x) => /^\/[^\s]*$/.test(x));
+  // robots.txt rules: keep only real directives; the server re-validates and always keeps the
+  // safe defaults, so a bad line here can only be ignored, never break the file.
+  const robotLines = (v) => v.split('\n').map((x) => x.trim()).filter((x) => /^(User-agent|Allow|Disallow|Crawl-delay|Sitemap|Host)\s*:/i.test(x)).slice(0, 50);
   const save = async () => {
     setBusy(true);
-    try { await api.put('/admin/settings/seo.sitemapExtra', { value: lines(extra) }); await api.put('/admin/settings/seo.sitemapExclude', { value: lines(exclude) }); toast.success(t('common.saved', 'Saved.')); refresh(); }
-    catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
+    try {
+      await api.put('/admin/settings/seo.sitemapExtra', { value: lines(extra) });
+      await api.put('/admin/settings/seo.sitemapExclude', { value: lines(exclude) });
+      await api.put('/admin/settings/seo.robotsExtra', { value: robotLines(robots) });
+      toast.success(t('common.saved', 'Saved.')); refresh();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
     <Card className="p-4">
@@ -17953,6 +17960,10 @@ function SitemapCard() {
         <Field label={t('sm.extra', 'Also list')} className="!mb-0"><Textarea rows={4} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder={'/landing\n/p/bsm/download'} /></Field>
         <Field label={t('sm.exclude', 'Leave out')} className="!mb-0"><Textarea rows={4} value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder={'/2fa\n/polls'} /></Field>
       </div>
+      <Field label={t('sm.robots', 'robots.txt — extra rules')} className="!mb-0 mt-3"
+        hint={t('sm.robots.h', 'Appended after the built-in rules (private screens stay disallowed, the sitemap stays advertised). One directive per line, e.g. “Disallow: /beta” or “Crawl-delay: 5”.')}>
+        <Textarea rows={3} value={robots} onChange={(e) => setRobots(e.target.value)} placeholder={'Disallow: /beta\nCrawl-delay: 5'} />
+      </Field>
       <div className="flex items-center gap-2 mt-3"><Button size="sm" variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><span className="text-[11px] text-[var(--faint)]">{t('sm.note', 'Search engines re-read the file on their own schedule; nothing to submit by hand.')}</span></div>
     </Card>
   );

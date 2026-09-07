@@ -1256,7 +1256,20 @@ export default async function miscRoutes(app) {
   });
   app.get('/robots.txt', async (req, reply) => {
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
-    return reply.header('Content-Type', 'text/plain').send(`User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /profile\nDisallow: /auth\nDisallow: /settings\nDisallow: /notifications\nDisallow: /og\nDisallow: /api/\nSitemap: ${site}/sitemap.xml\n`);
+    const p = await db();
+    // Admin-editable extra rules (Hosting settings → Sitemap & robots). The safe defaults
+    // below (private screens disallowed, sitemap advertised) always stand; the admin's lines
+    // are appended, never replacing them. Each line is validated to a real robots directive so
+    // a stray value can neither inject a header nor smuggle in arbitrary text.
+    const row = await p.adminSetting.findUnique({ where: { key: 'seo.robotsExtra' } }).catch(() => null);
+    const DIRECTIVE = /^(User-agent|Allow|Disallow|Crawl-delay|Sitemap|Host)\s*:\s*[^\r\n\x00-\x1f]{0,300}$/i;
+    const extra = (Array.isArray(row?.value) ? row.value : String(row?.value || '').split('\n'))
+      .map((l) => String(l).trim())
+      .filter((l) => DIRECTIVE.test(l))
+      .slice(0, 50);
+    const base = `User-agent: *\nAllow: /\nDisallow: /dashboard\nDisallow: /admin\nDisallow: /profile\nDisallow: /auth\nDisallow: /settings\nDisallow: /notifications\nDisallow: /og\nDisallow: /api/`;
+    const body = `${base}${extra.length ? `\n${extra.join('\n')}` : ''}\nSitemap: ${site}/sitemap.xml\n`;
+    return reply.header('Content-Type', 'text/plain').send(body);
   });
 
   // ── Contact form → stored for Admin + optional Discord webhook ──

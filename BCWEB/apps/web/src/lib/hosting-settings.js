@@ -55,10 +55,10 @@ export const HOSTING_SETTINGS_GROUPS = [
     ['features.publicApiEnabled', 'Public API (/v1) enabled', 'Off = every API-key route answers 503, including read-only ones. The site itself is unaffected; this only governs third-party keys.', 'bool'],
   ] },
   { title: 'Search & discoverability', gk: 'seo', icon: 'Globe', keys: [
-    ['seo.gtmOn', 'Google Tag enabled', 'Master switch for Google Tag Manager / GA4. The tag STILL only loads after a visitor accepts the Analytics cookie category — this switch decides whether it is offered at all, never whether consent is needed.', 'bool'],
-    ['seo.gtmId', 'Google Tag id', 'GTM-XXXXXXX for a Tag Manager container, or G-XXXXXXXXXX for a GA4 measurement id. Both are accepted and loaded the right way — feeding a G- id to the container script fails silently, which is why it is checked on save.', 'text'],
-    ['seo.googleVerify', 'Google Search Console token', 'The verification string Google gives you (the content of its meta tag, not the whole tag). Until this is set the property cannot be verified, so the sitemap cannot be submitted and nothing about indexing can be seen. This is step one of being in Google.', 'text'],
-    ['seo.bingVerify', 'Bing Webmaster token', 'Same idea for Bing — which is also where DuckDuckGo gets its results.', 'text'],
+    // Tag Manager & the Google/Bing verification tokens are edited in ONE place only — the
+    // dedicated "Tag Manager & ownership tokens" card in SEO health (SeoTagsInline), which
+    // validates the id format on save and explains the consent gate. Listing them here too
+    // was the duplicate the admin kept hitting: the same four fields in two tabs.
     ['seo.title', 'Site title (EN)', 'The bold title of a search result and every shared link. Empty keeps the built-in name. Shown in the link-preview card below.', 'text'],
     ['seo.titleFr', 'Site title (FR)', 'The same, shown when the visitor is on the French site. Empty falls back to the English one.', 'text'],
     ['seo.description', 'Site description (EN)', 'The sentence a search result and every shared link show. Around 150 characters is what gets displayed; longer is cut mid-word. Empty keeps the built-in text.', 'text'],
