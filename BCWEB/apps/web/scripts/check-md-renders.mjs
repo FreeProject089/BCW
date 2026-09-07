@@ -203,6 +203,40 @@ for (const bad of ['{theme="dark\\", look: \\"evil"}', '{look="classic\\", theme
   if (/<figure[^>]*doc-mermaid/.test(html)) problems.push(`mermaid ${bad}: expected the block to stop being a directive, but a figure rendered`);
 }
 
+// ── `variant=` offered only where it does something ──────────────────────────────────
+//
+// The editor showed "Style A / Style B" on every block. Ten directives have a
+// `.doc-*.doc-variant-b` rule; on all the others the control wrote an attribute and nothing
+// moved — and a control that does nothing is worse than a missing one, because the writer
+// concludes the feature is broken rather than absent.
+//
+// VARIANT_BLOCKS is what the editor gates on, and markdown.css is what makes it true, so the
+// two are asserted against each other in BOTH directions: a rule added without the name means
+// a look nobody can reach from the editor, and a name without a rule puts the dead control
+// back.
+{
+  const { VARIANT_BLOCKS } = await import(pathToFileURL(join(process.cwd(), '../../packages/bmd/src/editor-blocks.js')).href);
+  const css = readFileSync('../../packages/bmd/src/markdown.css', 'utf8');
+  const styled = new Set([...css.matchAll(/\.doc-([a-z0-9-]+)\.doc-variant-b\b/g)].map((m) => m[1]));
+  // A directive maps to the class its renderer emits: every callout kind draws `.doc-callout`,
+  // and `setting` draws `.doc-field`. Anything not named here uses its own name.
+  const CLASS_OF = {
+    note: 'callout', tip: 'callout', info: 'callout', hint: 'callout', success: 'callout',
+    check: 'callout', warning: 'callout', caution: 'callout', important: 'callout',
+    danger: 'callout', error: 'callout', callout: 'callout', setting: 'field',
+  };
+  const must = (cond, why) => { if (!cond) problems.push(why); };
+  must(styled.size > 0, 'no .doc-*.doc-variant-b rules found — this check would pass vacuously');
+  for (const name of VARIANT_BLOCKS) {
+    const cls = CLASS_OF[name] || name;
+    must(styled.has(cls), `VARIANT_BLOCKS lists "${name}" but markdown.css has no .doc-${cls}.doc-variant-b — the editor would offer a style that does nothing`);
+  }
+  const named = new Set(VARIANT_BLOCKS.map((n) => CLASS_OF[n] || n));
+  for (const cls of styled) {
+    must(named.has(cls), `markdown.css styles .doc-${cls}.doc-variant-b but no directive in VARIANT_BLOCKS maps to it — the look exists and the editor cannot reach it`);
+  }
+}
+
 cleanup();
 
 if (problems.length) {

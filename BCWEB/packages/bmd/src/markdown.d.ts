@@ -411,6 +411,15 @@ export function setDirectiveHead(src: string, patch?: { label?: string; attrs?: 
 export const SPACE_STEPS: Record<'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl', number>;
 /** The two looks every block understands: `a` is the default and needs no attribute. */
 export const VARIANTS: readonly string[];
+/**
+ * The directive names `variant=b` actually redraws — the ones markdown.css has a
+ * `.doc-*.doc-variant-b` rule for.
+ *
+ * An editor should offer the style control only for these: everywhere else it writes an
+ * attribute and nothing moves, which reads as the feature being broken rather than as it not
+ * applying here. Exported from `./editor-blocks`, the dependency-light half.
+ */
+export const VARIANT_BLOCKS: readonly string[];
 
 /**
  * The shape a step's marker is drawn as (`:::steps{shape=…}`, or on one step).

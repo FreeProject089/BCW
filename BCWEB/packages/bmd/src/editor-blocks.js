@@ -327,3 +327,20 @@ export function addChild(src, child, label = '', body = '') {
   if (close <= 0) return [...lines, ...block].join('\n');
   return [...lines.slice(0, close), ...block, ...lines.slice(close)].join('\n');
 }
+
+/**
+ * The directives `variant=b` actually CHANGES.
+ *
+ * The editor offered "Style A / Style B" on every block, so on most of them it wrote an
+ * attribute and nothing moved — a control that does nothing is worse than a missing one,
+ * because the writer concludes the feature is broken rather than absent.
+ *
+ * It lives in this module rather than beside the parser because this is the one the EDITOR
+ * imports, and it is dependency-light on purpose. What makes the list true is markdown.css:
+ * check-md-renders asserts that this list and the `.doc-*.doc-variant-b` rules there agree in
+ * both directions, so adding a rule without the name (or a name without a rule) fails.
+ */
+export const VARIANT_BLOCKS = [
+  'callout', 'note', 'tip', 'info', 'hint', 'success', 'check', 'warning', 'caution', 'important', 'danger', 'error',
+  'card', 'cards', 'divider', 'field', 'setting', 'grid', 'quote', 'stat', 'steps', 'testimonial',
+];

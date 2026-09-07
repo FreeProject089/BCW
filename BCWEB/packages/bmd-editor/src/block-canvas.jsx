@@ -18,6 +18,10 @@ import {
   splitBlocks, joinBlocks, newBlock, parseDirectiveHead, setDirectiveHead,
   parseTable, tableAddColumn, tableRemoveColumn, tableAddRow, tableRemoveRow,
   countChildren, addChild,
+  // Which blocks `variant=b` actually redraws. Offering the control everywhere meant that on
+  // most of them it wrote an attribute and nothing moved, which reads as the feature being
+  // broken rather than as it not applying here.
+  VARIANT_BLOCKS,
 } from '@bettercommunity/bmd/editor-blocks';
 
 // A short, human label + a glyph hint per block kind (directive:foo → "foo").
@@ -247,11 +251,13 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
                         The default option writes an EMPTY value, which setDirectiveHead
                         removes from the fence — so an untouched block stays byte-identical
                         and a document does not fill up with `variant=a space=md`. */}
-                    <select className="bmdc-field-sel" title={T.style} value={head.attrs.variant || ''}
-                      onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { attrs: { variant: e.target.value } }))}>
-                      <option value="">{T.styleA}</option>
-                      <option value="b">{T.styleB}</option>
-                    </select>
+                    {VARIANT_BLOCKS.includes(head.name) && (
+                      <select className="bmdc-field-sel" title={T.style} value={head.attrs.variant || ''}
+                        onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { attrs: { variant: e.target.value } }))}>
+                        <option value="">{T.styleA}</option>
+                        <option value="b">{T.styleB}</option>
+                      </select>
+                    )}
                     <select className="bmdc-field-sel" title={T.space} value={head.attrs.space || ''}
                       onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { attrs: { space: e.target.value } }))}>
                       <option value="">{T.spaceAuto}</option>
