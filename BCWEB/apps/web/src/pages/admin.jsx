@@ -2088,7 +2088,27 @@ function AdminServerPerf() {
   // Live network rate: diff the cumulative rx/tx byte counters between two 30s refreshes.
   const netPrevRef = useRef(null);
   const [liveNet, setLiveNet] = useState({ rx: null, tx: null });
-  const [sec, setSec] = useState({ alloc: true, downtime: true, alerts: true, outages: true, vitals: true }); // collapsible sections
+  // Simple vs Advanced, the same split Analytics has.
+  //
+  // Everything on this screen is useful to somebody, and all of it at once is why it reads as a
+  // wall: the allocation breakdown, the alert history, every past outage and the Web Vitals are
+  // opened by default under the live numbers. Simple keeps what answers "is the server all
+  // right" — the health badge, the four totals, the chart — and leaves the rest as one-click
+  // headers. Advanced opens them all and brings back the maintenance actions, which are not
+  // things to have under the cursor while you are only looking.
+  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('bcw_sp_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; } });
+  const OPEN_ALL = { alloc: true, downtime: true, alerts: true, outages: true, vitals: true };
+  const OPEN_NONE = { alloc: false, downtime: false, alerts: false, outages: false, vitals: false };
+  const [sec, setSec] = useState(() => {
+    let m = 'simple';
+    try { m = localStorage.getItem('bcw_sp_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { /* private mode */ }
+    return m === 'advanced' ? { ...OPEN_ALL } : { ...OPEN_NONE };
+  });
+  const setMode = (m) => {
+    try { localStorage.setItem('bcw_sp_mode', m); } catch { /* private mode */ }
+    setModeState(m);
+    setSec(m === 'advanced' ? { ...OPEN_ALL } : { ...OPEN_NONE });
+  };
   const [outageOpen, setOutageOpen] = useState(null);
   // Ticks only while an outage is live. A timer that runs on a healthy page is a render a
   // second for nothing, and this screen is heavy enough already.
@@ -2293,13 +2313,23 @@ function AdminServerPerf() {
         </h2>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" /> {t('sp.auto', 'auto 30s')}</span>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>
+          <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
+            {[['simple', t('an.mode.simple', 'Simple')], ['advanced', t('an.mode.advanced', 'Advanced')]].map(([m, l]) => (
+              <button key={m} type="button" onClick={() => setMode(m)}
+                className={`px-2.5 py-1 rounded-md ${mode === m ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            ))}
+          </div>
+          {/* Sampling by hand and wiping the history are maintenance, not observation. They are
+              one mode away, not one misclick away, while you are only looking at the numbers. */}
+          {mode === 'advanced' && <Button size="sm" variant="ghost" disabled={busy} onClick={sampleNow}>{busy ? <Spinner /> : <><RefreshCw size={14} /> {t('sp.samplenow', 'Sample now')}</>}</Button>}
           {/* The case this exists for is the sawtooth: a second machine wrote into this
               database and half the history describes a host that was never the server.
               Once the other writer is gone that history cannot be repaired, only dropped. */}
-          <Button size="sm" variant="ghost" disabled={clearing} onClick={clearHistory}>
-            {clearing ? <Spinner /> : <><Trash2 size={14} /> {t('sp.clear', 'Clear history')}</>}
-          </Button>
+          {mode === 'advanced' && (
+            <Button size="sm" variant="ghost" disabled={clearing} onClick={clearHistory}>
+              {clearing ? <Spinner /> : <><Trash2 size={14} /> {t('sp.clear', 'Clear history')}</>}
+            </Button>
+          )}
         </div>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sp.desc', 'Metrics reflect this API container\'s own view (os/cgroup) — sampled every ~10 min, auto-refreshed here every 30s. A full per-service breakdown with restart controls needs Docker-socket access (see "Advanced server management").')}</p>
@@ -2603,7 +2633,20 @@ function AdminServerPerf() {
 
       <div className="mt-8 pt-6 border-t border-[var(--line)]">
         <button onClick={() => toggleSec('alerts')} className="w-full flex items-center justify-between text-start mb-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">{t('sp.alerts', 'Recent alerts')}{(alerts.data?.alerts || []).length ? <span className="text-[var(--muted)] normal-case tracking-normal">· {alerts.data.alerts.length}</span> : null}</h3>
+          {/* The count was a muted grey "· 7" — fine as a size, useless as a signal. Simple mode
+              keeps this section closed, so an UNACKNOWLEDGED alert has to be visible on the
+              header itself or a collapsed section is hiding a live problem. */}
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
+            {t('sp.alerts', 'Recent alerts')}
+            {(() => {
+              const all = alerts.data?.alerts || [];
+              if (!all.length) return null;
+              const unacked = all.filter((a) => !a.ackAt).length;
+              return unacked
+                ? <Badge tone="red"><AlertTriangle size={9} /> {t('sp.al.unacked', '{n} unacknowledged').replace('{n}', unacked)}</Badge>
+                : <span className="text-[var(--muted)] normal-case tracking-normal">· {all.length}</span>;
+            })()}
+          </h3>
           <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${sec.alerts ? '' : '-rotate-90'}`} />
         </button>
         {sec.alerts && (alerts.loading ? <Loading /> : (() => {
