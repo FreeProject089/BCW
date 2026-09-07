@@ -21,7 +21,7 @@ import {
 import { Bug as BugIcon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
-import { Card, Input, Button, Spinner, useToast } from '../ui/ui.jsx';
+import { Card, Input, Button, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import Markdown from '../ui/md.jsx';
 import { MarkdownEditor } from './blog.jsx';
@@ -914,6 +914,43 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
   };
   const editedCount = entries.filter((it) => isEdited(it.id)).length;
 
+  // Unsaved work, and the two ways it used to disappear.
+  //
+  // Everything here is local state until Save posts it. "Cancel" called onClose() straight
+  // away, so an afternoon of rewriting twenty entries went with one click and no question —
+  // and a browser reload took it just as quietly. Both now ask first. `dirty` compares against
+  // the state this editor opened with rather than tracking a flag, so undoing an edit by hand
+  // correctly makes it clean again.
+  const initialSnapshot = useRef(JSON.stringify({ rows: initial, ov: initialOverrides || {} }));
+  const dirty = JSON.stringify({ rows, ov }) !== initialSnapshot.current;
+  const dialog = useDialog();
+  const closeGuarded = async () => {
+    if (!dirty) return onClose();
+    const ok = await dialog.confirm({
+      title: t('ag.edit.leave.t', 'Leave without saving?'),
+      message: t('ag.edit.leave.b', 'Your changes to the guide have not been saved. They will be lost.'),
+      okLabel: t('ag.edit.leave.ok', 'Discard changes'),
+      danger: true,
+    });
+    if (ok) onClose();
+  };
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const onBeforeUnload = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
+  // Ctrl/⌘+S saves. A long editing session on a page with no autosave should not need the
+  // mouse to reach the one button that keeps the work.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (!busy && dirty) void save(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy, dirty, rows, ov]);
+
   const set = (i, patch) => setRows(rows.map((r, n) => (n === i ? { ...r, ...patch } : r)));
   const setLoc = (i, field, locpatch) => set(i, { [field]: { ...(rows[i][field] || {}), ...locpatch } });
   const move = (i, d) => { const j = i + d; if (j < 0 || j >= rows.length) return; const n = [...rows]; [n[i], n[j]] = [n[j], n[i]]; setRows(n); };
@@ -953,8 +990,9 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
             <button key={k} type="button" onClick={() => setTab(k)} className={`px-2.5 py-1 rounded-md ${tab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>
           ))}
         </div>
-        <Button size="sm" variant="ghost" onClick={onClose}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
-        <Button size="sm" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
+        {dirty && <span className="text-[11px] text-[var(--primary-2)] inline-flex items-center gap-1.5" title={t('ag.edit.unsaved.h', 'Nothing is stored until you save.')}><span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" /> {t('ag.edit.unsaved', 'Unsaved changes')}</span>}
+        <Button size="sm" variant="ghost" onClick={closeGuarded}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
+        <Button size="sm" disabled={busy || !dirty} onClick={save} title="Ctrl+S">{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
       <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
