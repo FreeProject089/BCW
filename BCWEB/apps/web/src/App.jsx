@@ -491,6 +491,13 @@ function NavNotifications() {
   // refused request every 60s is still a refused request.)
   const canSeeQueues = !!user && (canAdmin(user) || effectiveCaps(user).includes('manage_users'));
   const [pending, setPending] = useState(0);
+  // The staff-queue count only drops when items are actually handled, and only the 60s poll
+  // ever changed it — so after you LOOK at the queues the badge sat there for up to a minute,
+  // which reads as "I have to refresh". A persisted baseline fixes it: opening the bell marks
+  // the current queue total as seen, so its contribution to the badge is zeroed on the click.
+  // The badge then only counts what arrived SINCE (pending − seen); the footer link still shows
+  // the true total so nothing is hidden, and the admin dashboard is where they're acted on.
+  const [pendingSeen, setPendingSeen] = useState(() => { try { return Number(localStorage.getItem('bcw_pending_seen')) || 0; } catch { return 0; } });
   useEffect(() => {
     if (!canSeeQueues) { setPending(0); return undefined; }
     let live = true;
@@ -499,7 +506,9 @@ function NavNotifications() {
     const id = setInterval(poll, 60_000);
     return () => { live = false; clearInterval(id); };
   }, [canSeeQueues]);
-  const badge = unread + pending;
+  const pendingNew = Math.max(0, pending - pendingSeen);
+  const markPendingSeen = () => { setPendingSeen(pending); try { localStorage.setItem('bcw_pending_seen', String(pending)); } catch {} };
+  const badge = unread + pendingNew;
   const markOne = async (n) => { if (n.readAt) return; readIds.current.add(n.id); setItems((s) => s.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x))); try { await markNotifRead(n.id); } catch {} };
   // Click = mark read + go to the relevant page (if the kind maps to one).
   // The notification's OWN destination first, the per-kind default second.
@@ -522,7 +531,7 @@ function NavNotifications() {
   const clearMenu = () => { clearedAt.current = Date.now(); try { localStorage.setItem('bcw_notif_cleared', String(clearedAt.current)); } catch {} setItems([]); };
   return (
     <div className="relative" ref={ref}>
-      <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) load(); }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
+      <button className="nav-link !px-2 relative" onClick={() => { setOpen((o) => !o); if (!open) { load(); markPendingSeen(); } }} title={t('nav.notifications')} aria-label={t('nav.notifications')}>
         <Bell size={16} />
         {badge > 0 && <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[var(--primary)] text-white text-[9px] font-bold grid place-items-center">{badge > 9 ? '9+' : badge}</span>}
       </button>
