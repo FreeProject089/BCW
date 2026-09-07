@@ -111,7 +111,7 @@
 .bmdc-empty { text-align: center; font-size: 13px; color: var(--faint, #726b61); padding: 24px; }
 
 /* Block canvas — the per-directive field row (title + icon), above the raw source. */
-.bmdc-fields { display: flex; gap: 6px; align-items: center; margin: 0 0 6px; }
+.bmdc-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 6px; }
 .bmdc-field { flex: 1; min-width: 0; font: inherit; font-size: 12.5px; padding: 5px 8px;
   border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 8px; background: transparent; color: inherit; }
 .bmdc-field:focus { outline: none; border-color: var(--bmd-accent, #f97316); }
@@ -119,3 +119,11 @@
   font: inherit; font-size: 12px; padding: 5px 10px; cursor: pointer;
   border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 8px; background: transparent; color: inherit; }
 .bmdc-field-btn:hover { border-color: var(--bmd-accent, #f97316); }
+
+/* The style / spacing selects. Narrow on purpose: the title is what the writer is looking
+   at, and these two answer questions ("how loud", "how much room") that are only asked
+   occasionally. The row wraps rather than squeezing the title out on a narrow editor. */
+.bmdc-field-sel { flex: 0 0 auto; font: inherit; font-size: 12px; padding: 5px 6px; cursor: pointer;
+  border: 1px solid var(--bmd-line, #e5e7eb); border-radius: 8px;
+  background: var(--bmd-bg, transparent); color: inherit; max-width: 34%; }
+.bmdc-field-sel:hover, .bmdc-field-sel:focus { border-color: var(--bmd-accent, #f97316); outline: none; }

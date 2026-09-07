@@ -615,3 +615,59 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 /* A live stat: the fetched number wears the stat's own size, and its label stays the stat's. */
 .md-body .doc-stat .doc-fetch.doc-stat-value { display: block; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; }
 .md-body .doc-stat .doc-fetch .doc-fetch-value { font: inherit; }
+
+/* ══ Spacing and the second look ═══════════════════════════════════════════════
+   Two attributes every block understands, so a writer can control rhythm and
+   emphasis without leaving B.MD for raw HTML.
+
+     :::card[Title]{space=lg variant=b}
+
+   `space=` is the gap the block leaves UNDER itself, on a named scale — the scale
+   lives here, so a host retunes every document at once by editing these six
+   numbers, and no document carries a hand-picked pixel value of its own.
+   `!important` because several families set their own bottom margin further up
+   this sheet and the whole point of the attribute is to win. */
+.md-body .doc-space-none { margin-bottom: 0 !important; }
+.md-body .doc-space-xs   { margin-bottom: 6px !important; }
+.md-body .doc-space-sm   { margin-bottom: 12px !important; }
+.md-body .doc-space-md   { margin-bottom: 22px !important; }
+.md-body .doc-space-lg   { margin-bottom: 38px !important; }
+.md-body .doc-space-xl   { margin-bottom: 64px !important; }
+
+/* `variant=b` — the second look.
+   Every block already accepted `variant=`, but nothing styled it: the attribute
+   parsed, emitted its class, and changed nothing on screen. Two looks per family
+   now, and only two, because the writer picks between them by eye rather than by
+   reading documentation — a third is a preference nobody can hold in their head.
+
+   The rule throughout: `a` (the default) is the framed, filled treatment; `b` is
+   the quiet one — the frame goes, an accent edge stays, and the block sits in the
+   text instead of on top of it. A long page of cards is exhausting; the same page
+   with the asides in `b` reads as one document again. */
+.md-body .doc-callout.doc-variant-b {
+  border: 0; border-left: 2px solid var(--c); border-radius: 0;
+  background: transparent; padding: 2px 0 2px 14px;
+}
+.md-body .doc-card.doc-variant-b,
+.md-body .doc-field.doc-variant-b,
+.md-body .doc-testimonial.doc-variant-b {
+  border: 0; border-radius: 0; background: transparent;
+  border-top: 1px solid var(--line); padding: 12px 0 0;
+}
+.md-body .doc-quote.doc-variant-b {
+  border-left: 0; padding-left: 0; text-align: center; font-size: 1.15em;
+  font-style: italic; color: var(--text); max-width: 44ch; margin-inline: auto;
+}
+/* A stat that is a headline rather than a tile. */
+.md-body .doc-stat.doc-variant-b {
+  border: 0; background: transparent; padding: 0; text-align: start;
+}
+.md-body .doc-stat.doc-variant-b .doc-stat-value { font-size: 2.1em; line-height: 1.05; }
+/* Steps as a numbered outline instead of a boxed rail. */
+.md-body .doc-steps.doc-variant-b { border: 0; background: transparent; padding: 0; }
+.md-body .doc-steps.doc-variant-b .doc-step { border: 0; background: transparent; padding-inline: 0; }
+/* A grid that breathes: same cells, no cell frames. */
+.md-body .doc-cards.doc-variant-b > .doc-card,
+.md-body .doc-grid.doc-variant-b > .doc-card {
+  border: 0; background: transparent; padding: 0;
+}

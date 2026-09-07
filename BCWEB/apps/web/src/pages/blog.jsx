@@ -616,6 +616,10 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
                 up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
                 title: t('bmdc.title', 'Title'), icon: t('bmdc.icon', 'Icon'), noIcon: t('bmdc.noicon', 'Pick an icon'),
                 empty: t('bmdc.empty', 'Empty document — insert a block above.'),
+                style: t('bmdc.style', 'Style'), styleA: t('bmdc.styleA', 'Style A'), styleB: t('bmdc.styleB', 'Style B'),
+                space: t('bmdc.space', 'Space below'), spaceAuto: t('bmdc.spaceAuto', 'Space: auto'),
+                space_none: t('bmdc.space.none', 'None'), space_xs: t('bmdc.space.xs', 'Tiny'), space_sm: t('bmdc.space.sm', 'Small'),
+                space_md: t('bmdc.space.md', 'Medium'), space_lg: t('bmdc.space.lg', 'Large'), space_xl: t('bmdc.space.xl', 'Huge'),
               }} /></div>
           : <><textarea ref={ref} className="w-full bg-transparent border-0 outline-none resize-none p-4 text-sm leading-relaxed text-[var(--text)]" style={{ minHeight }} value={value || ''} spellCheck={false} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
             <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>}

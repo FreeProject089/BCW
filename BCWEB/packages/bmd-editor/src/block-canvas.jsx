@@ -7,7 +7,13 @@
 // drift. Dependency-free (native HTML5 drag + touch-friendly buttons), so it drops into the
 // package without pulling a DnD library.
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { splitBlocks, joinBlocks, newBlock } from '@bettercommunity/bmd/editor-blocks';
+// parseDirectiveHead/setDirectiveHead were USED below and never imported, and `pickIcon` was
+// read off nothing at all — a free identifier the caller passed as a prop that was never
+// destructured. Both threw ReferenceError from inside the field row, which runs for every
+// block, so the visual editor died on any document that had one. It went unnoticed because
+// the tests covering that row exercise the two pure functions directly and the component
+// never appears in them, and because eslint runs from apps/web and does not reach packages/.
+import { splitBlocks, joinBlocks, newBlock, parseDirectiveHead, setDirectiveHead } from '@bettercommunity/bmd/editor-blocks';
 
 // A short, human label + a glyph hint per block kind (directive:foo → "foo").
 function kindLabel(kind) {
@@ -33,8 +39,12 @@ const EN = {
   count: '{n} block(s)', preview: 'Preview', drag: 'Drag to reorder',
   up: 'Move up', down: 'Move down', del: 'Delete',
   empty: 'Empty document — insert a block above.',
+  title: 'Title', icon: 'Icon', noIcon: 'Pick an icon',
+  style: 'Style', styleA: 'Style A', styleB: 'Style B',
+  space: 'Space below', spaceAuto: 'Space: auto',
+  space_none: 'None', space_xs: 'Tiny', space_sm: 'Small', space_md: 'Medium', space_lg: 'Large', space_xl: 'Huge',
 };
-export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [], renderer: Markdown = null, lang = 'en', labels = null }) {
+export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [], renderer: Markdown = null, lang = 'en', labels = null, pickIcon = null }) {
   const T = { ...EN, ...(labels || {}) };
   const [blocks, setBlocks] = useState(() => splitBlocks(value));
   const [preview, setPreview] = useState(true);
@@ -162,6 +172,24 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
                         {head.attrs.icon || T.noIcon}
                       </button>
                     )}
+                    {/* The two looks and the gap underneath.
+                        Both were already attributes the renderer understood, and both were
+                        therefore reachable only by typing them into the fence by hand — which
+                        means nobody used them. Two selects: the block keeps its meaning, the
+                        writer sets its weight and its rhythm.
+                        The default option writes an EMPTY value, which setDirectiveHead
+                        removes from the fence — so an untouched block stays byte-identical
+                        and a document does not fill up with `variant=a space=md`. */}
+                    <select className="bmdc-field-sel" title={T.style} value={head.attrs.variant || ''}
+                      onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { attrs: { variant: e.target.value } }))}>
+                      <option value="">{T.styleA}</option>
+                      <option value="b">{T.styleB}</option>
+                    </select>
+                    <select className="bmdc-field-sel" title={T.space} value={head.attrs.space || ''}
+                      onChange={(e) => editBlock(b.id, setDirectiveHead(b.src, { attrs: { space: e.target.value } }))}>
+                      <option value="">{T.spaceAuto}</option>
+                      {['none', 'xs', 'sm', 'md', 'lg', 'xl'].map((s) => <option key={s} value={s}>{T[`space_${s}`] || s}</option>)}
+                    </select>
                   </div>
                 );
               })()}

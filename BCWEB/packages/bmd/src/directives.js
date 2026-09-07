@@ -59,6 +59,18 @@ const BUTTON_BRANDS = {
   // goes. `:button[Support]{color=#f96854 href=…}` still gets the colour without the lie.
 };
 const BUTTON_SIZES = new Set(['sm', 'md', 'lg']);
+/**
+ * The `space=` scale — how much room a block leaves under itself.
+ *
+ * A closed set, not a free number, and that is the point: the value is a WORD the writer
+ * picks from a list, so two documents written months apart by two people still line up.
+ * A free `space=37px` would make every block its own decision and no page would have a
+ * rhythm. The pixel values live in markdown.css so a host can retune the whole scale in
+ * one place without touching a single document.
+ */
+export const SPACE_STEPS = { none: 1, xs: 1, sm: 1, md: 1, lg: 1, xl: 1 };
+/** The two looks every block understands. `a` is the default and needs no attribute. */
+export const VARIANTS = ['a', 'b'];
 
 const CALLOUTS = {
   note: 'info', info: 'info', hint: 'tip', tip: 'tip', success: 'success', check: 'success',
@@ -739,6 +751,17 @@ export function remarkDocBlocks() {
         const hp = data.hProperties || (data.hProperties = {});
         const cls = Array.isArray(hp.className) ? hp.className : hp.className ? [hp.className] : [];
         if (attrs.variant) cls.push(`doc-variant-${String(attrs.variant).toLowerCase().replace(/[^a-z0-9-]/g, '')}`);
+        // `space=` — the gap this block leaves under itself.
+        //
+        // Spacing was the one thing a writer could not say. Every block carried the same
+        // stock margin, so the only way to group two related cards, or to push a callout
+        // clear of what follows it, was to give up and write HTML. A named scale rather
+        // than a number: six blocks each nudged by a different hand-picked pixel value is
+        // how a document stops looking like one document.
+        if (attrs.space != null) {
+          const sp = String(attrs.space).trim().toLowerCase();
+          if (SPACE_STEPS[sp]) cls.push(`doc-space-${sp}`);
+        }
         if (attrs.class) for (const c of String(attrs.class).split(/\s+/)) if (/^[a-zA-Z][\w-]*$/.test(c) && !cls.includes(c)) cls.push(c);
         hp.className = cls;
         if (attrs.radius != null) {

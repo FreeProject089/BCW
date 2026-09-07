@@ -402,3 +402,12 @@ export interface BmdDirectiveHead { name: string; label: string; attrs: Record<s
 export function parseDirectiveHead(src: string): BmdDirectiveHead | null;
 /** Rewrite ONLY the head; every other line comes back byte-identical. '' removes an attribute. */
 export function setDirectiveHead(src: string, patch?: { label?: string; attrs?: Record<string, string> }): string;
+
+/**
+ * The `space=` scale — the gap a block leaves under itself. A closed set of words, not a
+ * free number, so two documents written months apart still share a rhythm; the pixel
+ * values live in markdown.css and retune every document at once.
+ */
+export const SPACE_STEPS: Record<'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl', number>;
+/** The two looks every block understands: `a` is the default and needs no attribute. */
+export const VARIANTS: readonly string[];
