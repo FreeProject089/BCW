@@ -2850,7 +2850,7 @@ const DICT = {
     'ie.hostcancelled': 'Abonnement d’hébergement annulé — l’élément est maintenant masqué.', 'ie.hostcancelfail': 'Échec de l’annulation.',
 
     // ── Admin : Site analytics ──
-    'an.title': 'Analytique du site', 'an.live': 'en direct', 'an.telemetry': 'Télémétrie BMM',
+    'an.title': 'Analytique du site', 'an.live': 'en direct', 'an.telemetry': 'Télémétrie BMM', 'an.mode.simple': 'Simple', 'an.mode.advanced': 'Avancé',
     'an.telemetry.noperm': 'Il te faut la permission « telemetry » (Accès & permissions) pour l’ouvrir.',
     'an.telemetry.err': 'Impossible d’ouvrir la télémétrie — un compte admin avec 2FA est requis.',
     'an.range.7d': '7 jours', 'an.range.30d': '30 jours', 'an.range.90d': '90 jours', 'an.vsprev': 'vs période précédente',

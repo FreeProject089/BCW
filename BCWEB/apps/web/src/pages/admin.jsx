@@ -16960,6 +16960,10 @@ function AdminAnalytics() {
   const [days, setDays] = useState(30);
   const [hours, setHours] = useState(null); // when set → hourly view (zoom-in)
   const [tab, setTab] = useState('overview'); // sub-tab: overview | sessions | geo | tech | perf
+  // Simple vs Advanced. Simple is a minimalist dashboard — the KPI row, the traffic chart and
+  // top pages/referrers, no sub-tabs; Advanced exposes every drill-down. Persisted per admin.
+  const [mode, setModeState] = useState(() => { try { return localStorage.getItem('bcw_an_mode') === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; } });
+  const setMode = (m) => { try { localStorage.setItem('bcw_an_mode', m); } catch { /* ignore */ } setModeState(m); if (m === 'simple') setTab('overview'); };
   const toast = useToast();
   const { t } = useI18n();
   const { data, loading } = useAsync(() => api.get(`/admin/analytics?${hours ? `hours=${hours}` : `days=${days}`}`), [days, hours]);
@@ -17010,7 +17014,12 @@ function AdminAnalytics() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><TrendingUp size={16} /> {t('an.title', 'Site analytics')}
           {data?.live > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success ms-1"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.live} {t('an.live', 'live')}</span>}</h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+            {[['simple', t('an.mode.simple', 'Simple')], ['advanced', t('an.mode.advanced', 'Advanced')]].map(([m, l]) => (
+              <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 text-xs ${mode === m ? 'bg-[var(--primary)] text-white font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            ))}
+          </div>
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {ranges.map(([d, l]) => <button key={d} onClick={() => pickRange(d)} className={`px-3 py-1.5 text-xs ${activeRange === d ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>)}
           </div>
@@ -17028,12 +17037,15 @@ function AdminAnalytics() {
         {kpi(Zap, data?.live ?? '—', t('an.kpi.live', 'Live (30 min)'), 'text-success')}
       </div>
 
-      {/* Sub-tab bar — horizontal-scrolls on narrow screens so it never overflows. */}
-      <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
-        {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['replays', t('an.tab.replays', 'Replays'), PlayCircle], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
-          <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
-        ))}
-      </div>
+      {/* Sub-tab bar — advanced mode only. In simple mode the view is just the overview block
+          below (KPI + chart + top pages/referrers), a clean at-a-glance dashboard. */}
+      {mode === 'advanced' && (
+        <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
+          {[['overview', t('an.tab.overview', 'Overview'), TrendingUp], ['sessions', t('an.tab.sessions', 'Sessions'), Activity], ['geo', t('an.tab.geo', 'Geography'), Globe2], ['tech', t('an.tab.tech', 'Tech'), Monitor], ['events', t('an.tab.events', 'Events'), Activity], ['replays', t('an.tab.replays', 'Replays'), PlayCircle], ['data', t('an.tab.data', 'Data'), Archive]].map(([id, label, I]) => (
+            <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
+          ))}
+        </div>
+      )}
 
       {tab === 'overview' && <>
         <Card className="p-4 sm:p-5 mb-4">
