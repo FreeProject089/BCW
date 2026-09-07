@@ -10,7 +10,8 @@
     "./snippets": "./src/snippets.js",
     "./editor.css": "./src/editor.css",
     "./package.json": "./package.json",
-    "./block-canvas": "./src/block-canvas.jsx"
+    "./block-canvas": "./src/block-canvas.jsx",
+    "./live-preview": "./src/live-preview.jsx"
   },
   "files": [
     "src",

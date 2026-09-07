@@ -78,7 +78,13 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
     const n = [...blocks]; const [m] = n.splice(from, 1); n.splice(to > from ? to - 1 : to, 0, m); commit(n);
   };
   const insertAt = (i, md) => {
-    const n = [...blocks]; n.splice(i, 0, newBlock('paragraph', md)); commit(n); setAddAt(null); setQ('');
+    // A BLANK block after it, and the document breaks without one. joinBlocks joins with a
+    // single newline and the blank lines between blocks are themselves blocks — so a block
+    // spliced in on its own is glued to whichever block follows it: insert a paragraph above
+    // another and the two become one block, which then edits, moves and deletes as one.
+    const n = [...blocks];
+    n.splice(i, 0, newBlock('paragraph', md), newBlock('blank', ''));
+    commit(n); setAddAt(null); setQ('');
   };
 
   // A flat, searchable list of palette items from the snippet groups (block-level ones).

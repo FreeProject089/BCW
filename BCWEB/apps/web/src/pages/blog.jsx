@@ -5,7 +5,7 @@ import {
   Newspaper, PenSquare, ImagePlus, Youtube, Link2, Video, Bold, Heading, List, Eye,
   Trash2, Pencil, ArrowLeft, CalendarDays, User as UserIcon, Plus, X, Tag as TagIcon, HelpCircle, Languages, Sparkles,
   Blocks as BlocksIcon, LayoutGrid, ChevronDown, ListOrdered, Milestone, Columns2, Code2, Keyboard, Smile, ListTree, FileDown, AlignCenter, GitMerge, History, MessageSquare, Globe,
-  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle, Upload, Download,
+  Table, Quote, Minus, AlignLeft, AlignRight, Mail, PlayCircle, Upload, Download, Lock, Unlock,
 } from 'lucide-react';
 import { api, uploadBlogImage, uploadReplay } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
@@ -18,7 +18,7 @@ import { REACTION_OPTIONS, ReactionIcon } from '../ui/reactions.jsx';
 // in this app: BmdBlockCanvas sits on the package's lossless block model, so reordering and
 // editing round-trip the source byte-for-byte, where the local one re-serialised through a
 // block model that only knew the shapes it had forms for — anything else drifted on save.
-import { BmdBlockCanvas, SNIPPET_GROUPS, localizeSnippetGroups } from '@bettercommunity/bmd-editor';
+import { BmdBlockCanvas, BmdLivePreview, SNIPPET_GROUPS, localizeSnippetGroups } from '@bettercommunity/bmd-editor';
 import { parseBmdFile, serializeBmdFile } from '@bettercommunity/bmd/editor-blocks';
 import IconPicker from '../editor/icon-picker.jsx';
 import SelectionToolbar from '../editor/selection-toolbar.jsx';
@@ -379,6 +379,11 @@ function BadgePicker({ onPick, onPickRaw, onClose }) {
 export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, full = false }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const ref = useRef(null); const [preview, setPreview] = useState(false);
+  // The preview used to be read-only: to fix a word you could SEE was wrong you switched to
+  // the source, hunted for the line among the fences, changed it and switched back to check.
+  // Unlocked, the rendered page is the editing surface. Locked by default, because a preview
+  // is also the thing you show somebody.
+  const [pvUnlocked, setPvUnlocked] = useState(false);
   // 'rich' is the editor package (block menu, live preview side by side or as tabs on a phone,
   // link check, outline, export); 'write' the bare textarea with this toolbar; 'visual' the
   // drag-and-drop composer. A document field opens in rich; a short one stays bare.
@@ -592,6 +597,10 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
           </>}
         </>}
         {mode !== 'rich' && <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>}
+        {preview && <button type="button" onClick={() => setPvUnlocked((v) => !v)} className={`btn btn-sm${pvUnlocked ? ' is-on' : ''}`}
+          title={pvUnlocked ? t('lp.locked.h', 'Lock the preview — show it as a reader sees it') : t('lp.unlock.h', 'Edit directly on the rendered page')}>
+          {pvUnlocked ? <Unlock size={14} /> : <Lock size={14} />} <span className="hidden sm:inline">{pvUnlocked ? t('lp.editing', 'Editing') : t('lp.locked', 'Locked')}</span>
+        </button>}
         {/* .bmd — B.MD's own file: the document plus a `---` front matter carrying its format
             version. Round-trips through parseBmdFile / serializeBmdFile in the package, so a
             document written here opens in the BMM app and in the docs the same way. */}
@@ -609,7 +618,14 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
         ? <><BmdEditor value={value || ''} onChange={onChange} lang={uiLang === 'fr' ? 'fr' : 'en'} height={Math.max(minHeight, 260)} className="!border-0 !rounded-none" exportTitle="document" extraGroups={hostGroups} textareaRef={ref} />
           <SelectionToolbar taRef={ref} value={value || ''} onChange={onChange} /></>
         : preview
-        ? <div className="p-4 max-h-[38vh] overflow-auto"><Markdown>{value || '*Nothing yet.*'}</Markdown></div>
+        ? <div className="p-4 max-h-[52vh] overflow-auto">
+            <BmdLivePreview value={value || ''} onChange={onChange} renderer={Markdown} lang={uiLang === 'fr' ? 'fr' : 'en'}
+              unlocked={pvUnlocked} onUnlockedChange={setPvUnlocked}
+              snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, uiLang)}
+              labels={{ edit: t('lp.edit', 'Edit this block'), done: t('common.done', 'Done'), insert: t('lp.insert', 'Insert here'),
+                remove: t('lp.remove', 'Remove this block'), empty: t('lp.empty', 'Nothing yet. Unlock to write something.'),
+                search: t('bmdc.search', 'Search blocks…'), noMatch: t('bmdc.nomatch', 'No block matches.') }} />
+          </div>
         : mode === 'visual'
           ? <div className="max-h-[52vh] overflow-auto p-2"><BmdBlockCanvas value={value || ''} onChange={onChange}
               snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, uiLang)} renderer={Markdown} lang={uiLang === 'fr' ? 'fr' : 'en'}

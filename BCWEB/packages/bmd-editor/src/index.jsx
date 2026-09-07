@@ -401,3 +401,4 @@ export default function BmdEditor({
 }
 
 export { default as BmdBlockCanvas } from './block-canvas.jsx';
+export { default as BmdLivePreview } from './live-preview.jsx';
