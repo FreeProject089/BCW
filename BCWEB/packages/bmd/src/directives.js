@@ -195,6 +195,10 @@ export function remarkDocBlocks() {
         // e-mail HTML, where counters do not exist, and one source of numbers means the web
         // and the e-mail can never disagree about which step is which.
         const kind = String(attrs.type || attrs.marker || '1').toLowerCase();
+        // `marker=icon` (or `type=icon`) turns the list into an ICON list: each step's own
+        // `icon=` becomes its marker instead of a number/letter/dot, so a list reads with a
+        // glyph per row rather than 1/2/3 or a bullet. The step still counts internally.
+        const iconMode = kind === 'icon';
         const start = Math.max(1, parseInt(attrs.start, 10) || 1);
         const vertical = String(attrs.orientation || attrs.dir || 'vertical') !== 'horizontal';
         // One colour drives the marker and the rail, so they cannot drift apart. Set on the
@@ -211,22 +215,27 @@ export function remarkDocBlocks() {
         for (const child of node.children) {
           if (child.type === 'containerDirective' && (child.name === 'step' || child.name === 'stage')) {
             child.data = child.data || {};
-            child.data.stepMarker = stepMarker(kind, n);
+            if (iconMode) child.data.stepIconMarker = true;
+            else child.data.stepMarker = stepMarker(kind, n);
             n += 1;
           }
         }
       } else if (name === 'step' || name === 'stage') {
         // A step outside a `steps` block still renders — it just numbers itself, because
         // half a component is worse than a plain paragraph.
-        const marker = node.data?.stepMarker || attrs.marker || '•';
+        // Icon marker: the block was `marker=icon`, or this standalone step asked for it with
+        // `marker=icon` — the step's `icon=` renders as the marker glyph. Falls back to a dot
+        // if no icon was given. When the icon is the marker it is NOT repeated in the title.
+        const wantIconMarker = (node.data?.stepIconMarker || attrs.marker === 'icon') && !!attrs.icon;
+        const marker = node.data?.stepMarker || (attrs.marker && attrs.marker !== 'icon' ? attrs.marker : '•');
         const done = attrs.done === 'true' || attrs.status === 'done';
-        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : [])], attrs.color ? { style: `--step:${attrs.color}` } : {});
+        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : []), ...(wantIconMarker ? ['doc-step-icon'] : [])], attrs.color ? { style: `--step:${attrs.color}` } : {});
         const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-marker'], 'aria-hidden': 'true' } },
-          children: [{ type: 'text', value: String(marker) }] }];
+          children: wantIconMarker ? [iconNode(String(attrs.icon).toLowerCase())] : [{ type: 'text', value: String(marker) }] }];
         const title = labelText || attrs.title;
         const body = [
           ...(title ? [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-title'] } },
-            children: [...(attrs.icon ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] }] : []),
+            children: [...(attrs.icon && !wantIconMarker ? [iconNode(String(attrs.icon).toLowerCase())] : []), { type: 'text', value: title }] }] : []),
           // The step's own children are untouched, which is the whole point: anything the
           // parser understands elsewhere works inside a step, including another directive.
           ...node.children,

@@ -93,6 +93,9 @@
   display: grid; place-items: center; font-size: 13px; font-weight: 700; line-height: 1;
   background: var(--step, var(--primary)); color: #fff; position: relative; z-index: 1; margin: 0;
 }
+/* Icon list (`:::steps{marker=icon}`): the step's icon is the marker glyph, white, in the disc. */
+.md-body .doc-step-marker .doc-icon { width: 15px; height: 15px; color: #fff; }
+.md-body .doc-step-marker .doc-icon svg { width: 15px; height: 15px; }
 /* The rail, drawn on the STEP rather than on the marker.
    It was on the marker, where `height: 100%` resolves against the marker's own 28px — so it
    rendered as a stub under each circle instead of reaching the next one, however tall the
