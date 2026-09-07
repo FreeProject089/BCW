@@ -318,7 +318,7 @@ export default function ProjectPage() {
   // projects people actually visit were the ones that could not be personalised at all.
   const customTabs = (Array.isArray(c.customTabs) ? c.customTabs : [])
     .filter((ct) => ct && ct.id && String(ct.title || '').trim() && String(ct.body || '').trim());
-  const canvasTabs = (Array.isArray(c.canvases) ? c.canvases : [])
+  const canvasTabs = (c.studioEnabled === true && Array.isArray(c.canvases) ? c.canvases : [])
     .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
   const tabs = [
     ['overview', t('proj.overview'), ListTodo],
@@ -1353,7 +1353,7 @@ export function ShowcaseProjectPage() {
   // Hand-placed pages, from the studio. Same rule as a custom tab: one that would open onto
   // nothing is not offered at all. A canvas with no blocks IS nothing — an empty plane reads
   // as a broken tab, not as a design choice.
-  const canvasTabs = (Array.isArray(cfg.canvases) ? cfg.canvases : [])
+  const canvasTabs = (cfg.studioEnabled === true && Array.isArray(cfg.canvases) ? cfg.canvases : [])
     .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
   // Inline countdown → adds a "Countdown" FIRST tab, page stays reachable.
   const inlineCountdown = data.announcement && data.announcementInline ? data.announcement : null;

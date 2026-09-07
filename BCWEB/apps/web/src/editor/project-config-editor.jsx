@@ -6,8 +6,10 @@ import {
 import { Button, Input, Textarea, Field, Badge, Spinner, Select } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
+import { useAuth } from '../pages/auth.jsx';
 import { api, uploadMedia } from '../lib/api.js';
 import CanvasStudio from './canvas-studio.jsx';
+import { CANVAS_PRESETS, presetBlocks } from '../lib/canvas.js';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
@@ -429,7 +431,12 @@ function CommitImport({ slug }) {
 }
 
 export default function ProjectConfigEditor({ value, onChange, slug, isShowcase }) {
-  const toast = useToast(); const { t } = useI18n();
+  // Who is allowed to turn the studio on. The SERVER is the authority (guardStudioFlag keeps
+  // a grantee's flag out of the stored config whatever they send); this only decides whether
+  // to draw a switch that would not work for them.
+  const { user: me } = useAuth();
+  const mayToggleStudio = !!me && ['ADMIN', 'SUPERADMIN'].includes(me.role);
+  const toast = useToast(); const { t, lang } = useI18n();
   const c = value || {};
   const set = (patch) => onChange({ ...c, ...patch });
   const setIn = (key, patch) => onChange({ ...c, [key]: { ...(c[key] || {}), ...patch } });
@@ -1065,7 +1072,21 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           <Section icon={LayoutTemplate} title={t('pce.canvases', 'Studio pages')} badge={list.length}
             desc="Place blocks where you want them. Wide screens see the layout as you built it; narrow ones scale it down, and phones stack the blocks in reading order — use the phone button to see that before you publish.">
             <div className="space-y-4">
-              {list.map((cv, i) => (
+              {/* The switch, admins only. Off, the section says so and offers nothing: a page
+                  builder half-available is worse than one that plainly is not. */}
+              {mayToggleStudio ? (
+                <label className="flex items-start gap-2.5 text-sm rounded-xl border border-[var(--line)] p-3 cursor-pointer">
+                  <input type="checkbox" className="mt-0.5" checked={c.studioEnabled === true}
+                    onChange={(e) => set({ studioEnabled: e.target.checked })} />
+                  <span>
+                    <span className="font-medium">{t('pce.studio.on', 'Enable the studio for this page')}</span>
+                    <span className="block text-[11px] text-[var(--faint)] mt-0.5">{t('pce.studio.on.h', 'Admins only. Off, the pages below are neither editable nor shown.')}</span>
+                  </span>
+                </label>
+              ) : c.studioEnabled !== true ? (
+                <p className="text-xs text-[var(--muted)]">{t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}</p>
+              ) : null}
+              {c.studioEnabled === true && list.map((cv, i) => (
                 <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-3">
                   <div className="flex items-center gap-2">
                     <Input className="flex-1" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
@@ -1074,9 +1095,19 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <CanvasStudio value={cv} onChange={(next) => patch(i, next)} />
                 </div>
               ))}
-              <Button size="sm" onClick={() => put([...list, { id: `c${Date.now().toString(36)}`, title: '', blocks: [] }])}>
-                + {t('pce.canvases.add', 'Add a studio page')}
-              </Button>
+              {/* Start from something. A blank canvas is the worst thing to hand somebody who
+                  has never used one — every preset is ordinary blocks the moment it lands. */}
+              {c.studioEnabled === true && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] text-[var(--faint)]">{t('pce.canvases.start', 'Start from:')}</span>
+                  {CANVAS_PRESETS.map((pr) => (
+                    <Button key={pr.id} size="sm" variant="ghost"
+                      onClick={() => put([...list, { id: `c${Date.now().toString(36)}`, title: '', blocks: presetBlocks(pr.id) }])}>
+                      + {lang === 'fr' ? pr.nameFr : pr.name}
+                    </Button>
+                  ))}
+                </div>
+              )}
             </div>
           </Section>
         );

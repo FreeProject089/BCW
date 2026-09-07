@@ -1269,3 +1269,28 @@ export function humanHours(h) {
   }
   return n === 1 ? '1 hour' : `${n} hours`;
 }
+
+/**
+ * The studio switch is an ADMIN decision, and the save path has to enforce that.
+ *
+ * A per-project grantee may edit their page's config — that is the point of a grant — and the
+ * config is stored as free-form JSON. So without this, "only an admin can turn the studio on
+ * for a project" would be a checkbox hidden in the UI and nothing more: a grantee could POST
+ * `studioEnabled: true` in their own config and have it. A rule enforced only by not drawing
+ * the control is not a rule.
+ *
+ * Returns the config to STORE: the caller's, with `studioEnabled` forced back to whatever is
+ * already stored unless they are allowed to change it.
+ *
+ * @param {object} incoming  the config as submitted
+ * @param {object} current   the config as stored (may be null on first save)
+ * @param {boolean} mayToggle  whether this caller is allowed to set the flag
+ */
+export function guardStudioFlag(incoming, current, mayToggle) {
+  const next = { ...(incoming && typeof incoming === 'object' ? incoming : {}) };
+  if (mayToggle) return next;
+  const was = current && typeof current === 'object' ? current.studioEnabled : undefined;
+  if (was === undefined) delete next.studioEnabled;
+  else next.studioEnabled = was;
+  return next;
+}

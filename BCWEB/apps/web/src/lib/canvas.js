@@ -400,3 +400,68 @@ export function distributeMany(blocks, ids, axis = 'x') {
   at.set(last.id, num(last[pos]));
   return blocks.map((b) => (at.has(b.id) ? { ...b, [pos]: at.get(b.id) } : b));
 }
+
+// ── Presets ──────────────────────────────────────────────────────────────────
+// A blank canvas is the worst thing to hand somebody who has never used one. These are
+// starting points, not templates to be preserved: every block is ordinary, editable and
+// deletable the moment it lands, and nothing downstream knows a canvas came from a preset.
+//
+// Positions are on the 8px grid and inside the 1200px design width by construction — a preset
+// that needs nudging before it looks right teaches the wrong first lesson.
+const P = (kind, x, y, w, h, props = {}) => ({ kind, x, y, w, h, props });
+
+export const CANVAS_PRESETS = [
+  {
+    id: 'hero',
+    name: 'Hero + two columns',
+    nameFr: 'Bandeau + deux colonnes',
+    blocks: () => [
+      P('box', 0, 0, 1200, 280, { bg: 'color-mix(in srgb, var(--primary) 10%, transparent)', radius: 20 }),
+      P('text', 64, 56, 640, 168, { md: '# Your title\n\nOne sentence that says what this is.\n\n:button[Get started]{href="/"}' }),
+      P('image', 760, 40, 376, 200, { src: '', alt: '', fit: 'contain' }),
+      P('text', 64, 336, 520, 200, { md: '## What it does\n\nA paragraph.\n\n- A point\n- Another' }),
+      P('text', 616, 336, 520, 200, { md: '## Why it matters\n\nA paragraph.\n\n- A point\n- Another' }),
+    ],
+  },
+  {
+    id: 'features',
+    name: 'Feature grid',
+    nameFr: 'Grille de fonctionnalités',
+    blocks: () => {
+      const out = [P('text', 64, 0, 720, 96, { md: '# Features\n\nWhat you get.' })];
+      // Three across, two down — 344 wide with 32 between, inside 64px margins.
+      for (let i = 0; i < 6; i++) {
+        const col = i % 3, row = Math.floor(i / 3);
+        out.push(P('text', 64 + col * 376, 128 + row * 216, 344, 184, {
+          md: `:::card[Feature ${i + 1}]{icon=star}\nWhat it does, in a line or two.\n:::`,
+        }));
+      }
+      return out;
+    },
+  },
+  {
+    id: 'split',
+    name: 'Text beside a picture',
+    nameFr: 'Texte à côté d’une image',
+    blocks: () => [
+      P('text', 64, 40, 520, 280, { md: '## A heading\n\nA paragraph explaining the thing beside it.\n\n:::tip[Good to know]\nSomething worth pulling out.\n:::' }),
+      P('image', 640, 40, 496, 280, { src: '', alt: '', fit: 'cover' }),
+    ],
+  },
+  {
+    id: 'blank',
+    name: 'Blank',
+    nameFr: 'Vide',
+    blocks: () => [],
+  },
+];
+
+/** Instantiate a preset: real blocks with fresh ids, ready to edit. */
+export function presetBlocks(id) {
+  const preset = CANVAS_PRESETS.find((p) => p.id === id) || CANVAS_PRESETS[CANVAS_PRESETS.length - 1];
+  // A timestamp alone is not unique: two presets instantiated in the same millisecond produced
+  // identical ids, and identical ids mean React keys collide and the editor's selection points
+  // at "both" blocks. A random tail costs nothing and removes the whole class.
+  const run = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+  return preset.blocks().map((b, i) => ({ ...b, id: `p${run}${i}`, z: i }));
+}

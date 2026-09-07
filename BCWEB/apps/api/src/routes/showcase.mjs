@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, slugify, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, applyScheduledUpdate, canManageShowcase, canEditShowcase, projectGrants , guardStudioFlag} from '../lib/lib.mjs';
 import { computeActivity, releaseMarkers } from '../lib/git-activity.mjs';
 
 /** applyScheduledUpdate, plus the version-history entry it does not know to write.
@@ -248,6 +248,12 @@ export default async function showcaseRoutes(app) {
     // Strip reserved fields for a non-manager so a grantee can't pin/publish/change
     // visibility even by hand-crafting the request — server is the authority.
     if (!canManageShowcase(req.user)) for (const k of RESERVED_SHOWCASE) delete data[k];
+    // Same idea one level down: `config` is free-form, so the studio switch inside it has to
+    // be defended too, or a grantee turns it on for themselves by hand-crafting the body.
+    if (data.config !== undefined) {
+      const cur = await p.showcaseProject.findUnique({ where: { id: req.params.id }, select: { config: true } }).catch(() => null);
+      data.config = guardStudioFlag(data.config, cur?.config, canManageShowcase(req.user));
+    }
     if (data.announceRevealAt !== undefined) data.announceRevealAt = data.announceRevealAt ? new Date(data.announceRevealAt) : null;
     if (!Object.keys(data).length) return { ok: true }; // nothing left to write
     const row = await p.showcaseProject.update({ where: { id: req.params.id }, data }).catch(() => null);

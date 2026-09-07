@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeCanvas, layoutFor, readingOrder, paintOrder, contentHeight, snap,
   DESIGN_WIDTH, STACK_BELOW, MIN_SCALE, GRID,
+  CANVAS_PRESETS, presetBlocks,
 } from '../src/lib/canvas.js';
 
 const canvas = (blocks, extra = {}) => normalizeCanvas({ blocks, ...extra });
@@ -132,4 +133,33 @@ test('a decorative box keeps a height when the canvas stacks', () => {
   assert.equal(box.kind, 'box');
   assert.ok(box.h >= GRID, 'a box carries its own height into the stacked rendering');
   assert.equal(box.h, 256);
+});
+
+test('every preset lands ready to use — on the grid and inside the canvas', () => {
+  // A preset that needs nudging before it looks right teaches the wrong first lesson, and a
+  // block placed off the right edge is one the author cannot see or grab.
+  for (const preset of CANVAS_PRESETS) {
+    const blocks = presetBlocks(preset.id);
+    const c = normalizeCanvas({ blocks });
+    assert.equal(c.blocks.length, blocks.length, `${preset.id}: normalize dropped a block`);
+    assert.equal(new Set(c.blocks.map((x) => x.id)).size, c.blocks.length, `${preset.id}: duplicate ids`);
+    for (const x of c.blocks) {
+      assert.equal(x.x % GRID, 0, `${preset.id}: x off grid`);
+      assert.equal(x.y % GRID, 0, `${preset.id}: y off grid`);
+      assert.ok(x.x + x.w <= DESIGN_WIDTH, `${preset.id}: "${x.id}" runs past the right edge`);
+      assert.ok(x.w >= GRID && x.h >= GRID, `${preset.id}: zero-sized block`);
+    }
+  }
+});
+
+test('an unknown preset id falls back instead of throwing', () => {
+  assert.doesNotThrow(() => presetBlocks('nope'));
+  assert.deepEqual(presetBlocks('blank'), []);
+});
+
+test('two uses of a preset do not share block ids', () => {
+  // They key React lists and the editor selects by them; shared ids would make two blocks the
+  // same block as far as both are concerned.
+  const a = presetBlocks('split'), b = presetBlocks('split');
+  assert.equal(new Set([...a, ...b].map((x) => x.id)).size, a.length + b.length);
 });

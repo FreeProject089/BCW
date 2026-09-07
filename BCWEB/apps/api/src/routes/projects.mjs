@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag} from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
 import { computeActivity, computeActivityFromCommits, computeActivityFromCounts, parseGitLog, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
@@ -872,9 +872,13 @@ export default async function projectRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();
     const k = settingKey(req.params.key);
-    await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: b.data.config }, update: { value: b.data.config } });
-    await snapshotVersion(p, req.params.key, b.data.config);
-    await snapshotConfigRevision(p, req.params.key, b.data.config, req.user?.uid);
+    // The studio switch is an admin decision; a per-project grantee editing their own page
+    // must not be able to grant it to themselves through the free-form config.
+    const cur = await p.adminSetting.findUnique({ where: { key: k } }).catch(() => null);
+    const cfg = guardStudioFlag(b.data.config, cur?.value, canManageProjects(req.user));
+    await p.adminSetting.upsert({ where: { key: k }, create: { key: k, value: cfg }, update: { value: cfg } });
+    await snapshotVersion(p, req.params.key, cfg);
+    await snapshotConfigRevision(p, req.params.key, cfg, req.user?.uid);
     return { ok: true };
   });
 
