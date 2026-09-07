@@ -413,17 +413,43 @@ function GuildConfig({ guildId, onSaved }) {
                     className={`w-8 h-8 rounded-lg border-2 transition ${draft.welcome.gifBg === k ? 'border-[var(--primary)] scale-105' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} style={{ background: col }} />
                 ))}
               </div>
-              <Field className="mt-2.5" label={t('ds.wc.bgimg', 'Custom background (optional)')}
-                hint={t('ds.wc.bgimg.h2', 'Replaces the colour. Upload an image right here — it is stored on the site (a /api/media/… link) so it can be reviewed and removed.')}>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <Button size="sm" variant="ghost" onClick={pickWelcomeBg}><ImageIcon size={13} /> {t('ds.wc.bgimg.upload', 'Upload')}</Button>
-                  <Input className="flex-1 min-w-[140px]" value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
-                  {draft.welcome.bgImage && <button type="button" onClick={() => setW({ bgImage: '' })} className="px-1.5 rounded-lg text-error hover:bg-error-bg shrink-0" title={t('common.remove', 'Remove')}>×</button>}
-                </div>
-              </Field>
-              {draft.welcome.bgImage && !isMediaPath(draft.welcome.bgImage) && (
-                <div className="text-[11px] text-warning flex items-center gap-1 mt-1"><AlertTriangle size={11} /> {t('ds.wc.bgimg.bad', 'Not an uploaded-media link — it must start with /api/media/. The colour will be used instead.')}</div>
-              )}
+              {(() => {
+                const bp = data.bannerPolicy || { allowed: true, paid: false, unlocked: false, priceCents: 0 };
+                const price = `${((bp.priceCents || 0) / 100).toFixed(2)}`;
+                // Off: the admin does not offer custom banners. Paid & not unlocked: a one-time
+                // purchase gate (keeping any existing image, but no new upload). Free / unlocked:
+                // the normal uploader. A custom banner is always at most one — replacing it drops
+                // the previous file server-side.
+                if (!bp.allowed) {
+                  return (
+                    <div className="mt-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[12px] text-[var(--muted)] flex items-center gap-2">
+                      <AlertTriangle size={13} className="text-[var(--faint)] shrink-0" /> {t('ds.wc.bg.off', 'Custom banner backgrounds are turned off for this bot. The colour presets above are available to everyone.')}
+                    </div>
+                  );
+                }
+                if (bp.paid && !bp.unlocked) {
+                  return (
+                    <div className="mt-2.5 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/[0.05] p-3">
+                      <div className="text-[12.5px] font-semibold flex items-center gap-1.5"><ImageIcon size={13} className="text-[var(--primary-2)]" /> {t('ds.wc.bg.paidt', 'Custom banner — a one-time upgrade')}</div>
+                      <p className="text-[11.5px] text-[var(--muted)] mt-1">{t('ds.wc.bg.paid', 'A custom welcome banner for this server is a paid upgrade ({p}), one-time. Ask an admin to unlock it for your server.').replace('{p}', price)}</p>
+                    </div>
+                  );
+                }
+                return (
+                  <Field className="mt-2.5" label={t('ds.wc.bgimg', 'Custom background (optional)')}
+                    hint={t('ds.wc.bgimg.h3', 'Replaces the colour. One image per server — uploading a new one removes the old. Stored on the site (a /api/media/… link) so it can be reviewed and removed.')}>
+                    {bp.paid && bp.unlocked && <div className="text-[11px] text-[var(--success)] mb-1.5 inline-flex items-center gap-1"><Check size={11} /> {t('ds.wc.bg.unlocked', 'Unlocked for this server')}</div>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Button size="sm" variant="ghost" onClick={pickWelcomeBg}><ImageIcon size={13} /> {t('ds.wc.bgimg.upload', 'Upload')}</Button>
+                      <Input className="flex-1 min-w-[140px]" value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
+                      {draft.welcome.bgImage && <button type="button" onClick={() => setW({ bgImage: '' })} className="px-1.5 rounded-lg text-error hover:bg-error-bg shrink-0" title={t('common.remove', 'Remove')}>×</button>}
+                    </div>
+                    {draft.welcome.bgImage && !isMediaPath(draft.welcome.bgImage) && (
+                      <div className="text-[11px] text-warning flex items-center gap-1 mt-1"><AlertTriangle size={11} /> {t('ds.wc.bgimg.bad', 'Not an uploaded-media link — it must start with /api/media/. The colour will be used instead.')}</div>
+                    )}
+                  </Field>
+                );
+              })()}
             </div>
           </div>
         )}

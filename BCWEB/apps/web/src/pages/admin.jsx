@@ -14664,6 +14664,30 @@ function AdminBot() {
           {/* Welcome / bye */}
           <div className="md:col-span-2">
           <ModuleCard id="sec-welcome" icon={Sparkles} title={t('db.mod.welcome', 'Welcome / bye')} desc={t('db.mod.welcome.d', 'Animated banner + message when members join or leave.')} enabled={!!scopeObj.welcome?.enabled} onToggle={(v) => sset('welcome.enabled', v)}>
+            {/* Custom-banner POLICY — global, applies to every server owner's dashboard.
+                Off: owners can only use the colour presets. Paid: an owner must have their server
+                unlocked (below) to upload one; the price is shown to them. Free: anyone can. */}
+            {(() => {
+              const wbp = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(cfg.welcomeBanner || {}) };
+              const unlockedStr = (wbp.unlocked || []).join('\n');
+              return (
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-1.5 space-y-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.wbp.title', 'Custom banner — owner upload policy')}</div>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+                    <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-[var(--primary)]" checked={wbp.allowed !== false} onChange={(e) => set('welcomeBanner.allowed', e.target.checked)} /> {t('db.wbp.allowed', 'Allow owners to upload a custom banner')}</label>
+                    <label className={`flex items-center gap-2 cursor-pointer ${wbp.allowed === false ? 'opacity-40 pointer-events-none' : ''}`}><input type="checkbox" className="accent-[var(--primary)]" checked={!!wbp.paid} onChange={(e) => set('welcomeBanner.paid', e.target.checked)} /> {t('db.wbp.paid', 'Make it a paid, one-time upgrade')}</label>
+                    {wbp.allowed !== false && wbp.paid && (
+                      <label className="flex items-center gap-2">{t('db.wbp.price', 'Price')} <Input className="!w-24 !py-1 !text-sm" type="number" min="0" step="0.01" value={((wbp.priceCents || 0) / 100).toString()} onChange={(e) => set('welcomeBanner.priceCents', Math.max(0, Math.round((Number(e.target.value) || 0) * 100)))} /></label>
+                    )}
+                  </div>
+                  {wbp.allowed !== false && wbp.paid && (
+                    <Field className="!mb-0" label={t('db.wbp.unlocked', 'Unlocked servers (one guild id per line)')} hint={t('db.wbp.unlocked.h', 'These servers may upload a custom banner without paying — grant one here once a server has bought the upgrade.')}>
+                      <Textarea rows={2} value={unlockedStr} onChange={(e) => set('welcomeBanner.unlocked', e.target.value.split(/[\n,]/).map((x) => x.trim()).filter(Boolean))} placeholder={'123456789012345678'} />
+                    </Field>
+                  )}
+                </div>
+              );
+            })()}
             <Field label={t('db.f.welcomech', 'Welcome channel id')}><AdminChanPicker guild={scopeGuild} value={sg('welcome.channelId')} onChange={(v) => sset('welcome.channelId', v)} /></Field>
             <Field label={t('db.f.joinmsg', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}"><Input value={sg('welcome.joinMessage')} onChange={(e) => sset('welcome.joinMessage', e.target.value)} /></Field>
             <Field label={t('db.f.leavemsg', 'Leave message')}><Input value={sg('welcome.leaveMessage')} onChange={(e) => sset('welcome.leaveMessage', e.target.value)} /></Field>

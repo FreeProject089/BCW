@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { getObject } from '../lib/storage.mjs';
+import { getObject, deleteObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify } from '../lib/lib.mjs';
 import { issueWarn } from '../lib/warns.mjs';
@@ -2321,6 +2321,9 @@ export default async function botRoutes(app) {
     return {
       guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
       globalStorage: { enabled: memberPolicy(cfg).enabled, inactiveDays: memberPolicy(cfg).inactiveDays },
+      // Custom welcome-banner policy so the owner UI can show the gate (off / free / paid) and,
+      // when paid, whether THIS guild is unlocked and at what price.
+      bannerPolicy: (() => { const b = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(cfg.welcomeBanner || {}) }; return { allowed: !!b.allowed, paid: !!b.paid, priceCents: b.priceCents || 0, unlocked: (b.unlocked || []).map(String).includes(String(g.guildId)) }; })(),
       roles: gEntry?.roles || [], channels: gEntry?.channels || [],
     };
   });
@@ -2478,6 +2481,13 @@ export default async function botRoutes(app) {
     // unknown columns.
     const { welcome, joinToCreate, gating, blog, rolePanels, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
+    // Custom welcome-banner policy (admin-set) + this guild's CURRENT banner, read once so the
+    // save can (a) refuse a NEW banner when uploads aren't free, and (b) delete the previous
+    // file when it's replaced — one banner per guild, never an orphan left in the store.
+    const rawCfg0 = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    const bannerPol = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(rawCfg0.welcomeBanner || {}) };
+    const oldBg = isMediaPath(rawCfg0.guilds?.[cur.guildId]?.welcome?.bgImage) ? rawCfg0.guilds[cur.guildId].welcome.bgImage : '';
+    let oldBgToDelete = null;
     // `moderation` runs bans/kicks and MUST log somewhere — same refusal as the admin path.
     // memberMode is not a choice a server makes any more (the database is global) — it is
     // accepted for old clients and dropped.
@@ -2492,6 +2502,17 @@ export default async function botRoutes(app) {
       // Same guard the admin editor documents: a background must be an uploaded-media path, or
       // both renderers silently ignore it. Drop anything else rather than store a dead link.
       if (w.bgImage && !/^\/api\/media\/[A-Za-z0-9._/-]+$/.test(w.bgImage)) w.bgImage = '';
+      // Gate a NEW/CHANGED custom banner. Free upload is only allowed when the admin permits it;
+      // when it is a paid feature, only a guild that has been unlocked (bought it / admin-granted)
+      // may set one. An unchanged banner, or clearing it, is always allowed.
+      if (w.bgImage !== undefined && w.bgImage && w.bgImage !== oldBg) {
+        if (!bannerPol.allowed) return reply.code(403).send({ error: 'banner_disabled' });
+        if (bannerPol.paid && !(bannerPol.unlocked || []).map(String).includes(String(cur.guildId))) {
+          return reply.code(402).send({ error: 'banner_locked', priceCents: bannerPol.priceCents || 0 });
+        }
+      }
+      // One banner per guild: a change (to another image, or to none) drops the previous file.
+      if (w.bgImage !== undefined && oldBg && w.bgImage !== oldBg) oldBgToDelete = oldBg;
       featurePatch.welcome = w;
     }
     if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
@@ -2531,6 +2552,8 @@ export default async function botRoutes(app) {
       }
       await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: nextCfg }, update: { value: nextCfg } });
     }
+    // The replaced banner is removed from the store now the new config is committed (best effort).
+    if (oldBgToDelete) { try { await deleteObject(oldBgToDelete.replace('/api/media/', '')); } catch { /* the file may already be gone */ } }
     await logAudit(p, req.user.uid, 'bot.guild.self', `${g.guildId} mode=${g.memberMode}${changed.length ? ' +' + changed.join('+') : ''}${blog ? ' +blog' : ''}${rolePanels ? ' +panels' : ''}`);
     const stored = await p.discordActivity.count({ where: { guildId: g.guildId } });
     const cfg = await getBotConfig(p);
