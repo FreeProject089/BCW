@@ -399,85 +399,19 @@ export default async function ogRoutes(app) {
     const guildId = String(req.query?.guildId || '');
     const meId = String(req.query?.me || '');
     let where = { level: { gt: 0 } };
-    let scopeName = 'Global';
     if (guildId) {
       const ids = (await p.discordActivity.findMany({ where: { guildId }, select: { discordId: true }, take: 20000 })).map((r) => r.discordId);
       const userIds = (await p.discordLink.findMany({ where: { discordId: { in: ids } }, select: { userId: true } })).map((l) => l.userId);
       where = { level: { gt: 0 }, userId: { in: userIds } };
-      scopeName = (await p.botGuild.findFirst({ where: { guildId }, select: { name: true } }))?.name || 'Server';
     }
     const rows = await p.userEconomy.findMany({ where, include: { user: { select: { id: true, displayName: true, avatar: true } } }, orderBy: [{ level: 'desc' }, { xp: 'desc' }], take: 10 });
     const eco = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value?.economy || {};
     try {
-      const { createCanvas, loadImage } = await import('@napi-rs/canvas');
-      // Redrawn clean: a header band, roomy rows, medal-ringed avatars for the podium, and a
-      // coloured-initial fallback so a member without a picture never shows a dead grey disc.
-      const W = 920, ROW = 66, TOP = 118, PAD = 26, H = TOP + Math.max(1, rows.length) * ROW + 24;
-      const c = createCanvas(W, H); const x = c.getContext('2d');
-      const bg = x.createLinearGradient(0, 0, W, H); bg.addColorStop(0, '#0e1118'); bg.addColorStop(0.55, '#12101c'); bg.addColorStop(1, '#1a1024'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
-      // Header band + accent hairline.
-      const hb = x.createLinearGradient(0, 0, W, 0); hb.addColorStop(0, 'rgba(245,158,11,0.14)'); hb.addColorStop(1, 'rgba(245,158,11,0)'); x.fillStyle = hb; x.fillRect(0, 0, W, TOP - 24);
-      x.fillStyle = '#f59e0b'; x.fillRect(0, 0, W, 5);
-      x.fillStyle = '#fff'; x.font = 'bold 36px sans-serif'; x.textAlign = 'left'; x.textBaseline = 'alphabetic';
-      x.fillText('Leaderboard', PAD, 58);
-      x.font = '500 19px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillText(`${scopeName} · by level`, PAD, 86);
-      x.textAlign = 'right'; x.font = '600 17px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.45)'; x.fillText('BetterCommunity', W - PAD, 56); x.textAlign = 'left';
-      const cur = eco.currencyName || 'points';
-      const medals = ['#f5c542', '#c9d0da', '#cd7f32'];
-      // Deterministic pleasant colour for the initial-fallback avatar (same id → same hue).
-      const hueOf = (s) => { let h = 0; for (let k = 0; k < s.length; k++) h = (h * 31 + s.charCodeAt(k)) % 360; return h; };
-      const topXp = Math.max(1, rows[0]?.xp || 1);
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i]; const y = TOP + i * ROW; const cy = y + (ROW - 10) / 2;
-        const mine = meId && r.user.id === meId;
-        // Row card.
-        x.fillStyle = mine ? 'rgba(245,158,11,0.18)' : i % 2 ? 'rgba(255,255,255,0.045)' : 'rgba(255,255,255,0.02)';
-        x.beginPath(); if (x.roundRect) x.roundRect(PAD - 6, y, W - (PAD - 6) * 2, ROW - 10, 14); else x.rect(PAD - 6, y, W - (PAD - 6) * 2, ROW - 10); x.fill();
-        if (mine) { x.strokeStyle = 'rgba(245,158,11,0.55)'; x.lineWidth = 1.5; x.stroke(); }
-        // Rank.
-        x.fillStyle = i < 3 ? medals[i] : 'rgba(255,255,255,0.85)'; x.font = i < 3 ? 'bold 24px sans-serif' : '600 20px sans-serif';
-        x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 52, cy);
-        // Avatar with a ring (medal for podium, subtle otherwise).
-        const ax = 108, ar = 22;
-        x.save(); x.beginPath(); x.arc(ax, cy, ar + 2.5, 0, Math.PI * 2); x.fillStyle = i < 3 ? medals[i] : 'rgba(255,255,255,0.18)'; x.fill(); x.restore();
-        let drew = false;
-        // Render the avatar in-process. This used to fetch `${SITE()}/avatar/:id` over HTTP —
-        // two bugs in one line: that route answers **SVG**, which @napi-rs/canvas cannot
-        // decode (its sibling `/avatar/:id/png` exists precisely because "an SVG attached as
-        // .png simply does not show"), and it makes the API call its own public URL, which
-        // from inside the compose network need not resolve at all. Either way `loadImage`
-        // threw for every row and every member rendered as the fallback disc. `renderAvatarPng`
-        // is what /og/profile/:id already uses, so this is the same picture with no round-trip.
-        try {
-          const av = await loadAvatarImage(r.user, ar * 4);
-          if (!av) throw new Error('no avatar');
-          x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.clip();
-          const s = Math.max((ar * 2) / av.width, (ar * 2) / av.height), w = av.width * s, h = av.height * s;  // cover-fit, never squashed
-          x.drawImage(av, ax - w / 2, cy - h / 2, w, h); x.restore(); drew = true;
-        } catch { /* fallback below */ }
-        if (!drew) {
-          const hue = hueOf(String(r.user.id || r.user.displayName || 'x'));
-          x.save(); x.beginPath(); x.arc(ax, cy, ar, 0, Math.PI * 2); x.fillStyle = `hsl(${hue} 55% 42%)`; x.fill();
-          x.fillStyle = '#fff'; x.font = 'bold 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
-          x.fillText(String(r.user.displayName || 'M').trim().charAt(0).toUpperCase() || 'M', ax, cy + 1); x.restore();
-        }
-        // Name + level chip + points.
-        x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.font = `${mine ? 'bold' : '600'} 22px sans-serif`;
-        x.fillText(String(r.user.displayName || 'Member').slice(0, 24), 150, cy - 8);
-        // Lv chip.
-        const chip = `Lv ${r.level}`; x.font = 'bold 13px sans-serif'; const cw = x.measureText(chip).width + 18;
-        x.fillStyle = 'rgba(245,158,11,0.18)'; x.beginPath(); if (x.roundRect) x.roundRect(150, cy + 4, cw, 20, 10); else x.rect(150, cy + 4, cw, 20); x.fill();
-        x.fillStyle = '#f9b834'; x.textAlign = 'center'; x.fillText(chip, 150 + cw / 2, cy + 15);
-        // XP bar to the right of the chip.
-        const barX = 150 + cw + 12, barW = 300;
-        x.fillStyle = 'rgba(255,255,255,0.08)'; x.beginPath(); if (x.roundRect) x.roundRect(barX, cy + 10, barW, 6, 3); else x.rect(barX, cy + 10, barW, 6); x.fill();
-        x.fillStyle = 'rgba(245,158,11,0.8)'; const bw = Math.max(6, Math.round(barW * (r.xp / topXp))); x.beginPath(); if (x.roundRect) x.roundRect(barX, cy + 10, bw, 6, 3); else x.rect(barX, cy + 10, bw, 6); x.fill();
-        // Points.
-        x.textAlign = 'right'; x.fillStyle = '#fff'; x.font = 'bold 20px sans-serif'; x.fillText(r.points.toLocaleString('en-US'), W - PAD, cy - 6);
-        x.fillStyle = 'rgba(255,255,255,0.45)'; x.font = '500 12px sans-serif'; x.fillText(cur, W - PAD, cy + 12);
-      }
-      if (!rows.length) { x.fillStyle = 'rgba(255,255,255,0.6)'; x.font = '500 20px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('Nobody has a level yet.', W / 2, TOP + ROW / 2); }
-      const png = await c.encode('png');
+      // Drawn by lib/leaderboard-card.mjs. It moved out of this route so the card can be
+      // rendered with no request, no database and no server — which is how it gets looked at
+      // while it is being changed, rather than adjusted by reasoning about coordinates.
+      const { renderLeaderboardCard } = await import('../lib/leaderboard-card.mjs');
+      const png = await renderLeaderboardCard({ rows, meId, currencyName: eco.currencyName || 'points' });
       return reply.header('Content-Type', 'image/png').header('Cache-Control', 'public, max-age=60').header('X-Robots-Tag', 'noindex').send(png);
     } catch { return reply.redirect(LOGO()); }
   });
