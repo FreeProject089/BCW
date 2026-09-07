@@ -208,7 +208,7 @@ async function cmdLevel(i) {
       `**${e.displayName}**${e.badges?.length ? ` · 🏅 ${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
       `${ui.bar(e.xpThisLevel, e.xpForNext)}  ${t('level.xp', { a: n(e.xpThisLevel), b: n(e.xpForNext) })}`,
       `-# ${t('level.next', { n: n(next), l: e.level + 1 })}`,
-      `💰 **${n(e.points)}** ${cur}`,
+      `${ui.ic('coin')} **${n(e.points)}** ${cur}`,
     ],
     sections: statsOf(e.stats),
     footer: rateLine,
@@ -233,7 +233,7 @@ async function cmdProfile(i) {
     body: [
       `**Level ${e.level}** · **${n(e.points)}** ${cur}`,
       e.badges?.length ? `🏅 ${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
-      `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · 🎙️ ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
+      `💬 ${n(e.stats?.messages)} messages · ✨ ${n(e.stats?.reactions)} reactions · ${ui.ic('voice')} ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
     image: png ? 'attachment://profile.png' : null, files,
     buttons: [ui.btn(url, 'View full profile', ButtonStyle.Secondary, { emoji: 'site' }), ...(target.id === i.user.id ? ecoButtons('') : [])],
@@ -295,7 +295,7 @@ async function handleShopBuy(i) {
     const d = r.delivery || {};
     const lines = [`You bought **${r.item?.name || 'item'}**. Balance: **${n(r.points)}**.`];
     if (d.kind === 'badge') lines.push(`🏅 The **${d.badge}** badge is now on your BCWEB profile.`);
-    else if (d.revealed === false) lines.push(`✉️ Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
+    else if (d.revealed === false) lines.push(`${ui.ic('reveal')} Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
     else lines.push('🎁 An admin has been notified to deliver it — *pending* in your inventory until then.');
     return ui.reply(i, { title: `${ui.ic('done')} Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
