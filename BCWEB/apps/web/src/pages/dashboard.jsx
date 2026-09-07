@@ -96,7 +96,9 @@ function EconomyWidget({ onOpenShop }) {
           <div className="flex h-2.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="img" aria-label={src.map((x) => `${x.label} ${share(x)}%`).join(', ')}>
             {src.map((x) => (share(x) > 0 ? <div key={x.key} style={{ width: `${share(x)}%`, background: x.color }} title={`${x.label} · ${share(x)}%`} /> : null))}
           </div>
-          <div className="grid grid-cols-3 gap-2 mt-2.5">
+          {/* The detailed per-source tiles are secondary — hidden on phones to keep the card
+              light there (the proportion bar above already tells the story); shown from sm up. */}
+          <div className="hidden sm:grid grid-cols-3 gap-2 mt-2.5">
             {src.map((x) => (
               <div key={x.key} className="min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
                 <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] min-w-0">
@@ -105,6 +107,12 @@ function EconomyWidget({ onOpenShop }) {
                 <div className="text-sm font-semibold tabular-nums leading-tight mt-0.5">{x.count} <span className="text-[10px] font-normal text-[var(--faint)]">· {share(x)}%</span></div>
                 <div className="text-[10px] text-[var(--faint)] truncate">{x.rate}</div>
               </div>
+            ))}
+          </div>
+          {/* On phones, one compact legend line stands in for the tiles above. */}
+          <div className="flex sm:hidden items-center gap-3 mt-2 text-[11px] text-[var(--muted)] flex-wrap">
+            {src.map((x) => (
+              <span key={x.key} className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: x.color }} />{x.label} {share(x)}%</span>
             ))}
           </div>
         </div>
