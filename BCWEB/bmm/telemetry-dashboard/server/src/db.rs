@@ -1207,3 +1207,70 @@ async fn retention_cohorts_period(pool: &PgPool, periods: i64, period_ms: i64) -
     result.reverse();
     result
 }
+
+// ── Per-version adoption (from the $identify app_version prop) ───────────────
+// `users` = everyone who ever ran this version; `current_users` = users whose LATEST
+// identify carries it (adoption share); `crashes` = crash-ish events by those users.
+pub async fn version_stats(pool: &PgPool) -> Vec<Value> {
+    let ever: Vec<(Option<String>, i64, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT props->'$set'->>'app_version' ver, COUNT(DISTINCT distinct_id), MIN(ts_ms), MAX(ts_ms)
+         FROM events WHERE event='$identify' AND props->'$set'->>'app_version' IS NOT NULL
+         GROUP BY ver",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let cur: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "SELECT ver, COUNT(*) FROM (
+            SELECT DISTINCT ON (distinct_id) distinct_id, props->'$set'->>'app_version' ver
+            FROM events WHERE event='$identify' AND props->'$set'->>'app_version' IS NOT NULL
+            ORDER BY distinct_id, ts_ms DESC
+         ) t GROUP BY ver",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    let crashes: Vec<(Option<String>, i64)> = sqlx::query_as(
+        "WITH cur AS (
+            SELECT DISTINCT ON (distinct_id) distinct_id, props->'$set'->>'app_version' ver
+            FROM events WHERE event='$identify' AND props->'$set'->>'app_version' IS NOT NULL
+            ORDER BY distinct_id, ts_ms DESC)
+         SELECT cur.ver, COUNT(*) FROM events ev JOIN cur ON cur.distinct_id=ev.distinct_id
+         WHERE ev.event ILIKE '%crash%' GROUP BY cur.ver",
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut curm: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for (v, n) in cur {
+        if let Some(v) = v {
+            curm.insert(v, n);
+        }
+    }
+    let mut crm: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    for (v, n) in crashes {
+        if let Some(v) = v {
+            crm.insert(v, n);
+        }
+    }
+    let mut out: Vec<Value> = ever
+        .into_iter()
+        .filter_map(|(ver, users, first_ms, last_ms)| {
+            let ver = ver?;
+            let current = *curm.get(&ver).unwrap_or(&0);
+            let crashes = *crm.get(&ver).unwrap_or(&0);
+            Some(json!({
+                "version": ver, "users": users, "current_users": current, "crashes": crashes,
+                "first_ms": first_ms, "last_ms": last_ms,
+            }))
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        let ca = a["current_users"].as_i64().unwrap_or(0);
+        let cb = b["current_users"].as_i64().unwrap_or(0);
+        cb.cmp(&ca)
+            .then(b["users"].as_i64().unwrap_or(0).cmp(&a["users"].as_i64().unwrap_or(0)))
+    });
+    out
+}

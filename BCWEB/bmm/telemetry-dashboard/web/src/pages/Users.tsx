@@ -1,20 +1,36 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useStats } from "../lib/store";
-import { Card, Empty } from "../components/ui";
+import { Card, Empty, CsvButton } from "../components/ui";
 import { ProfileAvatar, Flag } from "../components/visuals";
 import { fmtDate, nf } from "../lib/format";
+import { downloadCsv } from "../lib/csv";
 
 export default function Users() {
   const s = useStats()!;
   const [q, setQ] = useState("");
   const rows = s.users.filter((u) => !q || u.creator_id.toLowerCase().includes(q.toLowerCase()) || (u.names || []).join(" ").toLowerCase().includes(q.toLowerCase()));
 
+  const exportCsv = () => downloadCsv("bmm_users", rows, [
+    { key: "creator_id", label: "Creator id" },
+    { key: "name", label: "Name", get: (u) => u.names?.[0] || "" },
+    { key: "country", label: "Country", get: (u) => u.country || "" },
+    { key: "region", label: "Region", get: (u) => u.region || "" },
+    { key: "os", label: "OS", get: (u) => u.config?.os || "" },
+    { key: "version", label: "Version", get: (u) => u.versions?.[0] || "" },
+    { key: "sessions", label: "Sessions" },
+    { key: "first_seen", label: "First seen", get: (u) => fmtDate(u.first_seen) },
+    { key: "last_seen", label: "Last seen", get: (u) => fmtDate(u.last_seen) },
+  ]);
+
   return (
     <Card
       title={`Users · ${s.users.length}`}
       right={
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search creator id / name" className="bg-panel2 border border-line rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:border-brand" />
+        <div className="flex items-center gap-2">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search creator id / name" className="bg-panel2 border border-line rounded-lg px-3 py-1.5 text-sm w-64 focus:outline-none focus:border-brand" />
+          <CsvButton onClick={exportCsv} />
+        </div>
       }
     >
       {rows.length ? (

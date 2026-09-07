@@ -7,6 +7,8 @@ import Layout from "./components/Layout";
 // keeping the initial bundle small.
 const Overview = lazy(() => import("./pages/Overview"));
 const Live = lazy(() => import("./pages/Live"));
+const Insights = lazy(() => import("./pages/Insights"));
+const Versions = lazy(() => import("./pages/Versions"));
 const Events = lazy(() => import("./pages/Events"));
 const Sessions = lazy(() => import("./pages/Sessions"));
 const Pages = lazy(() => import("./pages/Pages"));
@@ -84,6 +86,8 @@ function Shell() {
         <Route element={<Layout />}>
           <Route index element={<Gate><Overview /></Gate>} />
           <Route path="live" element={<Gate><Live /></Gate>} />
+          <Route path="insights" element={<Gate><Insights /></Gate>} />
+          <Route path="versions" element={<Gate><Versions /></Gate>} />
           <Route path="events" element={<Gate><Events /></Gate>} />
           <Route path="sessions" element={<Gate><Sessions /></Gate>} />
           <Route path="pages" element={<Gate><Pages /></Gate>} />

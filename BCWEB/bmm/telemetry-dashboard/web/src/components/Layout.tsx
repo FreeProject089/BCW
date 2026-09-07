@@ -1,23 +1,53 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useStore, bcHome } from "../lib/store";
+import { Segmented } from "./ui";
 
-const NAV: { to: string; label: string; icon: string }[] = [
-  { to: "/", label: "Overview", icon: "M3 12h7V3H3v9Zm0 9h7v-7H3v7Zm11 0h7V12h-7v9Zm0-18v7h7V3h-7Z" },
-  { to: "/live", label: "Live", icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 4v6l4 2" },
-  { to: "/events", label: "Events", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8Z" },
-  { to: "/sessions", label: "Sessions", icon: "M4 5h16M4 12h16M4 19h10" },
-  { to: "/pages", label: "Pages & perf", icon: "M4 4h16v4H4Zm0 6h16v10H4Z" },
-  { to: "/map", label: "Map", icon: "M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" },
-  { to: "/funnels", label: "Funnels", icon: "M3 4h18l-7 8v6l-4 2v-8L3 4Z" },
-  { to: "/journeys", label: "Journeys", icon: "M4 19V5m0 14 4-3 4 3 4-3 4 3M4 5l4-3 4 3 4-3 4 3" },
-  { to: "/retention", label: "Retention", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
-  { to: "/goals", label: "Goals", icon: "M12 2v20M2 12h20M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" },
-  { to: "/users", label: "Users", icon: "M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" },
-  { to: "/bmm", label: "BMM insights", icon: "M21 16V8l-9-5-9 5v8l9 5 9-5ZM3 8l9 5 9-5" },
-  { to: "/admin", label: "Admin", icon: "M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z" },
-  { to: "/storage", label: "Stockage", icon: "M4 6a8 3 0 0 0 16 0 8 3 0 0 0-16 0Zm0 0v12a8 3 0 0 0 16 0V6M4 12a8 3 0 0 0 16 0" },
-  { to: "/docs", label: "Documentation", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z" },
+// Nav grouped into bands, so fifteen destinations read as five themes rather than one
+// long undifferentiated list.
+const NAV: { group: string; items: { to: string; label: string; icon: string }[] }[] = [
+  {
+    group: "Temps réel",
+    items: [
+      { to: "/", label: "Overview", icon: "M3 12h7V3H3v9Zm0 9h7v-7H3v7Zm11 0h7V12h-7v9Zm0-18v7h7V3h-7Z" },
+      { to: "/live", label: "Live", icon: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 4v6l4 2" },
+      { to: "/insights", label: "Insights", icon: "M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12c.7.7 1 1.3 1 2h6c0-.7.3-1.3 1-2a7 7 0 0 0-4-12Z" },
+    ],
+  },
+  {
+    group: "Audience",
+    items: [
+      { to: "/users", label: "Users", icon: "M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" },
+      { to: "/map", label: "Map", icon: "M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" },
+      { to: "/retention", label: "Retention", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
+      { to: "/versions", label: "Versions", icon: "M12 2v6l4 2M7 7 3 5v6l4 2m10-6 4-2v6l-4 2M7 13v6l5 2 5-2v-6" },
+    ],
+  },
+  {
+    group: "Comportement",
+    items: [
+      { to: "/events", label: "Events", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8Z" },
+      { to: "/sessions", label: "Sessions", icon: "M4 5h16M4 12h16M4 19h10" },
+      { to: "/journeys", label: "Journeys", icon: "M4 19V5m0 14 4-3 4 3 4-3 4 3M4 5l4-3 4 3 4-3 4 3" },
+      { to: "/funnels", label: "Funnels", icon: "M3 4h18l-7 8v6l-4 2v-8L3 4Z" },
+      { to: "/goals", label: "Goals", icon: "M12 2v20M2 12h20M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" },
+    ],
+  },
+  {
+    group: "Produit",
+    items: [
+      { to: "/pages", label: "Pages & perf", icon: "M4 4h16v4H4Zm0 6h16v10H4Z" },
+      { to: "/bmm", label: "BMM insights", icon: "M21 16V8l-9-5-9 5v8l9 5 9-5ZM3 8l9 5 9-5" },
+    ],
+  },
+  {
+    group: "Ops",
+    items: [
+      { to: "/admin", label: "Admin", icon: "M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z" },
+      { to: "/storage", label: "Stockage", icon: "M4 6a8 3 0 0 0 16 0 8 3 0 0 0-16 0Zm0 0v12a8 3 0 0 0 16 0V6M4 12a8 3 0 0 0 16 0" },
+      { to: "/docs", label: "Documentation", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z" },
+    ],
+  },
 ];
 
 function Logo() {
@@ -31,7 +61,7 @@ function Logo() {
 }
 
 export default function Layout() {
-  const { stats, connected, adminKey, setAdminKey } = useStore();
+  const { stats, connected, adminKey, setAdminKey, viewMode, setViewMode } = useStore();
   const liveN = stats?.totals?.live ?? 0;
   const [navOpen, setNavOpen] = useState(false);
   return (
@@ -45,13 +75,18 @@ export default function Layout() {
           <div className="font-semibold tracking-tight">BMM Telemetry</div>
         </div>
         <nav className="p-2 flex-1 overflow-y-auto">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.to === "/"} onClick={() => setNavOpen(false)} className={({ isActive }) => `navlink ${isActive ? "navlink-active" : ""}`}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                <path d={n.icon} />
-              </svg>
-              {n.label}
-            </NavLink>
+          {NAV.map((section) => (
+            <div key={section.group} className="mb-1">
+              <div className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-sub/70 font-semibold">{section.group}</div>
+              {section.items.map((n) => (
+                <NavLink key={n.to} to={n.to} end={n.to === "/"} onClick={() => setNavOpen(false)} className={({ isActive }) => `navlink ${isActive ? "navlink-active" : ""}`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                    <path d={n.icon} />
+                  </svg>
+                  {n.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="p-3 border-t border-line text-[11px] text-sub">
@@ -76,6 +111,12 @@ export default function Layout() {
             <span className="text-sub">online</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <Segmented
+              className="hidden sm:inline-flex"
+              value={viewMode}
+              onChange={setViewMode}
+              options={[{ key: "simple", label: "Simple" }, { key: "advanced", label: "Avancé" }]}
+            />
             <input
               value={adminKey}
               onChange={(e) => setAdminKey(e.target.value)}

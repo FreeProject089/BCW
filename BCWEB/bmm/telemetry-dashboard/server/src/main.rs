@@ -62,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/stats", get(get_stats))
         .route("/api/stream", get(stream_handler))
         .route("/api/sessions", get(get_sessions))
+        .route("/api/versions", get(get_versions))
         .route("/api/funnel", post(post_funnel))
         .route("/api/journeys", post(post_journeys))
         .route("/api/goals", get(get_goals).post(post_goal))
@@ -471,6 +472,10 @@ async fn stream_handler(State(st): State<Shared>) -> Sse<impl Stream<Item = Resu
 
 async fn get_sessions(State(st): State<Shared>) -> Json<Value> {
     Json(json!({ "sessions": db::sessions_list(&st.pool, 80).await }))
+}
+
+async fn get_versions(State(st): State<Shared>) -> Json<Value> {
+    Json(json!({ "versions": db::version_stats(&st.pool).await }))
 }
 
 async fn get_replay(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> (StatusCode, Json<Value>) {

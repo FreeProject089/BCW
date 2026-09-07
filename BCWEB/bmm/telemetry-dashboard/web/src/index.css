@@ -20,10 +20,15 @@ body {
 
 @layer components {
   .card {
-    @apply bg-panel border border-line rounded-xl;
+    @apply border border-line rounded-xl;
+    background: linear-gradient(180deg, theme("colors.panel2") 0%, theme("colors.panel") 60%);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
   }
   .kpi {
-    @apply card px-4 py-3;
+    @apply card px-4 py-3 transition-colors;
+  }
+  .kpi:hover {
+    border-color: color-mix(in srgb, theme("colors.brand") 40%, theme("colors.line"));
   }
   .pill {
     @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs;

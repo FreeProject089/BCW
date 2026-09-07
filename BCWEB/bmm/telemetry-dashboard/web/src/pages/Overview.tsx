@@ -1,22 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useStats } from "../lib/store";
-import { Card, StatusDot, Empty } from "../components/ui";
+import { useStats, useViewMode } from "../lib/store";
+import { Card, StatusDot, Empty, Metric, Segmented, SectionTitle } from "../components/ui";
 import { Chart, axisX, axisY } from "../components/Chart";
 import { ProfileAvatar, Flag, ArrowIcon } from "../components/visuals";
-import { nf, ago } from "../lib/format";
-
-function Spark({ data, color = "#5b8cff" }: { data: number[]; color?: string }) {
-  if (!data.length) return <div className="h-8" />;
-  const w = 120, h = 32;
-  const max = Math.max(1, ...data), min = Math.min(...data), rng = max - min || 1;
-  const pts = data.map((v, i) => `${(i / (data.length - 1 || 1)) * w},${h - ((v - min) / rng) * (h - 4) - 2}`).join(" ");
-  return (
-    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="mt-1">
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-    </svg>
-  );
-}
+import { InsightsStrip } from "../components/Insights";
+import { buildInsights } from "../lib/insights";
+import { nf, ago, trend } from "../lib/format";
 
 function Bars({ rows }: { rows: { label: string; cc?: string; value: number }[] }) {
   if (!rows.length) return <Empty>No data.</Empty>;
@@ -36,16 +26,6 @@ function Bars({ rows }: { rows: { label: string; cc?: string; value: number }[] 
   );
 }
 
-function KpiSpark({ label, value, data, color }: { label: string; value: React.ReactNode; data: number[]; color?: string }) {
-  return (
-    <div className="kpi">
-      <div className="text-[11px] uppercase tracking-wide text-sub">{label}</div>
-      <div className="text-2xl font-semibold mt-0.5">{value}</div>
-      <Spark data={data} color={color} />
-    </div>
-  );
-}
-
 const GRAN: { key: string; label: string }[] = [
   { key: "15m", label: "15 min" },
   { key: "30m", label: "30 min" },
@@ -53,7 +33,6 @@ const GRAN: { key: string; label: string }[] = [
   { key: "1d", label: "24 h" },
 ];
 
-// Series the overview chart can plot (each maps to a bucket field).
 const METRICS: { key: string; label: string; color: string }[] = [
   { key: "users", label: "Users", color: "#5b8cff" },
   { key: "pageviews", label: "Pageviews", color: "#37d399" },
@@ -64,12 +43,14 @@ const METRICS: { key: string; label: string; color: string }[] = [
 export default function Overview() {
   const s = useStats()!;
   const t = s.totals;
+  const [mode] = useViewMode();
+  const simple = mode === "simple";
   const [gran, setGran] = useState("1h");
   const [active, setActive] = useState<Set<string>>(new Set(["users", "pageviews"]));
   const toggle = (k: string) => setActive((a) => {
     const n = new Set(a);
     n.has(k) ? n.delete(k) : n.add(k);
-    if (n.size === 0) n.add(k); // never empty
+    if (n.size === 0) n.add(k);
     return n;
   });
 
@@ -77,6 +58,7 @@ export default function Overview() {
   const sSessions = s.series.map((r: any) => r.sessions);
   const sPv = s.series.map((r: any) => r.pageviews);
   const sEvents = s.series.map((r: any) => r.events);
+  const insights = buildInsights(s);
 
   const src: any[] = (s as any).buckets?.[gran] || s.series.map((r: any) => ({ ...r, t: (r.hour || "").slice(11) + "h" }));
   const interval = gran === "15m" ? 7 : gran === "30m" ? 3 : 0;
@@ -117,17 +99,30 @@ export default function Overview() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <KpiSpark label="Users" value={nf(t.users)} data={sUsers} />
-        <KpiSpark label="Live now" value={nf(t.live)} data={sUsers} color="#37d399" />
-        <KpiSpark label="Sessions" value={nf(t.sessions)} data={sSessions} color="#a78bfa" />
-        <KpiSpark label="Pageviews" value={nf(t.pageviews)} data={sPv} color="#37d399" />
-        <KpiSpark label="Events" value={nf(t.events)} data={sEvents} color="#f4b740" />
-        <KpiSpark label="Pages / session" value={t.pages_per_session} data={sPv} />
-        <KpiSpark label="Avg session" value={`${t.avg_session_min}m`} data={sSessions} color="#a78bfa" />
-        <KpiSpark label="Events / session" value={(t as any).avg_events_per_session ?? "—"} data={sEvents} color="#f4b740" />
-        <KpiSpark label="Sessions / user" value={(t as any).avg_sessions_per_user ?? "—"} data={sSessions} color="#a78bfa" />
+      {/* KPI band — four essentials in simple mode, the full nine in advanced. */}
+      <div className={`grid grid-cols-2 md:grid-cols-4 ${simple ? "" : "xl:grid-cols-7"} gap-3`}>
+        <Metric label="Users" value={nf(t.users)} spark={sUsers} delta={trend(sUsers)} />
+        <Metric label="Live now" value={nf(t.live)} spark={sUsers} color="#37d399" />
+        <Metric label="Sessions" value={nf(t.sessions)} spark={sSessions} delta={trend(sSessions)} color="#a78bfa" />
+        <Metric label="Pageviews" value={nf(t.pageviews)} spark={sPv} delta={trend(sPv)} color="#37d399" />
+        {!simple && (
+          <>
+            <Metric label="Events" value={nf(t.events)} spark={sEvents} delta={trend(sEvents)} color="#f4b740" />
+            <Metric label="Pages / session" value={t.pages_per_session} spark={sPv} />
+            <Metric label="Avg session" value={`${t.avg_session_min}m`} spark={sSessions} color="#a78bfa" />
+            <Metric label="Events / session" value={(t as any).avg_events_per_session ?? "—"} spark={sEvents} color="#f4b740" />
+            <Metric label="Sessions / user" value={(t as any).avg_sessions_per_user ?? "—"} spark={sSessions} color="#a78bfa" />
+          </>
+        )}
       </div>
+
+      {/* Auto-insights: what the data says right now. */}
+      {insights.length > 0 && (
+        <div>
+          <SectionTitle right={<Link to="/insights" className="text-xs text-brand">Tout voir</Link>}>Insights</SectionTitle>
+          <InsightsStrip insights={insights} max={simple ? 3 : 6} />
+        </div>
+      )}
 
       <Card
         title="Activity"
@@ -139,23 +134,21 @@ export default function Overview() {
               ))}
             </div>
             <span className="w-px h-4 bg-line" />
-            <div className="flex gap-1">
-              {GRAN.map((g) => (
-                <button key={g.key} onClick={() => setGran(g.key)} className={`pill ${gran === g.key ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>{g.label}</button>
-              ))}
-            </div>
+            <Segmented value={gran} onChange={setGran} options={GRAN.map((g) => ({ key: g.key, label: g.label }))} />
           </div>
         }
       >
         <Chart option={mainOpt} height={300} />
       </Card>
 
-      <Card
-        title="Quand les utilisateurs utilisent BMM"
-        right={<span className="text-xs text-sub">Heure de pointe : <span className="text-brand font-medium">{String((s as any).peak_hour ?? 0).padStart(2, "0")}h UTC</span></span>}
-      >
-        <Chart option={hodOpt} height={220} />
-      </Card>
+      {!simple && (
+        <Card
+          title="Quand les utilisateurs utilisent BMM"
+          right={<span className="text-xs text-sub">Heure de pointe : <span className="text-brand font-medium">{String((s as any).peak_hour ?? 0).padStart(2, "0")}h UTC</span></span>}
+        >
+          <Chart option={hodOpt} height={220} />
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Card title="Live instances" right={<Link to="/live" className="text-xs text-brand">View all</Link>}>
@@ -181,33 +174,37 @@ export default function Overview() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card title="Users by country" right={<Link to="/map" className="text-xs text-brand">Map</Link>}>
-          <Bars rows={(s.geo || []).map((g: any) => ({ label: g.country, cc: s.country_cc?.[g.country], value: g.count }))} />
-        </Card>
-        <Card title="Operating systems">
-          <Bars rows={(s.os || []).map((o: any) => ({ label: o.k, value: o.v }))} />
-        </Card>
-        <Card title="GPU vendors">
-          <Bars rows={(s.gpu || []).map((g: any) => ({ label: g.k, value: g.v }))} />
-        </Card>
-      </div>
+      {!simple && (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card title="Users by country" right={<Link to="/map" className="text-xs text-brand">Map</Link>}>
+              <Bars rows={(s.geo || []).map((g: any) => ({ label: g.country, cc: s.country_cc?.[g.country], value: g.count }))} />
+            </Card>
+            <Card title="Operating systems">
+              <Bars rows={(s.os || []).map((o: any) => ({ label: o.k, value: o.v }))} />
+            </Card>
+            <Card title="GPU vendors">
+              <Bars rows={(s.gpu || []).map((g: any) => ({ label: g.k, value: g.v }))} />
+            </Card>
+          </div>
 
-      <Card title="Top pages" right={<Link to="/pages" className="text-xs text-brand">Details</Link>}>
-        <table className="w-full">
-          <tbody>
-            {s.pages.slice(0, 10).map((p) => (
-              <tr key={p.view} className="hover:bg-panel2">
-                <td className="td border-0 py-1.5 flex items-center gap-2">
-                  <ArrowIcon className="text-sub" /> {p.view}
-                </td>
-                <td className="td border-0 py-1.5 text-right text-sub">{Math.round((p.avg_dwell_ms || 0) / 1000)}s dwell</td>
-                <td className="td border-0 py-1.5 text-right font-medium">{nf(p.enters)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+          <Card title="Top pages" right={<Link to="/pages" className="text-xs text-brand">Details</Link>}>
+            <table className="w-full">
+              <tbody>
+                {s.pages.slice(0, 10).map((p) => (
+                  <tr key={p.view} className="hover:bg-panel2">
+                    <td className="td border-0 py-1.5 flex items-center gap-2">
+                      <ArrowIcon className="text-sub" /> {p.view}
+                    </td>
+                    <td className="td border-0 py-1.5 text-right text-sub">{Math.round((p.avg_dwell_ms || 0) / 1000)}s dwell</td>
+                    <td className="td border-0 py-1.5 text-right font-medium">{nf(p.enters)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

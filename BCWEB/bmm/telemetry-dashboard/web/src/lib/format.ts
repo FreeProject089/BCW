@@ -51,3 +51,14 @@ export const fmtVital = (metric: string, v?: number) => {
   return `${Math.round(v)} ms`;
 };
 export const vitalThresholds = VITAL_TH;
+
+// A period-over-period trend for a small series: sum of the recent half vs the prior
+// half, as a signed percentage. null when there isn't enough signal to be honest.
+export const trend = (data?: number[]): number | null => {
+  if (!data || data.length < 4) return null;
+  const mid = Math.floor(data.length / 2);
+  const prior = data.slice(0, mid).reduce((a, b) => a + (b || 0), 0);
+  const recent = data.slice(mid).reduce((a, b) => a + (b || 0), 0);
+  if (prior === 0) return recent > 0 ? 100 : 0;
+  return ((recent - prior) / prior) * 100;
+};

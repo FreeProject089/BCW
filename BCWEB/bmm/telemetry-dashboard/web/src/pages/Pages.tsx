@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useStats } from "../lib/store";
-import { Card, Kpi, Empty, Drawer } from "../components/ui";
+import { Card, Kpi, Empty, Drawer, CsvButton } from "../components/ui";
 import { Chart, axisX, axisY } from "../components/Chart";
 import { Flag } from "../components/visuals";
 import { nf, vitalClass, fmtVital } from "../lib/format";
+import { downloadCsv } from "../lib/csv";
 import type { PageRow } from "../lib/types";
 
 // thresholds in MS (CLS unitless) — matches what the client sends.
@@ -133,10 +134,26 @@ export default function Pages() {
       <Card
         title="Breakdown"
         right={
-          <div className="flex gap-1">
-            {TABS.map((x) => (
-              <button key={x} onClick={() => setTab(x)} className={`pill ${tab === x ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>{x}</button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1">
+              {TABS.map((x) => (
+                <button key={x} onClick={() => setTab(x)} className={`pill ${tab === x ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>{x}</button>
+              ))}
+            </div>
+            {tab === "Pages" && s.pages.length > 0 && (
+              <CsvButton onClick={() => downloadCsv("bmm_pages", s.pages, [
+                { key: "view", label: "Page" },
+                { key: "enters", label: "Views" },
+                { key: "avg_dwell_ms", label: "Dwell (s)", get: (p) => Math.round((p.avg_dwell_ms || 0) / 1000) },
+                { key: "lcp", label: "LCP (ms)" },
+                { key: "cls", label: "CLS" },
+                { key: "inp", label: "INP (ms)" },
+                { key: "fcp", label: "FCP (ms)" },
+                { key: "ttfb", label: "TTFB (ms)" },
+                { key: "fps", label: "FPS" },
+                { key: "events", label: "Events" },
+              ])} />
+            )}
           </div>
         }
       >

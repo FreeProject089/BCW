@@ -1,17 +1,26 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { Stats } from "./types";
 
+export type ViewMode = "simple" | "advanced";
+
 interface StoreValue {
   stats: Stats | null;
   connected: boolean;
   authError: boolean;
   adminKey: string;
   setAdminKey: (k: string) => void;
+  viewMode: ViewMode;
+  setViewMode: (m: ViewMode) => void;
 }
 
 const Ctx = createContext<StoreValue>(null as any);
 export const useStore = () => useContext(Ctx);
 export const useStats = () => useContext(Ctx).stats;
+/** Dashboard density: "simple" (essentials only) vs "advanced" (everything). Persisted. */
+export const useViewMode = () => {
+  const { viewMode, setViewMode } = useContext(Ctx);
+  return [viewMode, setViewMode] as const;
+};
 
 // The viewer key is the private admin key; it gates every data endpoint.
 const key = () => localStorage.getItem("bmm_admin_key") || "";
@@ -58,12 +67,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [authError, setAuthError] = useState(false);
   const [adminKey, setAdminKeyState] = useState(() => localStorage.getItem("bmm_admin_key") || "");
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => (localStorage.getItem("bmm_view_mode") === "advanced" ? "advanced" : "simple"));
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<number | null>(null);
 
   const setAdminKey = (k: string) => {
     localStorage.setItem("bmm_admin_key", k);
     setAdminKeyState(k);
+  };
+  const setViewMode = (m: ViewMode) => {
+    localStorage.setItem("bmm_view_mode", m);
+    setViewModeState(m);
   };
 
   useEffect(() => {
@@ -148,7 +162,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [adminKey]);
 
-  return <Ctx.Provider value={{ stats, connected, authError, adminKey, setAdminKey }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ stats, connected, authError, adminKey, setAdminKey, viewMode, setViewMode }}>{children}</Ctx.Provider>;
 }
 
 // ── REST helpers (drill-downs + admin writes) — all carry the viewer key ────
