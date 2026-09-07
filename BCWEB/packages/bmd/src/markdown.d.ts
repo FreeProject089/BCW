@@ -412,6 +412,26 @@ export const SPACE_STEPS: Record<'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl', numb
 /** The two looks every block understands: `a` is the default and needs no attribute. */
 export const VARIANTS: readonly string[];
 
+/**
+ * The shape a step's marker is drawn as (`:::steps{shape=…}`, or on one step).
+ *
+ * Returns the class suffix, or `''` for the default disc and for anything unknown — the value
+ * becomes a class name, so it is an allowlist rather than a pass-through. `circle` maps to `''`
+ * on purpose: the default is defined once, by the base rule.
+ */
+export function stepShape(v: unknown): '' | 'square' | 'rounded' | 'diamond' | 'triangle' | 'hexagon' | 'none';
+
+/**
+ * A mermaid diagram's theme (`:::mermaid{theme=…}` / `{style=…}`).
+ *
+ * Always returns something: `'auto'` — follow the page's own light/dark — for anything not on
+ * the list. The value is written into the diagram's `%%{init}%%` front-matter, where a free
+ * string would be config injection into the renderer.
+ */
+export function mermaidTheme(v: unknown): 'auto' | 'default' | 'base' | 'dark' | 'forest' | 'neutral';
+/** A mermaid diagram's `look=`. `''` for the default (classic) and for anything unknown. */
+export function mermaidLook(v: unknown): '' | 'handdrawn' | 'neo';
+
 /** A markdown table read as a structure. `null` when the source is not one. */
 export interface BmdTable { header: string[]; align: string[]; rows: string[][]; before: string; after: string }
 export function parseTable(src: string): BmdTable | null;

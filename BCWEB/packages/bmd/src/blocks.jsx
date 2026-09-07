@@ -503,32 +503,81 @@ function loadMermaid() {
       else if (cfg.cdn?.mermaid) mod = await import(/* @vite-ignore */ String(cfg.cdn.mermaid));
       else throw new Error('mermaid is switched off');
       const m = mod?.default || mod;
-      const dark = typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)')?.matches;
-      m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: dark ? 'dark' : 'default' });
+      // No `theme` here on purpose. initialize() is global and runs once, so a theme set at
+      // load froze every diagram on the page to whatever the scheme was at that moment — it
+      // never followed a theme toggle, and it read the OS preference rather than the SITE's,
+      // so a light OS on a dark page drew a light diagram on a dark background. Each diagram
+      // now states its own theme in its front-matter, which is per-render and therefore
+      // re-evaluated whenever the page's theme changes.
+      m.initialize({ startOnLoad: false, securityLevel: 'strict' });
       _mermaid = m;
       return m;
     })().catch((e) => { _mermaidPromise = null; throw e; });
   }
   return _mermaidPromise;
 }
+/**
+ * Which theme a diagram is drawn in when it did not name one.
+ *
+ * The SITE's theme, not the OS's. `data-theme` on <html> is what every themed app here sets
+ * (and what the toggle moves); `prefers-color-scheme` is only the fallback for a host that
+ * does not set it. Reading the OS alone is what drew a light diagram on a dark page.
+ */
+function pageTheme() {
+  if (typeof document === 'undefined') return 'default';
+  const attr = document.documentElement?.getAttribute?.('data-theme');
+  if (attr === 'dark') return 'dark';
+  if (attr === 'light') return 'default';
+  return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'default';
+}
+
 /** ```mermaid fences and `:::mermaid` blocks. The source is shown until the diagram is ready. */
 export function DocMermaid({ node }) {
   const p = node?.properties || {};
   const code = String(p.dataCode || p['data-code'] || '').trim();
   const title = p.dataTitle || p['data-title'] || '';
+  // Both are allowlisted at parse time (mermaidTheme / mermaidLook in directives.js), so what
+  // arrives here is one of a handful of known words or nothing.
+  const wantTheme = String(p.dataTheme || p['data-theme'] || 'auto');
+  const look = String(p.dataLook || p['data-look'] || '');
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '');
   const [svg, setSvg] = useState('');
   const [err, setErr] = useState('');
+  // Re-render when the PAGE theme changes, so an `auto` diagram follows the toggle instead of
+  // keeping whichever scheme happened to be on when it first drew.
+  const [scheme, setScheme] = useState(pageTheme);
+  useEffect(() => {
+    if (typeof document === 'undefined') return undefined;
+    const el = document.documentElement;
+    const sync = () => setScheme(pageTheme());
+    // The attribute is the host-agnostic signal: an app that themes itself sets it, and one
+    // that does not never fires this and stays on the media query below.
+    const mo = new MutationObserver(sync);
+    mo.observe(el, { attributes: true, attributeFilter: ['data-theme'] });
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    mq?.addEventListener?.('change', sync);
+    return () => { mo.disconnect(); mq?.removeEventListener?.('change', sync); };
+  }, []);
   useEffect(() => {
     if (!code) return undefined;
     let alive = true;
-    loadMermaid().then((m) => m.render(`bmd-mmd-${uid}`, code))
+    // Per-diagram style through mermaid's own front-matter. It has to go in the SOURCE rather
+    // than in initialize(), which is global and runs once — that is what made every diagram on
+    // a page share one theme and never follow a toggle.
+    const theme = wantTheme === 'auto' ? scheme : wantTheme;
+    const init = JSON.stringify({ theme, ...(look ? { look } : {}) });
+    const src = `%%{init: ${init}}%%\n${code}`;
+    loadMermaid().then((m) => m.render(`bmd-mmd-${uid}`, src))
       .then((r) => { if (alive) { setSvg(r?.svg || ''); setErr(''); } })
       .catch((e) => { if (alive) setErr(String(e?.message || 'mermaid failed').split('\n')[0].slice(0, 160)); });
     return () => { alive = false; };
-  }, [code, uid]);
+  }, [code, uid, wantTheme, look, scheme]);
   return (
-    <figure className={`doc-mermaid${svg ? ' doc-mermaid-ready' : ''}`}>
+    // The requested style is echoed onto the figure: it is what makes the choice inspectable
+    // (and checkable) at all — everything else about it lives inside the SVG mermaid returns.
+    // This is the AUTHOR's request, `auto` included; the resolved theme goes in the diagram's
+    // front-matter, because that is the one that changes when the page's theme does.
+    <figure className={`doc-mermaid${svg ? ' doc-mermaid-ready' : ''}`} data-theme={wantTheme} data-look={look || undefined}>
       {/* The SVG comes from mermaid's own renderer under `strict`, which escapes the labels
           the author wrote — the only author-controlled text in it. */}
       {svg ? <div className="doc-mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} /> : <pre className="doc-mermaid-src"><code>{code}</code></pre>}

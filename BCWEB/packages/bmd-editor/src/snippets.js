@@ -43,6 +43,11 @@ export const SNIPPET_GROUPS = [
       { id: 'grid', label: 'Grid', md: '::::grid{cols=3}\n:::card[A]\n1\n:::\n:::card[B]\n2\n:::\n:::card[C]\n3\n:::\n::::' },
       { id: 'tabs', label: 'Tabs', md: '::::tabs\n:::tab{title="Windows"}\n${sel|First panel}\n:::\n:::tab{title="macOS"}\nSecond panel\n:::\n::::' },
       { id: 'steps', label: 'Steps', md: '::::steps[${cursor}How to]\n:::step[First]\n${sel|Do this.}\n:::\n:::step[Then]\nDo that.\n:::\n::::' },
+      // The shapes are their own entries rather than a note in the docs: an attribute nobody
+      // can find from the editor is an attribute nobody uses.
+      { id: 'steps-shape', label: 'Steps (square markers)', md: '::::steps[${cursor}How to]{shape=square}\n:::step[First]\n${sel|Do this.}\n:::\n:::step[Then]\nDo that.\n:::\n::::' },
+      { id: 'steps-diamond', label: 'Steps (diamond markers)', md: '::::steps[${cursor}Stages]{shape=diamond}\n:::step[First]\n${sel|Do this.}\n:::\n:::step[Then]\nDo that.\n:::\n::::' },
+      { id: 'steps-outline', label: 'Steps (outline markers)', md: '::::steps[${cursor}Options]{shape=none type=a}\n:::step[Option A]\n${sel|One way.}\n:::\n:::step[Option B]\nAnother.\n:::\n::::' },
       { id: 'hero', label: 'Hero', md: ':::hero[${cursor}Title]{subtitle="One line under it" color=#0a7 align=center}\n${sel}\n:::' },
       { id: 'center', label: 'Centered', md: ':::center\n${sel|Centered content}\n:::' },
       { id: 'table', label: 'Styled table', md: ':::table[${cursor}Caption]{style="striped bordered"}\n| Column | Column |\n|---|---|\n| ${sel|cell} | cell |\n:::' },
@@ -81,6 +86,8 @@ export const SNIPPET_GROUPS = [
       { id: 'spotify', label: 'Spotify', md: '::spotify{src=https://open.spotify.com/track/${cursor}}' },
       { id: 'replay', label: 'BMM replay', md: ':::replay[${sel|Title}]{src=/${cursor}.bmmreplay}\n:::' },
       { id: 'mermaid', label: 'Diagram', md: ':::mermaid[${sel|Caption}]\n```\ngraph TD\n  A[Start] --> B[${cursor}Next]\n```\n:::' },
+      { id: 'mermaid-forest', label: 'Diagram (forest)', md: ':::mermaid[${sel|Caption}]{theme=forest}\n```\ngraph TD\n  A[Start] --> B[${cursor}Next]\n```\n:::' },
+      { id: 'mermaid-hand', label: 'Diagram (hand-drawn)', md: ':::mermaid[${sel|Caption}]{look=handdrawn}\n```\ngraph TD\n  A[Start] --> B[${cursor}Next]\n```\n:::' },
     ],
   },
   {

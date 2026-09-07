@@ -62,7 +62,7 @@ export const SANITIZE_SCHEMA = {
     'doc-action': ['className', 'dataHref', 'dataMethod', 'dataBody', 'dataConfirm', 'dataDone', 'dataLabel', 'dataColor', 'dataOnce', 'dataIcon', 'dataCounter'],
     'doc-include': ['className', 'dataSrc'],
     'doc-openapi': ['className', 'dataSrc', 'dataTag', 'dataFilter', 'dataTitle', 'dataToc'],
-    'doc-mermaid': ['className', 'dataCode', 'dataTitle'],
+    'doc-mermaid': ['className', 'dataCode', 'dataTitle', 'dataTheme', 'dataLook'],
   },
 };
 

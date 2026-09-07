@@ -139,6 +139,70 @@ for (const name of [...names].sort()) {
   }
 }
 
+// ── step marker shapes ───────────────────────────────────────────────────────────────
+//
+// `shape=` becomes a class name, so it is an allowlist. The failure it guards is quiet in both
+// directions: an unknown value emitting a class nobody styles renders as a plain square
+// (indistinguishable from "the feature is broken"), and a block-level shape that fails to
+// reach its children means `:::steps{shape=…}` silently does nothing at all.
+const NL = String.fromCharCode(10);
+const stepsDoc = (blockAttrs, stepAttrs = '') =>
+  ['::::steps' + blockAttrs, ':::step[One]' + stepAttrs, 'Body.', ':::', '::::', ''].join(NL);
+const shapeHtml = (md) => {
+  try { return render(md); } catch (e) { problems.push(`step shapes: ${e?.message || e}`); return ''; }
+};
+
+for (const sh of ['square', 'rounded', 'diamond', 'triangle', 'hexagon', 'none']) {
+  const html = shapeHtml(stepsDoc(`{shape=${sh}}`));
+  if (!html.includes(`doc-steps-sh-${sh}`)) problems.push(`shape=${sh} did not reach the steps block`);
+  if (!html.includes(`doc-step-sh-${sh}`)) problems.push(`shape=${sh} did not reach the step inside it`);
+}
+// The default draws no class, so the base rule stays the only place a circle is defined.
+if (/doc-steps?-sh-/.test(shapeHtml(stepsDoc('')))) problems.push('an unshaped steps block emitted a shape class');
+if (/doc-steps?-sh-/.test(shapeHtml(stepsDoc('{shape=circle}')))) problems.push('shape=circle emitted a class; the default must emit none');
+// Anything unknown is dropped rather than concatenated into a class name.
+for (const bad of ['evil', 'doc-step-done', 'sh-square']) {
+  if (/doc-steps?-sh-/.test(shapeHtml(stepsDoc(`{shape=${bad}}`)))) problems.push(`shape=${bad} emitted a shape class`);
+}
+// A single step overrides its block — otherwise `shape=` on a step does nothing, silently.
+if (!shapeHtml(stepsDoc('{shape=square}', '{shape=triangle}')).includes('doc-step-sh-triangle')) {
+  problems.push('a step could not override the shape its block set');
+}
+
+// ── mermaid theme / look ─────────────────────────────────────────────────────────────
+//
+// These values are written into the diagram's own `%%{init}%%` front-matter, so a free string
+// there is a config injection into the renderer rather than a style. They must also SURVIVE
+// the sanitiser: a data attribute the sanitiser does not know is dropped between the parser
+// and the component, which looks exactly like the attribute doing nothing.
+const mmdDoc = (attrs) => [`:::mermaid${attrs}`, '```', 'graph TD; A-->B', '```', ':::', ''].join(NL);
+for (const [attrs, wantTheme, wantLook] of [
+  ['{theme=forest}', 'forest', ''],
+  ['{theme=neutral look=handdrawn}', 'neutral', 'handdrawn'],
+  ['{style=dark}', 'dark', ''],          // `style=` is the same knob under a friendlier name
+  ['', 'auto', ''],                      // unset means "follow the page"
+  ['{theme=nonsense}', 'auto', ''],      // and so does anything unknown
+  ['{theme=dark-evil}', 'auto', ''],     // …including one that merely looks close
+  ['{look=handDrawn}', 'auto', 'handdrawn'],  // casing and camelCase both land
+  ['{look=classic}', 'auto', ''],        // the default look emits nothing
+]) {
+  const html = shapeHtml(mmdDoc(attrs));
+  const gotTheme = /data-theme="([^"]*)"/.exec(html)?.[1] ?? '';
+  const gotLook = /data-look="([^"]*)"/.exec(html)?.[1] ?? '';
+  if (gotTheme !== wantTheme) problems.push(`mermaid ${attrs || '(none)'}: data-theme is ${JSON.stringify(gotTheme)}, expected ${JSON.stringify(wantTheme)}`);
+  if (gotLook !== wantLook) problems.push(`mermaid ${attrs || '(none)'}: data-look is ${JSON.stringify(gotLook)}, expected ${JSON.stringify(wantLook)}`);
+}
+
+// An attribute whose value breaks the directive syntax makes the whole thing not a directive:
+// remark-directive stops recognising it and the block comes back as literal text. That is the
+// safe outcome — nothing is rendered, so nothing can carry an injected value — but it is worth
+// pinning, because "my diagram turned into text" has a cause an author cannot otherwise see.
+for (const bad of ['{theme="dark\\", look: \\"evil"}', '{look="classic\\", theme: \\"x"}']) {
+  const html = shapeHtml(mmdDoc(bad));
+  if (/data-theme="(?!auto)/.test(html)) problems.push(`mermaid ${bad}: a malformed attribute reached the figure`);
+  if (/<figure[^>]*doc-mermaid/.test(html)) problems.push(`mermaid ${bad}: expected the block to stop being a directive, but a figure rendered`);
+}
+
 cleanup();
 
 if (problems.length) {

@@ -93,6 +93,31 @@
   display: grid; place-items: center; font-size: 13px; font-weight: 700; line-height: 1;
   background: var(--step, var(--primary)); color: #fff; position: relative; z-index: 1; margin: 0;
 }
+/* Marker SHAPES (`:::steps{shape=square}`, or on one step).
+   A numbered procedure, a checklist and a set of options all rendered as the same disc; the
+   shape is what tells them apart at a glance. Drawn with clip-path rather than by swapping the
+   element, so the size, the colour token, the rail and the icon centring are all still the
+   ones above — a shape is a change of outline, not a different component.
+   The step's own class comes after the block's in the file, so a single step overrides its
+   list. `triangle` and `diamond` push the glyph down/in a little, because a centred glyph in a
+   pointed shape reads as off-centre. */
+.md-body .doc-steps-sh-square > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-square > .doc-step-marker { border-radius: 0; }
+.md-body .doc-steps-sh-rounded > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-rounded > .doc-step-marker { border-radius: 8px; }
+.md-body .doc-steps-sh-diamond > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-diamond > .doc-step-marker { border-radius: 3px; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); font-size: 11px; }
+.md-body .doc-steps-sh-triangle > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-triangle > .doc-step-marker { border-radius: 0; clip-path: polygon(50% 4%, 100% 100%, 0 100%); font-size: 11px; align-items: end; padding-bottom: 3px; }
+.md-body .doc-steps-sh-hexagon > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-hexagon > .doc-step-marker { border-radius: 0; clip-path: polygon(25% 3%, 75% 3%, 100% 50%, 75% 97%, 25% 97%, 0 50%); }
+/* `shape=none` keeps the number and drops the badge — a plain outline list, for a document
+   where a row of filled markers is louder than the text beside it. */
+.md-body .doc-steps-sh-none > .doc-step > .doc-step-marker,
+.md-body .doc-step-sh-none > .doc-step-marker { background: transparent; color: var(--step, var(--primary)); border: 2px solid var(--step, var(--primary)); }
+.md-body .doc-steps-sh-none > .doc-step > .doc-step-marker .doc-icon,
+.md-body .doc-step-sh-none > .doc-step-marker .doc-icon { color: var(--step, var(--primary)); }
+
 /* Icon list (`:::steps{marker=icon}`): the step's icon is the marker glyph, white, in the disc. */
 .md-body .doc-step-marker .doc-icon { width: 15px; height: 15px; color: #fff; }
 .md-body .doc-step-marker .doc-icon svg { width: 15px; height: 15px; }

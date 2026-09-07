@@ -94,6 +94,30 @@ function nodeText(n) { if (!n) return ''; if (typeof n.value === 'string') retur
 export function slugify(s) { return String(s).toLowerCase().trim().replace(/[^\wÀ-ɏ]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'section'; }
 
 const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii'];
+// The marker shapes a step may be drawn as. An ALLOWLIST, because the value becomes a class
+// name: anything else is dropped and the default disc stands, rather than emitting a class
+// nobody styles (which renders as an unstyled square and reads as the feature being broken).
+const STEP_SHAPES = ['circle', 'square', 'rounded', 'diamond', 'triangle', 'hexagon', 'none'];
+export function stepShape(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  return STEP_SHAPES.includes(s) && s !== 'circle' ? s : '';
+}
+
+// Mermaid's own theme names, plus `auto` — which is the default and means "follow the page".
+// An allowlist because the value is written into the diagram's `%%{init}%%` front-matter,
+// where a free string is a config injection into the renderer rather than a style.
+const MERMAID_THEMES = ['auto', 'default', 'base', 'dark', 'forest', 'neutral'];
+export function mermaidTheme(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase();
+  return MERMAID_THEMES.includes(s) ? s : 'auto';
+}
+// `look=handdrawn` is mermaid's sketch rendering. Same reasoning, shorter list.
+const MERMAID_LOOKS = ['classic', 'handdrawn', 'neo'];
+export function mermaidLook(v) {
+  const s = String(v == null ? '' : v).trim().toLowerCase().replace(/[-_\s]/g, '');
+  return MERMAID_LOOKS.includes(s) && s !== 'classic' ? s : '';
+}
+
 function stepMarker(kind, n) {
   if (kind === 'a' || kind === 'alpha') return n <= 26 ? String.fromCharCode(64 + n) : String(n);
   if (kind === 'i' || kind === 'roman') return ROMAN[n - 1] || String(n);
@@ -216,7 +240,12 @@ export function remarkDocBlocks() {
         // One colour drives the marker and the rail, so they cannot drift apart. Set on the
         // block for all of it, or on a single step to pick that one out.
         const stepProps = attrs.color ? { style: `--step:${attrs.color}` } : {};
-        setEl('div', ['doc-steps', vertical ? 'doc-steps-v' : 'doc-steps-h'], stepProps);
+        // `shape=` — what the marker is DRAWN as. A numbered procedure, a checklist and a set
+        // of options are three different things that all rendered as the same orange disc, and
+        // the shape is what tells them apart at a glance. Block-level, so one attribute
+        // re-draws the whole list; a single step may override it to pick itself out.
+        const shape = stepShape(attrs.shape);
+        setEl('div', ['doc-steps', vertical ? 'doc-steps-v' : 'doc-steps-h', ...(shape ? [`doc-steps-sh-${shape}`] : [])], stepProps);
         if (labelText || attrs.title) {
           node.children.unshift({ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-steps-title'] } },
             children: [{ type: 'text', value: labelText || attrs.title }] });
@@ -229,6 +258,9 @@ export function remarkDocBlocks() {
             child.data = child.data || {};
             if (iconMode) child.data.stepIconMarker = true;
             else child.data.stepMarker = stepMarker(kind, n);
+            // The block's shape travels to each child; a child that names its own wins,
+            // which is how one step is picked out of a list of ten.
+            if (shape) child.data.stepShape = shape;
             n += 1;
           }
         }
@@ -241,7 +273,8 @@ export function remarkDocBlocks() {
         const wantIconMarker = (node.data?.stepIconMarker || attrs.marker === 'icon') && !!attrs.icon;
         const marker = node.data?.stepMarker || (attrs.marker && attrs.marker !== 'icon' ? attrs.marker : '•');
         const done = attrs.done === 'true' || attrs.status === 'done';
-        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : []), ...(wantIconMarker ? ['doc-step-icon'] : [])], attrs.color ? { style: `--step:${attrs.color}` } : {});
+        const ownShape = stepShape(attrs.shape) || node.data?.stepShape || '';
+        setEl('div', ['doc-step', ...(done ? ['doc-step-done'] : []), ...(wantIconMarker ? ['doc-step-icon'] : []), ...(ownShape ? [`doc-step-sh-${ownShape}`] : [])], attrs.color ? { style: `--step:${attrs.color}` } : {});
         const head = [{ type: 'paragraph', data: { hName: 'div', hProperties: { className: ['doc-step-marker'], 'aria-hidden': 'true' } },
           children: wantIconMarker ? [iconNode(String(attrs.icon).toLowerCase())] : [{ type: 'text', value: String(marker) }] }];
         const title = labelText || attrs.title;
@@ -740,7 +773,17 @@ export function remarkDocBlocks() {
         // to the component untouched; mermaid draws it in the browser under its strict setting.
         const code = (node.children || []).find((c) => c.type === 'code');
         const text = code ? String(code.value || '') : nodeText(node);
-        setEl('doc-mermaid', ['doc-mermaid'], { 'data-code': text, 'data-title': labelText || attrs.title || '' });
+        // `theme=` and `look=` — a diagram's own style. Mermaid is initialised once per page,
+        // so a per-diagram style cannot come from initialize(); it is carried to the component
+        // and applied through mermaid's own `%%{init}%%` front-matter at render time. Both are
+        // ALLOWLISTED: the value ends up inside that front-matter, and an arbitrary string
+        // there is a config injection into the renderer.
+        setEl('doc-mermaid', ['doc-mermaid'], {
+          'data-code': text,
+          'data-title': labelText || attrs.title || '',
+          'data-theme': mermaidTheme(attrs.theme || attrs.style),
+          'data-look': mermaidLook(attrs.look),
+        });
         node.children = [];
       } else if (name === 'toc') {
         // `{depth=4}` reaches h4 (default h3); `{numbered}` counts the entries.
