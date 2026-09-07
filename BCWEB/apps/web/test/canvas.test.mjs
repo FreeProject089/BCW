@@ -121,3 +121,15 @@ test('an empty canvas is a canvas, not a crash', () => {
     assert.equal(layoutFor(1000, c).mode, 'scale');
   }
 });
+
+test('a decorative box keeps a height when the canvas stacks', () => {
+  // In the column the parent is auto-height, so `height: 100%` on a block with no content of
+  // its own resolves to ZERO and the box vanishes on phones — silently, because nothing
+  // errors and the surrounding text still reads fine. The renderer gives a stacked box its
+  // design height instead; this pins the shape the renderer relies on.
+  const c = canvas([{ id: 'band', kind: 'box', x: 0, y: 0, w: 1200, h: 256 }]);   // 256 = 32 × the grid
+  const box = c.blocks[0];
+  assert.equal(box.kind, 'box');
+  assert.ok(box.h >= GRID, 'a box carries its own height into the stacked rendering');
+  assert.equal(box.h, 256);
+});

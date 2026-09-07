@@ -126,3 +126,114 @@ export function readingOrder(blocks, band = 40) {
 export function paintOrder(blocks) {
   return blocks.map((b, i) => [b, i]).sort((p, q) => (num(p[0].z) - num(q[0].z)) || (p[1] - q[1])).map((p) => p[0]);
 }
+
+// ── Editing ──────────────────────────────────────────────────────────────────
+// The interaction maths, kept out of the component so it can be tested. Drag and resize are
+// where a canvas editor is either precise or maddening, and neither is verifiable by clicking
+// around: the failure is half a pixel of drift per frame, which only shows after twenty drags.
+
+/**
+ * Move a block by a pointer delta measured in SCREEN pixels.
+ *
+ * The canvas is drawn scaled, so a 10px mouse move is 10/scale design pixels. Forgetting that
+ * is the classic bug: the block lags the cursor at any zoom but 100%, and the further you drag
+ * the further behind it gets.
+ *
+ * `start` is the block's position when the drag BEGAN, never the current one. Accumulating
+ * deltas frame by frame re-snaps an already-snapped value each time, and the block creeps.
+ */
+export function dragTo(start, dxScreen, dyScreen, scale, opts = {}) {
+  const s = Math.abs(num(scale, 1)) || 1;
+  const grid = opts.snap === false ? 1 : (opts.grid || GRID);
+  const x = Math.round((num(start.x) + num(dxScreen) / s) / grid) * grid;
+  const y = Math.round((num(start.y) + num(dyScreen) / s) / grid) * grid;
+  return {
+    // Off the left edge is a block you cannot grab again; off the right is one nobody sees.
+    x: clamp(x, 0, DESIGN_WIDTH - num(start.w, GRID)),
+    y: Math.max(0, y),
+  };
+}
+
+/** The eight handles, as the axes each one moves. */
+export const HANDLES = {
+  nw: [-1, -1], n: [0, -1], ne: [1, -1],
+  w: [-1, 0], e: [1, 0],
+  sw: [-1, 1], s: [0, 1], se: [1, 1],
+};
+
+/**
+ * Resize from one handle.
+ *
+ * A handle on the left or top moves the block's ORIGIN as well as its size — drag the west
+ * handle right and x grows while w shrinks. Getting only the size right is why a block
+ * "jumps" when you grab its left edge.
+ *
+ * Below the minimum the block stops rather than inverting: a negative width renders as
+ * nothing, and a block you cannot see is a block you cannot fix.
+ */
+export function resizeTo(start, handle, dxScreen, dyScreen, scale, opts = {}) {
+  const [ax, ay] = HANDLES[handle] || [0, 0];
+  const s = Math.abs(num(scale, 1)) || 1;
+  const grid = opts.snap === false ? 1 : (opts.grid || GRID);
+  const min = opts.min || GRID * 2;
+  const dx = num(dxScreen) / s;
+  const dy = num(dyScreen) / s;
+  let { x, y, w, h } = { x: num(start.x), y: num(start.y), w: num(start.w), h: num(start.h) };
+
+  if (ax === 1) w = w + dx;
+  else if (ax === -1) { const right = x + w; x = x + dx; w = right - x; }
+  if (ay === 1) h = h + dy;
+  else if (ay === -1) { const bottom = y + h; y = y + dy; h = bottom - y; }
+
+  // Snap the EDGES, not the size: snapping width alone leaves the far edge off-grid, which is
+  // exactly the misalignment the grid exists to prevent.
+  //
+  // And snap ONLY the edges this handle moves. Snapping the anchored edge too means grabbing
+  // the south-east corner of a block sitting at x=100 silently slides it to 104 — the block
+  // jumps sideways while you are dragging its right edge, which reads as the editor fighting
+  // you. An off-grid block gets aligned when you drag the edge that is off, not before.
+  const snapv = (v) => Math.round(v / grid) * grid;
+  if (ax === -1) { const right = x + w; x = snapv(x); w = right - x; }
+  else if (ax === 1) { w = snapv(x + w) - x; }
+  if (ay === -1) { const bottom = y + h; y = snapv(y); h = bottom - y; }
+  else if (ay === 1) { h = snapv(y + h) - y; }
+
+  if (w < min) { if (ax === -1) x = x + (w - min); w = min; }
+  if (h < min) { if (ay === -1) y = y + (h - min); h = min; }
+  x = clamp(x, 0, DESIGN_WIDTH - min);
+  y = Math.max(0, y);
+  w = clamp(w, min, DESIGN_WIDTH - x);
+  return { x, y, w, h };
+}
+
+/**
+ * Guides: edges of OTHER blocks that the moving one is within `tol` of.
+ *
+ * Snapping to the grid lines things up to 8px. Snapping to what is already there is what makes
+ * a hand-placed page look composed — the second card lands exactly on the first one's edge
+ * instead of eight pixels off it.
+ */
+export function alignmentGuides(moving, others, tol = 6) {
+  const v = []; const h = [];
+  const mv = [num(moving.x), num(moving.x) + num(moving.w) / 2, num(moving.x) + num(moving.w)];
+  const mh = [num(moving.y), num(moving.y) + num(moving.h) / 2, num(moving.y) + num(moving.h)];
+  for (const o of others) {
+    if (o.id === moving.id) continue;
+    for (const ox of [num(o.x), num(o.x) + num(o.w) / 2, num(o.x) + num(o.w)]) {
+      for (const m of mv) if (Math.abs(m - ox) <= tol) { v.push({ at: ox, delta: ox - m }); break; }
+    }
+    for (const oy of [num(o.y), num(o.y) + num(o.h) / 2, num(o.y) + num(o.h)]) {
+      for (const m of mh) if (Math.abs(m - oy) <= tol) { h.push({ at: oy, delta: oy - m }); break; }
+    }
+  }
+  // Nearest wins: two candidates within tolerance and the block should go to the closer one.
+  const best = (arr) => arr.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta))[0] || null;
+  return { v: best(v), h: best(h) };
+}
+
+/** Send a block to the front / back without renumbering everything else. */
+export function bringTo(blocks, id, where) {
+  const zs = blocks.map((b) => num(b.z));
+  const z = where === 'front' ? Math.max(0, ...zs) + 1 : Math.min(0, ...zs) - 1;
+  return blocks.map((b) => (b.id === id ? { ...b, z } : b));
+}

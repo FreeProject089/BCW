@@ -31,7 +31,10 @@ function Block({ b, stacked }) {
       />
     );
   }
-  if (b.kind === 'box') return <div style={{ ...style, width: '100%', height: '100%' }} />;
+  // A box has no content of its own, so `height: 100%` inside a stacked column — whose parent
+  // is auto-height — resolves to zero and the block silently disappears on phones. Stacked, it
+  // keeps the height it was drawn at, so a band stays a band.
+  if (b.kind === 'box') return <div style={{ ...style, width: '100%', height: stacked ? b.h : '100%' }} />;
   return (
     <div style={style} className="bcw-canvas-text">
       <Markdown>{String(p.md || '')}</Markdown>

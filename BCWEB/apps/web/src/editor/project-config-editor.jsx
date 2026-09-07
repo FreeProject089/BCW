@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   ChevronDown, Plus, Trash2, GripVertical, Star, Link2, Download, Image as ImageIcon,
-  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles,
+  Film, Play, ListTodo, ScrollText, Users, ShieldCheck, Upload, Eye, ExternalLink, Github, Network, Boxes, Copy, CalendarDays, Sparkles, LayoutTemplate,
 } from 'lucide-react';
 import { Button, Input, Textarea, Field, Badge, Spinner, Select } from '../ui/ui.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api, uploadMedia } from '../lib/api.js';
+import CanvasStudio from './canvas-studio.jsx';
 import IconPicker from './icon-picker.jsx';
 import { IconGlyph } from '../ui/md.jsx';
 import RrwebPreview from '../hero/RrwebPreview.jsx';
@@ -1046,6 +1047,35 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               ))}
               <Button size="sm" onClick={() => put([...list, { id: `t${Date.now().toString(36)}`, title: '', body: '' }])}>
                 + {t('pce.ctabs.add', 'Add a tab')}
+              </Button>
+            </div>
+          </Section>
+        );
+      })()}
+
+      {/* Studio pages — a tab laid out by hand instead of written top to bottom.
+          Same "complete or not offered" rule as a custom tab: a canvas with no blocks is an
+          empty plane, which reads as a broken tab rather than as a design choice, so the page
+          does not offer it until something is on it. */}
+      {isShowcase && (() => {
+        const list = Array.isArray(c.canvases) ? c.canvases : [];
+        const put = (next) => set({ canvases: next });
+        const patch = (i, p2) => put(list.map((x, n) => (n === i ? { ...x, ...p2 } : x)));
+        return (
+          <Section icon={LayoutTemplate} title={t('pce.canvases', 'Studio pages')} badge={list.length}
+            desc="Place blocks where you want them. Wide screens see the layout as you built it; narrow ones scale it down, and phones stack the blocks in reading order — use the phone button to see that before you publish.">
+            <div className="space-y-4">
+              {list.map((cv, i) => (
+                <div key={cv.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Input className="flex-1" value={cv.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.canvases.title', 'Tab title')} />
+                    <Button size="sm" variant="ghost" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
+                  </div>
+                  <CanvasStudio value={cv} onChange={(next) => patch(i, next)} />
+                </div>
+              ))}
+              <Button size="sm" onClick={() => put([...list, { id: `c${Date.now().toString(36)}`, title: '', blocks: [] }])}>
+                + {t('pce.canvases.add', 'Add a studio page')}
               </Button>
             </div>
           </Section>
