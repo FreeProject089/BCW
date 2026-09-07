@@ -1,11 +1,19 @@
 import { useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useStore, bcHome } from "../lib/store";
 import { Segmented } from "./ui";
 
 // Nav grouped into bands, so fifteen destinations read as five themes rather than one
 // long undifferentiated list.
-const NAV: { group: string; items: { to: string; label: string; icon: string }[] }[] = [
+// `adv: true` = a deep-dive screen, hidden in Simple.
+//
+// The Simple/Advanced switch sat in the header of every page and only Overview read it, so on
+// fifteen screens out of seventeen it was a control that did nothing — which is worse than not
+// having one, because it teaches you the setting is decorative. It now decides what the
+// NAVIGATION offers: Simple is the six screens that answer "what is happening", Advanced is
+// everything. Nothing is removed — an advanced page stays reachable by URL, and the one you
+// are ON is never hidden out from under you.
+const NAV: { group: string; items: { to: string; label: string; icon: string; adv?: boolean }[] }[] = [
   {
     group: "Temps réel",
     items: [
@@ -19,18 +27,18 @@ const NAV: { group: string; items: { to: string; label: string; icon: string }[]
     items: [
       { to: "/users", label: "Users", icon: "M16 21v-2a4 4 0 0 0-8 0v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" },
       { to: "/map", label: "Map", icon: "M9 3 3 6v15l6-3 6 3 6-3V3l-6 3-6-3Z" },
-      { to: "/retention", label: "Retention", icon: "M3 3v18h18M7 14l4-4 3 3 5-6" },
+      { to: "/retention", label: "Retention", icon: "M3 3v18h18M7 14l4-4 3 3 5-6", adv: true },
       { to: "/versions", label: "Versions", icon: "M12 2v6l4 2M7 7 3 5v6l4 2m10-6 4-2v6l-4 2M7 13v6l5 2 5-2v-6" },
     ],
   },
   {
     group: "Comportement",
     items: [
-      { to: "/events", label: "Events", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8Z" },
-      { to: "/sessions", label: "Sessions", icon: "M4 5h16M4 12h16M4 19h10" },
-      { to: "/journeys", label: "Journeys", icon: "M4 19V5m0 14 4-3 4 3 4-3 4 3M4 5l4-3 4 3 4-3 4 3" },
-      { to: "/funnels", label: "Funnels", icon: "M3 4h18l-7 8v6l-4 2v-8L3 4Z" },
-      { to: "/goals", label: "Goals", icon: "M12 2v20M2 12h20M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z" },
+      { to: "/events", label: "Events", icon: "M13 2 3 14h7l-1 8 10-12h-7l1-8Z", adv: true },
+      { to: "/sessions", label: "Sessions", icon: "M4 5h16M4 12h16M4 19h10", adv: true },
+      { to: "/journeys", label: "Journeys", icon: "M4 19V5m0 14 4-3 4 3 4-3 4 3M4 5l4-3 4 3 4-3 4 3", adv: true },
+      { to: "/funnels", label: "Funnels", icon: "M3 4h18l-7 8v6l-4 2v-8L3 4Z", adv: true },
+      { to: "/goals", label: "Goals", icon: "M12 2v20M2 12h20M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z", adv: true },
     ],
   },
   {
@@ -43,8 +51,8 @@ const NAV: { group: string; items: { to: string; label: string; icon: string }[]
   {
     group: "Ops",
     items: [
-      { to: "/admin", label: "Admin", icon: "M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z" },
-      { to: "/storage", label: "Stockage", icon: "M4 6a8 3 0 0 0 16 0 8 3 0 0 0-16 0Zm0 0v12a8 3 0 0 0 16 0V6M4 12a8 3 0 0 0 16 0" },
+      { to: "/admin", label: "Admin", icon: "M12 2 4 6v6c0 5 3.5 8 8 10 4.5-2 8-5 8-10V6l-8-4Z", adv: true },
+      { to: "/storage", label: "Stockage", icon: "M4 6a8 3 0 0 0 16 0 8 3 0 0 0-16 0Zm0 0v12a8 3 0 0 0 16 0V6M4 12a8 3 0 0 0 16 0", adv: true },
       { to: "/docs", label: "Documentation", icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z" },
     ],
   },
@@ -64,6 +72,15 @@ export default function Layout() {
   const { stats, connected, adminKey, setAdminKey, viewMode, setViewMode } = useStore();
   const liveN = stats?.totals?.live ?? 0;
   const [navOpen, setNavOpen] = useState(false);
+  const { pathname } = useLocation();
+  // Simple shows the screens that answer "what is happening"; Advanced shows all of them.
+  // The page you are currently on is always listed, whatever the mode — a switch that makes the
+  // sidebar entry for the screen under your cursor disappear reads as a bug, not as a filter.
+  // A group whose every item is filtered out drops its heading too.
+  const shownNav = NAV
+    .map((sec) => ({ ...sec, items: sec.items.filter((n) => viewMode === "advanced" || !n.adv || n.to === pathname) }))
+    .filter((sec) => sec.items.length > 0);
+
   return (
     <div className="flex h-full">
       {/* mobile backdrop */}
@@ -75,7 +92,7 @@ export default function Layout() {
           <div className="font-semibold tracking-tight">BMM Telemetry</div>
         </div>
         <nav className="p-2 flex-1 overflow-y-auto">
-          {NAV.map((section) => (
+          {shownNav.map((section) => (
             <div key={section.group} className="mb-1">
               <div className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider text-sub/70 font-semibold">{section.group}</div>
               {section.items.map((n) => (
@@ -112,7 +129,6 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Segmented
-              className="hidden sm:inline-flex"
               value={viewMode}
               onChange={setViewMode}
               options={[{ key: "simple", label: "Simple" }, { key: "advanced", label: "Avancé" }]}
