@@ -2754,6 +2754,12 @@ const DICT = {
     'ds.wc.bg.off': 'Les fonds de bannière personnalisés sont désactivés pour ce bot. Les couleurs prédéfinies ci-dessus restent disponibles pour tous.',
     'ds.wc.bg.paidt': 'Bannière personnalisée — une amélioration unique',
     'ds.wc.bg.paid': 'Une bannière de bienvenue personnalisée pour ce serveur est une amélioration payante ({p}), une seule fois. Demande à un admin de la débloquer pour ton serveur.',
+    // L'achat de la bannière personnalisée (avant, la page disait juste « demande à un admin »).
+    'ds.wc.bg.paid2': 'Une bannière de bienvenue personnalisée pour ce serveur est une amélioration unique ({p}). Elle reste débloquée pour ce serveur ensuite.',
+    'ds.wc.bg.buy': 'Débloquer pour {p}',
+    'ds.wc.bg.buyfail': 'Impossible de démarrer le paiement.',
+    'ds.wc.bg.already': 'Ce serveur l’a déjà — recharge la page.',
+    'ds.wc.bg.nowfree': 'Les bannières personnalisées sont gratuites en ce moment — recharge la page.',
     'ds.wc.bg.unlocked': 'Débloquée pour ce serveur',
     'ds.wc.bgimg.h2': 'Remplace la couleur. Téléverse une image directement ici — elle est stockée sur le site (un lien /api/media/…), donc contrôlable et supprimable.',
     'ds.wc.bgimg.upload': 'Téléverser',

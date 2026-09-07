@@ -2357,6 +2357,53 @@ export default async function botRoutes(app) {
     return { members: rows.map((r) => ({ ...r, linked: byId[r.discordId] || null })), total, mode: 'global', roles };
   });
 
+  // Buy the custom welcome banner for a server you manage.
+  //
+  // The paid state existed and the gate below (402 `banner_locked`) refused the upload, but
+  // there was no way to pay: the dashboard's own copy said "ask an admin to unlock it for your
+  // server". A price with no till is not a paid feature, it is a wall.
+  //
+  // One-time payment, per guild. The unlock is written by the webhook, never here — a session
+  // created is not a payment taken.
+  app.post('/me/discord/guilds/:id/banner/checkout', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const cur = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!cur) return reply.code(404).send({ error: 'not_found' });
+
+    const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    const pol = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(raw.welcomeBanner || {}) };
+    // Every refusal is its own reason: turned off, not a paid feature at all, already bought,
+    // or priced at nothing. One generic error would leave the buyer guessing which.
+    if (!pol.allowed) return reply.code(403).send({ error: 'banner_disabled' });
+    if (!pol.paid) return reply.code(400).send({ error: 'banner_free' });
+    if ((pol.unlocked || []).map(String).includes(String(cur.guildId))) return reply.code(409).send({ error: 'already_unlocked' });
+    if (!(pol.priceCents > 0)) return reply.code(400).send({ error: 'no_price' });
+
+    const { stripe, ensureCustomer } = await import('./hosting.mjs');
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
+    const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
+    const customer = await ensureCustomer(p, sk, req.user.uid);
+    const session = await sk.checkout.sessions.create({
+      mode: 'payment',
+      customer,
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: (raw.currency || 'usd').toLowerCase(),
+          unit_amount: pol.priceCents,
+          product_data: { name: `Custom welcome banner — ${cur.name || cur.guildId}` },
+        },
+      }],
+      invoice_creation: { enabled: true },
+      metadata: { type: 'banner_unlock', guildId: String(cur.guildId), userId: String(req.user.uid) },
+      success_url: `${siteUrl}/dashboard?banner=ok`,
+      cancel_url: `${siteUrl}/dashboard?banner=cancel`,
+    });
+    return { url: session.url };
+  });
+
   // Owner-side moderation: queue a ban/kick/timeout (or its undo) against a member of THIS
   // guild. Two guarantees make it safe for a non-admin server owner: the guild id is taken from
   // the owned guild (never the body), and the target must already be a stored member of that

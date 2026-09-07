@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, MinusCircle, Users, Check, Link2, ScrollText, Gauge, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, CreditCard } from 'lucide-react';
 import { DiscordIcon } from '../ui/brand.jsx';
 import { api, uploadImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -237,6 +237,7 @@ function GuildConfig({ guildId, onSaved }) {
   const [data, setData] = useState(null);
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [buyingBanner, setBuyingBanner] = useState(false);
   const [section, setSection] = useState('storage'); // which config section is shown
   const load = () => api.get(`/me/discord/guilds/${guildId}`).then((r) => { setData(r); setDraft({ memberMode: r.guild.memberMode, logChannelId: r.guild.logChannelId || '', storeLogs: !!r.guild.storeLogs, welcome: normWelcome(r.welcome), jtc: normJtc(r.joinToCreate), gating: normGating(r.gating), blog: normBlog(r.blog), rp: normRp(r.rolePanels) }); }).catch(() => setData({ error: true }));
   useEffect(() => { setData(null); setDraft(null); load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [guildId]);
@@ -252,6 +253,26 @@ function GuildConfig({ guildId, onSaved }) {
   const dirty = (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty;
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
+  // Buy the custom-banner unlock for THIS server. The server decides whether it is on sale,
+  // priced and not already owned — each refusal gets its own sentence, because "unavailable"
+  // would leave the buyer unable to tell "turned off" from "already yours".
+  const buyBanner = async () => {
+    setBuyingBanner(true);
+    try {
+      const r = await api.post(`/me/discord/guilds/${guildId}/banner/checkout`);
+      if (r?.url) { window.location.href = r.url; return; }
+      toast.error(t('ds.wc.bg.buyfail', 'Could not start checkout.'));
+    } catch (x) {
+      const e = x?.data?.error;
+      toast.error(
+        e === 'already_unlocked' ? t('ds.wc.bg.already', 'This server already has it — reload the page.')
+        : e === 'banner_disabled' ? t('ds.wc.bg.off', 'Custom banner backgrounds are turned off for this bot. The colour presets above are available to everyone.')
+        : e === 'banner_free' ? t('ds.wc.bg.nowfree', 'Custom banners are free right now — reload the page.')
+        : e === 'payments_unavailable' ? t('myo.e.stripe', 'Payments are not configured yet.')
+        : t('ds.wc.bg.buyfail', 'Could not start checkout.'));
+    } finally { setBuyingBanner(false); }
+  };
+
   // Upload a welcome banner background in place — no trip to another page. Goes through the
   // same media store as everywhere else, so the result is a moderatable /api/media/ path.
   const pickWelcomeBg = () => {
@@ -431,7 +452,13 @@ function GuildConfig({ guildId, onSaved }) {
                   return (
                     <div className="mt-2.5 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/[0.05] p-3">
                       <div className="text-[12.5px] font-semibold flex items-center gap-1.5"><ImageIcon size={13} className="text-[var(--primary-2)]" /> {t('ds.wc.bg.paidt', 'Custom banner — a one-time upgrade')}</div>
-                      <p className="text-[11.5px] text-[var(--muted)] mt-1">{t('ds.wc.bg.paid', 'A custom welcome banner for this server is a paid upgrade ({p}), one-time. Ask an admin to unlock it for your server.').replace('{p}', price)}</p>
+                      {/* This used to end at "ask an admin to unlock it for your server" — a
+                          price with no till. It is a purchase now; the unlock is written by the
+                          Stripe webhook, so an abandoned checkout grants nothing. */}
+                      <p className="text-[11.5px] text-[var(--muted)] mt-1">{t('ds.wc.bg.paid2', 'A custom welcome banner for this server is a one-time upgrade ({p}). It stays unlocked for this server afterwards.').replace('{p}', price)}</p>
+                      <Button size="sm" variant="primary" className="mt-2.5" disabled={buyingBanner} onClick={buyBanner}>
+                        {buyingBanner ? <Spinner /> : <><CreditCard size={13} /> {t('ds.wc.bg.buy', 'Unlock for {p}').replace('{p}', price)}</>}
+                      </Button>
                     </div>
                   );
                 }

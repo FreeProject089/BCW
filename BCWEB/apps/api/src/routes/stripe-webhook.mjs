@@ -388,6 +388,29 @@ export default async function stripeWebhook(app) {
         return { received: true };
       }
 
+      // Custom welcome banner for one Discord server — a one-time unlock.
+      //
+      // The unlock is a guild id in bot.config.welcomeBanner.unlocked, and it is written HERE
+      // rather than when the session was created: a checkout that is opened and abandoned must
+      // not hand out the feature. Read-modify-write on the config blob, and idempotent by
+      // construction — the id is added to a Set, so a resent event changes nothing.
+      if (meta.type === 'banner_unlock' && meta.guildId) {
+        const row = await p.adminSetting.findUnique({ where: { key: 'bot.config' } });
+        const raw = row?.value || {};
+        const pol = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(raw.welcomeBanner || {}) };
+        const set = new Set((pol.unlocked || []).map(String));
+        if (!set.has(String(meta.guildId))) {
+          set.add(String(meta.guildId));
+          const next = { ...raw, welcomeBanner: { ...pol, unlocked: [...set] } };
+          await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: next }, update: { value: next } });
+          if (meta.userId) {
+            await notify(p, meta.userId, 'feature_banner_unlocked',
+              'Custom welcome banner unlocked — you can upload one for that server now.').catch(() => {});
+          }
+        }
+        return { received: true };
+      }
+
       // A paid MARKETPLACE product — payment cleared, so deliver the key/content/role now.
       if (meta.type === 'marketplace' && meta.productId && meta.userId) {
         const product = await p.projectProduct.findUnique({ where: { id: meta.productId } });
