@@ -66,7 +66,6 @@ export function MyoPage() {
   const nav = useNavigate();
   const cat = useAsync(() => api.get('/myo/products'), []);
   const mine = useAsync(() => user ? api.get('/myo/requests') : Promise.resolve({ requests: [] }), [!!user]);
-  const [intake, setIntake] = useState(null); // { kind, productId? } | null
   const cfg = cat.data || {};
   const products = cfg.products || [];
   // The three base options are always offered even before an admin curates the catalog.
@@ -74,10 +73,17 @@ export function MyoPage() {
   const customCard = products.find((p) => p.kind === 'custom') || { kind: 'custom', name: kindMeta('custom')[lang === 'fr' ? 'fr' : 'en'], tagline: t('myo.custom.tag', 'Anything else — a tool, a SaaS, a code audit with CVE/CWE + CVSS…'), basePriceCents: 0, options: [], includesSource: true };
   const extras = products.filter((p) => !['discord_bot', 'app', 'website', 'custom'].includes(p.kind));
 
-  const start = (card) => {
-    if (!user) { nav(`/auth?next=${encodeURIComponent('/myo')}`); return; }
-    setIntake({ kind: card.kind, productId: card.id || null, product: card });
-  };
+  // The catalogue, as answers to the first question. Same source as the old card grid — an
+  // admin-curated product still shows up, it is just a choice in a survey now instead of a tile.
+  const wizardCards = [...baseCards, ...extras, customCard].map((c) => ({
+    key: `${c.kind}:${c.id || ''}`,
+    id: c.id || null,
+    kind: c.kind,
+    label: c.name || kindMeta(c.kind)[lang === 'fr' ? 'fr' : 'en'],
+    blurb: c.tagline || kindBlurb(c.kind, t),
+    icon: kindMeta(c.kind).icon,
+  }));
+
 
   if (cfg.enabled === false) {
     return <div className="max-w-2xl mx-auto py-20 px-4"><EmptyState icon={Package} title={t('myo.off.t', 'Not accepting requests right now')} sub={t('myo.off.s', 'The Make Your Own service is temporarily closed. Check back soon.')} /></div>;
@@ -99,10 +105,19 @@ export function MyoPage() {
 
       {/* ── How it works + the clear "what you pay for" disclaimer ── */}
       <div className="mb-8 sm:mb-10 max-w-3xl mx-auto">
-        {/* The sequence, with the two points where money moves marked as such.
-            Three icons and three sentences said what happens; they did not say when you are
-            charged, which is the question this page answers four separate times in prose. */}
-        <DealRail cfg={cfg} />
+        {/* FOLDED now, and only folded.
+            The sequence and the two points where money moves led the page: a visitor met the
+            billing model before being asked a single question. The survey is what the page is
+            for, so this sits one click away instead of in front — but it is NOT hidden, because
+            a paid consultation has to say so before anyone starts, and the recap states the fee
+            in full before the payment button. */}
+        <details className="group">
+          <summary className="text-xs text-[var(--muted)] cursor-pointer flex items-center gap-2 list-none justify-center mb-3">
+            <Sparkles size={13} className="text-[var(--primary-2)]" />
+            <span className="underline decoration-dotted underline-offset-4">{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
+          </summary>
+          <DealRail cfg={cfg} />
+        </details>
         {/* FOLDED, not deleted.
             "The fee is not the product price" was said four times on one screen: in the
             hero, across these three steps, in this paragraph, and again on the custom card.
@@ -195,108 +210,21 @@ export function MyoPage() {
         );
       })()}
 
-      {/* ── Catalog ── */}
-      <div className="flex items-baseline gap-3 mb-4">
-        <h2 className="text-lg font-bold">{t('myo.pick.t', 'Choose a starting point')}</h2>
-        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s', 'Pick the closest match — we sort out the details together.')}</span>
+      {/* The survey IS the page.
+          It used to open on a catalogue of cards; picking one bounced a signed-out visitor to
+          /auth and opened a modal. So the first thing asked for was a login, before a single
+          question — nothing invested, nothing to come back to. "What do you want built?" is now
+          question 1 of 8 on the page itself, the answers carry the visitor to a recap, and
+          signing in happens at the moment of paying, which is the moment it is worth doing. */}
+      <div className="flex items-baseline gap-3 mb-4 justify-center text-center flex-wrap">
+        <h2 className="text-lg font-bold">{t('myo.pick.t2', 'Tell us what you need')}</h2>
+        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s2', 'A few questions — two minutes, no commitment.')}</span>
       </div>
       {cat.loading ? <div className="py-10 grid place-items-center"><Spinner /></div> : (
-        <>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 items-stretch">
-            {[...baseCards, ...extras].map((c) => <ProductCard key={c.kind + (c.id || '')} card={c} cfg={cfg} onStart={() => start(c)} />)}
-          </div>
-          {/* Custom = one strong full-width feature (replaces the lonely 4th card + old CTA band) */}
-          <CustomFeatureCard card={customCard} cfg={cfg} onStart={() => start(customCard)} />
-        </>
+        <MyoIntakeWizard inline cards={wizardCards} cfg={cfg}
+          onNeedAuth={() => { if (user) return false; nav(`/auth?next=${encodeURIComponent('/myo')}`); return true; }} />
       )}
-
-      {intake && <MyoIntakeWizard intake={{ ...intake, icon: kindMeta(intake.kind).icon }} cfg={cfg} onClose={() => setIntake(null)} />}
     </div>
-  );
-}
-
-function ProductCard({ card, cfg, onStart }) {
-  const { t } = useI18n();
-  const Icon = kindMeta(card.kind).icon;
-  const accent = kindAccent(card.kind);
-  const priced = card.basePriceCents > 0;
-  return (
-    <Card hover className="group relative p-5 flex flex-col overflow-hidden h-full transition-transform duration-200 hover:-translate-y-1">
-      {/* The accent glow appears ON HOVER, and is absent otherwise.
-          At rest, six cards each carrying a permanent coloured haze made the grid read as six
-          different surfaces rather than six of the same thing — the glow was competing with
-          the icon, which is the element actually carrying the card's identity. Reserved for
-          hover it does what a highlight is for: marking the one you are pointing at.
-          opacity-0 → 0.18 rather than mounting on hover, so the transition has something to
-          animate from and nothing shifts in the layout. */}
-      {/* No `motion-reduce:` gate — index.css says twice that this project does not gate on
-          prefers-reduced-motion, because Windows enables it behind users' backs and the only
-          visible result is a hover highlight that never arrives. */}
-      <div aria-hidden className="absolute -top-16 -right-16 w-40 h-40 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-[0.18]" style={{ background: accent }} />
-      <div className="relative flex items-start gap-3.5 mb-3.5">
-        <span className="w-12 h-12 rounded-2xl grid place-items-center text-white shrink-0 shadow-sm" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Icon size={22} /></span>
-        <div className="min-w-0 pt-0.5">
-          <div className="font-semibold leading-tight truncate">{card.name}</div>
-          <div className="mt-1 flex items-baseline gap-1">
-            {priced
-              ? <><span className="text-[10px] uppercase tracking-wide text-[var(--faint)]">{t('myo.fromlabel', 'from')}</span><span className="text-lg font-bold tabular-nums leading-none">{fmtMoney(card.basePriceCents, cfg.currency)}</span></>
-              : <span className="text-sm font-semibold text-[var(--primary-2)]">{t('myo.quoteonly', 'Custom quote')}</span>}
-          </div>
-        </div>
-      </div>
-      {/* Never empty: an unconfigured card falls back to the blurb for its kind rather
-          than to a void the footer then floats above. */}
-      <p className="relative text-sm text-[var(--muted)] leading-relaxed mb-3.5">{card.tagline || kindBlurb(card.kind, t)}</p>
-      {card.options?.length > 0 && (
-        <ul className="relative text-[13px] text-[var(--muted)] space-y-2 mb-4">
-          {card.options.slice(0, 4).map((o, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <Check size={14} className="shrink-0 mt-0.5" style={{ color: accent }} />
-              <span className="flex-1 min-w-0">{o.label}{o.priceCents ? <span className="text-[var(--faint)]"> · +{fmtMoney(o.priceCents, cfg.currency)}</span> : ''}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {/* Footer stacks on phones: side-by-side, the CTA measured 76x28 — the primary
-          conversion action of a paid-service page, well under a comfortable touch target.
-          Full-width and 44px tall below sm, back to the compact inline row from sm up. */}
-      <div className="relative mt-auto pt-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 border-t border-[var(--line)]">
-        <span className="text-xs text-[var(--faint)] inline-flex items-center gap-1.5">{card.includesSource ? <><FileText size={12} /> {t('myo.src.with', 'source included')}</> : <><Lock size={12} /> {t('myo.src.without', 'no source')}</>}</span>
-        <Button size="sm" variant="primary" onClick={onStart} className="w-full sm:w-auto !min-h-[44px] sm:!min-h-0 justify-center">{t('myo.start', 'Start')} <ArrowRight size={14} className="transition-transform group-hover:translate-x-0.5" /></Button>
-      </div>
-    </Card>
-  );
-}
-
-// The "anything else" option, as ONE full-width feature so the catalog row stays balanced (3
-// base cards) instead of leaving a lonely 4th card. Base surface is a real <Card> so it honours
-// the Translucent-surfaces setting; the accent gradient/glow are aria-hidden decorative layers.
-function CustomFeatureCard({ card, cfg, onStart }) {
-  const { t } = useI18n();
-  const accent = kindAccent('custom');
-  const highlights = (card.options || []).slice(0, 3).map((o) => o.label).filter(Boolean);
-  return (
-    <Card className="group relative overflow-hidden mt-4 sm:mt-5 p-5 sm:p-6 flex flex-col md:flex-row md:items-center gap-5">
-      {/* ONE glow, at rest, and nothing else.
-          It had a full-surface radial wash AND this blur AND a filled accent pill AND a 2xl
-          heading — so the "anything else" option shouted louder than the three products
-          actually for sale above it. It is still marked as the odd one out (it is the only
-          full-width card on the page); it no longer outranks the catalogue.
-          No `motion-reduce:` gate: see the note on ProductCard. */}
-      <div aria-hidden className="absolute -bottom-24 -right-12 w-80 h-80 rounded-full opacity-[0.12] blur-3xl transition-opacity duration-300 group-hover:opacity-25" style={{ background: accent }} />
-      <span className="relative w-14 h-14 rounded-2xl grid place-items-center text-white shrink-0 shadow-md" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}bb)` }}><Wand2 size={26} /></span>
-      <div className="relative flex-1 min-w-0">
-        <h3 className="text-lg sm:text-xl font-bold leading-tight">{t('myo.cta.t', 'Have something else in mind?')}</h3>
-        <p className="text-sm text-[var(--muted)] leading-relaxed mt-2 max-w-xl">{card.tagline || t('myo.cta.s', 'A tool, a SaaS, an integration, a security audit of your code… start a custom consultation and we’ll figure it out together.')}</p>
-        {highlights.length > 0 && (
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
-            {highlights.map((h, i) => <span key={i} className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]"><Check size={13} className="shrink-0" style={{ color: accent }} /> {h}</span>)}
-          </div>
-        )}
-        <div className="text-xs text-[var(--faint)] mt-3.5">{t('myo.cta.fee', 'Consultation from {p}.').replace('{p}', fmtMoney(cfg.consultationCents, cfg.currency))}</div>
-      </div>
-      <Button variant="primary" onClick={onStart} className="relative shrink-0 w-full self-stretch md:w-auto md:self-center !px-5 !py-2.5 !min-h-[44px] justify-center">{t('myo.cta.btn', 'Start a custom request')} <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" /></Button>
-    </Card>
   );
 }
 

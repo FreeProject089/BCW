@@ -151,16 +151,22 @@ export function buildBrief(a, kind, lang) {
   return (lines.join('\n') + (notes ? `\n\n${fr ? 'Notes' : 'Notes'}:\n${notes}` : '')).slice(0, 2000);
 }
 
-export default function MyoIntakeWizard({ intake, cfg, onClose }) {
+export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = false, onNeedAuth }) {
   const { t, lang } = useI18n();
   const toast = useToast();
   const isFr = lang === 'fr';
   const [i, setI] = useState(0);
   const [busy, setBusy] = useState(false);
   const [a, setA] = useState({
+    card: null,
     name: '', logo: '', objective: '', target: 'personal', scope: [], scopeOther: '',
     budget: 'unknown', deadline: 'flexible', refs: '', description: '', lang: isFr ? 'fr' : 'en',
   });
+  // The chosen product card drives the scope checklist and what gets submitted. Until the first
+  // question is answered there is no kind, so the catalogue's first entry stands in for the
+  // shapes that depend on one.
+  const chosen = cards.find((c) => c.key === a.card) || null;
+  const kind = chosen?.kind || 'custom';
   const set = (k, v) => setA((s) => ({ ...s, [k]: v }));
   const toggle = (k, id) => setA((s) => ({ ...s, [k]: s[k].includes(id) ? s[k].filter((x) => x !== id) : [...s[k], id] }));
 
@@ -170,6 +176,36 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
 
   // One entry per question. `done` gates Next, `summary` is what the recap shows.
   const steps = useMemo(() => [
+    {
+      // FIRST, and it replaces the catalogue of cards this page used to open on. Choosing what
+      // you want is a question like the others, not a gate in front of the questions — and it
+      // is the one that decides which checklist the scope question shows.
+      id: 'kind',
+      q: t('myo.w.q.kind', 'What do you want built?'),
+      hint: t('myo.w.h.kind', 'The closest match — the details are sorted out together.'),
+      done: !!a.card,
+      summary: chosen ? chosen.label : '',
+      body: (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {cards.map((c) => {
+            const on = a.card === c.key;
+            const Ico = c.icon;
+            return (
+              <button key={c.key} type="button" onClick={() => { set('card', c.key); setI((v) => v + 1); }}
+                className={`text-start rounded-xl border px-3 py-3 transition-all hover:-translate-y-0.5 ${
+                  on ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+                <span className="flex items-center gap-2">
+                  {Ico ? <Ico size={16} className="text-[var(--primary-2)] shrink-0" /> : null}
+                  <span className="font-medium text-sm">{c.label}</span>
+                  {on && <Check size={13} className="ms-auto text-[var(--primary-2)]" />}
+                </span>
+                {c.blurb ? <span className="block text-[11.5px] text-[var(--muted)] mt-1 leading-relaxed">{c.blurb}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      ),
+    },
     {
       id: 'name',
       q: t('myo.w.q.name', 'What is it called?'),
@@ -207,11 +243,11 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
       q: t('myo.w.q.scope', 'What should it do?'),
       hint: t('myo.w.h.scope', 'Pick everything that applies — nothing is binding, it is what the quote is priced against.'),
       done: true,
-      summary: (a.scope.length ? a.scope.map((id) => L(lang, scopeFor(intake.kind).find((x) => x.id === id) || { en: id, fr: id })).join(', ') : t('myo.w.tbd', 'to be defined together'))
+      summary: (a.scope.length ? a.scope.map((id) => L(lang, scopeFor(kind).find((x) => x.id === id) || { en: id, fr: id })).join(', ') : t('myo.w.tbd', 'to be defined together'))
         + (a.scopeOther.trim() ? ` · ${a.scopeOther.trim()}` : ''),
       body: (
         <div className="space-y-3">
-          <Tiles options={scopeFor(intake.kind)} value={a.scope} onPick={(id) => toggle('scope', id)} multi lang={lang} />
+          <Tiles options={scopeFor(kind)} value={a.scope} onPick={(id) => toggle('scope', id)} multi lang={lang} />
           <Input value={a.scopeOther} maxLength={200} onChange={(e) => set('scopeOther', e.target.value)} placeholder={t('myo.w.scopeOther', 'Something not in the list…')} />
         </div>
       ),
@@ -264,19 +300,24 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
         </div>
       ),
     },
-  ], [a, lang, cfg, intake.kind, urgent, urgentBlocked, t]);
+  ], [a, lang, cfg, cards, chosen, kind, urgent, urgentBlocked, t]);
 
   const last = i >= steps.length;      // the recap sits one past the questions
   const step = steps[Math.min(i, steps.length - 1)];
   const pct = Math.round(((last ? steps.length : i) / steps.length) * 100);
 
   const submit = async () => {
+    // Sign-in is asked for HERE, not at the door. The page used to bounce a signed-out visitor
+    // to /auth the moment they picked a card — before a single question, with nothing yet
+    // invested. Answering first and signing in to pay is the order that respects the work
+    // already done.
+    if (onNeedAuth && onNeedAuth()) return;
     setBusy(true);
     try {
       const res = await api.post('/myo/requests', {
-        productId: intake.productId, productKind: intake.kind,
+        productId: chosen?.id || null, productKind: kind,
         name: a.name.trim(), logo: a.logo.trim() || null, objective: a.objective.trim(),
-        target: a.target, description: buildBrief(a, intake.kind, a.lang), lang: a.lang, urgent,
+        target: a.target, description: buildBrief(a, kind, a.lang), lang: a.lang, urgent,
       });
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
       toast.error(t('myo.e.pay', 'Could not start checkout.')); setBusy(false);
@@ -293,12 +334,10 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
     }
   };
 
-  const Icon = intake.icon;
-  return (
-    <Modal open onClose={onClose} title={t('myo.intake.title', 'Start a request')} icon={Icon} width="max-w-xl"
-      footer={
+  const Icon = chosen?.icon;
+  const foot = (
         <>
-          <Button variant="ghost" onClick={() => (i === 0 ? onClose() : setI((v) => v - 1))}>
+          <Button variant="ghost" disabled={i === 0 && !onClose} onClick={() => (i === 0 ? onClose?.() : setI((v) => v - 1))}>
             {i === 0 ? t('common.cancel', 'Cancel') : <><ArrowLeft size={15} /> {t('myo.w.back', 'Back')}</>}
           </Button>
           {last
@@ -309,7 +348,11 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
                 {t('myo.w.next', 'Next')} <ArrowRight size={15} />
               </Button>}
         </>
-      }>
+  );
+
+  // The same wizard, two shells: a card ON the page (this is what /myo opens on now) or the
+  // modal it used to be, kept for anywhere that still opens it over something else.
+  const inner = (<>
       {/* Progress: which of the N questions, and how far along. */}
       <div className="mb-4">
         <div className="flex items-center justify-between text-[11px] text-[var(--faint)] mb-1.5">
@@ -361,6 +404,19 @@ export default function MyoIntakeWizard({ intake, cfg, onClose }) {
           </div>
         </div>
       )}
+  </>);
+
+  if (inline) {
+    return (
+      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5 sm:p-6 max-w-2xl mx-auto">
+        {inner}
+        <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-[var(--line)]">{foot}</div>
+      </div>
+    );
+  }
+  return (
+    <Modal open onClose={onClose} title={t('myo.intake.title', 'Start a request')} icon={Icon} width="max-w-xl" footer={foot}>
+      {inner}
     </Modal>
   );
 }

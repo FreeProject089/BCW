@@ -2149,6 +2149,10 @@ const DICT = {
     'myo.intake.title': 'Démarrer une demande', 'myo.intake.pay': 'Payer {p} & démarrer', 'myo.intake.legalpre': 'En payant, tu acceptes nos',
     // Le questionnaire guidé (myo-intake.jsx) — une question par écran, puis le récap.
     'myo.intake.note2': 'Tu paies {p} pour une consultation : ton brief est lu, tu reçois des conseils dessus, et tu reçois un devis. Ce n’est pas le prix du produit — la réalisation commence une fois ce devis accepté.',
+    'myo.w.q.kind': 'Tu veux faire construire quoi ?',
+    'myo.w.h.kind': 'Le plus proche — les détails se règlent ensemble.',
+    'myo.pick.t2': 'Dis-nous ce qu’il te faut', 'myo.pick.s2': 'Quelques questions — deux minutes, sans engagement.',
+    'myo.deal.fold': 'Comment ça marche, et quand tu es débité',
     'myo.w.step': 'Question {n} sur {m}', 'myo.w.recap': 'Ton brief', 'myo.w.next': 'Suivant', 'myo.w.back': 'Retour',
     'myo.w.none': 'rien d’ajouté', 'myo.w.tbd': 'à définir ensemble',
     'myo.w.q.name': 'Ça s’appelle comment ?',
