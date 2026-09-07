@@ -4,7 +4,9 @@
 // free products (static / pool / content / role). Paid products return `checkout_required` — the
 // Stripe one-time flow and the external-key webhook are Phase 2.
 import { z } from 'zod';
+import crypto from 'node:crypto';
 import { db, requireRole } from '../lib/lib.mjs';
+import { stripe, ensureCustomer } from './hosting.mjs';
 
 const DELIVERY_KINDS = ['key_static', 'key_pool', 'key_external', 'content', 'role'];
 
@@ -32,20 +34,46 @@ const pub = (pr) => ({
   deliveryKind: pr.deliveryKind, inStock: pr.stock == null || pr.stock > pr.sold,
 });
 
-// Fulfil a purchase: returns the delivery payload, or throws { code } when it cannot.
-async function fulfil(p, product, buyerId) {
+// Ask an external key generator for a code. The admin sets externalUrl + externalSecret; we POST
+// a signed body and expect { key } back. Signed with HMAC-SHA256 so the external system can trust
+// the request came from us; timed out so a dead endpoint never hangs a purchase.
+async function externalKey(product, buyerId) {
+  const body = JSON.stringify({ productId: product.id, buyerId, name: product.name, ts: Date.now() });
+  const sig = product.externalSecret ? crypto.createHmac('sha256', product.externalSecret).update(body).digest('hex') : '';
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const r = await fetch(product.externalUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BC-Signature': sig }, body, signal: ctrl.signal });
+    if (!r.ok) { const e = new Error('external_failed'); e.code = 'external_failed'; throw e; }
+    const j = await r.json().catch(() => ({}));
+    const key = String(j.key || j.code || '').trim();
+    if (!key) { const e = new Error('external_no_key'); e.code = 'external_no_key'; throw e; }
+    return { key, external: true };
+  } catch (e) {
+    if (e.code) throw e;
+    const err = new Error('external_failed'); err.code = 'external_failed'; throw err;
+  } finally { clearTimeout(timer); }
+}
+
+// Fulfil a purchase: returns the delivery payload, or throws { code } when it cannot. Exported so
+// the Stripe webhook can deliver a paid purchase the same way the free path does.
+export async function fulfilProduct(p, product, buyerId) {
   switch (product.deliveryKind) {
     case 'content': return { content: product.content || '' };
     case 'role': return { role: product.roleId || '' };
     case 'key_static': return { key: product.staticKey || '' };
     case 'key_pool': {
-      // Claim one unclaimed pool key atomically-ish: pick the oldest free key, mark it.
-      const free = await p.projectKey.findFirst({ where: { productId: product.id, claimedAt: null }, orderBy: { createdAt: 'asc' } });
-      if (!free) { const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e; }
-      await p.projectKey.update({ where: { id: free.id }, data: { claimedById: buyerId, claimedAt: new Date() } });
-      return { key: free.code };
+      // Claim one unclaimed pool key: pick the oldest free key, mark it. updateMany with a
+      // claimedAt:null guard makes the claim race-safe (a second buyer can't take the same key).
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const free = await p.projectKey.findFirst({ where: { productId: product.id, claimedAt: null }, orderBy: { createdAt: 'asc' } });
+        if (!free) { const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e; }
+        const claimed = await p.projectKey.updateMany({ where: { id: free.id, claimedAt: null }, data: { claimedById: buyerId, claimedAt: new Date() } });
+        if (claimed.count === 1) return { key: free.code };
+      }
+      const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e;
     }
-    case 'key_external': { const e = new Error('external_not_ready'); e.code = 'external_not_ready'; throw e; } // Phase 2 (signed webhook)
+    case 'key_external': return externalKey(product, buyerId);
     default: return {};
   }
 }
@@ -69,14 +97,42 @@ export default async function marketplaceRoutes(app) {
     const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
     if (!product || !product.active) return reply.code(404).send({ error: 'not_found' });
     if (product.stock != null && product.sold >= product.stock) return reply.code(409).send({ error: 'out_of_stock' });
-    // Paid products need the Stripe one-time flow (Phase 2); free ones deliver immediately.
+    // Paid products go through Stripe (see /checkout); free ones deliver immediately.
     if (product.priceCents > 0) return reply.code(402).send({ error: 'checkout_required', priceCents: product.priceCents, currency: product.currency });
     let delivery;
-    try { delivery = await fulfil(p, product, req.user.uid); }
+    try { delivery = await fulfilProduct(p, product, req.user.uid); }
     catch (e) { return reply.code(409).send({ error: e.code || 'delivery_failed' }); }
     const purchase = await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: req.user.uid, status: 'paid', priceCents: 0, delivery } });
     await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
     return { ok: true, purchase: { id: purchase.id, delivery } };
+  });
+
+  // ── Buyer: Stripe checkout for a PAID product (delivery happens in the webhook) ──────────
+  app.post('/marketplace/products/:id/checkout', { preHandler: requireRole() }, async (req, reply) => {
+    const p = await db();
+    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
+    if (!product || !product.active) return reply.code(404).send({ error: 'not_found' });
+    if (product.priceCents <= 0) return reply.code(400).send({ error: 'free_product' }); // use /buy
+    if (product.stock != null && product.sold >= product.stock) return reply.code(409).send({ error: 'out_of_stock' });
+    // A pool product with no free key left cannot be sold — refuse before taking money.
+    if (product.deliveryKind === 'key_pool') {
+      const free = await p.projectKey.count({ where: { productId: product.id, claimedAt: null } });
+      if (free <= 0) return reply.code(409).send({ error: 'out_of_stock' });
+    }
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
+    const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
+    const customer = await ensureCustomer(p, sk, req.user.uid);
+    const md = { type: 'marketplace', productId: product.id, userId: req.user.uid };
+    const session = await sk.checkout.sessions.create({
+      mode: 'payment', customer,
+      line_items: [{ quantity: 1, price_data: { currency: product.currency || 'usd', unit_amount: product.priceCents, product_data: { name: product.name } } }],
+      invoice_creation: { enabled: true },
+      metadata: md,
+      success_url: `${siteUrl}/dashboard?market=ok`,
+      cancel_url: `${siteUrl}/dashboard?market=cancel`,
+    });
+    return { url: session.url };
   });
 
   // ── Buyer: my purchases for a project ───────────────────────────────────────

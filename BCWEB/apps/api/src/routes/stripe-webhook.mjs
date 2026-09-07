@@ -3,6 +3,7 @@ import { mintGiftCode } from '../lib/gift.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
+import { fulfilProduct } from './marketplace.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -383,6 +384,26 @@ export default async function stripeWebhook(app) {
           await recomputePoolBytes(p, group.id);
           await p.payment.create({ data: { userId: meta.userId, hostingGroupId: group.id, kind: 'HOSTING', description: `Pool "${group.name}" renewal — ${months} month${months > 1 ? 's' : ''}`, amountCents: s.amount_total ?? 0, currency: s.currency || 'usd', stripeSessionId: s.id } });
           await notify(p, meta.userId, 'hosting_started', `Pool "${group.name}" renewed for ${months} month${months > 1 ? 's' : ''}.`);
+        }
+        return { received: true };
+      }
+
+      // A paid MARKETPLACE product — payment cleared, so deliver the key/content/role now.
+      if (meta.type === 'marketplace' && meta.productId && meta.userId) {
+        const product = await p.projectProduct.findUnique({ where: { id: meta.productId } });
+        if (product) {
+          // Idempotent: Stripe can resend the event — one purchase per checkout session.
+          const dup = await p.projectProductPurchase.findFirst({ where: { productId: product.id, buyerId: meta.userId, delivery: { path: ['sessionId'], equals: s.id } } }).catch(() => null);
+          if (!dup) {
+            let delivery = {};
+            try { delivery = await fulfilProduct(p, product, meta.userId); } catch (e) { delivery = { error: e.code || 'delivery_failed' }; }
+            delivery.sessionId = s.id;
+            await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: meta.userId, status: 'paid', priceCents: s.amount_total ?? product.priceCents, delivery } });
+            await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
+            // The purchase is tracked in ProjectProductPurchase; Stripe's own invoice
+            // (invoice_creation on the session) is the receipt. No Payment row needed.
+            try { await notify(p, meta.userId, 'purchase', `Your purchase "${product.name}" is ready — see it in your dashboard.`); } catch { /* type may vary */ }
+          }
         }
         return { received: true };
       }
