@@ -199,8 +199,12 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 [dir="rtl"] { --reveal-x: 0px; }
 
 @layer components {
+  /* The gradients below read `var(--grad-*, <the shipped value>)`. The fallback IS the
+     shipped look, so a site that has never configured a gradient renders exactly as before;
+     the theme injector only ever ADDS a property. Note the third stop here: a literal amber
+     that no accent could reach, which is why a blue site still had an amber headline. */
   .gradient-text {
-    background: linear-gradient(110deg, var(--primary), var(--primary-2) 70%, #fbbf24);
+    background: var(--grad-text, linear-gradient(110deg, var(--primary), var(--primary-2) 70%, #fbbf24));
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
   }
   .card {
@@ -262,7 +266,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .btn-danger[aria-busy="true"]::after { border-color: var(--on-error); border-top-color: transparent; }
   .btn-primary {
     border: 1px solid transparent; color: var(--on-primary);
-    background: linear-gradient(120deg, var(--primary), var(--primary-2));
+    background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2)));
     box-shadow: 0 8px 22px -8px var(--primary-glow);
   }
   .btn-primary:hover { box-shadow: 0 10px 28px -6px var(--primary-glow); filter: brightness(1.05); }
@@ -506,7 +510,7 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 
   /* Animated determinate progress fill (updates, uploads). Width is set inline. */
   .progress-track { height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
-  .progress-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--primary), var(--primary-2)); transition: width .5s cubic-bezier(.22,1,.36,1); position: relative; }
+  .progress-fill { height: 100%; border-radius: 99px; background: var(--grad-bar, linear-gradient(90deg, var(--primary), var(--primary-2))); transition: width .5s cubic-bezier(.22,1,.36,1); position: relative; }
   .progress-fill.is-success { background: linear-gradient(90deg, var(--success), #4ade80); }
   /* moving sheen so an in-progress bar reads as alive, not stalled */
   .progress-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); transform: translateX(-100%); animation: progressSheen 1.4s ease-in-out infinite; }
@@ -649,13 +653,18 @@ html.js-anim .reveal-stagger.reveal-instant > * {
     radial-gradient(58rem 42rem at 80% -12%, var(--glow-a), transparent 60%),
     radial-gradient(46rem 40rem at -6% 6%, var(--glow-b), transparent 56%),
     radial-gradient(90rem 46rem at 50% 118%, var(--glow-c), transparent 62%)),
-    linear-gradient(180deg, #fffdf9 0%, var(--bg) 40%);
+    /* The top wash. `#fffdf9` used to be written here, which made it the one part of the
+       light page no theme could reach: give the site a blue page colour and the top 40% still
+       faded out of cream. It is a token now, and dark gets the same layer (transparent by
+       default, so dark renders unchanged until someone sets it). */
+    linear-gradient(180deg, var(--page-top, #fffdf9) 0%, var(--bg) 40%);
 }
 [data-theme="dark"] body {
   background-image: var(--page-glows,
     radial-gradient(60rem 52rem at 82% -14%, var(--glow-a), transparent 56%),
     radial-gradient(48rem 46rem at -8% 4%, var(--glow-b), transparent 56%),
-    radial-gradient(130% 90% at 50% 128%, var(--glow-c), transparent 60%));
+    radial-gradient(130% 90% at 50% 128%, var(--glow-c), transparent 60%)),
+    linear-gradient(180deg, var(--page-top, transparent) 0%, var(--bg) 40%);
 }
 
 /* markdown (release notes)
@@ -707,7 +716,7 @@ html.js-anim .reveal-stagger.reveal-instant > * {
 
 /* range slider (custom plan) */
 .bcw-range { -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); outline: none; }
-.bcw-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(120deg, var(--primary), var(--primary-2)); cursor: pointer; box-shadow: 0 2px 8px -2px var(--primary-glow); border: 2px solid var(--bg-solid); }
+.bcw-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--grad-primary, linear-gradient(120deg, var(--primary), var(--primary-2))); cursor: pointer; box-shadow: 0 2px 8px -2px var(--primary-glow); border: 2px solid var(--bg-solid); }
 .bcw-range::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; border: 2px solid var(--bg-solid); }
 
 /* ── Invoice print ── Isolate #invoice-print so "Print / Save PDF" produces a clean

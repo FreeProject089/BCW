@@ -28,6 +28,8 @@ import { defaultFooterConfig, DEFAULT_FOOTER_SOCIALS } from '../ui/footer-defaul
 import { SOCIAL_ICONS } from '../App.jsx';
 const SOCIAL_KEYS = Object.keys(SOCIAL_ICONS);
 import { TOKENS, TOKEN_GROUPS } from '../ui/theme-tokens.js';
+import { GRADIENTS, gradientCss } from '../ui/theme-gradients.js';
+import { BrandMarksCard, GradientsCard } from '../editor/site-theme-cards.jsx';
 import { themeCss, applySiteTheme, inkOn, contrastRatio } from '../ui/theme.jsx';
 import { I18nDraft } from '../i18n.jsx';
 import { CharityCard, CHARITY_WIDTHS, CHARITY_DESIGN_DEFAULTS, charityCanvasSizes } from './charity.jsx';
@@ -76,9 +78,14 @@ function previewGlowCss(f, mode) {
   // back to the admin's own theme keeps any older single-mode caller correct.
   const active = mode || (document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
   const list = Array.isArray(f?.[active]?.glows) ? f[active].glows : DEFAULT_GLOWS(active);
-  if (!list.length) return 'none'; // an explicit empty list IS a flat background
+  // The top wash sits UNDER the glows, exactly as it does on the real page. It used to be a
+  // literal `#fffdf9` in index.css — the one part of the light background no theme reached —
+  // so leaving it out of the preview would hide the very change that made it themeable.
+  const wash = `linear-gradient(180deg, var(--page-top, ${active === 'light' ? '#fffdf9' : 'transparent'}) 0%, var(--bg) 40%)`;
+  if (!list.length) return wash; // an explicit empty list IS a flat background — but the wash stays
   return list
     .map((g) => `radial-gradient(${g.w ?? 55}% ${g.h ?? 55}% at ${g.x ?? 50}% ${g.y ?? 0}%, ${g.color}, transparent ${g.fade ?? 60}%)`)
+    .concat(wash)
     .join(',');
 }
 
@@ -20827,7 +20834,7 @@ function AdminSiteTheme() {
   // value — so closing the toast leaves the new theme in place, which is what the button
   // promised.
   const save = async () => {
-    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null };
+    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null, gradients: f.gradients || null, logoLight: f.logoLight || '', logoDark: f.logoDark || '' };
     const previous = data?.theme || null;
     setBusy(true);
     try {
@@ -20871,10 +20878,15 @@ function AdminSiteTheme() {
   //
   // Clearing silently would throw away real work, so it is undoable: the previous state is
   // captured and restored if you take it back.
+  //
+  // The gradients go with them. Their stops usually REFERENCE the accent, so those follow a
+  // preset on their own — but a stop set to a fixed colour does not, and a blue preset that
+  // left the headline fading into the previous theme's pink is the same half-applied preset
+  // in a different place.
   const pick = (p) => {
-    const had = !!(f.shared || f.light || f.dark);
-    const prev = { shared: f.shared, light: f.light, dark: f.dark };
-    setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id, shared: null, light: null, dark: null });
+    const had = !!(f.shared || f.light || f.dark || f.gradients);
+    const prev = { shared: f.shared, light: f.light, dark: f.dark, gradients: f.gradients };
+    setF({ ...f, accent: p.accent, accent2: p.accent2, preset: p.id, shared: null, light: null, dark: null, gradients: null });
     if (had) {
       toast.action({
         tone: 'warning', duration: 8000, cancelLabel: t('common.undo', 'Undo'),
@@ -20897,11 +20909,14 @@ function AdminSiteTheme() {
   const resetAll = async () => {
     if (!(await dialog.confirm({
       title: t('st.reset.t', 'Reset the site theme?'),
-      message: t('st.reset.m', 'Restores the built-in palette for everyone and clears every token override in Shared, Light and Dark. Applies immediately.'),
+      message: t('st.reset.m2', 'Restores the built-in palette for everyone and clears every override — Shared, Light, Dark, the gradients and the site marks. Applies immediately.'),
       okLabel: t('st.reset.ok', 'Reset'),
       danger: true,
     }))) return;
-    const base = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null };
+    // Every bag, not some of them. The gradients and the logos are overrides like any other,
+    // and a "reset" that left the site wearing a custom mark and a hand-tuned button gradient
+    // would be the same half-reset this button was written to fix in the first place.
+    const base = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null, gradients: null, logoLight: '', logoDark: '' };
     setBusy(true);
     try {
       await api.put('/admin/theme', base);
@@ -20922,7 +20937,7 @@ function AdminSiteTheme() {
   // the form for review; nothing goes live until Apply, so a bad file can never repaint the
   // site on its own.
   const exportTheme = () => {
-    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null };
+    const body = { accent: f.accent, accent2: f.accent2, mode: f.mode, preset: f.preset || '', light: f.light || null, dark: f.dark || null, shared: f.shared || null, gradients: f.gradients || null, logoLight: f.logoLight || '', logoDark: f.logoDark || '' };
     const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `bcweb-theme-${Date.now()}.json`; a.click(); URL.revokeObjectURL(a.href);
   };
@@ -20939,6 +20954,17 @@ function AdminSiteTheme() {
         light: j.light && typeof j.light === 'object' ? j.light : null,
         dark: j.dark && typeof j.dark === 'object' ? j.dark : null,
         shared: j.shared && typeof j.shared === 'object' ? j.shared : null,
+        // Only gradients the code knows survive an import, and each is re-checked by
+        // gradientCss — a file is a file, and one hand-edited to carry a stop the server
+        // would refuse must not be able to load into the form and look applicable.
+        gradients: j.gradients && typeof j.gradients === 'object'
+          ? Object.fromEntries(GRADIENTS.map((g) => [g.name, j.gradients[g.name]])
+            .filter(([, spec]) => spec && gradientCss(spec)))
+          : null,
+        // Same rule as the API: a site path or an https URL. A data: or javascript: URL in an
+        // imported file must not reach an <img src> even in the preview.
+        logoLight: /^(\/|https:\/\/)/.test(String(j.logoLight || '')) ? j.logoLight : '',
+        logoDark: /^(\/|https:\/\/)/.test(String(j.logoDark || '')) ? j.logoDark : '',
       });
       toast.success(t('st.imported', 'Theme loaded — review it, then Apply.'));
     } catch { toast.error(t('st.importbad', 'Not a valid theme file.')); }
@@ -20947,9 +20973,10 @@ function AdminSiteTheme() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('st.sub', 'The accent colour every visitor sees, in both light and dark. Only a superadmin can change it.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('st.sub2', 'Everything visitors see the site wearing: the accent pair, the gradients, the page and surface colours in both modes, and the site’s own mark. Only a superadmin can change it.')}</p>
 
       <AppIconsCard />
+      <BrandMarksCard f={f} setF={setF} />
 
       <Card className="p-4 mb-4">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2.5">{t('st.presets', 'Presets')}</div>
@@ -21001,6 +21028,8 @@ function AdminSiteTheme() {
           <Button variant="ghost" disabled={busy} onClick={exportTheme}><Download size={14} /> {t('st.export', 'Export')}</Button>
         </div>
       </Card>
+
+      <GradientsCard f={f} setF={setF} lang={lang} />
 
       {/* Full token editor. Two colours per mode still DERIVE the whole surface set; every
           individual token can then be corrected on top. That order is the point — "derive
@@ -21151,7 +21180,7 @@ function AdminSiteTheme() {
                 {/* Every selector themeCss emits is rewritten to THIS pane's container, so each
                     pane paints its own mode independently — no cascade fight between the two. */}
                 <style>{(() => {
-                  const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, [m]: f[m] };
+                  const scoped = { accent: f.accent, accent2: f.accent2, shared: f.shared, gradients: f.gradients, [m]: f[m] };
                   return themeCss(scoped).replace(/:root,\[data-theme="light"\]|\[data-theme="dark"\]|:root/g, `#st-preview-${m}`);
                 })()}</style>
                 <div className="flex items-center justify-between mb-1.5">
@@ -21162,13 +21191,22 @@ function AdminSiteTheme() {
                 </div>
                 <div id={`st-preview-${m}`} className={`rounded-xl border p-3.5 space-y-3 transition ${editing ? 'border-[var(--primary)]/40 ring-1 ring-[var(--primary)]/20' : 'border-[var(--line)]'}`}
                   style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f, m), color: 'var(--text)' }}>
+                  {/* The site mark on this scheme's ground — the only place the two logos can
+                      be judged, since a mark that vanishes only vanishes on its own page. */}
+                  <div className="flex items-center gap-2">
+                    <img src={(m === 'dark' ? f.logoDark || f.logoLight : f.logoLight || f.logoDark) || '/logo.png'} alt=""
+                      className="w-7 h-7 rounded-lg object-contain" />
+                    <span className="gradient-text text-base font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <button className="btn btn-primary btn-sm">{t('st.samplebtn', 'Primary button')}</button>
                     <button className="btn btn-danger btn-sm">{t('st.sampledanger', 'Delete')}</button>
                     <button className="btn btn-ghost btn-sm">{t('st.sampleghost', 'Cancel')}</button>
-                    <span className="gradient-text text-base font-semibold">{t('st.sampletext', 'Gradient heading')}</span>
                     <span className="px-2 py-0.5 rounded-md text-xs" style={{ background: 'var(--primary)', color: 'var(--on-primary)' }}>Badge</span>
                   </div>
+                  {/* --grad-bar has nowhere else to show itself: it paints progress fills, and
+                      without one on screen an edit to it looks like it did nothing. */}
+                  <div className="progress-track"><div className="progress-fill is-done" style={{ width: '62%' }} /></div>
                   {/* A surface, so --surface / --line / the text ramp are all on screen at once. */}
                   <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
                     <div className="font-semibold text-sm">{t('st.samplecard', 'A card on a surface')}</div>

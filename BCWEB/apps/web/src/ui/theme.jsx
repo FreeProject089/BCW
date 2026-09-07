@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { registerAppIcons } from '@bettercommunity/bmd/config';
+import { gradientVars } from './theme-gradients.js';
 
 // White/orange (light) ↔ black/orange (dark). Persisted; applied on <html>.
 const KEY = 'bcw_theme';
@@ -63,8 +64,17 @@ function surfaceVars(bg, text, lift) {
     `--line:${ink(14)}`,
     `--line-strong:${ink(26)}`,
     `--control-border:${ink(48)}`,
+    // The top-of-page wash — "light from above". The shipped light theme lifts its cream page
+    // to nearly white; a dark page needs a fraction of that or the top of the site turns into
+    // a grey band. So the amount tracks how light the page already is, rather than being a
+    // constant that only suits one of the two.
+    `--page-top:${up(Math.round(8 + 77 * luminance(hexish(bg))))}`,
   ].join(';');
 }
+// The page colour reaches here as whatever the superadmin typed — a hex, an rgb(), a
+// color-mix(). Only a hex can be measured; anything else falls back to a mid grey, which
+// gives a middling wash rather than throwing on the way to painting the page.
+const hexish = (v) => (/^#[0-9a-fA-F]{6}$/.test(String(v || '').trim()) ? v.trim() : '#808080');
 
 // A token value ends up inside a <style> element, so it is a place where a stray `}` would
 // end the rule and everything after it would be attacker-chosen CSS. Only colours are
@@ -118,7 +128,7 @@ function glowVars(glows) {
   return parts.length ? `--page-glows:${parts.join(',')}` : '';
 }
 
-export function themeCss({ accent, accent2, light, dark, shared }) {
+export function themeCss({ accent, accent2, light, dark, shared, gradients }) {
   if (!accent) return '';
   const a2 = accent2 || accent;
   // --on-primary is derived from the MIDPOINT of the gradient, not from `accent` alone:
@@ -141,6 +151,13 @@ export function themeCss({ accent, accent2, light, dark, shared }) {
   // above so an explicit value beats the derived one.
   const sharedCss = overrideVars(shared);
   if (sharedCss) css += `:root{${sharedCss}}`;
+
+  // Gradients are SHARED, like the accent: `.btn-primary` and `.gradient-text` are one rule
+  // each, not one per mode, and their stops reference the accent tokens — so a gradient
+  // follows the accent into whichever mode is on screen. Emitted after the shared overrides
+  // so a stop referencing var(--primary) reads the final accent, whatever set it.
+  const gradCss = gradientVars(gradients);
+  if (gradCss) css += `:root{${gradCss}}`;
 
   // Per mode: the derived surface set first (when a page colour is given), then any explicit
   // token. Order is the whole mechanism — "derive everything, then let me correct one thing"
@@ -168,7 +185,26 @@ export function themeCss({ accent, accent2, light, dark, shared }) {
 // custom theme" would have preserved the familiar look, but it would also have meant shipping
 // a known-unreadable default on purpose and applying the accessible rule only to other
 // people's colours. One rule, applied everywhere.
+// ── The site mark, per scheme ─────────────────────────────────────────────────────────
+//
+// One logo cannot serve both schemes. The BetterCommunity mark is a dark "C" on a light
+// ground: on the near-black dark page it is a dark square on a dark page, which is why the
+// hero already reaches for a separate `/logo-white.webp` — the need was real, it was just
+// solved once, by hand, in one component.
+//
+// So the theme carries two URLs. They are NOT CSS (an <img src> cannot come from a custom
+// property in any useful way), so they travel beside the stylesheet rather than inside it:
+// applySiteTheme stores them and fires the event the page already listens to, and <SiteLogo>
+// reads the one matching the scheme on screen. Neither set means the bundled mark, so a site
+// that never configures this looks exactly as it did.
+const BUNDLED_LOGO = '/logo.png';
+let LOGOS = { light: '', dark: '' };
+export const siteLogos = () => LOGOS;
+/** The mark for a scheme, falling back through the other scheme to the bundled one. */
+export const siteLogo = (mode) => (mode === 'dark' ? LOGOS.dark || LOGOS.light : LOGOS.light || LOGOS.dark) || BUNDLED_LOGO;
+
 export function applySiteTheme(theme) {
+  LOGOS = { light: String(theme?.logoLight || ''), dark: String(theme?.logoDark || '') };
   const css = themeCss(theme || {});
   let el = document.getElementById('bcw-site-theme');
   if (!css) { el?.remove(); }
@@ -180,7 +216,13 @@ export function applySiteTheme(theme) {
   // colours once and keeps them in uniforms, so a stylesheet change means nothing to it. It
   // already watches <html data-theme> for the light/dark switch, but that attribute does not
   // move when only the palette changes — hence this event.
-  try { document.dispatchEvent(new CustomEvent('bcw:site-theme')); } catch { /* ignore */ }
+  // The marks ride ON the event rather than being read back out of this module afterwards.
+  // A module variable only reaches listeners that share this exact module instance, and the
+  // page has already proven it does not: the dev server hands the lazily-loaded admin chunk
+  // its own copy, so a preview updated `LOGOS` here while the topbar's <SiteLogo> read a
+  // different `LOGOS` and never moved. A DOM event crosses that boundary; the module variable
+  // stays as the value for a component that mounts LATER, after the fetch.
+  try { document.dispatchEvent(new CustomEvent('bcw:site-theme', { detail: { logos: LOGOS } })); } catch { /* ignore */ }
 }
 
 export function ThemeProvider({ children }) {
@@ -212,8 +254,36 @@ export function ThemeProvider({ children }) {
     return () => { alive = false; };
   }, []);
 
+  // The marks are not CSS, so a stylesheet swap does not move them. applySiteTheme fires
+  // `bcw:site-theme` for exactly this class of consumer (the WebGL orb was the first); the
+  // admin's live preview goes through the same call, so editing the logo repaints the topbar
+  // immediately instead of after a save-and-reload.
+  const [logos, setLogos] = useState(siteLogos);
+  useEffect(() => {
+    const on = (e) => setLogos(e?.detail?.logos || siteLogos());
+    document.addEventListener('bcw:site-theme', on);
+    return () => document.removeEventListener('bcw:site-theme', on);
+  }, []);
+
   const toggle = () => setTheme((t) => (t === 'light' ? 'dark' : 'light'));
-  return <ThemeCtx.Provider value={{ theme, toggle }}>{children}</ThemeCtx.Provider>;
+  const mark = (logos && (theme === 'dark' ? logos.dark || logos.light : logos.light || logos.dark)) || BUNDLED_LOGO;
+  return <ThemeCtx.Provider value={{ theme, toggle, logos, logo: mark }}>{children}</ThemeCtx.Provider>;
+}
+
+/**
+ * The site mark for the scheme on screen.
+ *
+ * Used everywhere the BetterCommunity logo appears as the SITE's own identity — topbar,
+ * footer, sign-in, the default avatar. Not for the per-project marks (those are app icons)
+ * and not for a user-uploaded nav logo, which already overrides this by configuration.
+ */
+export function SiteLogo({ className = '', size, alt = '', ...rest }) {
+  const ctx = useTheme();
+  // Rendered outside the provider (a standalone preview, a test harness) it still has to
+  // draw something — a logo that vanishes when the context is missing is worse than the
+  // bundled mark.
+  const src = ctx?.logo || siteLogo(ctx?.theme || 'light');
+  return <img src={src} alt={alt} width={size} height={size} className={className} {...rest} />;
 }
 
 // Clean sliding switch: a single high-contrast knob carrying the current mode's icon

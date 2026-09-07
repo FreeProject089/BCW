@@ -10,7 +10,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { footerSchema, pageColours } from '../src/lib/config-schemas.mjs';
+import { footerSchema, pageColours, gradients, logoUrl, THEME_DEFAULTS } from '../src/lib/config-schemas.mjs';
 
 const baseFooter = { enabled: true, columns: [] };
 
@@ -120,4 +120,55 @@ test('theme: a glow colour cannot break out of the CSS declaration', () => {
 test('theme: glow geometry is clamped to a sane range', () => {
   const r = pageColours.safeParse({ glows: [{ color: '#fff', w: 9999 }] });
   assert.ok(!r.success, 'an out-of-range size must be refused, not silently stored');
+});
+
+// ── Gradients and the per-scheme site marks ──────────────────────────────────────────
+//
+// Both are new stored shapes, and both are emitted to every visitor: a gradient stop lands
+// inside a <style> element, and a logo URL lands in an <img src>. The cases that matter are
+// the ones that would get through a looser check.
+
+test('theme: a gradient survives a round-trip with its angle and stops', () => {
+  const r = gradients.safeParse({ '--grad-text': { angle: 45, stops: [{ color: 'var(--primary)' }, { color: '#fbbf24', at: 70 }] } });
+  assert.ok(r.success, JSON.stringify(r.error?.issues));
+  assert.equal(r.data['--grad-text'].angle, 45);
+  assert.equal(r.data['--grad-text'].stops[1].at, 70);
+});
+
+test('theme: only the accent references are allowed by name, not var() in general', () => {
+  // `var(--x)` matched loosely would hand a superadmin every custom property on the page.
+  assert.ok(gradients.safeParse({ '--grad-primary': { stops: [{ color: 'var(--primary-2)' }, { color: 'var(--bg)' }] } }).success);
+  assert.ok(!gradients.safeParse({ '--grad-primary': { stops: [{ color: 'var(--anything)' }, { color: '#fff' }] } }).success);
+});
+
+test('theme: a gradient stop cannot break out of the CSS declaration', () => {
+  for (const color of ['red;}body{display:none', 'url(javascript:alert(1))', '#fff;color:red']) {
+    assert.ok(!gradients.safeParse({ '--grad-bar': { stops: [{ color }, { color: '#fff' }] } }).success, color);
+  }
+});
+
+test('theme: an unknown gradient name is refused, and one stop is not a gradient', () => {
+  assert.ok(!gradients.safeParse({ '--grad-evil': { stops: [{ color: '#fff' }, { color: '#000' }] } }).success);
+  // The client refuses to emit a one-stop gradient; storing one would mean the saved theme
+  // and the rendered site disagree about what was configured.
+  assert.ok(!gradients.safeParse({ '--grad-bar': { stops: [{ color: '#fff' }] } }).success);
+});
+
+test('theme: the site marks take a path or https, and nothing else', () => {
+  assert.ok(logoUrl.safeParse('/api/media/x.png').success);
+  assert.ok(logoUrl.safeParse('https://cdn.example/x.svg').success);
+  assert.ok(logoUrl.safeParse('').success, 'empty means "the bundled mark"');
+  // A data URI would be shipped to every visitor inside the theme payload; bare http breaks
+  // the page's mixed-content rules.
+  assert.ok(!logoUrl.safeParse('data:image/png;base64,AAAA').success);
+  assert.ok(!logoUrl.safeParse('http://example.com/x.png').success);
+  assert.ok(!logoUrl.safeParse('javascript:alert(1)').success);
+});
+
+test('theme: the new fields have defaults, so an old stored theme reads back complete', () => {
+  // A theme row written before this change has no gradients and no logos. Reading it must
+  // yield "not set" rather than undefined holes the client then has to guess at.
+  assert.equal(THEME_DEFAULTS.gradients, null);
+  assert.equal(THEME_DEFAULTS.logoLight, '');
+  assert.equal(THEME_DEFAULTS.logoDark, '');
 });

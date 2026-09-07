@@ -202,7 +202,7 @@ async function errorGroups(p) {
   return rows.map((r) => ({ id: errorGroupId(r.source, r.message), source: r.source, message: r.message, n: Number(r.n), at: r.at })).filter((r) => !handled.has(r.id));
 }
 
-import { footerSchema, pageColours, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
+import { footerSchema, pageColours, gradients, logoUrl, THEME_KEY, HEX, THEME_DEFAULTS } from '../lib/config-schemas.mjs';
 const APP_ICONS_KEY = 'brand.appIcons';
 import { hostOf, normalizeUrl } from '../lib/urlblock.mjs';
 export { footerSchema, footSocial, pageColours } from '../lib/config-schemas.mjs';
@@ -753,13 +753,16 @@ export default async function miscRoutes(app) {
       light: pageColours,
       dark: pageColours,
       shared: pageColours,
+      gradients,
+      logoLight: logoUrl,
+      logoDark: logoUrl,
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: THEME_KEY } });
     const value = { ...THEME_DEFAULTS, ...(row?.value || {}), ...b.data };
     await p.adminSetting.upsert({ where: { key: THEME_KEY }, create: { key: THEME_KEY, value }, update: { value } });
-    await logAudit(p, req.user.uid, 'site.theme', `accent=${value.accent} accent2=${value.accent2} mode=${value.mode} preset=${value.preset || '-'} pages=${value.light || value.dark ? 'custom' : 'default'}`);
+    await logAudit(p, req.user.uid, 'site.theme', `accent=${value.accent} accent2=${value.accent2} mode=${value.mode} preset=${value.preset || '-'} pages=${value.light || value.dark ? 'custom' : 'default'} gradients=${Object.keys(value.gradients || {}).length} logos=${[value.logoLight && 'light', value.logoDark && 'dark'].filter(Boolean).join('+') || '-'}`);
     return { ok: true, theme: value };
   });
 

@@ -9,7 +9,8 @@ import { getHero3dDisabled } from './lib/prefs.js';
 import WelcomePrefs from './ui/WelcomePrefs.jsx';
 import { Button, useToast, Modal, useDialog } from './ui/ui.jsx';
 import { Badges, BadgeIcon } from './ui/Badges.jsx';
-import { ThemeToggle } from './ui/theme.jsx';
+import { ThemeToggle, SiteLogo } from './ui/theme.jsx';
+
 import { useI18n, LangToggle, LangSelect } from './i18n.jsx';
 import CommandPalette from './ui/command-palette.jsx';
 import { KofiIcon, GithubIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon,
@@ -756,7 +757,7 @@ function Nav() {
       <div className="max-w-7xl mx-auto rounded-2xl border border-[var(--line)] px-2.5 sm:px-3 h-14 flex items-center gap-1 flex-nowrap topbar"
         style={{ boxShadow: '0 10px 34px -14px rgba(0,0,0,0.30)' }}>
         <Link to="/" className="flex items-center gap-2 font-extrabold text-[15px] me-1 shrink-0" onClick={() => setOpen(false)}>
-          <img src="/logo.png" alt="BC" className="w-8 h-8 rounded-xl" />
+          <SiteLogo alt="BC" className="w-8 h-8 rounded-xl object-contain" />
           <span className="text-[var(--text)] hidden sm:inline">BetterCommunity</span>
         </Link>
         {/* desktop segmented nav — icons-only when tight, icons+labels at xl+.
@@ -1141,7 +1142,9 @@ function Footer() {
         {(!isMobile || cfg?.mobile?.brand !== false) && (
         <div className="mb-4 md:mb-0">
           <div className="flex items-center gap-2.5 font-extrabold text-lg">
-            <img src={cfg?.brand?.logo || '/logo.png'} alt="" className="w-9 h-9 rounded-xl object-contain" />
+            {cfg?.brand?.logo
+              ? <img src={cfg.brand.logo} alt="" className="w-9 h-9 rounded-xl object-contain" />
+              : <SiteLogo className="w-9 h-9 rounded-xl object-contain" />}
             {cfg?.brand?.name || 'BetterCommunity'}
           </div>
           <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>

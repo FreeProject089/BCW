@@ -29,7 +29,11 @@ export const HEX = /^#[0-9a-fA-F]{6}$/;
 // is why they default to null rather than to the current values: storing a copy of the
 // built-ins would freeze them, and a later change to the stylesheet would silently stop
 // reaching anyone who had ever opened this panel.
-export const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null };
+// `gradients` is the accent GRADIENTS (button fill, gradient headings, progress bars) as
+// stored geometry rather than as three rules in index.css; `logoLight` / `logoDark` are the
+// site mark per scheme — one mark cannot serve both, which is why the hero already carried a
+// hand-written white copy. All three default to "not set", meaning the shipped look.
+export const THEME_DEFAULTS = { accent: '#f97316', accent2: '#f59e0b', mode: 'light', preset: '', light: null, dark: null, shared: null, gradients: null, logoLight: '', logoDark: '' };
 // A token value is emitted into a <style> element on every visitor's page, so it is a CSS
 // injection point: a stray `}` would end the rule and everything after it would be
 // attacker-chosen CSS. Only colour SHAPES are accepted — hex, rgb/hsl functions, and
@@ -46,7 +50,10 @@ const TOKEN_NAMES = new Set([
   '--text', '--muted', '--faint',
   '--line', '--line-strong', '--control-border',
   '--info', '--success', '--warning', '--error',
-  '--ring', '--primary-glow', '--glow-a', '--glow-b', '--glow-c',
+  '--info-bg', '--info-border', '--success-bg', '--success-border',
+  '--warning-bg', '--warning-border', '--error-bg', '--error-border',
+  '--on-error', '--error-glow',
+  '--ring', '--primary-glow', '--glow-a', '--glow-b', '--glow-c', '--page-top',
 ]);
 const colour = z.string().max(120).regex(COLOUR);
 // `bg` and `text` are the two inputs the surface set is derived from; every other key must be
@@ -77,6 +84,40 @@ export const pageColours = z.object({
     message: 'unknown theme token',
   })
   .nullable().optional();
+
+// ── Gradients ────────────────────────────────────────────────────────────────────────
+//
+// A stop is a colour OR one of four accent references. The references are what let a
+// gradient stay tied to the accent instead of freezing today's hex — pick a new accent and
+// the buttons follow — so they are allowed by exact string, never by pattern: `var(--x)`
+// matching loosely would hand a superadmin any custom property on the page.
+//
+// The names are an allowlist for the same reason the token names are: these are emitted into
+// a <style> element every visitor loads, and a key the stylesheet does not define is either a
+// typo or an attempt at something else.
+const STOP_REFS = new Set(['var(--primary)', 'var(--primary-2)', 'var(--text)', 'var(--bg)']);
+const GRADIENT_NAMES = new Set(['--grad-primary', '--grad-text', '--grad-bar']);
+const stop = z.object({
+  color: z.string().max(120).refine((v) => STOP_REFS.has(v) || COLOUR.test(v), 'colour'),
+  at: z.number().min(-100).max(200).optional(),
+});
+const gradientSpec = z.object({
+  angle: z.number().min(0).max(360).optional(),
+  // Two is the floor because one stop is a flat fill, not a gradient — the client refuses to
+  // emit a one-stop gradient, and a stored value the client would silently drop is a stored
+  // value that lies about what the site looks like.
+  stops: z.array(stop).min(2).max(8),
+});
+export const gradients = z.record(z.string(), gradientSpec)
+  .refine((o) => Object.keys(o).every((k) => GRADIENT_NAMES.has(k)), { message: 'unknown gradient' })
+  .nullable().optional();
+
+/** The site mark per scheme: a site-served path or an https image. Empty means "the bundled
+ *  one". Never a data URI — it would be shipped to every visitor with the theme — and never
+ *  a bare http, which would break the page's mixed-content rules. */
+export const logoUrl = z.string().max(600)
+  .refine((u) => u === '' || u.startsWith('/') || /^https:\/\//.test(u), 'url')
+  .optional();
 
 
 // ── Footer config schemas ────────────────────────────────────────────────────────────

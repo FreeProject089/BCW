@@ -1,4 +1,5 @@
 import BoringAvatar from 'boring-avatars';
+import { SiteLogo } from './theme.jsx';
 
 // On-brand Boring Avatars. Variant + seed come from the user's saved avatar,
 // falling back to a stable seed (id / display name).
@@ -27,7 +28,7 @@ export default function Avatar({ user, variant, seed, colors, image, size = 40, 
   return (
     <span className={`inline-block rounded-full overflow-hidden align-middle bg-[var(--surface-2)] ${className}`} style={{ width: size, height: size }}>
       {img ? <img src={img} alt="" width={size} height={size} className="w-full h-full object-cover" />
-        : uncustomised ? <img src="/logo.png" alt="" width={size} height={size} className="w-full h-full object-cover" />
+        : uncustomised ? <SiteLogo size={size} className="w-full h-full object-cover" />
         : <BoringAvatar size={size} name={seed || a.seed} variant={variant || a.variant} colors={colors || a.colors} />}
     </span>
   );

@@ -6,6 +6,7 @@ import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
 import { api } from '../lib/api.js';
 import { GoogleIcon, GithubIcon, DiscordIcon } from '../ui/brand.jsx';
+import { SiteLogo } from '../ui/theme.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 
 // Local async-fetch helper (same tiny hook duplicated across a few page modules).
@@ -336,7 +337,7 @@ export function Auth() {
   return (
     <div className="max-w-sm mx-auto mt-8">
       <Card className="p-7">
-        <div className="text-center mb-6"><img src="/logo.png" alt="BC" className="w-12 h-12 rounded-xl mb-3 mx-auto" />
+        <div className="text-center mb-6"><SiteLogo alt="BC" className="w-12 h-12 rounded-xl mb-3 mx-auto object-contain" />
           <h1 className="text-xl font-bold">{titles[mode][0]}</h1>
           <p className="text-sm text-[var(--muted)] mt-1">{titles[mode][1]}</p></div>
         <form onSubmit={submit} className="space-y-3">
