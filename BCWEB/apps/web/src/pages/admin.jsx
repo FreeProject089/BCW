@@ -21338,9 +21338,16 @@ function AdminMarketplace() {
   // nothing to say so, because the storefront simply queries by that key and finds nothing.
   const projs = useAsync(() => api.get('/projects').catch(() => null), []);
   const shows = useAsync(() => api.get('/admin/showcase').catch(() => null), []);
+  // The two endpoints do NOT return the same shape, and assuming they did threw
+  // "(intermediate value).map is not a function" — a hard crash of the whole admin screen.
+  // GET /projects returns `projects` as an OBJECT keyed by project key (`{ bmm: {...} }`);
+  // GET /admin/showcase returns an ARRAY. AdminProjects a few thousand lines up already
+  // reads them that way; I copied the shape from the wrong one.
+  const projList = Object.entries(projs.data?.projects || {}).map(([key, cfg]) => ({ key, name: cfg?.name || key }));
+  const showList = Array.isArray(shows.data?.projects) ? shows.data.projects : [];
   const targets = [
-    ...((projs.data?.projects || []).map((pr) => ({ v: `p:${pr.key}`, label: pr.name || pr.key, group: 'project' }))),
-    ...((shows.data?.projects || shows.data?.showcase || []).map((sp) => ({ v: `s:${sp.id}`, label: sp.name || sp.slug, group: 'showcase' }))),
+    ...projList.map((pr) => ({ v: `p:${pr.key}`, label: pr.name, group: 'project' })),
+    ...showList.map((sp) => ({ v: `s:${sp.id}`, label: sp.name || sp.slug, group: 'showcase' })),
   ];
   const targetOf = (d) => (d?.showcaseProjectId ? `s:${d.showcaseProjectId}` : d?.projectKey ? `p:${d.projectKey}` : '');
   const setTarget = (v) => setDraft((d) => ({ ...d,
