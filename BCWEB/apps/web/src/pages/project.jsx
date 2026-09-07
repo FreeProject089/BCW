@@ -314,6 +314,12 @@ export default function ProjectPage() {
   if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
   const c = data.config;
   const hasCatalog = key === 'bmm' || key === 'bsm';
+  // A page of one's own, on the fixed projects too. These were showcase-only, which meant the
+  // projects people actually visit were the ones that could not be personalised at all.
+  const customTabs = (Array.isArray(c.customTabs) ? c.customTabs : [])
+    .filter((ct) => ct && ct.id && String(ct.title || '').trim() && String(ct.body || '').trim());
+  const canvasTabs = (Array.isArray(c.canvases) ? c.canvases : [])
+    .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
   const tabs = [
     ['overview', t('proj.overview'), ListTodo],
     c.releaseNotes && ['releases', t('proj.releases'), ScrollText],
@@ -325,6 +331,9 @@ export default function ProjectPage() {
     marketProducts.length > 0 && ['market', t('proj.market', 'Marketplace'), ShoppingBag],
     (c.releaseNotes || c.links?.github || c.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     ['legal', t('proj.legal'), ShieldCheck],
+    // Last, so adding one never moves a tab somebody has already linked to.
+    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
+    ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
   ].filter(Boolean);
   const tab = pickTab(wantTab, tabs);
 
@@ -403,6 +412,17 @@ export default function ProjectPage() {
       {tab === 'blog' && <ProjectBlogTab project={key} />}
       {tab === 'market' && <Marketplace pkey={key} products={marketProducts} onChanged={market.refetch} />}
       {tab === 'legal' && <Legal c={c} />}
+      {tab.startsWith('c-') && (() => {
+        const cv = canvasTabs.find((x) => `c-${x.id}` === tab);
+        return cv ? <CanvasView canvas={cv} /> : null;
+      })()}
+      {tab.startsWith('x-') && (() => {
+        const ct = customTabs.find((x) => `x-${x.id}` === tab);
+        // Same wrapper the showcase page uses — two renderings of "a custom tab" would
+        // drift, and a reader moving between a project and an Other project would see the
+        // same feature look like two different things.
+        return ct ? <Card className="p-5 sm:p-6"><Markdown>{ct.body}</Markdown></Card> : null;
+      })()}
     </div>
   );
 }

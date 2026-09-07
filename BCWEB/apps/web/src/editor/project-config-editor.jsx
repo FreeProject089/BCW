@@ -1018,12 +1018,12 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         </Section>
       )}
 
-      {/* Custom tabs — showcase pages.
+      {/* Custom tabs — every project page, fixed or showcase.
           The page offers eight tabs the platform knows how to build. This is the ninth onward:
           whatever this project needs and nobody anticipated — a title, an icon and a B.MD
           document, rendered by the same renderer as everything else. They are appended after
           the built-in tabs, so adding one never moves a tab somebody has already linked to. */}
-      {isShowcase && (() => {
+      {(() => {
         const list = Array.isArray(c.customTabs) ? c.customTabs : [];
         const put = (next) => set({ customTabs: next });
         const patch = (i, p2) => put(list.map((x, n) => (n === i ? { ...x, ...p2 } : x)));
@@ -1057,7 +1057,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           Same "complete or not offered" rule as a custom tab: a canvas with no blocks is an
           empty plane, which reads as a broken tab rather than as a design choice, so the page
           does not offer it until something is on it. */}
-      {isShowcase && (() => {
+      {(() => {
         const list = Array.isArray(c.canvases) ? c.canvases : [];
         const put = (next) => set({ canvases: next });
         const patch = (i, p2) => put(list.map((x, n) => (n === i ? { ...x, ...p2 } : x)));
