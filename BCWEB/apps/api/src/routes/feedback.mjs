@@ -17,6 +17,20 @@ import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
 const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const KINDS = ['feedback', 'bug', 'crash'];
+
+// How large the whole REQUEST may be, which is a different limit from how large the
+// attachments may be — and the one that produced a bare "413 Content Too Large" in BMM with
+// no JSON body to explain it.
+//
+// The two are easy to confuse and were: maxAttachMB counts DECODED bytes, but an attachment
+// travels base64-encoded inside the JSON, so 25 MB of files is a ~34 MB request. A client
+// budgeting against maxAttachMB alone believes it is inside every limit and is not.
+//
+// So the ceiling is published in the config the client fetches before it packs anything,
+// instead of each client picking a number and drifting. It is also the route's own bodyLimit,
+// from this one constant, so the value a client is told and the value Fastify enforces cannot
+// disagree. Anything in front of the API (a reverse proxy, a CDN) must allow at least this.
+const MAX_REQUEST_MB = 64;
 const STATUSES = ['new', 'triaged', 'resolved', 'ignored'];
 
 export const DEFAULT_PROJECT = {
@@ -124,11 +138,11 @@ export default async function feedbackRoutes(app) {
     const cfg = await feedbackConfig(p);
     const pc = cfg.projects[req.params.project];
     if (!pc || !pc.enabled) return { enabled: false };
-    return { enabled: true, kinds: pc.kinds, crashSampling: pc.crashSampling, maxBodyKB: pc.maxBodyKB, maxAttachMB: pc.maxAttachMB, maxAttachments: pc.maxAttachments, requireContact: pc.requireContact, minVersion: pc.minVersion };
+    return { enabled: true, kinds: pc.kinds, crashSampling: pc.crashSampling, maxBodyKB: pc.maxBodyKB, maxAttachMB: pc.maxAttachMB, maxAttachments: pc.maxAttachments, maxRequestMB: MAX_REQUEST_MB, requireContact: pc.requireContact, minVersion: pc.minVersion };
   });
 
   // ── Public: submit ──
-  app.post('/feedback/:project', { preHandler: optionalAuth(), bodyLimit: 64 * 1024 * 1024, config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, async (req, reply) => {
+  app.post('/feedback/:project', { preHandler: optionalAuth(), bodyLimit: MAX_REQUEST_MB * 1024 * 1024, config: { rateLimit: { max: 30, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const p = await db();
     const cfg = await feedbackConfig(p);
     const key = String(req.params.project || '').slice(0, 40);
