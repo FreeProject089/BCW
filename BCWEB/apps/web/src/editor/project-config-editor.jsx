@@ -1016,6 +1016,41 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
           </div>
         </Section>
       )}
+
+      {/* Custom tabs — showcase pages.
+          The page offers eight tabs the platform knows how to build. This is the ninth onward:
+          whatever this project needs and nobody anticipated — a title, an icon and a B.MD
+          document, rendered by the same renderer as everything else. They are appended after
+          the built-in tabs, so adding one never moves a tab somebody has already linked to. */}
+      {isShowcase && (() => {
+        const list = Array.isArray(c.customTabs) ? c.customTabs : [];
+        const put = (next) => set({ customTabs: next });
+        const patch = (i, p2) => put(list.map((x, n) => (n === i ? { ...x, ...p2 } : x)));
+        const move = (i, d) => { const j = i + d; if (j < 0 || j >= list.length) return; const n = [...list]; [n[i], n[j]] = [n[j], n[i]]; put(n); };
+        return (
+          <Section icon={ListTodo} title={t('pce.ctabs', 'Custom tabs')} badge={list.length}
+            desc="A tab of your own, written in B.MD. It appears after the built-in tabs. A tab with no title or no body is not shown at all.">
+            <div className="space-y-3">
+              {list.map((ct, i) => (
+                <div key={ct.id || i} className="rounded-xl border border-[var(--line)] p-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Input className="flex-1" value={ct.title || ''} onChange={(e) => patch(i, { title: e.target.value })} placeholder={t('pce.ctabs.title', 'Tab title')} />
+                    <Button size="sm" variant="ghost" disabled={i === 0} onClick={() => move(i, -1)} title={t('common.up', 'Up')}>↑</Button>
+                    <Button size="sm" variant="ghost" disabled={i === list.length - 1} onClick={() => move(i, 1)} title={t('common.down', 'Down')}>↓</Button>
+                    <Button size="sm" variant="ghost" onClick={() => put(list.filter((_, n) => n !== i))} title={t('common.remove', 'Remove')}>×</Button>
+                  </div>
+                  <Textarea rows={5} className="!text-[12px] font-mono" value={ct.body || ''}
+                    onChange={(e) => patch(i, { body: e.target.value })}
+                    placeholder={t('pce.ctabs.body', 'B.MD — the same blocks as the blog and the docs.')} />
+                </div>
+              ))}
+              <Button size="sm" onClick={() => put([...list, { id: `t${Date.now().toString(36)}`, title: '', body: '' }])}>
+                + {t('pce.ctabs.add', 'Add a tab')}
+              </Button>
+            </div>
+          </Section>
+        );
+      })()}
     </div>
   );
 }

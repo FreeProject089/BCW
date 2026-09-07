@@ -1312,6 +1312,10 @@ export function ShowcaseProjectPage() {
   // Full-takeover countdown (no page behind it).
   if (data.announcement && !data.project) return <AnnouncementTeaser announcement={data.announcement} onReveal={refetch} />;
   const proj = data.project; const cfg = proj.config || {}; const T = cfg.tabs || {};
+  // Custom tabs: id + title + B.MD body, defined by whoever owns the project. Filtered to the
+  // complete ones — a tab with no body opens onto nothing, which is worse than no tab.
+  const customTabs = (Array.isArray(cfg.customTabs) ? cfg.customTabs : [])
+    .filter((ct) => ct && ct.id && String(ct.title || '').trim() && String(ct.body || '').trim());
   // Inline countdown → adds a "Countdown" FIRST tab, page stays reachable.
   const inlineCountdown = data.announcement && data.announcementInline ? data.announcement : null;
   const c = {
@@ -1331,6 +1335,11 @@ export function ShowcaseProjectPage() {
     stackTabEnabled(cfg.stack, T) && ['stack', cfg.stack.title || t('proj.stack', 'How it runs'), Network],
     (cfg.releaseNotes?.owner || cfg.links?.github || cfg.timeline?.length) && ['activity', t('proj.activity', 'Activity'), CalendarDays],
     T.legal && ['legal', t('proj.legal'), ShieldCheck],
+    // Custom tabs. The eight above are the ones the platform knows how to build; these are the
+    // ones a project needs and nobody anticipated — a title, an icon and a B.MD document. They
+    // come last so adding one never moves a tab somebody has linked to, and an empty one is not
+    // offered at all (a tab that opens onto nothing is worse than a missing tab).
+    ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
   const activeTab = pickTab(sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview'), tabs);
@@ -1369,6 +1378,10 @@ export function ShowcaseProjectPage() {
           projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
       {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
+      {activeTab.startsWith('x-') && (() => {
+        const ct = customTabs.find((x) => `x-${x.id}` === activeTab);
+        return ct ? <Card className="p-5 sm:p-6"><Markdown>{ct.body}</Markdown></Card> : null;
+      })()}
     </div>
   );
 }
