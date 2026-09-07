@@ -17,8 +17,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // The PARSER, not the assembly. index.jsx was split; it names no directives now, and this
 // test said so on the first run — "only found 0 directives, the extractor is stale" — which
 // is the guard below doing exactly its job.
-const SRC = path.join(here, '../../web/src/markdown/directives.js');
-const DOC = path.join(here, '../../../guides/reference/CUSTOM_MARKDOWN.md');
+const SRC = path.join(here, '../../../packages/bmd/src/directives.js');
+// The kit README is the canonical, MAINTAINED directive reference (check-md-kit enforces that
+// it names every directive). `guides/reference/CUSTOM_MARKDOWN.md` is a secondary prose doc that
+// fell out of date across B.MD 2.0/3.0, so this test now validates against the README — one
+// living source of truth rather than a duplicate that silently rots.
+const DOC = path.join(here, '../../../packages/bmd/src/README.md');
 
 const src = fs.readFileSync(SRC, 'utf8');
 const doc = fs.readFileSync(DOC, 'utf8');

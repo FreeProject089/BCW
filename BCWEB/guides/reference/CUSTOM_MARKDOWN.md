@@ -132,13 +132,30 @@ The numbering is automatic — do not number the titles yourself, or every step 
 On `:::steps`: `type` picks the marker alphabet (`1` · `a` · `i` · `dot`), `start` offsets it so
 a procedure split across two blocks carries on counting, `orientation=horizontal` lays the steps
 along a row, `color` sets the marker and rail colour for all of them, `title` (or a `[label]`)
-puts a heading on the block.
+puts a heading on the block. **`marker=icon`** turns it into an ICON list — each step's `icon=`
+becomes its marker glyph instead of a number.
 
 On `:::step`: `icon`, `color` for that one step, `status=done` (or `done=true`) to tick it off,
-`marker` to override the number outright. `:::stage` is an alias.
+`marker` to override the number outright (or `marker=icon` with an `icon=` for an icon marker).
+`:::stage` is an alias.
 
 Only direct `:::step` children are counted, so a paragraph between two steps does not consume a
 number.
+
+## Configuration rows
+
+A labelled setting row — the shape of a settings card, as B.MD. Stack several to document a
+screen of options without a table.
+
+```
+:::field[Tile shape]{key=icons.shape type=select icon=palette}
+Rounded, circle, square, or no tile — the shape of every button icon.
+:::
+```
+
+`:::field` (or `:::setting`) takes `[label]` (or `label=`), `key=` (a monospace identifier shown
+on the right), `type=` (a small tag: `size`, `number`, `on / off`, …), an optional `icon=`, a
+`color=` accent, and `anchor=` to make the row a deep-link target. The body is the description.
 
 ---
 
