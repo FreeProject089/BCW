@@ -6040,6 +6040,7 @@ const DICT = {
     'lp.unlock.h': 'Éditer directement sur la page rendue',
     'lp.edit': 'Modifier ce bloc', 'lp.insert': 'Insérer ici', 'lp.remove': 'Supprimer ce bloc',
     'lp.empty': 'Rien pour l’instant. Déverrouille pour écrire.',
+    'lp.back': 'Éditer',
     'sp.v.ok': 'Le serveur va bien.', 'sp.v.watch': 'À surveiller.',
     'sp.v.problem': 'Le serveur demande ton attention.', 'sp.v.unknown': 'Pas de relevé récent.',
     'sp.v.okdesc': 'Processeur, mémoire et disque sont tous loin de leurs seuils d’alerte.',

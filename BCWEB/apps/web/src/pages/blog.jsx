@@ -596,7 +596,11 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             </div>
           </>}
         </>}
-        {mode !== 'rich' && <button type="button" onClick={() => setPreview((v) => !v)} className="btn btn-sm ms-auto"><Eye size={14} /> {preview ? 'Edit' : 'Preview'}</button>}
+        {/* In EVERY mode, not just the source one. The editable preview is the point of the
+            padlock beside it, and hiding its entrance in `rich` — the mode a blog or docs
+            editor opens in — put it out of reach of almost everyone. The render branch below
+            already handled `preview` in any mode; only this button was gated. */}
+        <button type="button" onClick={() => setPreview((v) => !v)} className={`btn btn-sm${mode !== 'rich' ? ' ms-auto' : ''}`}><Eye size={14} /> {preview ? t('lp.back', 'Edit') : t('bmdc.preview', 'Preview')}</button>
         {preview && <button type="button" onClick={() => setPvUnlocked((v) => !v)} className={`btn btn-sm${pvUnlocked ? ' is-on' : ''}`}
           title={pvUnlocked ? t('lp.locked.h', 'Lock the preview — show it as a reader sees it') : t('lp.unlock.h', 'Edit directly on the rendered page')}>
           {pvUnlocked ? <Unlock size={14} /> : <Lock size={14} />} <span className="hidden sm:inline">{pvUnlocked ? t('lp.editing', 'Editing') : t('lp.locked', 'Locked')}</span>
