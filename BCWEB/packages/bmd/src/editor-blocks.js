@@ -101,10 +101,24 @@ export function joinBlocks(blocks) {
   return (blocks || []).map((b) => b.src).join('\n');
 }
 
-/** A fresh block of a kind, with sensible starter source for the editor's "insert" palette. */
+/**
+ * A fresh block for the editor's insert palette.
+ *
+ * The kind is INFERRED from the source whenever there is one, and `kind` is only the fallback
+ * for an empty block. It used to be taken as given, and both callers passed `'paragraph'` for
+ * everything they inserted — so a callout picked from the palette arrived labelled "paragraph",
+ * a table arrived labelled "paragraph", and they stayed that way until something re-split the
+ * document. The badge on each block is the one place the editor says what a block IS; a source
+ * and a kind that disagree is the editor telling you the wrong thing about what you just made.
+ *
+ * Inferring is also what `splitBlocks` would derive on the next round trip, so this only makes
+ * the block agree with itself sooner.
+ */
 export function newBlock(kind = 'paragraph', src = '') {
-  return { id: nextId(), kind, src };
+  return { id: nextId(), kind: src.trim() ? inferKind(src) : kind, src };
 }
+/** The kind a source would be split as — exported so a host can label a block it built. */
+export { inferKind };
 
 // ── The `.bmd` file type ────────────────────────────────────────────────────
 // A .bmd file is B.MD text with an OPTIONAL leading metadata block:

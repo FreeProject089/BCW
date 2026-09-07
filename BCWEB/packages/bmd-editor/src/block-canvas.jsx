@@ -33,6 +33,7 @@ function kindLabel(kind) {
 const DragIcon = () => (<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>);
 const Ico = ({ d }) => (<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d}/></svg>);
 const UP = 'M18 15l-6-6-6 6', DOWN = 'M6 9l6 6 6-6', X = 'M18 6 6 18M6 6l12 12', PLUS = 'M12 5v14M5 12h14', EYE = 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z';
+const COPY = 'M8 8h11a1 1 0 011 1v11a1 1 0 01-1 1H8a1 1 0 01-1-1V9a1 1 0 011-1M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1', UNDO = 'M3 7v6h6M3.5 13a9 9 0 106-8.5';
 
 /**
  * @param {string} value            the B.MD document
@@ -51,7 +52,7 @@ const CHILD_OF = { tabs: 'tab', steps: 'step', cards: 'card', columns: 'column',
 const EN = {
   insert: 'Insert a block', search: 'Search blocks…', noMatch: 'No block matches.',
   count: '{n} block(s)', preview: 'Preview', drag: 'Drag to reorder',
-  up: 'Move up', down: 'Move down', del: 'Delete',
+  up: 'Move up', down: 'Move down', del: 'Delete', dup: 'Duplicate', undo: 'Undo (Ctrl+Z)',
   empty: 'Empty document — insert a block above.',
   title: 'Title', icon: 'Icon', noIcon: 'Pick an icon',
   addCol: '+ column', delCol: '− column', addRow: '+ row', delRow: '− row',
@@ -85,14 +86,53 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
     onChange?.(md);
   }, [onChange]);
 
+  /**
+   * Undo, for the destructive half.
+   *
+   * Deleting a block was final: the only way back was to abandon whatever the host had not
+   * saved yet. A block is a paragraph somebody wrote — an editor that can lose one with a
+   * misclick and no way back is not one you can work in.
+   *
+   * Deliberately small: a bounded stack of previous block arrays, pushed by the operations
+   * that LOSE something (delete, reorder, duplicate, insert), not by typing. Typing into a
+   * textarea already has the browser's own undo, and pushing per keystroke would bury the
+   * delete you actually want back under two hundred entries.
+   */
+  const past = useRef([]);
+  const [depth, setDepth] = useState(0);
+  const remember = useCallback(() => {
+    past.current = [...past.current.slice(-29), blocks];
+    setDepth(past.current.length);
+  }, [blocks]);
+  const undo = useCallback(() => {
+    const prev = past.current.pop();
+    setDepth(past.current.length);
+    if (!prev) return;
+    // Straight to setBlocks + onChange rather than commit(): an undo must not become the next
+    // thing to undo.
+    setBlocks(prev);
+    const md = joinBlocks(prev);
+    emitted.current = md;
+    onChange?.(md);
+  }, [onChange]);
+
   const editBlock = (id, src) => commit(blocks.map((b) => (b.id === id ? { ...b, src } : b)));
-  const removeBlock = (id) => commit(blocks.filter((b) => b.id !== id));
+  const removeBlock = (id) => { remember(); commit(blocks.filter((b) => b.id !== id)); };
+  /** A copy right below the original — the operation people reach for after "move". */
+  const duplicateBlock = (i) => {
+    remember();
+    const n = [...blocks];
+    n.splice(i + 1, 0, newBlock(blocks[i].kind, blocks[i].src), newBlock('blank', ''));
+    commit(n);
+  };
   const move = (i, dir) => {
     const j = i + dir; if (j < 0 || j >= blocks.length) return;
+    remember();
     const n = [...blocks]; [n[i], n[j]] = [n[j], n[i]]; commit(n);
   };
   const reorder = (from, to) => {
     if (from === to || from == null) return;
+    remember();
     const n = [...blocks]; const [m] = n.splice(from, 1); n.splice(to > from ? to - 1 : to, 0, m); commit(n);
   };
   const insertAt = (i, md) => {
@@ -100,6 +140,7 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
     // single newline and the blank lines between blocks are themselves blocks — so a block
     // spliced in on its own is glued to whichever block follows it: insert a paragraph above
     // another and the two become one block, which then edits, moves and deletes as one.
+    remember();
     const n = [...blocks];
     n.splice(i, 0, newBlock('paragraph', md), newBlock('blank', ''));
     commit(n); setAddAt(null); setQ('');
@@ -120,6 +161,23 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
     return out;
   }, [snippetGroups]);
   const shown = q.trim() ? palette.filter((p) => `${p.label} ${p.group}`.toLowerCase().includes(q.trim().toLowerCase())) : palette;
+
+  // Ctrl/Cmd+Z, but only when the focus is NOT in a text field: inside one, the browser's own
+  // undo is the right one and stealing it would make typing feel broken. Scoped to this
+  // canvas's own subtree, so a page with an editor elsewhere keeps its own shortcut.
+  const rootRef = useRef(null);
+  useEffect(() => {
+    const el = rootRef.current; if (!el) return undefined;
+    const onKey = (e) => {
+      if (!(e.key === 'z' || e.key === 'Z') || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+      const t = e.target;
+      if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT' || t.isContentEditable)) return;
+      e.preventDefault();
+      undo();
+    };
+    el.addEventListener('keydown', onKey);
+    return () => el.removeEventListener('keydown', onKey);
+  }, [undo]);
 
   /**
    * The insert palette, in a PORTAL.
@@ -189,10 +247,13 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
     </>, document.body));
 
   return (
-    <div className="bmdc">
+    <div className="bmdc" ref={rootRef} tabIndex={-1}>
       <Palette />
       <div className="bmdc-bar">
-        <span className="bmdc-count">{T.count.replace('{n}', blocks.filter((b) => b.kind !== 'blank').length)}</span>
+        <span className="bmdc-count bmdc-count-grow">{T.count.replace('{n}', blocks.filter((b) => b.kind !== 'blank').length)}</span>
+        <button type="button" className="bmdc-toggle" onClick={undo} disabled={!depth} title={T.undo}>
+          <Ico d={UNDO} /> {T.undo.split(' ')[0]}
+        </button>
         <button type="button" className={`bmdc-toggle ${preview ? 'is-on' : ''}`} onClick={() => setPreview((v) => !v)} title={T.preview}>
           <Ico d={EYE} /> {T.preview}
         </button>
@@ -218,6 +279,7 @@ export default function BmdBlockCanvas({ value = '', onChange, snippetGroups = [
                 <div className="bmdc-actions">
                   <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title={T.up}><Ico d={UP} /></button>
                   <button type="button" onClick={() => move(i, 1)} disabled={i === blocks.length - 1} title={T.down}><Ico d={DOWN} /></button>
+                  <button type="button" onClick={() => duplicateBlock(i)} title={T.dup}><Ico d={COPY} /></button>
                   <button type="button" onClick={() => removeBlock(b.id)} title={T.del} className="bmdc-del"><Ico d={X} /></button>
                 </div>
               </div>

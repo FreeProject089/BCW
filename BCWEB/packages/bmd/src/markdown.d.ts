@@ -441,6 +441,16 @@ export function mermaidTheme(v: unknown): 'auto' | 'default' | 'base' | 'dark' |
 /** A mermaid diagram's `look=`. `''` for the default (classic) and for anything unknown. */
 export function mermaidLook(v: unknown): '' | 'handdrawn' | 'neo';
 
+/**
+ * The kind a source would be split as: `paragraph`, `heading`, `list`, `quote`, `table`,
+ * `code`, `hr`, `blank`, or `directive:<name>`.
+ *
+ * Exported so a host that BUILDS a block can label it the way splitBlocks would. `newBlock`
+ * calls it for you whenever there is a source — the two must agree, or a block changes
+ * identity the first time the document round-trips.
+ */
+export function inferKind(src: string): string;
+
 /** A markdown table read as a structure. `null` when the source is not one. */
 export interface BmdTable { header: string[]; align: string[]; rows: string[][]; before: string; after: string }
 export function parseTable(src: string): BmdTable | null;

@@ -77,7 +77,11 @@
 
 /* ── Block canvas (drag-drop block editor) ─────────────────────────────────── */
 .bmdc { display: flex; flex-direction: column; gap: 0; }
-.bmdc-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+/* The bar holds a count and now TWO buttons, so the count takes the slack rather than
+   space-between spreading three items across the width. */
+.bmdc-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.bmdc-count-grow { flex: 1 1 auto; }
+.bmdc-toggle:disabled { opacity: .4; cursor: default; }
 .bmdc-count { font-size: 11px; color: var(--faint, #726b61); }
 .bmdc-toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line, #e6e0d8); background: transparent; color: var(--muted, #57514a); cursor: pointer; }
 .bmdc-toggle.is-on { color: var(--primary-2, #ea580c); border-color: color-mix(in srgb, var(--primary, #f97316) 40%, var(--line, #e6e0d8)); }
