@@ -311,7 +311,13 @@ export function Hosting() {
         );
       })()}
 
-      {plans.loading ? <Loading /> : <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5 items-stretch pt-2">
+      {/* A swipe on a phone, a grid on a desktop.
+          Four pricing cards stacked vertically is four screens of scrolling to compare two
+          numbers, and comparison is the entire job of a pricing card. Below sm they sit in one
+          scroll-snap row at 78% of the viewport — wide enough to read, narrow enough that the
+          next card's edge is visible, which is what tells a thumb there is more. From sm up
+          nothing changes: it is the same grid it was. */}
+      {plans.loading ? <Loading /> : <div className="flex sm:grid gap-4 lg:gap-5 items-stretch pt-2 overflow-x-auto snap-x snap-mandatory sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 no-scrollbar sm:grid-cols-2 lg:grid-cols-4">
         {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
@@ -320,7 +326,7 @@ export function Hosting() {
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-[1.04] md:z-10 !border-[var(--primary)] shadow-lg shadow-orange-500/15' : ''}`}>
+            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-[1.04] md:z-10 !border-[var(--primary)] shadow-lg shadow-orange-500/15' : ''}`}>
             {/* Diagonal corner ribbon on the recommended tier (image-2 style). */}
             {recommended && !planDisabled && (
               <span className="absolute top-0 right-0 w-[104px] h-[104px] overflow-hidden pointer-events-none z-20">
@@ -599,13 +605,6 @@ function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAd
     { key: 'storageGB', label: t('hosting.s.storage', 'Storage'), min: 1, max: 200, step: 1, fmt: (v) => `${v} GB`, icon: HardDrive },
     { key: 'uploadMbps', label: t('hosting.s.upload', 'Upload speed'), min: 1, max: upMax, step: 1, fmt: (v) => `${v} Mbps`, icon: Zap },
   ];
-  // Rough, honest scale. A mod is ~15 MB, a modpack ~400 MB, a catalog entry ~2 MB.
-  const mb = spec.storageGB * 1024;
-  const fits = [
-    { n: Math.round(mb / 15), label: t('hosting.fits.mods', 'mods') },
-    { n: Math.round(mb / 400), label: t('hosting.fits.packs', 'modpacks') },
-    { n: Math.round(mb / 2), label: t('hosting.fits.entries', 'catalog entries') },
-  ].filter((x) => x.n >= 1);
 
   return (
     <Card className="p-0 mb-6 overflow-hidden">
@@ -627,17 +626,6 @@ function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAd
                 aria-label={s.label} onChange={(e) => setSpec({ ...spec, [s.key]: Number(e.target.value) })} />
             </div>
           ))}
-          {fits.length > 0 && (
-            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 p-3">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('hosting.fits.title', 'Roughly what that holds')}</div>
-              <div className="flex flex-wrap gap-x-5 gap-y-1.5">
-                {fits.map((f) => (
-                  <span key={f.label} className="text-sm"><b className="tabular-nums">≈ {f.n.toLocaleString()}</b> <span className="text-[var(--muted)]">{f.label}</span></span>
-                ))}
-              </div>
-              <div className="text-[10.5px] text-[var(--faint)] mt-1.5">{t('hosting.fits.note', 'An estimate, to give a sense of scale — your files decide.')}</div>
-            </div>
-          )}
           <div className="grid lg:grid-cols-2 gap-4">
             <div>
               <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Receipt size={14} /> {t('hosting.term', 'Billing term')}</div>
