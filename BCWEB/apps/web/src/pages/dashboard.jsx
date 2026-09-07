@@ -592,14 +592,14 @@ function PaymentResultModal({ result, onClose }) {
         <div className={`text-xl font-extrabold mt-3 ${failed ? 'text-error' : ''}`}>{ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}</div>
         <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto">
           {ok
-            ? (kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
+            ? (kind === 'market' ? t('dash.pay.market.m', 'Your purchase is in “What you bought”, below — with the key or content it came with.') : kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
             : failed ? t('dash.pay.fail.m', 'The payment could not be completed — no charge was made. Check your card details and try again.')
             : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
         </p>
         {ok && (() => {
           const lines = inv?.lines || [];
           const money2 = (c) => { const cur = (inv?.currency || pay?.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; };
-          const single = pay?.description || (kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
+          const single = pay?.description || (kind === 'market' ? t('dash.pay.marketitem', 'Marketplace purchase') : kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
           return (
           <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-start text-sm max-w-xs mx-auto">
             {inv?.number && (
@@ -642,6 +642,76 @@ function PaymentResultModal({ result, onClose }) {
   );
 }
 
+// What you bought in a project's marketplace — the half of that feature that was missing.
+//
+// GET /marketplace/my-purchases has existed since the marketplace shipped and NOTHING ever
+// called it. A buyer saw their key or content once, in the response to the purchase, and then
+// had no way back to it: not on the project page, not here, nowhere. For a PAID product it was
+// worse than that — delivery happens in the Stripe webhook, so the buyer never saw it at all.
+//
+// Renders nothing when there are no purchases, so it costs an ordinary dashboard nothing.
+function MyPurchases() {
+  const { t } = useI18n();
+  const toast = useToast();
+  const { data, loading } = useAsync(() => api.get('/marketplace/my-purchases').catch(() => null), []);
+  const [shown, setShown] = useState({});   // purchase id -> revealed?
+  const rows = data?.purchases || [];
+  if (loading || !rows.length) return null;
+  // A key is a secret in a screenshot. It stays covered until asked for, the way the
+  // giveaway inventory covers a prize — the person already owns it, they just may not be
+  // alone in front of the screen.
+  const secretOf = (d) => (d && typeof d === 'object' ? (d.key || d.content || '') : '');
+  return (
+    <Card className="p-4 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <ShoppingBag size={15} className="text-[var(--primary-2)]" />
+        <span className="font-medium text-sm">{t('mkme.title', 'What you bought')}</span>
+        <Badge tone="">{rows.length}</Badge>
+      </div>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const secret = secretOf(r.delivery);
+          const role = r.delivery && typeof r.delivery === 'object' ? r.delivery.role : '';
+          // The webhook stores `{ error: 'delivery_failed' }` when fulfilment threw AFTER the
+          // money was taken — the pool ran out between checkout and the webhook, the external
+          // key service was down. That is the one case a buyer must not be left to work out
+          // from an empty row, so it says so and says what to do.
+          const failed = r.delivery && typeof r.delivery === 'object' ? r.delivery.error : '';
+          return (
+            <div key={r.id} className="rounded-lg bg-[var(--surface-2)] px-3 py-2.5">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{r.name || t('mkme.unnamed', 'Product')}</div>
+                  <div className="text-[11px] text-[var(--faint)]">{new Date(r.createdAt).toLocaleString()}{r.status !== 'paid' ? ` · ${r.status}` : ''}</div>
+                </div>
+                {secret && (
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="ghost" onClick={() => setShown((v) => ({ ...v, [r.id]: !v[r.id] }))}>
+                      {shown[r.id] ? t('mkme.hide', 'Hide') : t('mkme.reveal', 'Reveal')}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => { copyText(secret); toast.success(t('common.copied', 'Copied.')); }}>
+                      {t('common.copy', 'Copy')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {secret && shown[r.id] && (
+                <pre className="mt-2 text-xs font-mono whitespace-pre-wrap break-all rounded-md bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">{secret}</pre>
+              )}
+              {/* A role has nothing to reveal — saying so beats a row that looks broken. */}
+              {failed
+                ? <div className="text-xs text-error mt-1.5 flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project — your payment is on record.')}</div>
+                : !secret && role ? <div className="text-xs text-[var(--muted)] mt-1">{t('mkme.role', 'Delivered as a Discord role.')}</div>
+                : !secret ? <div className="text-xs text-[var(--faint)] mt-1">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>
+                : null}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 export function Dashboard() {
   const { user } = useAuth(); const toast = useToast(); const nav = useNavigate(); const { t } = useI18n();
   const items = useAsync(() => api.get('/me/items'), []);
@@ -657,15 +727,23 @@ export function Dashboard() {
   const [payReturn, setPayReturn] = useState(null); // { ok, kind, failed } | null
   useEffect(() => {
     const hosting = sp.get('hosting'); const feature = sp.get('feature'); const oauth = sp.get('oauth');
-    if (!hosting && !feature && !oauth) return;
+    // `market` was missing here, and the marketplace checkout sends the buyer back to
+    // /dashboard?market=ok. So after paying for a product the buyer landed on an ordinary
+    // dashboard: no confirmation, no key, nothing — for a PAID product, where delivery
+    // happens in the webhook and the purchase screen is the only place the key is ever shown.
+    const market = sp.get('market');
+    if (!hosting && !feature && !oauth && !market) return;
     if (hosting === 'ok') { setPayReturn({ ok: true, kind: 'hosting' }); repos.reload(); items.reload(); try { localStorage.removeItem('bcw_cart'); } catch {} }
     else if (hosting === 'fail' || hosting === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'hosting' }); }
     else if (hosting === 'cancel') { setPayReturn({ ok: false, kind: 'hosting' }); }
     if (feature === 'ok') { setPayReturn({ ok: true, kind: 'feature' }); repos.reload(); }
     else if (feature === 'fail' || feature === 'failed') { setPayReturn({ ok: false, failed: true, kind: 'feature' }); }
     else if (feature === 'cancel') { setPayReturn({ ok: false, kind: 'feature' }); }
+    if (market === 'ok') setPayReturn({ ok: true, kind: 'market' });
+    else if (market === 'fail' || market === 'failed') setPayReturn({ ok: false, failed: true, kind: 'market' });
+    else if (market === 'cancel') setPayReturn({ ok: false, kind: 'market' });
     if (oauth === 'success') toast.success(t('auth.welcome.toast', 'Welcome!'));
-    setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); return n; }, { replace: true });
+    setSp((p) => { const n = new URLSearchParams(p); n.delete('hosting'); n.delete('feature'); n.delete('oauth'); n.delete('market'); return n; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -748,6 +826,7 @@ export function Dashboard() {
                 flush against the checklist below it. A wrapping <div className="mb-6"> would
                 have left 24px of empty margin on the (common) days the card renders null. */}
             <TransfersCard className="mb-6" />
+            <MyPurchases />
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {
