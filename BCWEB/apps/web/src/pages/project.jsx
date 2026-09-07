@@ -4,9 +4,10 @@ import {
   Download, Github, MessageCircle, Heart, Globe, BookOpen, Users, ScrollText, ShieldCheck,
   FileText, ListTodo, Boxes, ExternalLink, FolderGit2, ChevronRight, ChevronDown,
   CheckCircle2, Clock, Circle, CalendarDays, Rocket, Wrench, Sparkles, FlaskConical, Newspaper, Network, Pencil,
-  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy,
+  Play, Radio, Megaphone, GitBranch, ShoppingBag, Key, Copy, LayoutTemplate,
 } from 'lucide-react';
 import Markdown, { matchesLang, ShowcaseIcon } from '../ui/md.jsx';
+import CanvasView from '../ui/canvas-view.jsx';
 import { ProgressTracker } from '../hero/progress-tracker.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { thumb } from '../lib/img.js';
@@ -371,7 +372,11 @@ export default function ProjectPage() {
         {tabs.map(([id, label, Icon]) => (
           <button key={id} onClick={() => setSp((p) => { const n = new URLSearchParams(p); n.set('tab', id); return n; })}
             className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Icon size={15} /> {label}
+            {/* Not every tab has an icon: a custom tab is a title and a B.MD body, and it
+                passes null here. React throws on a null element type — "Element type is
+                invalid" — so one custom tab took the whole page down, which is the one thing
+                an optional extra must never do. */}
+            {Icon ? <Icon size={15} /> : null} {label}
           </button>
         ))}
       </div>
@@ -1316,6 +1321,11 @@ export function ShowcaseProjectPage() {
   // complete ones — a tab with no body opens onto nothing, which is worse than no tab.
   const customTabs = (Array.isArray(cfg.customTabs) ? cfg.customTabs : [])
     .filter((ct) => ct && ct.id && String(ct.title || '').trim() && String(ct.body || '').trim());
+  // Hand-placed pages, from the studio. Same rule as a custom tab: one that would open onto
+  // nothing is not offered at all. A canvas with no blocks IS nothing — an empty plane reads
+  // as a broken tab, not as a design choice.
+  const canvasTabs = (Array.isArray(cfg.canvases) ? cfg.canvases : [])
+    .filter((cv) => cv && cv.id && String(cv.title || '').trim() && Array.isArray(cv.blocks) && cv.blocks.length);
   // Inline countdown → adds a "Countdown" FIRST tab, page stays reachable.
   const inlineCountdown = data.announcement && data.announcementInline ? data.announcement : null;
   const c = {
@@ -1340,6 +1350,7 @@ export function ShowcaseProjectPage() {
     // come last so adding one never moves a tab somebody has linked to, and an empty one is not
     // offered at all (a tab that opens onto nothing is worse than a missing tab).
     ...customTabs.map((ct) => [`x-${ct.id}`, ct.title, null]),
+    ...canvasTabs.map((cv) => [`c-${cv.id}`, cv.title, LayoutTemplate]),
   ].filter(Boolean);
   // Default to the countdown tab when one is present and no explicit tab chosen.
   const activeTab = pickTab(sp.get('tab') || (inlineCountdown ? 'countdown' : 'overview'), tabs);
@@ -1363,7 +1374,11 @@ export function ShowcaseProjectPage() {
         {tabs.map(([id, label, Icon]) => (
           <button key={id} onClick={() => setSp((p) => { const n = new URLSearchParams(p); n.set('tab', id); return n; })}
             className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${activeTab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'} ${id === 'countdown' ? 'text-[var(--primary-2)]' : ''}`}>
-            <Icon size={15} /> {label}
+            {/* Not every tab has an icon: a custom tab is a title and a B.MD body, and it
+                passes null here. React throws on a null element type — "Element type is
+                invalid" — so one custom tab took the whole page down, which is the one thing
+                an optional extra must never do. */}
+            {Icon ? <Icon size={15} /> : null} {label}
           </button>
         ))}
       </div>
@@ -1378,6 +1393,10 @@ export function ShowcaseProjectPage() {
           projects, so the map is only offered there. */}
       {activeTab === 'stack' && <StackMap stack={cfg.stack} t={t} />}
       {activeTab === 'legal' && <ShowcaseLegal legal={cfg.legal || []} lang={lang} />}
+      {activeTab.startsWith('c-') && (() => {
+        const cv = canvasTabs.find((x) => `c-${x.id}` === activeTab);
+        return cv ? <CanvasView canvas={cv} /> : null;
+      })()}
       {activeTab.startsWith('x-') && (() => {
         const ct = customTabs.find((x) => `x-${x.id}` === activeTab);
         return ct ? <Card className="p-5 sm:p-6"><Markdown>{ct.body}</Markdown></Card> : null;
