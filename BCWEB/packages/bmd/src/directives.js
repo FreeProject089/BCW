@@ -306,6 +306,16 @@ export function remarkDocBlocks() {
         setEl('div', ['doc-columns']);
       } else if (name === 'column' || name === 'col') {
         setEl('div', ['doc-column']);
+      } else if (name === 'divider') {
+        // A rule you can steer.
+        //
+        // `---` already draws one and stays — but it is a thematic break, not a directive, so
+        // it takes no attributes. Which made the one block whose entire job is separation the
+        // only block that could not say how MUCH separation, or wear the quiet variant. The
+        // label is optional: `:::divider[Part two]` puts the words in the middle of the rule
+        // instead of leaving the reader to infer where they are.
+        setEl('div', ['doc-divider', ...(labelText ? ['doc-divider-labelled'] : [])]);
+        node.children = labelText ? [textEl('span', 'doc-divider-label', labelText)] : [];
       } else if (name === 'center' || name === 'left' || name === 'right') {
         setEl('div', ['doc-align', `doc-align-${name}`]);
       } else if (name === 'file') {

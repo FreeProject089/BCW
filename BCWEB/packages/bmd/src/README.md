@@ -259,6 +259,7 @@ short version:
 :::columns / :::column                              responsive columns (:::row / :::col)
 :::collapse[Summary]                                a disclosure (:::details is the same)
 :::center :::left :::right                          alignment
+:::divider[Part two]                                a rule you can steer ({space=} {variant=b}); --- still works
 :::roadmap{src=…} / :::replay{src=…}                built in; pass your own to replace
                                                     (:::bmmreplay = :::replay)
 :button[Label]{brand=discord href=…}                a button, eight brands, three sizes (:btn)

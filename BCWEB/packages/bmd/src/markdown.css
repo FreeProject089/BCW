@@ -671,3 +671,20 @@ details[open] > .doc-toc-m-summary .doc-toc-m-chevron { transform: rotate(90deg)
 .md-body .doc-grid.doc-variant-b > .doc-card {
   border: 0; background: transparent; padding: 0;
 }
+
+/* `:::divider` — the steerable rule.
+   `---` still draws a plain <hr> and is not going anywhere; this exists because a thematic
+   break takes no attributes, so the one block whose job IS separation could not say how much
+   separation to leave, or take the quiet variant. Default: a full rule. With a label: the
+   rule breaks around centred words. `variant=b`: short and centred, a breath rather than a
+   border — for a pause inside a section, where a full-width line reads as a new chapter. */
+.md-body .doc-divider { display: flex; align-items: center; gap: 12px; margin: 1.5em 0; }
+.md-body .doc-divider::before,
+.md-body .doc-divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.md-body .doc-divider:not(.doc-divider-labelled)::after { display: none; }
+.md-body .doc-divider-label { flex: 0 0 auto; font-size: 12px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); }
+.md-body .doc-divider.doc-variant-b { justify-content: center; }
+.md-body .doc-divider.doc-variant-b::before,
+.md-body .doc-divider.doc-variant-b::after { flex: 0 0 44px; }
+.md-body .doc-divider.doc-variant-b:not(.doc-divider-labelled)::after { display: block; }

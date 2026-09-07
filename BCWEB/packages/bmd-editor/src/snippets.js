@@ -62,7 +62,10 @@ export const SNIPPET_GROUPS = [
       { id: 'time', label: 'Instant', inline: true, md: ':time[${sel|2026-09-01T20:00}]{tz=Europe/Paris}' },
       { id: 'tag', label: 'Tag', inline: true, md: ':tag[${sel|Beta}]' },
       { id: 'styledlink', label: 'Styled link', inline: true, md: ':link[${sel|Read more}]{href=/${cursor} color=#0a7}' },
-      { id: 'divider', label: 'Divider', md: '---' },
+      // Plain `---` stays available by typing it; the palette offers the directive, which is
+      // the one that can take space= and variant= from the block canvas's two selects.
+      { id: 'divider', label: 'Divider', md: ':::divider\n:::' },
+      { id: 'divider-labelled', label: 'Divider with a label', md: ':::divider[${sel|Part two}]\n:::' },
       { id: 'align', label: 'Align right', md: ':::right\n${sel|Right-aligned}\n:::' },
       { id: 'meter', label: 'Meter', inline: true, md: ':meter[${sel|60}]{label=Done}' },
       { id: 'toc', label: 'Table of contents', md: '::toc[${cursor}On this page]' },
@@ -100,7 +103,7 @@ export const SNIPPET_FR = {
   Text: 'Texte', Heading: 'Titre', Bold: 'Gras', Italic: 'Italique', 'Inline code': 'Code en ligne', Highlight: 'Surligné', Strikethrough: 'Barré', Link: 'Lien', 'Wiki link': 'Lien wiki', Footnote: 'Note de bas de page', Keys: 'Touches', Badge: 'Badge', Icon: 'Icône', Emoji: 'Emoji', Quote: 'Citation', 'Code block': 'Bloc de code', Maths: 'Maths',
   Callouts: 'Encadrés', Note: 'Note', Tip: 'Astuce', Warning: 'Avertissement', Danger: 'Danger', Custom: 'Personnalisé', Collapsible: 'Repliable', Spoiler: 'Spoiler',
   Layout: 'Mise en page', 'Card grid': 'Grille de cartes', Card: 'Carte', Columns: 'Colonnes', Grid: 'Grille', Tabs: 'Onglets', Steps: 'Étapes', Hero: 'Héro', Centered: 'Centré', 'Styled table': 'Tableau stylé',
-  Content: 'Contenu', Timeline: 'Chronologie', Changelog: 'Journal des versions', Stats: 'Statistiques', 'Pull quote': 'Citation en exergue', FAQ: 'FAQ', Checklist: 'Liste à cocher', 'Before / after': 'Avant / après', Roadmap: 'Feuille de route', Schedule: 'Horaires', Instant: 'Instant', Tag: 'Étiquette', 'Styled link': 'Lien stylé', Divider: 'Séparateur', 'Align right': 'Aligner à droite', Meter: 'Jauge', 'Table of contents': 'Table des matières',
+  Content: 'Contenu', Timeline: 'Chronologie', Changelog: 'Journal des versions', Stats: 'Statistiques', 'Pull quote': 'Citation en exergue', FAQ: 'FAQ', Checklist: 'Liste à cocher', 'Before / after': 'Avant / après', Roadmap: 'Feuille de route', Schedule: 'Horaires', Instant: 'Instant', Tag: 'Étiquette', 'Styled link': 'Lien stylé', Divider: 'Séparateur', 'Divider with a label': 'Séparateur avec titre', 'Align right': 'Aligner à droite', Meter: 'Jauge', 'Table of contents': 'Table des matières',
   Media: 'Média', Image: 'Image', File: 'Fichier', Button: 'Bouton', Audio: 'Audio', YouTube: 'YouTube', Spotify: 'Spotify', 'BMM replay': 'Rejeu BMM', Diagram: 'Diagramme',
   'API & live': 'API & direct', Endpoint: 'Endpoint', 'OpenAPI document': 'Document OpenAPI', 'Live value (inline)': 'Valeur live (en ligne)', 'Live value (block)': 'Valeur live (bloc)', 'Live stats row': 'Ligne de stats live', 'Action button': "Bouton d'action", Include: 'Inclure',
 };
