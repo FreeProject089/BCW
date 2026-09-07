@@ -27,6 +27,21 @@ function JsonBox({ value, onChange }) {
     className="font-mono text-xs !leading-relaxed" style={{ minHeight: 160 }} />;
 }
 
+// The metadata skeleton for a kind — the shape the reviewer expects, with the keys spelled
+// out so "advanced" means "fill these in", not "know what to type".
+function metaTemplate(kind, name) {
+  const o = kind === 'APP' ? { category: 'other', price: 'free', download_url: '', file_type: 'exe', size: 0, sha256: '' }
+    : kind === 'PLUGIN' ? { game: '', download_url: '' }
+    : { name: name || '' };
+  return JSON.stringify(o, null, 2);
+}
+/** '' / '{}' / whitespace all count as empty — `{}` is the initial value and says nothing. */
+function metaHasContent(s) {
+  const t = String(s || '').trim();
+  if (!t || t === '{}') return false;
+  try { return Object.keys(JSON.parse(t)).length > 0; } catch { return true; }
+}
+
 // Detect a BMM-native catalog file (plugins[]/themes[]/apps[]) → bulk import.
 function catalogEntries(json, projectKey) {
   const out = [];
@@ -195,8 +210,17 @@ function OfficialSubmit({ onBack }) {
             </div>
           )}
           <div>
-            <button type="button" onClick={() => setAdvanced((v) => !v)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced — edit metadata JSON')}</button>
-            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(JSON.stringify(kind === 'APP' ? { category: 'other', price: 'free', download_url: '', file_type: 'exe', size: 0, sha256: '' } : kind === 'PLUGIN' ? { game: '', download_url: '' } : { name: form.name }, null, 2))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
+            {/* Opening this used to reveal a box containing `{}` — the initial value of `meta`.
+                Expanding a panel and finding two braces reads as "the button did nothing", and
+                the fields you were looking for were behind a second click on "Generate
+                template". Seed the template on the way open, unless something is already
+                there (a parsed .bmmplugin / theme file fills `meta` itself). */}
+            <button type="button" onClick={() => setAdvanced((v) => {
+              const next = !v;
+              if (next && !metaHasContent(meta)) setMeta(metaTemplate(kind, form.name));
+              return next;
+            })} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced — edit metadata JSON')}</button>
+            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(metaTemplate(kind, form.name))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
           </div>
           <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={submitOne}>{busy ? <Spinner /> : <><Upload size={15} /> {t('sub.forreview', 'Submit for review')}</>}</Button></div>
         </Card>
