@@ -888,7 +888,17 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
   // "Edit what is there" rather than "write it again": the built-in paragraph is copied into
   // the field, and the built-in steps and traps can be pulled in as B.MD under it — in which
   // case the built-in ones are hidden, so nothing shows twice.
-  const startFromBody = () => setOvField('body', { [tab]: cur.body[tab] || cur.body.en || '' });
+  // "Start from the built-in" gives the COMPLETE built-in entry to edit, not just the intro
+  // paragraph: the paragraph + its bullet points go into the body, and the step-by-step and
+  // the traps are pulled into the section field (B.MD), with the originals hidden so nothing
+  // shows twice. Earlier this copied only the paragraph, which is the "manque des trucs" bug.
+  const startFromBody = () => {
+    const pick = (o) => (tab === 'fr' ? (o?.fr || o?.en || '') : (o?.en || o?.fr || ''));
+    const parts = [pick(cur.body)].filter(Boolean);
+    if (cur.points?.length) parts.push(cur.points.map((pt) => `- ${pick(pt)}`).join('\n'));
+    setOvField('body', { [tab]: parts.join('\n\n') });
+    if (GUIDE_MORE[cur.id] && !curOv.hideMore) pullMore();
+  };
   const pullMore = () => {
     const more = GUIDE_MORE[cur.id]; if (!more) return;
     const pick = (o) => (tab === 'fr' ? (o.fr || o.en || '') : (o.en || o.fr || ''));
