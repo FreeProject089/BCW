@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Type, Image as ImageIcon, Square, Trash2, ArrowUp, ArrowDown, Eye, Smartphone, Monitor, Magnet, Copy,
+  Film, Globe, PlayCircle, EyeOff, Sun, Moon, Layers,
   Undo2, Redo2, AlertTriangle, Upload,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
@@ -20,7 +21,7 @@ import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
-  boundsOf, blocksInRect, moveMany, alignMany, distributeMany, readingOrder,
+  boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
   DESIGN_WIDTH, GRID, HANDLES,
 } from '../lib/canvas.js';
 
@@ -30,6 +31,11 @@ const NEW_BLOCK = {
   text: { kind: 'text', w: 400, h: 160, props: { md: '## Titre\n\nÉcris ici.' } },
   image: { kind: 'image', w: 400, h: 260, props: { src: '', alt: '', fit: 'cover' } },
   box: { kind: 'box', w: 400, h: 200, props: { bg: 'rgba(99,102,241,0.10)', radius: 16 } },
+  // 16:9 by default for the three that carry moving pictures — a video box that starts square
+  // is a box every author resizes before doing anything else.
+  video: { kind: 'video', w: 560, h: 315, props: { src: '', controls: true, muted: false, loop: false, fit: 'contain' } },
+  embed: { kind: 'embed', w: 560, h: 315, props: { url: '', title: '' } },
+  replay: { kind: 'replay', w: 640, h: 400, props: { src: '' } },
 };
 
 export default function CanvasStudio({ value, onChange }) {
@@ -73,6 +79,19 @@ export default function CanvasStudio({ value, onChange }) {
     return () => mq.removeEventListener?.('change', read);
   }, []);
   const stacked = narrow && phoneMode === 'stack' && !preview;
+  /**
+   * Which theme this canvas is being AUTHORED for.
+   *
+   * A page is read on a light background and a dark one, and a hero built for one is not the
+   * same picture on the other. Editing "dark" writes a partial overlay onto the selected
+   * blocks — only the fields actually changed — instead of a second copy of the page, so a
+   * later edit to the base still reaches both unless it was deliberately overridden.
+   *
+   * `base` is the light layout AND the fallback for anything dark does not override; the two
+   * are the same thing on purpose, because a canvas with no dark overlay at all must render
+   * identically in both, not empty in one.
+   */
+  const [editTheme, setEditTheme] = useState('light');
   const [guides, setGuides] = useState({ v: null, h: null });
   const hostRef = useRef(null);
   const [vw, setVw] = useState(DESIGN_WIDTH);
@@ -112,7 +131,13 @@ export default function CanvasStudio({ value, onChange }) {
   // layout that has given up on placement. `layoutFor` is asked for the scale so the editor
   // and the page agree, but the stacking decision is the page's alone.
   const scale = Math.min(1, Math.max(0.3, vw / DESIGN_WIDTH));
-  const sel = canvas.blocks.find((b) => b.id === selId) || null;
+  // The board and the panel both show the theme being authored — resolveBlock is the SAME
+  // function the public page uses, so "what the author sees" cannot drift from what is served.
+  const view = useMemo(() => ({ ...canvas, blocks: canvas.blocks.map((b) => resolveBlock(b, editTheme)) }), [canvas, editTheme]);
+  const sel = view.blocks.find((b) => b.id === selId) || null;
+  /** Does this block say anything of its own on the dark theme? Drives the badge and Reset. */
+  const rawSel = canvas.blocks.find((b) => b.id === selId) || null;
+  const hasDark = !!(rawSel?.themes?.dark && Object.keys(rawSel.themes.dark).length);
 
   // Every change goes through here, and every change records an undo point FIRST — the state
   // as it was, keyed by the gesture, so a sixty-frame drag collapses into one entry.
@@ -121,9 +146,57 @@ export default function CanvasStudio({ value, onChange }) {
     onChange({ ...canvas, ...extra, blocks });
   }, [canvas, onChange]);
 
+  /**
+   * Change one block — into the base, or into the theme overlay.
+   *
+   * On 'light' this writes the block itself, which is also the fallback for dark. On 'dark' it
+   * writes ONLY the changed fields into `themes.dark`, which is what makes an overlay an
+   * overlay: an author who nudged the hero on dark has not frozen its width there, and a later
+   * change to the base width still reaches the dark version.
+   *
+   * `props` merge rather than replace for the same reason — a dark overlay that set the
+   * background must not take the alt text and the fit mode with it.
+   */
   const patch = useCallback((id, next, key = null) => {
-    emit(canvas.blocks.map((b) => (b.id === id ? { ...b, ...next } : b)), {}, key);
-  }, [canvas.blocks, emit]);
+    if (editTheme === 'light') {
+      emit(canvas.blocks.map((b) => (b.id === id ? { ...b, ...next } : b)), {}, key);
+      return;
+    }
+    emit(canvas.blocks.map((b) => {
+      if (b.id !== id) return b;
+      const cur = b.themes?.dark || {};
+      const { props: nextProps, ...rest } = next;
+      return {
+        ...b,
+        themes: {
+          ...(b.themes || {}),
+          dark: { ...cur, ...rest, ...(nextProps ? { props: { ...(cur.props || {}), ...nextProps } } : {}) },
+        },
+      };
+    }), {}, key);
+  }, [canvas.blocks, emit, editTheme]);
+
+  /**
+   * Commit a whole-canvas move (group drag, keyboard nudge) under the theme being authored.
+   *
+   * moveMany() works on positions and returns a full block list, so it cannot know about the
+   * overlay — and used directly it wrote a DARK drag into the base layout, moving the light
+   * version too. Single-block drag and resize never had the bug because they already went
+   * through patch(); these two were the paths that did not.
+   *
+   * On dark, only the blocks whose position actually changed get an overlay: a group drag of
+   * five blocks where two were clamped against the edge must not pin the other three.
+   */
+  const commitMoved = useCallback((nextBlocks, key) => {
+    if (editTheme === 'light') { emit(nextBlocks, {}, key); return; }
+    const by = new Map(nextBlocks.map((b) => [b.id, b]));
+    emit(canvas.blocks.map((b) => {
+      const n = by.get(b.id);
+      const cur = resolveBlock(b, 'dark');
+      if (!n || (n.x === cur.x && n.y === cur.y)) return b;
+      return { ...b, themes: { ...(b.themes || {}), dark: { ...(b.themes?.dark || {}), x: n.x, y: n.y } } };
+    }), {}, key);
+  }, [canvas.blocks, emit, editTheme]);
 
   const doUndo = useCallback(() => {
     const r = undoHist(hist, canvas);
@@ -184,7 +257,7 @@ export default function CanvasStudio({ value, onChange }) {
     if (d.ids && d.ids.length > 1) {
       // Resize is deliberately single-block; a group drag is the whole selection at once,
       // clamped as one box so the arrangement cannot collapse against an edge.
-      emit(moveMany(canvas.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y }), {}, `drag:${d.ids.join(',')}`);
+      commitMoved(moveMany(view.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y }), `drag:${d.ids.join(',')}`);
       return;
     }
     let next = dragTo(d.start, dx, dy, scale, { snap: snapOn });
@@ -251,7 +324,7 @@ export default function CanvasStudio({ value, onChange }) {
         e.preventDefault();
         // The whole selection, at scale 1 because a nudge is in DESIGN pixels — it is the
         // gesture for "exactly one grid step", which is the point of having it.
-        emit(moveMany(canvas.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false }), {}, `nudge:${selIds.join(',')}`);
+        commitMoved(moveMany(view.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false }), `nudge:${selIds.join(',')}`);
       } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       else if (e.key === 'Escape') setSelIds([]);
     };
@@ -272,20 +345,34 @@ export default function CanvasStudio({ value, onChange }) {
   }
 
   if (stacked) {
-    const order = readingOrder(canvas.blocks);
+    const order = phoneOrder(canvas.blocks);
+    /**
+     * Reorder the PHONE stack, and nothing else.
+     *
+     * The first version of this swapped the two blocks' x/y, because reading order is derived
+     * from position and there was no other order to change. It worked, and it was wrong: a
+     * phone edit silently rearranged the desktop layout, and two blocks of different sizes
+     * came back overlapping on the board.
+     *
+     * `block.phone.order` exists now, so the list has an order of its own. The whole visible
+     * list is renumbered on each move rather than only the pair — sequential integers are
+     * predictable, and leaving gaps means the next move has to reason about fractions.
+     */
     const swap = (i, dir) => {
       const j = i + dir;
       if (j < 0 || j >= order.length) return;
-      // Reading order is DERIVED from position, so "move up" is a swap of the two blocks'
-      // coordinates — the list has no order of its own to reorder, and pretending otherwise
-      // is how a phone edit fails to survive a reload. Two blocks of different sizes can end
-      // up overlapping on the board afterwards; the board is where that is visible and
-      // fixable, and the reader on a phone is unaffected either way.
-      const a = order[i], b = order[j];
+      const next = [...order];
+      [next[i], next[j]] = [next[j], next[i]];
+      const rank = new Map(next.map((b, k) => [b.id, k]));
       emit(canvas.blocks.map((x) => (
-        x.id === a.id ? { ...x, x: b.x, y: b.y } : x.id === b.id ? { ...x, x: a.x, y: a.y } : x
+        rank.has(x.id) ? { ...x, phone: { ...(x.phone || {}), order: rank.get(x.id) } } : x
       )));
     };
+    /** Out of the phone stack, still on the desktop board. */
+    const togglePhoneHidden = (b) => emit(canvas.blocks.map((x) => (
+      x.id === b.id ? { ...x, phone: { ...(x.phone || {}), hidden: !x.phone?.hidden } } : x
+    )));
+    const hiddenOnes = canvas.blocks.filter((b) => b.phone?.hidden);
     return (
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -294,7 +381,7 @@ export default function CanvasStudio({ value, onChange }) {
           <Button size="sm" variant="ghost" onClick={() => setPreview('phone')} title={t('cst.phone', 'Phone preview')}><Eye size={14} /></Button>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap mb-2">
-          {[['text', Type], ['image', ImageIcon], ['box', Square]].map(([k, Icon]) => (
+          {[['text', Type], ['image', ImageIcon], ['box', Square], ['video', Film], ['embed', Globe], ['replay', PlayCircle]].map(([k, Icon]) => (
             <Button key={k} size="sm" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
           ))}
           <div className="flex-1" />
@@ -311,6 +398,7 @@ export default function CanvasStudio({ value, onChange }) {
                     that has to work with a thumb. */}
                 <Button size="sm" variant="ghost" className="!px-2" disabled={i === 0} onClick={(e) => { e.stopPropagation(); swap(i, -1); }} title={t('cst.up', 'Move up')}><ArrowUp size={14} /></Button>
                 <Button size="sm" variant="ghost" className="!px-2" disabled={i === order.length - 1} onClick={(e) => { e.stopPropagation(); swap(i, 1); }} title={t('cst.down', 'Move down')}><ArrowDown size={14} /></Button>
+                <Button size="sm" variant="ghost" className="!px-2" onClick={(e) => { e.stopPropagation(); togglePhoneHidden(b); }} title={t('cst.phone.hide', 'Leave this out of the phone version')}><EyeOff size={14} /></Button>
                 <Button size="sm" variant="ghost" className="!px-2 !text-[var(--error)]" onClick={(e) => { e.stopPropagation(); setSelIds([b.id]); remove(); }} title={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
               </div>
               {/* The block exactly as the reader gets it, stacked — the same component the
@@ -321,11 +409,26 @@ export default function CanvasStudio({ value, onChange }) {
           ))}
           {!order.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.stack.empty', 'Nothing on this page yet — add a block above.')}</div>}
         </div>
+        {/* A block left out of the phone version is still on the board, and the only place
+            that fact can be seen is here — on the board it looks exactly like every other
+            block. Without this row it is hidden from the one screen that hid it. */}
+        {hiddenOnes.length > 0 && (
+          <div className="mt-3 rounded-xl border border-dashed border-[var(--line)] p-2">
+            <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('cst.phone.hidden', 'Not shown on phones')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {hiddenOnes.map((b) => (
+                <Button key={b.id} size="sm" variant="ghost" className="!px-2" onClick={() => togglePhoneHidden(b)}>
+                  <Eye size={13} /> {t(`cst.kind.${b.kind}`, b.kind)}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         {/* The inspector, pinned to the bottom of the viewport and only while something is
             selected — an empty panel over a list is just a shorter list. */}
         {sel && (
           <div className="sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t border-[var(--line-strong)] shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]" style={{ background: 'var(--bg-solid)' }}>
-            <Inspector {...{ t, sel, patch, canvas, emit, setSelId }} />
+            <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
           </div>
         )}
       </div>
@@ -335,6 +438,23 @@ export default function CanvasStudio({ value, onChange }) {
   return (
     <div>
       <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
+      {/* Which theme is being authored. A page is read on both backgrounds and a hero built
+          for one is not the same picture on the other; the alternative to this switch was
+          authoring the page twice. Dark writes a partial OVERLAY, so anything not touched here
+          keeps following the light layout. */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {[['light', Sun, t('cst.theme.light', 'Light')], ['dark', Moon, t('cst.theme.dark', 'Dark')]].map(([k, Icon, label]) => (
+            <button key={k} type="button" onClick={() => setEditTheme(k)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors ${editTheme === k ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              <Icon size={12} /> {label}
+            </button>
+          ))}
+        </div>
+        {editTheme === 'dark' && (
+          <span className="text-[11px] text-[var(--muted)]">{t('cst.theme.h', 'Editing the dark version. Anything you do not change here keeps following the light layout.')}</span>
+        )}
+      </div>
       {narrow && !preview && (
         <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
           <span className="flex-1 min-w-0">{t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
@@ -360,7 +480,7 @@ export default function CanvasStudio({ value, onChange }) {
                 backgroundImage: 'linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)',
                 backgroundSize: `${GRID * 8}px ${GRID * 8}px`,
               }} />
-              {paintOrder(canvas.blocks).map((b) => {
+              {paintOrder(view.blocks).map((b) => {
                 const on = selIds.includes(b.id);
                 const only = selIds.length === 1 && on;
                 return (
@@ -398,7 +518,7 @@ export default function CanvasStudio({ value, onChange }) {
             canvas would just be a smaller canvas. */}
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
-          <Inspector {...{ t, sel, patch, canvas, emit, setSelId }} />
+          <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
         </div>
       </div>
     </div>
@@ -506,7 +626,7 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
   );
 }
 
-function Inspector({ t, sel, patch, canvas, emit, setSelId }) {
+function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   if (!sel) {
@@ -525,9 +645,20 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId }) {
     <div className="mt-4 lg:mt-0 rounded-xl border border-[var(--line)] p-3 space-y-3 lg:sticky lg:top-4">
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{sel.kind}</span>
+        {/* Whether THIS block says anything of its own on dark. Without it, an author on the
+            dark theme cannot tell an overridden block from one that is simply inheriting —
+            they look identical, which is the point of inheriting and the problem with it. */}
+        {hasDark && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--primary)]/12 text-[var(--primary-2)]">{t('cst.theme.has', 'dark variant')}</span>}
         <div className="ms-auto flex gap-1">
           <button title={t('cst.front', 'Bring to front')} className="p-1 rounded hover:bg-[var(--surface-2)]" onClick={() => emit(bringTo(canvas.blocks, sel.id, 'front'))}><ArrowUp size={14} /></button>
           <button title={t('cst.back', 'Send to back')} className="p-1 rounded hover:bg-[var(--surface-2)]" onClick={() => emit(bringTo(canvas.blocks, sel.id, 'back'))}><ArrowDown size={14} /></button>
+          {hasDark && (
+            <button title={t('cst.theme.reset', 'Drop the dark variant — this block follows the light layout again')}
+              className="p-1 rounded hover:bg-[var(--surface-2)]"
+              onClick={() => emit(canvas.blocks.map((b) => (b.id === sel.id ? { ...b, themes: { ...(b.themes || {}), dark: undefined } } : b)))}>
+              <Layers size={14} />
+            </button>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -556,6 +687,45 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId }) {
         </label>
         <Field label={t('cst.alt', 'Alt text')} hint={t('cst.alt.h', 'What the image says, for anyone who cannot see it.')}><Input value={p.alt || ''} onChange={(e) => setProp('alt', e.target.value)} /></Field>
       </>)}
+      {sel.kind === 'video' && (<>
+        <Field label={t('cst.video.src', 'Video URL (mp4/webm)')}><Input value={p.src || ''} onChange={(e) => setProp('src', e.target.value)} placeholder="/uploads/clip.mp4" /></Field>
+        <Field label={t('cst.video.poster', 'Poster image (optional)')}><Input value={p.poster || ''} onChange={(e) => setProp('poster', e.target.value)} /></Field>
+        <div className="flex flex-wrap gap-3 text-xs">
+          {[['controls', t('cst.video.controls', 'Controls'), true], ['muted', t('cst.video.muted', 'Muted'), false],
+            ['loop', t('cst.video.loop', 'Loop'), false], ['autoplay', t('cst.video.auto', 'Autoplay'), false]].map(([k, label, dflt]) => (
+              <label key={k} className="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" checked={p[k] ?? dflt} onChange={(e) => setProp(k, e.target.checked)} />{label}
+              </label>
+          ))}
+        </div>
+        {/* Said rather than silently ignored. Every browser refuses to autoplay a video with
+            sound, so the two boxes together are the only combination that does anything —
+            a checkbox that does nothing is worse than no checkbox. */}
+        {p.autoplay && !p.muted && (
+          <p className="text-[11px] text-warning">{t('cst.video.automute', 'Autoplay only works on a muted video — every browser blocks the other kind. Tick Muted, or the video will simply wait to be played.')}</p>
+        )}
+      </>)}
+      {sel.kind === 'embed' && (<>
+        <Field label={t('cst.embed.url', 'Embed URL')}><Input value={p.url || ''} onChange={(e) => setProp('url', e.target.value)} placeholder="https://www.youtube.com/embed/…" /></Field>
+        <Field label={t('cst.embed.title', 'Title (for screen readers)')}><Input value={p.title || ''} onChange={(e) => setProp('title', e.target.value)} /></Field>
+        {/* The allow-list is B.MD's, shared with every embed in a blog post or a doc — not a
+            second list. A refused URL still renders, as a link, so it is visible that it was
+            refused rather than looking like a blank block. */}
+        <p className="text-[11px] text-[var(--muted)]">{t('cst.embed.allow', 'Only YouTube and Spotify embed links can be framed — the same list the rest of the site uses. Anything else is shown as a link instead.')}</p>
+      </>)}
+      {sel.kind === 'replay' && (
+        <Field label={t('cst.replay.src', '.bmmreplay URL')} hint={t('cst.replay.h', 'A recording of the app, played by the same player the docs and the blog use.')}>
+          <Input value={p.src || ''} onChange={(e) => setProp('src', e.target.value)} placeholder="/uploads/demo.bmmreplay" />
+        </Field>
+      )}
+      {/* Opacity sits on the BLOCK, not in props: it applies to the wrapper, so it behaves the
+          same for a picture, a video and a paragraph. Per-kind it would have been written five
+          times and forgotten in two. */}
+      <Field label={`${t('cst.opacity', 'Opacity')} · ${Math.round((sel.opacity ?? 1) * 100)}%`}>
+        <input type="range" min="0" max="100" step="5" className="w-full"
+          value={Math.round((sel.opacity ?? 1) * 100)}
+          onChange={(e) => patch(sel.id, { opacity: Number(e.target.value) / 100 }, `op-${sel.id}`)} />
+      </Field>
       <Field label={t('cst.bg', 'Background')}><Input value={p.bg || ''} onChange={(e) => setProp('bg', e.target.value)} placeholder="rgba(99,102,241,0.1)" /></Field>
       <Field label={t('cst.radius', 'Corner radius')}><Input type="number" value={p.radius ?? ''} onChange={(e) => setProp('radius', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
       <button className="text-[11px] text-[var(--faint)] hover:text-[var(--text)]" onClick={() => setSelId(null)}>{t('cst.deselect', 'Deselect')}</button>

@@ -34,6 +34,9 @@ try {
     "import { renderToStaticMarkup } from 'react-dom/server';",
     "import { I18nProvider } from '../src/i18n.jsx';",
     "import CanvasStudio from '../src/editor/canvas-studio.jsx';",
+    "import CanvasView from '../src/ui/canvas-view.jsx';",
+    "export const page = (value, theme) => renderToStaticMarkup(",
+    '  <I18nProvider><CanvasView canvas={value} themePreview={theme} /></I18nProvider>);',
     // Rendered inside the real provider, the way the app mounts it. Its network fetch lives in
     // an effect, which renderToStaticMarkup never runs.
     'export const render = (value) => renderToStaticMarkup(',
@@ -58,8 +61,8 @@ try {
   cleanup(); process.exit(2);
 }
 
-let render;
-try { ({ render } = await import(pathToFileURL(bundle).href)); }
+let render; let page;
+try { ({ render, page } = await import(pathToFileURL(bundle).href)); }
 catch (e) { console.error(`✗ the studio would not load: ${e?.message || e}`); cleanup(); process.exit(1); }
 
 const problems = [];
@@ -137,6 +140,62 @@ if (phone) {
   must(empty.length > 0, 'an empty canvas rendered nothing at phone width');
 }
 
+// ── What a READER gets, for every kind and for the dark variant. ─────────────────────
+// The studio is where blocks are made; this is where they are served, and the two failures
+// worth catching live here.
+//
+// The first is an iframe. An `embed` block frames an author-supplied URL on a PUBLIC page, so
+// the allow-list (B.MD's — one list, not a second) is a security boundary and not a nicety. A
+// refused URL must produce a LINK, never a frame, and "never" is the kind of claim that has to
+// be executed rather than reviewed.
+//
+// The second is the theme overlay: a partial that silently returns a whole block freezes every
+// coordinate the author never touched, and the only way to see it is to render both themes and
+// compare.
+const ALL_KINDS = {
+  id: 'c4', title: '', height: 900,
+  blocks: [
+    { id: 'k1', kind: 'text', x: 0, y: 0, w: 400, h: 120, props: { md: 'hello' } },
+    { id: 'k2', kind: 'image', x: 0, y: 160, w: 400, h: 120, props: { src: '/a.png', alt: 'a' } },
+    { id: 'k3', kind: 'box', x: 0, y: 320, w: 400, h: 120, props: { bg: '#eee' } },
+    { id: 'k4', kind: 'video', x: 0, y: 480, w: 400, h: 120, props: { src: '/clip.mp4' } },
+    { id: 'k5', kind: 'embed', x: 0, y: 640, w: 400, h: 120, props: { url: 'https://www.youtube.com/embed/abc' } },
+    { id: 'k6', kind: 'embed', x: 440, y: 640, w: 400, h: 120, props: { url: 'https://evil.example/steal' } },
+    { id: 'k7', kind: 'replay', x: 0, y: 800, w: 400, h: 120, props: { src: '/demo.bmmreplay' } },
+  ],
+};
+let served = '';
+try { served = page(ALL_KINDS, 'light'); }
+catch (e) { problems.push(`the public canvas threw on the full set of kinds: ${e?.message || e}`); }
+
+if (served) {
+  must(/<video/.test(served), 'a video block rendered no <video>');
+  must(/<img/.test(served), 'an image block rendered no <img>');
+  must(/bcw-canvas-replay/.test(served), 'a replay block rendered nothing the player can find');
+  const frames = (served.match(/<iframe/g) || []).length;
+  must(frames === 1, `${frames} iframe(s) for one allowed and one refused embed — the allow-list is not deciding`);
+  must(served.includes('https://www.youtube.com/embed/abc'), 'the allowed embed is missing');
+  must(!/iframe[^>]*evil\.example/.test(served), 'a URL outside the allow-list was framed');
+  must(/evil\.example/.test(served), 'the refused embed vanished instead of being shown as a link — an author cannot see it was refused');
+  must(/sandbox=/.test(served), 'the allowed iframe carries no sandbox');
+  must(!/allow-same-origin/.test(served), 'the iframe sandbox allows same-origin, so a framed page can reach back into this one');
+}
+
+// A dark overlay that touches ONE field must leave the others alone.
+const OVERLAID = {
+  id: 'c5', title: '', height: 400,
+  blocks: [{ id: 'o1', kind: 'box', x: 96, y: 48, w: 400, h: 200, props: { bg: '#fff' },
+    themes: { dark: { y: 200, props: { bg: '#000' } } } }],
+};
+try {
+  const light = page(OVERLAID, 'light');
+  const dark = page(OVERLAID, 'dark');
+  must(/top:\s*48px/.test(light), 'the light layout lost its own position');
+  must(/top:\s*200px/.test(dark), 'the dark overlay did not move the block');
+  must(/left:\s*96px/.test(dark), 'the dark overlay dropped a coordinate the author never touched');
+  must(/width:\s*400px/.test(dark), 'the dark overlay dropped the width');
+} catch (e) { problems.push(`rendering both themes threw: ${e?.message || e}`); }
+
 cleanup();
 
 // The handle hit area is CSS, so it is checked where it lives. The class has to exist on both
@@ -152,4 +211,4 @@ if (problems.length) {
   for (const p of problems) console.error(`    ${p}`);
   process.exit(1);
 }
-console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, and at phone width it renders the reading-order list instead of the board`);
+console.log(`✓ studio OK — rendered through the real component, ${movable} draggable block(s), touch-action on the canvas and each block, handles keep their touch target, at phone width it renders the reading-order list instead of the board, every block kind is served, an off-list embed is a link and not a frame, and a dark overlay changes only what it names`);

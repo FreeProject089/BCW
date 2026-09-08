@@ -6154,6 +6154,23 @@ const DICT = {
     'cst.nsel': '{n} sélectionnés',
     'cst.al.left': 'Aligner à gauche', 'cst.al.hcenter': 'Centrer horizontalement', 'cst.al.right': 'Aligner à droite',
     'cst.al.top': 'Aligner en haut', 'cst.al.vmiddle': 'Centrer verticalement', 'cst.al.bottom': 'Aligner en bas',
+    // Studio — nouveaux blocs, opacité, calques par thème, variante téléphone
+    'cst.add.video': 'Vidéo', 'cst.add.embed': 'Intégration', 'cst.add.replay': 'Rejeu',
+    'cst.kind.video': 'Vidéo', 'cst.kind.embed': 'Intégration', 'cst.kind.replay': 'Rejeu',
+    'cst.video.src': 'URL de la vidéo (mp4/webm)', 'cst.video.poster': 'Image d’attente (optionnel)',
+    'cst.video.controls': 'Contrôles', 'cst.video.muted': 'Muet', 'cst.video.loop': 'Boucle', 'cst.video.auto': 'Lecture auto',
+    'cst.video.automute': 'La lecture automatique ne marche que sur une vidéo muette — tous les navigateurs bloquent l’autre cas. Coche Muet, sinon la vidéo attendra qu’on la lance.',
+    'cst.embed.url': 'URL à intégrer', 'cst.embed.title': 'Titre (pour les lecteurs d’écran)',
+    'cst.embed.allow': 'Seuls les liens d’intégration YouTube et Spotify peuvent être encadrés — la même liste que le reste du site. Tout le reste s’affiche en lien.',
+    'cst.replay.src': 'URL du .bmmreplay',
+    'cst.replay.h': 'Un enregistrement de l’app, joué par le même lecteur que la doc et le blog.',
+    'cst.opacity': 'Opacité',
+    'cst.theme.light': 'Clair', 'cst.theme.dark': 'Sombre',
+    'cst.theme.h': 'Tu édites la version sombre. Tout ce que tu ne changes pas ici continue de suivre la mise en page claire.',
+    'cst.theme.has': 'variante sombre',
+    'cst.theme.reset': 'Abandonner la variante sombre — ce bloc resuit la mise en page claire',
+    'cst.phone.hide': 'Laisser ce bloc hors de la version téléphone',
+    'cst.phone.hidden': 'Pas affiché sur téléphone',
     // Studio — le mode liste du téléphone (la page publique empile déjà à cette largeur)
     // Analytique — l’onglet Tendances (série vs sa propre normale)
     'an.tab.trends': 'Tendances',

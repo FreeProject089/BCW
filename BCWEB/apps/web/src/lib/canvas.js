@@ -21,6 +21,21 @@
 // reads, not the order the blocks were created in and not the z-index. Two blocks side by side
 // stack left first; a block dragged above another moves ahead of it. Anything else and the
 // phone version of a page tells a different story from the desktop one.
+//
+// Two things an author may now say ON TOP of that, and neither of them reopens free placement
+// on a phone — that trade is still made the same way:
+//
+//   · `block.phone` — the ORDER of the stack, whether a block appears in it at all, and how
+//     tall it is there. Derived reading order remains the default and stays the answer for
+//     every block that says nothing, so an existing canvas is unchanged and an author only
+//     spends attention on the two blocks that came out wrong.
+//   · `block.themes.light` / `.dark` — a partial override applied when the page is being read
+//     in that theme. A hero built for a dark background is not the same picture on a light
+//     one, and the alternative was authoring two pages.
+//
+// Both are OVERLAYS: absent means "the same as the desktop, light-theme block", never "empty".
+// A stored partial that is missing a field falls through to the base, so an author who nudged
+// one coordinate has not silently frozen the other three.
 
 /** The width every stored coordinate is relative to. Changing it would move every canvas. */
 export const DESIGN_WIDTH = 1200;
@@ -31,8 +46,24 @@ export const MIN_SCALE = 0.55;
 /** Grid step, in design px. Placement snaps to it so hand-placed blocks still line up. */
 export const GRID = 8;
 
-/** Block kinds the renderer knows. `text` is B.MD, so it inherits the whole vocabulary. */
-export const BLOCK_KINDS = ['text', 'image', 'box'];
+/**
+ * Block kinds the renderer knows. `text` is B.MD, so it inherits the whole vocabulary.
+ *
+ * `image` covers PNG, JPEG, WebP and a plain .svg URL — one kind, because a reader does not
+ * care which of those a picture is and neither does <img>.
+ *
+ * There is deliberately NO inline-SVG kind. Inlining author markup on a public page is stored
+ * XSS unless it is sanitised, and the only sanitiser here is B.MD's rehype pipeline, which
+ * runs over markdown rather than over an SVG string. Its one real advantage — an icon that
+ * inherits the page's colours — is not worth an injection point on a platform that meters and
+ * gates everything else. It can come back behind a real sanitiser.
+ */
+export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay'];
+
+/** Kinds whose height is theirs to keep in a stack — a media box with no intrinsic height in
+ *  the column would collapse to nothing the way `box` did. */
+const KEEPS_HEIGHT = new Set(['box', 'video', 'embed', 'replay']);
+export const keepsHeightStacked = (kind) => KEEPS_HEIGHT.has(kind);
 
 const num = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -68,6 +99,12 @@ export function normalizeCanvas(raw) {
         h: Math.max(GRID, snap(num(b.h, 120))),
         z: num(b.z, i),
         props: b.props && typeof b.props === 'object' ? b.props : {},
+        // Opacity lives on the BLOCK, not in props: it applies to the wrapper, so it works the
+        // same for a picture, a video and a text block. In props it would have had to be
+        // re-implemented per kind, and three of them would have been forgotten.
+        opacity: clamp(num(b.opacity, 1), 0, 1),
+        themes: themeOverlays(b.themes),
+        phone: phoneOverlay(b.phone),
       };
     })
     .filter(Boolean);
@@ -80,6 +117,81 @@ export function normalizeCanvas(raw) {
     bg: typeof c.bg === 'string' ? c.bg : '',
     blocks,
   };
+}
+
+/**
+ * A per-theme partial. Only the fields that were actually written survive — an overlay that
+ * filled in defaults would freeze every coordinate the author never touched, so nudging a
+ * hero 20px on the dark theme would silently pin its width and height there too.
+ */
+function themeOverlays(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const out = {};
+  for (const mode of ['light', 'dark']) {
+    const o = src[mode];
+    if (!o || typeof o !== 'object') continue;
+    const t = {};
+    for (const k of ['x', 'y', 'w', 'h']) if (o[k] != null && Number.isFinite(Number(o[k]))) t[k] = snap(num(o[k]));
+    if (o.opacity != null && Number.isFinite(Number(o.opacity))) t.opacity = clamp(num(o.opacity, 1), 0, 1);
+    if (o.hidden === true) t.hidden = true;
+    if (o.props && typeof o.props === 'object') t.props = o.props;
+    if (Object.keys(t).length) out[mode] = t;
+  }
+  return out;
+}
+
+/** What an author said about this block ON A PHONE. Absent fields fall through to the
+ *  derived reading order and the block's own height. */
+function phoneOverlay(raw) {
+  const o = raw && typeof raw === 'object' ? raw : null;
+  if (!o) return null;
+  const out = {};
+  if (o.order != null && Number.isFinite(Number(o.order))) out.order = num(o.order);
+  if (o.hidden === true) out.hidden = true;
+  if (o.h != null && Number.isFinite(Number(o.h))) out.h = Math.max(GRID, snap(num(o.h)));
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The block as it should be drawn, for a theme.
+ *
+ * One function, called by the public page AND the editor's preview, because "what does the
+ * dark version look like" answered twice is how the two come to disagree — the same reason
+ * layoutFor() is not duplicated.
+ */
+export function resolveBlock(b, theme = 'light') {
+  const o = b?.themes?.[theme === 'dark' ? 'dark' : 'light'];
+  if (!o) return b;
+  return {
+    ...b,
+    ...(o.x != null ? { x: o.x } : {}),
+    ...(o.y != null ? { y: o.y } : {}),
+    ...(o.w != null ? { w: o.w } : {}),
+    ...(o.h != null ? { h: o.h } : {}),
+    ...(o.opacity != null ? { opacity: o.opacity } : {}),
+    ...(o.hidden ? { hidden: true } : {}),
+    // Props MERGE rather than replace: a dark overlay that only changes the background must
+    // not drop the caption, the alt text and the fit mode along with it.
+    ...(o.props ? { props: { ...(b.props || {}), ...o.props } } : {}),
+  };
+}
+
+/**
+ * The blocks a phone gets, in the order it gets them.
+ *
+ * Authored order wins where it exists; everything else keeps its reading order, and the two
+ * are interleaved by SORTING on the authored value with the reading position as the
+ * tiebreaker. The naive version — authored ones first, then the rest — moves a block an
+ * author never touched, which is the opposite of what setting one block's order should do.
+ */
+export function phoneOrder(blocks, band = 40) {
+  const read = readingOrder(blocks, band);
+  const pos = new Map(read.map((b, i) => [b.id, i]));
+  return read
+    .filter((b) => !b.phone?.hidden)
+    .map((b) => ({ b, key: b.phone?.order != null ? num(b.phone.order) : pos.get(b.id) }))
+    .sort((p, q) => (p.key - q.key) || (pos.get(p.b.id) - pos.get(q.b.id)))
+    .map((p) => p.b);
 }
 
 /** The bottom edge of the lowest block, plus a little air. */
