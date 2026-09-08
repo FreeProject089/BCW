@@ -3341,9 +3341,20 @@ export default async function miscRoutes(app) {
     const rows = await p.adminSetting.findMany();
     return { settings: Object.fromEntries(rows.map((r) => [r.key, r.value])) };
   });
+  // Settings an ADMIN may READ and only a SUPERADMIN may WRITE.
+  //
+  // The margin decides how much of somebody else's sale the platform keeps, so it is not a
+  // number every staff account should be able to move — and hiding the control in the UI is
+  // not a gate, it is a suggestion. The list is here, on the route, and short on purpose:
+  // every entry has to earn the extra step.
+  const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp']);
+
   app.put('/admin/settings/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
     const value = req.body?.value ?? req.body;
+    if (SUPERADMIN_ONLY_SETTINGS.has(req.params.key) && req.user?.role !== 'SUPERADMIN') {
+      return reply.code(403).send({ error: 'superadmin_required', key: req.params.key });
+    }
     // The configured Total capacity can never promise more than the machine can
     // physically hold — checked against a REAL statfs() read of the disk, never
     // an assumed/faked number. (Prevents e.g. setting 10 TB on a 200 GB box.)

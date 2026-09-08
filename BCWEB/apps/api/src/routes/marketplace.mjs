@@ -56,6 +56,46 @@ export async function marketplaceStorage(p) {
   };
 }
 
+/**
+ * The platform's cut of a sale, in basis points (1000 = 10%).
+ *
+ * Per product, resolved against one site-wide default. It is deliberately NOT also a
+ * per-project setting: this is the number actually charged on a sale, and three places that
+ * can disagree about one percentage is how a payout report stops matching the invoices. The
+ * admin screen sets it for every product of a page in one click, which is the same question
+ * asked in the way that leaves one answer.
+ *
+ * Basis points and not a float: 12.5% is expressible, and no sale is ever off by a rounding
+ * error that came from a percentage stored as 0.125000000000000006.
+ */
+const DEFAULT_FEE_BP = 1000;
+export async function marketplaceFeeBp(p) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'marketplace.feePercentBp' } }).catch(() => null);
+  const v = Number(row?.value);
+  return Number.isFinite(v) && v >= 0 && v <= 10000 ? Math.round(v) : DEFAULT_FEE_BP;
+}
+
+/**
+ * What we keep and what the seller is owed, for ONE sale, at the moment of the sale.
+ *
+ * Rounded DOWN in the platform's favour is the wrong default: it makes the site take the
+ * extra cent on every odd amount for ever. `Math.round` splits it, and `netCents` is the
+ * subtraction rather than a second percentage, so the two always add back to the price.
+ */
+export function splitFee(priceCents, feeBp) {
+  const price = Math.max(0, Math.round(Number(priceCents) || 0));
+  const bp = Math.min(10000, Math.max(0, Math.round(Number(feeBp) || 0)));
+  const feeCents = Math.round((price * bp) / 10000);
+  return { feeCents, netCents: price - feeCents };
+}
+
+/** The effective margin for this product: its own override, else the site default. */
+export async function feeForProduct(p, product) {
+  const own = product?.feePercentBp;
+  if (Number.isFinite(own) && own >= 0 && own <= 10000) return Math.round(own);
+  return marketplaceFeeBp(p);
+}
+
 const productSchema = z.object({
   projectKey: z.string().max(60).nullish(),
   showcaseProjectId: z.string().max(60).nullish(),
@@ -74,13 +114,38 @@ const productSchema = z.object({
   externalUrl: z.string().url().max(400).nullish(),
   externalSecret: z.string().max(200).nullish(),
   stock: z.number().int().min(0).max(1_000_000).nullish(),
+  // Recurring. `intervalMonths` is only read when billing is 'subscription'; 1 and 12 are
+  // the two Stripe renders sensibly in a checkout, and anything else is a number a buyer
+  // has to do arithmetic on to understand.
+  billing: z.enum(['one_time', 'subscription']).optional().default('one_time'),
+  intervalMonths: z.number().int().min(1).max(12).nullish(),
+  // Where the buyer uses what they bought. Not secret — it is shown on the product page
+  // BEFORE the sale too, because "and then what" is a question people want answered first.
+  redeemUrl: z.string().url().max(600).nullish(),
+  redeemNote: z.string().max(1000).nullish(),
+  // Stripped for anyone below SUPERADMIN at the route, never here: a schema that rejected
+  // it would turn an ordinary admin's save into a 400 they cannot act on.
+  feePercentBp: z.number().int().min(0).max(10000).nullish(),
 });
+
+/** Fields only a SUPERADMIN may set. Dropped rather than refused, so an ADMIN editing a
+ *  product they can otherwise edit does not get a 400 about a field they never touched. */
+function stripPrivileged(data, user) {
+  if (user?.role === 'SUPERADMIN') return data;
+  const { feePercentBp, ...rest } = data;
+  return rest;
+}
 
 // What a buyer is allowed to see about a product — never the static key, the pool, the external
 // secret, or how many are left beyond "in stock or not".
 const pub = (pr) => ({
   id: pr.id, name: pr.name, description: pr.description, priceCents: pr.priceCents, currency: pr.currency,
   deliveryKind: pr.deliveryKind, inStock: pr.stock == null || pr.stock > pr.sold,
+  billing: pr.billing || 'one_time', intervalMonths: pr.intervalMonths || null,
+  // Shown before the sale as well as after. "What do I do with it once I have paid" is a
+  // question people want answered first, and a storefront that only answers it afterwards
+  // is one people leave.
+  redeemUrl: pr.redeemUrl || null, redeemNote: pr.redeemNote || null,
 });
 
 // Ask an external key generator for a code. The admin sets externalUrl + externalSecret; we POST
@@ -165,7 +230,10 @@ export default async function marketplaceRoutes(app) {
     let delivery;
     try { delivery = await fulfilProduct(p, product, req.user.uid); }
     catch (e) { return reply.code(409).send({ error: e.code || 'delivery_failed' }); }
-    const purchase = await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: req.user.uid, status: 'paid', priceCents: 0, delivery } });
+    // feeCents/netCents are written even at zero. A free purchase with NULL where the split
+    // should be is indistinguishable from an old row nobody computed, and a payout report
+    // that has to guess which is which is a payout report nobody trusts.
+    const purchase = await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: req.user.uid, status: 'paid', priceCents: 0, feeCents: 0, netCents: 0, delivery } });
     await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
     return { ok: true, purchase: { id: purchase.id, delivery } };
   });
@@ -187,11 +255,36 @@ export default async function marketplaceRoutes(app) {
     const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
     const customer = await ensureCustomer(p, sk, req.user.uid);
     const md = { type: 'marketplace', productId: product.id, userId: req.user.uid };
+    const recurring = product.billing === 'subscription';
+
+    // A subscription needs a Stripe PRICE, not an inline amount, and the same one every
+    // time. Minting a new price per checkout works and makes the Stripe dashboard
+    // unreadable: "how many people are on this plan" stops having an answer, for ever.
+    let priceId = product.stripePriceId || null;
+    if (recurring && !priceId) {
+      const months = Math.min(12, Math.max(1, Number(product.intervalMonths) || 1));
+      const created = await sk.prices.create({
+        currency: product.currency || 'usd',
+        unit_amount: product.priceCents,
+        recurring: { interval: 'month', interval_count: months },
+        product_data: { name: product.name },
+      });
+      priceId = created.id;
+      await p.projectProduct.update({ where: { id: product.id }, data: { stripePriceId: priceId } });
+    }
+
     const session = await sk.checkout.sessions.create({
-      mode: 'payment', customer,
-      line_items: [{ quantity: 1, price_data: { currency: product.currency || 'usd', unit_amount: product.priceCents, product_data: { name: product.name } } }],
-      invoice_creation: { enabled: true },
+      mode: recurring ? 'subscription' : 'payment', customer,
+      line_items: recurring
+        ? [{ quantity: 1, price: priceId }]
+        : [{ quantity: 1, price_data: { currency: product.currency || 'usd', unit_amount: product.priceCents, product_data: { name: product.name } } }],
+      // Only a one-off session takes invoice_creation; a subscription invoices every cycle
+      // by itself, and passing both is a 400 from Stripe.
+      ...(recurring ? {} : { invoice_creation: { enabled: true } }),
       metadata: md,
+      // Carried onto the SUBSCRIPTION as well, so a renewal months later still knows which
+      // product it is for. Session metadata does not survive onto the subscription object.
+      ...(recurring ? { subscription_data: { metadata: md } } : {}),
       success_url: `${siteUrl}/dashboard?market=ok`,
       cancel_url: `${siteUrl}/dashboard?market=cancel`,
     });
@@ -215,7 +308,17 @@ export default async function marketplaceRoutes(app) {
     if (req.query?.projectKey) where.projectKey = String(req.query.projectKey);
     if (req.query?.showcaseProjectId) where.showcaseProjectId = String(req.query.showcaseProjectId);
     const rows = await p.projectProduct.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500, include: { _count: { select: { keys: true, purchases: true } } } });
-    return { products: rows.map((r) => ({ ...r, externalSecret: r.externalSecret ? '••••' : null, keyCount: r._count.keys, purchaseCount: r._count.purchases, _count: undefined })) };
+    // The DEFAULT rides along, so the screen can say "10% (site default)" rather than
+    // leaving an empty field that reads as "no margin on this one".
+    const defaultFeeBp = await marketplaceFeeBp(p);
+    return {
+      defaultFeeBp,
+      products: rows.map((r) => ({
+        ...r, externalSecret: r.externalSecret ? '••••' : null,
+        keyCount: r._count.keys, purchaseCount: r._count.purchases, _count: undefined,
+        effectiveFeeBp: Number.isFinite(r.feePercentBp) && r.feePercentBp != null ? r.feePercentBp : defaultFeeBp,
+      })),
+    };
   });
 
   app.post('/admin/marketplace/products', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
@@ -223,7 +326,7 @@ export default async function marketplaceRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     if (!b.data.projectKey && !b.data.showcaseProjectId) return reply.code(400).send({ error: 'project_required' });
     const p = await db();
-    const created = await p.projectProduct.create({ data: b.data });
+    const created = await p.projectProduct.create({ data: stripPrivileged(b.data, req.user) });
     return { ok: true, product: created };
   });
 
@@ -233,7 +336,15 @@ export default async function marketplaceRoutes(app) {
     const p = await db();
     const exists = await p.projectProduct.findUnique({ where: { id: req.params.id } });
     if (!exists) return reply.code(404).send({ error: 'not_found' });
-    const updated = await p.projectProduct.update({ where: { id: req.params.id }, data: b.data });
+    // A price or interval change invalidates the cached Stripe price: leaving it would keep
+    // charging the old amount on every new subscription, silently, for ever.
+    const data = stripPrivileged(b.data, req.user);
+    const repriced = (data.priceCents != null && data.priceCents !== exists.priceCents)
+      || (data.currency != null && data.currency !== exists.currency)
+      || (data.intervalMonths != null && data.intervalMonths !== exists.intervalMonths)
+      || (data.billing != null && data.billing !== exists.billing);
+    if (repriced) data.stripePriceId = null;
+    const updated = await p.projectProduct.update({ where: { id: req.params.id }, data });
     return { ok: true, product: updated };
   });
 

@@ -42,6 +42,7 @@ import { homeVariantList } from '../lib/home-variants-meta.js';
 import { featureNameFor } from '../lib/geo-names.js';
 import { listZip, readZipEntry, hashEntries } from '../lib/zip-read.js';
 import { HOSTING_SETTINGS_GROUPS, HOSTING_GROUP_DESC } from '../lib/hosting-settings.js';
+import { DELIVERY_KINDS, DELIVERY_BY_V, BILLING_MODES, mkdKey } from '../lib/marketplace-delivery.js';
 import BmmInspector from '../ui/bmm-inspector.jsx';
 import { useI18n, shippedText } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -22137,19 +22138,60 @@ function EcoResetControl() {
 // Discord role. `file` and `key_license` were the gaps — selling a download meant pasting a
 // link into `content`, which is a public address for ever, and a per-buyer key had no home at
 // all between one fixed key and a finite pool.
-const DELIVERY_OPTS = [
-  { value: 'file', label: 'A file (stored here, links expire)' },
-  { value: 'content', label: 'Revealed content' },
-  { value: 'link', label: 'A link' },
-  { value: 'key_license', label: 'A unique key per buyer' },
-  { value: 'key_static', label: 'Fixed key' },
-  { value: 'key_pool', label: 'Key from a pool' },
-  { value: 'key_external', label: 'External generator' },
-  { value: 'role', label: 'Discord role' },
-];
-const MK_BLANK = { projectKey: '', name: '', description: '', priceCents: 0, currency: 'usd', active: true, deliveryKind: 'content', staticKey: '', content: '', roleId: '', externalUrl: '', externalSecret: '', linkUrl: '', fileName: '', stock: '' };
+// The delivery kinds, their explanations and the billing modes come from a SHARED catalog
+// (lib/marketplace-delivery.js), so the picker, the "learn more" panel and the comparison
+// table render from ONE source. They used to be eight bare labels in a select with nothing
+// anywhere saying what the difference was.
+const MK_BLANK = {
+  projectKey: '', name: '', description: '', priceCents: 0, currency: 'usd', active: true,
+  deliveryKind: 'content', staticKey: '', content: '', roleId: '', externalUrl: '',
+  externalSecret: '', linkUrl: '', fileName: '', stock: '',
+  billing: 'one_time', intervalMonths: 1, redeemUrl: '', redeemNote: '', feePercentBp: '',
+};
+
+/**
+ * "This lives somewhere else" — a link that goes there.
+ *
+ * Half the settings that govern a screen are configured on another one, and until now the
+ * screen said nothing: an admin looking at product files had no way to learn that the pool
+ * they draw from is a number on the Hosting settings page, let alone where. A sentence and a
+ * button, wherever that is true.
+ */
+function ConfigElsewhere({ to, children }) {
+  const { t } = useI18n();
+  return (
+    <Link to={to} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--primary-2)] hover:underline">
+      <SettingsIcon size={12} /> {children} <ChevronRight size={11} />
+    </Link>
+  );
+}
+
+/** One delivery kind, explained: what the buyer gets, what you set up, when to pick it. */
+function DeliveryExplainer({ v }) {
+  const { t } = useI18n();
+  const d = DELIVERY_BY_V[v];
+  if (!d) return null;
+  const row = (k, label, text) => (
+    <div key={k} className="flex gap-2">
+      <span className="text-[var(--faint)] shrink-0 w-[104px]">{label}</span>
+      <span className="text-[var(--muted)]">{text}</span>
+    </div>
+  );
+  return (
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[11px] space-y-1.5">
+      <div className="font-medium text-[var(--text)]">{t(mkdKey(v, 'l'), d.label)}</div>
+      {row('d', t('mkadm.exp.what', 'What it is'), t(mkdKey(v, 'd'), d.desc))}
+      {row('b', t('mkadm.exp.buyer', 'The buyer gets'), t(mkdKey(v, 'buyer'), d.buyer))}
+      {row('s', t('mkadm.exp.setup', 'You set up'), t(mkdKey(v, 'setup'), d.setup))}
+      {row('w', t('mkadm.exp.when', 'Pick it when'), t(mkdKey(v, 'when'), d.when))}
+    </div>
+  );
+}
 function AdminMarketplace() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { user: me } = useAuth();
+  const isSuper = me?.role === 'SUPERADMIN';
+  const [explain, setExplain] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/products'), []);
   // The two kinds of page a product can belong to. Both are needed and only one was reachable:
   // the form asked for a typed "project key", so attaching a product to a SHOWCASE page was
@@ -22315,7 +22357,48 @@ function AdminMarketplace() {
               <Field label={t('mkadm.f.currency', 'Currency')}><Input value={draft.currency} onChange={(e) => set('currency', e.target.value)} /></Field>
               <Field label={t('mkadm.f.stock', 'Stock (blank = ∞)')}><Input type="number" min="0" value={draft.stock} onChange={(e) => set('stock', e.target.value)} /></Field>
             </div>
-            <Field label={t('mkadm.f.delivery', 'Delivery')}><Select value={draft.deliveryKind} onChange={(e) => set('deliveryKind', e.target.value)}>{DELIVERY_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select></Field>
+            {/* One-off or recurring. The consequence is spelled out beside the choice rather
+                than left to be discovered: a subscription re-runs the DELIVERY every cycle,
+                so a pool product on a monthly plan empties its pool twelve times faster than
+                whoever filled it expected. */}
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Field label={t('mkadm.f.billing', 'Billing')} hint={t(`mkadm.bill.d.${draft.billing || 'one_time'}`, (BILLING_MODES.find((m) => m.v === (draft.billing || 'one_time')) || {}).desc || '')}>
+                <Select value={draft.billing || 'one_time'} onChange={(e) => set('billing', e.target.value)}>
+                  {BILLING_MODES.map((m) => <option key={m.v} value={m.v}>{t(`mkadm.bill.l.${m.v}`, m.label)}</option>)}
+                </Select>
+              </Field>
+              {draft.billing === 'subscription' && (
+                <Field label={t('mkadm.f.interval', 'Billed every')} hint={t('mkadm.f.interval.h', 'Changing this, the price or the currency mints a new Stripe price; people already subscribed keep the one they signed up on.')}>
+                  <Select value={String(draft.intervalMonths || 1)} onChange={(e) => set('intervalMonths', Number(e.target.value))}>
+                    <option value="1">{t('mkadm.iv.1', 'month')}</option>
+                    <option value="3">{t('mkadm.iv.3', '3 months')}</option>
+                    <option value="6">{t('mkadm.iv.6', '6 months')}</option>
+                    <option value="12">{t('mkadm.iv.12', 'year')}</option>
+                  </Select>
+                </Field>
+              )}
+            </div>
+            <Field label={t('mkadm.f.delivery', 'Delivery')} hint={t(mkdKey(draft.deliveryKind, 'd'), (DELIVERY_BY_V[draft.deliveryKind] || {}).desc || '')}>
+              <Select value={draft.deliveryKind} onChange={(e) => set('deliveryKind', e.target.value)}>
+                {DELIVERY_KINDS.map((o) => <option key={o.v} value={o.v}>{t(mkdKey(o.v, 'l'), o.label)}</option>)}
+              </Select>
+            </Field>
+            {/* Folded by default: the picker's own hint is the one-liner, and this is the
+                paragraph you want the first three times and never again. */}
+            <button type="button" onClick={() => setExplain((x) => !x)} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1">
+              <HelpCircle size={12} /> {explain ? t('mkadm.exp.hide', 'Hide the explanation') : t('mkadm.exp.show', 'What do these mean?')}
+            </button>
+            {explain && (
+              <div className="space-y-2">
+                <DeliveryExplainer v={draft.deliveryKind} />
+                <details className="text-[11px]">
+                  <summary className="cursor-pointer text-[var(--muted)] hover:text-[var(--text)]">{t('mkadm.exp.all', 'Compare all eight')}</summary>
+                  <div className="mt-2 space-y-2">
+                    {DELIVERY_KINDS.filter((d) => d.v !== draft.deliveryKind).map((d) => <DeliveryExplainer key={d.v} v={d.v} />)}
+                  </div>
+                </details>
+              </div>
+            )}
             {draft.deliveryKind === 'content' && <Field label={t('mkadm.f.content', 'Content delivered')}><Textarea rows={2} value={draft.content} onChange={(e) => set('content', e.target.value)} /></Field>}
             {draft.deliveryKind === 'key_static' && <Field label={t('mkadm.f.static', 'Fixed key')}><Input value={draft.staticKey} onChange={(e) => set('staticKey', e.target.value)} /></Field>}
             {draft.deliveryKind === 'role' && <Field label={t('mkadm.f.role', 'Discord role id')}><Input value={draft.roleId} onChange={(e) => set('roleId', e.target.value)} /></Field>}
@@ -22330,11 +22413,49 @@ function AdminMarketplace() {
                     <Button size="sm" onClick={() => mkFileRef.current?.click()} disabled={mkUp}>{mkUp ? <Spinner /> : <><UploadIcon size={13} /> {t('mkadm.f.file.pick', 'Choose a file')}</>}</Button>
                     <span className="text-xs text-[var(--muted)]">{draft.fileName || t('mkadm.f.file.none', 'No file attached yet.')}</span>
                   </div>
+                  {/* The one question this field always raised and never answered. */}
+                  <div className="mt-1.5"><ConfigElsewhere to="?s=settings&hs=capacity">{t('mkadm.f.file.where', 'Where product files are stored, and how much room is left')}</ConfigElsewhere></div>
                 </Field>
                 /* A product has to exist before a file can hang off it — the upload posts to
                    /admin/marketplace/products/<id>/file, and there is no id until the first save. */
                 : <p className="text-xs text-warning rounded-lg border border-[var(--line)] p-2.5">{t('mkadm.f.file.first', 'Save the product first, then re-open it to attach the file.')}</p>
             )}
+            {/* Where the thing they bought is USED. Every delivery kind gets these, because
+                every delivery kind has the same gap: a key is a string until somebody says
+                which site to paste it into, and a file is a download until somebody says
+                which app opens it. Shown on the storefront BEFORE the sale too \u2014 "and then
+                what" is a question people want answered first. */}
+            <div className="rounded-lg border border-[var(--line)] p-3 space-y-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('mkadm.redeem.h', 'Where the buyer uses it')}</div>
+              <Field label={t('mkadm.f.redeemurl', 'Link to your site or app')} hint={t('mkadm.f.redeemurl.h', 'The page that redeems the key, the app to open, the docs. Shown as a button on the product and on the purchase.')}>
+                <Input value={draft.redeemUrl || ''} onChange={(e) => set('redeemUrl', e.target.value)} placeholder="https://\u2026" />
+              </Field>
+              <Field label={t('mkadm.f.redeemnote', 'How to use it')} hint={t('mkadm.f.redeemnote.h', 'One or two sentences. Sign in, open Settings, paste the key \u2014 that kind of thing.')}>
+                <Textarea rows={2} value={draft.redeemNote || ''} onChange={(e) => set('redeemNote', e.target.value)} />
+              </Field>
+            </div>
+            {/* The margin. Read-only for an ADMIN, and it says why rather than simply being
+                greyed out: a control that refuses without explaining reads as broken. The
+                route enforces this too \u2014 hiding a field is not a permission check. */}
+            <div className="rounded-lg border border-[var(--line)] p-3 space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('mkadm.fee.h', 'Platform margin')}</div>
+              {isSuper ? (
+                <Field
+                  label={t('mkadm.f.fee', 'Our cut on this product (%)')}
+                  hint={t('mkadm.f.fee.h', 'Blank = the site default ({d}%). Set 0 on our own products so we do not charge ourselves. The split is written onto each sale as it was at that moment, so changing this never rewrites what was already paid.').replace('{d}', ((data?.defaultFeeBp ?? 1000) / 100).toFixed(2).replace(/\.?0+$/, ''))}
+                >
+                  <Input type="number" min="0" max="100" step="0.01"
+                    value={draft.feePercentBp === '' || draft.feePercentBp == null ? '' : Number(draft.feePercentBp) / 100}
+                    onChange={(e) => set('feePercentBp', e.target.value === '' ? '' : Math.round((Number(e.target.value) || 0) * 100))}
+                    placeholder={((data?.defaultFeeBp ?? 1000) / 100).toString()} />
+                </Field>
+              ) : (
+                <p className="text-[11px] text-[var(--muted)]">
+                  {t('mkadm.fee.ro', 'This product is charged {n}%. Only a super-admin can change it, here or anywhere else.').replace('{n}', (((draft.feePercentBp ?? data?.defaultFeeBp ?? 1000)) / 100).toString())}
+                </p>
+              )}
+              {isSuper && <ConfigElsewhere to="?s=settings&hs=pricing">{t('mkadm.fee.default', 'Change the site-wide default')}</ConfigElsewhere>}
+            </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} /> {t('mkadm.f.active', 'Active (visible in the storefront)')}</label>
             <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
           </div>

@@ -3,7 +3,7 @@ import { mintGiftCode } from '../lib/gift.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
-import { fulfilProduct } from './marketplace.mjs';
+import { fulfilProduct, feeForProduct, splitFee } from './marketplace.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -421,7 +421,21 @@ export default async function stripeWebhook(app) {
             let delivery = {};
             try { delivery = await fulfilProduct(p, product, meta.userId); } catch (e) { delivery = { error: e.code || 'delivery_failed' }; }
             delivery.sessionId = s.id;
-            await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: meta.userId, status: 'paid', priceCents: s.amount_total ?? product.priceCents, delivery } });
+            // The margin, as it was when the money moved. Computed from what Stripe actually
+            // charged rather than the product's current price: the two differ the moment
+            // somebody edits the price between checkout and the webhook, and the invoice is
+            // the thing a payout has to agree with.
+            const paid = s.amount_total ?? product.priceCents;
+            const { feeCents, netCents } = splitFee(paid, await feeForProduct(p, product));
+            const recurring = product.billing === 'subscription';
+            const months = Math.min(12, Math.max(1, Number(product.intervalMonths) || 1));
+            await p.projectProductPurchase.create({ data: {
+              productId: product.id, buyerId: meta.userId,
+              status: recurring ? 'active' : 'paid',
+              priceCents: paid, feeCents, netCents, delivery,
+              stripeSubId: recurring ? (s.subscription || null) : null,
+              expiresAt: recurring ? new Date(Date.now() + months * 30 * 864e5) : null,
+            } });
             await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
             // The purchase is tracked in ProjectProductPurchase; Stripe's own invoice
             // (invoice_creation on the session) is the receipt. No Payment row needed.
@@ -474,6 +488,40 @@ export default async function stripeWebhook(app) {
       // provisioned it. Only 'subscription_cycle' renewals land here.
       const inv = event.data.object;
       if (inv.billing_reason === 'subscription_cycle' && inv.subscription) {
+        // A MARKETPLACE subscription renewal. Checked first because its purchase row is
+        // keyed on the same stripeSubId the hosting lookups below use, and a renewal that
+        // fell through to those would find nothing and be silently dropped.
+        //
+        // The delivery runs AGAIN on each cycle: a pool key product hands over a new key,
+        // a licence mints a new one, a file link is re-issued. That is the difference
+        // between a subscription and a one-off sale, and doing it any other way makes a
+        // renewal a payment for nothing.
+        const mkPurchase = await p.projectProductPurchase.findFirst({ where: { stripeSubId: inv.subscription }, orderBy: { createdAt: 'desc' } });
+        if (mkPurchase) {
+          const product = await p.projectProduct.findUnique({ where: { id: mkPurchase.productId } });
+          if (product) {
+            const periodEnd = inv.lines?.data?.[0]?.period?.end ? new Date(inv.lines.data[0].period.end * 1000)
+              : (inv.period_end ? new Date(inv.period_end * 1000) : new Date(Date.now() + 30 * 864e5));
+            let delivery = {};
+            try { delivery = await fulfilProduct(p, product, mkPurchase.buyerId); }
+            catch (e) { delivery = { error: e.code || 'delivery_failed' }; }
+            delivery.invoiceId = inv.id;
+            const paid = inv.amount_paid ?? product.priceCents;
+            const { feeCents, netCents } = splitFee(paid, await feeForProduct(p, product));
+            // A NEW row per cycle rather than an updated one. The old row is what the buyer
+            // was handed last month and may still be using; overwriting it would erase a
+            // key somebody has in an app right now.
+            await p.projectProductPurchase.create({ data: {
+              productId: product.id, buyerId: mkPurchase.buyerId, status: 'active',
+              priceCents: paid, feeCents, netCents, delivery,
+              stripeSubId: inv.subscription, expiresAt: periodEnd,
+            } });
+            await p.projectProductPurchase.update({ where: { id: mkPurchase.id }, data: { status: 'ended' } });
+            await notify(p, mkPurchase.buyerId, 'purchase', `"${product.name}" renewed — see it in your dashboard.`).catch(() => {});
+          }
+          return { received: true };
+        }
+
         // A recurring FEATURE boost renewal → re-extend featuredUntil by its days.
         const fsub = await p.featureSubscription.findUnique({ where: { stripeSubId: inv.subscription } });
         if (fsub) {
@@ -552,6 +600,12 @@ export default async function stripeWebhook(app) {
       // A cancelled/ended FEATURE boost: mark it so it stops renewing. The repo keeps
       // its current featuredUntil and simply lapses to normal when it passes — no
       // suspension (unlike hosting).
+      // A cancelled MARKETPLACE subscription. Nothing is taken back: what was already
+      // delivered stays delivered — a key in somebody's app does not stop working because
+      // they stopped paying — and `expiresAt` on the last row is when the term they paid
+      // for actually runs out. Marking it 'ended' only stops the renewal.
+      const mkRows = await p.projectProductPurchase.updateMany({ where: { stripeSubId: subId, status: 'active' }, data: { status: 'ended' } });
+      if (mkRows.count > 0) return { received: true };
       const fsub = await p.featureSubscription.findUnique({ where: { stripeSubId: subId } });
       if (fsub) { await p.featureSubscription.update({ where: { id: fsub.id }, data: { status: 'canceled' } }); return { received: true }; }
       const sub = await p.subscription.findUnique({ where: { stripeSubId: subId } });

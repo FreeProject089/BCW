@@ -3779,6 +3779,24 @@ model ProjectProduct {
   externalSecret    String?
   stock             Int?     // null = unlimited
   sold              Int      @default(0)
+  // one_time | subscription. A subscription bills every `intervalMonths` through Stripe and
+  // the purchase row carries an `expiresAt` the renewal pushes forward; the delivery is the
+  // same one the one-off sale performs, repeated on each renewal.
+  billing           String   @default("one_time")
+  intervalMonths    Int?
+  // The recurring Stripe price, minted on the first subscription checkout and reused after.
+  // Cached because a new price per checkout makes the Stripe dashboard unreadable and breaks
+  // "how many people are on this plan" for ever.
+  stripePriceId     String?
+  // Where the buyer USES what they bought, and what to do with it. A key with nowhere to go
+  // is a string in an e-mail: this is the site to redeem it on, the app to paste it into, or
+  // the doc page that explains it. Shown on the purchase for every delivery kind.
+  redeemUrl         String?
+  redeemNote        String?
+  // The platform's margin on this product, in basis points (1000 = 10%). null = the site
+  // default (`AdminSetting marketplace.feePercentBp`). SUPERADMIN-only, because it is the
+  // number that decides how much of somebody else's sale we keep.
+  feePercentBp      Int?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   keys              ProjectKey[]
@@ -3806,11 +3824,20 @@ model ProjectProductPurchase {
   product    ProjectProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
   buyerId    String
   buyer      User           @relation(fields: [buyerId], references: [id], onDelete: Cascade)
-  status     String         @default("paid") // paid | pending | refunded
+  status     String         @default("paid") // paid | pending | refunded | active | ended
   priceCents Int            @default(0)
+  // What the platform kept and what the seller is owed, as they were AT THE SALE. Written
+  // rather than derived: the percentage can change, and a payout has to be computable from
+  // what was true when the money moved, not from what the setting says today.
+  feeCents   Int            @default(0)
+  netCents   Int            @default(0)
+  // Subscriptions: when the current term ends, and the Stripe subscription behind it.
+  expiresAt   DateTime?
+  stripeSubId String?
   delivery   Json?
   createdAt  DateTime       @default(now())
 
   @@index([buyerId, createdAt])
   @@index([productId, createdAt])
+  @@index([stripeSubId])
 }
