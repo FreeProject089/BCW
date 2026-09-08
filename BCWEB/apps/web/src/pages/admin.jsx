@@ -4947,7 +4947,7 @@ function RoleManager({ roles }) {
           <Card key={r.id} className="p-3 flex items-center gap-3">
             <RoleBadge color={r.color}>{r.name}</RoleBadge>
             <div className="flex-1 min-w-0 text-xs text-[var(--faint)] truncate">
-              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
+              {r.scope && <Badge tone="amber" className="me-1.5"><Lock size={10} /> {(r.scope.rights || ['pages']).map((x) => x === 'blog' ? t('rm.scope.r.blog.s', 'blog') : x === 'market' ? t('rm.scope.r.market.s', 'shop') : t('rm.scope.r.pages.s', 'page')).join(' + ')} · {r.scope.allShowcase ? t('rm.scope.allsc', 'every other project') : [...(r.scope.projectKeys || []), ...(r.scope.showcases || []).map((x) => x.name)].join(', ') || t('rm.scope.some', 'some elements')}</Badge>}
               {(r.capabilities || []).length ? r.capabilities.map((id) => (ADMIN_CAPS.find((c) => c.id === id) ? capLabel(ADMIN_CAPS.find((c) => c.id === id)) : id)).join(' · ') : t('rm.nocaps', 'No capabilities yet')}
             </div>
             <span className="text-xs text-[var(--faint)] shrink-0">{t('rm.members', '{n} members').replace('{n}', r.memberCount || 0)}</span>
@@ -4983,12 +4983,15 @@ function RoleManager({ roles }) {
               </div>
               {scoped && (
                 <div className="mt-2 rounded-xl border border-[var(--line)] p-3 space-y-2">
-                  {/* What the role may do on the elements below. Two rights, granted apart:
-                      editing a project page and writing in its blog are different jobs. */}
+                  {/* What the role may do on the elements below. Three rights, granted apart,
+                      because they are three different jobs: editing a project page, writing in
+                      its blog, and running its shop. The third is the one that moves money — it
+                      sets prices and mints keys — so it is never implied by the other two. Where
+                      the money LANDS stays SUPERADMIN and is not on this screen at all. */}
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config — not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects — the same as a blog permission, granted by role.')]].map(([id, label, h]) => {
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config — not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects — the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')]].map(([id, label, h]) => {
                         const on = scopeRights.includes(id);
                         return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
                       })}
@@ -5003,7 +5006,7 @@ function RoleManager({ roles }) {
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.showcases', 'Other projects')}</div>
                     <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
                   </div>}
-                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission. Publishing, pinning, visibility and announcements stay with managers.')}</p>
+                  <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission, and the marketplace of those projects. Publishing, pinning, visibility and announcements stay with managers; the margin we take and the account sales are paid into stay with a super-admin.')}</p>
                 </div>
               )}
             </div>

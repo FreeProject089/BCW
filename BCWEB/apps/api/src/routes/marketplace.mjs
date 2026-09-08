@@ -5,7 +5,7 @@
 // Stripe one-time flow and the external-key webhook are Phase 2.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, logAudit, clientIp } from '../lib/lib.mjs';
+import { db, requireRole, requireEditor, logAudit, clientIp, hasCap, projectGrants, marketRoleGrants } from '../lib/lib.mjs';
 import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
@@ -104,6 +104,36 @@ export function feeScopeOf(product) {
   if (product?.projectKey) return `project:${product.projectKey}`;
   if (product?.showcaseProjectId) return `showcase:${product.showcaseProjectId}`;
   return null;
+}
+
+/**
+ * May this person administer the marketplace of the page this product sits on?
+ *
+ * Pure, and separate from the lookups that feed it, because it is the whole permission rule
+ * and the expensive way to be wrong about it is one page's manager reaching another page's
+ * products — or the money attached to them.
+ *
+ * It matches on the same two id spaces `feeScopeOf` distinguishes, and never crosses them:
+ * a project KEY and a showcase CUID could coincide, and reading one as the other would hand
+ * somebody a page they were never granted.
+ *
+ * `allShowcase` covers every admin-created page and NO fixed project. That is what it has
+ * always meant for page and blog rights, and widening it here would quietly promote a
+ * showcase moderator to selling on the flagship products.
+ *
+ * A product attached to no page is reachable only by site-wide power. Otherwise the way to
+ * reach every product would be to create one with no page.
+ *
+ * @param power   { manageAll } — resolved by the caller, because working it out needs the DB
+ * @param grants  the union of ProjectPermission rows and market-scoped roles
+ * @param product the row being touched
+ */
+export function marketScopeAllows(power, grants, product) {
+  if (power?.manageAll) return true;
+  if (!grants) return false;
+  if (product?.projectKey) return !!grants.projectKeys?.has(product.projectKey);
+  if (product?.showcaseProjectId) return !!(grants.allShowcase || grants.showcaseIds?.has(product.showcaseProjectId));
+  return false;
 }
 
 /** The per-project overrides: `{ "project:bmm": 0, "showcase:abc123": 500 }`. */
@@ -475,12 +505,61 @@ export default async function marketplaceRoutes(app) {
     return { purchases: rows.map((r) => ({ id: r.id, name: r.product?.name, status: r.status, delivery: r.delivery, createdAt: r.createdAt })) };
   });
 
-  // ── Admin: product CRUD (owner-scoping is a Phase-2 refinement) ──────────────
-  app.get('/admin/marketplace/products', { preHandler: requireRole('ADMIN') }, async (req) => {
+  // ── Product CRUD, scoped to the pages the caller may administer ───────────────────
+  //
+  // These were all requireRole('ADMIN'), which meant running ONE project's shop required
+  // admin of the whole site — and then reached every other project's products, keys and
+  // prices. A scoped role can now carry the 'market' right on the pages it covers.
+
+  /** What this caller may do, resolved once per request: site-wide power, plus their grants. */
+  async function marketPower(user) {
+    const manageAll = hasCap(user, 'manage_projects') || hasCap(user, 'manage_showcase');
+    if (manageAll) return { power: { manageAll: true }, grants: null };
+    // Both sources, unioned: an individual ProjectPermission row and a market-scoped role.
+    const [pg, mg] = await Promise.all([projectGrants(user?.uid), marketRoleGrants(user?.uid)]);
+    return {
+      power: { manageAll: false },
+      grants: {
+        // A page grant alone is NOT a shop grant. projectGrants carries the 'pages' right,
+        // and "edits the BSM page" has never meant "sets the price of what BSM sells" —
+        // reading it that way here would hand the shop to everyone who ever got page access.
+        allShowcase: mg.allShowcase,
+        showcaseIds: mg.showcaseIds,
+        projectKeys: mg.projectKeys,
+        _pages: pg,
+      },
+    };
+  }
+
+  /** Load a product and refuse it unless this caller may administer its page. */
+  async function productForCaller(p, id, user, reply) {
+    const row = await p.projectProduct.findUnique({ where: { id } });
+    if (!row) { reply.code(404).send({ error: 'not_found' }); return null; }
+    const { power, grants } = await marketPower(user);
+    if (!marketScopeAllows(power, grants, row)) { reply.code(403).send({ error: 'forbidden_scope' }); return null; }
+    return row;
+  }
+
+  app.get('/admin/marketplace/products', { preHandler: requireEditor() }, async (req, reply) => {
     const p = await db();
+    const { power, grants } = await marketPower(req.user);
+    // Nothing to administer is 403, not an empty list: an empty shop and no access to the
+    // shop look identical on screen, and only one of them is worth telling somebody about.
+    if (!power.manageAll && !grants.projectKeys.size && !grants.showcaseIds.size && !grants.allShowcase) {
+      return reply.code(403).send({ error: 'forbidden_scope' });
+    }
     const where = {};
     if (req.query?.projectKey) where.projectKey = String(req.query.projectKey);
     if (req.query?.showcaseProjectId) where.showcaseProjectId = String(req.query.showcaseProjectId);
+    // FILTERED, not merely refused when somebody asks for another page. An unfiltered list
+    // is every product, price and margin on the site handed to anybody with one grant.
+    if (!power.manageAll) {
+      where.OR = [
+        ...(grants.projectKeys.size ? [{ projectKey: { in: [...grants.projectKeys] } }] : []),
+        ...(grants.allShowcase ? [{ showcaseProjectId: { not: null } }]
+          : grants.showcaseIds.size ? [{ showcaseProjectId: { in: [...grants.showcaseIds] } }] : []),
+      ];
+    }
     const rows = await p.projectProduct.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500, include: { _count: { select: { keys: true, purchases: true } } } });
     // Both the default AND the per-project map ride along, so the screen can say which of
     // the three levels a product's margin came from rather than leaving an empty field that
@@ -506,21 +585,34 @@ export default async function marketplaceRoutes(app) {
     };
   });
 
-  app.post('/admin/marketplace/products', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/marketplace/products', { preHandler: requireEditor() }, async (req, reply) => {
     const b = productSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     if (!b.data.projectKey && !b.data.showcaseProjectId) return reply.code(400).send({ error: 'project_required' });
     const p = await db();
+    const { power, grants } = await marketPower(req.user);
+    if (!marketScopeAllows(power, grants, b.data)) return reply.code(403).send({ error: 'forbidden_scope' });
     const created = await p.projectProduct.create({ data: stripPrivileged(b.data, req.user) });
     return { ok: true, product: created };
   });
 
-  app.patch('/admin/marketplace/products/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/marketplace/products/:id', { preHandler: requireEditor() }, async (req, reply) => {
     const b = productSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const exists = await p.projectProduct.findUnique({ where: { id: req.params.id } });
-    if (!exists) return reply.code(404).send({ error: 'not_found' });
+    const exists = await productForCaller(p, req.params.id, req.user, reply);
+    if (!exists) return;
+    // MOVING a product is checked on the destination too. Without this, a grantee edits a
+    // product they hold and sets projectKey to a page they do not — and it is now on that
+    // page, under its name, with its margin.
+    if (b.data.projectKey !== undefined || b.data.showcaseProjectId !== undefined) {
+      const dest = {
+        projectKey: b.data.projectKey !== undefined ? b.data.projectKey : exists.projectKey,
+        showcaseProjectId: b.data.showcaseProjectId !== undefined ? b.data.showcaseProjectId : exists.showcaseProjectId,
+      };
+      const { power, grants } = await marketPower(req.user);
+      if (!marketScopeAllows(power, grants, dest)) return reply.code(403).send({ error: 'forbidden_scope' });
+    }
     // A price or interval change invalidates the cached Stripe price: leaving it would keep
     // charging the old amount on every new subscription, silently, for ever.
     const data = stripPrivileged(b.data, req.user);
@@ -533,9 +625,12 @@ export default async function marketplaceRoutes(app) {
     return { ok: true, product: updated };
   });
 
-  app.delete('/admin/marketplace/products/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/marketplace/products/:id', { preHandler: requireEditor() }, async (req, reply) => {
     const p = await db();
+    const row = await productForCaller(p, req.params.id, req.user, reply);
+    if (!row) return;
     await p.projectProduct.delete({ where: { id: req.params.id } }).catch(() => {});
+    await logAudit(p, req.user.uid, 'marketplace.product_deleted', row.name, clientIp(req));
     return { ok: true };
   });
 
@@ -560,7 +655,7 @@ export default async function marketplaceRoutes(app) {
   });
 
   // ── Admin: attach the file a `file` product hands over ───────────────────────
-  app.post('/admin/marketplace/products/:id/file', { preHandler: requireRole('ADMIN'), bodyLimit: 64 * 1024 * 1024 }, async (req, reply) => {
+  app.post('/admin/marketplace/products/:id/file', { preHandler: requireEditor(), bodyLimit: 64 * 1024 * 1024 }, async (req, reply) => {
     const b = z.object({
       fileName: z.string().min(1).max(200),
       contentType: z.string().max(100).optional().default('application/octet-stream'),
@@ -568,8 +663,8 @@ export default async function marketplaceRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
-    if (!product) return reply.code(404).send({ error: 'not_found' });
+    const product = await productForCaller(p, req.params.id, req.user, reply);
+    if (!product) return;
     let buf;
     try { buf = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'bad_file' }); }
     // Checked BEFORE the object is written, and against the total minus whatever this product
@@ -612,15 +707,15 @@ export default async function marketplaceRoutes(app) {
    * the odds — 31^20 is a comfortable space, but "comfortable" is not the same as "checked",
    * and a duplicate would hand two buyers the same key.
    */
-  app.post('/admin/marketplace/products/:id/keys/mint', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/marketplace/products/:id/keys/mint', { preHandler: requireEditor() }, async (req, reply) => {
     const b = z.object({
       count: z.number().int().min(1).max(1000),
       prefix: z.string().max(12).regex(/^[A-Z0-9-]*$/).optional().default(''),
     }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
-    if (!product) return reply.code(404).send({ error: 'not_found' });
+    const product = await productForCaller(p, req.params.id, req.user, reply);
+    if (!product) return;
 
     const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     const group = () => Array.from({ length: 5 }, () => A[crypto.randomInt(A.length)]).join('');
@@ -748,12 +843,12 @@ export default async function marketplaceRoutes(app) {
   /** How full the marketplace's share of the disk is. Read-only; the cap is a hosting setting. */
   app.get('/admin/marketplace/storage', { preHandler: requireRole('ADMIN') }, async () => marketplaceStorage(await db()));
 
-  app.post('/admin/marketplace/products/:id/keys', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/marketplace/products/:id/keys', { preHandler: requireEditor() }, async (req, reply) => {
     const codes = z.object({ codes: z.array(z.string().min(1).max(400)).max(5000) }).safeParse(req.body);
     if (!codes.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
-    if (!product) return reply.code(404).send({ error: 'not_found' });
+    const product = await productForCaller(p, req.params.id, req.user, reply);
+    if (!product) return;
     const clean = [...new Set(codes.data.codes.map((c) => c.trim()).filter(Boolean))];
     if (clean.length) await p.projectKey.createMany({ data: clean.map((code) => ({ productId: product.id, code })) });
     const [total, free] = await Promise.all([

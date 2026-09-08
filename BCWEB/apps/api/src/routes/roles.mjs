@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, clientIp, clearUserCache, CAPABILITIES, SCOPE_RIGHTS } from '../lib/lib.mjs';
 import { KEY_SHAPE } from '../lib/project-keys.mjs';
 
 // Custom roles + per-project edit grants.
@@ -37,8 +37,13 @@ export default async function roleRoutes(app) {
       showcaseSlugs: z.array(z.string().max(80)).max(200).default([]),
       allShowcase: z.boolean().default(false),
       // WHAT the role may do on those elements: edit the page's content, write in its blog,
-      // or both. A scope stored before this field existed means `pages` — what it always did.
-      rights: z.array(z.enum(['pages', 'blog'])).max(2).default(['pages']),
+      // run its marketplace, or any combination. A scope stored before this field existed
+      // means `pages` — what it always did.
+      // Read from lib.mjs rather than repeated: this list lives in four places (the
+      // filter in scopeRights, the grants function per right, the editor, and here), and
+      // the one that silently breaks the other three is this one — a right the API knows
+      // and the schema rejects is a 400 on a checkbox that looks like it should work.
+      rights: z.array(z.enum(SCOPE_RIGHTS)).max(SCOPE_RIGHTS.length).default(['pages']),
     }).nullable().optional(),
   });
   // Slugs → ids (a slug is what the picker shows; an id is what survives a rename).

@@ -415,11 +415,19 @@ export function isScopedRole(r) {
   const s = r?.scope;
   return !!(s && typeof s === 'object' && ((s.projectKeys || []).length || (s.showcaseIds || []).length || s.allShowcase));
 }
-/** The rights a scoped role carries on its elements. Absent = `pages`, what a scope always meant. */
+/** The rights a scoped role carries on its elements. Absent = `pages`, what a scope always meant.
+ *
+ *  The filter is an ALLOWLIST and that is the point: an unknown string in a stored scope
+ *  grants nothing rather than something nobody named. It is also why adding a right is a
+ *  change in three places — here, the grants function that reads it, and the editor that
+ *  offers it — and why 'market' did not exist until it was added to all three.
+ */
+const SCOPE_RIGHTS = ['pages', 'blog', 'market'];
 export function scopeRights(r) {
-  const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => x === 'pages' || x === 'blog') : [];
+  const rights = Array.isArray(r?.scope?.rights) ? r.scope.rights.filter((x) => SCOPE_RIGHTS.includes(x)) : [];
   return rights.length ? rights : ['pages'];
 }
+export { SCOPE_RIGHTS };
 // The blog side of scoped roles: which blogs a user may post in because a role says so —
 // the same shape projectGrants() has for pages, kept apart because the two rights are
 // granted separately ("writes the BSM blog" is not "edits the BSM page").
@@ -433,6 +441,27 @@ export async function blogRoleGrants(uid) {
     const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
     for (const r of roles) {
       if (!isScopedRole(r) || !scopeRights(r).includes('blog')) continue;
+      if (r.scope.allShowcase) out.allShowcase = true;
+      for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
+      for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
+    }
+  } catch { /* no grants on error */ }
+  return out;
+}
+// The marketplace side of scoped roles: whose SHOP a user may administer because a role
+// says so. Same shape as blogRoleGrants and kept apart for the same reason — "runs the BSM
+// shop" is not "edits the BSM page", and somebody trusted with one is not automatically
+// trusted with the other. This one moves money, so it is the least automatic of the three.
+export async function marketRoleGrants(uid) {
+  const out = { allShowcase: false, showcaseIds: new Set(), projectKeys: new Set() };
+  if (!uid) return out;
+  try {
+    const p = await db();
+    const u = await p.user.findUnique({ where: { id: uid }, select: { customRoleIds: true } });
+    if (!u?.customRoleIds?.length) return out;
+    const roles = await p.customRole.findMany({ where: { id: { in: u.customRoleIds } }, select: { scope: true } });
+    for (const r of roles) {
+      if (!isScopedRole(r) || !scopeRights(r).includes('market')) continue;
       if (r.scope.allShowcase) out.allShowcase = true;
       for (const id of r.scope.showcaseIds || []) out.showcaseIds.add(id);
       for (const k of r.scope.projectKeys || []) out.projectKeys.add(k);
