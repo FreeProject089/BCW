@@ -104,6 +104,12 @@ export default function StackMap({ stack, t = (k, d) => d }) {
 
       <Summary nodes={nodes} edges={clean} layers={columns.length} t={t} />
 
+      {/* The left-to-right order is the whole point of the layout and nothing said so. A
+          reader who does not know that reads the columns as decoration. */}
+      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-3">
+        {t('stack.read', 'Read it left to right: what nothing depends on first, and everything that needs it further right. Arrows point at what a piece is used by. Click a box for what it is.')}
+      </p>
+
       <div className="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
         {/* Scrolls inside itself. A stack with six columns does not fit a phone, and a diagram
             that widens its parent breaks every layout beside it. */}
@@ -117,6 +123,22 @@ export default function StackMap({ stack, t = (k, d) => d }) {
               if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); move(picked, 1); }
               if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); move(picked, -1); }
             }}>
+            {/* Arrowheads, in three states, because a marker cannot inherit the stroke it is
+                attached to — an SVG marker is painted in its OWN colour, so a dimmed edge with
+                a lit arrow is the usual way this goes wrong. One marker per state instead.
+
+                The diagram's entire claim is "this depends on that", and until now it drew
+                that as a plain curve: no direction at all. Two boxes joined by a line say
+                they are related; they do not say which way anything flows, which is the one
+                thing a reader came here for. */}
+            <defs>
+              {[['sm-a-rest', 'var(--muted)', 0.75], ['sm-a-lit', 'var(--primary-2)', 1], ['sm-a-dim', 'var(--line-strong, var(--line))', 0.15]].map(([id, fill, op]) => (
+                <marker key={id} id={id} viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill={fill} opacity={op} />
+                </marker>
+              ))}
+            </defs>
             {/* Edges under the boxes, so a line never crosses a name. */}
             {clean.map(([from, to, label], i) => {
               const a = at.get(from); const b = at.get(to);
@@ -127,9 +149,14 @@ export default function StackMap({ stack, t = (k, d) => d }) {
               const lit = focus === from || focus === to;
               return (
                 <g key={i}>
+                  {/* --muted, not --line-strong. A connection line is CONTENT here, not the
+                      chrome a border is: at a hairline colour and half opacity it was the
+                      faintest thing on a page whose subject is what connects to what. */}
                   <path d={`M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`}
-                    fill="none" stroke="var(--line-strong, var(--line))" strokeWidth="2"
-                    opacity={focus ? (lit ? 1 : 0.12) : 0.5} />
+                    fill="none" strokeWidth={lit ? 2.5 : 2} strokeLinecap="round"
+                    stroke={focus && lit ? 'var(--primary-2)' : 'var(--muted)'}
+                    opacity={focus ? (lit ? 1 : 0.15) : 0.75}
+                    markerEnd={`url(#${focus ? (lit ? 'sm-a-lit' : 'sm-a-dim') : 'sm-a-rest'})`} />
                   {/* An edge label is shown only while its end is in focus — every label at once
                       is a wall of text over the drawing. */}
                   {label && lit && (
@@ -274,10 +301,13 @@ function Summary({ nodes, edges, layers, t }) {
 /** What one component is: its role, what it is built from, and both sides of its wiring. */
 function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (n) => n?.label || n?.id }) {
   if (!node) {
+    // One line, not a block. Below the `lg` breakpoint this column sits UNDER the drawing,
+    // where a dashed 88px placeholder took as much room as three components to say nothing —
+    // on a phone that is most of a screen spent on an instruction.
     return (
-      <aside className="rounded-xl border border-dashed border-[var(--line)] p-4 text-sm text-[var(--muted)]">
+      <aside className="rounded-xl border border-dashed border-[var(--line)] px-3 py-2 text-[12px] text-[var(--muted)] lg:px-4 lg:py-4 lg:text-sm">
         {t('stack.pickHint', 'Select a component to see what it is and what it talks to.')}
-        <span className="block mt-1 text-[11px] text-[var(--faint)]">
+        <span className="hidden lg:block mt-1 text-[11px] text-[var(--faint)]">
           {t('stack.pickCount', '{n} to choose from.').replace('{n}', String(count))}
         </span>
       </aside>

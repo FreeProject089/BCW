@@ -6159,6 +6159,8 @@ const DICT = {
     'an.tab.trends': 'Tendances',
     'an.tr.metric': 'Mesure', 'an.tr.range': 'Historique',
     'an.tr.r90': '90 jours', 'an.tr.r180': '180 jours', 'an.tr.r365': '1 an',
+    // « How it runs » — comment lire le schéma
+    'stack.read': 'Se lit de gauche à droite : ce dont rien ne dépend d’abord, puis tout ce qui en a besoin plus à droite. Les flèches pointent vers ce qui utilise la pièce. Clique une boîte pour savoir ce que c’est.',
     // Hébergement — « préviens-moi quand il y a de la place »
     'hosting.soldout.d2': 'Tous les plans sont complets tant qu’un dépôt existant ne libère pas de place ou qu’un admin n’augmente pas la capacité totale.',
     'hosting.wl.open': 'Préviens-moi quand il y a de la place',
