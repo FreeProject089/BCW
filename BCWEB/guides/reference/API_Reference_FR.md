@@ -614,7 +614,7 @@ Téléverse chacun comme asset de plateforme sous cette clé.
 
     Le symptôme est un vérificateur qui signale des noms d'actions valides comme inconnus, ce
     qui se lit comme un fichier cassé plutôt que comme un téléversement périmé. Re-téléverse
-    quand le langage de BMM grandit : il est actuellement à 90 actions, 32 conditions et 54
+    quand le langage de BMM grandit : il est actuellement à 104 actions, 37 conditions et 59
     mots-clés.
 
 **Ce que l'inspecteur reconnaît.** Par la FORME, jamais par ce que le fichier prétend être — un

@@ -606,8 +606,8 @@ Upload each as a platform asset under that key.
     six months older.
 
     The symptom is a checker that reports valid action names as unknown, which reads as a broken
-    file rather than a stale upload. Re-upload after BMM's language grows: it is currently 90
-    actions, 32 conditions and 54 keywords.
+    file rather than a stale upload. Re-upload after BMM's language grows: it is currently 104
+    actions, 37 conditions and 59 keywords.
 
 **What the inspector recognises.** By SHAPE, never by a claim in the file — a document saying
 `format: "mm"` proves nothing about itself, and a signed one that lies about its own type is
