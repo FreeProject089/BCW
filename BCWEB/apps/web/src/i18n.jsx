@@ -6159,6 +6159,15 @@ const DICT = {
     'an.tab.trends': 'Tendances',
     'an.tr.metric': 'Mesure', 'an.tr.range': 'Historique',
     'an.tr.r90': '90 jours', 'an.tr.r180': '180 jours', 'an.tr.r365': '1 an',
+    // Stockage — les exports côté serveur, gardés selon ce qu’ils contiennent
+    'as.exp.areas': 'Totaux', 'as.exp.repos': 'Dépôts hébergés',
+    'as.exp.catalogs': 'Items de catalogue', 'as.exp.pending': 'Suppressions en attente',
+    'as.exp.empty': 'Rien à exporter dans ce périmètre.',
+    'as.exp.ok': '{n} lignes exportées.',
+    'as.exp.needs2fa': 'Cet export nomme le propriétaire de chaque ligne : il demande la double authentification sur ton compte — ou d’être SUPERADMIN. Active la 2FA dans les réglages de ton compte.',
+    'as.exp.owner.h': 'Nomme le propriétaire de chaque ligne — demande la 2FA ou SUPERADMIN, et est inscrit au journal d’audit',
+    'as.exp.agg.h': 'Totaux seulement, personne n’est nommé',
+    'as.exp.note': 'Les exports viennent du serveur et sont complets — les tableaux ci-dessous sont plafonnés pour l’écran. Les trois marqués d’un bouclier nomment le propriétaire de chaque ligne : ils demandent la 2FA sur ton compte (un SUPERADMIN passe de toute façon) et chacun est inscrit au journal d’audit.',
     // Plan du site — le scan
     'sm.scan': 'Scanner',
     'sm.scan.h': 'Vérifie les exclusions et les chemins ajoutés face à ce que le site sait réellement servir',

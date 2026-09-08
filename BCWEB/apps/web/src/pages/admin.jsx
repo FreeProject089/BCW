@@ -15701,30 +15701,39 @@ function AdminStorage() {
   const [repoQ, setRepoQ] = useState('');   // search: hosted repos
   const [pendQ, setPendQ] = useState('');   // search: pending deletions
   const cancelRepoDeletion = async (r) => { try { await api.post(`/admin/repos/${r.id}/delete/cancel`); toast.success(t('as.backonline', '"{n}" is back online.').replace('{n}', r.name)); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
-  // Two exports rather than one: the areas answer "what is using the disk", the repos answer
-  // "who is". A single file mixing both would need a "type" column nobody wants to filter on.
-  const exportAreas = () => {
-    const d0 = data || {};
-    const rows = [
-      ...(d0.areas || []).map((x) => ({ scope: 'area', name: x.key || x.label, bytes: x.bytes, count: x.count })),
-      ...(d0.tiers || []).map((x) => ({ scope: 'tier', name: x.key || x.label, bytes: x.bytes, count: null })),
-    ].filter((r) => r.bytes != null);
-    if (!rows.length) return;
-    downloadCsv(toCsv(rows, [['scope', 'scope'], ['name', 'name'], ['bytes', 'bytes'], ['objects', (r) => r.count ?? '']]),
-      `storage-areas-${new Date().toISOString().slice(0, 10)}`);
+  /**
+   * Exports come from the SERVER now, not from what this page happens to be holding.
+   *
+   * The page is drawn from a response capped at 500 repos and 100 pending deletions, so a CSV
+   * built from it carried those ceilings with nothing saying so — you exported
+   * "storage-repos.csv", believed it was every repo, and past five hundred it was the top
+   * five hundred. /admin/storage/export is unbounded and returns its own row count.
+   *
+   * It also gates by what the rows CONTAIN: `areas` is arithmetic about disk and open to any
+   * admin; `repos`, `catalogs` and `pending` name each row's owner, so they need a SUPERADMIN
+   * or an admin with 2FA, and each one is written to the audit chain. A 403 here is that gate,
+   * and it says so rather than reporting a generic failure.
+   */
+  const [exporting, setExporting] = useState('');
+  const runExport = async (scope, columns) => {
+    setExporting(scope);
+    try {
+      const r = await api.get(`/admin/storage/export?scope=${scope}`);
+      if (!r.count) return toast.info(t('as.exp.empty', 'Nothing to export in this scope.'));
+      downloadCsv(toCsv(r.rows, columns), `storage-${scope}-${new Date().toISOString().slice(0, 10)}`);
+      toast.success(t('as.exp.ok', '{n} rows exported.').replace('{n}', r.count));
+    } catch (e) {
+      if (e?.data?.error === 'export_needs_2fa') {
+        toast.error(t('as.exp.needs2fa', 'This export names each row’s owner, so it needs two-factor authentication on your account — or a SUPERADMIN. Turn 2FA on in your account settings.'));
+      } else toast.error(t('common.failed', 'Failed.'));
+    } finally { setExporting(''); }
   };
-  const exportRepos = () => {
-    const rows = (data?.topRepos || []);
-    if (!rows.length) return;
-    downloadCsv(toCsv(rows, [
-      ['repo_id', 'id'], ['name', 'name'], ['owner', (r) => r.owner || ''],
-      // `used` / `quota` — the RESPONSE's names, not the Prisma column names the endpoint
-      // selects by. Copying the latter produced a CSV with three empty columns that still
-      // looked like a valid file.
-      ['used_bytes', 'used'], ['quota_bytes', 'quota'],
-      ['used_pct', (r) => (r.quota ? ((r.used / r.quota) * 100).toFixed(1) : '')],
-    ]), `storage-repos-${new Date().toISOString().slice(0, 10)}`);
-  };
+  const EXPORTS = [
+    { scope: 'areas', label: t('as.exp.areas', 'Totals'), owner: false, cols: [['scope', 'scope'], ['metric', 'metric'], ['value', 'value'], ['count', 'count']] },
+    { scope: 'repos', label: t('as.exp.repos', 'Hosted repos'), owner: true, cols: [['repo_id', 'id'], ['name', 'name'], ['owner', 'owner'], ['owner_email', 'ownerEmail'], ['used_bytes', 'usedBytes'], ['quota_bytes', 'quotaBytes'], ['used_pct', (r) => r.usedPct ?? ''], ['created_at', 'createdAt'], ['pending_deletion_at', (r) => r.pendingDeletionAt || '']] },
+    { scope: 'catalogs', label: t('as.exp.catalogs', 'Catalogue items'), owner: true, cols: [['item_id', 'id'], ['name', 'name'], ['kind', 'kind'], ['status', 'status'], ['owner', 'owner'], ['created_at', 'createdAt'], ['pending_deletion_at', (r) => r.pendingDeletionAt || '']] },
+    { scope: 'pending', label: t('as.exp.pending', 'Pending deletions'), owner: true, cols: [['type', 'type'], ['id', 'id'], ['name', 'name'], ['kind', (r) => r.kind || ''], ['owner', 'owner'], ['delete_at', 'deleteAt'], ['used_bytes', (r) => r.usedBytes ?? '']] },
+  ];
   if (loading) return <Loading />;
   const d = data || {};
   const rq = repoQ.trim().toLowerCase();
@@ -15741,16 +15750,25 @@ function AdminStorage() {
     <div>
       <div className="flex items-center justify-between mb-4">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('as.title', 'Storage')}</h2>
-        <div className="flex items-center gap-2">
-          <Button size="sm" onClick={exportAreas}><Download size={13} /> {t('as.csv.areas', 'Areas CSV')}</Button>
-          <Button size="sm" onClick={exportRepos}><Download size={13} /> {t('as.csv.repos', 'Repos CSV')}</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {EXPORTS.map((x) => (
+            <Button key={x.scope} size="sm" variant={x.owner ? undefined : 'ghost'} disabled={!!exporting}
+              onClick={() => runExport(x.scope, x.cols)}
+              title={x.owner ? t('as.exp.owner.h', 'Names each row’s owner — needs 2FA or SUPERADMIN, and is written to the audit log') : t('as.exp.agg.h', 'Totals only, nobody is named')}>
+              {exporting === x.scope ? <Spinner /> : x.owner ? <ShieldCheck size={13} /> : <Download size={13} />} {x.label}
+            </Button>
+          ))}
           <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('as.refresh', 'Refresh')}</Button>
         </div>
       </div>
       {/* Storage is a SNAPSHOT — there is no history table behind it, so unlike Server
           performance it cannot be compared with last month. Said here rather than left for
           somebody to discover by looking for a date picker that does not exist. */}
-      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-4">{t('as.snapshot', 'A reading of right now. Storage keeps no history, so there is nothing earlier to compare it with — export regularly if you want a trend.')}</p>
+      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-1">{t('as.snapshot', 'A reading of right now. Storage keeps no history, so there is nothing earlier to compare it with — export regularly if you want a trend.')}</p>
+      <p className="text-[11px] text-[var(--faint)] mb-4 flex items-start gap-1.5">
+        <ShieldCheck size={12} className="mt-0.5 shrink-0" />
+        <span>{t('as.exp.note', 'Exports come from the server and are complete — the tables below are capped for the screen. The three marked with a shield name each row’s owner: they need 2FA on your account (a SUPERADMIN passes anyway) and each one is written to the audit log.')}</span>
+      </p>
 
       {/* Headline = grand total across ALL storage tiers (object storage + database +
           backups + telemetry), not just the object bucket — with each tier's real size

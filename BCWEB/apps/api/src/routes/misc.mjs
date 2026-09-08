@@ -949,6 +949,96 @@ export default async function miscRoutes(app) {
   });
 
   // ── Admin: storage overview (real object-storage usage + pending deletions) ──
+  /**
+   * Export the storage picture — the WHOLE of it, and gated by what the rows contain.
+   *
+   * Two problems with exporting from the page, which is what this replaces.
+   *
+   * The first is silent truncation. /admin/storage answers with `take: 500` hosted repos and
+   * `take: 100` pending deletions, because it draws a screen. The CSV built from that response
+   * carried the same ceilings with nothing saying so: an admin exported "storage-repos.csv",
+   * believed it was every repo, and on a site past five hundred it was the top five hundred.
+   * A file that is quietly partial is worse than no file — you cannot audit a total you cannot
+   * see is missing rows. Every scope here is unbounded and reports its own `count`.
+   *
+   * The second is that not all of this is the same KIND of data. `areas` is arithmetic about
+   * disk — bytes per prefix, nothing about anybody. `repos`, `catalogs` and `pending` name the
+   * OWNER of each row, so exporting them is a bulk extraction of who holds what and how much,
+   * which is exactly the thing a compromised staff account would want. So the gate follows the
+   * data, not the button: aggregates for any admin, owner-level for a SUPERADMIN or an admin
+   * who has 2FA on — and every owner-level export is written to the audit chain.
+   *
+   * Returns rows as JSON rather than a CSV body on purpose: the browser already holds the
+   * session cookie for a fetch, where a download link would need the credential in the URL.
+   * The client turns it into a file with the same toCsv() every other export here uses.
+   */
+  app.get('/admin/storage/export', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const scope = String(req.query?.scope || 'areas');
+    const SCOPES = ['areas', 'repos', 'catalogs', 'pending'];
+    if (!SCOPES.includes(scope)) return reply.code(400).send({ error: 'bad_scope', scopes: SCOPES });
+
+    if (scope !== 'areas') {
+      const me = await p.user.findUnique({ where: { id: req.user?.uid }, select: { role: true, totpEnabled: true } });
+      // SUPERADMIN passes on its own — it is the role that already sees everything, and
+      // requiring a second factor of somebody who can reset anyone's would be ceremony.
+      if (me?.role !== 'SUPERADMIN' && !me?.totpEnabled) {
+        return reply.code(403).send({ error: 'export_needs_2fa' });
+      }
+    }
+
+    let rows = [];
+    if (scope === 'repos') {
+      const list = await p.serverRepo.findMany({
+        where: { hosted: true }, orderBy: { storageUsedBytes: 'desc' },
+        select: { id: true, name: true, storageUsedBytes: true, storageQuotaBytes: true, createdAt: true, deleteAt: true, owner: { select: { displayName: true, email: true } } },
+      });
+      rows = list.map((r) => ({
+        id: r.id, name: r.name, owner: r.owner?.displayName || '', ownerEmail: r.owner?.email || '',
+        usedBytes: Number(r.storageUsedBytes || 0), quotaBytes: Number(r.storageQuotaBytes || 0),
+        usedPct: r.storageQuotaBytes ? +((Number(r.storageUsedBytes) / Number(r.storageQuotaBytes)) * 100).toFixed(1) : null,
+        createdAt: r.createdAt, pendingDeletionAt: r.deleteAt,
+      }));
+    } else if (scope === 'catalogs') {
+      const list = await p.catalogItem.findMany({
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, name: true, kind: true, status: true, createdAt: true, deleteAt: true, owner: { select: { displayName: true } } },
+      });
+      rows = list.map((c) => ({
+        id: c.id, name: c.name, kind: c.kind, status: c.status,
+        owner: c.owner?.displayName || '', createdAt: c.createdAt, pendingDeletionAt: c.deleteAt,
+      }));
+    } else if (scope === 'pending') {
+      const [items, repos] = await Promise.all([
+        p.catalogItem.findMany({ where: { deleteAt: { not: null } }, orderBy: { deleteAt: 'asc' }, select: { id: true, name: true, kind: true, deleteAt: true, owner: { select: { displayName: true } } } }),
+        p.serverRepo.findMany({ where: { deleteAt: { not: null } }, orderBy: { deleteAt: 'asc' }, select: { id: true, name: true, deleteAt: true, storageUsedBytes: true, owner: { select: { displayName: true } } } }),
+      ]);
+      rows = [
+        ...items.map((i) => ({ type: 'catalog_item', id: i.id, name: i.name, kind: i.kind, owner: i.owner?.displayName || '', deleteAt: i.deleteAt, usedBytes: null })),
+        ...repos.map((r) => ({ type: 'server_repo', id: r.id, name: r.name, kind: '', owner: r.owner?.displayName || '', deleteAt: r.deleteAt, usedBytes: Number(r.storageUsedBytes || 0) })),
+      ].sort((a, b) => new Date(a.deleteAt) - new Date(b.deleteAt));
+    } else {
+      // Aggregates: the same numbers the page shows, and nothing that names a person.
+      const [hosted, itemsByKind, cat] = await Promise.all([
+        p.serverRepo.aggregate({ where: { hosted: true }, _sum: { storageQuotaBytes: true, storageUsedBytes: true }, _count: true }),
+        p.catalogItem.groupBy({ by: ['kind'], _count: { kind: true } }),
+        p.catalogItem.count(),
+      ]);
+      rows = [
+        { scope: 'hosted_repos', metric: 'used_bytes', value: Number(hosted._sum.storageUsedBytes || 0), count: hosted._count },
+        { scope: 'hosted_repos', metric: 'quota_bytes', value: Number(hosted._sum.storageQuotaBytes || 0), count: hosted._count },
+        { scope: 'catalog_items', metric: 'count', value: cat, count: cat },
+        ...itemsByKind.map((k) => ({ scope: `catalog_items:${k.kind}`, metric: 'count', value: k._count.kind, count: k._count.kind })),
+      ];
+    }
+
+    if (scope !== 'areas') {
+      // Written AFTER the rows are gathered, so the entry records what actually left.
+      await logAudit(p, req.user.uid, `storage.export.${scope}`, `${rows.length} row(s)`, req.ip);
+    }
+    return { scope, count: rows.length, at: new Date().toISOString(), rows };
+  });
+
   app.get('/admin/storage', { preHandler: requireRole('ADMIN') }, async () => {
     const p = await db();
     // Real bytes in object storage, by area (listed straight from MinIO/S3).
