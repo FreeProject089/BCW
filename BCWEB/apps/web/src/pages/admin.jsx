@@ -1528,6 +1528,7 @@ function AdminSecurity() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Lock size={16} className="text-[var(--primary-2)]" /> {t('sec.title', 'Security log')}</h2>
+      <SettingsPointer className="mb-3" keys={['audit.maxDays', 'audit.maxEntries']}>{t('sec.ptr', 'How long this log is kept, and how many entries')}</SettingsPointer>
       <p className="text-sm text-[var(--muted)] mb-3">{t('sec.desc', 'Login attempts (success/fail, IP) and the admin action audit trail.')}</p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
@@ -7068,6 +7069,7 @@ function AdminHistory() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><History size={16} className="text-[var(--primary-2)]" /> {t('hist.title', 'Site history')}</h2>
+      <SettingsPointer className="mb-3" keys={['history.maxRevisions', 'history.maxRevisionKB']}>{t('hist.ptr', 'How many revisions each page keeps, and how big they may get')}</SettingsPointer>
       <p className="text-sm text-[var(--muted)] mb-3">
         {t('hist.desc', 'Every recorded event, staff and user alike, merged from the logs the site already keeps — nothing here is stored twice. Filter by source, search any text, or widen the window.')}
       </p>
@@ -10828,6 +10830,7 @@ function AdminSso() {
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 me-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
+        <SettingsPointer className="mb-3" keys={['features.ssoEnabled']}>{t('sso.ptr', 'The master switch \u2014 off, and every application here stops being able to sign anybody in')}</SettingsPointer>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')], ['webhooks', t('sso.tab.webhooks', 'Webhooks')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
@@ -17925,6 +17928,7 @@ function AdminAnalytics() {
           <Button size="sm" onClick={openTelemetry}><Gauge size={14} /> {t('an.telemetry', 'BMM telemetry')}</Button>
         </div>
       </div>
+      <SettingsPointer className="-mt-2 mb-4" keys={['analytics.maxMB', 'telemetry.storageLimitGB']}>{t('an.ptr', 'The size ceiling that trims this data, and BMM telemetry’s own')}</SettingsPointer>
 
       {/* KPI row (Rybbit-style) — always visible above the sub-tabs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3 mb-4">
@@ -18426,6 +18430,7 @@ function AdminShowcase() {
     <div>
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('sh.title', 'Other projects')}</h2>
+        <SettingsPointer className="mb-3" keys={['showcase.requestsEnabled', 'showcase.paidEnabled', 'showcase.priceCents']}>{t('sh.ptr', 'Whether people may ask to be listed, whether they may pay, and how much')}</SettingsPointer>
         {canManage && <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> {t('sh.new', 'New project')}</Button>}
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{canManage ? t('sh.sub', 'Feature any project on the public /projects page. Overview is always shown; enable Release notes, Community and Legal per project.') : t('sh.sub.grantee', 'You can edit the content of the projects you were granted. Pinning, visibility and publishing are managed by an admin.')}</p>
@@ -20435,6 +20440,8 @@ function AdminCatalogs() {
     <div className="space-y-4">
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
+        <SettingsPointer className="mb-1" keys={['catalog.freeTierCapEnabled', 'catalog.freeTierCapMB']}>{t('cc.admin.ptr.pool', 'The free upload pool and its cap')}</SettingsPointer>
+        <SettingsPointer className="mb-3" keys={['pricing.catalogHostPerMBCents']}>{t('cc.admin.ptr.price', 'What the excess costs')}</SettingsPointer>
         <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc2', 'Owner-hosted catalogs. Suspend takes one offline for everyone; unlist just removes it from the public browser (its URL still works); delete purges it. Examine reads the hosted files without running anything.')}</p>
       </div>
       <div className="relative"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" placeholder={t('cc.admin.search2', 'Search name, owner, email or creator id…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
@@ -22152,17 +22159,53 @@ const MK_BLANK = {
 /**
  * "This lives somewhere else" — a link that goes there.
  *
- * Half the settings that govern a screen are configured on another one, and until now the
- * screen said nothing: an admin looking at product files had no way to learn that the pool
- * they draw from is a number on the Hosting settings page, let alone where. A sentence and a
- * button, wherever that is true.
+ * Half the settings that govern a screen are configured on another one, and the screen said
+ * nothing: an admin looking at product files had no way to learn that the pool they draw
+ * from is a number on the Hosting settings page, let alone where.
  */
 function ConfigElsewhere({ to, children }) {
-  const { t } = useI18n();
   return (
     <Link to={to} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--primary-2)] hover:underline">
       <SettingsIcon size={12} /> {children} <ChevronRight size={11} />
     </Link>
+  );
+}
+
+// Which settings tab holds a given key. DERIVED from the catalog rather than written beside
+// each link: a setting moved to another group re-points every pointer on every screen, and a
+// hand-written `?s=settings&hs=capacity` would still render, still look right, and go to the
+// wrong tab for ever.
+const HS_TAB_OF_KEY = {};
+HOSTING_SETTINGS_GROUPS.forEach((g) => g.keys.forEach(([k]) => { HS_TAB_OF_KEY[k] = g.gk; }));
+
+/**
+ * The settings that govern THIS screen, and the way to them.
+ *
+ * Takes keys, not a URL. The first key decides which tab opens; the rest are named so the
+ * sentence says what is actually being pointed at, because "configure this elsewhere" with
+ * no nouns in it is a link people do not click.
+ *
+ * `k=<key>` rides along so the Admin guide's per-setting anchor works from here too.
+ */
+function SettingsPointer({ keys, children, className = '' }) {
+  const { t } = useI18n();
+  const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean);
+  const first = list[0];
+  const tab = HS_TAB_OF_KEY[first];
+  // An unknown key is a broken pointer, and a broken pointer that renders is worse than none:
+  // it promises a destination. check-settings-pointers.mjs fails the build on one, and this
+  // is the belt for the case where it is added at runtime.
+  if (!tab) return null;
+  const names = list.map((k) => {
+    const row = HOSTING_SETTINGS_GROUPS.flatMap((g) => g.keys).find(([kk]) => kk === k);
+    return row ? t(`hs.l.${k}`, row[1]) : k;
+  });
+  return (
+    <div className={`text-[11px] text-[var(--faint)] ${className}`}>
+      <ConfigElsewhere to={`?s=settings&hs=${tab}&k=${encodeURIComponent(first)}`}>
+        {children || t('cfgptr.default', 'Set by {n}').replace('{n}', names.join(' \u00b7 '))}
+      </ConfigElsewhere>
+    </div>
   );
 }
 
@@ -22289,6 +22332,8 @@ function AdminMarketplace() {
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-semibold flex items-center gap-2"><ShoppingBag size={16} className="text-[var(--primary-2)]" /> {t('mkadm.title', 'Project marketplace')}</h2>
+        <SettingsPointer className="mb-1" keys={['marketplace.storageMB']}>{t('mkadm.ptr.store', 'How much room product files have')}</SettingsPointer>
+        <SettingsPointer className="mb-3" keys={['marketplace.feePercentBp']}>{t('mkadm.ptr.fee', 'What the platform keeps on a sale')}</SettingsPointer>
         <Button size="sm" variant="primary" onClick={() => setDraft({ ...MK_BLANK })}><Plus size={14} /> {t('mkadm.new', 'New product')}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('mkadm.sub', 'Each product appears in its project’s Marketplace tab. A free product delivers on click; a paid one goes through Stripe and delivers via the webhook. A static key or the external secret is never exposed to buyers.')}</p>
@@ -22414,7 +22459,7 @@ function AdminMarketplace() {
                     <span className="text-xs text-[var(--muted)]">{draft.fileName || t('mkadm.f.file.none', 'No file attached yet.')}</span>
                   </div>
                   {/* The one question this field always raised and never answered. */}
-                  <div className="mt-1.5"><ConfigElsewhere to="?s=settings&hs=capacity">{t('mkadm.f.file.where', 'Where product files are stored, and how much room is left')}</ConfigElsewhere></div>
+                  <SettingsPointer className="mt-1.5" keys={['marketplace.storageMB']}>{t('mkadm.f.file.where', 'Where product files are stored, and how much room is left')}</SettingsPointer>
                 </Field>
                 /* A product has to exist before a file can hang off it — the upload posts to
                    /admin/marketplace/products/<id>/file, and there is no id until the first save. */
@@ -22454,7 +22499,7 @@ function AdminMarketplace() {
                   {t('mkadm.fee.ro', 'This product is charged {n}%. Only a super-admin can change it, here or anywhere else.').replace('{n}', (((draft.feePercentBp ?? data?.defaultFeeBp ?? 1000)) / 100).toString())}
                 </p>
               )}
-              {isSuper && <ConfigElsewhere to="?s=settings&hs=pricing">{t('mkadm.fee.default', 'Change the site-wide default')}</ConfigElsewhere>}
+              {isSuper && <SettingsPointer keys={['marketplace.feePercentBp']}>{t('mkadm.fee.default', 'Change the site-wide default')}</SettingsPointer>}
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} onChange={(e) => set('active', e.target.checked)} /> {t('mkadm.f.active', 'Active (visible in the storefront)')}</label>
             <div className="flex justify-end gap-2"><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
