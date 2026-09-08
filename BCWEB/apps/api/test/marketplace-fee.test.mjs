@@ -9,11 +9,16 @@
 // Pure arithmetic and one stubbed lookup — no database.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { splitFee, feeForProduct, marketplaceFeeBp } from '../src/routes/marketplace.mjs';
+import { splitFee, feeForProduct, marketplaceFeeBp, marketplaceFeeByProject, feeScopeOf, validBp } from '../src/routes/marketplace.mjs';
 
-/** A stand-in for the Prisma client, holding one AdminSetting row. */
-const dbWith = (value) => ({
-  adminSetting: { findUnique: async () => (value === undefined ? null : { value }) },
+/** A stand-in for the Prisma client, holding the two settings rows the fee reads. */
+const dbWith = (value, byProject) => ({
+  adminSetting: {
+    findUnique: async ({ where }) => {
+      if (where.key === 'marketplace.feeByProject') return byProject === undefined ? null : { value: byProject };
+      return value === undefined ? null : { value };
+    },
+  },
 });
 
 describe('splitFee', () => {
@@ -80,9 +85,82 @@ describe('marketplaceFeeBp', () => {
   });
 });
 
+describe('validBp', () => {
+  test('zero is valid, because zero is the answer people set on purpose', () => {
+    assert.equal(validBp(0), 0);
+  });
+  test('anything unusable is null, not a number', () => {
+    for (const bad of [null, undefined, '', 'x', -1, 10001, NaN, Infinity, {}]) {
+      assert.equal(validBp(bad), null, `${JSON.stringify(bad)} should not be usable`);
+    }
+  });
+  test('a numeric string is accepted \u2014 a JSON setting round-trips as one', () => {
+    assert.equal(validBp('250'), 250);
+  });
+});
+
+describe('feeScopeOf', () => {
+  test('the two kinds of page are named apart', () => {
+    // A showcase cuid and a project key live in different id spaces. Unprefixed, one could
+    // shadow the other and a project would silently inherit somebody else's margin.
+    assert.equal(feeScopeOf({ projectKey: 'bmm' }), 'project:bmm');
+    assert.equal(feeScopeOf({ showcaseProjectId: 'abc123' }), 'showcase:abc123');
+  });
+  test('projectKey wins when a row somehow carries both', () => {
+    assert.equal(feeScopeOf({ projectKey: 'bmm', showcaseProjectId: 'abc' }), 'project:bmm');
+  });
+  test('a product attached to no page has no scope', () => {
+    assert.equal(feeScopeOf({}), null);
+    assert.equal(feeScopeOf(null), null);
+  });
+});
+
+describe('marketplaceFeeByProject', () => {
+  test('an unset row is an empty map, not a crash', async () => {
+    assert.deepEqual(await marketplaceFeeByProject(dbWith(1000, undefined)), {});
+  });
+  test('a junk entry is DROPPED, not read as free', async () => {
+    // Zero means "this project pays nothing", which is a decision somebody made. A
+    // malformed row is not one, and reading it as zero is the expensive direction.
+    assert.deepEqual(
+      await marketplaceFeeByProject(dbWith(1000, { 'project:a': 0, 'project:b': 'oops', 'project:c': 99999, 'project:d': 250 })),
+      { 'project:a': 0, 'project:d': 250 },
+    );
+  });
+  test('a value that is not an object at all is an empty map', async () => {
+    for (const junk of [[], 'x', 5, null]) {
+      assert.deepEqual(await marketplaceFeeByProject(dbWith(1000, junk)), {}, JSON.stringify(junk));
+    }
+  });
+});
+
 describe('feeForProduct', () => {
   test('a product override wins over the site default', async () => {
     assert.equal(await feeForProduct(dbWith(1000), { feePercentBp: 250 }), 250);
+  });
+
+  test('a PROJECT override applies to every product on that page', async () => {
+    // The level that was asked for and was missing: "our own projects pay nothing" is one
+    // decision per project, not something remembered on every product added to it.
+    const db = dbWith(1000, { 'project:ours': 0 });
+    assert.equal(await feeForProduct(db, { projectKey: 'ours' }), 0);
+    assert.equal(await feeForProduct(db, { projectKey: 'ours', name: 'another one' }), 0);
+  });
+
+  test('a product override still beats its project', async () => {
+    const db = dbWith(1000, { 'project:ours': 0 });
+    assert.equal(await feeForProduct(db, { projectKey: 'ours', feePercentBp: 500 }), 500);
+  });
+
+  test('a project override beats the site default, and 0 is an override', async () => {
+    assert.equal(await feeForProduct(dbWith(1000, { 'showcase:x': 0 }), { showcaseProjectId: 'x' }), 0);
+    assert.equal(await feeForProduct(dbWith(1000, { 'showcase:x': 250 }), { showcaseProjectId: 'x' }), 250);
+  });
+
+  test('another page is unaffected', async () => {
+    const db = dbWith(1000, { 'project:ours': 0 });
+    assert.equal(await feeForProduct(db, { projectKey: 'somebody-elses' }), 1000);
+    assert.equal(await feeForProduct(db, { showcaseProjectId: 'ours' }), 1000, 'the prefix keeps the id spaces apart');
   });
 
   test('ZERO is an override, not an absence', async () => {

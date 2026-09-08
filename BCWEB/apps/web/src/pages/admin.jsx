@@ -22230,6 +22230,84 @@ function DeliveryExplainer({ v }) {
     </div>
   );
 }
+/**
+ * Whether a PROJECT pays the margin, and how much — one decision per page rather than a
+ * number remembered on every product added to it.
+ *
+ * Stored as one settings row holding a map, not a column on two different project models:
+ * `Project` has no config blob and `ShowcaseProject` has one, so a column would have meant a
+ * migration on one and a JSON key on the other — two shapes for one question, which is how
+ * the two stop agreeing.
+ *
+ * SUPERADMIN only, and the route enforces it too. This screen not drawing the card is a
+ * courtesy, not a gate.
+ */
+function ProjectMarginCard({ data, targets, onSaved }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const map = data?.feeByProject || {};
+  const defBp = data?.defaultFeeBp ?? 1000;
+  const pct = (bp) => String(Math.round(Number(bp) * 100) / 10000 * 100);
+
+  // Only pages that actually SELL something. A margin set on a page with no products is a
+  // setting nobody can see the effect of, and a list of every page ever created is a list
+  // nobody reads.
+  const pages = [];
+  for (const pr of (data?.products || [])) {
+    if (!pr.feeScope || pages.some((x) => x.scope === pr.feeScope)) continue;
+    const label = (targets.find((x) => x.v === (pr.projectKey ? `p:${pr.projectKey}` : `s:${pr.showcaseProjectId}`)) || {}).label;
+    pages.push({ scope: pr.feeScope, label: label || pr.projectKey || pr.showcaseProjectId });
+  }
+
+  const write = async (next) => {
+    setBusy(true);
+    try {
+      await api.put('/admin/settings/marketplace.feeByProject', { value: next });
+      toast.success(t('common.saved', 'Saved.'));
+      onSaved?.();
+    } catch (x) {
+      toast.error(x?.data?.error === 'superadmin_required'
+        ? t('mkadm.pm.super', 'Only a super-admin can change the margin.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+  const setFor = (scope, value) => {
+    const next = { ...map };
+    if (value === '') delete next[scope]; else next[scope] = Math.round((Number(value) || 0) * 100);
+    write(next);
+  };
+
+  if (!pages.length) return null;
+  return (
+    <Card className="p-4 mb-4">
+      <button type="button" onClick={() => setOpen((x) => !x)} className="w-full flex items-center justify-between gap-2 text-start">
+        <span className="text-sm font-medium flex items-center gap-2"><Scale size={15} className="text-[var(--primary-2)]" /> {t('mkadm.pm.title', 'Margin per project')}</span>
+        <span className="text-[11px] text-[var(--faint)]">{t('mkadm.pm.count', '{n} of {m} page(s) set').replace('{n}', pages.filter((p) => map[p.scope] != null).length).replace('{m}', pages.length)} {open ? <ChevronUp size={12} className="inline" /> : <ChevronDown size={12} className="inline" />}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-[var(--muted)]">{t('mkadm.pm.h', 'Blank = the site default ({d}%). Set 0 on our own projects so we do not charge ourselves. A single product can still override its page.').replace('{d}', pct(defBp))}</p>
+          {pages.map((pg) => {
+            const cur = map[pg.scope];
+            return (
+              <div key={pg.scope} className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
+                <Input type="number" min="0" max="100" step="0.01" className="!w-28"
+                  defaultValue={cur == null ? '' : Number(cur) / 100}
+                  placeholder={pct(defBp)}
+                  disabled={busy}
+                  onBlur={(e) => { const v = e.target.value.trim(); const now = cur == null ? '' : String(Number(cur) / 100); if (v !== now) setFor(pg.scope, v); }} />
+                <span className="text-[11px] text-[var(--faint)] w-24">{cur == null ? t('mkadm.pm.site', 'site default') : cur === 0 ? t('mkadm.pm.free', 'we take nothing') : ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function AdminMarketplace() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const { user: me } = useAuth();
@@ -22337,6 +22415,7 @@ function AdminMarketplace() {
         <Button size="sm" variant="primary" onClick={() => setDraft({ ...MK_BLANK })}><Plus size={14} /> {t('mkadm.new', 'New product')}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('mkadm.sub', 'Each product appears in its project’s Marketplace tab. A free product delivers on click; a paid one goes through Stripe and delivers via the webhook. A static key or the external secret is never exposed to buyers.')}</p>
+      {isSuper && <ProjectMarginCard data={data} targets={targets} onSaved={reload} />}
       {/* Product files land on the same disk the hosting page sells by the gigabyte, and
           nothing counted them until now — a 64 MB limit per request with no ceiling above it.
           The bar lives HERE as well as in Storage because this is the screen where the bytes
@@ -22363,7 +22442,8 @@ function AdminMarketplace() {
               <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={15} /> : <ShoppingBag size={15} />}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-medium truncate">{pr.name} {!pr.active && <Badge>{t('mkadm.off', 'off')}</Badge>}</div>
-                <div className="text-xs text-[var(--faint)]">{pr.projectKey || pr.showcaseProjectId} · {pr.deliveryKind} · {pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${pr.currency}` : t('mk.free', 'Free')} · {t('mkadm.sold', '{n} sold').replace('{n}', pr.sold || 0)}{pr.deliveryKind === 'key_pool' ? ` · ${t('mkadm.keys', '{n} keys').replace('{n}', pr.keyCount || 0)}` : ''}</div>
+                <div className="text-xs text-[var(--faint)]">{pr.projectKey || pr.showcaseProjectId} · {pr.deliveryKind} · {pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${pr.currency}` : t('mk.free', 'Free')} · {t('mkadm.sold', '{n} sold').replace('{n}', pr.sold || 0)}{pr.deliveryKind === 'key_pool' ? ` · ${t('mkadm.keys', '{n} keys').replace('{n}', pr.keyCount || 0)}` : ''}
+                {pr.priceCents > 0 && ` · ${t(`mkadm.feefrom.${pr.feeFrom || 'site'}`, { product: 'margin {n}% (this product)', project: 'margin {n}% (this page)', site: 'margin {n}% (site)' }[pr.feeFrom || 'site']).replace('{n}', String(Math.round((pr.effectiveFeeBp ?? 1000) / 100 * 100) / 100))}`}</div>
               </div>
               {pr.deliveryKind === 'key_pool' && <Button size="sm" variant="ghost" onClick={() => { setKeysFor(pr.id); setKeysText(''); }}><Key size={13} /> {t('mkadm.addkeys', 'Add keys')}</Button>}
               {/* The pool could only be filled by pasting codes generated somewhere else —

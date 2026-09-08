@@ -59,20 +59,67 @@ export async function marketplaceStorage(p) {
 /**
  * The platform's cut of a sale, in basis points (1000 = 10%).
  *
- * Per product, resolved against one site-wide default. It is deliberately NOT also a
- * per-project setting: this is the number actually charged on a sale, and three places that
- * can disagree about one percentage is how a payout report stops matching the invoices. The
- * admin screen sets it for every product of a page in one click, which is the same question
- * asked in the way that leaves one answer.
+ * THREE levels, most specific first: this product, then the page it is sold on, then the
+ * site. Two of them are usually empty — the point is that "our own projects pay nothing" is
+ * one decision made once per project rather than remembered on every product added to it,
+ * and "this one product is different" stays possible without disturbing the rest.
  *
  * Basis points and not a float: 12.5% is expressible, and no sale is ever off by a rounding
  * error that came from a percentage stored as 0.125000000000000006.
  */
 const DEFAULT_FEE_BP = 1000;
+
+/**
+ * A basis-point value that is actually usable, or null. Shared by all three levels so they
+ * cannot disagree about what counts as "set" — and so that ZERO counts, which is the whole
+ * reason the field exists.
+ *
+ * THE TYPE CHECK IS THE POINT, and its absence was a bug this file shipped with for about ten
+ * minutes: `Number(null)`, `Number('')` and `Number([])` are all 0, so a product with no
+ * override — the ordinary case — read as "this one is free" and every sale on the platform
+ * would have been charged nothing. `Number.isFinite` alone does not save you, because by then
+ * the coercion has already happened.
+ */
+export function validBp(v) {
+  if (typeof v !== 'number' && typeof v !== 'string') return null;
+  if (typeof v === 'string' && v.trim() === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n <= 10000 ? Math.round(n) : null;
+}
+
 export async function marketplaceFeeBp(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'marketplace.feePercentBp' } }).catch(() => null);
-  const v = Number(row?.value);
-  return Number.isFinite(v) && v >= 0 && v <= 10000 ? Math.round(v) : DEFAULT_FEE_BP;
+  return validBp(row?.value) ?? DEFAULT_FEE_BP;
+}
+
+/**
+ * How a page is named in the per-project margin map.
+ *
+ * A product hangs off EITHER a `projectKey` (a fixed project) or a `showcaseProjectId` (a
+ * page somebody else's project lives on), and the two id spaces are not the same. Prefixed
+ * so a showcase cuid can never collide with a project key, and so a map entry says which
+ * kind of page it is about when somebody reads the raw setting.
+ */
+export function feeScopeOf(product) {
+  if (product?.projectKey) return `project:${product.projectKey}`;
+  if (product?.showcaseProjectId) return `showcase:${product.showcaseProjectId}`;
+  return null;
+}
+
+/** The per-project overrides: `{ "project:bmm": 0, "showcase:abc123": 500 }`. */
+export async function marketplaceFeeByProject(p) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'marketplace.feeByProject' } }).catch(() => null);
+  const v = row?.value;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out = {};
+  for (const [k, raw] of Object.entries(v)) {
+    const bp = validBp(raw);
+    // A junk entry is DROPPED rather than treated as zero. Zero means "this project pays
+    // nothing", which is a decision; a malformed row is not one, and reading it as free is
+    // the expensive direction to be wrong in.
+    if (bp !== null) out[k] = bp;
+  }
+  return out;
 }
 
 /**
@@ -89,10 +136,23 @@ export function splitFee(priceCents, feeBp) {
   return { feeCents, netCents: price - feeCents };
 }
 
-/** The effective margin for this product: its own override, else the site default. */
+/**
+ * The margin actually charged on this product: its own override, else its page's, else the
+ * site default.
+ *
+ * `??` at every level and never `||`, because ZERO is a valid answer at all three and the
+ * one people set on purpose. `||` here would charge the site default on exactly the products
+ * meant to be free.
+ */
 export async function feeForProduct(p, product) {
-  const own = product?.feePercentBp;
-  if (Number.isFinite(own) && own >= 0 && own <= 10000) return Math.round(own);
+  const own = validBp(product?.feePercentBp);
+  if (own !== null) return own;
+  const scope = feeScopeOf(product);
+  if (scope) {
+    const byProject = await marketplaceFeeByProject(p);
+    const forPage = validBp(byProject[scope]);
+    if (forPage !== null) return forPage;
+  }
   return marketplaceFeeBp(p);
 }
 
@@ -308,16 +368,27 @@ export default async function marketplaceRoutes(app) {
     if (req.query?.projectKey) where.projectKey = String(req.query.projectKey);
     if (req.query?.showcaseProjectId) where.showcaseProjectId = String(req.query.showcaseProjectId);
     const rows = await p.projectProduct.findMany({ where, orderBy: { createdAt: 'desc' }, take: 500, include: { _count: { select: { keys: true, purchases: true } } } });
-    // The DEFAULT rides along, so the screen can say "10% (site default)" rather than
-    // leaving an empty field that reads as "no margin on this one".
+    // Both the default AND the per-project map ride along, so the screen can say which of
+    // the three levels a product's margin came from rather than leaving an empty field that
+    // reads as "no margin on this one".
     const defaultFeeBp = await marketplaceFeeBp(p);
+    const feeByProject = await marketplaceFeeByProject(p);
     return {
-      defaultFeeBp,
-      products: rows.map((r) => ({
-        ...r, externalSecret: r.externalSecret ? '••••' : null,
-        keyCount: r._count.keys, purchaseCount: r._count.purchases, _count: undefined,
-        effectiveFeeBp: Number.isFinite(r.feePercentBp) && r.feePercentBp != null ? r.feePercentBp : defaultFeeBp,
-      })),
+      defaultFeeBp, feeByProject,
+      products: rows.map((r) => {
+        const scope = feeScopeOf(r);
+        const own = validBp(r.feePercentBp);
+        const forPage = scope ? validBp(feeByProject[scope]) : null;
+        return {
+          ...r, externalSecret: r.externalSecret ? '••••' : null,
+          keyCount: r._count.keys, purchaseCount: r._count.purchases, _count: undefined,
+          feeScope: scope,
+          effectiveFeeBp: own ?? forPage ?? defaultFeeBp,
+          // Which level answered. The screen shows it, because "5%" with no idea whether it
+          // came from this product, its page or the site is a number nobody dares change.
+          feeFrom: own !== null ? 'product' : forPage !== null ? 'project' : 'site',
+        };
+      }),
     };
   });
 

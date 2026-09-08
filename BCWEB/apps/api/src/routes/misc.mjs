@@ -3347,7 +3347,7 @@ export default async function miscRoutes(app) {
   // number every staff account should be able to move — and hiding the control in the UI is
   // not a gate, it is a suggestion. The list is here, on the route, and short on purpose:
   // every entry has to earn the extra step.
-  const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp']);
+  const SUPERADMIN_ONLY_SETTINGS = new Set(['marketplace.feePercentBp', 'marketplace.feeByProject']);
 
   app.put('/admin/settings/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const p = await db();
