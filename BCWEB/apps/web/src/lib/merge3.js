@@ -151,7 +151,18 @@ export function merge3Hunks(base, mine, theirs) {
 
 // Reassemble resolved hunks into text. `choices` maps conflict-hunk index → one of
 // 'mine' | 'theirs' | 'both' | 'theirs-mine' (both, theirs first) | { lines } (manual edit).
-export function assembleHunks(hunks, choices) {
+//
+// An UNRESOLVED hunk keeps both sides, between markers.
+//
+// It used to contribute nothing at all, with a comment saying the caller gates the save on
+// every conflict being resolved. It does — one `disabled` attribute on one button — and that
+// attribute was the only thing standing between a partial resolution and silently deleting
+// both people's writing, in a document that then saved successfully. Nobody would ever have
+// found out which paragraph went missing.
+//
+// Markers are ugly and RECOVERABLE: the text is all still there, and `hasConflictMarkers`
+// already exists to catch them before a save. Dropping is neither.
+export function assembleHunks(hunks, choices, labels = { mine: 'yours', theirs: 'theirs' }) {
   const out = [];
   hunks.forEach((h, i) => {
     if (h.type === 'common') { out.push(...h.lines); return; }
@@ -161,7 +172,7 @@ export function assembleHunks(hunks, choices) {
     else if (c === 'theirs') out.push(...h.theirs);
     else if (c === 'both') out.push(...h.mine, ...h.theirs);
     else if (c === 'theirs-mine') out.push(...h.theirs, ...h.mine);
-    // unresolved → drop nothing visible; caller gates save on all conflicts resolved
+    else out.push(`<<<<<<< ${labels.mine}`, ...h.mine, '=======', ...h.theirs, `>>>>>>> ${labels.theirs}`);
   });
   return out.join('\n');
 }
