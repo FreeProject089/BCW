@@ -329,7 +329,22 @@ export default async function analyticsRoutes(app) {
       p.$queryRaw`SELECT country, region, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND region IS NOT NULL GROUP BY country, region ORDER BY c DESC LIMIT 30`,
       p.$queryRaw`SELECT country, region, city, count(*)::int AS c FROM "AnalyticsEvent" WHERE "createdAt" >= ${since} AND city IS NOT NULL GROUP BY country, region, city ORDER BY c DESC LIMIT 30`,
     ]);
-    const vs = Object.fromEntries(visitorSeries.map((s) => [new Date(s.day).toISOString(), Number(s.count)]));
+    // Zero-fill the daily series, for exactly the reason the hourly path below spells out:
+    // the rollup is a GROUP BY, so a day with NO traffic has no row at all. The chart then
+    // drew the surviving days evenly spaced as if they were consecutive — a week-long outage
+    // rendering as a smooth line across three points. Worse than cosmetic for the Trends
+    // view, where a zero day is precisely the thing being looked for.
+    let dailySeries = null;
+    if (gran === 'day') {
+      const counts = Object.fromEntries(series.map((r) => [new Date(r.day).toISOString().slice(0, 10), Number(r.count)]));
+      const visits = Object.fromEntries(visitorSeries.map((r) => [new Date(r.day).toISOString().slice(0, 10), Number(r.count)]));
+      const span = Math.round((Date.now() - sinceDay.getTime()) / 864e5) + 1;
+      dailySeries = Array.from({ length: span }, (_, i) => {
+        const d = new Date(sinceDay.getTime() + i * 864e5);
+        const key = d.toISOString().slice(0, 10);
+        return { day: d, count: counts[key] || 0, visitors: visits[key] || 0 };
+      });
+    }
     const b0 = bounce[0] || { bounces: 0, total: 0 };
     // Previous-period figures for the headline KPI deltas (pageviews + unique visitors).
     const [prevWindowed, prevUniqueVisitors, prevBounce] = await Promise.all([
@@ -391,9 +406,42 @@ export default async function analyticsRoutes(app) {
       regions: regions.map((r) => ({ country: r.country, label: r.region, count: Number(r.c) })),
       cities: cities.map((c) => ({ country: c.country, region: c.region, label: c.city, count: Number(c.c) })),
       flows: flows.map((f) => ({ from: f.frm, to: f.to, count: Number(f.c) })),
-      series: hourlySeries || series.map((s) => ({ day: s.day, count: Number(s.count), visitors: vs[new Date(s.day).toISOString()] || 0 })),
+      series: hourlySeries || dailySeries,
       compare,
     };
+  });
+
+  /**
+   * The daily series on its own, zero-filled — the input for the Trends view.
+   *
+   * A separate endpoint rather than a longer `days=` on /admin/analytics, because that one
+   * runs a dozen GROUP BYs over the raw event table to answer questions Trends never asks
+   * (top pages, referrers, devices, flows, geo). This is one PK-range read of the rollup, so
+   * asking it for a year costs about what asking that one for a month costs.
+   *
+   * The baseline maths stays on the CLIENT on purpose: the window and the drop sensitivity
+   * are controls somebody adjusts, and re-deriving a rolling mean over 365 numbers in the
+   * browser is instant where a refetch per adjustment is not.
+   */
+  app.get('/admin/analytics/trend', { preHandler: requireCap('manage_analytics') }, async (req) => {
+    const p = await db();
+    // 14 is the floor because a baseline needs history to be one: below two weeks, the
+    // "normal" a day gets compared against is mostly that same day.
+    const days = Math.min(Math.max(Number(req.query?.days) || 180, 14), 365);
+    const from = new Date(); from.setUTCHours(0, 0, 0, 0);
+    from.setUTCDate(from.getUTCDate() - (days - 1));
+    const rows = await p.analyticsDaily.findMany({ where: { day: { gte: from } }, orderBy: { day: 'asc' } });
+    const by = Object.fromEntries(rows.map((r) => [new Date(r.day).toISOString().slice(0, 10), r]));
+    // Zero-filled: a day with no traffic has no row, and that day is the whole point here.
+    const series = Array.from({ length: days }, (_, i) => {
+      const day = new Date(from.getTime() + i * 864e5).toISOString().slice(0, 10);
+      const r = by[day];
+      return { day, views: r ? r.views : 0, visitors: r ? r.visitors : 0 };
+    });
+    // `covered` is how many of those days the rollup actually knows about. Without it the
+    // client cannot tell "nobody visited in March" from "analytics was switched on in April",
+    // and it would flag the second as a crisis.
+    return { days, covered: rows.length, since: series[0]?.day || null, series };
   });
 
   // Real-user Web Vitals overview (Rybbit-style): overall percentiles per metric, an hourly
