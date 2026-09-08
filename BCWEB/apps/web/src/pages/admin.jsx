@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, useMemo, lazy, Suspense } from 'react';
 // The page builder pulls in the markdown renderer and the selection toolbar. An admin who
 // opened this screen to approve a submission must not download a page builder to do it.
 // The real landing page, for the home-page editor's preview. Lazy for the same reason the
