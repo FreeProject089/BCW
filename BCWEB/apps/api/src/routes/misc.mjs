@@ -1218,7 +1218,15 @@ export default async function miscRoutes(app) {
   });
 
   // ── SEO: dynamic sitemap (incl. Other Projects + blog posts) + robots.txt ──
-  app.get('/sitemap.xml', async (req, reply) => {
+  /**
+   * Everything the sitemap is made of, in one place.
+   *
+   * Extracted because the Scan below has to answer questions ABOUT this set — which
+   * exclusions match nothing, which added paths no route serves — and a second copy of the
+   * rules would drift from the file it claims to describe. A checker that disagrees with the
+   * thing it checks is worse than no checker.
+   */
+  async function sitemapModel() {
     const p = await db();
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
     // Every public page. Seven were missing — including /docs and /faq, which are the two
@@ -1261,11 +1269,82 @@ export default async function miscRoutes(app) {
       ...cat.map((c) => ({ loc: `${site}/item/${c.slug}`, lastmod: c.updatedAt })),
     ];
     const keep = urls.filter((u) => !exclude.has(u.loc.slice(site.length)));
+    return {
+      site, staticRoutes, extra, exclude, noindex, urls, keep,
+      slugs: { project: showcase.map((x) => x.slug), blog: posts.map((x) => x.slug), docs: docs.map((x) => x.slug), item: cat.map((x) => x.slug) },
+    };
+  }
+
+  app.get('/sitemap.xml', async (req, reply) => {
+    const { keep } = await sitemapModel();
     // Every <loc> is XML-escaped: slugs and admin-set extra paths are data, and an unescaped
     // `&` (or a crafted extra path) would corrupt the feed for every crawler or inject a <loc>.
     const xesc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${keep.map((u) => `  <url><loc>${xesc(u.loc)}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}</url>`).join('\n')}\n</urlset>`;
     return reply.header('Content-Type', 'application/xml').header('Cache-Control', 'public, max-age=3600').send(xml);
+  });
+
+  /**
+   * Scan the sitemap for the mistakes that are invisible from the file itself.
+   *
+   * The sitemap regenerates from the database on every request, so nothing here needs a
+   * "rebuild" — publish a post and it is listed. What CANNOT be seen by reading the file is
+   * everything that is missing from it on purpose but by accident:
+   *
+   *   • A dead exclusion. `seo.sitemapExclude` matches by exact path, so `/legal/refund`
+   *     silently excludes nothing while `/legal/refunds` stays listed. The admin believes a
+   *     page is hidden from search; it is not. Nothing said so — the save succeeded.
+   *   • An added path no route serves. `seo.sitemapExtra` is free text, so a typo advertises
+   *     a 404 to every crawler that reads the feed.
+   *   • A public page being hidden. Excluding is legitimate, but it should be a decision
+   *     somebody can see they made, not a line in a textarea they forgot.
+   *
+   * Checked against the SAME model the file is built from, never a second copy of the rules.
+   * This is a read; it changes nothing.
+   */
+  app.get('/admin/seo/sitemap/scan', { preHandler: requireRole('ADMIN') }, async () => {
+    const m = await sitemapModel();
+    const listed = new Set(m.keep.map((u) => u.loc.slice(m.site.length)));
+    // Every path the site can serve — static routes plus one per real row. This is what
+    // decides whether an added path is a page or a typo.
+    const servable = new Set([
+      ...m.staticRoutes,
+      ...m.slugs.project.map((x) => `/project/${x}`),
+      ...m.slugs.blog.map((x) => `/blog/${x}`),
+      ...m.slugs.docs.map((x) => `/docs/${x}`),
+      ...m.slugs.item.map((x) => `/item/${x}`),
+    ]);
+    // An exclusion is dead when it removes nothing: it matches no path the site can serve.
+    // Reported with the closest servable path, because the cause is almost always a typo and
+    // naming the near-miss turns a puzzle into a fix.
+    const near = (path) => {
+      const p2 = path.replace(/\/+$/, '');
+      let best = null;
+      for (const c of servable) {
+        if (c === p2) return null;
+        if (c.startsWith(p2) || p2.startsWith(c) || c.replace(/s$/, '') === p2.replace(/s$/, '')) { best = c; break; }
+      }
+      return best;
+    };
+    const deadExcludes = [...m.exclude]
+      .filter((path) => !servable.has(path))
+      .map((path) => ({ path, near: near(path) }));
+    const unservedExtras = m.extra.filter((path) => !servable.has(path));
+    const hiddenPages = m.staticRoutes.filter((r) => !listed.has(r));
+    return {
+      site: m.site,
+      total: m.keep.length,
+      groups: {
+        fixed: m.staticRoutes.filter((r) => listed.has(r)).length,
+        blog: m.slugs.blog.length, docs: m.slugs.docs.length,
+        item: m.slugs.item.length, project: m.slugs.project.length,
+        extra: m.extra.filter((r) => listed.has(r)).length,
+      },
+      deadExcludes,
+      unservedExtras,
+      hiddenPages,
+      ok: !deadExcludes.length && !unservedExtras.length,
+    };
   });
   app.get('/robots.txt', async (req, reply) => {
     const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');

@@ -16629,44 +16629,55 @@ function TrendsPanel() {
   return (
     <>
       {/* One control row, above everything it scopes — both charts, the KPI strip and the
-          table all re-derive from these. Not per-chart controls. */}
+          table all re-derive from these. Not per-chart controls.
+
+          A GRID, and no `hint` on any Field. It was a flex row with hints on two of the four,
+          and a hint renders above the control: those two dropdowns sat a line and a half
+          higher than their neighbours, `items-end` aligned the bottoms of boxes that were not
+          the same height, and the "more/less" toggles put two disclosure buttons in a row of
+          four selects. Four cells of identical shape line up by construction, and the two
+          explanations that earned their place are one sentence underneath. */}
       <Card className="p-3 sm:p-4 mb-4">
-        <div className="flex items-end gap-2 sm:gap-3 flex-wrap">
-          <Field label={t('an.tr.metric', 'Metric')} className="w-40">
-            <Dropdown value={metric} onChange={setMetric} options={[
-              { value: 'views', label: t('an.views', 'Views') },
-              { value: 'visitors', label: t('an.visitors', 'Visitors') },
-            ]} />
-          </Field>
-          <Field label={t('an.tr.range', 'History')} className="w-36">
-            <Dropdown value={String(range)} onChange={(v) => setRange(Number(v))} options={[
-              { value: '90', label: t('an.tr.r90', '90 days') },
-              { value: '180', label: t('an.tr.r180', '180 days') },
-              { value: '365', label: t('an.tr.r365', '1 year') },
-            ]} />
-          </Field>
-          <Field label={t('an.tr.window', 'Baseline window')} className="w-40"
-            hint={t('an.tr.window.h', 'The rolling median the line is compared against. Shorter reacts faster and cries wolf more.')}>
-            <Dropdown value={String(win)} onChange={(v) => setWin(Number(v))} options={[
-              { value: '7', label: t('an.tr.w7', '7-day') },
-              { value: '14', label: t('an.tr.w14', '14-day') },
-              { value: '30', label: t('an.tr.w30', '30-day') },
-            ]} />
-          </Field>
-          <Field label={t('an.tr.sens', 'Drop sensitivity')} className="w-52"
-            hint={t('an.tr.sens.h', 'How far below normal, for two days running, counts as an event.')}>
-            <Dropdown value={sens} onChange={setSens} options={[
-              { value: 'high', label: t('an.tr.sHigh', 'high (−15% / 2 days)') },
-              { value: 'medium', label: t('an.tr.sMed', 'medium (−25% / 2 days)') },
-              { value: 'low', label: t('an.tr.sLow', 'low (−40% / 2 days)') },
-            ]} />
-          </Field>
-          <div className="flex-1" />
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex-1">{t('an.tr.controls', 'What is being measured')}</span>
           <Button size="sm" variant={table ? 'primary' : 'ghost'} onClick={() => setTable((x) => !x)}
             title={t('an.tr.table.h', 'The same numbers, readable without the colours')}>
             <Archive size={14} /> {t('an.tr.table', 'Table')}
           </Button>
         </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+          <Field label={t('an.tr.metric', 'Metric')}>
+            <Dropdown className="w-full" value={metric} onChange={setMetric} options={[
+              { value: 'views', label: t('an.views', 'Views') },
+              { value: 'visitors', label: t('an.visitors', 'Visitors') },
+            ]} />
+          </Field>
+          <Field label={t('an.tr.range', 'History')}>
+            <Dropdown className="w-full" value={String(range)} onChange={(v) => setRange(Number(v))} options={[
+              { value: '90', label: t('an.tr.r90', '90 days') },
+              { value: '180', label: t('an.tr.r180', '180 days') },
+              { value: '365', label: t('an.tr.r365', '1 year') },
+            ]} />
+          </Field>
+          <Field label={t('an.tr.window', 'Baseline window')}>
+            <Dropdown className="w-full" value={String(win)} onChange={(v) => setWin(Number(v))} options={[
+              { value: '7', label: t('an.tr.w7', '7-day') },
+              { value: '14', label: t('an.tr.w14', '14-day') },
+              { value: '30', label: t('an.tr.w30', '30-day') },
+            ]} />
+          </Field>
+          <Field label={t('an.tr.sens', 'Drop sensitivity')}>
+            <Dropdown className="w-full" value={sens} onChange={setSens} options={[
+              { value: 'high', label: t('an.tr.sHigh', 'high (−15% / 2 days)') },
+              { value: 'medium', label: t('an.tr.sMed', 'medium (−25% / 2 days)') },
+              { value: 'low', label: t('an.tr.sLow', 'low (−40% / 2 days)') },
+            ]} />
+          </Field>
+        </div>
+        <p className="text-[11px] text-[var(--muted)] mt-2.5 leading-snug">
+          {t('an.tr.window.h2', 'Baseline window: the rolling median the line is compared against — shorter reacts faster and cries wolf more often.')}{' '}
+          {t('an.tr.sens.h2', 'Sensitivity: how far below normal, for two days running, counts as an event.')}
+        </p>
       </Card>
 
       {/* KPI strip. Trajectories compare two whole windows against each other, so a quiet
@@ -18760,6 +18771,16 @@ function SitemapCard() {
   const [urls, setUrls] = useState(null);
   const [extra, setExtra] = useState(''); const [exclude, setExclude] = useState(''); const [robots, setRobots] = useState('');
   const [busy, setBusy] = useState(false); const [q, setQ] = useState(''); const [openG, setOpenG] = useState(null);
+  const [scan, setScan] = useState(null); const [scanning, setScanning] = useState(false);
+  // The scan is a READ on the server, against the same model the file is built from. It has
+  // to be: the site is a single-page app, so fetching any path from here answers 200 with the
+  // shell — a client-side "does this URL work" check would pass for every typo ever made.
+  const runScan = async () => {
+    setScanning(true);
+    try { setScan(await api.get('/admin/seo/sitemap/scan')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setScanning(false); }
+  };
   const refresh = () => fetch('/sitemap.xml', { cache: 'no-store' })
     .then((r) => r.text())
     .then((x) => setUrls([...x.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1])))
@@ -18816,9 +18837,50 @@ function SitemapCard() {
         <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--primary-2)]" /> {t('sm.title', 'Sitemap')} {urls && <Badge>{t('sm.n', '{n} URLs').replace('{n}', urls.length)}</Badge>}</div>
         <a href="/sitemap.xml" target="_blank" rel="noreferrer" className="btn btn-sm">{t('sm.open', 'Open sitemap.xml')}</a>
         <a href="/robots.txt" target="_blank" rel="noreferrer" className="btn btn-sm">robots.txt</a>
+        <Button size="sm" onClick={runScan} disabled={scanning} title={t('sm.scan.h', 'Check the exclusions and added paths against what the site can actually serve')}>
+          {scanning ? <Spinner /> : <ShieldCheck size={13} />} {t('sm.scan', 'Scan')}
+        </Button>
         <Button size="sm" variant="ghost" onClick={refresh}><RefreshCw size={13} /></Button>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mb-3">{t('sm.sub', 'Built live from the published content: projects, posts, docs, catalogue items and the fixed pages. Add a path the router serves that this list cannot know, or leave one out. One per line.')}</p>
+      <p className="text-[11px] text-[var(--faint)] mb-3">{t('sm.sub2', 'Rebuilt from the database on every request — publish a post and it is listed, there is nothing to regenerate. Add a path the router serves that this list cannot know, or leave one out. One per line.')}</p>
+
+      {/* What reading the file cannot tell you.
+          An exclusion matches by EXACT path, so "/legal/refund" hides nothing while
+          "/legal/refunds" stays listed — and the save said "Saved". That mistake is invisible
+          in a textarea and invisible in the sitemap, because the evidence is a line that is
+          NOT there. Same for an added path no route serves: it advertises a 404 to every
+          crawler that reads the feed. */}
+      {scan && (
+        <div className={`rounded-xl border p-3 mb-3 text-xs ${scan.ok ? 'border-[var(--line)]' : 'border-warning-border'}`}>
+          <div className="flex items-center gap-2 mb-1.5">
+            {scan.ok ? <Check size={14} className="text-success" /> : <AlertTriangle size={14} className="text-warning" />}
+            <span className="font-semibold">{scan.ok ? t('sm.scan.ok', 'Nothing wrong with the list') : t('sm.scan.bad', 'The list is not doing what it was told')}</span>
+            <span className="text-[var(--faint)] tabular-nums">{t('sm.scan.n', '{n} URLs').replace('{n}', scan.total)}</span>
+          </div>
+          {scan.deadExcludes?.length > 0 && (
+            <div className="mb-1.5">
+              <div className="text-warning font-medium">{t('sm.scan.dead', 'Excluded, but no such page — so nothing is hidden:')}</div>
+              {scan.deadExcludes.map((d) => (
+                <div key={d.path} className="ps-3 text-[var(--muted)]">
+                  <code className="font-mono">{d.path}</code>
+                  {d.near && <> — {t('sm.scan.near', 'did you mean')} <button type="button" className="underline text-[var(--primary-2)]" onClick={() => setExclude(split(exclude).map((x) => (x === d.path ? d.near : x)).join('\n'))}><code className="font-mono">{d.near}</code></button>{t('sm.scan.near2', '? (still listed)')}</>}
+                </div>
+              ))}
+            </div>
+          )}
+          {scan.unservedExtras?.length > 0 && (
+            <div className="mb-1.5">
+              <div className="text-warning font-medium">{t('sm.scan.unserved', 'Added, but no route serves it — this offers a 404 to crawlers:')}</div>
+              <div className="ps-3 text-[var(--muted)] font-mono">{scan.unservedExtras.join(' · ')}</div>
+            </div>
+          )}
+          {scan.hiddenPages?.length > 0 && (
+            <div className="text-[var(--muted)]">
+              {t('sm.scan.hidden', 'Public pages you are keeping out of search:')} <code className="font-mono">{scan.hiddenPages.join(' · ')}</code>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* WHAT IS IN IT. The count alone meant knowing the file by heart to manage it, and
           typing a path exactly right to leave one out. */}
@@ -22897,13 +22959,18 @@ function AdminSettings() {
           CAPACITY is its own tab holding every gauge and every ceiling — the question "what is
           using the disk, and what stops it" has one place to be asked. The strip scrolls
           sideways rather than wrapping, because the admin column is narrow. */}
-      <div className="flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1 pb-1 mb-4">
+      {/* The same underlined strip Analytics, Web Vitals and the Plugins screen use. This was
+          the one sub-tab bar in the admin wearing rounded pills — so the only screen where
+          "where am I" is answered by a different shape, and the pills read as filter chips
+          (something you toggle) rather than as tabs (somewhere you are). The unsaved dot
+          stays: it is the one thing this strip has that the others do not need. */}
+      <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
         {HS_TABS.map((tb) => {
           const on = tab === tb.gk;
           return (
             <button key={tb.gk} type="button" onClick={() => setTab(tb.gk)}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12.5px] whitespace-nowrap transition-colors ${on ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`}>
-              <tb.icon size={13} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              className={`shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition ${on ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              <tb.icon size={14} className={on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
               {t(`hs.g.${tb.gk}`, tb.title)}
               {dirtyIn(tb.gk) > 0 && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('hs.tab.dirty', 'unsaved changes in this tab')} />}
             </button>
