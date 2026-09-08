@@ -11,6 +11,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key} from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
+// The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
+import { List } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Dropdown, Field, EmptyState, Spinner, Modal, ActionBar, ByteSize, formatBytes, useDialog, useToast, copyText, ColorInput } from '../ui/ui.jsx';
 import { AppLogo } from '../ui/brand.jsx';
 import Markdown, { IconGlyph, ShowcaseIcon } from '../ui/md.jsx';
@@ -19202,7 +19204,21 @@ const HS_ICON = { HardDrive, Newspaper, ShieldCheck, Receipt, Sliders, Globe, Cl
 const SETTINGS_GROUPS = HOSTING_SETTINGS_GROUPS.map((g) => ({ ...g, icon: HS_ICON[g.icon] || Sliders }));
 // The sub-tab strip. Same list, same order — the strip IS the groups, so a group added to
 // hosting-settings.js appears here without a second list to keep in step.
-const HS_TABS = SETTINGS_GROUPS.map((g) => ({ gk: g.gk, title: g.title, icon: g.icon }));
+//
+// Plus two tabs that hold CARDS rather than key rows, and one that holds everything.
+//
+// `tools` exists because the seed generator is a maintenance tool, not a setting, and it
+// used to render under every tab. `all` exists because splitting a long page into eight
+// tabs answers "where is this one thing" and takes away "show me the whole configuration",
+// which is what somebody handing over an install actually wants.
+const HS_CARD_TABS = [
+  { gk: 'tools', title: 'Maintenance & demo data', icon: Wand2 },
+];
+const HS_TABS = [
+  ...SETTINGS_GROUPS.map((g) => ({ gk: g.gk, title: g.title, icon: g.icon })),
+  ...HS_CARD_TABS,
+  { gk: 'all', title: 'All settings', icon: List },
+];
 const GROUP_DESC = HOSTING_GROUP_DESC;
 
 // GB<->MB conversion for the free-floor unit toggle — the stored setting value
@@ -23043,6 +23059,10 @@ function AdminSettings() {
   useEffect(() => { try { localStorage.setItem('bcw.hs.tab', tab); } catch { /* private mode */ } }, [tab]);
   const [freePoolOpen, setFreePoolOpen] = useState(false);
   const [tempOpen, setTempOpen] = useState(false);
+  // Searching crosses every tab on purpose. The tabs answer "where is this one thing" and
+  // that is only useful once you know which tab it is on; typing "blog" or "grace" or the
+  // setting key itself gets there without knowing.
+  const [q, setQ] = useState('');
   useEffect(() => { if (data?.settings) setDraft(data.settings); }, [data]);
   const coerce = (v, kind) => kind === 'bool' ? !!v : (v !== '' && !isNaN(Number(v)) ? Number(v) : v);
   const undoSaveOne = useUndoableSave(() => { reload(); cap.reload?.(); });
@@ -23070,7 +23090,10 @@ function AdminSettings() {
   // is off screen, with nothing saying where.
   const KEYS_BY_GROUP = {};
   SETTINGS_GROUPS.forEach((g) => { KEYS_BY_GROUP[g.gk] = g.keys.map(([k]) => k); });
-  const dirtyIn = (gk) => dirtyKeys.filter((k) => (KEYS_BY_GROUP[gk] || []).includes(k)).length;
+  // `all` holds every key, so it carries the total — otherwise the one tab that shows
+  // everything would be the one tab with no unsaved marker. `tools` holds cards and no
+  // settings, so it correctly has none.
+  const dirtyIn = (gk) => (gk === 'all' ? dirtyKeys.length : dirtyKeys.filter((k) => (KEYS_BY_GROUP[gk] || []).includes(k)).length);
 
   const undoSaveAll = useUndoableSave(() => { reload(); cap.reload?.(); });
   const saveAll = () => {
@@ -23084,6 +23107,24 @@ function AdminSettings() {
        { onSettled: () => setBusy(null),
          errorFor: (x) => x.data?.error === 'exceeds_disk' ? t('hs.exceedsdisk', `Exceeds the real disk capacity (${x.data.diskGB} GB max).`).replace('{n}', x.data.diskGB) : (x.data?.error || t('common.failed', 'Failed.')) });
   };
+  // What is on screen: the search wins over the tab, `all` shows every group, otherwise the
+  // one tab. A group whose keys all fail the search is dropped entirely rather than left as
+  // an empty header — an empty group reads as "nothing configured here".
+  const needle = q.trim().toLowerCase();
+  const searching = needle.length > 0;
+  const matches = (k, label, desc) =>
+    k.toLowerCase().includes(needle)
+    || t(`hs.l.${k}`, label).toLowerCase().includes(needle)
+    || t(`hs.d.${k}`, desc).toLowerCase().includes(needle);
+  const visibleGroups = SETTINGS_GROUPS
+    .filter((g) => searching || tab === 'all' || g.gk === tab)
+    .map((g) => (searching ? { ...g, keys: g.keys.filter(([k, label, desc]) => matches(k, label, desc)) } : g))
+    .filter((g) => g.keys.length > 0);
+  const matchCount = visibleGroups.reduce((n, g) => n + g.keys.length, 0);
+  // The cards are not key rows, so the search cannot filter them; they step aside while it
+  // is running rather than sitting under a result count that does not describe them.
+  const showCards = (gk) => !searching && (tab === gk || tab === 'all');
+
   const c = cap.data?.capacity;
   const tempPct = c?.tempMarginGB ? Math.min(100, (c.tempUsedGB / c.tempMarginGB) * 100) : 0;
   return (
@@ -23115,7 +23156,20 @@ function AdminSettings() {
           "where am I" is answered by a different shape, and the pills read as filter chips
           (something you toggle) rather than as tabs (somewhere you are). The unsaved dot
           stays: it is the one thing this strip has that the others do not need. */}
-      <div className="flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
+      {/* On a phone the strip was ten tabs behind a sideways swipe with nothing saying how
+          many were off-screen, so the tabs past "Pricing" were effectively invisible. A
+          native select shows the whole list at once, in the picker the phone already has,
+          and marks which tabs hold unsaved edits. */}
+      <div className="sm:hidden mb-3">
+        <Select value={tab} onChange={(e) => setTab(e.target.value)} aria-label={t('hs.tab.pick', 'Settings section')}>
+          {HS_TABS.map((tb) => (
+            <option key={tb.gk} value={tb.gk}>
+              {t(`hs.g.${tb.gk}`, tb.title)}{dirtyIn(tb.gk) > 0 ? ` \u00b7 ${t('hs.tab.dirtyn', '{n} unsaved').replace('{n}', dirtyIn(tb.gk))}` : ''}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="hidden sm:flex gap-1 mb-4 border-b border-[var(--line)] overflow-x-auto no-scrollbar -mx-1 px-1">
         {HS_TABS.map((tb) => {
           const on = tab === tb.gk;
           return (
@@ -23128,7 +23182,23 @@ function AdminSettings() {
           );
         })}
       </div>
-      {tab === 'capacity' && (<>
+      {/* One box, every tab. Matches the label, the description AND the setting key, because
+          an admin who arrived from the API or a support thread has the key and not the
+          label. While it has text, the tabs stop deciding what is on screen. */}
+      <div className="mb-4 relative">
+        <Search size={14} className="absolute start-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
+        <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder={t('hs.search', 'Search every setting \u2014 name, description or key')} />
+        {q && <button type="button" onClick={() => setQ('')} className="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-[var(--faint)] hover:text-[var(--text)]" aria-label={t('common.clear', 'Clear')}><X size={14} /></button>}
+      </div>
+      {searching && (
+        <div className="text-xs text-[var(--muted)] mb-3">
+          {matchCount === 0
+            ? t('hs.search.none', 'No setting matches \u201c{q}\u201d.').replace('{q}', q)
+            : t('hs.search.n', '{n} setting(s) across {g} section(s).').replace('{n}', matchCount).replace('{g}', visibleGroups.length)}
+        </div>
+      )}
+      {showCards('capacity') && (<>
       {/* At-a-glance stacked bar of the WHOLE Total capacity — where every GB goes
           (hosting quotas, approved submissions, temp margin, reserved, free) plus the
           separately-tracked free-plan pool. */}
@@ -23209,9 +23279,12 @@ function AdminSettings() {
       {/* Discord bot member-storage cap — same screen as every other service cap, even
           though it lives in the bot.config blob rather than a flat AdminSetting. */}
       <DiscordStorageCapCard />
+      {/* A storage ceiling like every other one on this tab. It used to render under all
+          eight tabs, which is most of why this screen felt long. */}
+      <FeedbackStorageCard />
       </>)}
       <div className="space-y-5">
-        {SETTINGS_GROUPS.filter((g) => g.gk === tab).map((g) => {
+        {visibleGroups.map((g) => {
           // Always open. The collapse was how you skipped past a group in a single long
           // scroll; the tab already did the skipping, and a persisted `collapsed` entry would
           // have opened a freshly-picked tab onto nothing but its own header.
@@ -23269,17 +23342,24 @@ function AdminSettings() {
           );
         })}
       </div>
-      {/* Not a row in the table above: this one is a LIST an admin builds, not a single
-          value, so it cannot be a key/label/type entry like the rest. The whole-site
-          default preview now lives at the top of this same card. */}
-      <div className="mt-8 space-y-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hs.seo.section', 'Search engines, feedback storage, seeds')}</div>
-        <SeoHealthCard />
-        <SitemapCard />
-        <SeoPagesCard />
-        <FeedbackStorageCard />
-        <SeedGeneratorCard />
-      </div>
+      {/* Not rows in the table above: these are LISTS an admin builds and tools an admin
+          runs, so they cannot be key/label/type entries like the rest. They belong to a tab
+          all the same \u2014 rendering them under every one is what made picking a two-field
+          group still mean scrolling past the sitemap scanner. */}
+      {showCards('seo') && (
+        <div className="mt-8 space-y-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hs.seo.section2', 'Search engines & indexing')}</div>
+          <SeoHealthCard />
+          <SitemapCard />
+          <SeoPagesCard />
+        </div>
+      )}
+      {showCards('tools') && (
+        <div className="mt-8 space-y-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hs.tools.section', 'Maintenance & demo data')}</div>
+          <SeedGeneratorCard />
+        </div>
+      )}
     </div>
   );
 }
