@@ -29,13 +29,13 @@ export function newsletterHtml({ title, body, url, unsubUrl }) {
   const footer = `<p class="bc-faint bc-hr" style="font-size:12px;color:#918a80;margin:28px 0 0;padding-top:18px;border-top:1px solid #eae4da">You receive this because you subscribed to BetterCommunity updates. <a href="${unsubUrl}" style="color:#c2410c">Unsubscribe in one click</a>.</p>`;
   // Body may contain markdown (incl. BetterCommunity custom blocks) — render it to HTML.
   const safeBody = mdToEmailHtml(body);
-  return mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined);
+  return mailShell(escapeHtml(title), safeBody + footer, url ? { url, label: 'Read on the blog' } : undefined, { mailId: 'newsletter' });
 }
 
 export async function sendNewsletterTo(sub, { subject, title, body, url }) {
   const unsubUrl = `${SITE_URL}/api/newsletter/unsubscribe?token=${sub.unsubToken}`;
   return sendMail({
-    to: sub.email, subject,
+    to: sub.email, mailId: 'newsletter', subject,
     html: newsletterHtml({ title, body, url, unsubUrl }),
     headers: { 'List-Unsubscribe': `<${unsubUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
   }).catch(() => false);
@@ -115,6 +115,7 @@ export default async function newsletterRoutes(app) {
       const fr = locale === 'fr';
       await sendMail({
         to: email,
+        mailId: 'newsletter-confirm',
         subject: fr ? 'Confirme ton inscription à la newsletter' : 'Confirm your newsletter subscription',
         html: mailShell(
           fr ? 'Confirme ton inscription' : 'Confirm your subscription',

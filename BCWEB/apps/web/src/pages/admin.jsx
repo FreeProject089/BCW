@@ -7469,6 +7469,9 @@ function MailGallery({ t }) {
                           uniform and the difference is only discovered after typing. */}
                       {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}
                         title={data?.templates?.[s.id] ? t('adm.mail.tpl.on', 'edited') : t('adm.mail.tpl.can', 'you can change this wording')} />}
+                      {/* Not a mail at all — worth its own mark, because "you cannot edit it"
+                          and "nobody receives it" are different facts about a row. */}
+                      {s.notifyOnly && <Bell size={11} className="text-[var(--faint)]" title={t('adm.mail.tpl.notifyShort', 'in-app notification, not an e-mail')} />}
                     </button>
                   ))}
                 </div>
@@ -7491,10 +7494,12 @@ function MailGallery({ t }) {
                 {hasSaved && <Badge tone="amber">{t('adm.mail.tpl.on', 'edited')}</Badge>}
               </div>
               {!current.editable ? (
-                // Said plainly rather than by a disabled box with no explanation. This mail's
-                // sender does not pass its id yet, so anything typed here would change the
-                // preview and nothing else.
-                <p className="text-[12px] text-[var(--muted)]">{t('adm.mail.tpl.locked', 'Preview only for now — this mail’s sender does not carry its id, so wording saved here would change this screen and not the message. The ones you can edit are marked in the list.')}</p>
+                // Said plainly rather than by a disabled box with no explanation. Two different
+                // reasons, and they are not the same problem: one is a mail nothing sends by
+                // e-mail at all, the other is a sender that does not yet name itself.
+                <p className="text-[12px] text-[var(--muted)]">{current.notifyOnly
+                  ? t('adm.mail.tpl.notify', 'This one is not an e-mail. It is raised in the notification centre and stops there, so there is no message to word — the preview shows what an e-mail would look like if it were ever sent.')
+                  : t('adm.mail.tpl.locked', 'Preview only for now — this mail’s sender does not carry its id, so wording saved here would change this screen and not the message. The ones you can edit are marked in the list.')}</p>
               ) : (
                 <>
                   <Field label={t('adm.mail.tpl.subject', 'Subject')}>

@@ -6206,6 +6206,8 @@ const DICT = {
     'adm.mail.tpl.reset': 'Retour au texte d’origine.',
     'adm.mail.tpl.revert': 'Revenir au texte d’origine',
     'adm.mail.tpl.notedit': 'Ce mail est en aperçu seulement — son expéditeur ne porte pas encore d’identifiant, donc un texte enregistré ici ne servirait jamais.',
+    'adm.mail.tpl.notify': 'Ce n’est pas un e-mail. Il est levé dans le centre de notifications et s’arrête là : il n’y a pas de message à rédiger — l’aperçu montre ce à quoi un e-mail ressemblerait s’il était envoyé un jour.',
+    'adm.mail.tpl.notifyShort': 'notification interne, pas un e-mail',
     'adm.mail.tpl.locked': 'Aperçu seulement pour l’instant — l’expéditeur de ce mail ne porte pas son identifiant, donc un texte enregistré ici changerait cet écran et pas le message. Ceux que tu peux modifier sont marqués dans la liste.',
     // Stockage — les exports côté serveur, gardés selon ce qu’ils contiennent
     'as.exp.areas': 'Totaux', 'as.exp.repos': 'Dépôts hébergés',

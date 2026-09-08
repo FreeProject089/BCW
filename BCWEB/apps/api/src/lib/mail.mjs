@@ -79,6 +79,28 @@ export function mailSubject(mailId, fallback) {
   return raw.replace(/\{\{\s*subject\s*\}\}/g, String(fallback ?? ''));
 }
 
+/**
+ * The mail being previewed, while it is being previewed.
+ *
+ * The samples build themselves by calling mailShell directly, with whatever arity each needs
+ * — two arguments, three, sometimes four. Threading an options object through all of them to
+ * tell the shell which mail it is would be twenty-six hand edits of varying shape, and a
+ * mistake in any one of them shows up as a preview quietly rendering the BUILT-IN wording
+ * while the real mail carries the admin's, which is the exact disagreement this feature
+ * exists to remove.
+ *
+ * So the preview names the mail for the duration of one synchronous build instead. It relies
+ * on precisely that: every sample's build() returns a string without awaiting, so nothing can
+ * interleave. `finally` clears it even when a build throws, and a real send never reads it —
+ * a sender passes its own `mailId` and that always wins.
+ */
+let _previewing = null;
+export function withMailId(id, fn) {
+  const prev = _previewing;
+  _previewing = id;
+  try { return fn(); } finally { _previewing = prev; }
+}
+
 /** Apply a body override. `{{body}}` is the built-in, already-interpolated body. */
 function applyBodyTemplate(mailId, bodyHtml) {
   const t = mailTemplate(mailId);
@@ -363,7 +385,7 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   const wrapped = /^\s*</.test(String(bodyHtml || '')) ? bodyHtml : `<p style="margin:0 0 14px">${bodyHtml}</p>`;
   // The admin's wording, if there is any for this mail. Applied AFTER the plain-prose wrap so
   // an override always receives well-formed HTML in {{body}}, whatever the sender passed.
-  const body = applyBodyTemplate(opts.mailId, wrapped);
+  const body = applyBodyTemplate(opts.mailId || _previewing, wrapped);
   // The inbox preview line. Without one, clients grab whatever text comes first — which
   // here is the footer's copyright, so every message previewed as "© 2026 BetterCommunity".
   // Hidden in the body itself: there is no other way to set it.

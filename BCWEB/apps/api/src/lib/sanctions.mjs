@@ -104,7 +104,7 @@ export async function mailSanction(p, s) {
   await notify(p, s.userId, 'account_sanction', `${what} — reference ${s.code}. ${s.reason}`).catch(() => {});
   if (!emailEnabled()) return false;
   await sendMail({
-    to: u.email, subject: `[${s.code}] ${what}`,
+    to: u.email, mailId: 'sanction', subject: `[${s.code}] ${what}`,
     html: mailShell(what, body, { url: `${SITE_URL}/sanctions/${s.code}`, label: 'Read it and contest' }),
     text,
   });

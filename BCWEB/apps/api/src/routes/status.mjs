@@ -192,8 +192,10 @@ export default async function statusRoutes(app) {
     const link = `${SITE}/api/status/confirm/${row.confirmToken}`;
     await sendMail({
       to: email,
+      mailId: 'status',
       subject: 'Confirm your BetterCommunity status alerts',
       html: mailShell('Confirm your status alerts',
+
         `<p>You asked to be told when a BetterCommunity service goes down, and when it comes back.</p>
          <p><a href="${escapeHtml(link)}">Confirm</a></p>
          <p>If this was not you, ignore this message — nothing was subscribed.</p>`),

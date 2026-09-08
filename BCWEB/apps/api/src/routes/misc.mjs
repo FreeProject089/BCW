@@ -1621,10 +1621,15 @@ export default async function miscRoutes(app) {
         ? 'This one needs your agreement before you continue using your account. Nothing happens to your account in the meantime.'
         : 'The previous version stays available, so you can read exactly what you agreed to before.',
     ].filter(Boolean).join('\n\n');
+    // Two mails, one sender: the id is chosen by the same flag the wording is, so "a policy
+    // changed" and "a policy needs your agreement" stay two things an admin can word
+    // separately — which they must, because only one of them is asking for something.
+    const mailId = version.requiresAcceptance ? 'legal-reaccept' : 'legal-changed';
     const html = mailShell(subject, body,
-      site ? { url: `${site}/legal/${doc}`, label: version.requiresAcceptance ? 'Review and accept' : 'Read the new version' } : null);
+      site ? { url: `${site}/legal/${doc}`, label: version.requiresAcceptance ? 'Review and accept' : 'Read the new version' } : null,
+      { mailId });
     for (const u of users) {
-      await sendMail({ to: u.email, subject, html }).catch(() => {});
+      await sendMail({ to: u.email, mailId, subject, html }).catch(() => {});
     }
   }
 
@@ -2394,7 +2399,7 @@ export default async function miscRoutes(app) {
    */
   app.get('/admin/mail/gallery', { preHandler: requireRole('ADMIN') }, async () => ({
     groups: MAIL_GROUPS,
-    samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null, editable: !!s.editable })),
+    samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null, editable: !!s.editable, notifyOnly: !!s.notifyOnly })),
     // What an admin has already written, so the editor opens on their text rather than
     // on a blank box that looks like nothing was ever saved.
     templates: await (async () => { const p = await db(); const r = await p.adminSetting.findUnique({ where: { key: 'mail.templates' } }).catch(() => null); return (r?.value && typeof r.value === 'object') ? r.value : {}; })(),

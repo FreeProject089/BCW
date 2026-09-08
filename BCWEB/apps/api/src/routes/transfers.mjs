@@ -179,6 +179,7 @@ export default async function transferRoutes(app) {
       { href: '/dashboard#transfers' }).catch(() => {});
     await mail(app, 'transfer-offer', {
       to: to.email,
+      mailId: 'transfer-offer',
       subject,
       html: mailShell(subject, `
         <p><b>${escapeHtml(from?.displayName || 'Someone')}</b> would like to transfer the ${what}
@@ -288,7 +289,7 @@ export default async function transferRoutes(app) {
     await notify(p, tr.fromUserId, 'Transfer accepted', `${me?.displayName || 'They'} accepted "${tr.targetName}". It is no longer yours.`).catch(() => {});
     if (from?.email) {
       const subject = `"${tr.targetName}" has been transferred`;
-      await mail(app, 'transfer-accepted', { to: from.email, subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject });
+      await mail(app, 'transfer-accepted', { to: from.email, mailId: 'transfer-accepted', subject, html: mailShell(subject, `<p><b>${escapeHtml(me?.displayName || 'The recipient')}</b> accepted the transfer of <b>${escapeHtml(tr.targetName)}</b>. It now belongs to them and no longer appears in your dashboard.</p>`), text: subject });
     }
     return { ok: true };
   });
@@ -408,6 +409,7 @@ export default async function transferRoutes(app) {
         const subject = `Your transfer of "${tr.targetName}" was declined`;
         await mail(app, 'transfer-declined', {
           to: from.email,
+          mailId: 'transfer-declined',
           subject,
           html: mailShell(subject, `
             <p><b>${escapeHtml(name)}</b> declined the transfer of <b>${escapeHtml(tr.targetName)}</b>.

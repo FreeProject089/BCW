@@ -55,6 +55,9 @@ export async function notifyStatusChange(p, dep, kind, since = null) {
         try {
             await sendMail({
                 to: s.target,
+                // "is down" and "is back" are the same message with the other wording — one
+                // id, so an admin styles the pair rather than half of it.
+                mailId: 'status-down',
                 subject,
                 html: mailShell(subject, `${line}
           <p><a href="${escapeHtml(`${SITE}/status`)}">See the status page</a></p>

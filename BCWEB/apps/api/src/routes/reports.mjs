@@ -43,10 +43,18 @@ const msgInput = z.object({
   images: z.array(imageUrl).max(12).optional().default([]),
 });
 
-async function mailReport(p, to, subject, line, reportId) {
+/**
+  * One shell, five different notices — so the gallery id is an ARGUMENT.
+  *
+  * "A user opened a report", "a moderator replied to yours" and "yours was archived" go to
+  * different people for different reasons; they share a layout and nothing else. A literal id
+  * here would have made all five one editable mail, and rewording the reply would have
+  * silently reworded the one sent to staff.
+  */
+async function mailReport(p, to, subject, line, reportId, mailId) {
   if (!emailEnabled() || !to) return;
   const cta = { label: 'View the conversation', url: `${SITE_URL}/dashboard?s=reports&r=${reportId}` };
-  await sendMail({ to, subject, html: mailShell(subject, `<p>${line}</p>`, cta), text: `${line}\n\n${cta.url}` }).catch(() => {});
+  await sendMail({ to, mailId, subject, html: mailShell(subject, `<p>${line}</p>`, cta, { mailId }), text: `${line}\n\n${cta.url}` }).catch(() => {});
 }
 
 const reportPublic = (r) => ({
@@ -130,7 +138,7 @@ export default async function reportRoutes(app) {
       notify(p, s.id, 'report_new', `New report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`).catch(() => {});
     }
     // Email the first staff member (best-effort) so an open report is never silent.
-    if (staff[0]) mailReport(p, staff[0].email, 'New report opened', `A user opened a report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`, report.id);
+    if (staff[0]) mailReport(p, staff[0].email, 'New report opened', `A user opened a report on ${b.data.targetType}${b.data.targetLabel ? ` "${b.data.targetLabel}"` : ''}.`, report.id, 'report-new');
     return reply.code(201).send({ report: reportPublic(report) });
   });
 
@@ -256,7 +264,7 @@ export default async function reportRoutes(app) {
       update: { role: b.data.role },
     });
     notify(p, user.id, 'report_added', 'You were added to a report conversation.').catch(() => {});
-    mailReport(p, user.email, 'You were added to a conversation', 'A moderator added you to a report conversation.', r.id);
+    mailReport(p, user.email, 'You were added to a conversation', 'A moderator added you to a report conversation.', r.id, 'report-added');
     return { ok: true, userId: user.id, name: user.displayName };
   });
 
@@ -340,7 +348,7 @@ export default async function reportRoutes(app) {
     // A staff reply reopens an archived thread and flags the reporter (notif + email).
     await p.report.update({ where: { id: r.id }, data: { status: r.status === 'closed' ? 'closed' : 'open', archivedAt: r.status === 'closed' ? r.archivedAt : null, userUnread: true, lastActivityAt: new Date() } });
     notify(p, r.reporterId, 'report_reply', 'A staff member replied to your report.').catch(() => {});
-    mailReport(p, r.reporter?.email, 'Reply to your report', 'A staff member replied to your report.', r.id);
+    mailReport(p, r.reporter?.email, 'Reply to your report', 'A staff member replied to your report.', r.id, 'report-reply');
     publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     return { message: msgPublic({ ...m, author: null }) };
   });
@@ -397,7 +405,7 @@ export default async function reportRoutes(app) {
       const m = await p.reportMessage.create({ data: { reportId: r.id, authorId: req.user.uid, staff: true, body: note, images: [] } });
       await p.report.update({ where: { id: r.id }, data: { userUnread: true, lastActivityAt: new Date() } });
       notify(p, r.reporterId, 'report_reply', note).catch(() => {});
-      mailReport(p, r.reporter?.email, 'Your report was acted on', note, r.id);
+      mailReport(p, r.reporter?.email, 'Your report was acted on', note, r.id, 'report-acted');
       publishToThread('report', r.id, { type: 'message', message: msgPublic({ ...m, author: null }) });
     }
     // Handled, not deleted: archiving starts the same countdown as any other resolution, and
@@ -420,7 +428,7 @@ export default async function reportRoutes(app) {
     await p.report.update({ where: { id: r.id }, data });
     const actor = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
     await noteStatusChange(p, r, b.data.status, actor?.displayName || 'Staff');
-    if (b.data.status === 'archived') mailReport(p, r.reporter?.email, 'Your report was archived', 'Your report was archived. Reply any time to reopen it.', r.id);
+    if (b.data.status === 'archived') mailReport(p, r.reporter?.email, 'Your report was archived', 'Your report was archived. Reply any time to reopen it.', r.id, 'report-archived');
     return { ok: true };
   });
 
@@ -466,7 +474,9 @@ export async function sweepReports(p) {
       await p.report.update({ where: { id: r.id }, data: { status: 'archived', archivedAt: new Date() } });
       if (emailEnabled() && r.reporter?.email) {
         const cta = { label: 'View the conversation', url: `${SITE_URL}/dashboard?s=reports&r=${r.id}` };
-        sendMail({ to: r.reporter.email, subject: 'Your report was archived', html: mailShell('Your report was archived', '<p>No activity for a while, so your report was archived. Reply any time to reopen it.</p>', cta), text: `Your report was archived. Reply to reopen: ${cta.url}` }).catch(() => {});
+        // The sweeper's own archive notice — same mail as the moderator-triggered one above,
+        // so the same id: two wordings for one event is what an admin editing this is fixing.
+        sendMail({ to: r.reporter.email, mailId: 'report-archived', subject: 'Your report was archived', html: mailShell('Your report was archived', '<p>No activity for a while, so your report was archived. Reply any time to reopen it.</p>', cta), text: `Your report was archived. Reply to reopen: ${cta.url}` }).catch(() => {});
       }
     }
   }

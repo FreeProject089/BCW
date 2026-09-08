@@ -208,6 +208,7 @@ export default async function closureRoutes(app) {
     const subject = 'Your BetterCommunity account will close on ' + day;
     await sendMail({
       to: me.email,
+      mailId: 'closure',
       subject,
       html: mailShell('Your account is scheduled to close', `
         <p>We have scheduled <b>${escapeHtml(me.displayName || me.email)}</b> for closure on <b>${escapeHtml(day)}</b>.</p>
@@ -372,7 +373,10 @@ export default async function closureRoutes(app) {
       <p style="margin:22px 0"><a href="${escapeHtml(SITE)}${sanction ? `/sanctions/${escapeHtml(sanction.code)}` : '/contact'}"
          style="background:#6366f1;color:#fff;padding:11px 20px;border-radius:9px;text-decoration:none;font-weight:600">${sanction ? 'Read it and contest' : 'Contact us'}</a></p>`);
     let mailed = false;
-    try { mailed = (await sendMail({ to: target.email, subject, html, text: `Your account closes on ${day}. Reason: ${b.data.reason.trim()}` })) !== false; }
+    // Same mail as the one above, from the other direction (an admin closed it, not the
+    // owner) — so the same id: rewording one and not the other is how two notices about one
+    // event end up saying different things.
+    try { mailed = (await sendMail({ to: target.email, mailId: 'closure', subject, html, text: `Your account closes on ${day}. Reason: ${b.data.reason.trim()}` })) !== false; }
     catch { /* the closure stands; the notice is best-effort and the in-app one still lands */ }
     await notify(p, target.id, 'account_closure', `Your account is scheduled to close on ${day}${sanction ? ` (${sanction.code})` : ''}. Reason: ${b.data.reason.trim()}`).catch(() => {});
 

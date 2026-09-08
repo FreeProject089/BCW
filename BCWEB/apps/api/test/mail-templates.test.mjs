@@ -34,12 +34,28 @@ function senderFiles(dir = SRC, out = []) {
   return out;
 }
 
-// Ids as they appear at a call site: mailId: 'verify' in a sendMail argument object, and
-// { mailId: 'verify' } as mailShell's options.
+/**
+ * Which mails the senders actually name, in the two shapes that exist.
+ *
+ * DIRECT — `mailId: 'verify'`, the common case, and the one that can be matched exactly.
+ *
+ * INDIRECT — the id is a variable or a positional argument, because one sender serves several
+ * mails: sendLegalMail picks between 'legal-changed' and 'legal-reaccept' on the same flag its
+ * wording branches on, and mailReport is one helper behind five different report notices. A
+ * grep for `mailId: '…'` finds neither, and reporting those six as unwired would have been a
+ * red test pointing at working code.
+ *
+ * So a file that uses `mailId` at all also counts the sample ids it contains as literals. The
+ * looser half is deliberately gated on that: searching every file for `'status'` or
+ * `'newsletter'` would match prose, route names and enum values, and a FALSE PASS here — a
+ * mail reported as editable that is not — is the failure this whole file exists to prevent.
+ */
 const usedIds = new Set();
 for (const f of senderFiles()) {
   const src = readFileSync(f, 'utf8');
   for (const m of src.matchAll(/\bmailId:\s*'([a-z0-9-]+)'/g)) usedIds.add(m[1]);
+  if (!/\bmailId\b/.test(src)) continue;
+  for (const s of MAIL_SAMPLES) if (src.includes(`'${s.id}'`)) usedIds.add(s.id);
 }
 const sampleIds = new Set(MAIL_SAMPLES.map((s) => s.id));
 const editableIds = MAIL_SAMPLES.filter((s) => s.editable).map((s) => s.id);
@@ -65,11 +81,28 @@ describe('the wiring behind editable mails', () => {
     }
   });
 
-  test('a mail with no sender is preview-only, and does not pretend otherwise', () => {
+  test('a mail with a sender is not left flagged preview-only', () => {
     for (const s of MAIL_SAMPLES) {
       if (s.editable) continue;
-      assert.ok(!usedIds.has(s.id) || s.editable,
+      assert.ok(!usedIds.has(s.id),
         `${s.id} has a sender but is not flagged editable — the editor would refuse an edit that would in fact work`);
+    }
+  });
+
+  test('every sample is EITHER wired OR declared as not being an e-mail', () => {
+    // The gallery is titled "every mail we send". A sample that is neither wired nor marked
+    // `notifyOnly` is a message on that page that nothing sends — which is how
+    // `hosting-expiry` sat there as a renewal reminder nobody has ever had in their inbox.
+    const orphans = MAIL_SAMPLES.filter((s) => !s.editable && !s.notifyOnly).map((s) => s.id);
+    assert.deepEqual(orphans, [],
+      `these are on the "every mail we send" page and nothing sends them: ${orphans.join(', ')}`);
+  });
+
+  test('a notification-only sample really has no mail sender', () => {
+    // The flag is an admission, not an excuse: if somebody wires one later, this goes red and
+    // the flag has to come off with the same edit.
+    for (const s of MAIL_SAMPLES.filter((x) => x.notifyOnly)) {
+      assert.ok(!usedIds.has(s.id), `${s.id} is marked notification-only but a sender passes its id`);
     }
   });
 });

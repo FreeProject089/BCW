@@ -77,7 +77,7 @@ export default async function stripeWebhook(app) {
                     <p>You do not need a card. If you do not have an account yet, create one with this address and the code will be waiting.</p>
                     <p>It expires in a year.</p>`;
                   if (to && emailEnabled()) {
-                    await sendMail({ to, subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
+                    await sendMail({ to, mailId: 'gift-hosting', subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
                   } else if (l.gift.token.startsWith('bcid:')) {
                     // Resolved to an account so the code arrives in-app as well as by mail —
                     // a BC id names an account, and that account has an address on file.
@@ -87,7 +87,7 @@ export default async function stripeWebhook(app) {
                     const hit = users.find((u) => String(userBcId(u.id)).toUpperCase().replace(/[^A-Z0-9]/g, '').endsWith(body8));
                     if (hit) {
                       await notify(p, hit.id, 'promo_redeemed', `Somebody bought you ${plan.name} hosting. Your code: ${code.code}`, { href: '/hosting#redeem' }).catch(() => {});
-                      if (emailEnabled()) await sendMail({ to: hit.email, subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
+                      if (emailEnabled()) await sendMail({ to: hit.email, mailId: 'gift-hosting', subject, html: mailShell(subject, body, { url: `${process.env.SITE_URL || ''}/hosting#redeem`, label: 'Redeem it' }), text: `${subject}\n\n${code.code}` }).catch(() => {});
                     }
                   }
                   // Told to the GIVER too, with the code, so a gift that never arrives can be
