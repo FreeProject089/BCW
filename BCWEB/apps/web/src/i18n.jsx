@@ -6172,6 +6172,17 @@ const DICT = {
     'hosting.wl.done': 'Tu es sur la liste — on t’écrit dès que {n} Go se libèrent.',
     'hosting.wl.ahead': '{n} devant toi.',
     'hosting.wl.noreserve': 'Rien n’est réservé — le premier qui valide l’obtient.',
+    // Mails — modifier ce qui part vraiment
+    'adm.mail.tpl.h': 'Ton texte',
+    'adm.mail.tpl.on': 'modifié', 'adm.mail.tpl.can': 'tu peux changer ce texte',
+    'adm.mail.tpl.subject': 'Objet', 'adm.mail.tpl.body': 'Corps',
+    'adm.mail.tpl.subject.ph': 'Vide = on garde l’objet d’origine · {{subject}} l’insère',
+    'adm.mail.tpl.help': '{{body}} est le message construit par l’application — le nom, le lien, le montant. L’entourer garde tout ça ; le retirer remplace le message entièrement, ce qui est permis et reste une décision. Le HTML est gardé tel quel.',
+    'adm.mail.tpl.saved': 'Enregistré — c’est ce qui partira.',
+    'adm.mail.tpl.reset': 'Retour au texte d’origine.',
+    'adm.mail.tpl.revert': 'Revenir au texte d’origine',
+    'adm.mail.tpl.notedit': 'Ce mail est en aperçu seulement — son expéditeur ne porte pas encore d’identifiant, donc un texte enregistré ici ne servirait jamais.',
+    'adm.mail.tpl.locked': 'Aperçu seulement pour l’instant — l’expéditeur de ce mail ne porte pas son identifiant, donc un texte enregistré ici changerait cet écran et pas le message. Ceux que tu peux modifier sont marqués dans la liste.',
     // Stockage — les exports côté serveur, gardés selon ce qu’ils contiennent
     'as.exp.areas': 'Totaux', 'as.exp.repos': 'Dépôts hébergés',
     'as.exp.catalogs': 'Items de catalogue', 'as.exp.pending': 'Suppressions en attente',

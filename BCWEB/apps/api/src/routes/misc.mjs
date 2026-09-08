@@ -5,7 +5,7 @@ import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/
 import { shredUser } from '../lib/shred.mjs';
 import { recordErasure, emailHash as erasureEmailHash } from '../lib/erasure-log.mjs';
 import { SEED_SECTIONS, readSeedContent, generateSeedScript, listSeedItems } from '../lib/seed-export.mjs';
-import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml, setMailTemplates } from '../lib/mail.mjs';
 import { MAIL_SAMPLES, MAIL_GROUPS, renderSample } from '../lib/mail-samples.mjs';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
@@ -2394,8 +2394,53 @@ export default async function miscRoutes(app) {
    */
   app.get('/admin/mail/gallery', { preHandler: requireRole('ADMIN') }, async () => ({
     groups: MAIL_GROUPS,
-    samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null })),
+    samples: MAIL_SAMPLES.map((s) => ({ id: s.id, group: s.group, label: s.label, note: s.note || null, editable: !!s.editable })),
+    // What an admin has already written, so the editor opens on their text rather than
+    // on a blank box that looks like nothing was ever saved.
+    templates: await (async () => { const p = await db(); const r = await p.adminSetting.findUnique({ where: { key: 'mail.templates' } }).catch(() => null); return (r?.value && typeof r.value === 'object') ? r.value : {}; })(),
   }));
+
+  /**
+   * Change the wording of a mail this platform sends.
+   *
+   * Stored per id as `{ subject, body }`, and applied at SEND time by mail.mjs — not here and
+   * not in the preview, because a preview that renders the override through a different path
+   * than the sender is how a screen and a mailbox come to disagree. The preview below reads
+   * the same cache this writes.
+   *
+   * `{{body}}` is the built-in, already-interpolated body — the name, the reference, the plan,
+   * the amount. An override is a WRAPPER around it by default, which is what lets every one of
+   * these be re-worded without a single sender changing its strings. Dropping {{body}} is
+   * allowed; the editor says what it costs, because that is a decision and not a slip.
+   *
+   * Refused for a mail whose sender does not carry its id. Saving wording that would never be
+   * used is the exact lie this feature was built to remove.
+   */
+  app.put('/admin/mail/templates/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const sample = MAIL_SAMPLES.find((x) => x.id === req.params.id);
+    if (!sample) return reply.code(404).send({ error: 'unknown_mail' });
+    if (!sample.editable) return reply.code(409).send({ error: 'not_editable' });
+    const b = z.object({
+      subject: z.string().max(300).optional(),
+      body: z.string().max(20000).optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'bad_request' });
+
+    const p = await db();
+    const row = await p.adminSetting.findUnique({ where: { key: 'mail.templates' } }).catch(() => null);
+    const map = (row?.value && typeof row.value === 'object') ? { ...row.value } : {};
+    const subject = String(b.data.subject || '').trim();
+    const body = String(b.data.body || '').trim();
+    // Empty means "back to the built-in wording" — a stored empty string would be a template
+    // that renders an empty mail, which is not what clearing a box means.
+    if (!subject && !body) delete map[sample.id]; else map[sample.id] = { ...(subject ? { subject } : {}), ...(body ? { body } : {}) };
+
+    await p.adminSetting.upsert({ where: { key: 'mail.templates' }, create: { key: 'mail.templates', value: map }, update: { value: map } });
+    // Straight into the cache, so the next send uses it rather than waiting out the TTL.
+    setMailTemplates(map);
+    await logAudit(p, req.user.uid, 'mail.template', `${sample.id}${map[sample.id] ? '' : ' (cleared)'}`, clientIp(req));
+    return { ok: true, templates: map };
+  });
 
   app.get('/admin/mail/gallery/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const scheme = ['auto', 'light', 'dark'].includes(String(req.query?.scheme)) ? String(req.query.scheme) : 'auto';
@@ -2530,6 +2575,7 @@ export default async function miscRoutes(app) {
     const sent = await sendMail({
       to: u.email,
       subject: 'Reset your BetterCommunity password',
+      mailId: 'reset',
       html: mailShell('Reset your password', `<p>A member of the team started a password reset for your account. The link is valid for one hour.</p><p>If you did not ask for this, you can ignore this email — your current password still works.</p>`, { label: 'Choose a new password', url }),
       text: `Reset your password: ${url}`,
     }).catch(() => false);   // an SMTP failure must not 500 away a token already minted
@@ -2563,8 +2609,9 @@ export default async function miscRoutes(app) {
     // The owner is TOLD. A silent password change is indistinguishable from a compromise.
     await sendMail({
       to: u.email,
+      mailId: 'password-changed',
       subject: 'Your BetterCommunity password was changed',
-      html: mailShell('Your password was changed', '<p>An administrator set a new password on your account, and all your signed-in devices were signed out.</p><p>If you did not expect this, reply to this email immediately.</p>'),
+      html: mailShell('Your password was changed', '<p>An administrator set a new password on your account, and all your signed-in devices were signed out.</p><p>If you did not expect this, reply to this email immediately.</p>', undefined, { mailId: 'password-changed' }),
       text: 'An administrator set a new password on your account and signed out all your devices.',
     }).catch(() => {});
     return { ok: true };
@@ -2795,7 +2842,8 @@ export default async function miscRoutes(app) {
       // received the object itself and rendered as "[object Object]", and bodyHtml received
       // nothing and rendered as "undefined". The mail sent, the attachment was correct, and
       // the body said undefined: a GDPR data export that arrives looking broken.
-      html: mailShell('Your data', mdToEmailHtml(body)),
+      mailId: 'data-export',
+      html: mailShell('Your data', mdToEmailHtml(body), undefined, { mailId: 'data-export' }),
       text: body,
       attachments: [{ filename: `bettercommunity-data-${doc.subject.id}.json`, content: json, contentType: 'application/json' }],
     });
@@ -3031,6 +3079,7 @@ export default async function miscRoutes(app) {
       await logAudit(p, req.user.uid, 'user.reactivate', `${target.displayName} (${target.email})`, clientIp(req));
       await notify(p, target.id, 'account', 'Your account has been reactivated — welcome back.').catch(() => {});
       if (emailEnabled()) sendMail({ to: target.email, subject: 'Your BetterCommunity account has been reactivated',
+        mailId: 'reactivated',
         html: mailShell('Account reactivated', `<p>Hi ${escapeHtml(target.displayName)},</p><p>Your account has been reactivated. You can sign in again.</p>`, { url: `${SITE_URL}/auth`, label: 'Sign in' }),
         text: `Your BetterCommunity account has been reactivated. Sign in: ${SITE_URL}/auth` }).catch(() => {});
       return { ok: true, status: 'active' };
@@ -3112,7 +3161,7 @@ export default async function miscRoutes(app) {
     clearUserCache(target.id); // any live 2FA-gated admin session re-evaluates within ~15s
     await logAudit(p, req.user.uid, 'user.2fa_reset', `${target.displayName} (${target.email})`, clientIp(req));
     await notify(p, target.id, 'account', 'An administrator reset the two-factor authentication on your account. 2FA is now OFF — please re-enable it from Settings.').catch(() => {});
-    if (emailEnabled()) sendMail({ to: target.email, subject: 'Two-factor authentication was reset on your BetterCommunity account',
+    if (emailEnabled()) sendMail({ to: target.email, mailId: 'twofa-reset', subject: 'Two-factor authentication was reset on your BetterCommunity account',
       html: mailShell('Two-factor authentication reset', `<p>Hi ${escapeHtml(target.displayName)},</p><p>An administrator has <b>reset the two-factor authentication</b> on your account — for example, to help you recover after losing your authenticator app. Two-factor is now <b>disabled</b>, so you can sign in with just your password.</p><p style="margin-top:12px">For your security, please sign in and re-enable two-factor authentication right away. If you did <b>not</b> request this, change your password immediately.</p>`, { url: `${SITE_URL}/settings`, label: 'Re-enable 2FA' }),
       text: `An administrator reset the two-factor authentication on your BetterCommunity account. 2FA is now disabled; sign in with your password and re-enable it: ${SITE_URL}/settings . If you did not request this, change your password immediately.` }).catch(() => {});
     return { ok: true, wasEnabled: true };

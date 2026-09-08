@@ -19,8 +19,9 @@ async function sendVerificationEmail(p, user) {
   const url = `${SITE_URL}/verify-email?token=${token}`;
   await sendMail({
     to: user.email,
+    mailId: 'verify',
     subject: 'Confirm your BetterCommunity email',
-    html: mailShell('Confirm your email', 'Welcome to BetterCommunity! Confirm your email address to finish securing your account. This link is valid for 24 hours.', { url, label: 'Confirm my email' }),
+    html: mailShell('Confirm your email', 'Welcome to BetterCommunity! Confirm your email address to finish securing your account. This link is valid for 24 hours.', { url, label: 'Confirm my email' }, { mailId: 'verify' }),
     text: `Confirm your BetterCommunity email: ${url}`,
   }).catch(() => {});
 }
@@ -196,8 +197,9 @@ export default async function authRoutes(app) {
       const url = `${SITE_URL}/auth?reset=${token}`;
       const sent = await sendMail({
         to: user.email,
+        mailId: 'reset',
         subject: 'Reset your BetterCommunity password',
-        html: mailShell('Reset your password', "We received a request to reset your password. This link is valid for 1 hour. If you didn't request it, you can safely ignore this email.", { url, label: 'Reset my password' }),
+        html: mailShell('Reset your password', "We received a request to reset your password. This link is valid for 1 hour. If you didn't request it, you can safely ignore this email.", { url, label: 'Reset my password' }, { mailId: 'reset' }),
         text: `Reset your BetterCommunity password: ${url}`,
       }).catch(() => false);
       if (!sent) devToken = token; // no email backend → return it so the dev flow still works

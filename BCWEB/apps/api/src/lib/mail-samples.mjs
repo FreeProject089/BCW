@@ -22,34 +22,43 @@ const link = (path) => `${SITE}${path}`;
  * The catalogue. Each entry knows its own group so the screen can lay them out the way a
  * reader thinks about them — "things that happen to my account", "things about money" — rather
  * than in the order the code happened to define them.
+ *
+ * `editable: true` means this mail's SENDER passes its id, so an admin's wording actually
+ * reaches the message. Anything without it is preview-only, and the screen says so.
+ *
+ * The flag is not decoration and it is not a promise: mail-templates.test.mjs greps the
+ * senders and fails if a sample claims to be editable without a sender carrying its id, or
+ * if a sender carries an id no sample declares. An editor that offers to change a mail it
+ * cannot change is the exact failure this whole feature exists to avoid — you would edit the
+ * text, the preview would show your version, and the real mail would go out unchanged.
  */
 export const MAIL_SAMPLES = [
     {
-        id: 'verify', group: 'account', label: 'Confirm your email',
+        id: 'verify', editable: true, group: 'account', label: 'Confirm your email',
         note: 'Sent on sign-up, and again from the account screen if it was never confirmed.',
-        build: () => mailShell('Confirm your email',
+        build: (o) => mailShell('Confirm your email',
             'Welcome to BetterCommunity. Confirm this address and your account is ready.',
-            { url: link('/auth/verify?token=EXAMPLE'), label: 'Confirm my email' }),
+            { url: link('/auth/verify?token=EXAMPLE'), label: 'Confirm my email' }, o),
     },
     {
-        id: 'reset', group: 'account', label: 'Reset your password',
+        id: 'reset', editable: true, group: 'account', label: 'Reset your password',
         note: 'Only ever sent to an address that asked. The link expires.',
-        build: () => mailShell('Reset your password',
+        build: (o) => mailShell('Reset your password',
             'Somebody asked to reset the password for this account. If that was not you, nothing has changed and you can ignore this.',
-            { url: link('/auth/reset?token=EXAMPLE'), label: 'Choose a new password' }),
+            { url: link('/auth/reset?token=EXAMPLE'), label: 'Choose a new password' }, o),
     },
     {
-        id: 'password-changed', group: 'account', label: 'Your password was changed',
+        id: 'password-changed', editable: true, group: 'account', label: 'Your password was changed',
         note: 'The one mail nobody asks for and everybody needs — it is how a stolen account is noticed.',
-        build: () => mailShell('Your password was changed',
+        build: (o) => mailShell('Your password was changed',
             'The password on your account was changed just now. If that was you, there is nothing to do. If it was not, reset it immediately and check your signed-in devices.',
-            { url: link('/auth/forgot'), label: 'Reset it now' }),
+            { url: link('/auth/forgot'), label: 'Reset it now' }, o),
     },
     {
-        id: 'twofa-reset', group: 'account', label: 'Two-factor authentication reset',
-        build: () => mailShell('Two-factor authentication reset',
+        id: 'twofa-reset', editable: true, group: 'account', label: 'Two-factor authentication reset',
+        build: (o) => mailShell('Two-factor authentication reset',
             'Two-factor authentication was turned off for your account. If you did not do this, your account may be compromised.',
-            { url: link('/settings'), label: 'Open my settings' }),
+            { url: link('/settings'), label: 'Open my settings' }, o),
     },
     {
         id: 'closure', group: 'account', label: 'Your account is scheduled to close',
@@ -59,16 +68,16 @@ export const MAIL_SAMPLES = [
             { url: link('/account/closure/cancel?token=EXAMPLE'), label: 'Keep my account' }),
     },
     {
-        id: 'reactivated', group: 'account', label: 'Account reactivated',
-        build: () => mailShell('Account reactivated',
+        id: 'reactivated', editable: true, group: 'account', label: 'Account reactivated',
+        build: (o) => mailShell('Account reactivated',
             'Your account is active again and everything you had is back where it was.',
-            { url: link('/'), label: 'Open BetterCommunity' }),
+            { url: link('/'), label: 'Open BetterCommunity' }, o),
     },
     {
-        id: 'data-export', group: 'account', label: 'Your data',
+        id: 'data-export', editable: true, group: 'account', label: 'Your data',
         note: 'A GDPR export. The archive rides as an attachment, which is why this mail must never look improvised.',
-        build: () => mailShell('Your data',
-            'Everything BetterCommunity holds about your account is attached as a single file. It contains personal data — keep it somewhere you would keep a bank statement.'),
+        build: (o) => mailShell('Your data',
+            'Everything BetterCommunity holds about your account is attached as a single file. It contains personal data — keep it somewhere you would keep a bank statement.', undefined, o),
     },
     {
         id: 'newsletter', group: 'content', label: 'Newsletter',
@@ -113,6 +122,14 @@ export const MAIL_SAMPLES = [
         build: () => mailShell('Your hosting ends in 7 days',
             'Your storage pool <b>"my-pool"</b> is paid until <b>1 September 2026</b>. After that its repos are suspended for 72 hours, then hidden. Renewing at any point puts everything back.',
             { url: link('/hosting'), label: 'Renew it' }),
+    },
+    {
+        id: 'hosting-waitlist', editable: true, group: 'billing', label: 'There is room for you now',
+        note: 'Sent once, to somebody who asked to be told when the disk had space for the size they wanted. It reserves nothing, and says so — the sweeper that sends it does not hold a slot either.',
+        build: (o) => mailShell('There is room for your 25 GB on BetterCommunity',
+            '<p>The space you asked about is free again: 25 GB.</p>'
+            + '<p>Nothing is reserved for you — whoever checks out first gets it, so it is worth going now.</p>',
+            { url: link('/hosting'), label: 'Go to hosting' }, o),
     },
     {
         id: 'legal-changed', group: 'account', label: 'A policy changed',
@@ -198,12 +215,12 @@ export const MAIL_SAMPLES = [
             { url: link('/dashboard?section=reports'), label: 'See the report' }),
     },
     {
-        id: 'staff-note', group: 'moderation', label: 'An action was taken on your account',
+        id: 'staff-note', editable: true, group: 'moderation', label: 'An action was taken on your account',
         note: 'Carries the reason given and the way to appeal. The erasure wording is a variant of this same mail.',
-        build: () => mailShell('An action was taken on your account',
+        build: (o) => mailShell('An action was taken on your account',
             '<p>Reason given:</p><blockquote>Repeated uploads of content that is not yours.</blockquote>'
             + '<p>If you think this is wrong, you can reply to this message.</p>'
-            + '<p>Write to <a href="mailto:appeals@example.com">appeals@example.com</a>.</p>'),
+            + '<p>Write to <a href="mailto:appeals@example.com">appeals@example.com</a>.</p>', undefined, o),
     },
     {
         id: 'gift-hosting', group: 'billing', label: 'Somebody bought you hosting',
@@ -231,7 +248,11 @@ export const MAIL_GROUPS = [
 export function renderSample(id, scheme = 'auto') {
     const s = MAIL_SAMPLES.find((x) => x.id === id);
     if (!s) return null;
-    const html = s.build();
+    // Its own id, so an editable sample is built through the same override the sender applies.
+    // Without this the screen would show the built-in wording while the mailbox got the
+    // admin's — a preview disagreeing with the thing it previews, which is what this gallery
+    // already was before the wording became editable.
+    const html = s.build({ mailId: s.id });
     // The shell writes its dark rules from `opts.scheme`, and the samples do not pass one —
     // so the switch is applied here, on the produced HTML, by swapping the media query for the
     // unconditional block. Same declarations either way: what you preview is what is sent.

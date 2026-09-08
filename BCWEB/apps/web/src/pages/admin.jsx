@@ -7379,20 +7379,50 @@ Everything you had is still yours; picking it back up takes a couple of minutes.
  * means nothing in a preview can run or navigate.
  */
 function MailGallery({ t }) {
+  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pick, setPick] = useState(null);
   const [scheme, setScheme] = useState('auto');
-  const { data } = useAsync(() => (open ? api.get('/admin/mail/gallery') : Promise.resolve(null)), [open]);
+  const { data, reload } = useAsync(() => (open ? api.get('/admin/mail/gallery') : Promise.resolve(null)), [open]);
   const [html, setHtml] = useState('');
+  // The admin's wording, per mail. `draft` is what is in the boxes; `saved` is what the
+  // server holds, so "Reset" knows what it is undoing and the buttons know when there is
+  // anything to do.
+  const [draft, setDraft] = useState({ subject: '', body: '' });
+  const [saving, setSaving] = useState(false);
+  const [bump, setBump] = useState(0);
 
   useEffect(() => {
     if (!pick) { setHtml(''); return; }
     api.get(`/admin/mail/gallery/${pick}?scheme=${scheme}`).then((r) => setHtml(r.html)).catch(() => setHtml(''));
-  }, [pick, scheme]);
+    // `bump` is what re-renders the preview after a save: the endpoint builds the sample
+    // through the same override the sender applies, so the picture updates because the mail
+    // changed — not because the screen was told to draw something else.
+  }, [pick, scheme, bump]);
 
   const groups = data?.groups || [];
   const samples = data?.samples || [];
   const current = samples.find((s) => s.id === pick);
+  const templates = data?.templates || {};
+  const saved = (pick && templates[pick]) || {};
+  useEffect(() => { setDraft({ subject: saved.subject || '', body: saved.body || '' }); }, [pick, data]);
+  const dirty = (draft.subject || '') !== (saved.subject || '') || (draft.body || '') !== (saved.body || '');
+  const hasSaved = !!(saved.subject || saved.body);
+
+  const saveTemplate = async (next) => {
+    if (!current?.editable) return;
+    setSaving(true);
+    try {
+      await api.put(`/admin/mail/templates/${current.id}`, next);
+      await reload();
+      setBump((n) => n + 1);
+      toast.success(next.subject || next.body ? t('adm.mail.tpl.saved', 'Saved — this is what will be sent.') : t('adm.mail.tpl.reset', 'Back to the built-in wording.'));
+    } catch (e) {
+      toast.error(e?.data?.error === 'not_editable'
+        ? t('adm.mail.tpl.notedit', 'This mail is preview-only — its sender does not carry an id yet, so wording saved here would never be used.')
+        : t('common.failed', 'Failed.'));
+    } finally { setSaving(false); }
+  };
 
   if (!open) {
     return (
@@ -7433,8 +7463,12 @@ function MailGallery({ t }) {
                 <div className="space-y-1">
                   {mine.map((s) => (
                     <button key={s.id} type="button" onClick={() => setPick(s.id)}
-                      className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
-                      {s.label}
+                      className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                      <span className="flex-1 min-w-0 truncate">{s.label}</span>
+                      {/* Which mails an edit would actually reach. Without this the list looks
+                          uniform and the difference is only discovered after typing. */}
+                      {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}
+                        title={data?.templates?.[s.id] ? t('adm.mail.tpl.on', 'edited') : t('adm.mail.tpl.can', 'you can change this wording')} />}
                     </button>
                   ))}
                 </div>
@@ -7445,6 +7479,45 @@ function MailGallery({ t }) {
 
         <div>
           {current?.note && <p className="text-[12px] text-[var(--muted)] mb-2">{current.note}</p>}
+          {/* The wording, edited where the mail is shown.
+              The preview above is built by the SAME path the sender uses, override included,
+              so what is on screen is what goes out. That is the whole reason this is not a
+              separate settings page: a template editor beside a preview that does not apply
+              it is how a screen and a mailbox come to disagree. */}
+          {current && (
+            <div className="rounded-xl border border-[var(--line)] p-3 mb-3">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex-1">{t('adm.mail.tpl.h', 'Your wording')}</span>
+                {hasSaved && <Badge tone="amber">{t('adm.mail.tpl.on', 'edited')}</Badge>}
+              </div>
+              {!current.editable ? (
+                // Said plainly rather than by a disabled box with no explanation. This mail's
+                // sender does not pass its id yet, so anything typed here would change the
+                // preview and nothing else.
+                <p className="text-[12px] text-[var(--muted)]">{t('adm.mail.tpl.locked', 'Preview only for now — this mail’s sender does not carry its id, so wording saved here would change this screen and not the message. The ones you can edit are marked in the list.')}</p>
+              ) : (
+                <>
+                  <Field label={t('adm.mail.tpl.subject', 'Subject')}>
+                    <Input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                      placeholder={t('adm.mail.tpl.subject.ph', 'Leave empty to keep the built-in subject · {{subject}} inserts it')} />
+                  </Field>
+                  <Field label={t('adm.mail.tpl.body', 'Body')}>
+                    <Textarea rows={5} className="font-mono !text-[12px]" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                      placeholder={'<p>Hi!</p>{{body}}<p>— the team</p>'} />
+                  </Field>
+                  <p className="text-[11px] text-[var(--muted)] mt-1.5 leading-snug">
+                    {t('adm.mail.tpl.help', '{{body}} is the message the app builds — the name, the link, the amount. Wrapping it keeps all of that; removing it replaces the message entirely, which is allowed and is a decision. HTML is kept as written.')}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2.5">
+                    <Button size="sm" variant="primary" disabled={!dirty || saving} onClick={() => saveTemplate(draft)}>
+                      {saving ? <Spinner /> : <Save size={13} />} {t('common.save', 'Save')}
+                    </Button>
+                    {hasSaved && <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setDraft({ subject: '', body: '' }); saveTemplate({ subject: '', body: '' }); }}>{t('adm.mail.tpl.revert', 'Back to the built-in wording')}</Button>}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {html ? (
             <iframe title={current?.label || 'mail'} sandbox="" srcDoc={html}
               className="w-full rounded-xl border border-[var(--line)]" style={{ height: 560, background: '#fff' }} />

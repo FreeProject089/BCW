@@ -13,6 +13,84 @@ function brandLogo() {
   return `<img src="${BRAND_LOGO_DATA_URI}" width="36" height="36" alt="BetterCommunity" style="border-radius:9px;display:block">`;
 }
 
+
+// ── Admin-editable wording ───────────────────────────────────────────────────────
+/**
+ * What an admin typed for a given mail, applied at SEND time.
+ *
+ * The problem this solves, and the shape of the answer.
+ *
+ * "Every mail we send" was a GALLERY: thirty samples that re-state the wording next to the
+ * senders that own it. Making that editable would have changed the preview and nothing else —
+ * you would edit the text, the screen would show your version, and the real mail would go out
+ * unchanged. That is the worst outcome available, so the override is read here, by the shell
+ * every mail is built with, and the preview renders through the same path.
+ *
+ * The second problem is that the bodies are INTERPOLATED before they reach this function —
+ * a name, a reference, a plan, an amount. A template that replaced the body wholesale would
+ * silently drop all of it. So the admin's text is a wrapper around `{{body}}`:
+ *
+ *     Hi! {{body}} — the BetterCommunity team
+ *
+ * keeps every real value, and needs no change in any of the thirty-five senders. Deleting
+ * {{body}} is allowed and is a decision, not an accident: the editor says what it costs.
+ *
+ * Cached, because mailShell is synchronous and a mail must not wait on a settings read. The
+ * cache is refreshed on a TTL and dropped the moment an admin saves, so an edit is visible on
+ * the next send rather than in five minutes.
+ */
+let _tpl = { at: 0, map: {} };
+const TPL_TTL_MS = 60_000;
+
+/** Replace the cached overrides. Called after a save, and by the loader. */
+export function setMailTemplates(map) {
+  _tpl = { at: Date.now(), map: (map && typeof map === 'object') ? map : {} };
+}
+/** Force the next mail to re-read them. */
+export function invalidateMailTemplates() { _tpl = { at: 0, map: _tpl.map }; }
+
+/** Read the overrides, at most once a minute. Never throws — a settings failure must not
+ *  stop a password reset going out. */
+export async function loadMailTemplates(p) {
+  if (Date.now() - _tpl.at < TPL_TTL_MS) return _tpl.map;
+  try {
+    const row = await p.adminSetting.findUnique({ where: { key: 'mail.templates' } });
+    setMailTemplates(row?.value && typeof row.value === 'object' ? row.value : {});
+  } catch { setMailTemplates(_tpl.map); }
+  return _tpl.map;
+}
+
+/** The override for one mail id, or null. */
+export function mailTemplate(id) {
+  const t = id ? _tpl.map[id] : null;
+  return (t && typeof t === 'object') ? t : null;
+}
+
+/**
+ * The subject a mail should carry: the admin's, or the one the sender computed.
+ *
+ * `{{subject}}` is the sender's — so "[BetterCommunity] {{subject}}" prefixes every one of a
+ * kind without retyping what each says. A template with no subject leaves it alone.
+ */
+export function mailSubject(mailId, fallback) {
+  const t = mailTemplate(mailId);
+  const raw = String(t?.subject || '').trim();
+  if (!raw) return fallback;
+  return raw.replace(/\{\{\s*subject\s*\}\}/g, String(fallback ?? ''));
+}
+
+/** Apply a body override. `{{body}}` is the built-in, already-interpolated body. */
+function applyBodyTemplate(mailId, bodyHtml) {
+  const t = mailTemplate(mailId);
+  const raw = String(t?.body || '').trim();
+  if (!raw) return bodyHtml;
+  // The admin's text is HTML on purpose (the editor says so and previews it) — this surface
+  // is ADMIN-only, behind the same role that can already set the site's theme CSS and send a
+  // broadcast to every address on file. Escaping it would make the feature useless: an
+  // override exists to add a paragraph, a link or a signature.
+  return raw.replace(/\{\{\s*body\s*\}\}/g, String(bodyHtml ?? ''));
+}
+
 let transporter = null;
 function tx() {
   if (transporter) return transporter;
@@ -29,7 +107,17 @@ export function emailEnabled() {
   return process.env.EMAIL_ENABLED === 'true' && !!process.env.SMTP_HOST;
 }
 
-export async function sendMail({ to, subject, html, text, headers, attachments }) {
+/**
+ * `mailId` is the mail's identity in the gallery — the key an admin's wording is stored
+ * under. Spelled distinctly because `id:` is everywhere in this codebase and a call site has
+ * to say what it means without the reader knowing which function they are looking at.
+ *
+ * Passed here as well as to mailShell because the subject is not part of the shell: the shell
+ * builds a body, and the subject is an argument to the transport. One id, applied in the two
+ * places the message is actually assembled.
+ */
+export async function sendMail({ to, subject, html, text, headers, attachments, mailId }) {
+  subject = mailSubject(mailId, subject);
   if (!emailEnabled()) return false;
   const from = process.env.SMTP_FROM || 'BetterCommunity <no-reply@localhost>';
   // `attachments` is forwarded explicitly. This function destructures its argument, so a
@@ -272,7 +360,10 @@ export function mailShell(title, bodyHtml, cta, opts = {}) {
   // A caller may pass plain prose rather than HTML (several do). Wrapping it gives that
   // text the same paragraph spacing as markdown-rendered bodies instead of a naked run
   // of text jammed against the heading.
-  const body = /^\s*</.test(String(bodyHtml || '')) ? bodyHtml : `<p style="margin:0 0 14px">${bodyHtml}</p>`;
+  const wrapped = /^\s*</.test(String(bodyHtml || '')) ? bodyHtml : `<p style="margin:0 0 14px">${bodyHtml}</p>`;
+  // The admin's wording, if there is any for this mail. Applied AFTER the plain-prose wrap so
+  // an override always receives well-formed HTML in {{body}}, whatever the sender passed.
+  const body = applyBodyTemplate(opts.mailId, wrapped);
   // The inbox preview line. Without one, clients grab whatever text comes first — which
   // here is the footer's copyright, so every message previewed as "© 2026 BetterCommunity".
   // Hidden in the body itself: there is no other way to set it.

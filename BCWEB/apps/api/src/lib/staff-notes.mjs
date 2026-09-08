@@ -84,7 +84,8 @@ export async function notifyAccountAction({ to, kind, reason, appealTo = null })
         await sendMail({
             to,
             subject: title,
-            html: mailShell(title, body),
+            mailId: 'staff-note',
+            html: mailShell(title, body, undefined, { mailId: 'staff-note' }),
             text: `${title}\n\nReason given:\n${reason}\n`,
         });
         return true;

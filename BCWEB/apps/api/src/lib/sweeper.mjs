@@ -483,6 +483,7 @@ export async function sweepHostingWaitlist(p, log) {
         try {
           await sendMail({
             to: w.email,
+            mailId: 'hosting-waitlist',
             subject,
             text: `${line}\n\n${caveat}\n\n${site}/hosting`,
             // POSITIONAL — (title, bodyHtml, cta). mail.mjs throws if you hand it an options
