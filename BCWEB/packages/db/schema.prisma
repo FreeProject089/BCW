@@ -3806,6 +3806,47 @@ model ProjectProduct {
   @@index([showcaseProjectId, active])
 }
 
+/// Who gets paid for the sales on one page.
+///
+/// The marketplace could always say what a seller was OWED — feeCents and netCents, written
+/// on every purchase — and had nowhere to send it. This is the missing half: a Stripe
+/// Connect account, so a sale can route the seller's share at the moment it is charged
+/// instead of accruing a debt on a spreadsheet.
+///
+/// Scoped by the SAME string the margin uses (`project:<key>` / `showcase:<id>`, see
+/// feeScopeOf). Not per product, because "who gets paid for this page" is one decision;
+/// not per user, because the page outlives whoever happened to connect the account.
+///
+/// The enabled flags are MIRRORED from Stripe's `account.updated` event and are never
+/// inferred here. An account exists from the instant onboarding starts and cannot take a
+/// charge until Stripe finishes its checks; treating "we created it" as "it works" is how a
+/// checkout starts failing for buyers with no visible cause.
+model MarketplaceSeller {
+  id              String   @id @default(cuid())
+  /// "project:<key>" or "showcase:<id>" — the same scope as the per-project margin.
+  scope           String   @unique
+  /// The Stripe Connect account (acct_…). Unique: one account cannot be the payee for two
+  /// pages, because then a payout cannot be attributed to either of them.
+  stripeAccountId String   @unique
+  /// Who connected it. Audit trail — this is the field that answers "who pointed this
+  /// project's revenue at that account", which is the question a theft would raise.
+  connectedById   String
+  /// Mirrored from Stripe. chargesEnabled is the one the checkout reads.
+  chargesEnabled   Boolean @default(false)
+  payoutsEnabled   Boolean @default(false)
+  detailsSubmitted Boolean @default(false)
+  country          String?
+  /// Why Stripe has disabled it, verbatim, so the admin screen can say something true
+  /// instead of "not ready".
+  disabledReason   String?
+  /// What Stripe is still waiting for. Shown as-is; the shape is Stripe's, not ours.
+  requirements     Json?
+  /// Last time the mirror above was refreshed from Stripe.
+  syncedAt         DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
 model ProjectKey {
   id          String         @id @default(cuid())
   productId   String
@@ -3831,6 +3872,12 @@ model ProjectProductPurchase {
   // what was true when the money moved, not from what the setting says today.
   feeCents   Int            @default(0)
   netCents   Int            @default(0)
+  // The connected account the seller's share was routed to AT THE SALE, or null when the
+  // money stayed with the platform — no payee on file, one Stripe had not enabled yet, or a
+  // sale that predates any of this. Recorded rather than looked up later for the same reason
+  // feeCents is: the payee can change, and what a payout report has to reconcile is where
+  // the money actually went.
+  sellerAccountId String?
   // Subscriptions: when the current term ends, and the Stripe subscription behind it.
   expiresAt   DateTime?
   stripeSubId String?

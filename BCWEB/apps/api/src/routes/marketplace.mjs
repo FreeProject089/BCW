@@ -137,6 +137,69 @@ export function splitFee(priceCents, feeBp) {
 }
 
 /**
+ * Where the money goes at the moment it is charged, or null to leave it with the platform.
+ *
+ * Until this existed the marketplace WROTE the split — feeCents and netCents on every
+ * purchase row — and moved none of it. Every cent landed in the platform's Stripe account
+ * and those two columns recorded a debt that nothing discharged. Fine while the seller is
+ * us; not fine the moment it is anybody else.
+ *
+ * This is a DESTINATION CHARGE: the buyer pays the platform, Stripe transfers the seller's
+ * share to their connected account, and the platform's cut stays behind as an application
+ * fee. The alternative — charging directly on the connected account — would put the
+ * customer, the price and the dispute on their side of the line, and this platform holds
+ * all three.
+ *
+ * Returns null in five cases, and the fallback in every one of them is the behaviour that
+ * existed before: the platform collects, the purchase records that it did, and somebody
+ * settles up by hand. A checkout that REFUSES because payouts are not configured would take
+ * the marketplace down for every first-party product on the site.
+ *
+ * The account not being enabled yet is the case worth naming. A connected account exists
+ * from the instant onboarding starts and cannot accept a charge until Stripe finishes its
+ * checks; routing to one fails the whole session, so the buyer cannot pay at all. Falling
+ * back is worse for the seller by a few days and better than a checkout that 500s.
+ *
+ * @param product  the row being sold — priceCents and billing are read
+ * @param seller   the connected account on file for its page, or null
+ * @param feeBp    the margin in basis points, from feeForProduct()
+ */
+export function connectChargeParams(product, seller, feeBp) {
+  const dest = seller?.stripeAccountId;
+  if (!dest || !seller?.chargesEnabled) return null;
+
+  const { feeCents, netCents } = splitFee(product?.priceCents, feeBp);
+  // Nothing to route. A free product has no charge to attach a destination to, and a 100%
+  // margin leaves the seller nothing — routing anyway would mint a destination transfer of
+  // zero and an application fee equal to the whole amount, on every sale, for ever.
+  if (netCents <= 0) return null;
+
+  const recurring = product?.billing === 'subscription';
+  if (recurring) {
+    // A subscription has no single amount to take a fee out of: the price recurs, so Stripe
+    // wants a PERCENTAGE applied to each invoice. Sending application_fee_amount here is a
+    // 400, and sending the basis points where a percent is expected would ask for 1000%.
+    const pct = Math.min(100, Math.max(0, Math.round(Number(feeBp) || 0) / 100));
+    return {
+      mode: 'subscription',
+      subscription_data: {
+        // Omitted rather than sent as zero: "this project pays nothing" is a real setting,
+        // and its shape on a routed sale is a transfer with no fee attached at all.
+        ...(pct > 0 ? { application_fee_percent: pct } : {}),
+        transfer_data: { destination: dest },
+      },
+    };
+  }
+  return {
+    mode: 'payment',
+    payment_intent_data: {
+      ...(feeCents > 0 ? { application_fee_amount: feeCents } : {}),
+      transfer_data: { destination: dest },
+    },
+  };
+}
+
+/**
  * The margin actually charged on this product: its own override, else its page's, else the
  * site default.
  *
@@ -154,6 +217,42 @@ export async function feeForProduct(p, product) {
     if (forPage !== null) return forPage;
   }
   return marketplaceFeeBp(p);
+}
+
+/**
+ * The connected account that gets paid for this product's page, or null.
+ *
+ * Scoped with feeScopeOf — the same string the per-project margin uses — so the two
+ * decisions about a page, how much we keep and who gets the rest, are made at one level and
+ * cannot end up disagreeing about which sale belongs to whom.
+ *
+ * Never throws. A payee lookup failing must not be able to take a checkout down: the
+ * fallback is the platform collecting, which is what happened on every sale before this
+ * existed.
+ */
+export async function sellerForProduct(p, product) {
+  const scope = feeScopeOf(product);
+  if (!scope) return null;
+  return p.marketplaceSeller.findUnique({ where: { scope } }).catch(() => null);
+}
+
+/** The Stripe account fields worth mirroring, from an account object. */
+export function sellerMirror(acct) {
+  return {
+    chargesEnabled: !!acct?.charges_enabled,
+    payoutsEnabled: !!acct?.payouts_enabled,
+    detailsSubmitted: !!acct?.details_submitted,
+    country: acct?.country || null,
+    // Stripe's own wording, kept verbatim. Paraphrasing it into "not ready" is how an admin
+    // screen ends up unable to say what somebody actually has to go and do.
+    disabledReason: acct?.requirements?.disabled_reason || null,
+    requirements: acct?.requirements ? {
+      currently_due: acct.requirements.currently_due || [],
+      past_due: acct.requirements.past_due || [],
+      pending_verification: acct.requirements.pending_verification || [],
+    } : null,
+    syncedAt: new Date(),
+  };
 }
 
 const productSchema = z.object({
@@ -314,8 +413,20 @@ export default async function marketplaceRoutes(app) {
     if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
     const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
     const customer = await ensureCustomer(p, sk, req.user.uid);
-    const md = { type: 'marketplace', productId: product.id, userId: req.user.uid };
     const recurring = product.billing === 'subscription';
+
+    // Where the seller's share goes, decided HERE rather than in the webhook. The webhook
+    // sees a paid session and has to know what the charge was actually built with; asking
+    // it to re-derive the payee would let a payout account changed in between be applied
+    // to a charge that never routed to it.
+    const seller = await sellerForProduct(p, product);
+    const routed = connectChargeParams(product, seller, await feeForProduct(p, product));
+    const md = {
+      type: 'marketplace', productId: product.id, userId: req.user.uid,
+      // Stripe metadata values are strings; '' means the platform kept it, which is also
+      // what every sale before Connect did.
+      sellerAccountId: routed ? seller.stripeAccountId : '',
+    };
 
     // A subscription needs a Stripe PRICE, not an inline amount, and the same one every
     // time. Minting a new price per checkout works and makes the Stripe dashboard
@@ -344,7 +455,10 @@ export default async function marketplaceRoutes(app) {
       metadata: md,
       // Carried onto the SUBSCRIPTION as well, so a renewal months later still knows which
       // product it is for. Session metadata does not survive onto the subscription object.
-      ...(recurring ? { subscription_data: { metadata: md } } : {}),
+      // The routed params are merged INTO subscription_data rather than beside it — two keys
+      // of the same name and the second silently wins, taking the metadata with it.
+      ...(recurring ? { subscription_data: { metadata: md, ...(routed?.subscription_data || {}) } } : {}),
+      ...(routed?.payment_intent_data ? { payment_intent_data: routed.payment_intent_data } : {}),
       success_url: `${siteUrl}/dashboard?market=ok`,
       cancel_url: `${siteUrl}/dashboard?market=cancel`,
     });
@@ -529,6 +643,106 @@ export default async function marketplaceRoutes(app) {
     ]);
     await logAudit(p, req.user.uid, 'marketplace.keys_mint', `${product.name}: +${fresh.size}`, clientIp(req));
     return { ok: true, minted: fresh.size, total, free };
+  });
+
+  // ── Payouts: who gets the money for a page's sales ────────────────────────────────
+  //
+  // SUPERADMIN throughout, and not ADMIN. The margin is already SUPERADMIN-only because it
+  // decides how much of somebody else's sale we keep; this is the same question with a
+  // bigger answer, and an ADMIN who could point a project's revenue at an account they
+  // control would be one request away from taking it.
+
+  /** Every payee on file, with what Stripe last said about it. */
+  app.get('/admin/marketplace/sellers', { preHandler: requireRole('SUPERADMIN') }, async () => {
+    const p = await db();
+    const rows = await p.marketplaceSeller.findMany({ orderBy: { scope: 'asc' } });
+    return { sellers: rows };
+  });
+
+  /**
+   * Start (or resume) onboarding for one page, and hand back the Stripe-hosted link.
+   *
+   * The account is created ONCE and reused: account links expire in minutes and are
+   * single-use, so "connect" is pressed again and again during onboarding, and minting a
+   * new account each time would leave a trail of half-finished ones with our metadata on
+   * them and no way to tell which is real.
+   */
+  app.post('/admin/marketplace/sellers/onboard', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({ scope: z.string().min(3).max(120), country: z.string().length(2).optional() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const scope = b.data.scope;
+    if (!/^(project|showcase):[A-Za-z0-9_-]{1,80}$/.test(scope)) return reply.code(400).send({ error: 'bad_scope' });
+    const p = await db();
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
+
+    let row = await p.marketplaceSeller.findUnique({ where: { scope } });
+    if (!row) {
+      const acct = await sk.accounts.create({
+        type: 'express',
+        ...(b.data.country ? { country: b.data.country } : {}),
+        // Destination charges: the platform owns the customer, the price and the dispute,
+        // so the platform pays the Stripe fee and handles the loss. Handing `losses` to the
+        // seller would mean a chargeback we lose is deducted from somebody who never spoke
+        // to the buyer.
+        capabilities: { transfers: { requested: true } },
+        metadata: { scope, connectedBy: req.user.uid },
+      });
+      row = await p.marketplaceSeller.create({ data: {
+        scope, stripeAccountId: acct.id, connectedById: req.user.uid, ...sellerMirror(acct),
+      } });
+      await logAudit(p, req.user.uid, 'marketplace.seller_created', `${scope} -> ${acct.id}`, clientIp(req));
+    }
+
+    const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
+    const link = await sk.accountLinks.create({
+      account: row.stripeAccountId,
+      type: 'account_onboarding',
+      // Both required. `refresh_url` is where Stripe sends somebody whose link expired
+      // mid-form, and it has to lead back to a page that can mint a new one — not to the
+      // form itself, which would be a dead end for the one person actually onboarding.
+      refresh_url: `${siteUrl}/admin?tab=marketplace&connect=refresh&scope=${encodeURIComponent(scope)}`,
+      return_url: `${siteUrl}/admin?tab=marketplace&connect=done&scope=${encodeURIComponent(scope)}`,
+    });
+    return { url: link.url, accountId: row.stripeAccountId };
+  });
+
+  /**
+   * Pull this account's state from Stripe now.
+   *
+   * The webhook is the normal path and this is the manual one, for the case the webhook is
+   * the thing that is broken — an unconfigured endpoint, a secret rotated, a delivery that
+   * failed while somebody was onboarding. Without it the only way to correct a stale mirror
+   * is to make Stripe emit another event.
+   */
+  app.post('/admin/marketplace/sellers/refresh', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const b = z.object({ scope: z.string().min(3).max(120) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const row = await p.marketplaceSeller.findUnique({ where: { scope: b.data.scope } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    const sk = await stripe();
+    if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
+    const acct = await sk.accounts.retrieve(row.stripeAccountId);
+    const updated = await p.marketplaceSeller.update({ where: { id: row.id }, data: sellerMirror(acct) });
+    return { seller: updated };
+  });
+
+  /**
+   * Stop routing this page's sales to that account.
+   *
+   * Detaches OUR row; the Stripe account is untouched and keeps whatever it has already been
+   * paid. Deleting the account here would orphan transfers that have already happened and
+   * are still settling, and it is not ours to delete.
+   */
+  app.delete('/admin/marketplace/sellers', { preHandler: requireRole('SUPERADMIN') }, async (req, reply) => {
+    const scope = String(req.query?.scope || '');
+    const p = await db();
+    const row = await p.marketplaceSeller.findUnique({ where: { scope } });
+    if (!row) return reply.code(404).send({ error: 'not_found' });
+    await p.marketplaceSeller.delete({ where: { id: row.id } });
+    await logAudit(p, req.user.uid, 'marketplace.seller_detached', `${scope} (${row.stripeAccountId})`, clientIp(req));
+    return { ok: true };
   });
 
   /** How full the marketplace's share of the disk is. Read-only; the cap is a hosting setting. */

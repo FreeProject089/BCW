@@ -3,7 +3,7 @@ import { mintGiftCode } from '../lib/gift.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
-import { fulfilProduct, feeForProduct, splitFee } from './marketplace.mjs';
+import { fulfilProduct, feeForProduct, splitFee, sellerMirror } from './marketplace.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -433,6 +433,11 @@ export default async function stripeWebhook(app) {
               productId: product.id, buyerId: meta.userId,
               status: recurring ? 'active' : 'paid',
               priceCents: paid, feeCents, netCents, delivery,
+              // Taken from the metadata the CHECKOUT wrote, not looked up now. The payee can
+              // be changed between a session opening and its payment clearing, and what the
+              // purchase has to record is the account this charge actually routed to — empty
+              // meaning the platform kept it, which is what every sale did before Connect.
+              sellerAccountId: meta.sellerAccountId || null,
               stripeSubId: recurring ? (s.subscription || null) : null,
               expiresAt: recurring ? new Date(Date.now() + months * 30 * 864e5) : null,
             } });
@@ -514,6 +519,12 @@ export default async function stripeWebhook(app) {
             await p.projectProductPurchase.create({ data: {
               productId: product.id, buyerId: mkPurchase.buyerId, status: 'active',
               priceCents: paid, feeCents, netCents, delivery,
+              // The destination is fixed on the SUBSCRIPTION at checkout and every cycle
+              // pays it; carrying the previous row's value forward keeps the payout report
+              // agreeing with Stripe even after somebody changes the page's payee, because
+              // the existing subscription goes on transferring to the old account until it
+              // is cancelled and re-bought.
+              sellerAccountId: mkPurchase.sellerAccountId || null,
               stripeSubId: inv.subscription, expiresAt: periodEnd,
             } });
             await p.projectProductPurchase.update({ where: { id: mkPurchase.id }, data: { status: 'ended' } });
@@ -580,6 +591,25 @@ export default async function stripeWebhook(app) {
           if (repo) await notify(p, repo.ownerId, 'hosting_stopped', `Auto-renewal payment for "${repo.name}" failed — update your card in “Manage billing” soon, or hosting will be suspended.`);
         }
       }
+    } else if (event.type === 'account.updated') {
+      // A connected account's state changed — onboarding finished, a document was accepted,
+      // or Stripe disabled it.
+      //
+      // This event is what MAKES an account usable. connectChargeParams refuses to route to
+      // one whose chargesEnabled is false, and nothing else sets that flag true: an account
+      // exists from the instant onboarding starts and cannot take a charge until Stripe has
+      // finished its checks. Miss this event and a seller who completed onboarding keeps
+      // watching their sales go to the platform with nothing on screen to explain it.
+      //
+      // It also runs in the other direction, which is the half that is easy to forget: an
+      // account Stripe DISABLES stops being routed to on the next sale rather than failing
+      // every checkout for that page.
+      const acct = event.data.object;
+      const row = await p.marketplaceSeller.findUnique({ where: { stripeAccountId: acct.id } }).catch(() => null);
+      // Unknown accounts are ignored on purpose. The platform's own Stripe account emits
+      // this too, and so would any Connect account created outside the marketplace.
+      if (row) await p.marketplaceSeller.update({ where: { id: row.id }, data: sellerMirror(acct) });
+      return { received: true };
     } else if (event.type === 'charge.refunded') {
       // A charge was (partially or fully) refunded. Record a lightweight refund
       // event for the Discord bot to announce (see bot.mjs /bot/payments/*). Keyed
@@ -595,6 +625,29 @@ export default async function stripeWebhook(app) {
       const row = await p.adminSetting.findUnique({ where: { key: 'bot.refundEvents' } });
       const events = [...(row?.value?.events || []).filter((e) => e.id !== ev.id), ev].slice(-200);
       await p.adminSetting.upsert({ where: { key: 'bot.refundEvents' }, create: { key: 'bot.refundEvents', value: { events } }, update: { value: { events } } });
+
+      // A refunded DESTINATION charge whose transfer was not reversed.
+      //
+      // This is the one way routing a sale can lose the platform money, and it makes no
+      // noise at all. Refunding from the Stripe dashboard offers a "reverse transfer"
+      // checkbox; left off on a routed charge, the buyer is made whole, the seller keeps
+      // their share, and the difference comes out of us. No error, no failed event — just a
+      // balance that is short by the seller's cut.
+      //
+      // Detected and not prevented: the refund happens in Stripe's own interface, which
+      // this code is not in the path of. Saying so the same hour is the whole value.
+      try {
+        if (c.transfer && (c.amount_refunded || 0) > 0) {
+          const trId = typeof c.transfer === 'string' ? c.transfer : c.transfer.id;
+          const tr = await stripe.transfers.retrieve(trId);
+          if ((tr?.amount_reversed || 0) === 0) {
+            const supers = await p.user.findMany({ where: { role: 'SUPERADMIN' }, select: { id: true } });
+            const amount = ((c.amount_refunded || 0) / 100).toFixed(2);
+            await Promise.all(supers.map((u) => notify(p, u.id, 'security_alert',
+              `Refund of ${amount} ${(c.currency || 'usd').toUpperCase()} on charge ${c.id} did NOT reverse the seller transfer ${trId} — the seller kept their share and the platform absorbed it. Reverse it in Stripe, or refund with "reverse transfer" next time.`)));
+          }
+        }
+      } catch { /* best-effort: never fail a webhook over a warning */ }
     } else if (event.type === 'customer.subscription.deleted') {
       const subId = event.data.object.id;
       // A cancelled/ended FEATURE boost: mark it so it stops renewing. The repo keeps

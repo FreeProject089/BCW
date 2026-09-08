@@ -22242,6 +22242,27 @@ function DeliveryExplainer({ v }) {
  * SUPERADMIN only, and the route enforces it too. This screen not drawing the card is a
  * courtesy, not a gate.
  */
+/**
+ * The pages that actually SELL something, named the way both money cards need them.
+ *
+ * Extracted rather than built twice: the margin card and the payout card must list the
+ * same pages, and a page in one and not the other means a cut set on a page whose payee
+ * cannot be reached, with nothing on screen to say so.
+ *
+ * Pages with no products are left out on purpose. A margin — or a payee — on a page that
+ * sells nothing has no observable effect, and a list of every page ever created is a list
+ * nobody reads.
+ */
+function sellingPages(data, targets) {
+  const pages = [];
+  for (const pr of (data?.products || [])) {
+    if (!pr.feeScope || pages.some((x) => x.scope === pr.feeScope)) continue;
+    const label = (targets.find((x) => x.v === (pr.projectKey ? `p:${pr.projectKey}` : `s:${pr.showcaseProjectId}`)) || {}).label;
+    pages.push({ scope: pr.feeScope, label: label || pr.projectKey || pr.showcaseProjectId });
+  }
+  return pages;
+}
+
 function ProjectMarginCard({ data, targets, onSaved }) {
   const { t } = useI18n(); const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -22250,15 +22271,7 @@ function ProjectMarginCard({ data, targets, onSaved }) {
   const defBp = data?.defaultFeeBp ?? 1000;
   const pct = (bp) => String(Math.round(Number(bp) * 100) / 10000 * 100);
 
-  // Only pages that actually SELL something. A margin set on a page with no products is a
-  // setting nobody can see the effect of, and a list of every page ever created is a list
-  // nobody reads.
-  const pages = [];
-  for (const pr of (data?.products || [])) {
-    if (!pr.feeScope || pages.some((x) => x.scope === pr.feeScope)) continue;
-    const label = (targets.find((x) => x.v === (pr.projectKey ? `p:${pr.projectKey}` : `s:${pr.showcaseProjectId}`)) || {}).label;
-    pages.push({ scope: pr.feeScope, label: label || pr.projectKey || pr.showcaseProjectId });
-  }
+  const pages = sellingPages(data, targets);
 
   const write = async (next) => {
     setBusy(true);
@@ -22299,6 +22312,114 @@ function ProjectMarginCard({ data, targets, onSaved }) {
                   disabled={busy}
                   onBlur={(e) => { const v = e.target.value.trim(); const now = cur == null ? '' : String(Number(cur) / 100); if (v !== now) setFor(pg.scope, v); }} />
                 <span className="text-[11px] text-[var(--faint)] w-24">{cur == null ? t('mkadm.pm.site', 'site default') : cur === 0 ? t('mkadm.pm.free', 'we take nothing') : ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Where each page's sales are PAID, as opposed to how much of them we keep.
+ *
+ * The marketplace could always compute the split — feeCents and netCents on every purchase
+ * — and had nowhere to send the seller's half. Every cent landed in the platform's Stripe
+ * account and those columns recorded a debt only a manual transfer discharged.
+ *
+ * Sits under the margin card on purpose: they are two halves of one question, and apart
+ * they let somebody set 5% on a page with no connected account — the platform keeps
+ * everything and the screen says 5%.
+ *
+ * Four states, and the first is the one worth spelling out rather than leaving blank:
+ *   not connected  — the page still sells; ALL of it stays with the platform
+ *   onboarding     — an account exists and Stripe has not enabled it; sales still route here
+ *   ready          — the seller's share transfers at the moment of sale
+ *   disabled       — Stripe turned it off; sales fall back to the platform, with the reason
+ *
+ * SUPERADMIN only, and the routes enforce it. This card not drawing is a courtesy, not a
+ * gate — choosing the Stripe account a project's revenue lands in is the single most
+ * valuable thing a stolen staff session could change.
+ */
+function ProjectPayoutCard({ pages, onChanged }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState('');
+  const { data, loading, reload } = useAsync(() => api.get('/admin/marketplace/sellers'), []);
+  const byScope = Object.fromEntries((data?.sellers || []).map((x) => [x.scope, x]));
+
+  const after = () => { reload(); onChanged?.(); };
+  const fail = (x) => toast.error(x?.data?.error === 'payments_unavailable'
+    ? t('mkadm.po.nostripe', 'Stripe is not configured on this server.')
+    : t('common.failed', 'Failed.'));
+
+  const onboard = async (scope) => {
+    setBusy(scope);
+    try {
+      const r = await api.post('/admin/marketplace/sellers/onboard', { scope });
+      // A full-page redirect, not a new tab: Stripe's onboarding sends the person back to
+      // the return_url when it is done, and a popup blocked by the browser would look
+      // exactly like a button that does nothing.
+      window.location.href = r.url;
+    } catch (x) { fail(x); setBusy(''); }
+  };
+  const refresh = async (scope) => {
+    setBusy(scope);
+    try { await api.post('/admin/marketplace/sellers/refresh', { scope }); after(); }
+    catch (x) { fail(x); } finally { setBusy(''); }
+  };
+  const detach = async (scope, acct) => {
+    if (!await dialog.confirm({
+      title: t('mkadm.po.detach', 'Stop paying this page out?'),
+      message: t('mkadm.po.detachq', 'New sales go to the platform again. The Stripe account {a} keeps everything already paid into it, and existing subscriptions go on transferring to it until they are cancelled.').replace('{a}', acct),
+      danger: true,
+    })) return;
+    setBusy(scope);
+    try { await api.del(`/admin/marketplace/sellers?scope=${encodeURIComponent(scope)}`); after(); }
+    catch (x) { fail(x); } finally { setBusy(''); }
+  };
+
+  if (!pages.length) return null;
+  const ready = pages.filter((pg) => byScope[pg.scope]?.chargesEnabled).length;
+
+  return (
+    <Card className="p-4 mb-4">
+      <button type="button" onClick={() => setOpen((x) => !x)} className="w-full flex items-center justify-between gap-2 text-start">
+        <span className="text-sm font-medium flex items-center gap-2"><Wallet size={15} className="text-[var(--primary-2)]" /> {t('mkadm.po.title', 'Payouts per project')}</span>
+        <span className="text-[11px] text-[var(--faint)]">
+          {t('mkadm.po.count', '{n} of {m} page(s) paid out').replace('{n}', ready).replace('{m}', pages.length)}
+          {' '}{open ? <ChevronUp size={12} className="inline" /> : <ChevronDown size={12} className="inline" />}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          <p className="text-[11px] text-[var(--muted)]">
+            {t('mkadm.po.h', 'A page with no account still sells — and the whole sale stays with the platform, with the seller\'s share recorded on the purchase for a manual transfer. Connect one and that share moves at the moment of sale.')}
+          </p>
+          {loading && <div className="text-[11px] text-[var(--faint)]"><Loader2 size={12} className="inline animate-spin" /> {t('common.loading', 'Loading…')}</div>}
+          {pages.map((pg) => {
+            const sel = byScope[pg.scope];
+            const working = busy === pg.scope;
+            const state = !sel ? 'none' : sel.chargesEnabled ? 'ready' : sel.disabledReason ? 'disabled' : 'onboarding';
+            return (
+              <div key={pg.scope} className="flex items-start gap-2 flex-wrap border-t border-[var(--line)] pt-2">
+                <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
+                <div className="flex-1 min-w-[12rem] text-[11px]">
+                  {state === 'none' && <span className="text-[var(--warn)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected — the platform keeps every sale')}</span>}
+                  {state === 'onboarding' && <span className="text-[var(--muted)] flex items-center gap-1"><Loader2 size={11} /> {t('mkadm.po.pending', 'Stripe has not enabled it yet — sales still go to the platform')}</span>}
+                  {state === 'ready' && <span className="text-[var(--ok)] flex items-center gap-1"><CheckCircle2 size={11} /> {t('mkadm.po.ready', 'Paid out at the moment of sale')}</span>}
+                  {state === 'disabled' && <span className="text-[var(--danger)] flex items-center gap-1"><AlertTriangle size={11} /> {sel.disabledReason}</span>}
+                  {sel && <div className="text-[var(--faint)] font-mono mt-0.5 truncate">{sel.stripeAccountId}</div>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="sm" variant={sel ? 'ghost' : 'primary'} disabled={working} onClick={() => onboard(pg.scope)}>
+                    {working ? <Loader2 size={12} className="animate-spin" /> : <Link2 size={12} />}
+                    {sel ? t('mkadm.po.continue', 'Continue') : t('mkadm.po.connect', 'Connect')}
+                  </Button>
+                  {sel && <Button size="sm" variant="ghost" disabled={working} onClick={() => refresh(pg.scope)} title={t('mkadm.po.sync', 'Ask Stripe for its status now')}><RefreshCw size={12} /></Button>}
+                  {sel && <Button size="sm" variant="ghost" disabled={working} onClick={() => detach(pg.scope, sel.stripeAccountId)}>{t('mkadm.po.stop', 'Detach')}</Button>}
+                </div>
               </div>
             );
           })}
@@ -22416,6 +22537,8 @@ function AdminMarketplace() {
       </div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('mkadm.sub', 'Each product appears in its project’s Marketplace tab. A free product delivers on click; a paid one goes through Stripe and delivers via the webhook. A static key or the external secret is never exposed to buyers.')}</p>
       {isSuper && <ProjectMarginCard data={data} targets={targets} onSaved={reload} />}
+      {/* Directly under the margin: how much we keep, then who gets the rest. */}
+      {isSuper && <ProjectPayoutCard pages={sellingPages(data, targets)} onChanged={reload} />}
       {/* Product files land on the same disk the hosting page sells by the gigabyte, and
           nothing counted them until now — a 64 MB limit per request with no ceiling above it.
           The bar lives HERE as well as in Storage because this is the screen where the bytes
