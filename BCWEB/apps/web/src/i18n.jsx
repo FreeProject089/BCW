@@ -1576,6 +1576,10 @@ const DICT = {
 
     'home.badge': 'BetterCommunity',
     'home.hero1': 'Un lieu pour tous les', 'home.brand': 'Better', 'home.hero2': 'projets.',
+    // hero1/hero2 restent pour la variante d’accueil alternative ; la page principale
+    // porte le nom en grand, puis une seule ligne qui dit ce qu’on y fait.
+    'home.brand2': 'Community',
+    'home.sub2': 'Catalogues, presets et Server-Repos pour chaque projet Better* — parcours-les, publie les tiens, et héberge-les ici.',
     'home.sub': 'Un seul endroit pour chaque projet Better* — parcours les catalogues, partage des presets, gère tes envois et héberge tes Server-Repos.',
     'home.cta.explore': 'Explorer le catalogue', 'home.cta.host': 'Héberger un dépôt',
     'home.feat.moderated': 'Chaque fiche dit comment elle a été vérifiée',

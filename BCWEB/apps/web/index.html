@@ -11,9 +11,23 @@
        page. They do not fall back to one another, so three of them is three chances to be
        out of date rather than one. Around 155 characters, which is what gets shown. -->
   <meta name="description" content="The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own." />
-  <meta name="theme-color" content="#f97316" />
+  <!-- Two theme-colors, not one. The site ships a light AND a dark theme; a single value
+       paints the browser chrome (and the Android task-switcher card) the wrong one half the
+       time. -->
+  <meta name="theme-color" content="#f97316" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1a1a19" media="(prefers-color-scheme: dark)" />
+  <meta name="color-scheme" content="light dark" />
+  <link rel="apple-touch-icon" href="/logo.png" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://bettercommunity.ch/" />
+  <!-- The site is bilingual, so it has to say so in the head and not only in og:locale.
+       Self-referencing alternates plus x-default: without them the FR and EN renderings of the
+       same URL look to a crawler like one page that keeps changing language. The site serves
+       both from the same path — the language is a preference, not a route — so every alternate
+       points at that path; that is the correct shape for a client-switched site. -->
+  <link rel="alternate" hreflang="en" href="https://bettercommunity.ch/" />
+  <link rel="alternate" hreflang="fr" href="https://bettercommunity.ch/" />
+  <link rel="alternate" hreflang="x-default" href="https://bettercommunity.ch/" />
   <!-- Open Graph — what Discord, Slack, Telegram and Facebook read.
        This is the HOME card only. Every other page is unfurled server-side by /og, which
        reads the page's own title, description and cover — crawlers do not run JavaScript,
@@ -25,6 +39,7 @@
   <meta property="og:image" content="https://bettercommunity.ch/og-card.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/png" />
   <meta property="og:image:alt" content="BetterCommunity — The home for all Better* projects" />
   <meta property="og:url" content="https://bettercommunity.ch/" />
   <meta property="og:locale" content="en_GB" />
@@ -38,13 +53,26 @@
   <meta name="twitter:description" content="The hub for the Better* projects: moderated catalogs of apps, plugins, themes and presets, shared Server-Repos, hosting, and the docs to build your own." />
   <meta name="twitter:image" content="https://bettercommunity.ch/og-card.png" />
   <meta name="twitter:image:alt" content="BetterCommunity — The home for all Better* projects" />
-  <!-- Organization structured data -->
+  <!-- Structured data: the organisation AND the site.
+       Organization alone describes who publishes; WebSite with a SearchAction describes what
+       the thing IS and how to search it, which is what a sitelinks search box is built from.
+       The target is the real catalogue search (/catalog?q=), not an invented /search — a
+       SearchAction pointing at a 404 is worse than none. -->
   <script type="application/ld+json">
-    {"@context":"https://schema.org","@type":"Organization","name":"BetterCommunity","url":"https://bettercommunity.ch/","logo":"https://bettercommunity.ch/logo.png","sameAs":["https://github.com/FreeProject089","https://discord.com/invite/CTaaEF9R75"]}
+    {"@context":"https://schema.org","@graph":[
+      {"@type":"Organization","@id":"https://bettercommunity.ch/#org","name":"BetterCommunity","url":"https://bettercommunity.ch/","logo":"https://bettercommunity.ch/logo.png","sameAs":["https://github.com/FreeProject089","https://discord.com/invite/CTaaEF9R75"]},
+      {"@type":"WebSite","@id":"https://bettercommunity.ch/#site","name":"BetterCommunity","url":"https://bettercommunity.ch/","publisher":{"@id":"https://bettercommunity.ch/#org"},"inLanguage":["en","fr"],"potentialAction":{"@type":"SearchAction","target":{"@type":"EntryPoint","urlTemplate":"https://bettercommunity.ch/catalog?q={search_term_string}"},"query-input":"required name=search_term_string"}}
+    ]}
   </script>
   <script>
     // Apply the saved theme before paint to avoid a flash.
     try { document.documentElement.setAttribute('data-theme', localStorage.getItem('bcw_theme') || 'light'); } catch (e) {}
+    // And the saved LANGUAGE, for the same reason and one more. i18n.jsx sets <html lang>
+    // once React has mounted, so until then the document claims to be English: a French
+    // reader's screen reader starts in the wrong voice, the browser offers to translate a
+    // page that is already in their language, and `:lang()` rules and hyphenation apply the
+    // wrong locale. Three characters of markup, set at the same moment as the theme.
+    try { var l = localStorage.getItem('bcw_lang'); if (l === 'fr' || l === 'en') document.documentElement.setAttribute('lang', l); } catch (e) {}
   </script>
 </head>
 <body>

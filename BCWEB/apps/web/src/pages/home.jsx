@@ -385,10 +385,22 @@ export function Home({ draft = null }) {
           {/* The "BetterCommunity" pill that used to sit here is gone. It named the site to
               somebody already on the site, directly above a headline that names it again —
               a label with nothing left to say, taking the eye first. */}
-          <h1 className="anim-slide text-6xl md:text-8xl font-extrabold leading-[0.98] tracking-[-0.035em]" style={{ animationDelay: '80ms' }}>
-            {t('home.hero1')}<br /><span className="gradient-text">{t('home.brand')}</span> {t('home.hero2')}
+          {/* The name, then what it gets you.
+              It used to be "A place for all Better projects." over "One place for every
+              Better* project — …": the same sentence twice, one directly under the other, so
+              the largest text on the site and the line meant to sell it were competing to
+              say one thing. The headline is the name now — a visitor deciding whether to
+              stay wants to know WHAT this is before they read a paragraph — and the line
+              under it is the only place that has to earn its words. */}
+          {/* Sized by the viewport, not by two breakpoints. The old pair (60px / 96px) was
+              written for a headline that could wrap — "BetterCommunity" is ONE unbreakable
+              word, and at 60px it asked for 496px inside a 343px box on a 375px phone, so it
+              was clipped. A clamp keeps it on one line from 320px up and still reaches the
+              same 7rem on a desktop. */}
+          <h1 className="anim-slide font-extrabold leading-[0.98] tracking-[-0.035em] text-[clamp(2.25rem,9.5vw,7rem)]" style={{ animationDelay: '80ms' }}>
+            {t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span>
           </h1>
-          <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub')}</p>
+          <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project — browse them, publish your own, and host them here.')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
             {heroCtas(user, t).map((c) => (
               <Link key={c.to} to={c.to}>
