@@ -22166,8 +22166,20 @@ function AdminMarketplace() {
       const r = await api.post(`/admin/marketplace/products/${draft.id}/file`, { fileName: file.name, contentType: file.type || 'application/octet-stream', data });
       setDraft((d) => ({ ...d, fileName: r.fileName }));
       toast.success(t('mkadm.f.file.ok', 'Attached: {n}').replace('{n}', r.fileName));
-      reload();
-    } catch (x) { toast.error(x?.status === 413 ? t('mkadm.f.file.big', 'That file is too large (64 MB max).') : t('common.failed', 'Failed.')); }
+      reload(); store.reload();
+    } catch (x) {
+      // Two different 413s now, and one message for both would be a lie: "too large" and
+      // "there is no room left on the shelf" are fixed by different things — shrink the file,
+      // or delete another product's.
+      const mb = (n) => `${(Number(n || 0) / 1048576).toFixed(1)} MB`;
+      toast.error(
+        x?.data?.error === 'marketplace_storage_full'
+          ? t('mkadm.f.file.full', 'The marketplace is out of space: {used} of {cap} used, and this needs {need} more. Remove a file from another product, or raise the ceiling in Hosting settings.')
+            .replace('{used}', mb(x.data.usedBytes)).replace('{cap}', mb(x.data.capBytes)).replace('{need}', mb(x.data.needBytes))
+          : x?.status === 413 ? t('mkadm.f.file.big', 'That file is too large (64 MB max).')
+            : t('common.failed', 'Failed.'),
+      );
+    }
     finally { setMkUp(false); }
   };
   const rows = data?.products || [];
@@ -22183,6 +22195,27 @@ function AdminMarketplace() {
     } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const del = async (pr) => { if (!await dialog.confirm({ title: t('mkadm.del', 'Delete this product?'), message: pr.name, danger: true })) return; try { await api.del(`/admin/marketplace/products/${pr.id}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  // Product files sit on the same disk the hosting page sells by the gigabyte, and until now
+  // nothing counted them. The bar is here rather than only in Storage because this is the
+  // screen where the bytes are added.
+  const store = useAsync(() => api.get('/admin/marketplace/storage'), []);
+  const [minting, setMinting] = useState(null);
+  const mintKeys = async (pr) => {
+    const n = await dialog.prompt({
+      title: t('mkadm.mint.title', 'Generate keys'),
+      label: t('mkadm.mint.label', 'How many?'),
+      message: t('mkadm.mint.msg', 'BetterCommunity generates them and keeps them here — no list to paste, and none to leave lying around somewhere else. Each buyer is handed one, once.'),
+      placeholder: '50', okLabel: t('mkadm.mint.ok', 'Generate'),
+    });
+    const count = Math.round(Number(n) || 0);
+    if (!count || count < 1) return;
+    setMinting(pr.id);
+    try {
+      const r = await api.post(`/admin/marketplace/products/${pr.id}/keys/mint`, { count: Math.min(1000, count) });
+      toast.success(t('mkadm.mint.done', '{n} generated — {f} free of {t}.').replace('{n}', r.minted).replace('{f}', r.free).replace('{t}', r.total));
+      reload();
+    } catch { toast.error(t('common.failed', 'Failed.')); } finally { setMinting(null); }
+  };
   const addKeys = async () => {
     const codes = keysText.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
     if (!codes.length) return;
@@ -22196,6 +22229,25 @@ function AdminMarketplace() {
         <Button size="sm" variant="primary" onClick={() => setDraft({ ...MK_BLANK })}><Plus size={14} /> {t('mkadm.new', 'New product')}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4 max-w-2xl">{t('mkadm.sub', 'Each product appears in its project’s Marketplace tab. A free product delivers on click; a paid one goes through Stripe and delivers via the webhook. A static key or the external secret is never exposed to buyers.')}</p>
+      {/* Product files land on the same disk the hosting page sells by the gigabyte, and
+          nothing counted them until now — a 64 MB limit per request with no ceiling above it.
+          The bar lives HERE as well as in Storage because this is the screen where the bytes
+          are added, and a limit you only meet at the moment you exceed it is a limit nobody
+          could have planned around. */}
+      {store.data?.capBytes > 0 && (() => {
+        const pct = Math.min(100, (store.data.usedBytes / store.data.capBytes) * 100);
+        return (
+          <div className="rounded-xl border border-[var(--line)] p-3 mb-4 max-w-2xl">
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-[var(--muted)] flex items-center gap-1.5"><HardDrive size={13} /> {t('mkadm.store', 'Product files')}</span>
+              <span className="tabular-nums text-[var(--faint)]">{formatBytes(store.data.usedBytes)} / {formatBytes(store.data.capBytes)} · {t('mkadm.store.n', '{n} file(s)').replace('{n}', store.data.files)}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+              <div className={`h-full ${pct > 90 ? 'bg-error' : pct > 70 ? 'bg-warning' : 'bg-[var(--primary)]'}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })()}
       {!rows.length ? <div className="text-sm text-[var(--faint)]">{t('mkadm.none', 'No products yet.')}</div> : (
         <div className="space-y-2">
           {rows.map((pr) => (
@@ -22206,6 +22258,9 @@ function AdminMarketplace() {
                 <div className="text-xs text-[var(--faint)]">{pr.projectKey || pr.showcaseProjectId} · {pr.deliveryKind} · {pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${pr.currency}` : t('mk.free', 'Free')} · {t('mkadm.sold', '{n} sold').replace('{n}', pr.sold || 0)}{pr.deliveryKind === 'key_pool' ? ` · ${t('mkadm.keys', '{n} keys').replace('{n}', pr.keyCount || 0)}` : ''}</div>
               </div>
               {pr.deliveryKind === 'key_pool' && <Button size="sm" variant="ghost" onClick={() => { setKeysFor(pr.id); setKeysText(''); }}><Key size={13} /> {t('mkadm.addkeys', 'Add keys')}</Button>}
+              {/* The pool could only be filled by pasting codes generated somewhere else —
+                  which means a copy of the list exists somewhere else. This mints them here. */}
+              {pr.deliveryKind === 'key_pool' && <Button size="sm" variant="ghost" disabled={minting === pr.id} onClick={() => mintKeys(pr)}>{minting === pr.id ? <Spinner /> : <Sparkles size={13} />} {t('mkadm.mint', 'Generate')}</Button>}
               <Button size="sm" variant="ghost" onClick={() => setDraft({ ...MK_BLANK, ...pr, stock: pr.stock == null ? '' : pr.stock, staticKey: pr.staticKey || '', content: pr.content || '', roleId: pr.roleId || '', externalUrl: pr.externalUrl || '', externalSecret: '' })}><Pencil size={13} /></Button>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(pr)}><Trash2 size={13} /></Button>
             </div>

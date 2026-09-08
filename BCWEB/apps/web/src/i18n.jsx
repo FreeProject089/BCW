@@ -6172,6 +6172,13 @@ const DICT = {
     'hosting.wl.done': 'Tu es sur la liste — on t’écrit dès que {n} Go se libèrent.',
     'hosting.wl.ahead': '{n} devant toi.',
     'hosting.wl.noreserve': 'Rien n’est réservé — le premier qui valide l’obtient.',
+    // Marketplace — le coffre à clés et le stockage des fichiers produits
+    'mkadm.mint': 'Générer', 'mkadm.mint.title': 'Générer des clés', 'mkadm.mint.label': 'Combien ?',
+    'mkadm.mint.msg': 'BetterCommunity les génère et les garde ici — aucune liste à coller, et aucune qui traîne ailleurs. Chaque acheteur en reçoit une, une seule fois.',
+    'mkadm.mint.ok': 'Générer',
+    'mkadm.mint.done': '{n} générées — {f} libres sur {t}.',
+    'mkadm.store': 'Fichiers des produits', 'mkadm.store.n': '{n} fichier(s)',
+    'mkadm.f.file.full': 'La marketplace n’a plus de place : {used} utilisés sur {cap}, et il en faudrait {need} de plus. Retire le fichier d’un autre produit, ou relève le plafond dans les réglages d’hébergement.',
     // Mails — modifier ce qui part vraiment
     'adm.mail.tpl.h': 'Ton texte',
     'adm.mail.tpl.on': 'modifié', 'adm.mail.tpl.can': 'tu peux changer ce texte',

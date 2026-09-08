@@ -3768,6 +3768,11 @@ model ProjectProduct {
   // expires, so what sits in a purchase row cannot be forwarded to somebody who did not buy.
   fileKey           String?
   fileName          String?
+  // What that file WEIGHS. Stored because the alternative is asking object storage for the
+  // size of every product's file to answer "how much is the marketplace using" — a listing
+  // per product, on a page that draws a bar. Written on upload and cleared on removal, so it
+  // is only ever wrong if a file is deleted behind the app's back.
+  fileBytes         Int?
   // `link`: a plain URL, handed over as a real button rather than a paragraph of text.
   linkUrl           String?
   externalUrl       String?

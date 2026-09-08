@@ -5,7 +5,7 @@
 // Stripe one-time flow and the external-key webhook are Phase 2.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, clientIp } from '../lib/lib.mjs';
 import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
@@ -30,6 +30,31 @@ const FILE_PREFIX = 'marketplace';
 /** How long a download link stays good. Long enough to click, short enough not to be a
  *  distributable URL — the reason the file kind exists rather than a pasted link. */
 const DOWNLOAD_TTL = 600;
+
+/**
+ * What the marketplace is allowed to weigh, in MB, and what it weighs now.
+ *
+ * Every other place a byte can land on this platform is metered — hosted repos have a quota,
+ * catalogues draw from a pool, Discord activity has a cap, analytics has a retention. Product
+ * files had nothing: a 64 MB body limit per request and no ceiling above it, on the same disk
+ * the hosting page sells by the gigabyte. Enough products and the marketplace quietly eats the
+ * capacity somebody paid for.
+ *
+ * One global ceiling rather than a per-project quota, because a product is not attached to a
+ * hosting pool — it hangs off a project key — and inventing a second, parallel notion of
+ * "this project's storage" is how two numbers that should agree stop agreeing.
+ */
+const DEFAULT_STORAGE_MB = 2048;
+export async function marketplaceStorage(p) {
+  const row = await p.adminSetting.findUnique({ where: { key: 'marketplace.storageMB' } }).catch(() => null);
+  const capMB = Math.max(0, Number(row?.value ?? DEFAULT_STORAGE_MB) || 0);
+  const agg = await p.projectProduct.aggregate({ _sum: { fileBytes: true }, _count: { fileKey: true } });
+  const usedBytes = Number(agg._sum.fileBytes || 0);
+  return {
+    capMB, capBytes: capMB * 1024 * 1024, usedBytes, files: agg._count.fileKey || 0,
+    freeBytes: Math.max(0, capMB * 1024 * 1024 - usedBytes),
+  };
+}
 
 const productSchema = z.object({
   projectKey: z.string().max(60).nullish(),
@@ -251,6 +276,17 @@ export default async function marketplaceRoutes(app) {
     if (!product) return reply.code(404).send({ error: 'not_found' });
     let buf;
     try { buf = Buffer.from(b.data.data, 'base64'); } catch { return reply.code(400).send({ error: 'bad_file' }); }
+    // Checked BEFORE the object is written, and against the total minus whatever this product
+    // already holds — replacing a 40 MB file with a 41 MB one must be judged on the one
+    // megabyte it adds, not on the forty-one it would be if the old file were staying.
+    const store = await marketplaceStorage(p);
+    const delta = buf.length - Number(product.fileBytes || 0);
+    if (store.capBytes > 0 && delta > 0 && store.usedBytes + delta > store.capBytes) {
+      return reply.code(413).send({
+        error: 'marketplace_storage_full',
+        usedBytes: store.usedBytes, capBytes: store.capBytes, needBytes: delta,
+      });
+    }
     // The name is sanitised for the KEY only; the original is kept for the download's filename,
     // so a buyer gets back what the admin uploaded rather than a mangled version of it.
     const safe = String(b.data.fileName).replace(/[^\w.-]+/g, '_').slice(0, 80) || 'file';
@@ -260,9 +296,61 @@ export default async function marketplaceRoutes(app) {
     // The previous file is removed only after the new one is safely stored — the other order
     // loses the old file when the upload fails.
     if (product.fileKey && product.fileKey !== key) await deleteObject(product.fileKey).catch(() => {});
-    const row = await p.projectProduct.update({ where: { id: product.id }, data: { fileKey: key, fileName: b.data.fileName.slice(0, 200) } });
-    return { ok: true, fileName: row.fileName, bytes: buf.length };
+    const row = await p.projectProduct.update({ where: { id: product.id }, data: { fileKey: key, fileName: b.data.fileName.slice(0, 200), fileBytes: buf.length } });
+    return { ok: true, fileName: row.fileName, bytes: buf.length, storage: await marketplaceStorage(p) };
   });
+
+  /**
+   * Mint keys into the pool, here, instead of pasting them in from somewhere else.
+   *
+   * `key_pool` could only be filled by hand: generate codes in another tool, paste them, and
+   * hope nobody kept a copy of the list. `key_license` mints on demand but stores nothing —
+   * which means no stock to show, no way to see what was handed out, and no way to revoke one.
+   *
+   * This is the middle both were missing: BCWEB generates them, keeps them, and hands them out
+   * one at a time through the same race-safe claim the pool already uses. The alphabet drops
+   * the characters people misread aloud (0/O, 1/I/L), which matters for something read off a
+   * screen and typed into a game.
+   *
+   * Uniqueness is enforced by asking the database what it already has rather than by trusting
+   * the odds — 31^20 is a comfortable space, but "comfortable" is not the same as "checked",
+   * and a duplicate would hand two buyers the same key.
+   */
+  app.post('/admin/marketplace/products/:id/keys/mint', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      count: z.number().int().min(1).max(1000),
+      prefix: z.string().max(12).regex(/^[A-Z0-9-]*$/).optional().default(''),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
+    if (!product) return reply.code(404).send({ error: 'not_found' });
+
+    const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    const group = () => Array.from({ length: 5 }, () => A[crypto.randomInt(A.length)]).join('');
+    const make = () => `${b.data.prefix ? `${b.data.prefix}-` : ''}${group()}-${group()}-${group()}-${group()}`;
+
+    const existing = new Set((await p.projectKey.findMany({ where: { productId: product.id }, select: { code: true } })).map((k) => k.code));
+    const fresh = new Set();
+    // Bounded: a pathological run of collisions must not spin. In practice the loop runs
+    // `count` times.
+    for (let i = 0; i < b.data.count * 20 && fresh.size < b.data.count; i++) {
+      const c = make();
+      if (!existing.has(c) && !fresh.has(c)) fresh.add(c);
+    }
+    if (fresh.size < b.data.count) return reply.code(500).send({ error: 'could_not_mint' });
+
+    await p.projectKey.createMany({ data: [...fresh].map((code) => ({ productId: product.id, code })) });
+    const [total, free] = await Promise.all([
+      p.projectKey.count({ where: { productId: product.id } }),
+      p.projectKey.count({ where: { productId: product.id, claimedAt: null } }),
+    ]);
+    await logAudit(p, req.user.uid, 'marketplace.keys_mint', `${product.name}: +${fresh.size}`, clientIp(req));
+    return { ok: true, minted: fresh.size, total, free };
+  });
+
+  /** How full the marketplace's share of the disk is. Read-only; the cap is a hosting setting. */
+  app.get('/admin/marketplace/storage', { preHandler: requireRole('ADMIN') }, async () => marketplaceStorage(await db()));
 
   app.post('/admin/marketplace/products/:id/keys', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const codes = z.object({ codes: z.array(z.string().min(1).max(400)).max(5000) }).safeParse(req.body);
