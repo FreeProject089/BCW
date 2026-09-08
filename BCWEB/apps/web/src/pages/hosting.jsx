@@ -177,6 +177,91 @@ function RedeemPromoModal({ code, promo, onClose }) {
   );
 }
 
+/**
+ * "Tell me when there is room."
+ *
+ * The page's answer to a full disk was "try again later", which is the site asking a stranger
+ * to remember to come back. This is what turns that into a promise it can keep.
+ *
+ * Asks for the SIZE as well as the address, because "there is space" is not an answer if the
+ * space is 2 GB and they came for 50 — being told about room that is not room for you is
+ * worse than not being told. A signed-in visitor is not asked for an address at all: the
+ * account's own is the one we know is theirs, and it is what stops the form becoming a way to
+ * sign somebody else up.
+ *
+ * `freeTier` matters because the two pools are metered separately: the free-plan ceiling can
+ * be full while the disk has plenty, and somebody waiting for a free repo must not be called
+ * back by paid space they were never going to buy.
+ */
+function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [gb, setGb] = useState(defaultGB);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(null);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post('/hosting/waitlist', {
+        wantedGB: Math.max(1, Math.min(10000, Math.round(Number(gb) || 0))),
+        freeTier,
+        ...(user ? {} : { email: email.trim() }),
+      });
+      setDone(r);
+    } catch (e) {
+      toast.error(e?.data?.error === 'email_required'
+        ? t('hosting.wl.needmail', 'An e-mail address is needed — that is how you get told.')
+        : t('common.failed', 'Failed.'));
+    } finally { setBusy(false); }
+  };
+
+  if (done) {
+    return (
+      <div className="mt-3 text-sm text-[var(--text)] flex items-start gap-2">
+        <CheckCircle2 size={16} className="text-success shrink-0 mt-0.5" />
+        <span>
+          {t('hosting.wl.done', 'You are on the list — we will write to you when {n} GB is free.').replace('{n}', gb)}
+          {done.ahead > 0 && ` ${t('hosting.wl.ahead', '{n} ahead of you.').replace('{n}', done.ahead)}`}
+          {' '}<span className="text-[var(--faint)]">{t('hosting.wl.noreserve', 'Nothing is reserved — whoever checks out first gets it.')}</span>
+        </span>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}
+        className="mt-2.5 text-sm font-medium text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5">
+        <Mail size={14} /> {t('hosting.wl.open', 'Tell me when there is room')}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 flex flex-wrap items-end gap-2">
+      <label className="text-xs text-[var(--muted)] flex flex-col gap-1">
+        {t('hosting.wl.gb', 'How much do you need?')}
+        <span className="flex items-center gap-1.5">
+          <Input className="!w-24 !py-1.5" type="number" min="1" max="10000" value={gb} onChange={(e) => setGb(e.target.value)} />
+          <span className="text-[var(--faint)]">GB</span>
+        </span>
+      </label>
+      {!user && (
+        <label className="text-xs text-[var(--muted)] flex flex-col gap-1 flex-1 min-w-[220px]">
+          {t('hosting.wl.mail', 'Where do we write?')}
+          <Input className="!py-1.5" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+        </label>
+      )}
+      <Button size="sm" variant="primary" disabled={busy || (!user && !email.trim())} onClick={submit}>
+        {busy ? <Spinner /> : <Mail size={14} />} {t('hosting.wl.cta', 'Let me know')}
+      </Button>
+      {user && <span className="text-[11px] text-[var(--faint)] basis-full">{t('hosting.wl.acct', 'Sent to your account address, and to your notifications here.')}</span>}
+    </div>
+  );
+}
+
 export function Hosting() {
   const { user } = useAuth(); const nav = useNavigate(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
@@ -261,9 +346,12 @@ export function Hosting() {
       {soldOut && (
         <div className="rounded-xl border border-error-border bg-error-bg p-4 mb-6 flex items-start gap-3">
           <AlertTriangle size={20} className="text-error shrink-0 mt-0.5" />
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="font-semibold text-error">{t('hosting.soldout', 'No hosting space available right now')}</div>
-            <div className="text-sm text-[var(--muted)] mt-0.5">{t('hosting.soldout.d', 'Every plan is sold out until an existing repo frees up space or an admin raises the total capacity. Try again later.')}</div>
+            <div className="text-sm text-[var(--muted)] mt-0.5">{t('hosting.soldout.d2', 'Every plan is sold out until an existing repo frees up space or an admin raises the total capacity.')}</div>
+            {/* "Try again later" was the whole answer, which is the site asking a stranger to
+                remember to come back for it. */}
+            <WaitlistBox user={user} />
           </div>
         </div>
       )}
@@ -298,6 +386,11 @@ export function Hosting() {
               <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
             </div>
+            {/* The free ceiling and the disk are metered separately, so this pool can be full
+                while there is plenty of room next door. Somebody waiting for a free repo is
+                waiting on THIS number — being called back by paid space they were never going
+                to buy is not an answer. */}
+            {freeTierSoldOut && <WaitlistBox user={user} freeTier defaultGB={free.storageGB} />}
             {freeTierPct != null && (
               <div className="mt-4 pt-3 border-t border-success-border">
                 <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-1">

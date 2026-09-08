@@ -31,7 +31,7 @@ import { runEventScheduler } from '../routes/events.mjs';
 import { sweepReports } from '../routes/reports.mjs';
 import { sweepStaleMyoRequests } from '../routes/myo.mjs';
 import { memberCapacity , memberPolicy, evictForRoom } from './discord-storage.mjs';
-import { recomputePoolBytes, stripe } from '../routes/hosting.mjs';
+import { recomputePoolBytes, stripe, capacityStatus } from '../routes/hosting.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
@@ -444,6 +444,72 @@ export async function sweepAnalyticsSizeCap(p, log) {
   return deleted;
 }
 
+// ── Hosting waitlist ─────────────────────────────────────────────────────────
+// Tell the people who asked to be told, once there is room for what they asked for.
+//
+// Runs off the SAME capacityStatus() the checkout enforces, not a second opinion about how
+// full the disk is — a waitlist that invites somebody in when checkout would refuse them is
+// worse than silence, because they came back for nothing.
+//
+// Oldest first, and only while the space still covers them: the loop subtracts each person's
+// request as it goes, so five people waiting for 20 GB with 50 GB free are told three times,
+// not five. It reserves NOTHING — whoever checks out first gets it, which is the same rule as
+// walking up without waiting. The mail says exactly that; promising a held slot the code does
+// not hold is the one thing this must not do.
+export async function sweepHostingWaitlist(p, log) {
+  try {
+    const waiting = await p.hostingWaitlist.findMany({
+      where: { notifiedAt: null }, orderBy: { createdAt: 'asc' }, take: 200,
+    });
+    if (!waiting.length) return 0;
+
+    const cap = await capacityStatus(p);
+    if (!cap || cap.enabled === false) return 0;
+    let freeGB = Math.max(0, Number(cap.freeGB) || 0);
+    // A null free-tier ceiling means the cap is off, not that it is zero.
+    let freeTierGB = cap.freeTierFreeGB == null ? Infinity : Math.max(0, Number(cap.freeTierFreeGB) || 0);
+
+    const site = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
+    let told = 0;
+    for (const w of waiting) {
+      const pool = w.freeTier ? freeTierGB : freeGB;
+      if (pool < w.wantedGB) continue;
+      if (w.freeTier) freeTierGB -= w.wantedGB; else freeGB -= w.wantedGB;
+
+      const subject = `There is room for your ${w.wantedGB} GB on BetterCommunity`;
+      const line = `The space you asked about is free again: ${w.wantedGB} GB${w.freeTier ? ' on the free plan' : ''}.`;
+      const caveat = 'Nothing is reserved for you — whoever checks out first gets it, so it is worth going now.';
+      if (emailEnabled()) {
+        try {
+          await sendMail({
+            to: w.email,
+            subject,
+            text: `${line}\n\n${caveat}\n\n${site}/hosting`,
+            // POSITIONAL — (title, bodyHtml, cta). mail.mjs throws if you hand it an options
+            // object, because that mistake sends a mail titled "[object Object]" with no body.
+            html: mailShell(subject, `<p>${escapeHtml(line)}</p><p>${escapeHtml(caveat)}</p>`,
+              { url: `${site}/hosting`, label: 'Go to hosting' }),
+          });
+        } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'waitlist mail failed'); }
+      }
+
+      // And in the app, for somebody who has an account — e-mail is the only channel for a
+      // visitor who does not, and the one most easily missed by somebody who does.
+      if (w.userId) {
+        await notify(p, w.userId, 'hosting.waitlist', line, {
+          bodyFr: `L'espace que tu attendais s'est libéré : ${w.wantedGB} Go${w.freeTier ? ' sur le plan gratuit' : ''}. Rien n'est réservé — le premier qui valide l'obtient.`,
+          href: '/hosting',
+        }).catch(() => {});
+      }
+
+      await p.hostingWaitlist.update({ where: { id: w.id }, data: { notifiedAt: new Date() } });
+      told++;
+    }
+    if (told) log?.info?.({ told }, 'hosting waitlist: told');
+    return told;
+  } catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'sweeper: hosting waitlist failed'); return 0; }
+}
+
 // ── Analytics daily rollup ───────────────────────────────────────────────────
 // Pre-aggregates AnalyticsEvent into AnalyticsDaily (day → views + unique visitors) so the
 // dashboard's day-granularity series is a tiny PK read instead of two full-window GROUP BYs.
@@ -620,6 +686,7 @@ export function startSweeper(app) {
       await sweepScheduledPrices(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'scheduled price sweep failed'));
       await sweepAccountClosures(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'account closure sweep failed'));
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
+      await sweepHostingWaitlist(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'hosting waitlist sweep failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
       await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));

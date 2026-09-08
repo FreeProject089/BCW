@@ -6159,6 +6159,17 @@ const DICT = {
     'an.tab.trends': 'Tendances',
     'an.tr.metric': 'Mesure', 'an.tr.range': 'Historique',
     'an.tr.r90': '90 jours', 'an.tr.r180': '180 jours', 'an.tr.r365': '1 an',
+    // Hébergement — « préviens-moi quand il y a de la place »
+    'hosting.soldout.d2': 'Tous les plans sont complets tant qu’un dépôt existant ne libère pas de place ou qu’un admin n’augmente pas la capacité totale.',
+    'hosting.wl.open': 'Préviens-moi quand il y a de la place',
+    'hosting.wl.gb': 'Il te faut combien ?',
+    'hosting.wl.mail': 'On t’écrit où ?',
+    'hosting.wl.cta': 'Préviens-moi',
+    'hosting.wl.acct': 'Envoyé à l’adresse de ton compte, et dans tes notifications ici.',
+    'hosting.wl.needmail': 'Il faut une adresse e-mail — c’est par là qu’on te prévient.',
+    'hosting.wl.done': 'Tu es sur la liste — on t’écrit dès que {n} Go se libèrent.',
+    'hosting.wl.ahead': '{n} devant toi.',
+    'hosting.wl.noreserve': 'Rien n’est réservé — le premier qui valide l’obtient.',
     // Stockage — les exports côté serveur, gardés selon ce qu’ils contiennent
     'as.exp.areas': 'Totaux', 'as.exp.repos': 'Dépôts hébergés',
     'as.exp.catalogs': 'Items de catalogue', 'as.exp.pending': 'Suppressions en attente',

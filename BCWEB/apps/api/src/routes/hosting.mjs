@@ -535,6 +535,61 @@ export default async function hostingRoutes(app) {
     return { plans: await p.hostingPlan.findMany({ where: { active: true }, orderBy: { storageGB: 'asc' } }) };
   });
 
+  /**
+   * "Tell me when there is room."
+   *
+   * The disk is finite, so the answer to a visitor is sometimes no — and until now that was
+   * the end of it: the free tier said "sold out right now, check back later", which is the
+   * site asking a stranger to remember to come back. This is the other half of that sentence.
+   *
+   * Open to signed-out visitors on purpose. The person most likely to be turned away is the
+   * one who has not made an account yet, and requiring one first is asking for a commitment
+   * in exchange for a maybe. A signed-in request records the account too, so the answer can
+   * arrive in the notification centre as well as by e-mail.
+   *
+   * Asking twice is not two people waiting: the row is unique on (email, size, tier) and a
+   * repeat is an upsert that keeps the ORIGINAL createdAt — being told is first-come, and a
+   * second click must not move somebody up the queue.
+   */
+  app.post('/hosting/waitlist', {
+    config: { rateLimit: { max: 6, timeWindow: '10 minutes' } },
+  }, async (req, reply) => {
+    const p = await db();
+    const body = z.object({
+      email: z.string().email().max(200).optional(),
+      wantedGB: z.number().int().min(1).max(10000),
+      freeTier: z.boolean().optional(),
+    }).safeParse(req.body || {});
+    if (!body.success) return reply.code(400).send({ error: 'bad_request' });
+
+    // A signed-in account's own address wins over anything typed in the form: it is the one
+    // we know is theirs, and it is what stops the list becoming a way to sign other people up.
+    let userId = null;
+    let email = (body.data.email || '').trim().toLowerCase();
+    if (req.user?.uid) {
+      const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { id: true, email: true } });
+      if (me) { userId = me.id; email = me.email.toLowerCase(); }
+    }
+    if (!email) return reply.code(400).send({ error: 'email_required' });
+
+    const { wantedGB } = body.data;
+    const freeTier = !!body.data.freeTier;
+    const row = await p.hostingWaitlist.upsert({
+      where: { email_wantedGB_freeTier: { email, wantedGB, freeTier } },
+      create: { email, userId, wantedGB, freeTier },
+      // Re-opens a request that was already answered (they were told, the space went, they
+      // are asking again) without touching createdAt on one that is still open.
+      update: { userId: userId ?? undefined, notifiedAt: null },
+      select: { id: true, createdAt: true },
+    });
+
+    // What they are waiting for, so the answer can say "you are 3rd" rather than "noted".
+    const ahead = await p.hostingWaitlist.count({
+      where: { notifiedAt: null, freeTier, wantedGB: { lte: wantedGB }, createdAt: { lt: row.createdAt } },
+    });
+    return { ok: true, ahead };
+  });
+
   app.get('/hosting/capacity', async () => ({ capacity: await capacityStatus(await db()) }));
 
   // Admin: what exactly occupies the Free-plan pool — every freePlan allocation

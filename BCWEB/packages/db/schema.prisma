@@ -438,6 +438,33 @@ model FreeTierClaim {
   @@index([userId])
 }
 
+// "Tell me when there is room."
+//
+// Hosting sells a finite disk, so the answer to a visitor is sometimes no. Until now that
+// was the end of the conversation: the free tier said "sold out right now — check back
+// later", and checking back later is work the site was asking a stranger to remember to do.
+//
+// No relation to User on purpose, like FreeTierClaim above: a waiting visitor may have no
+// account at all, and the ones who do must not lose their place if they close it. `userId`
+// is set when we know who asked, so the in-app notification can find them; `email` is what
+// makes the promise keepable either way.
+model HostingWaitlist {
+  id         String    @id @default(cuid())
+  email      String
+  userId     String? // set when the request came from a signed-in account
+  wantedGB   Int // how much space they were after — nobody is told about 1 GB when they need 50
+  freeTier   Boolean   @default(false) // waiting on the free tier specifically, not on the disk
+  createdAt  DateTime  @default(now())
+  notifiedAt DateTime? // set once, when they were told; a row is never used twice
+
+  // One open request per address per size. Somebody who asks three times is one person
+  // waiting, and a partial unique index is what keeps that true without blocking them from
+  // asking again later for a different size, or after being told.
+  @@unique([email, wantedGB, freeTier])
+  @@index([notifiedAt, wantedGB])
+  @@index([userId])
+}
+
 // A storage pool for "multi-repo" hosting: the user divides poolBytes across
 // several repos. Single-repo hosting doesn't use a group (each repo owns its quota).
 model HostingGroup {
