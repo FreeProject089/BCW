@@ -3154,6 +3154,10 @@ const DICT = {
     // Groupes
     'hs.g.capacity': 'Capacité', 'hs.g.blog': 'Blog, docs & historique', 'hs.g.security': 'Sécurité & journaux d’audit', 'hs.g.pricing': 'Tarification', 'hs.g.features': 'Fonctionnalités',
     'hs.g.tools': 'Maintenance & données de démo',
+    'mk.per.month': '/ mois',
+    'mk.per.year': '/ an',
+    'mk.per.n': '/ {n} mois',
+    'mk.redeem': 'Où s’en servir',
     'hs.l.marketplace.storageMB': 'Fichiers produits de la marketplace (Mo)',
     'hs.d.marketplace.storageMB': 'Tout ce que chaque produit payant remet sous forme de FICHIER puise dans ce seul pool. C’est le seul budget d’octets de la plateforme qui n’avait aucun réglage nulle part — l’API lisait un défaut de 2048 que personne ne pouvait voir. Sur le même disque que l’hébergement vendu : l’augmenter retire de la capacité à ce que quelqu’un a payé. 0 = aucun produit fichier ne peut être televersé.',
     'hs.l.marketplace.feePercentBp': 'Marge marketplace (points de base)',

@@ -1522,6 +1522,15 @@ function Marketplace({ pkey, products = [], onChanged }) {
     } finally { setBusy(''); }
   };
   const money = (pr) => (pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${(pr.currency || 'usd').toUpperCase()}` : t('mk.free', 'Free'));
+  // A recurring price without its cadence is a lie of omission: "9.99 USD" and
+  // "9.99 USD / month" are different offers, and only one of them is what is charged.
+  const every = (pr) => {
+    if (pr.billing !== 'subscription') return '';
+    const n = Number(pr.intervalMonths) || 1;
+    return n === 1 ? t('mk.per.month', '/ month')
+      : n === 12 ? t('mk.per.year', '/ year')
+      : t('mk.per.n', '/ {n} months').replace('{n}', n);
+  };
 
   if (!products.length) return <EmptyState icon={ShoppingBag} title={t('mk.empty.t', 'Nothing for sale yet')} sub={t('mk.empty.s', 'This project has no marketplace items right now.')} />;
   return (
@@ -1533,9 +1542,23 @@ function Marketplace({ pkey, products = [], onChanged }) {
           <Card key={pr.id} className="p-4 flex flex-col">
             <div className="flex items-start gap-2 mb-1">
               <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={16} /> : <ShoppingBag size={16} />}</span>
-              <div className="min-w-0 flex-1"><div className="font-semibold leading-tight">{pr.name}</div><div className="text-sm font-bold text-[var(--primary-2)] tabular-nums">{money(pr)}</div></div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold leading-tight">{pr.name}</div>
+                <div className="text-sm font-bold text-[var(--primary-2)] tabular-nums">
+                  {money(pr)}{every(pr) && <span className="font-normal text-[var(--muted)]"> {every(pr)}</span>}
+                </div>
+              </div>
             </div>
             {pr.description && <p className="text-sm text-[var(--muted)] leading-relaxed mb-3">{pr.description}</p>}
+            {/* Shown BEFORE the sale as well as after. "And then what" is the question people
+                ask before paying, and a shop that only answers it afterwards is one people
+                leave without buying. */}
+            {(pr.redeemNote || pr.redeemUrl) && (
+              <div className="text-[11px] text-[var(--muted)] mb-3 rounded-lg border border-[var(--line)] p-2 space-y-1">
+                {pr.redeemNote && <div className="whitespace-pre-wrap break-words">{pr.redeemNote}</div>}
+                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
+              </div>
+            )}
             {d ? (
               <div className="mt-auto rounded-lg border border-[var(--success)]/30 bg-[var(--success)]/[0.06] p-2.5">
                 <div className="text-[11px] font-semibold text-[var(--success)] uppercase tracking-wide mb-1">{t('mk.yours', 'Yours')}</div>
@@ -1553,6 +1576,9 @@ function Marketplace({ pkey, products = [], onChanged }) {
                 {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="btn btn-sm mt-1"><ExternalLink size={13} /> {t('mk.open', 'Open')}</a>}
                 {d.licensed && <div className="text-[11px] text-[var(--faint)] mt-1">{t('mk.licensed', 'This key is yours alone — keep it, it is recorded against this purchase.')}</div>}
                 {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue — contact the project.')}</div>}
+                {/* Repeated here on purpose. This is the moment somebody is holding a key and
+                    wondering what to do with it, and the copy above has scrolled away. */}
+                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
               </div>
             ) : (
               <Button variant="primary" className="mt-auto justify-center" disabled={busy === pr.id || soldOut} onClick={() => buy(pr)}>
