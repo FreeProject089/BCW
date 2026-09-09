@@ -8,6 +8,44 @@ import { fulfilProduct, feeForProduct, splitFee, sellerMirror } from './marketpl
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
 // normal JSON parsing).
+/**
+ * How to refund a purchase we took money for and could not deliver — or null, meaning do not
+ * try and say why.
+ *
+ * The whole reason this is a function: a ROUTED sale must reverse its transfer. The
+ * charge.refunded branch below already spells out what happens otherwise — the buyer is made
+ * whole, the seller keeps their share, and the difference comes out of the platform, with no
+ * error and no failed event, just a balance that is short. The application fee goes back for
+ * the same reason: keeping a commission on a sale that delivered nothing is not a fee, it is
+ * a mistake with a receipt.
+ *
+ * A SUBSCRIPTION is refused on purpose rather than attempted and failed. Its checkout session
+ * carries no payment_intent — the money moved through an invoice — so there is nothing here
+ * to refund, and the right action is cancelling the subscription, which is a different
+ * decision with a different answer about the cycle already consumed.
+ *
+ * @param session   the Stripe checkout session (payment_intent, mode)
+ * @param purchase  the row we wrote (sellerAccountId tells us whether it was routed)
+ * @returns {{params: object}|{skip: string}}
+ */
+export function refundPlanFor(session, purchase) {
+  if (session?.mode === 'subscription' || purchase?.status === 'active') {
+    return { skip: 'subscription — no payment_intent to refund; cancel it instead' };
+  }
+  const pi = typeof session?.payment_intent === 'string' ? session.payment_intent : session?.payment_intent?.id;
+  if (!pi) return { skip: 'no payment_intent on the session' };
+  const routed = !!purchase?.sellerAccountId;
+  return { params: {
+    payment_intent: pi,
+    reason: 'requested_by_customer',
+    // Stripe has no "we could not deliver" reason, so the real one goes where it can be read.
+    metadata: { bcweb_reason: 'undeliverable', purchaseId: String(purchase?.id || '') },
+    // Only on a routed charge. Sending either of these on an ordinary one is an error from
+    // Stripe, not a no-op.
+    ...(routed ? { reverse_transfer: true, refund_application_fee: true } : {}),
+  } };
+}
+
 export default async function stripeWebhook(app) {
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
 
@@ -461,6 +499,26 @@ export default async function stripeWebhook(app) {
             catch (e) { delivery = { error: e.code || 'delivery_failed', sessionId: s.id }; }
             await p.projectProductPurchase.update({ where: { id: purchase.id }, data: { delivery } });
             const failed = !!delivery.error;
+            // Took the money, cannot deliver: give it back. Attempted BEFORE the buyer is
+            // told, so the message can say which of the two happened rather than promising
+            // a refund that has not been asked for yet.
+            let refunded = false;
+            let refundNote = '';
+            if (failed) {
+              const plan = refundPlanFor(s, purchase);
+              if (plan.skip) { refundNote = `not refunded automatically: ${plan.skip}`; }
+              else {
+                try {
+                  await stripe.refunds.create(plan.params);
+                  refunded = true;
+                  await p.projectProductPurchase.update({ where: { id: purchase.id }, data: { status: 'refunded' } });
+                } catch (e) {
+                  // The one case a human MUST see: money taken, nothing delivered, and the
+                  // refund itself failed. Carried into the alert rather than swallowed.
+                  refundNote = `refund FAILED: ${String(e?.message || e).slice(0, 200)}`;
+                }
+              }
+            }
             // NOT on a failure. `sold` is what decides "out of stock", and counting a sale
             // that handed over nothing pushes the NEXT buyer toward the same wall. The
             // checkout pre-check is a read-then-write, so a pool CAN empty between the check
@@ -474,20 +532,25 @@ export default async function stripeWebhook(app) {
             // somebody who paid and got nothing was told it had arrived — which steers them
             // away from the dashboard, the one screen that does explain it.
             try {
-              await notify(p, meta.userId, 'purchase',
-                failed
-                  ? `Your purchase "${product.name}" could not be delivered. You have been charged — open your dashboard and contact us, and we will put it right.`
-                  : `Your purchase "${product.name}" is ready — see it in your dashboard.`,
-                { bodyFr: failed
-                  ? `Ton achat « ${product.name} » n’a pas pu être livré. Tu as été débité — ouvre ton tableau de bord et contacte-nous, on régularise.`
-                  : `Ton achat « ${product.name} » est prêt — il est dans ton tableau de bord.` });
+              const enMsg = !failed
+                ? `Your purchase "${product.name}" is ready — see it in your dashboard.`
+                : refunded
+                  ? `Your purchase "${product.name}" could not be delivered, so it has been refunded. The money is on its way back to you.`
+                  : `Your purchase "${product.name}" could not be delivered. You have been charged — contact us and we will put it right.`;
+              const frMsg = !failed
+                ? `Ton achat « ${product.name} » est prêt — il est dans ton tableau de bord.`
+                : refunded
+                  ? `Ton achat « ${product.name} » n’a pas pu être livré, il a donc été remboursé. L’argent te revient.`
+                  : `Ton achat « ${product.name} » n’a pas pu être livré. Tu as été débité — contacte-nous, on régularise.`;
+              await notify(p, meta.userId, 'purchase', enMsg, { bodyFr: frMsg });
             } catch { /* type may vary */ }
             // And somebody who can act on it. The shop taking money and handing over nothing
             // was visible ONLY to the person it happened to, whose only move was to complain.
             if (failed) {
               await p.errorEvent.create({ data: {
                 source: 'marketplace',
-                message: `paid but undelivered: "${product.name}" (${delivery.error}) — purchase ${purchase.id}, session ${s.id}`,
+                message: `paid but undelivered: "${product.name}" (${delivery.error}) — purchase ${purchase.id}, session ${s.id}`
+                  + (refunded ? ' — REFUNDED automatically' : ` — ${refundNote || 'not refunded'}`),
                 stack: '',
                 path: 'marketplace:fulfil',
               } }).catch(() => { /* the alert failing must not fail the webhook */ });
