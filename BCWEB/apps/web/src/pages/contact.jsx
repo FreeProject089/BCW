@@ -23,6 +23,39 @@ const KINDS = [
   { v: 'copyright', en: 'Copyright or other rights claim', fr: 'Droit d’auteur ou autre atteinte à mes droits' },
 ];
 
+/**
+ * What a `?topic=` link fills in. The hosting page sends all three of the first group.
+ *
+ * `kind` matters as much as the body: it is validated against a closed list server-side and
+ * it is what the admin queue counts. Somebody arriving from "I want a hosting plan" and
+ * being filed as "Something else" makes that count wrong, and the count is how anybody
+ * decides what to build next.
+ *
+ * `host-project` is deliberately worded as a QUESTION rather than an order form. Running
+ * somebody's site or bot is not something the platform does yet — there is no runner and no
+ * isolation story — and a template that reads like a purchase would collect a queue of
+ * people expecting one.
+ */
+const TOPICS = {
+  'hosting-plan': {
+    kind: 'billing',
+    en: 'Hi, I need a hosting plan that is not on the pricing page.\n\nStorage:\nBandwidth / upload:\nHow many repos or catalogues:\nAnything else (SLA, dedicated resources, invoicing):\n',
+    fr: "Bonjour, j'ai besoin d'un plan d'hébergement qui n'est pas sur la page des tarifs.\n\nStockage :\nBande passante / upload :\nCombien de dépôts ou de catalogues :\nAutre chose (SLA, ressources dédiées, facturation) :\n",
+  },
+  'host-project': {
+    kind: 'other',
+    en: "Hi, I'd like you to host a project of mine.\n\nWhat it is (site, Discord bot, app, service):\nWhat it runs on (Node, PHP, Next.js, Python, other):\nDoes it need to run all the time, or only on request:\nRoughly how much traffic:\nAnything it must reach (a database, an API, a domain):\n",
+    fr: "Bonjour, j'aimerais que vous hébergiez un de mes projets.\n\nCe que c'est (site, bot Discord, app, service) :\nSur quoi ça tourne (Node, PHP, Next.js, Python, autre) :\nEst-ce que ça doit tourner en permanence, ou seulement à la demande :\nÀ peu près quel trafic :\nCe que ça doit pouvoir joindre (une base, une API, un domaine) :\n",
+  },
+  // Kept: the pricing page linked here before the three-way split and old links live on in
+  // bookmarks and in messages already sent.
+  'enterprise-hosting': {
+    kind: 'billing',
+    en: "Hi, I'd like a custom (enterprise) hosting plan.\nMy needs:\n- Storage:\n- Bandwidth / upload:\n- Dedicated resources / SLA:\n- Other:",
+    fr: "Bonjour, je souhaite un plan d'hébergement sur mesure (entreprise).\nMes besoins :\n- Stockage :\n- Bande passante / upload :\n- Ressources dédiées / SLA :\n- Autre :",
+  },
+};
+
 // Prefilled only when the field is still empty, so choosing a kind never overwrites
 // something already typed.
 const TEMPLATES = {
@@ -61,14 +94,20 @@ export function Contact() {
   // Prefill from the account when logged in — the message is linked to the
   // account server-side regardless, this is just a convenience.
   useEffect(() => { if (user) setMsg((m) => ({ ...m, name: m.name || user.displayName || '', email: m.email || user.email || '' })); }, [user]);
-  // Prefill the body from a ?topic= (e.g. the Enterprise hosting "Contact us" button).
+  // Prefill from a ?topic=, sent by a button elsewhere on the site (the hosting page has
+  // three). A MAP rather than an `if` per topic: the hosting page needed three at once and
+  // three ifs is where somebody adds a fourth button whose topic nothing handles, so it
+  // lands here as an empty form and reads as a broken link.
+  //
+  // Each topic sets the KIND as well as the body. Arriving from "I want a hosting plan"
+  // and being filed as "Something else" makes the queue count wrong, and the queue count is
+  // how anybody decides what to build next.
   const [params] = useSearchParams();
   useEffect(() => {
-    if (params.get('topic') === 'enterprise-hosting') {
-      const tmpl = fr
-        ? "Bonjour, je souhaite un plan d'hébergement sur mesure (entreprise).\nMes besoins :\n- Stockage :\n- Bande passante / upload :\n- Ressources dédiées / SLA :\n- Autre :"
-        : 'Hi, I\'d like a custom (enterprise) hosting plan.\nMy needs:\n- Storage:\n- Bandwidth / upload:\n- Dedicated resources / SLA:\n- Other:';
-      setMsg((m) => ({ ...m, body: m.body || tmpl }));
+    const topic = params.get('topic');
+    if (topic && TOPICS[topic]) {
+      const { kind, en, fr: frTmpl } = TOPICS[topic];
+      setMsg((m) => ({ ...m, kind, body: m.body || (fr ? frTmpl : en) }));
     }
     // Report template for logged-out users sent here by a Report button (?report=type&id=&label=).
     const rType = params.get('report');
