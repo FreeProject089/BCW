@@ -3854,9 +3854,24 @@ model ProjectKey {
   code        String
   claimedById String?
   claimedAt   DateTime?
+  // HELD for one checkout that has not paid yet.
+  //
+  // Counting free keys at checkout and claiming one in the webhook leaves a window: the pool
+  // can empty in between, and then the money is taken for something that cannot be handed
+  // over. Refunding that is repair; holding the key is prevention, and a pool is the only
+  // delivery kind where the resource is genuinely finite and local.
+  //
+  // `reservedFor` is the Stripe checkout session (or, for the moment between reserving and
+  // creating it, a token this server made up). `reservedUntil` is what makes an abandoned
+  // checkout give the key back on its own, so a hold can never become a leak.
+  reservedFor   String?
+  reservedUntil DateTime?
   createdAt   DateTime       @default(now())
 
   @@index([productId, claimedAt])
+  // The reservation lookup: free keys for a product, by hold state.
+  @@index([productId, claimedAt, reservedUntil])
+  @@index([reservedFor])
 }
 
 model ProjectProductPurchase {

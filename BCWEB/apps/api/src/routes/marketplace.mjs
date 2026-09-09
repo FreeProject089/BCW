@@ -387,20 +387,106 @@ async function externalKey(product, buyerId) {
   } finally { clearTimeout(timer); }
 }
 
+/** How long a pool key is held for a checkout that has not paid yet. */
+export const RESERVE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * Hold one free pool key for `holder`, or return null when there is none to hold.
+ *
+ * The same shape as the claim below, and for the same reason: `updateMany` with a guard on
+ * the state we read is what makes it race-safe, because the guard is evaluated by the
+ * database against the row it is about to write. Prisma cannot LIMIT an updateMany, so the
+ * row is chosen first and the guard re-checks it — losing that race means somebody else took
+ * that key, so try the next one.
+ *
+ * A key is available when it is unclaimed AND either unheld or held by an expired hold. The
+ * expiry is what stops an abandoned checkout locking a key for ever.
+ */
+export async function reservePoolKey(p, productId, holder, ttlMs = RESERVE_TTL_MS) {
+  const until = new Date(Date.now() + ttlMs);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const free = await p.projectKey.findFirst({
+      where: {
+        productId,
+        claimedAt: null,
+        OR: [{ reservedUntil: null }, { reservedUntil: { lt: new Date() } }],
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (!free) return null;
+    const took = await p.projectKey.updateMany({
+      where: {
+        id: free.id,
+        claimedAt: null,
+        OR: [{ reservedUntil: null }, { reservedUntil: { lt: new Date() } }],
+      },
+      data: { reservedFor: holder, reservedUntil: until },
+    });
+    if (took.count === 1) return { ...free, reservedFor: holder, reservedUntil: until };
+  }
+  return null;
+}
+
+/** Give held keys back. Used when checkout fails to start, and when Stripe expires a session. */
+export async function releasePoolKeys(p, holder) {
+  if (!holder) return 0;
+  const r = await p.projectKey.updateMany({
+    where: { reservedFor: holder, claimedAt: null },
+    data: { reservedFor: null, reservedUntil: null },
+  });
+  return r.count;
+}
+
 // Fulfil a purchase: returns the delivery payload, or throws { code } when it cannot. Exported so
 // the Stripe webhook can deliver a paid purchase the same way the free path does.
-export async function fulfilProduct(p, product, buyerId) {
+//
+// `holder` names a checkout session whose key was held at /checkout. Passing it is what makes
+// "paid but out of stock" unreachable for a pool: the key was set aside before the buyer saw
+// a payment page, so there is nothing left to lose the race to.
+export async function fulfilProduct(p, product, buyerId, holder = null) {
   switch (product.deliveryKind) {
     case 'content': return { content: product.content || '' };
     case 'role': return { role: product.roleId || '' };
     case 'key_static': return { key: product.staticKey || '' };
     case 'key_pool': {
+      // The key held for THIS checkout, if there is one. A paid pool purchase always has one
+      // — /checkout holds it before the buyer reaches Stripe — so this is the ordinary path
+      // and the loop below is what serves a free claim, which has no session to hold against.
+      if (holder) {
+        const held = await p.projectKey.findFirst({ where: { reservedFor: holder, claimedAt: null } });
+        if (held) {
+          const took = await p.projectKey.updateMany({
+            where: { id: held.id, claimedAt: null },
+            data: { claimedById: buyerId, claimedAt: new Date(), reservedFor: null, reservedUntil: null },
+          });
+          if (took.count === 1) return { key: held.code };
+        }
+        // Falling through is deliberate rather than an error: a hold can have expired if the
+        // buyer sat on the payment page past the TTL. Then this behaves exactly as it did
+        // before holds existed, and the refund path covers what is left.
+      }
       // Claim one unclaimed pool key: pick the oldest free key, mark it. updateMany with a
       // claimedAt:null guard makes the claim race-safe (a second buyer can't take the same key).
       for (let attempt = 0; attempt < 5; attempt++) {
-        const free = await p.projectKey.findFirst({ where: { productId: product.id, claimedAt: null }, orderBy: { createdAt: 'asc' } });
+        const free = await p.projectKey.findFirst({
+          where: {
+            productId: product.id,
+            claimedAt: null,
+            // Not one somebody's checkout is holding — a free claim jumping the queue ahead of
+            // a buyer already at a payment page is how the hold would leak straight back out.
+            OR: [{ reservedUntil: null }, { reservedUntil: { lt: new Date() } }],
+          },
+          orderBy: { createdAt: 'asc' },
+        });
         if (!free) { const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e; }
-        const claimed = await p.projectKey.updateMany({ where: { id: free.id, claimedAt: null }, data: { claimedById: buyerId, claimedAt: new Date() } });
+        const claimed = await p.projectKey.updateMany({
+          where: {
+            id: free.id,
+            claimedAt: null,
+            OR: [{ reservedUntil: null }, { reservedUntil: { lt: new Date() } }],
+          },
+          data: { claimedById: buyerId, claimedAt: new Date(), reservedFor: null, reservedUntil: null },
+        });
         if (claimed.count === 1) return { key: free.code };
       }
       const e = new Error('out_of_stock'); e.code = 'out_of_stock'; throw e;
@@ -477,16 +563,34 @@ export default async function marketplaceRoutes(app) {
     if (!product || !product.active) return reply.code(404).send({ error: 'not_found' });
     if (product.priceCents <= 0) return reply.code(400).send({ error: 'free_product' }); // use /buy
     if (product.stock != null && product.sold >= product.stock) return reply.code(409).send({ error: 'out_of_stock' });
-    // A pool product with no free key left cannot be sold — refuse before taking money.
-    if (product.deliveryKind === 'key_pool') {
-      const free = await p.projectKey.count({ where: { productId: product.id, claimedAt: null } });
-      if (free <= 0) return reply.code(409).send({ error: 'out_of_stock' });
-    }
     const sk = await stripe();
     if (!sk) return reply.code(503).send({ error: 'payments_unavailable' });
+
+    // A pool key is HELD here, not counted here.
+    //
+    // Counting free keys and claiming one in the webhook leaves a window the pool can empty
+    // in, and then the money is taken for something that cannot be handed over. Refunding
+    // that is repair; this is the thing that makes it not happen. key_pool is the only
+    // delivery kind whose resource is finite and local — content, files, links, roles, static
+    // keys and minted licences are unlimited, and an external key service is not ours to hold.
+    //
+    // The hold is keyed by a token because the session id does not exist yet; it moves onto
+    // the session below, which is the only name the webhook will know.
+    const holdToken = product.deliveryKind === 'key_pool' ? `hold_${crypto.randomUUID()}` : null;
+    if (holdToken && !(await reservePoolKey(p, product.id, holdToken))) {
+      return reply.code(409).send({ error: 'out_of_stock' });
+    }
+    // EVERYTHING between the hold and the finished session goes in one try. The first
+    // version wrapped only sessions.create, and ensureCustomer — which also calls Stripe —
+    // sat outside it: a failure there left the key held with no checkout to hold it for.
+    // Measured, not spotted: the two-buyer experiment reported the key still held after
+    // buyer A's checkout had failed.
+    const releaseHold = async () => { if (holdToken) await releasePoolKeys(p, holdToken).catch(() => {}); };
     const siteUrl = process.env.SITE_URL || 'http://localhost:5176';
-    const customer = await ensureCustomer(p, sk, req.user.uid);
     const recurring = product.billing === 'subscription';
+    let session;
+    try {
+    const customer = await ensureCustomer(p, sk, req.user.uid);
 
     // Where the seller's share goes, decided HERE rather than in the webhook. The webhook
     // sees a paid session and has to know what the charge was actually built with; asking
@@ -517,7 +621,7 @@ export default async function marketplaceRoutes(app) {
       await p.projectProduct.update({ where: { id: product.id }, data: { stripePriceId: priceId } });
     }
 
-    const session = await sk.checkout.sessions.create({
+      session = await sk.checkout.sessions.create({
       mode: recurring ? 'subscription' : 'payment', customer,
       line_items: recurring
         ? [{ quantity: 1, price: priceId }]
@@ -534,7 +638,20 @@ export default async function marketplaceRoutes(app) {
       ...(routed?.payment_intent_data ? { payment_intent_data: routed.payment_intent_data } : {}),
       success_url: `${siteUrl}/dashboard?market=ok`,
       cancel_url: `${siteUrl}/dashboard?market=cancel`,
-    });
+      });
+    } catch (e) {
+      await releaseHold();
+      throw e;
+    }
+    // Hand the hold to the session. The webhook is given a session id and nothing else, so
+    // until this lands the key is held under a name nothing can look up — which is safe (the
+    // TTL still expires it) but not useful.
+    if (holdToken) {
+      await p.projectKey.updateMany({
+        where: { reservedFor: holdToken, claimedAt: null },
+        data: { reservedFor: session.id },
+      }).catch(() => { /* the TTL is the backstop */ });
+    }
     return { url: session.url };
   });
 

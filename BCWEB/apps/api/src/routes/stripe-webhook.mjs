@@ -3,7 +3,7 @@ import { mintGiftCode } from '../lib/gift.mjs';
 import { sendMail, mailShell, escapeHtml, emailEnabled } from '../lib/mail.mjs';
 import { provisionHostingPool, recomputePoolBytes } from './hosting.mjs';
 import { redeemPromoAtomic } from './promo.mjs';
-import { fulfilProduct, feeForProduct, splitFee, sellerMirror } from './marketplace.mjs';
+import { fulfilProduct, feeForProduct, splitFee, sellerMirror, releasePoolKeys } from './marketplace.mjs';
 
 // Encapsulated plugin: a raw-body JSON parser scoped here only, so Stripe's
 // signature can be verified against the exact bytes (the rest of the API keeps
@@ -495,7 +495,7 @@ export default async function stripeWebhook(app) {
           }
           if (purchase) {
             let delivery = { sessionId: s.id };
-            try { delivery = { ...await fulfilProduct(p, product, meta.userId), sessionId: s.id }; }
+            try { delivery = { ...await fulfilProduct(p, product, meta.userId, s.id), sessionId: s.id }; }
             catch (e) { delivery = { error: e.code || 'delivery_failed', sessionId: s.id }; }
             await p.projectProductPurchase.update({ where: { id: purchase.id }, data: { delivery } });
             const failed = !!delivery.error;
@@ -701,6 +701,14 @@ export default async function stripeWebhook(app) {
           if (repo) await notify(p, repo.ownerId, 'hosting_stopped', `Auto-renewal payment for "${repo.name}" failed — update your card in “Manage billing” soon, or hosting will be suspended.`);
         }
       }
+    } else if (event.type === 'checkout.session.expired') {
+      // An abandoned checkout gives its held pool key back at once, rather than waiting out
+      // the reservation TTL. The TTL stays as the backstop for a session Stripe never tells
+      // us about; this is the case it can tell us about, so it should not cost an hour of a
+      // finite pool.
+      const released = await releasePoolKeys(p, event.data.object?.id).catch(() => 0);
+      if (released) app.log.info({ session: event.data.object?.id, released }, 'released held pool key(s)');
+      return { received: true };
     } else if (event.type === 'account.updated') {
       // A connected account's state changed — onboarding finished, a document was accepted,
       // or Stripe disabled it.

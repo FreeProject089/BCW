@@ -152,6 +152,24 @@ async function sweepItems(p, log) {
 // REJECTED item row itself stays — only the object bytes go, plus the payloadKey/Size
 // are cleared so it no longer counts anywhere. A resubmit within the grace clears
 // payloadPurgeAt (see /catalog/:id/update), so anything reaching here is truly stale.
+/**
+ * Give back pool keys held by a checkout that never finished.
+ *
+ * `checkout.session.expired` releases them the moment Stripe says so, and that covers the
+ * ordinary abandonment. This is for the sessions Stripe never tells us about — a webhook that
+ * did not arrive, an endpoint that was down for a day. Without it a hold whose event was lost
+ * keeps a finite key out of circulation for ever, which is the failure the hold was added to
+ * prevent, arriving by a different road.
+ */
+async function sweepStalePoolHolds(p, log) {
+  const r = await p.projectKey.updateMany({
+    where: { claimedAt: null, reservedUntil: { lt: new Date() } },
+    data: { reservedFor: null, reservedUntil: null },
+  }).catch(() => ({ count: 0 }));
+  if (r.count) log?.info?.({ released: r.count }, 'released expired pool key holds');
+  return r.count;
+}
+
 async function sweepRejectedPayloads(p, log) {
   const due = await p.catalogItem.findMany({ where: { payloadPurgeAt: { lte: new Date() }, payloadKey: { not: null } }, take: 50 });
   let purged = 0;
@@ -679,6 +697,7 @@ export function startSweeper(app) {
         await sweepExpiredSubscriptions(p, app.log), await sweepExpiryWarnings(p, app.log),
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepEndedSuspensions(p, app.log),
+      await sweepStalePoolHolds(p, app.log),
         await runWebhookQueue(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];
