@@ -431,17 +431,31 @@ export default async function marketplaceRoutes(app) {
     const p = await db();
     const product = await p.projectProduct.findUnique({ where: { id: req.params.id } });
     if (!product || !product.active) return reply.code(404).send({ error: 'not_found' });
-    if (product.stock != null && product.sold >= product.stock) return reply.code(409).send({ error: 'out_of_stock' });
     // Paid products go through Stripe (see /checkout); free ones deliver immediately.
     if (product.priceCents > 0) return reply.code(402).send({ error: 'checkout_required', priceCents: product.priceCents, currency: product.currency });
+    // Take the slot BEFORE handing anything over, in one statement the database evaluates
+    // against the row it is writing. `sold >= stock` read from a row fetched a moment ago is
+    // the same read-then-write that let two webhook deliveries both claim one session: fire
+    // N requests at "the first 100 are free" and all N read sold = 99 and all N pass.
+    //
+    // Raw because the condition compares two COLUMNS, which Prisma's `where` cannot express
+    // — writing it as `sold: { lt: product.stock }` would compare against the number this
+    // request happened to read, which is the bug rather than the fix.
+    const took = await p.$executeRaw`UPDATE "ProjectProduct" SET "sold" = "sold" + 1
+      WHERE "id" = ${product.id} AND ("stock" IS NULL OR "sold" < "stock")`;
+    if (!took) return reply.code(409).send({ error: 'out_of_stock' });
     let delivery;
     try { delivery = await fulfilProduct(p, product, req.user.uid); }
-    catch (e) { return reply.code(409).send({ error: e.code || 'delivery_failed' }); }
+    catch (e) {
+      // Give the slot back — an undelivered claim that still counts against the stock spends
+      // somebody else's place on a purchase that never happened.
+      await p.projectProduct.update({ where: { id: product.id }, data: { sold: { decrement: 1 } } }).catch(() => {});
+      return reply.code(409).send({ error: e.code || 'delivery_failed' });
+    }
     // feeCents/netCents are written even at zero. A free purchase with NULL where the split
     // should be is indistinguishable from an old row nobody computed, and a payout report
     // that has to guess which is which is a payout report nobody trusts.
     const purchase = await p.projectProductPurchase.create({ data: { productId: product.id, buyerId: req.user.uid, status: 'paid', priceCents: 0, feeCents: 0, netCents: 0, delivery } });
-    await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
     return { ok: true, purchase: { id: purchase.id, delivery } };
   });
 

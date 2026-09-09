@@ -3882,6 +3882,13 @@ model ProjectProductPurchase {
   expiresAt   DateTime?
   stripeSubId String?
   delivery   Json?
+  // The Stripe checkout session this purchase came from, UNIQUE so the database refuses a
+  // second one. The idempotency guard used to be a read-then-write over delivery.sessionId
+  // with nothing behind it: two overlapping deliveries of the same event both read "no
+  // purchase yet" and both proceeded — measured, not theorised, at two purchases, two keys
+  // claimed and sold incremented twice for a single payment. Null for a free claim, which
+  // has no session.
+  checkoutSessionId String? @unique
   createdAt  DateTime       @default(now())
 
   @@index([buyerId, createdAt])

@@ -415,24 +415,32 @@ export default async function stripeWebhook(app) {
       if (meta.type === 'marketplace' && meta.productId && meta.userId) {
         const product = await p.projectProduct.findUnique({ where: { id: meta.productId } });
         if (product) {
-          // Idempotent: Stripe can resend the event — one purchase per checkout session.
-          const dup = await p.projectProductPurchase.findFirst({ where: { productId: product.id, buyerId: meta.userId, delivery: { path: ['sessionId'], equals: s.id } } }).catch(() => null);
-          if (!dup) {
-            let delivery = {};
-            try { delivery = await fulfilProduct(p, product, meta.userId); } catch (e) { delivery = { error: e.code || 'delivery_failed' }; }
-            delivery.sessionId = s.id;
-            // The margin, as it was when the money moved. Computed from what Stripe actually
-            // charged rather than the product's current price: the two differ the moment
-            // somebody edits the price between checkout and the webhook, and the invoice is
-            // the thing a payout has to agree with.
-            const paid = s.amount_total ?? product.priceCents;
-            const { feeCents, netCents } = splitFee(paid, await feeForProduct(p, product));
-            const recurring = product.billing === 'subscription';
-            const months = Math.min(12, Math.max(1, Number(product.intervalMonths) || 1));
-            await p.projectProductPurchase.create({ data: {
+          // Idempotency, and the order it has to happen in.
+          //
+          // This used to read for an existing purchase and then create one. Nothing stood
+          // between the two, so two overlapping deliveries of the same Stripe event both
+          // read "none yet" and both went on: two purchases, two keys out of the pool, sold
+          // incremented twice, for one payment. Stripe resends on timeout, and a slow
+          // fulfilment is exactly when that resend arrives.
+          //
+          // The row is claimed FIRST, empty, against a UNIQUE checkoutSessionId. The loser
+          // is refused by the database before it can touch the pool — fulfilling first and
+          // inserting after would still spend a key on the delivery whose row is rejected.
+          const paid = s.amount_total ?? product.priceCents;
+          const { feeCents, netCents } = splitFee(paid, await feeForProduct(p, product));
+          const recurring = product.billing === 'subscription';
+          const months = Math.min(12, Math.max(1, Number(product.intervalMonths) || 1));
+          let purchase = null;
+          try {
+            purchase = await p.projectProductPurchase.create({ data: {
               productId: product.id, buyerId: meta.userId,
               status: recurring ? 'active' : 'paid',
-              priceCents: paid, feeCents, netCents, delivery,
+              priceCents: paid, feeCents, netCents,
+              // The margin, as it was when the money moved. Computed from what Stripe
+              // actually charged rather than the product's current price: the two differ the
+              // moment somebody edits the price between checkout and the webhook, and the
+              // invoice is the thing a payout has to agree with.
+              checkoutSessionId: s.id, delivery: { sessionId: s.id },
               // Taken from the metadata the CHECKOUT wrote, not looked up now. The payee can
               // be changed between a session opening and its payment clearing, and what the
               // purchase has to record is the account this charge actually routed to — empty
@@ -441,6 +449,17 @@ export default async function stripeWebhook(app) {
               stripeSubId: recurring ? (s.subscription || null) : null,
               expiresAt: recurring ? new Date(Date.now() + months * 30 * 864e5) : null,
             } });
+          } catch (e) {
+            // P2002 is the unique index doing its job: this session is already delivered.
+            // Anything else is a real failure, and answering 200 to it would tell Stripe to
+            // stop retrying a payment we never recorded.
+            if (e?.code !== 'P2002') throw e;
+          }
+          if (purchase) {
+            let delivery = { sessionId: s.id };
+            try { delivery = { ...await fulfilProduct(p, product, meta.userId), sessionId: s.id }; }
+            catch (e) { delivery = { error: e.code || 'delivery_failed', sessionId: s.id }; }
+            await p.projectProductPurchase.update({ where: { id: purchase.id }, data: { delivery } });
             await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
             // The purchase is tracked in ProjectProductPurchase; Stripe's own invoice
             // (invoice_creation on the session) is the receipt. No Payment row needed.
