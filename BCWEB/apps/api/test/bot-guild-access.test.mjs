@@ -12,7 +12,7 @@
 // Two conditions, both required, and the tests below keep them from collapsing into one.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { canConfigureGuild, patchFromDiscord } from '../src/lib/bot-guild-access.mjs';
+import { canConfigureGuild, patchFromDiscord, ALLOWED } from '../src/lib/bot-guild-access.mjs';
 
 const guild = (o = {}) => ({
   guildId: o.guildId || 'g1',
@@ -109,5 +109,84 @@ describe('patchFromDiscord', () => {
   test('an empty patch is not an error', () => {
     assert.deepEqual(patchFromDiscord({}, guild()), { data: {}, rejected: [] });
     assert.deepEqual(patchFromDiscord(null, guild()), { data: {}, rejected: [] });
+  });
+});
+
+// ── What a pentest asked of this file, kept as tests ────────────────────────────────────
+//
+// Card D of the Sept-9 plan. Three of its four questions are answered here; the fourth (the
+// audit line written against link.userId when the link is deleted mid-request) is answered
+// by the route rather than this module — `link` is read once and canConfigureGuild already
+// required link.userId to be truthy, so there is no second read to go stale.
+describe('patchFromDiscord — hostile input', () => {
+  const cur = { language: null, logChannelId: '1', storeLogs: false, memberMode: 'none' };
+
+  test('prototype keys are dropped, not merged', () => {
+    // JSON.parse puts __proto__ on the object as an OWN enumerable property, so it does
+    // reach Object.entries here. It has to leave through `rejected` like any other unknown
+    // key — `data` is what goes to Prisma as `update({ data })`.
+    const { data, rejected } = patchFromDiscord(
+      JSON.parse('{"__proto__":{"admin":true},"constructor":{"x":1},"prototype":{}}'), cur);
+    assert.deepEqual(Object.keys(data), []);
+    assert.ok(rejected.includes('__proto__'), 'must be named, not silently swallowed');
+    assert.equal({}.admin, undefined, 'Object.prototype must be untouched');
+  });
+
+  test('ONLY memberMode can set memberMode — the guard is for the next key added', () => {
+    // Honest about what this catches. The memberMode branch was the last one standing and
+    // was reached by elimination rather than by naming its key; today every other allowed
+    // key `continue`s before reaching it, so nothing was actually broken. It would break the
+    // moment a fifth key joined ALLOWED without a branch of its own — `{ newKey:
+    // 'moderation' }` would then turn on the mode that runs bans and kicks, from a key about
+    // something else entirely.
+    //
+    // So the test is the invariant rather than a reproduction: feed EVERY allowed key the
+    // value that turns moderation on, and only its own key may do it. Green today, red the
+    // day somebody adds a key and forgets its branch.
+    for (const k of ALLOWED.filter((x) => x !== 'memberMode')) {
+      const { data } = patchFromDiscord({ [k]: 'moderation' }, cur);
+      assert.equal(data.memberMode, undefined, `${k} must not be able to set memberMode`);
+    }
+    assert.equal(patchFromDiscord({ memberMode: 'moderation' }, cur).data.memberMode, 'moderation');
+  });
+
+  test("'pool' stays site-only — it spends somebody else's storage", () => {
+    const { data, rejected } = patchFromDiscord({ memberMode: 'pool' }, cur);
+    assert.equal(data.memberMode, undefined);
+    assert.deepEqual(rejected, ['memberMode']);
+  });
+
+  test('the paying fields cannot be set from Discord at all', () => {
+    const { data, rejected } = patchFromDiscord(
+      { hostingGroupId: 'someone-elses-pool', storageQuotaBytes: 999e9 }, cur);
+    assert.deepEqual(Object.keys(data), []);
+    assert.deepEqual(rejected.sort(), ['hostingGroupId', 'storageQuotaBytes']);
+  });
+
+  test('moderation without a log channel is refused from BOTH directions', () => {
+    // Turning it on with no channel…
+    assert.equal(patchFromDiscord({ memberMode: 'moderation' },
+      { ...cur, logChannelId: null }).error, 'log_channel_required');
+    // …and clearing the channel while it is already on, which a check written only at the
+    // first would miss entirely.
+    assert.equal(patchFromDiscord({ logChannelId: null },
+      { ...cur, memberMode: 'moderation' }).error, 'log_channel_required');
+  });
+
+  test('a log channel id is a snowflake and nothing else', () => {
+    for (const bad of ['12a', '<#123>', ' 123', '123 ', '-1', '1'.repeat(33), 0, true, {}]) {
+      assert.equal(patchFromDiscord({ logChannelId: bad }, cur).data.logChannelId, undefined,
+        `${JSON.stringify(bad)} must be rejected`);
+    }
+    assert.equal(patchFromDiscord({ logChannelId: '123456789012345678' }, cur).data.logChannelId,
+      '123456789012345678');
+    // NOT checked here, and it cannot be: whether that channel belongs to THIS guild. The
+    // API is never told a guild's channels — the heartbeat reports name, member count,
+    // owner and managers, and nothing else. Today no code sends anything to this channel,
+    // so nothing can be redirected out of the guild by setting it; the value is stored and
+    // displayed. Whatever eventually posts here must resolve the id THROUGH the guild
+    // rather than through the client, or this becomes a cross-guild redirect.
+    assert.equal(patchFromDiscord({ logChannelId: '999999999999999999' }, cur).data.logChannelId,
+      '999999999999999999');
   });
 });

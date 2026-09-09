@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag} from '../lib/lib.mjs';
+import { db, requireCap, requireEditor, optionalAuth, pageVisibilitySchema, pageAccountEntrySchema, canViewPage, canManageProjects, canEditProject, projectGrants, logAudit, clientIp , guardStudioFlag, httpUrl } from '../lib/lib.mjs';
 import { toCurrentShape } from '../lib/project-config.mjs';
 import { computeActivity, computeActivityFromCommits, computeActivityFromCounts, parseGitLog, releaseMarkers } from '../lib/git-activity.mjs';
 import { safeFetch } from '../lib/net.mjs';
@@ -698,7 +698,7 @@ export default async function projectRoutes(app) {
   // fifteen, and nobody should pay that cost to fill in a five-box stack diagram.
   app.post('/admin/projects/code-graph', { preHandler: requireEditor() }, async (req, reply) => {
     const b = z.object({
-      url: z.string().url().max(300).optional(),
+      url: httpUrl(300).optional(),
       files: z.record(z.string().max(400_000)).optional(),
       maxFiles: z.number().int().min(10).max(300).optional(),
     }).safeParse(req.body);

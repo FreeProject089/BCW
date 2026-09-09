@@ -493,6 +493,29 @@ export async function marketRoleGrants(uid) {
 }
 // Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
 // MOD → its defaults + explicit grants; anyone else → only explicit grants.
+/**
+ * A link somebody will click. Use this instead of `z.string().url()` for anything stored and
+ * later rendered as an href.
+ *
+ * `z.string().url()` asks `new URL()` whether the string parses, and `javascript:alert(1)`
+ * parses — so do `data:` and `vbscript:`. React 18 puts a javascript: href straight into the
+ * DOM with a console warning and nothing more, and this site's CSP carries 'unsafe-inline'
+ * in script-src, so the browser does not stop it either. A marketplace seller scoped to one
+ * project could put one on a product and reach every visitor to that project's page.
+ *
+ * Two schemes, checked with the parser rather than a prefix match: `\tjavascript:` and
+ * `java\nscript:` both survive a startsWith and both run.
+ *
+ * Takes the length rather than being chained with `.max()`: `.refine()` returns a
+ * ZodEffects, which has no `.max`, so `httpUrl().max(600)` throws at import — at IMPORT,
+ * which is the good direction, but only because every route file is loaded at boot.
+ */
+export const httpUrl = (max = 2048) => z.string().max(max).refine((v) => {
+  try { const u = new URL(v); return u.protocol === 'http:' || u.protocol === 'https:'; }
+  catch { return false; }
+}, { message: 'must be an http(s) URL' });
+
+// Does `req.user` (with a live role + perms) hold a capability? ADMIN/SUPERADMIN → all;
 export function hasCap(user, cap) {
   if (!user) return false;
   if (user.role === 'ADMIN' || user.role === 'SUPERADMIN') return true;

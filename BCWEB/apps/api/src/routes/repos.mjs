@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
-import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
 import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -961,7 +961,7 @@ export default async function repoRoutes(app) {
   app.post('/repos', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
       name: z.string().min(2).max(60), description: z.string().max(600).default(''),
-      repoUrl: z.string().url().max(300).optional(),
+      repoUrl: httpUrl(300).optional(),
       tags: z.array(z.string().max(24)).max(8).default([]),
       links: linksSchema.optional(),
     }).safeParse(req.body);
@@ -1020,7 +1020,7 @@ export default async function repoRoutes(app) {
   app.patch('/repos/:id', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({
       name: z.string().min(2).max(60).optional(), description: z.string().max(600).optional(),
-      repoUrl: z.string().url().max(300).optional(), tags: z.array(z.string().max(24)).max(8).optional(),
+      repoUrl: httpUrl(300).optional(), tags: z.array(z.string().max(24)).max(8).optional(),
       links: linksSchema.optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { getObject, deleteObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
-import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify, httpUrl } from '../lib/lib.mjs';
 import { canConfigureGuild, patchFromDiscord } from '../lib/bot-guild-access.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
@@ -1715,7 +1715,7 @@ export default async function botRoutes(app) {
       kind: z.enum(ANNOUNCE_KINDS),
       title: z.string().trim().min(1).max(200),
       body: z.string().trim().max(1500).optional(),
-      url: z.string().url().max(400).optional(),
+      url: httpUrl(400).optional(),
       channelId: z.string().max(32).optional(),
       urgent: z.boolean().optional(),
       // Named explicitly because this schema STRIPS unknown keys rather than rejecting
@@ -1723,7 +1723,7 @@ export default async function botRoutes(app) {
       // here, the row would save as an embed, and nothing anywhere would say why.
       format: z.enum(['embed', 'text', 'both']).optional(),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-      image: z.string().url().max(600).optional(),
+      image: httpUrl(600).optional(),
       // A role to mention, chosen per announcement. The routing config already had one per
       // kind, but it only fires for an urgent message — which left no way to ping a role
       // for something that simply matters and is not an emergency.

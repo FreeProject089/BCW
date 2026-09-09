@@ -6,7 +6,7 @@
 //     publish — so a draft/typo can't blast every subscriber.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, requireCap } from '../lib/lib.mjs';
+import { db, requireRole, requireCap, httpUrl } from '../lib/lib.mjs';
 import { sendMail, mailShell, emailEnabled, escapeHtml, mdToEmailHtml } from '../lib/mail.mjs';
 import { BRAND_LOGO_DATA_URI } from '../lib/brand-logo-data.mjs';
 
@@ -222,7 +222,7 @@ export default async function newsletterRoutes(app) {
   app.post('/admin/newsletter/broadcast', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
-      body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
+      body: z.string().min(1).max(5000), url: httpUrl(500).optional(),
       emails: z.array(z.string().email()).max(5000).optional(), // subset; omitted = all active
       locale: z.enum(['en', 'fr']).optional(),                  // language segment (all EN / all FR)
     }).safeParse(req.body);
@@ -241,7 +241,7 @@ export default async function newsletterRoutes(app) {
   app.post('/admin/newsletter/test', { preHandler: requireCap('manage_newsletter') }, async (req, reply) => {
     const b = z.object({
       subject: z.string().min(1).max(200), title: z.string().min(1).max(200),
-      body: z.string().min(1).max(5000), url: z.string().url().max(500).optional(),
+      body: z.string().min(1).max(5000), url: httpUrl(500).optional(),
       to: z.string().email().max(200).optional(), // deliverable address to test against
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });

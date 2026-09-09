@@ -40,8 +40,10 @@ export function canConfigureGuild(guild, actorDiscordId, linked) {
   return (guild.managerDiscordIds || []).map(String).includes(who);
 }
 
-/** Only these; everything else is named in `rejected` so the bot can say what it ignored. */
-const ALLOWED = ['language', 'logChannelId', 'storeLogs', 'memberMode'];
+/** Only these; everything else is named in `rejected` so the bot can say what it ignored.
+ *  Exported so the test can loop over it rather than repeat it — a list repeated in a
+ *  test stops covering the thing it was written for on the day somebody adds to it. */
+export const ALLOWED = ['language', 'logChannelId', 'storeLogs', 'memberMode'];
 
 /**
  * What of a requested change may actually be applied from Discord.
@@ -76,7 +78,14 @@ export function patchFromDiscord(patch, current) {
       rejected.push(k); continue;
     }
     // memberMode: 'pool' is site-only (see above).
-    if (v === 'none' || v === 'moderation') { data.memberMode = v; continue; }
+    //
+    // The key is named rather than reached by elimination. Written as a bare `if (v ===
+    // 'none' || ...)` this was the last branch standing, so it worked only for as long as
+    // memberMode stayed the only allowed key without a branch of its own: add a fifth to
+    // ALLOWED and forget its branch, and `{ theNewKey: 'moderation' }` would turn on
+    // moderation mode — which runs bans and kicks. A fall-through that fails OPEN is what
+    // this file exists to not have.
+    if (k === 'memberMode' && (v === 'none' || v === 'moderation')) { data.memberMode = v; continue; }
     rejected.push(k);
   }
 

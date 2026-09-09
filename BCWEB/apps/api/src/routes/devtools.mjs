@@ -4,7 +4,7 @@
 // whether a feed was well-formed was to publish it and watch BMM refuse — a loop with a
 // human, a deploy and somebody else's app in it.
 import { z } from 'zod';
-import { requireRole, requireCap, db } from '../lib/lib.mjs';
+import { requireRole, requireCap, db, httpUrl } from '../lib/lib.mjs';
 import { inspectAny } from '../lib/bmm-formats.mjs';
 import { verifyArchiveList } from '../lib/bmm-signature.mjs';
 import { buildRbacMap } from '../lib/rbac-map.mjs';
@@ -564,7 +564,7 @@ export default async function devtoolRoutes(app) {
     preHandler: requireRole(), config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
   }, async (req, reply) => {
     const b = z.object({
-      url: z.string().url().max(500).optional(),
+      url: httpUrl(500).optional(),
       body: z.string().max(2_000_000).optional(),
     }).refine((v) => v.url || v.body, { message: 'url or body' }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', detail: 'Send a url or a body.' });

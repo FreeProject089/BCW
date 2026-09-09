@@ -5,7 +5,7 @@
 // Stripe one-time flow and the external-key webhook are Phase 2.
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, requireEditor, logAudit, clientIp, hasCap, projectGrants, marketRoleGrants } from '../lib/lib.mjs';
+import { db, requireRole, requireEditor, logAudit, clientIp, hasCap, projectGrants, marketRoleGrants, httpUrl } from '../lib/lib.mjs';
 import { presignGet, putObject, deleteObject } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 import { stripe, ensureCustomer } from './hosting.mjs';
@@ -328,8 +328,8 @@ const productSchema = z.object({
   roleId: z.string().max(32).nullish(),
   fileKey: z.string().max(300).nullish(),
   fileName: z.string().max(200).nullish(),
-  linkUrl: z.string().url().max(600).nullish(),
-  externalUrl: z.string().url().max(400).nullish(),
+  linkUrl: httpUrl(600).nullish(),
+  externalUrl: httpUrl(400).nullish(),
   externalSecret: z.string().max(200).nullish(),
   stock: z.number().int().min(0).max(1_000_000).nullish(),
   // Recurring. `intervalMonths` is only read when billing is 'subscription'; 1 and 12 are
@@ -339,7 +339,7 @@ const productSchema = z.object({
   intervalMonths: z.number().int().min(1).max(12).nullish(),
   // Where the buyer uses what they bought. Not secret — it is shown on the product page
   // BEFORE the sale too, because "and then what" is a question people want answered first.
-  redeemUrl: z.string().url().max(600).nullish(),
+  redeemUrl: httpUrl(600).nullish(),
   redeemNote: z.string().max(1000).nullish(),
   // Stripped for anyone below SUPERADMIN at the route, never here: a schema that rejected
   // it would turn an ordinary admin's save into a 400 they cannot act on.
