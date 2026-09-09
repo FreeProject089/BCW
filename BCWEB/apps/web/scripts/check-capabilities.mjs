@@ -25,6 +25,18 @@
 // grantee sees the tab, and every request behind it 403s — or, if the route was left on
 // requireRole, silently does not need the grant at all.
 //
+// WHAT A CAPABILITY REACHES
+//
+// A guard being present says nothing about whether it is the RIGHT one. The Sept-9 refactor
+// converted guards per FILE — every requireRole('ADMIN') in bot.mjs became
+// requireCap('manage_bot') — which is correct exactly as long as one file is one section,
+// and bot.mjs is not: it also holds /admin/economy/*, the routes that mint the currency the
+// Discord shop spends. All three checks above stayed green through it.
+//
+// So the set of sections each capability guards is recorded. It may shrink freely. A pair
+// that is not in the record fails, and the fix is either a different guard or a line in the
+// baseline that somebody chose to write.
+//
 // THE RATCHET
 //
 // `requireRole('ADMIN')` is the coarse guard: everything or nothing. 201 routes used it
@@ -92,8 +104,8 @@ for (const m of uiSrc.matchAll(/\{\s*id:\s*'([a-z_]+)'[^}]*?cat:\s*'([a-z]+)'/g)
 }
 
 // ── Every capability is actually enforced ───────────────────────────────────────────────
-const routeSrc = readdirSync(ROUTES).filter((f) => f.endsWith('.mjs'))
-  .map((f) => readFileSync(join(ROUTES, f), 'utf8')).join('\n');
+const routeFiles = readdirSync(ROUTES).filter((f) => f.endsWith('.mjs'));
+const routeSrc = routeFiles.map((f) => readFileSync(join(ROUTES, f), 'utf8')).join('\n');
 const libSrc = readFileSync(LIB, 'utf8');
 const enforced = new Set([...`${routeSrc}\n${libSrc}`.matchAll(/(?:requireCap|hasCap)\(\s*(?:user|req\.user|[a-z]+),?\s*'([a-z_]+)'|requireCap\('([a-z_]+)'/g)]
   .flatMap((m) => [m[1], m[2]]).filter(Boolean));
@@ -104,15 +116,62 @@ for (const c of apiCaps) {
   }
 }
 
+// ── What each capability reaches ─────────────────────────────────────────
+// First two non-parameter segments: /admin/economy/purchases/:id/deliver → /admin/economy.
+const sectionOf = (p) => `/${p.split('/').filter((x) => x && !x.startsWith(':')).slice(0, 2).join('/')}`;
+const reach = {};
+for (const f of routeFiles) {
+  const src = readFileSync(join(ROUTES, f), 'utf8');
+  // Some files hold their guard in a const (feedback.mjs: READ/WRITE, content-backup.mjs:
+  // GUARD). Resolve those, or the routes behind them read as unguarded — which is how a
+  // recon script of mine reported 19 imaginary holes before I read the files.
+  const alias = new Map([...src.matchAll(/const\s+([A-Z][A-Z0-9_]*)\s*=\s*requireCap\(\s*'([a-z_]+)'/g)]
+    .map((m) => [m[1], m[2]]));
+  // Bounded at the NEXT route, not at a fixed 400 characters: a window that overruns
+  // attributes the following route's guard to this one, and announcements.mjs put a public
+  // GET /announcements 9 lines above a guarded one. A gate that mis-reads a guard is worse
+  // than no gate -- the same mistake a recon script of mine made over 19 routes.
+  const hits = [...src.matchAll(/app\.(?:get|post|put|patch|delete)\(\s*[`'"]([^`'"]+)[`'"]/g)];
+  for (let i = 0; i < hits.length; i++) {
+    const m = hits[i];
+    const win = src.slice(m.index, Math.min(hits[i + 1]?.index ?? src.length, m.index + 400));
+    let cap = win.match(/requireCap\(\s*'([a-z_]+)'/)?.[1];
+    if (!cap) {
+      const named = win.match(/preHandler:\s*\[?\s*([A-Z][A-Z0-9_]*)/)?.[1];
+      if (named && alias.has(named)) cap = alias.get(named);
+    }
+    if (cap) (reach[cap] ||= new Set()).add(sectionOf(m[1]));
+  }
+}
+const reachNow = Object.fromEntries(Object.entries(reach)
+  .map(([c, set]) => [c, [...set].sort()]).sort(([a], [b]) => a.localeCompare(b)));
+
+// A whole-line comment is prose, not a guard. Mine mentioned requireRole by name while
+// explaining why the bot token uses it, and that alone moved this count by one — a security
+// ratchet you can push by writing a sentence measures nothing. Only whole-line comments are
+// dropped: a trailing // after code could swallow a real guard sharing the line.
+const code = routeSrc.split(/\r?\n/).filter((l) => !/^\s*\/\//.test(l)).join('\n');
+
 // ── The ratchet ─────────────────────────────────────────────────────────────────────────
-const coarse = (routeSrc.match(/requireRole\('ADMIN'\)/g) || []).length;
+const coarse = (code.match(/requireRole\('ADMIN'\)/g) || []).length;
 let baseline = { maxAdminOnlyRoutes: coarse };
 try { baseline = JSON.parse(readFileSync(BASELINE, 'utf8')); } catch { /* first run writes it */ }
 
 if (process.argv.includes('--update')) {
-  writeFileSync(BASELINE, `${JSON.stringify({ maxAdminOnlyRoutes: coarse }, null, 2)}\n`);
-  console.log(`baseline written: ${coarse} admin-only route(s)`);
+  writeFileSync(BASELINE, `${JSON.stringify({ maxAdminOnlyRoutes: coarse, reach: reachNow }, null, 2)}\n`);
+  console.log(`baseline written: ${coarse} admin-only route(s), `
+    + `${Object.keys(reachNow).length} capabilities over ${Object.values(reachNow).flat().length} section(s)`);
   process.exit(0);
+}
+for (const [cap, sections] of Object.entries(reachNow)) {
+  const known = baseline.reach?.[cap];
+  for (const sec of sections) {
+    if (known && known.includes(sec)) continue;
+    fail.push(`"${cap}" now guards ${sec}, which it did not before\n`
+      + `    it is recorded as covering ${known ? known.join(', ') : 'nothing'}.\n`
+      + '    A capability that reaches a second section grants more than its name says \u2014 that is\n'
+      + '    how manage_bot came to mint currency. Use the right guard, or run --update.');
+  }
 }
 if (coarse > baseline.maxAdminOnlyRoutes) {
   fail.push(`${coarse} routes are requireRole('ADMIN'), up from ${baseline.maxAdminOnlyRoutes}\n`

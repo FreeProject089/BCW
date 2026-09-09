@@ -6114,6 +6114,7 @@ const DICT = {
     'db.kicked': 'expulsés', 'db.timedout': 'exclus', 'db.purged': 'purgés', 'db.session': '(cette session)',
     'db.token': 'Token du bot', 'db.set': 'Défini', 'db.notset': 'Non défini',
     'db.token.env': 'Le token est fourni via la variable d’environnement DISCORD_TOKEN et géré en dehors du dashboard.',
+    'db.token.adminonly': 'Le token est défini par un administrateur — il ne fait pas partie de la permission de gestion du bot.',
     'db.token.paste': 'Colle ton token de bot — il est stocké côté serveur et le bot se connecte automatiquement en ~20s. Le token n’est jamais réaffiché.',
     'db.token.new': 'Nouveau token…', 'db.token.ph': 'Token du bot…', 'db.token.change': 'Changer', 'db.token.settoken': 'Définir le token', 'db.token.clear': 'Effacer',
     'db.token.needoff': 'Coupe le bot (interrupteur principal) puis Enregistre pour changer le token.',

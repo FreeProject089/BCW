@@ -387,6 +387,10 @@ export const CAPABILITIES = [
   // Sections that used to be "are you an admin" and are now their own job.
   'manage_bot', 'manage_hosting', 'manage_donations', 'manage_assets',
   'manage_history', 'manage_sanctions', 'manage_legal', 'manage_expenses',
+  // Its own capability and not part of manage_bot, even though its routes live in
+  // bot.mjs. Granting somebody the Discord dashboard must not hand them the ability to
+  // mint the currency its shop spends.
+  'manage_economy',
   // Translators — scoped to what they may translate, not to admin power. `translate_site`
   // opens the runtime-locale editor (site strings); the other two scope blog/docs translation.
   'translate_site', 'translate_blog', 'translate_docs',

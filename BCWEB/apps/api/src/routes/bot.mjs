@@ -506,7 +506,11 @@ export default async function botRoutes(app) {
   // Set / clear the Discord bot token from the dashboard. Only allowed while the bot is
   // DISABLED (so a running bot's token isn't swapped under it) and when no env token is
   // set (env always wins). The idle bot polls GET /bot/token and connects once set.
-  app.put('/admin/bot/token', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+  // requireRole('ADMIN'), NOT a capability. This sets the bot's credential: whoever can
+  // write it can point the bot at a Discord application they control. The same rule as the
+  // server terminal and /admin/users/:id/permissions — a credential is not delegable, and
+  // the refactor that made this manage_bot was a per-file sweep that did not stop to ask.
+  app.put('/admin/bot/token', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const b = z.object({ token: z.string().max(120).nullable() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -2063,7 +2067,7 @@ export default async function botRoutes(app) {
   });
 
   // Admin: the economy leaderboard + totals, for the dashboard's check/give tools.
-  app.get('/admin/economy', { preHandler: requireCap('manage_bot') }, async (req) => {
+  app.get('/admin/economy', { preHandler: requireCap('manage_economy') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const where = q ? { user: { OR: [{ displayName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } } : {};
@@ -2078,7 +2082,7 @@ export default async function botRoutes(app) {
   });
 
   // Admin: grant (positive) or take (negative) points from a member. Points never go below 0.
-  app.post('/admin/economy/grant', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+  app.post('/admin/economy/grant', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
     const b = z.object({ userId: z.string().min(1).max(64), points: z.number().int().min(-1000000).max(1000000).optional(), xp: z.number().int().min(-10000000).max(10000000).optional(), reason: z.string().max(200).optional() }).safeParse(req.body);
     if (!b.success || (b.data.points == null && b.data.xp == null)) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -2101,7 +2105,7 @@ export default async function botRoutes(app) {
   // Reset points (a season reset, or fixing one member) — set to zero rather than granting a
   // negative delta, which is fiddly to get exactly right. `scope:'all'` zeroes every member;
   // `scope:'user'` one. `xp:true` also resets XP + level (a full wipe), otherwise points only.
-  app.post('/admin/economy/reset', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+  app.post('/admin/economy/reset', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
     const b = z.object({
       scope: z.enum(['all', 'user']).default('user'),
       userId: z.string().min(1).max(64).optional(),
@@ -2219,7 +2223,7 @@ export default async function botRoutes(app) {
     return { history: await listLedger(p, req.user.uid, { kind, take: Math.min(500, Number(req.query?.take) || 200) }) };
   });
   // Admin: the whole ledger, searchable by member, filterable by kind.
-  app.get('/admin/economy/history', { preHandler: requireCap('manage_bot') }, async (req) => {
+  app.get('/admin/economy/history', { preHandler: requireCap('manage_economy') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const kind = String(req.query?.kind || '').slice(0, 30) || null;
@@ -2255,12 +2259,12 @@ export default async function botRoutes(app) {
 
   // Admin: what still needs a person — roles and custom rewards bought with points — and the
   // button that says it was handed over. Newest first, pending on top.
-  app.get('/admin/economy/purchases', { preHandler: requireCap('manage_bot') }, async (req) => {
+  app.get('/admin/economy/purchases', { preHandler: requireCap('manage_economy') }, async (req) => {
     const p = await db();
     const rows = await p.economyPurchase.findMany({ orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 100, include: { user: { select: { id: true, displayName: true } } } });
     return { purchases: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status, delivery: r.delivery, createdAt: r.createdAt })) };
   });
-  app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
+  app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
     const p = await db();
     const row = await p.economyPurchase.findUnique({ where: { id: req.params.id } });
     if (!row) return reply.code(404).send({ error: 'not_found' });

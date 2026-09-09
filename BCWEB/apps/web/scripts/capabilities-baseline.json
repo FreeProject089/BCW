@@ -1,3 +1,101 @@
 {
-  "maxAdminOnlyRoutes": 107
+  "maxAdminOnlyRoutes": 99,
+  "reach": {
+    "manage_analytics": [
+      "/admin/analytics"
+    ],
+    "manage_announcements": [
+      "/admin/announcements",
+      "/admin/notify-all",
+      "/admin/reactions"
+    ],
+    "manage_api": [
+      "/admin/api",
+      "/admin/webhooks"
+    ],
+    "manage_assets": [
+      "/admin/assets"
+    ],
+    "manage_bot": [
+      "/admin/bot"
+    ],
+    "manage_catalogs": [
+      "/admin/catalogs",
+      "/admin/inspect",
+      "/admin/sanctions"
+    ],
+    "manage_docs": [
+      "/docs",
+      "/docs/comments"
+    ],
+    "manage_donations": [
+      "/admin/charity",
+      "/admin/kofi"
+    ],
+    "manage_economy": [
+      "/admin/economy"
+    ],
+    "manage_events": [
+      "/admin/events"
+    ],
+    "manage_expenses": [
+      "/admin/expenses"
+    ],
+    "manage_faq": [
+      "/admin/faq"
+    ],
+    "manage_history": [
+      "/admin/history"
+    ],
+    "manage_hosting": [
+      "/admin/hosting"
+    ],
+    "manage_legal": [
+      "/admin/legal"
+    ],
+    "manage_myo": [
+      "/admin/myo"
+    ],
+    "manage_newsletter": [
+      "/admin/newsletter"
+    ],
+    "manage_polls": [
+      "/admin/polls"
+    ],
+    "manage_projects": [
+      "/admin/projects"
+    ],
+    "manage_promotions": [
+      "/admin/campaigns",
+      "/admin/promo"
+    ],
+    "manage_reports": [
+      "/admin/feedback",
+      "/admin/reports"
+    ],
+    "manage_repos": [
+      "/admin/hosting",
+      "/admin/repos",
+      "/admin/transfers"
+    ],
+    "manage_sanctions": [
+      "/admin/security"
+    ],
+    "manage_server": [
+      "/admin/status"
+    ],
+    "manage_showcase": [
+      "/admin/showcase"
+    ],
+    "manage_users": [
+      "/admin/bot",
+      "/admin/pending",
+      "/admin/sanctions",
+      "/admin/users"
+    ],
+    "translate_site": [
+      "/admin/bot",
+      "/admin/locales"
+    ]
+  }
 }

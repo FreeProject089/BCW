@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins} from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List } from 'lucide-react';
@@ -4479,7 +4479,7 @@ const ADMIN_CAPS = [
   { id: 'manage_reports', cat: 'people', icon: MessageSquare, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
   { id: 'manage_projects', cat: 'content', icon: Settings2, label: 'Manage projects', labelFr: 'Gérer les projets', desc: 'Edit every fixed project page + its visibility & schedule.', descFr: 'Modifier chaque page de projet fixe + sa visibilité et sa planification.' },
   { id: 'manage_showcase', cat: 'content', icon: Sparkles, label: 'Manage other projects', labelFr: 'Gérer les autres projets', desc: 'Create, edit, pin and publish every other-project page.', descFr: 'Créer, modifier, épingler et publier chaque page « autre projet ».' },
-  { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners.', descFr: 'Publier et modifier les bannières d’annonce du site.' },
+  { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners — publishing one also sends a notification to every user.', descFr: 'Publier et modifier les bannières d’annonce du site — en publier une envoie aussi une notification à tous les membres.' },
   { id: 'manage_faq', cat: 'content', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
   { id: 'manage_catalogs', cat: 'content', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
   { id: 'manage_newsletter', cat: 'growth', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
@@ -4492,7 +4492,8 @@ const ADMIN_CAPS = [
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
   { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
   { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
-  { id: 'manage_bot', cat: 'ops', icon: MessageSquare, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: its config, its features, its servers and its logs. Not its token.', descFr: 'Le tableau de bord du bot : sa config, ses fonctionnalités, ses serveurs et ses journaux. Pas son token.' },
+  { id: 'manage_bot', cat: 'ops', icon: MessageSquare, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
+  { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things — grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Rocket, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
   { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
   { id: 'manage_sanctions', cat: 'people', icon: Gavel, label: 'Manage sanctions', labelFr: 'Gérer les sanctions', desc: 'Site bans and the appeals against them.', descFr: 'Les bannissements du site et les recours contre eux.' },
@@ -14256,6 +14257,11 @@ function AdminBot() {
   const toast = useToast();
   const dialog = useDialog();
   const { t } = useI18n();
+  const { user: me } = useAuth();
+  // Writing the token is requireRole('ADMIN') on the server, not a capability: whoever sets
+  // it can point the bot at a Discord application they control. A manage_bot delegate gets
+  // the rest of this page and a sentence saying where the token lives.
+  const canToken = me?.role === 'ADMIN' || me?.role === 'SUPERADMIN';
   // Declared here, above the `loading` early return below — a useState placed next to the
   // handler that uses it would be a CONDITIONAL hook call, and React throws the moment the
   // data arrives and the early return stops firing.
@@ -14485,6 +14491,8 @@ function AdminBot() {
           </div>
           {data?.tokenFromEnv ? (
             <p className="text-xs text-[var(--muted)]">{t('db.token.env', 'The token is provided via the DISCORD_TOKEN environment variable and is managed outside the dashboard.')}</p>
+          ) : !canToken ? (
+            <p className="text-xs text-[var(--muted)]">{t('db.token.adminonly', 'The token is set by an administrator — it is not part of the bot-management permission.')}</p>
           ) : botDisabled ? (
             <>
               <p className="text-xs text-[var(--muted)] mb-2">{t('db.token.paste', 'Paste your Discord bot token — it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.')}</p>
@@ -15474,10 +15482,17 @@ function BotMemberModal({ member, guildRoles, onClose }) {
 
 function AdminBotMembersPage({ currency }) {
   const { t } = useI18n();
+  const { user } = useAuth();
+  // The economy lives in bot.mjs but is guarded by manage_economy, not manage_bot — the
+  // three panels behind this sub-tab grant, reset and deliver. Someone holding only the
+  // bot dashboard would meet three panels that all 403; hide the sub-tab instead. The
+  // server is what actually refuses, here and everywhere.
+  const canEco = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN'
+    || effectiveCaps(user).includes('manage_economy');
   const [view, setView] = useState('roster');
   return (
     <div>
-      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 w-fit mt-6 mb-1">
+      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 w-fit mt-6 mb-1" hidden={!canEco}>
         {[['roster', t('bm.view.roster', 'Roster'), Users], ['economy', t('bm.view.economy', 'Levels & economy'), TrendingUp]].map(([id, label, I]) => (
           <button key={id} type="button" onClick={() => setView(id)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
@@ -15485,7 +15500,7 @@ function AdminBotMembersPage({ currency }) {
           </button>
         ))}
       </div>
-      {view === 'roster' ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
+      {view === 'roster' || !canEco ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
     </div>
   );
 }
@@ -22125,6 +22140,7 @@ function TempStorageManager({ open, onClose, onChange }) {
 // grant already on the Members page). `xp` also wipes XP + level. Confirmed, and audit-logged.
 function EcoResetControl() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false); const [xp, setXp] = useState(false);
   const resetAll = async () => {
     if (!await dialog.confirm({
@@ -22139,6 +22155,8 @@ function EcoResetControl() {
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
+  // Guarded by manage_economy on the server, so a bot-dashboard grant no longer reaches it.
+  if (!(user?.role === 'ADMIN' || user?.role === 'SUPERADMIN' || effectiveCaps(user).includes('manage_economy'))) return null;
   return (
     <div className="rounded-xl border border-dashed border-error/40 p-3 flex items-center gap-3 flex-wrap text-sm">
       <RotateCcw size={16} className="text-error shrink-0" />

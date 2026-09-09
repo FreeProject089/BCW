@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, notifyAll } from '../lib/lib.mjs';
+import { db, requireCap, notifyAll } from '../lib/lib.mjs';
 
 // Push a Notification to every user in one bulk insert — used both by the
 // announcement broadcast and the standalone "notify everyone" admin action.
@@ -38,14 +38,14 @@ export default async function announcementRoutes(app) {
     return { announcements: rows };
   });
 
-  app.get('/admin/announcements', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/announcements', { preHandler: requireCap('manage_announcements') }, async () => {
     const p = await db();
     return { announcements: await p.announcement.findMany({ orderBy: { createdAt: 'desc' } }) };
   });
 
   // Publishing an announcement also broadcasts a Notification to every user — the
   // banner is persistent/dismissible, the notification is the "something's new" ping.
-  app.post('/admin/announcements', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/announcements', { preHandler: requireCap('manage_announcements') }, async (req, reply) => {
     const b = announcementSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     const p = await db();
@@ -55,7 +55,7 @@ export default async function announcementRoutes(app) {
     return reply.code(201).send({ announcement: a, notified });
   });
 
-  app.put('/admin/announcements/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/announcements/:id', { preHandler: requireCap('manage_announcements') }, async (req, reply) => {
     const b = announcementSchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -66,14 +66,14 @@ export default async function announcementRoutes(app) {
     return { announcement: a };
   });
 
-  app.delete('/admin/announcements/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/announcements/:id', { preHandler: requireCap('manage_announcements') }, async (req) => {
     const p = await db();
     await p.announcement.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
   });
 
   // Standalone broadcast — a one-off notification with no persistent banner.
-  app.post('/admin/notify-all', { preHandler: requireRole('ADMIN'), config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
+  app.post('/admin/notify-all', { preHandler: requireCap('manage_announcements'), config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
     const b = z.object({ body: z.string().min(1).max(500) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
