@@ -460,10 +460,38 @@ export default async function stripeWebhook(app) {
             try { delivery = { ...await fulfilProduct(p, product, meta.userId), sessionId: s.id }; }
             catch (e) { delivery = { error: e.code || 'delivery_failed', sessionId: s.id }; }
             await p.projectProductPurchase.update({ where: { id: purchase.id }, data: { delivery } });
-            await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
+            const failed = !!delivery.error;
+            // NOT on a failure. `sold` is what decides "out of stock", and counting a sale
+            // that handed over nothing pushes the NEXT buyer toward the same wall. The
+            // checkout pre-check is a read-then-write, so a pool CAN empty between the check
+            // and this webhook — that gap wants a refund path and is its own change, but
+            // making the counter lie about it helps nobody in the meantime.
+            if (!failed) await p.projectProduct.update({ where: { id: product.id }, data: { sold: { increment: 1 } } });
             // The purchase is tracked in ProjectProductPurchase; Stripe's own invoice
             // (invoice_creation on the session) is the receipt. No Payment row needed.
-            try { await notify(p, meta.userId, 'purchase', `Your purchase "${product.name}" is ready — see it in your dashboard.`); } catch { /* type may vary */ }
+            //
+            // The message has to match what happened. It said `is ready` either way, so
+            // somebody who paid and got nothing was told it had arrived — which steers them
+            // away from the dashboard, the one screen that does explain it.
+            try {
+              await notify(p, meta.userId, 'purchase',
+                failed
+                  ? `Your purchase "${product.name}" could not be delivered. You have been charged — open your dashboard and contact us, and we will put it right.`
+                  : `Your purchase "${product.name}" is ready — see it in your dashboard.`,
+                { bodyFr: failed
+                  ? `Ton achat « ${product.name} » n’a pas pu être livré. Tu as été débité — ouvre ton tableau de bord et contacte-nous, on régularise.`
+                  : `Ton achat « ${product.name} » est prêt — il est dans ton tableau de bord.` });
+            } catch { /* type may vary */ }
+            // And somebody who can act on it. The shop taking money and handing over nothing
+            // was visible ONLY to the person it happened to, whose only move was to complain.
+            if (failed) {
+              await p.errorEvent.create({ data: {
+                source: 'marketplace',
+                message: `paid but undelivered: "${product.name}" (${delivery.error}) — purchase ${purchase.id}, session ${s.id}`,
+                stack: '',
+                path: 'marketplace:fulfil',
+              } }).catch(() => { /* the alert failing must not fail the webhook */ });
+            }
           }
         }
         return { received: true };
