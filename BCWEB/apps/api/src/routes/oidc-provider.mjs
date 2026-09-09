@@ -2,7 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import querystring from 'node:querystring';
 import jwt from 'jsonwebtoken';
-import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, clearSession, logAudit, clientIp, notify, safeEqual, httpUrl } from '../lib/lib.mjs';
 import { jwks, issuer, signRs256, verifyRs256, verifyPkce, validateAuthorizeRequest } from '../lib/oidc.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 
@@ -806,7 +806,9 @@ export default async function oidcProviderRoutes(app) {
     const b = z.object({
       name: z.string().min(2).max(120),
       description: z.string().max(300).default(''),
-      homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
+      // httpUrl, not z.string().url(): this one is rendered as an <a href> on the
+      // CONSENT screen, and `new URL('javascript:…')` parses perfectly happily.
+      homepageUrl: httpUrl(300).optional().or(z.literal('')),
       confidential: z.boolean().optional(),
       redirectUris: z.array(z.string().max(500)).min(1).max(10),
       scopes: z.array(z.enum(SCOPES)).optional(),
@@ -845,7 +847,9 @@ export default async function oidcProviderRoutes(app) {
     const b = z.object({
       name: z.string().min(2).max(120).optional(),
       description: z.string().max(300).optional(),
-      homepageUrl: z.string().url().max(300).optional().or(z.literal('')),
+      // httpUrl, not z.string().url(): this one is rendered as an <a href> on the
+      // CONSENT screen, and `new URL('javascript:…')` parses perfectly happily.
+      homepageUrl: httpUrl(300).optional().or(z.literal('')),
       redirectUris: z.array(z.string().max(500)).min(1).max(10).optional(),
       scopes: z.array(z.enum(SCOPES)).optional(),
       active: z.boolean().optional(),
@@ -927,6 +931,14 @@ export default async function oidcProviderRoutes(app) {
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
+    // The same check the self-service route runs. It was missing here, which put the
+    // STRICTER validation on the LESS privileged path: an admin could register plain http
+    // off localhost, a wildcard host, credentials in the URL or a fragment — and a
+    // redirect_uri is where authorization codes are delivered.
+    for (const uri of d.redirectUris) {
+      const why = badRedirect(uri);
+      if (why) return reply.code(400).send({ error: 'bad_redirect_uri', uri, detail: why });
+    }
     const confidential = d.confidential !== false; // default confidential
     // A confidential client gets a secret shown ONCE; only its sha256 is stored.
     const secret = confidential ? crypto.randomBytes(32).toString('base64url') : '';
@@ -952,6 +964,10 @@ export default async function oidcProviderRoutes(app) {
       verified: z.boolean().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    for (const uri of b.data.redirectUris || []) {
+      const why = badRedirect(uri);
+      if (why) return reply.code(400).send({ error: 'bad_redirect_uri', uri, detail: why });
+    }
     const data = {};
     for (const k of ['active', 'redirectUris', 'scopes', 'verified']) if (b.data[k] !== undefined) data[k] = b.data[k];
     if (!Object.keys(data).length) return reply.code(400).send({ error: 'nothing_to_update' });
