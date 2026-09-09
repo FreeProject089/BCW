@@ -3599,6 +3599,7 @@ const DICT = {
     'mkadm.f.link.h': 'Affiché comme un bouton après l’achat. Pour une page que tu contrôles ; pour un fichier, la livraison Fichier empêche l’adresse d’être transmise.',
     'mkadm.f.license.h': 'Rien à régler : chaque acheteur reçoit une clé que personne d’autre n’a, créée à l’achat et enregistrée dessus. Illimitée, contrairement à un pool, et traçable, contrairement à une clé fixe.',
     'mk.dl': 'Télécharger', 'mk.open': 'Ouvrir',
+    'mk.dlended': 'Ton abonnement à ce produit a pris fin.',
     'mk.dlfail': 'Ce téléchargement n’a pas pu être préparé.',
     'mk.licensed': 'Cette clé n’appartient qu’à toi — garde-la, elle est enregistrée sur cet achat.',
     // Plan du site — la liste et les saisies refusées

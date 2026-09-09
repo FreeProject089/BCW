@@ -1500,7 +1500,13 @@ function Marketplace({ pkey, products = [], onChanged }) {
       const r = await api.get(`/marketplace/purchases/${d.purchaseId}/download`);
       if (r?.url) window.open(r.url, '_blank', 'noopener');
       else toast.error(t('mk.dlfail', 'That download could not be prepared.'));
-    } catch { toast.error(t('mk.dlfail', 'That download could not be prepared.')); }
+    } catch (e) {
+      // A lapsed subscription is not a failure to prepare the file — it is the one refusal
+      // the buyer can act on, so it says so instead of hiding behind the generic message.
+      toast.error(e?.data?.error === 'subscription_ended'
+        ? t('mk.dlended', 'Your subscription to this product has ended.')
+        : t('mk.dlfail', 'That download could not be prepared.'));
+    }
     finally { setDl(null); }
   };
 

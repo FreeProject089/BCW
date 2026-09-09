@@ -194,6 +194,24 @@ export function splitFee(priceCents, feeBp) {
  * @param seller   the connected account on file for its page, or null
  * @param feeBp    the margin in basis points, from feeForProduct()
  */
+/**
+ * May this buyer still be handed the file?
+ *
+ * 'paid' is a one-off purchase (and a free claim). A SUBSCRIPTION is created 'active' by the
+ * webhook and set to 'ended' when it lapses. Nothing couples deliveryKind to billing, so a
+ * `file` product sold monthly is an ordinary thing to build — and the gate that only accepted
+ * 'paid' answered "not_paid" to a customer who was paying, for the whole life of their
+ * subscription.
+ *
+ * 'ended' is refused deliberately and separately: the row is kept so the buyer can see what
+ * they had, and the storefront gets to say "your subscription ended" rather than accusing
+ * them of not paying. Any status this does not know is refused — a new one is a decision
+ * somebody has to come back here and make.
+ */
+export function mayDownload(status) {
+  return status === 'paid' || status === 'active';
+}
+
 export function connectChargeParams(product, seller, feeBp) {
   const dest = seller?.stripeAccountId;
   if (!dest || !seller?.chargesEnabled) return null;
@@ -644,7 +662,14 @@ export default async function marketplaceRoutes(app) {
     const p = await db();
     const purchase = await p.projectProductPurchase.findUnique({ where: { id: req.params.id }, include: { product: true } });
     if (!purchase || purchase.buyerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
-    if (purchase.status !== 'paid') return reply.code(409).send({ error: 'not_paid' });
+    // 'paid' is a one-off (and a free claim). A SUBSCRIPTION is created 'active' by the
+    // webhook and becomes 'ended' when it lapses — and nothing couples deliveryKind to
+    // billing, so a `file` product sold monthly is an ordinary thing to build. Checking only
+    // for 'paid' locked the paying customer out of the file for the whole life of their
+    // subscription, and answered 'not_paid' to somebody who had.
+    if (!mayDownload(purchase.status)) {
+      return reply.code(409).send({ error: purchase.status === 'ended' ? 'subscription_ended' : 'not_paid' });
+    }
     // The key comes from the PURCHASE, so replacing the product's file later does not silently
     // hand an old buyer a different file than the one they paid for.
     const key = purchase.delivery?.fileKey || purchase.product?.fileKey;
