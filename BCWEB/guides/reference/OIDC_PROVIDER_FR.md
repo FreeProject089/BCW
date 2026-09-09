@@ -56,6 +56,19 @@ correspondance par préfixe, pas de jokers. Sinon tu obtiens une page d'erreur e
 redirection, volontairement : une redirection non validée, c'est comme ça qu'on fabrique
 une redirection ouverte par accident.
 
+**Ce que tu as le droit d'enregistrer.** Une URI de redirection est l'endroit où les codes
+d'autorisation sont livrés, donc elle est contrôlée à l'enregistrement autant qu'à l'usage —
+les mêmes règles sur les routes en libre-service et sur celles du staff :
+
+- `https`, ou `http` **uniquement** sur `localhost` / `127.0.0.1` / `[::1]`. Du http en clair
+  ailleurs livrerait les codes en clair.
+- pas de `#fragment`, et pas de `user:motdepasse@` dans l'URL.
+- pas d'hôte avec joker. `*.example.com` laisserait quiconque peut enregistrer un
+  sous-domaine recevoir tes codes.
+
+Un refus nomme l'URI et dit quelle règle a sauté, plutôt qu'un « invalide » sec — le `s`
+manquant à `https` ne vaut pas vingt minutes.
+
 **2. Échange le code.** Sous 10 minutes, une seule fois :
 
 ```

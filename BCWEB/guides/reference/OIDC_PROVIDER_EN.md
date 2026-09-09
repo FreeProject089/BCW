@@ -53,6 +53,19 @@ GET /oauth2/authorize
 wildcards. If it does not, you get an error page rather than a redirect, on purpose: an
 unvalidated redirect is how an open redirect gets built by accident.
 
+**What you may register.** A redirect URI is where authorization codes are delivered, so it
+is checked when you register it as well as when you use it — the same rules on the
+self-service routes and the staff ones:
+
+- `https`, or `http` **only** on `localhost` / `127.0.0.1` / `[::1]`. Plain http anywhere
+  else would hand codes over in cleartext.
+- no `#fragment`, and no `user:password@` in the URL.
+- no wildcard host. `*.example.com` would let anyone who can register a subdomain receive
+  your codes.
+
+A refusal names the URI and says which rule it broke, rather than a bare "invalid" — the
+missing `s` in `https` is not worth twenty minutes.
+
 **2. Exchange the code.** Within 10 minutes, once:
 
 ```
