@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, safeEqual } from '../lib/lib.mjs';
+import { db, requireRole, notify, safeEqual, requireCap } from '../lib/lib.mjs';
 import { invalidate, replyCachedJson } from '../lib/cache.mjs';
 import { grantAutoBadges } from './social.mjs';
 import { flagEnabled, disabledReply } from '../lib/flags.mjs';
@@ -102,7 +102,7 @@ export default async function kofiRoutes(app) {
   });
 
   // ── Admin: configure the webhook token, and a manual fallback grant ──
-  app.get('/admin/kofi/settings', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/kofi/settings', { preHandler: requireCap('manage_donations') }, async (req) => {
     const p = await db();
     const envToken = process.env.KOFI_WEBHOOK_TOKEN?.trim();
     const row = envToken ? null : await p.adminSetting.findUnique({ where: { key: 'kofi.token' } });
@@ -110,7 +110,7 @@ export default async function kofiRoutes(app) {
     return { configured: !!(envToken || row?.value?.token), fromEnv: !!envToken, webhookUrl: `${siteUrl}/api/webhooks/kofi`, percentOff: KOFI_PERCENT_OFF, minMonths: KOFI_MIN_MONTHS };
   });
 
-  app.put('/admin/kofi/settings', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/kofi/settings', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     if (process.env.KOFI_WEBHOOK_TOKEN?.trim()) return reply.code(409).send({ error: 'token_from_env' });
     const b = z.object({ token: z.string().min(4).max(200) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -120,7 +120,7 @@ export default async function kofiRoutes(app) {
   });
 
   // ── Admin: the funding-goal target shown on the public widget ──
-  app.get('/admin/kofi/goal', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async () => {
     const p = await db();
     const [row, agg] = await Promise.all([
       p.adminSetting.findUnique({ where: { key: 'kofi.goal' } }),
@@ -129,7 +129,7 @@ export default async function kofiRoutes(app) {
     return { goal: row?.value || null, totalAmount: agg._sum.amount || 0, tipCount: agg._count._all };
   });
 
-  app.put('/admin/kofi/goal', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     const b = z.object({ title: z.string().max(120).default(''), targetAmount: z.number().min(0).max(10_000_000), currency: z.string().min(1).max(8).default('USD') }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -137,7 +137,7 @@ export default async function kofiRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/admin/kofi/goal', { preHandler: requireRole('ADMIN') }, async () => {
+  app.delete('/admin/kofi/goal', { preHandler: requireCap('manage_donations') }, async () => {
     const p = await db();
     await p.adminSetting.delete({ where: { key: 'kofi.goal' } }).catch(() => {});
     return { ok: true };
@@ -145,7 +145,7 @@ export default async function kofiRoutes(app) {
 
   // Manual grant — for a donation an admin verified by hand (e.g. seen in the
   // Ko-fi dashboard) before the webhook was set up. Same one-time gate applies.
-  app.post('/admin/kofi/grant', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/kofi/grant', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     const b = z.object({ email: z.string().email() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();

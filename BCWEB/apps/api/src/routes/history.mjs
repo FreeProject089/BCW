@@ -12,7 +12,7 @@
 // window is bounded by `days`) and it is the reason the endpoint takes a `days` window
 // rather than offering unbounded scrollback.
 import { z } from 'zod';
-import { db, requireRole, logAudit, repoLogDays, clearRepoLogDaysCache } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, repoLogDays, clearRepoLogDaysCache, requireCap } from '../lib/lib.mjs';
 import { signBytes, publicVerifyInfo } from '../lib/signing.mjs';
 import { resolveRetention, RETENTION_DEFAULTS } from '../lib/retention.mjs';
 
@@ -93,7 +93,7 @@ export default async function historyRoutes(app) {
     return { ok: true, source, days };
   });
 
-  app.get('/admin/history/retention', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/history/retention', { preHandler: requireCap('manage_history') }, async () => {
     const p = await db();
     const [an, au] = await Promise.all([
       p.adminSetting.findUnique({ where: { key: 'analytics.retention' } }),
@@ -114,9 +114,9 @@ export default async function historyRoutes(app) {
   // The public half of the signing identity, so a downloaded export can be checked in the
   // browser — or on another machine entirely — without uploading it back here. An import
   // that has to be sent to the server to be read is not an independent check of anything.
-  app.get('/admin/history/pubkey', { preHandler: requireRole('ADMIN') }, async () => publicVerifyInfo(await db()));
+  app.get('/admin/history/pubkey', { preHandler: requireCap('manage_history') }, async () => publicVerifyInfo(await db()));
 
-  app.get('/admin/history', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/history', { preHandler: requireCap('manage_history') }, async (req, reply) => {
     const q = z.object({
       days: z.coerce.number().int().min(1).max(365).default(30),
       take: z.coerce.number().int().min(1).max(200).default(60),
@@ -217,7 +217,7 @@ export default async function historyRoutes(app) {
   // `take` is raised well above the browsing limit here: paging is a reading convenience,
   // while an export that silently stopped at 60 rows would be a file that looks complete
   // and is not. It is still bounded — an export is a snapshot, not a stream.
-  app.get('/admin/history/export', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/history/export', { preHandler: requireCap('manage_history') }, async (req, reply) => {
     const q = z.object({
       days: z.coerce.number().int().min(1).max(365).default(30),
       sources: z.string().default(''),

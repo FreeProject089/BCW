@@ -322,7 +322,7 @@ async function renderWelcomePng({ username = 'NewMember', members = 1024, server
 
 export default async function botRoutes(app) {
   // ── Admin dashboard: read/update bot config + see live status ──
-  app.get('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/config', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const cfg = await getBotConfig(p);
     const status = (await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value || null;
@@ -422,7 +422,7 @@ export default async function botRoutes(app) {
   });
 
   // The global member database, for the admin card: policy, usage, and every server's share.
-  app.get('/admin/bot/memberdb', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/memberdb', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const cfg = await getBotConfig(p);
     const pol = memberPolicy(cfg);
@@ -455,7 +455,7 @@ export default async function botRoutes(app) {
     };
   });
 
-  app.get('/admin/bot/guilds', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/guilds', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const guilds = await p.botGuild.findMany({ orderBy: { updatedAt: 'desc' } });
     // One grouped count instead of a query per guild.
@@ -464,7 +464,7 @@ export default async function botRoutes(app) {
     return { guilds: guilds.map((g) => serGuild(g, storedBy[g.guildId] || 0)) };
   });
 
-  app.put('/admin/bot/guilds/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/bot/guilds/:id', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
       memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
       logChannelId: z.string().max(32).nullable().optional(),
@@ -494,7 +494,7 @@ export default async function botRoutes(app) {
     return { logs };
   });
 
-  app.put('/admin/bot/config', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/bot/config', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({ config: z.record(z.any()) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_config' });
     const p = await db();
@@ -505,7 +505,7 @@ export default async function botRoutes(app) {
   // Set / clear the Discord bot token from the dashboard. Only allowed while the bot is
   // DISABLED (so a running bot's token isn't swapped under it) and when no env token is
   // set (env always wins). The idle bot polls GET /bot/token and connects once set.
-  app.put('/admin/bot/token', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/bot/token', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({ token: z.string().max(120).nullable() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -623,7 +623,7 @@ export default async function botRoutes(app) {
    * The button says so, because an admin who presses "restart" expecting new code and gets
    * a reconnect will conclude the deploy failed.
    */
-  app.post('/admin/bot/restart', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.post('/admin/bot/restart', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     const at = new Date().toISOString();
     const value = { at, by: req.user?.id || null };
@@ -787,7 +787,7 @@ export default async function botRoutes(app) {
   // Admin: fire a one-off test payment/refund embed to the configured channels so
   // you can verify the bot can actually post there (config + permissions) without a
   // real Stripe payment. The bot picks it up on its next poll (≤2 min).
-  app.post('/admin/bot/payments/test', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/bot/payments/test', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const p = await db();
     await p.adminSetting.upsert({ where: { key: 'bot.paymentsTest' }, create: { key: 'bot.paymentsTest', value: { at: Date.now() } }, update: { value: { at: Date.now() } } });
     return { ok: true };
@@ -798,7 +798,7 @@ export default async function botRoutes(app) {
   // isn't reaching the API (nothing is recorded OR provisioned) — that's an infra
   // wiring issue (run `stripe listen --forward-to <api>/hosting/webhook`), not a bot
   // bug. If total > announced, the bot has new activity queued to post.
-  app.get('/admin/bot/payments/status', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/payments/status', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const [total, last, seen, refundRow] = await Promise.all([
       p.payment.count({ where: { status: 'paid' } }),
@@ -838,7 +838,7 @@ export default async function botRoutes(app) {
   // ── Bot direct messages + gift codes ──
   // Admin sends a DM to a Discord user; optionally mints a one-off promo code assigned
   // to the recipient's linked account and appends it. The bot delivers on its next poll.
-  app.post('/admin/bot/dm', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/bot/dm', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
       discordId: z.string().min(5).max(32),
       message: z.string().max(1500).default(''),
@@ -903,7 +903,7 @@ export default async function botRoutes(app) {
    * just to the message — so the bot drains this slowly and the UI says so. Members who have
    * closed their DMs simply fail; that is recorded as a count, not retried forever.
    */
-  app.post('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/bot/dm-all', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
       message: z.string().trim().min(1).max(1500),
       // Only members who linked a BetterCommunity account, when asked. A DM to somebody who
@@ -941,14 +941,14 @@ export default async function botRoutes(app) {
   });
 
   /** Where a broadcast has got to — the dashboard polls this rather than guessing. */
-  app.get('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/dm-all', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const v = (await p.adminSetting.findUnique({ where: { key: 'bot.dmBroadcast' } }))?.value || null;
     if (!v) return { broadcast: null };
     return { broadcast: { id: v.id, total: v.total, sent: v.sent, failed: v.failed, remaining: (v.pending || []).length, startedAt: v.startedAt } };
   });
 
-  app.delete('/admin/bot/dm-all', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/bot/dm-all', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     await p.adminSetting.deleteMany({ where: { key: 'bot.dmBroadcast' } });
     await logAudit(p, req.user.uid, 'bot.dm-all.stop', 'cancelled');
@@ -1037,12 +1037,12 @@ export default async function botRoutes(app) {
     hostMonths: z.number().int().min(0).max(60).optional(),
     boostDays: z.number().int().min(1).max(3650).optional(),
   });
-  app.get('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const list = await p.giveaway.findMany({ orderBy: { createdAt: 'desc' }, take: 50 });
     return { giveaways: list.map((g) => ({ id: g.id, prize: g.prize, channelId: g.channelId, endsAt: g.endsAt, winnersCount: g.winnersCount, status: g.status, entryCount: g.entries.length + g.siteEntrants.length, winnerIds: g.winnerIds, hasGift: !!g.giftConfig, requirements: g.requirements || null, kind: g.kind, audience: g.audience, prizeKind: g.prizeKind, guildId: g.guildId || null, createdAt: g.createdAt })) };
   });
-  app.post('/admin/bot/giveaways', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/bot/giveaways', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
       prize: z.string().min(1).max(200),
       channelId: z.string().min(5).max(32).optional(),
@@ -1080,14 +1080,14 @@ export default async function botRoutes(app) {
     } });
     return { ok: true, id: gw.id };
   });
-  app.post('/admin/bot/giveaways/:id/end', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/bot/giveaways/:id/end', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const p = await db();
     // Bring the end forward to now → the bot draws on its next poll (≤30s).
     const gw = await p.giveaway.updateMany({ where: { id: req.params.id, status: 'active' }, data: { endsAt: new Date() } });
     if (!gw.count) return reply.code(404).send({ error: 'not_found' });
     return { ok: true };
   });
-  app.delete('/admin/bot/giveaways/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/bot/giveaways/:id', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const p = await db();
     await p.giveaway.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
@@ -1367,7 +1367,7 @@ export default async function botRoutes(app) {
   // Admin: the whole member database as a file — CSV (a spreadsheet opens it) or JSON lines.
   // Streamed in pages, because a roster can be hundreds of thousands of rows and building one
   // string would hold all of it in memory. Linked accounts carry their site user id.
-  app.get('/admin/bot/memberdb/export.:format', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/bot/memberdb/export.:format', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const format = req.params.format === 'json' ? 'json' : 'csv';
     const p = await db();
     const [guilds, links] = await Promise.all([
@@ -1408,7 +1408,7 @@ export default async function botRoutes(app) {
     reply.raw.end();
   });
 
-  app.post('/admin/bot/memberdb/rescan', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.post('/admin/bot/memberdb/rescan', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     const at = new Date().toISOString();
     const cur = (await p.adminSetting.findUnique({ where: { key: 'bot.commands' } }).catch(() => null))?.value || {};
@@ -1418,7 +1418,7 @@ export default async function botRoutes(app) {
   });
 
   // Admin: recent bot console logs (live logs tab).
-  app.get('/admin/bot/logs', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/bot/logs', { preHandler: requireCap('manage_bot') }, async () => {
     const p = await db();
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.logs' } });
     return { logs: row?.value?.logs || [], at: row?.value?.at || null };
@@ -1995,7 +1995,7 @@ export default async function botRoutes(app) {
   });
 
   // Admin: the economy leaderboard + totals, for the dashboard's check/give tools.
-  app.get('/admin/economy', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/economy', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const where = q ? { user: { OR: [{ displayName: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } } : {};
@@ -2010,7 +2010,7 @@ export default async function botRoutes(app) {
   });
 
   // Admin: grant (positive) or take (negative) points from a member. Points never go below 0.
-  app.post('/admin/economy/grant', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/economy/grant', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({ userId: z.string().min(1).max(64), points: z.number().int().min(-1000000).max(1000000).optional(), xp: z.number().int().min(-10000000).max(10000000).optional(), reason: z.string().max(200).optional() }).safeParse(req.body);
     if (!b.success || (b.data.points == null && b.data.xp == null)) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -2033,7 +2033,7 @@ export default async function botRoutes(app) {
   // Reset points (a season reset, or fixing one member) — set to zero rather than granting a
   // negative delta, which is fiddly to get exactly right. `scope:'all'` zeroes every member;
   // `scope:'user'` one. `xp:true` also resets XP + level (a full wipe), otherwise points only.
-  app.post('/admin/economy/reset', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/economy/reset', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const b = z.object({
       scope: z.enum(['all', 'user']).default('user'),
       userId: z.string().min(1).max(64).optional(),
@@ -2151,7 +2151,7 @@ export default async function botRoutes(app) {
     return { history: await listLedger(p, req.user.uid, { kind, take: Math.min(500, Number(req.query?.take) || 200) }) };
   });
   // Admin: the whole ledger, searchable by member, filterable by kind.
-  app.get('/admin/economy/history', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/economy/history', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const kind = String(req.query?.kind || '').slice(0, 30) || null;
@@ -2162,7 +2162,7 @@ export default async function botRoutes(app) {
   // The bot's own icons, as PNGs to upload to the application's Emojis page.
   // One button icon as a PNG. The saved style applies; `?icon=&color=&fg=&shape=&scale=` override
   // it for the dashboard's live preview, so an admin sees a choice before saving it.
-  app.get('/admin/bot/emoji/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/bot/emoji/:key', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const key = String(req.params.key || '').replace(/\.png$/i, '');
     if (!BOT_ICONS[key]) return reply.code(404).send({ error: 'not_found' });
     const p = await db();
@@ -2174,25 +2174,25 @@ export default async function botRoutes(app) {
     if (!png) return reply.code(500).send({ error: 'render_failed' });
     return reply.header('Content-Type', 'image/png').header('Cache-Control', Object.keys(override).length ? 'no-store' : 'private, max-age=60').send(png);
   });
-  app.get('/admin/bot/emoji-pack.zip', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.get('/admin/bot/emoji-pack.zip', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const p = await db();
     const cfg = await getBotConfig(p);
     const zip = await renderEmojiPack(cfg.economy?.iconStyle || {});
     return reply.header('Content-Type', 'application/zip').header('Content-Disposition', 'attachment; filename="bettercommunity-bot-icons.zip"').send(zip);
   });
-  app.get('/admin/bot/emoji-keys', { preHandler: requireRole('ADMIN') }, async () => ({
+  app.get('/admin/bot/emoji-keys', { preHandler: requireCap('manage_bot') }, async () => ({
     icons: Object.entries(BOT_ICONS).map(([key, v]) => ({ key, label: v.label, fallback: v.fallback, color: v.color, icon: v.icon })),
     defaults: ICON_STYLE_DEFAULTS,
   }));
 
   // Admin: what still needs a person — roles and custom rewards bought with points — and the
   // button that says it was handed over. Newest first, pending on top.
-  app.get('/admin/economy/purchases', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/economy/purchases', { preHandler: requireCap('manage_bot') }, async (req) => {
     const p = await db();
     const rows = await p.economyPurchase.findMany({ orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 100, include: { user: { select: { id: true, displayName: true } } } });
     return { purchases: rows.map((r) => ({ id: r.id, userId: r.userId, displayName: r.user.displayName, itemId: r.itemId, name: r.itemName, kind: r.kind, cost: r.cost, via: r.via, status: r.status, delivery: r.delivery, createdAt: r.createdAt })) };
   });
-  app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/economy/purchases/:id/deliver', { preHandler: requireCap('manage_bot') }, async (req, reply) => {
     const p = await db();
     const row = await p.economyPurchase.findUnique({ where: { id: req.params.id } });
     if (!row) return reply.code(404).send({ error: 'not_found' });

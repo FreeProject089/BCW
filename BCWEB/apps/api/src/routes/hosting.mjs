@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { normaliseGiftTarget } from '../lib/gift.mjs';
 import { flagEnabled } from '../lib/flags.mjs';
 import { statfsSync } from 'node:fs';
-import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp, hostingGrace } from '../lib/lib.mjs';
+import { db, requireRole, notify, hasFreeTierClaim, recordFreeTierClaim, grantPlan, GRANT_PLAN_NAME, logAudit, clientIp, hostingGrace, requireCap } from '../lib/lib.mjs';
 import { sendMail, mailShell, escapeHtml } from '../lib/mail.mjs';
 import { validatePromo, redeemPromoAtomic } from './promo.mjs';
 import { getActiveCampaign, applyCampaign } from './campaigns.mjs';
@@ -333,7 +333,7 @@ export default async function hostingRoutes(app) {
     return priceCents(s, Number(plan.storageGB || 0), Number(plan.uploadLimitKbps || 0) / 1024, Number(plan.cpuShare || 0));
   };
 
-  app.get('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/hosting/plans', { preHandler: requireCap('manage_hosting') }, async () => {
     const p = await db();
     // INACTIVE ones too — this is the editor, and a hidden plan is exactly what an admin
     // comes here to find. Each carries its live subscription count, because that is the
@@ -345,7 +345,7 @@ export default async function hostingRoutes(app) {
     return { plans };
   });
 
-  app.post('/admin/hosting/plans', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/hosting/plans', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const b = z.object({ ...planShape, force: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -385,13 +385,13 @@ export default async function hostingRoutes(app) {
 
   // What Hosting settings would charge for these specs — so the editor can show the
   // number BEFORE saving instead of making the admin save to find out.
-  app.get('/admin/hosting/plans/auto-price', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/hosting/plans/auto-price', { preHandler: requireCap('manage_hosting') }, async (req) => {
     const p = await db();
     const q = req.query || {};
     return { priceMonthlyCents: await autoPriceCents(p, { storageGB: q.storageGB, uploadLimitKbps: q.uploadLimitKbps, cpuShare: q.cpuShare }) };
   });
 
-  app.patch('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/hosting/plans/:id', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const partial = {};
     for (const [k, v] of Object.entries(planShape)) partial[k] = v.optional();
     // `effectiveAt` turns a price edit into a SCHEDULED one: the plan keeps today's price,
@@ -504,7 +504,7 @@ export default async function hostingRoutes(app) {
 
   // Drop a scheduled change before it lands. The live price never moved, so this is a
   // plain cancellation — but the people already told deserve to hear that too.
-  app.delete('/admin/hosting/plans/:id/pending-price', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/hosting/plans/:id/pending-price', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const p = await db();
     const cur = await p.hostingPlan.findUnique({ where: { id: req.params.id } });
     if (!cur) return reply.code(404).send({ error: 'not_found' });
@@ -518,7 +518,7 @@ export default async function hostingRoutes(app) {
     return { ok: true, plan, notified: told };
   });
 
-  app.delete('/admin/hosting/plans/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/hosting/plans/:id', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const p = await db();
     const used = await p.subscription.count({ where: { planId: req.params.id } });
     // A plan somebody is subscribed to is never deleted — the subscription would lose the
@@ -595,7 +595,7 @@ export default async function hostingRoutes(app) {
   // Admin: what exactly occupies the Free-plan pool — every freePlan allocation
   // (pools by poolBytes, solo repos by quota) with its owner. Feeds the clickable
   // breakdown under the Free-plan gauge so the number is never a black box again.
-  app.get('/admin/hosting/free-pool', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/hosting/free-pool', { preHandler: requireCap('manage_hosting') }, async () => {
     const p = await db();
     const [groups, soloRepos] = await Promise.all([
       p.hostingGroup.findMany({ where: { freePlan: true }, include: { owner: { select: { displayName: true, email: true } }, repos: { select: { name: true } } } }),
@@ -644,7 +644,7 @@ export default async function hostingRoutes(app) {
   }
 
   // List pools with their owner and what actually sits in them.
-  app.get('/admin/hosting/pools', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/hosting/pools', { preHandler: requireCap('manage_hosting') }, async (req) => {
     const p = await db();
     const q = String(req.query?.q || '').trim();
     const where = q ? { OR: [
@@ -681,7 +681,7 @@ export default async function hostingRoutes(app) {
   });
 
   // Grant a user a brand-new pool.
-  app.post('/admin/hosting/pools', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/hosting/pools', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const b = z.object({
       userId: z.string().min(1).optional(),
       email: z.string().email().optional(),
@@ -711,7 +711,7 @@ export default async function hostingRoutes(app) {
   });
 
   // Edit a pool: rename, resize, retune. Resize goes through setPoolStorage (see above).
-  app.patch('/admin/hosting/pools/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/hosting/pools/:id', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const b = z.object({
       name: z.string().trim().min(1).max(80).optional(),
       storageGB: z.number().min(0).max(4000).optional(),
@@ -746,7 +746,7 @@ export default async function hostingRoutes(app) {
 
   // Delete an EMPTY pool. Anything still in it is content someone owns; removing the pool
   // under it would strand repos and catalogs with no storage behind them.
-  app.delete('/admin/hosting/pools/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/hosting/pools/:id', { preHandler: requireCap('manage_hosting') }, async (req, reply) => {
     const p = await db();
     const group = await p.hostingGroup.findUnique({ where: { id: req.params.id }, include: { _count: { select: { repos: true, catalogs: true } } } });
     if (!group) return reply.code(404).send({ error: 'not_found' });

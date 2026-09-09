@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, optionalAuth, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, optionalAuth, logAudit, requireCap } from '../lib/lib.mjs';
 import { clientIp } from '../lib/geo.mjs';
 import { emitWebhookAll } from '../lib/webhooks.mjs';
 import { stripe } from './hosting.mjs';
@@ -139,7 +139,7 @@ export default async function charityRoutes(app) {
 
   // Admin: read the config + a live org-share preview + the current month's pot (association
   // vote link, chosen association, status, running total).
-  app.get('/admin/charity', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/charity', { preHandler: requireCap('manage_donations') }, async () => {
     const p = await db();
     const config = await loadConfig(p);
     const month = monthKey(new Date());
@@ -155,7 +155,7 @@ export default async function charityRoutes(app) {
 
   // Admin: manage THIS month's pot — link the association vote, set the chosen association, or
   // move its status. Get-or-creates the pot so an admin can link a vote before any gift arrives.
-  app.put('/admin/charity/pot', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/charity/pot', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     const body = z.object({
       pollId: z.string().max(64).nullable().optional(),
       association: z.string().max(200).optional(),
@@ -221,7 +221,7 @@ export default async function charityRoutes(app) {
   // mrr − monthlyBurn once and writes it onto the pot, then moves the pot to 'closing'. Frozen so
   // a later revenue swing never rewrites a promise already shown to the community. Refused once a
   // pot is 'paid' — the donation is out, the number is history.
-  app.post('/admin/charity/close', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/charity/close', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     const p = await db();
     const month = monthKey(new Date());
     const existing = await p.charityPot.findUnique({ where: { month } });
@@ -253,7 +253,7 @@ export default async function charityRoutes(app) {
 
   // Admin: update the config. Percent is clamped server-side to [0, 50] regardless of input,
   // so the 50% ceiling holds even if the UI is bypassed.
-  app.put('/admin/charity', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/charity', { preHandler: requireCap('manage_donations') }, async (req, reply) => {
     const body = z.object({
       enabled: z.boolean().optional(),
       percent: z.number().optional(),

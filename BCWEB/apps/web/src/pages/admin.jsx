@@ -214,8 +214,8 @@ export function Admin() {
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
-        { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
-        { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
+        can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
+        can('manage_sanctions') && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
       ].filter(Boolean) },
 
     { heading: t('adm.h.people', 'People') },
@@ -227,7 +227,7 @@ export function Admin() {
         // The two "who did what" screens, together: the audit chain and the whole-site
         // history read the same way and were two sections apart.
         isAdmin && { id: 'security', label: t('adm.tab.security', 'Security log'), icon: Lock },
-        isAdmin && { id: 'history', label: t('adm.tab.history', 'Site history'), icon: History },
+        can('manage_history') && { id: 'history', label: t('adm.tab.history', 'Site history'), icon: History },
       ].filter(Boolean) },
 
     { heading: t('adm.h.content', 'What the site shows') },
@@ -239,11 +239,12 @@ export function Admin() {
         canShowcaseTab && { id: 'showcase', label: t('adm.tab.showcase', 'Other projects'), icon: Sparkles },
         isAdmin && { id: 'marketplace', label: t('adm.tab.marketplace', 'Marketplace'), icon: ShoppingBag },
       ].filter(Boolean) },
-    isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes,
+    (isAdmin || can('manage_catalogs') || can('manage_assets')) && { id: 'catalogs', label: t('adm.tab.catalogs', 'Catalogs'), icon: Boxes,
       sub: [
-        { id: 'catalogs', label: t('adm.tab.catalogs2', 'Official'), icon: Boxes },
+        // The parent used to be isAdmin, so a grantee of either child could not reach it.
+        isAdmin && { id: 'catalogs', label: t('adm.tab.catalogs2', 'Official'), icon: Boxes },
         can('manage_catalogs') && { id: 'commcatalogs', label: t('adm.tab.commcatalogs', 'Community'), icon: Layers },
-        { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
+        can('manage_assets') && { id: 'assets', label: t('adm.tab.assets', 'Downloads & assets'), icon: Download },
       ].filter(Boolean) },
     can('manage_announcements') && { id: 'announcements', label: t('adm.tab.editorial', 'Writing & notices'), icon: Newspaper,
       sub: [
@@ -263,7 +264,7 @@ export function Admin() {
         { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
         { id: 'transfers', label: t('adm.tab.transfers', 'Ownership'), icon: ArrowRightLeft },
-        isAdmin && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
+        can('manage_hosting') && { id: 'hosting', label: t('adm.tab.hosting', 'Free hosting'), icon: Rocket },
       ].filter(Boolean) },
     isAdmin && { id: 'plans', label: t('adm.tab.plans2', 'Hosting plans'), icon: CreditCard },
 
@@ -271,12 +272,12 @@ export function Admin() {
     can('manage_promotions') && { id: 'promotions', label: t('adm.tab.promotions', 'Promotions & codes'), icon: Megaphone },
     can('manage_events') && { id: 'events', label: t('adm.tab.events', 'Events'), icon: Sparkles },
     can('manage_myo') && { id: 'myo', label: t('adm.tab.myo', 'Commissions'), icon: Wand2, badge: pc.myo || undefined },
-    isAdmin && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
+    can('manage_donations') && { id: 'kofi', label: t('adm.tab.kofi', 'Ko-fi & funding'), icon: KofiIcon },
 
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
-    isAdmin && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
+    can('manage_bot') && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
 
     { heading: t('adm.h.serverdata', 'The machine') },
     isAdmin && { id: 'serverperf', label: t('adm.tab.server', 'Server'), icon: Cpu,
@@ -4489,6 +4490,15 @@ const ADMIN_CAPS = [
   { id: 'manage_polls', cat: 'content', icon: BarChart3, label: 'Manage polls', labelFr: 'Gérer les sondages', desc: 'Create polls, read the results and who answered.', descFr: 'Créer des sondages, lire les résultats et qui a répondu.' },
   { id: 'manage_analytics', cat: 'insight', icon: TrendingUp, label: 'View analytics', labelFr: 'Voir les analyses', desc: 'Analytics, errors and goals.', descFr: 'Analyses, erreurs et objectifs.' },
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
+  { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
+  { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
+  { id: 'manage_bot', cat: 'ops', icon: MessageSquare, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: its config, its features, its servers and its logs. Not its token.', descFr: 'Le tableau de bord du bot : sa config, ses fonctionnalités, ses serveurs et ses journaux. Pas son token.' },
+  { id: 'manage_hosting', cat: 'ops', icon: Rocket, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
+  { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
+  { id: 'manage_sanctions', cat: 'people', icon: Gavel, label: 'Manage sanctions', labelFr: 'Gérer les sanctions', desc: 'Site bans and the appeals against them.', descFr: 'Les bannissements du site et les recours contre eux.' },
+  { id: 'manage_history', cat: 'people', icon: History, label: 'Manage the site history', labelFr: 'Gérer l’historique du site', desc: 'The public timeline of what changed and when.', descFr: 'La chronologie publique de ce qui a changé et quand.' },
+  { id: 'manage_donations', cat: 'growth', icon: KofiIcon, label: 'Manage donations', labelFr: 'Gérer les dons', desc: 'The Ko-fi feed and the charity pots — the two streams of money that are not sales.', descFr: 'Le flux Ko-fi et les cagnottes caritatives — les deux flux d’argent qui ne sont pas des ventes.' },
+  { id: 'manage_expenses', cat: 'insight', icon: Receipt, label: 'See costs and revenue', labelFr: 'Voir coûts et revenus', desc: 'Running costs against what the site earns. A money screen: grant it deliberately.', descFr: 'Les coûts de fonctionnement face à ce que le site gagne. Un écran d’argent : accorde-le délibérément.' },
   { id: 'translate_site', cat: 'translation', icon: Languages, label: 'Translate the site', labelFr: 'Traduire le site', desc: 'Open the language editor: add languages and translate every UI string.', descFr: 'Ouvrir l’éditeur de langues : ajouter des langues et traduire chaque texte de l’interface.' },
   { id: 'translate_blog', cat: 'translation', icon: Newspaper, label: 'Translate the blog', labelFr: 'Traduire le blog', desc: 'Add and edit the French (or other-language) version of blog posts.', descFr: 'Ajouter et modifier la version française (ou autre langue) des articles.' },
   { id: 'translate_docs', cat: 'translation', icon: BookOpen, label: 'Translate the docs', labelFr: 'Traduire la doc', desc: 'Add and edit the translated version of documentation pages.', descFr: 'Ajouter et modifier la version traduite des pages de documentation.' },

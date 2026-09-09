@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, requireCap } from '../lib/lib.mjs';
 import { presignPut, getObject, deleteObject } from '../lib/storage.mjs';
 
 // Platform-hosted assets (app installers, auto-update manifests, links.json / contributors.json)
@@ -71,14 +71,14 @@ function countHit(p, a, inline) {
 
 export default async function platformAssetRoutes(app) {
   // Admin: list every asset (JSON payload included so it can be edited inline).
-  app.get('/admin/assets', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/assets', { preHandler: requireCap('manage_assets') }, async () => {
     const p = await db();
     const rows = await p.platformAsset.findMany({ orderBy: { key: 'asc' } });
     return { assets: rows.map((a) => ({ ...ser(a), json: a.kind === 'json' ? (a.json ?? null) : undefined })) };
   });
 
   // Admin: upsert a JSON asset (links.json / contributors.json — edited inline).
-  app.put('/admin/assets/json/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/assets/json/:key', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
     const key = String(req.params.key);
     if (!KEY_RE.test(key)) return reply.code(400).send({ error: 'bad_key' });
     const b = z.object({ label: z.string().max(120).optional(), json: z.any() }).safeParse(req.body);
@@ -91,7 +91,7 @@ export default async function platformAssetRoutes(app) {
 
   // Admin: presign a direct-to-storage upload. The storageKey is minted server-side (under
   // the platform/ prefix) so a client can never target another prefix.
-  app.post('/admin/assets/presign', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/assets/presign', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
     const b = z.object({ key: z.string(), filename: z.string().min(1).max(200), contentType: z.string().max(120).optional() }).safeParse(req.body);
     if (!b.success || !KEY_RE.test(b.data.key)) return reply.code(400).send({ error: 'invalid_input' });
     const safeName = b.data.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -101,7 +101,7 @@ export default async function platformAssetRoutes(app) {
   });
 
   // Admin: confirm a file asset after the presigned PUT succeeded.
-  app.put('/admin/assets/file/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/assets/file/:key', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
     const key = String(req.params.key);
     if (!KEY_RE.test(key)) return reply.code(400).send({ error: 'bad_key' });
     const b = z.object({
@@ -133,7 +133,7 @@ export default async function platformAssetRoutes(app) {
    * been watching. `resetStats` is the only way the two counters go back to zero, and it says
    * so in its name rather than happening as a side effect of anything else.
    */
-  app.patch('/admin/assets/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/assets/:key', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
     const key = String(req.params.key);
     if (!KEY_RE.test(key)) return reply.code(400).send({ error: 'bad_key' });
     const b = z.object({
@@ -154,7 +154,7 @@ export default async function platformAssetRoutes(app) {
   });
 
   // Admin: delete an asset (+ purge its stored object).
-  app.delete('/admin/assets/:key', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/assets/:key', { preHandler: requireCap('manage_assets') }, async (req, reply) => {
     const key = String(req.params.key);
     if (!KEY_RE.test(key)) return reply.code(400).send({ error: 'bad_key' });
     const p = await db();

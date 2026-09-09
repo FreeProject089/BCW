@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { db, requireRole, notify, grantPlan } from '../lib/lib.mjs';
+import { db, requireRole, notify, grantPlan, requireCap } from '../lib/lib.mjs';
 
 const GiB = 1024 ** 3;
 function genCode() {
@@ -98,12 +98,12 @@ export async function redeemPromoAtomic(p, rawCode, userId, grant) {
 
 export default async function promoRoutes(app) {
   // ── Admin: create / list / toggle / delete ──
-  app.get('/admin/promo', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/promo', { preHandler: requireCap('manage_promotions') }, async () => {
     const p = await db();
     return { codes: await p.promoCode.findMany({ orderBy: { createdAt: 'desc' }, include: { _count: { select: { redemptions: true } } } }) };
   });
 
-  app.post('/admin/promo', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/promo', { preHandler: requireCap('manage_promotions') }, async (req, reply) => {
     const b = z.object({
       code: z.string().min(3).max(40).optional(),
       // free_pool grants a storage POOL — the unit hosting actually uses now, fillable with
@@ -173,7 +173,7 @@ export default async function promoRoutes(app) {
     } catch { return reply.code(409).send({ error: 'code_exists' }); }
   });
 
-  app.patch('/admin/promo/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/promo/:id', { preHandler: requireCap('manage_promotions') }, async (req, reply) => {
     const b = z.object({ active: z.boolean().optional(), stackable: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const data = {};
@@ -186,14 +186,14 @@ export default async function promoRoutes(app) {
     return { code: c };
   });
 
-  app.delete('/admin/promo/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/promo/:id', { preHandler: requireCap('manage_promotions') }, async (req) => {
     const p = await db();
     await p.promoCode.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };
   });
 
   // Who redeemed a code + on what (detail: which repo for boost, plan for discount, etc.).
-  app.get('/admin/promo/:id/redemptions', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/promo/:id/redemptions', { preHandler: requireCap('manage_promotions') }, async (req) => {
     const p = await db();
     const rows = await p.promoRedemption.findMany({ where: { promoId: req.params.id }, orderBy: { createdAt: 'desc' }, take: 500 });
     const users = rows.length ? await p.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.userId))] } }, select: { id: true, displayName: true, email: true } }) : [];

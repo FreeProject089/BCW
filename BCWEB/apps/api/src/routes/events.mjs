@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, notifyAll } from '../lib/lib.mjs';
+import { db, requireRole, notifyAll, requireCap } from '../lib/lib.mjs';
 
 // The event that is live RIGHT NOW (active + within its window). One at a time; if
 // several somehow overlap, the most recently started wins. Exported for the effect
@@ -67,12 +67,12 @@ export default async function eventRoutes(app) {
   });
 
   // ── Admin ──
-  app.get('/admin/events', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/events', { preHandler: requireCap('manage_events') }, async () => {
     const p = await db();
     return { events: await p.event.findMany({ orderBy: { startsAt: 'desc' } }) };
   });
 
-  app.post('/admin/events', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/events', { preHandler: requireCap('manage_events') }, async (req, reply) => {
     const b = bodySchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -112,7 +112,7 @@ export default async function eventRoutes(app) {
     return reply.code(201).send({ event: e });
   });
 
-  app.patch('/admin/events/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/events/:id', { preHandler: requireCap('manage_events') }, async (req, reply) => {
     const b = bodySchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -141,7 +141,7 @@ export default async function eventRoutes(app) {
     return { event: updated };
   });
 
-  app.delete('/admin/events/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/events/:id', { preHandler: requireCap('manage_events') }, async (req) => {
     const p = await db();
     const e = await p.event.findUnique({ where: { id: req.params.id } });
     if (e) {

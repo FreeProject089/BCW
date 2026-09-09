@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole } from '../lib/lib.mjs';
+import { db, requireRole, requireCap } from '../lib/lib.mjs';
 
 // Strict hex color (#rgb / #rrggbb) — the badge color is rendered into a style
 // attribute on the client, so anything else is rejected to avoid CSS injection.
@@ -114,12 +114,12 @@ export default async function campaignRoutes(app) {
   });
 
   // ── Admin: manage campaigns ──
-  app.get('/admin/campaigns', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/campaigns', { preHandler: requireCap('manage_promotions') }, async () => {
     const p = await db();
     return { campaigns: await p.promoCampaign.findMany({ orderBy: { startsAt: 'desc' } }) };
   });
 
-  app.post('/admin/campaigns', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/campaigns', { preHandler: requireCap('manage_promotions') }, async (req, reply) => {
     const b = bodySchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -137,7 +137,7 @@ export default async function campaignRoutes(app) {
     return reply.code(201).send({ campaign: c });
   });
 
-  app.patch('/admin/campaigns/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.patch('/admin/campaigns/:id', { preHandler: requireCap('manage_promotions') }, async (req, reply) => {
     const b = bodySchema.partial().safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const d = b.data;
@@ -163,7 +163,7 @@ export default async function campaignRoutes(app) {
     return { campaign: c };
   });
 
-  app.delete('/admin/campaigns/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/campaigns/:id', { preHandler: requireCap('manage_promotions') }, async (req) => {
     const p = await db();
     await p.promoCampaign.delete({ where: { id: req.params.id } }).catch(() => {});
     return { ok: true };

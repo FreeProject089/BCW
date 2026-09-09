@@ -1660,7 +1660,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.get('/admin/legal', { preHandler: requireRole('ADMIN') }, async () => {
+  app.get('/admin/legal', { preHandler: requireCap('manage_legal') }, async () => {
     const p = await db();
     const sections = await p.legalSection.findMany({
       orderBy: [{ doc: 'asc' }, { order: 'asc' }],
@@ -1677,7 +1677,7 @@ export default async function miscRoutes(app) {
   // in the web bundle \u2014 keeping a second copy here is exactly how the two would drift.
   // Refuses when the document already has rows: this is a first-time import, not a reset, and
   // silently overwriting somebody's edited policy is not a recoverable mistake.
-  app.post('/admin/legal/import', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal/import', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       doc: z.string().min(1).max(60),
       sections: z.array(z.object({
@@ -1702,7 +1702,7 @@ export default async function miscRoutes(app) {
     return reply.code(201).send({ ok: true, created: b.data.sections.length });
   });
 
-  app.put('/admin/legal/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/legal/:id', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       title: z.string().min(1).max(300).optional(),
       titleFr: z.string().max(300).nullable().optional(),
@@ -1721,7 +1721,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.post('/admin/legal', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       doc: z.string().min(1).max(60),
       title: z.string().min(1).max(300),
@@ -1738,7 +1738,7 @@ export default async function miscRoutes(app) {
     return reply.code(201).send({ section: row });
   });
 
-  app.delete('/admin/legal/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/legal/:id', { preHandler: requireCap('manage_legal') }, async (req) => {
     const p = await db();
     await p.legalSection.deleteMany({ where: { id: req.params.id } });
     invalidate('legal:all');
@@ -1748,7 +1748,7 @@ export default async function miscRoutes(app) {
   // Hand a document back to the built-in defaults by removing its rows. Named `revert`
   // rather than `delete` because that is what it does from where the reader stands: the page
   // keeps working and goes back to what the code says.
-  app.post('/admin/legal/revert', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal/revert', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({ doc: z.enum(BUILTIN_DOCS) }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -1770,7 +1770,7 @@ export default async function miscRoutes(app) {
   /** A slug: what appears in /legal/<key> and what LegalSection.doc holds. */
   const KEY = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/, 'letters, digits and dashes');
 
-  app.post('/admin/legal/pages', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal/pages', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       key: KEY,
       label: z.string().trim().min(1).max(80),
@@ -1794,7 +1794,7 @@ export default async function miscRoutes(app) {
     return reply.code(201).send({ page });
   });
 
-  app.put('/admin/legal/pages/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/legal/pages/:id', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       label: z.string().trim().min(1).max(80).optional(),
       labelFr: z.string().trim().max(80).optional(),
@@ -1818,7 +1818,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/admin/legal/pages/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.delete('/admin/legal/pages/:id', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const p = await db();
     const page = await p.legalPage.findUnique({ where: { id: req.params.id }, select: { id: true, key: true, builtIn: true } });
     if (!page) return reply.code(404).send({ error: 'not_found' });
@@ -1837,7 +1837,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.post('/admin/legal/categories', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal/categories', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       key: KEY,
       label: z.string().trim().min(1).max(80),
@@ -1854,7 +1854,7 @@ export default async function miscRoutes(app) {
     return reply.code(201).send({ category });
   });
 
-  app.put('/admin/legal/categories/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/legal/categories/:id', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       label: z.string().trim().min(1).max(80).optional(),
       labelFr: z.string().trim().max(80).optional(),
@@ -1868,7 +1868,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/admin/legal/categories/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/legal/categories/:id', { preHandler: requireCap('manage_legal') }, async (req) => {
     const p = await db();
     // The pages survive and become uncategorised: the relation is SetNull. A policy vanishing
     // because somebody tidied a heading is not a recoverable mistake.
@@ -1883,7 +1883,7 @@ export default async function miscRoutes(app) {
   // somebody asks what they agreed to. Nothing published is ever edited — a correction is a
   // new version. That is the property the whole thing exists for, so there is deliberately
   // no update or delete endpoint for a version.
-  app.post('/admin/legal/publish', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/legal/publish', { preHandler: requireCap('manage_legal') }, async (req, reply) => {
     const b = z.object({
       doc: z.string().min(1).max(60),
       note: z.string().max(500).default(''),
@@ -1980,7 +1980,7 @@ export default async function miscRoutes(app) {
     return e.incurredAt >= monthStart && e.incurredAt <= monthEnd ? e.amountCents : 0;
   }
 
-  app.get('/admin/expenses', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.get('/admin/expenses', { preHandler: requireCap('manage_expenses') }, async (req) => {
     const months = Math.min(Math.max(Number(req.query?.months) || 12, 1), 36);
     const p = await db();
     const rows = await p.expense.findMany({
@@ -2023,7 +2023,7 @@ export default async function miscRoutes(app) {
     };
   });
 
-  app.post('/admin/expenses', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.post('/admin/expenses', { preHandler: requireCap('manage_expenses') }, async (req, reply) => {
     const b = z.object({
       label: z.string().min(1).max(120),
       category: z.enum(EXPENSE_CATEGORIES).default('other'),
@@ -2046,7 +2046,7 @@ export default async function miscRoutes(app) {
     return reply.code(201).send({ expense: row });
   });
 
-  app.put('/admin/expenses/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+  app.put('/admin/expenses/:id', { preHandler: requireCap('manage_expenses') }, async (req, reply) => {
     const b = z.object({
       label: z.string().min(1).max(120).optional(),
       category: z.enum(EXPENSE_CATEGORIES).optional(),
@@ -2070,7 +2070,7 @@ export default async function miscRoutes(app) {
     return { ok: true };
   });
 
-  app.delete('/admin/expenses/:id', { preHandler: requireRole('ADMIN') }, async (req) => {
+  app.delete('/admin/expenses/:id', { preHandler: requireCap('manage_expenses') }, async (req) => {
     const p = await db();
     await p.expense.deleteMany({ where: { id: req.params.id } });
     return { ok: true };

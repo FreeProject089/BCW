@@ -361,6 +361,21 @@ export function clearAccountLockCache(uid) { if (uid) _modCache.delete(uid); els
 // surface enforced by requireCap(...) on the server AND gates the matching admin tab
 // client-side (ADMIN_CAPS in admin.jsx must mirror this list). Extend as more areas are
 // capability-gated; a slug listed here MUST be enforced end-to-end, never client-only.
+// Each of these opens ONE part of the dashboard and the endpoints behind it. They exist so
+// that trusting somebody with the Discord bot does not also hand them the server terminal,
+// the audit log and everybody's account.
+//
+// ADMIN and SUPERADMIN hold every capability implicitly (see hasCap), so adding one never
+// takes anything away from an admin — it only makes a section grantable to somebody who
+// is not one. That is the safe direction, and the reason a route can move from
+// requireRole('ADMIN') to requireCap() without auditing who holds what.
+//
+// NOT everything is here, deliberately. The server terminal, power and database controls
+// have no capability and cannot be granted; neither can handing out permissions, which
+// would be a capability that grants every other one. Those stay requireRole.
+//
+// scripts/check-capabilities.mjs fails the build if this list and the role editor's
+// catalogue disagree, or if a capability is declared and no route enforces it.
 export const CAPABILITIES = [
   'manage_users', 'manage_repos', 'manage_analytics', 'manage_newsletter', 'manage_faq', 'manage_catalogs', 'manage_reports',
   // Content elements
@@ -369,6 +384,9 @@ export const CAPABILITIES = [
   'manage_events', 'manage_promotions',
   // Services
   'manage_myo', 'manage_api', 'manage_polls',
+  // Sections that used to be "are you an admin" and are now their own job.
+  'manage_bot', 'manage_hosting', 'manage_donations', 'manage_assets',
+  'manage_history', 'manage_sanctions', 'manage_legal', 'manage_expenses',
   // Translators — scoped to what they may translate, not to admin power. `translate_site`
   // opens the runtime-locale editor (site strings); the other two scope blog/docs translation.
   'translate_site', 'translate_blog', 'translate_docs',
