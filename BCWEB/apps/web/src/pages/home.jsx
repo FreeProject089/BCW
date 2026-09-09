@@ -84,6 +84,47 @@ function useScrollReveal() {
 
 // Editorial numbered section label with a fading rule — the small premium touch
 // that gives the page rhythm (like high-end brand microsites).
+/**
+ * "Your project could be here" — under the suite, on the home page.
+ *
+ * The whole other-projects system exists so somebody outside the team can have a real page
+ * here: downloads, release notes, a blog, a card in the grid. Nothing on the home page said
+ * so, and the only way to find out was to wander to /projects and notice a form.
+ *
+ * IT RENDERS NOTHING WHEN THE DOOR IS SHUT. Both listing doors are off by default, and the
+ * API refuses a submission when they are — so an invitation shown regardless would be a
+ * button leading to a form that leads to a 403. The guide puts it plainly: a submission box
+ * on a site whose owner is not reading submissions is worse than no box.
+ *
+ * It links to /projects rather than carrying its own form. One form, on the page that also
+ * shows what being listed looks like, is better than a second copy here that would drift.
+ */
+function YourProjectHere() {
+  const { t } = useI18n();
+  const [cfg, setCfg] = useState(null);
+  // Failure is silence, not a broken card: this is an invitation, and an invitation nobody
+  // can act on because the config call failed should simply not appear.
+  useEffect(() => { api.get('/showcase-requests/config').then(setCfg).catch(() => setCfg(null)); }, []);
+  if (!cfg || (!cfg.requestsEnabled && !cfg.paidEnabled)) return null;
+
+  return (
+    <Card className="reveal-on-scroll mt-4 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="flex-1">
+        <div className="font-semibold flex items-center gap-2">
+          <Sparkles size={16} className="text-[var(--primary-2)]" />
+          {t('home.yours.title', 'Your project can have a page here too')}
+        </div>
+        <div className="text-sm text-[var(--muted)] mt-1">
+          {t('home.yours.sub', 'The same page these get: downloads, release notes, its own blog and community tab, and a card in the projects grid. Tell us about it and we will read it.')}
+        </div>
+      </div>
+      <Link to="/projects" className="shrink-0">
+        <Button variant="default">{t('home.yours.cta', 'Propose a project')} <ArrowRight size={14} /></Button>
+      </Link>
+    </Card>
+  );
+}
+
 function SectionKicker({ n, label }) {
   return (
     <div className="reveal-on-scroll flex items-center gap-3 mb-6">
@@ -514,6 +555,12 @@ export function Home({ draft = null }) {
             </div>
           );
         })()}
+
+        {/* The suite above is OURS. This says the grid is not a closed list — which is true,
+            and which nothing on the home page said: the whole "other projects" system exists
+            so somebody outside the team can have a page here, and the only way anybody found
+            out was by wandering to /projects. */}
+        <YourProjectHere />
       </section>
       )}
 
