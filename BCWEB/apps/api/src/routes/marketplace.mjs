@@ -131,9 +131,20 @@ export function feeScopeOf(product) {
 export function marketScopeAllows(power, grants, product) {
   if (power?.manageAll) return true;
   if (!grants) return false;
-  if (product?.projectKey) return !!grants.projectKeys?.has(product.projectKey);
-  if (product?.showcaseProjectId) return !!(grants.allShowcase || grants.showcaseIds?.has(product.showcaseProjectId));
-  return false;
+  // EVERY page the product names, not the first one that answers. This used to return on
+  // projectKey and never look at showcaseProjectId — so a grantee for one project page put
+  // their own projectKey and somebody else's showcase id in the same body, passed on the
+  // first branch, and the product appeared in that page's public shop at their price. The
+  // showcase id ALONE was correctly refused; adding a page they owned bypassed the refusal.
+  //
+  // Written as "no page may be one they lack" rather than "some page may be one they have",
+  // which is the same short-circuit wearing different words.
+  const pk = product?.projectKey;
+  const sc = product?.showcaseProjectId;
+  if (!pk && !sc) return false;   // attached to nothing is not attached to everything
+  if (pk && !grants.projectKeys?.has(pk)) return false;
+  if (sc && !(grants.allShowcase || grants.showcaseIds?.has(sc))) return false;
+  return true;
 }
 
 /** The per-project overrides: `{ "project:bmm": 0, "showcase:abc123": 500 }`. */
@@ -621,6 +632,10 @@ export default async function marketplaceRoutes(app) {
     const b = productSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input', details: b.error.flatten() });
     if (!b.data.projectKey && !b.data.showcaseProjectId) return reply.code(400).send({ error: 'project_required' });
+    // A product sits on ONE page. A row naming two is what the list filter and the per-row
+    // scope check disagree about — the filter matches it by either id, the check reads only
+    // the first — and that disagreement is the hole above.
+    if (b.data.projectKey && b.data.showcaseProjectId) return reply.code(400).send({ error: 'one_page_only' });
     const p = await db();
     const { power, grants } = await marketPower(req.user);
     if (!marketScopeAllows(power, grants, b.data)) return reply.code(403).send({ error: 'forbidden_scope' });
@@ -642,6 +657,7 @@ export default async function marketplaceRoutes(app) {
         projectKey: b.data.projectKey !== undefined ? b.data.projectKey : exists.projectKey,
         showcaseProjectId: b.data.showcaseProjectId !== undefined ? b.data.showcaseProjectId : exists.showcaseProjectId,
       };
+      if (dest.projectKey && dest.showcaseProjectId) return reply.code(400).send({ error: 'one_page_only' });
       const { power, grants } = await marketPower(req.user);
       if (!marketScopeAllows(power, grants, dest)) return reply.code(403).send({ error: 'forbidden_scope' });
     }

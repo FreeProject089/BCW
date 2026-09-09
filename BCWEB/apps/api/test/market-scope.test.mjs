@@ -87,3 +87,45 @@ describe('marketScopeAllows — the scope string it agrees with', () => {
     }
   });
 });
+
+describe('marketScopeAllows — a product naming TWO pages', () => {
+  // Found by a pentest, not by reading. The predicate used to answer on the first id it saw:
+  //
+  //   if (product.projectKey) return grants.projectKeys.has(product.projectKey);
+  //
+  // so a grantee for one project page sent their own projectKey AND a showcase id they had
+  // no rights to in the same create. The first branch answered true, the second id was never
+  // looked at, and the product appeared in that showcase page's public shop — which lists by
+  // showcaseProjectId alone — at whatever price they set. The showcase id on its own was
+  // correctly refused with 403; adding a page they owned bypassed the refusal.
+  //
+  // The routes now refuse a body naming both. These cases are the second layer: rows that
+  // already exist that way must be refused rather than half-allowed.
+  const mine = grants({ projectKeys: ['bsm'], showcaseIds: ['sc-mine'] });
+
+  test('their own project plus a showcase page they do NOT hold is refused', () => {
+    assert.equal(marketScopeAllows({}, mine, { projectKey: 'bsm', showcaseProjectId: 'sc-theirs' }), false);
+  });
+
+  test('their own showcase page plus a project they do NOT hold is refused — the same trick, mirrored', () => {
+    assert.equal(marketScopeAllows({}, mine, { projectKey: 'bmm', showcaseProjectId: 'sc-mine' }), false);
+  });
+
+  test('allShowcase does not cover the project half either', () => {
+    assert.equal(marketScopeAllows({}, grants({ allShowcase: true }), { projectKey: 'bmm', showcaseProjectId: 'anything' }), false);
+  });
+
+  test('holding BOTH pages is allowed — the rule is "no page they lack", not "only one page"', () => {
+    assert.equal(marketScopeAllows({}, mine, { projectKey: 'bsm', showcaseProjectId: 'sc-mine' }), true);
+  });
+
+  test('a product attached to nothing is refused, not waved through', () => {
+    assert.equal(marketScopeAllows({}, mine, {}), false);
+    assert.equal(marketScopeAllows({}, mine, { projectKey: null, showcaseProjectId: null }), false);
+    assert.equal(marketScopeAllows({}, mine, { projectKey: '', showcaseProjectId: '' }), false);
+  });
+
+  test('a site-wide manager still reaches a two-page row', () => {
+    assert.equal(marketScopeAllows({ manageAll: true }, NONE, { projectKey: 'x', showcaseProjectId: 'y' }), true);
+  });
+});
