@@ -220,6 +220,26 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   [data-theme="dark"] .card { background: #15120d; }
   /* Hover lift: light = brand glow; dark = a lighter surface + accent border (no shadow). */
   .card-hover:hover { border-color: var(--ring); transform: translateY(-3px); box-shadow: 0 14px 40px -16px var(--primary-glow); }
+
+  /* A rail tile: the home page's four promises, and anything else that wants "one of a
+     set" without becoming another box.
+     They were a 2px rule and NOTHING else, which was the right call about weight — four
+     bordered boxes under a bordered card is five rectangles competing for one attention —
+     and the wrong call about legibility. The hero orb is a permanent backdrop and bright in
+     places, so muted text on no background sat directly on a lit gradient and was reported
+     as hard to read.
+     So: the same solid surface the cards use, no border, the rule kept. `var(--surface)`
+     rather than a literal, so the Translucent-surfaces setting reaches these the way it
+     reaches every other surface. */
+  .rail-tile {
+    background: var(--surface);
+    border-inline-start: 2px solid var(--line);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+    padding: 14px 16px;
+    transition: border-color .18s ease, background-color .18s ease;
+  }
+  [data-theme="dark"] .rail-tile { background: #15120d; }
+  .rail-tile:hover { border-inline-start-color: var(--primary); }
   [data-theme="dark"] .card-hover:hover { box-shadow: none; background: #1c1811; }
 
   /* Every interactive control carries a full state set: default · hover · active/pressed

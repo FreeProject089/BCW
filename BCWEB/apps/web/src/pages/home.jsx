@@ -642,10 +642,13 @@ export function Home({ draft = null }) {
               [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
               [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks — no manual downloads, no hunting for files.')],
               [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.')]].map(([I, title, d]) => (
-              // A rule instead of a border. Four bordered boxes under a bordered card is five
-              // rectangles competing for the same attention; a 2px accent reads as "four of
-              // these" without asking for any.
-              <div key={title} className="group ps-4 border-s-2 border-[var(--line)] hover:border-[var(--primary)] transition-colors">
+              // A rule instead of a border — four bordered boxes under a bordered card is
+              // five rectangles competing for one attention. That part was right. What was
+              // missing is a BACKGROUND: with only a rule, muted text sat straight on the
+              // hero orb, which is a permanent backdrop and bright in places, and it was
+              // reported as hard to read. `.rail-tile` keeps the rule and adds the same
+              // solid surface the cards use.
+              <div key={title} className="group rail-tile">
                 <I size={18} className="text-[var(--primary-2)]" />
                 <div className="font-semibold mt-2.5 text-[15px]">{title}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{d}</div>
