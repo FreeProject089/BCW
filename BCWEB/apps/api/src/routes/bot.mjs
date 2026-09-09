@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { getObject, deleteObject } from '../lib/storage.mjs';
 import { randomInt } from 'node:crypto';
 import { db, requireRole, requireCap, logAudit, safeEqual, botAuth, BOT_SECRET, notify } from '../lib/lib.mjs';
+import { canConfigureGuild, patchFromDiscord } from '../lib/bot-guild-access.mjs';
 import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
@@ -1227,6 +1228,73 @@ export default async function botRoutes(app) {
   // lists, what the monitor's error alerts count, what the digest surfaces. The context
   // travels in the stack text so the page shows it with the trace. Deduplicated per message
   // and minute — a button spammed while broken is one error, not a hundred rows.
+  // ── Configuring the bot from inside Discord ───────────────────────────────────
+  //
+  // Every per-guild setting used to live on the site behind a login, so the person who
+  // actually runs the server had to leave Discord, find the dashboard, and come back to
+  // set a log channel. These two let them stay.
+  //
+  // botAuth first — only the bot may call these at all — and then the ACTOR is checked,
+  // because the bot is trusted to report who pressed the button and nothing more.
+
+  /** What this guild's settings are, and whether this person may change them. */
+  app.get('/bot/guilds/:id/settings', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const actor = String(req.query?.actorDiscordId || '');
+    const p = await db();
+    const [g, link] = await Promise.all([
+      p.botGuild.findUnique({ where: { guildId: req.params.id } }),
+      actor ? p.discordLink.findUnique({ where: { discordId: actor } }).catch(() => null) : null,
+    ]);
+    const linked = !!link?.userId;
+    return {
+      linked,
+      // Reported apart from `may`, because the two refusals are different sentences: not
+      // being the owner is final, and not having linked an account is a thing to go and
+      // do. Collapsing them tells an owner they lack permission, which is untrue.
+      manager: canConfigureGuild(g, actor, true),
+      may: canConfigureGuild(g, actor, linked),
+      settings: g ? {
+        language: g.language || 'auto',
+        memberMode: g.memberMode,
+        logChannelId: g.logChannelId,
+        storeLogs: g.storeLogs,
+      } : null,
+    };
+  });
+
+  /** Change them. Only what patchFromDiscord allows; the rest is named back, not ignored. */
+  app.put('/bot/guilds/:id/settings', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      actorDiscordId: z.string().min(1).max(32),
+      patch: z.record(z.any()),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const [g, link] = await Promise.all([
+      p.botGuild.findUnique({ where: { guildId: req.params.id } }),
+      p.discordLink.findUnique({ where: { discordId: b.data.actorDiscordId } }).catch(() => null),
+    ]);
+    if (!canConfigureGuild(g, b.data.actorDiscordId, !!link?.userId)) {
+      // One code, two meanings distinguished by `linked` so the bot can say the right
+      // thing without this route guessing which message the person needs.
+      return reply.code(403).send({ error: 'not_allowed', linked: !!link?.userId });
+    }
+    const { data, rejected, error } = patchFromDiscord(b.data.patch, g);
+    if (error) return reply.code(400).send({ error, rejected });
+    if (!Object.keys(data).length) return { ok: true, changed: [], rejected, settings: { language: g.language || 'auto', memberMode: g.memberMode, logChannelId: g.logChannelId, storeLogs: g.storeLogs } };
+
+    const next = await p.botGuild.update({ where: { guildId: g.guildId }, data });
+    // Audited against the LINKED account, not the Discord id: the audit log is a record of
+    // what people on this platform did, and a snowflake is not somebody it knows.
+    await logAudit(p, link.userId, 'bot.guild_discord', `${g.guildId} ${Object.keys(data).join(',')}`);
+    return {
+      ok: true, changed: Object.keys(data), rejected,
+      settings: { language: next.language || 'auto', memberMode: next.memberMode, logChannelId: next.logChannelId, storeLogs: next.storeLogs },
+    };
+  });
+
   // The onboarding card's language select. `auto` clears the choice.
   app.put('/bot/guilds/:id/language', async (req, reply) => {
     if (!botAuth(req, reply)) return;

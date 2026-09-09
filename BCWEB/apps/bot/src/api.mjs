@@ -33,6 +33,15 @@ export const api = {
   // and the "Needs attention" digest all see it. Best-effort, never awaited by the handler.
   // The language a server's manager picked in the onboarding card (auto | en | fr | de | es).
   setGuildLanguage: (guildId, language) => call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/language`, { language }).catch(() => ({})),
+  // A read that fails degrades to "you may not", which shows the refusal card rather
+  // than a config screen whose controls would all fail.
+  guildSettings: (guildId, actorDiscordId) => call('GET', `/bot/guilds/${encodeURIComponent(guildId)}/settings?actorDiscordId=${encodeURIComponent(actorDiscordId)}`)
+    .catch(() => ({ may: false, linked: false, manager: false, settings: null })),
+  // The WRITE keeps its error — unlike its neighbours, which swallow theirs. A settings
+  // change that fails silently tells somebody their server is configured when it is not.
+  setGuildSettings: (guildId, actorDiscordId, patch) =>
+    call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/settings`, { actorDiscordId, patch })
+      .catch((e) => ({ ok: false, error: e?.body?.error || 'network' })),
   reportHandlerError: (message, stack, context) => call('POST', '/bot/errors', { message, stack, context }).catch(() => {}),
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.

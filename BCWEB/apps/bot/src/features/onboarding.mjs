@@ -17,6 +17,9 @@ function langSelect(t, current) {
 export function onboardingCard(t, current) {
   return {
     title: t('onb.title'),
+    // Step 3 used to be "configure the server on the dashboard" — the only honest thing to
+    // say while the dashboard was the only place settings lived. `/config` changed that, so
+    // the card names the command instead of sending somebody to a website to come back from.
     body: [t('onb.body'), '', t('onb.step1'), '', t('onb.step2'), '', t('onb.step3')],
     buttons: [
       langSelect(t, current),

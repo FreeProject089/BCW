@@ -10,6 +10,7 @@ import { config, guildBan } from './config.mjs';
 import * as ui from './ui.mjs';
 import { tr } from './i18n.mjs';
 import { cmdSetup, onboardingSelect } from './features/onboarding.mjs';
+import { cmdConfig, configComponent } from './features/configure.mjs';
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -80,6 +81,7 @@ export const commandData = [
     .addStringOption((o) => o.setName('risk').setDescription('Plinko: bucket table (default medium)').addChoices(
       { name: 'Low — 0.5× to 5×', value: 'low' }, { name: 'Medium — 0.3× to 13×', value: 'medium' }, { name: 'High — 0.2× to 50×', value: 'high' })),
   // The welcome card again — link, language for this server, dashboard. Posted on join too.
+  new SlashCommandBuilder().setName('config').setDescription('Configure this server’s bot — moderation and its log channel (server managers)'),
   new SlashCommandBuilder().setName('setup').setDescription('The bot’s welcome card: link your account, pick its language here, open the dashboard')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
@@ -115,6 +117,7 @@ export async function handleInteraction(i) {
     if (i.commandName === 'leaderboard') return cmdLeaderboard(i, false, i.options.getString('scope') || 'server');
     if (i.commandName === 'casino') return cmdCasino(i);
     if (i.commandName === 'setup') return cmdSetup(i);
+    if (i.commandName === 'config') return cmdConfig(i);
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
@@ -132,6 +135,8 @@ export async function handleInteraction(i) {
   if (i.isButton() && i.customId === 'eco:leaderboard') return cmdLeaderboard(i, false, 'server');
   if (i.isButton() && i.customId.startsWith('casino:again:')) return casinoAgain(i);
   if (i.isStringSelectMenu() && i.customId === 'onb:lang') return onboardingSelect(i);
+  // Before the panel catch-all below, which claims every remaining component.
+  if ((i.isStringSelectMenu() || i.isChannelSelectMenu()) && i.customId.startsWith('cfg:')) return configComponent(i);
   if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('cas:')) return casinoSetup(i);
   if (i.isModalSubmit() && i.customId.startsWith('casm:')) return casinoModal(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
