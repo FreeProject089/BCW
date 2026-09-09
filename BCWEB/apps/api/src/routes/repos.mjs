@@ -25,7 +25,14 @@ async function repoUrlBlocked(p, url) {
 const SHA = /^[a-f0-9]{40}$|^[a-f0-9]{64}$/i;
 const GiB = 1024 ** 3;
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
-const linksSchema = z.object({ discord: z.string().max(300), website: z.string().max(300), changelog: z.string().max(300) }).partial();
+// The three buttons under a repo on its public page AND in the repos listing, so a hostile
+// value here is not one page but every listing that shows the repo. They were plain strings
+// — not even z.string().url() — and any repo owner can set them on POST/PATCH /repos, which
+// is requireRole(): a signed-in account with a repo, including a free-tier one.
+//
+// httpUrl parses and demands http(s). The same class as the marketplace's redeemUrl and the
+// OAuth consent screen's homepageUrl; this was the third and widest instance of it.
+const linksSchema = z.object({ discord: httpUrl(300), website: httpUrl(300), changelog: httpUrl(300) }).partial();
 
 // A repo's sandboxed, owner-editable settings. Requested values are always clamped
 // to the hard caps on the row — the owner can ask for more but never exceed the sandbox.

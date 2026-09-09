@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser} from '../lib/lib.mjs';
+import { db, requireRole, requireCap, hasCap, optionalAuth, slugify, logAudit, notify, notifyAll, clearAccountLockCache, clearUserCache, CAPABILITIES, NOTIF_CATEGORIES, currentUser, httpUrl } from '../lib/lib.mjs';
 import { suspendOwned, restoreOwned, cancelSubscriptions, anonymiseAccount } from './closure.mjs';
 import { addStaffNote, notifyAccountAction, notesFor, NOTE_KINDS } from '../lib/staff-notes.mjs';
 import { shredUser } from '../lib/shred.mjs';
@@ -902,10 +902,14 @@ export default async function miscRoutes(app) {
     rating: z.number().int().min(1).max(5).nullish(),
     // Structured + bounded (not z.any()) — image must be a real http(s) URL, so an
     // arbitrary/`javascript:` value can't be stored and later rendered as <img src>.
+    //
+    // It said that already and did not quite do it: `.startsWith('http')` admits
+    // `httpfoo://evil` and `http-x://evil`, which are not http(s). Nothing executable, in an
+    // <img src> — but the comment claimed a guarantee the check did not give. httpUrl parses.
     avatar: z.object({
       variant: z.string().max(20).optional(), seed: z.string().max(80).optional(),
       colors: z.array(z.string().max(24)).max(6).optional(),
-      image: z.string().url().startsWith('http').max(500).optional(),
+      image: httpUrl(500).optional(),
     }).nullish(),
     enabled: z.boolean().optional(), order: z.number().int().min(0).max(100000).optional(),
   });
