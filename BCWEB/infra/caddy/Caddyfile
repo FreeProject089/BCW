@@ -7,13 +7,16 @@
 	# this IP can make us request a certificate for their name" — which is both a way to burn
 	# the ACME rate limit and a way to have us serve a stranger's traffic.
 	#
-	# The rate limits are Caddy's own guard on top: at most `burst` new names per `interval`,
-	# so a flood of unknown hosts cannot turn into a flood of ACME orders even if the ask
-	# endpoint were somehow saying yes.
+	# `ask` is the whole guard, and it is enough: Caddy will not obtain a certificate for a
+	# name the API refuses, however many times it is asked for one.
+	#
+	# There is deliberately no `interval`/`burst` here. Those options were deprecated and then
+	# REMOVED, and a Caddy that meets them refuses the ENTIRE config and exits 1 — taking the
+	# reverse proxy with it, so every site goes down over a setting that belongs to a feature
+	# nobody has switched on yet. Which is exactly what happened: the containers were all up
+	# and there was nothing in front of them.
 	on_demand_tls {
 		ask http://api:3000/domains/ask?key={$DOMAIN_ASK_KEY:}
-		interval 2m
-		burst 5
 	}
 }
 

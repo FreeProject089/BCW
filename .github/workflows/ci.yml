@@ -153,6 +153,26 @@ jobs:
         working-directory: BCWEB/apps/api
         run: node --test test/native.test.mjs
 
+  caddyfile:
+    name: Caddyfile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Caddy refuses the WHOLE config over one bad directive and exits 1, which takes the
+      # reverse proxy down and every site with it — while every other container stays up and
+      # healthy, so the symptom is "everything started and the site is gone". That is how
+      # `on_demand_tls { interval }`, removed in Caddy 2.10 and belonging to a feature nobody
+      # had switched on, stopped the platform.
+      #
+      # Validated against the SAME image the stack runs (caddy:2-alpine in compose), because
+      # the point is what that version accepts, not what the syntax looked like when it was
+      # written. The env vars are placeholders: validation only needs the file to parse and
+      # adapt, and the defaults in the file cover anything unset.
+      - name: the Caddyfile is valid for the Caddy we run
+        run: |
+          docker run --rm -v "$PWD/BCWEB/infra/caddy:/w:ro" -w /w caddy:2-alpine \
+            caddy validate --config Caddyfile --adapter caddyfile
+
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
