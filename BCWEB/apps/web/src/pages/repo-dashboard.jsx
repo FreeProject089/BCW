@@ -15,6 +15,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { useUploads } from './uploads.jsx';
 import { useUndoableSave } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
+import DomainPanel from '../ui/domain-panel.jsx';
 
 // Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
 // hosting-content.mjs). Kept as one predicate so the icon, the "ready to publish" check
@@ -666,6 +667,7 @@ function OnlineTab({ r, reload, publicUrl }) {
   const off = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const online = r.published && r.status === 'ONLINE';
   return (
+    <div className="space-y-4">
     <Card className="p-5">
       <div className="flex items-center gap-3">
         {online ? <Wifi size={20} className="text-success" /> : <WifiOff size={20} className="text-[var(--faint)]" />}
@@ -688,6 +690,10 @@ function OnlineTab({ r, reload, publicUrl }) {
       {!online && !hasRepoJson && <div className="mt-3 text-xs text-warning flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}
       {!online && hasRepoJson && <div className="mt-3 text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
     </Card>
+    {/* Right under the address it replaces: the bettercommunity URL above is what a custom
+        domain becomes an alias for, and seeing them together is the explanation. */}
+    <DomainPanel kind="repos" id={r.id} />
+    </div>
   );
 }
 

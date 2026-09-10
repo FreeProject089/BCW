@@ -737,4 +737,38 @@ la liste publique montre et de la vérification par un modérateur ; un chiffre 
 une machine que nous ne gérons pas ne doit pas les bouger. Un jeton volé permet donc de mentir
 sur un nombre de fichiers, et révoquer est une ligne.
 
+## 39. Domaines personnalisés (`domains.mjs`, `lib/domain.mjs`)
+Un propriétaire payant fait pointer son propre nom vers nous et son dépôt ou son catalogue
+répond dessus. Une ligne dans `CustomDomain` est l'autorisation de dépenser une vraie ressource
+sur le nom de quelqu'un d'autre — l'edge obtient un certificat TLS à la demande — donc les
+règles sont appliquées à trois endroits, pas un.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/domains/ask?domain=` | — (l'edge) | Le `on_demand_tls { ask }` de Caddy. 200 = émettre, autre = refuser. |
+| GET | `/me/:kind/:id/domain` | propriétaire | Le domaine et les enregistrements DNS à ajouter. `:kind` = `repos` ou `catalogs`. |
+| PUT | `/me/:kind/:id/domain` | propriétaire | Revendiquer un nom. Un nouveau nom = un nouveau jeton et une vérification repartie de zéro. |
+| DELETE | `/me/:kind/:id/domain` | propriétaire | Le retirer. L'adresse bettercommunity n'est pas touchée. |
+| POST | `/me/:kind/:id/domain/verify` | propriétaire | Résoudre le TXT `_bcw-verify.<host>` maintenant et comparer. |
+
+**Preuve de contrôle.** Un enregistrement TXT sur `_bcw-verify.<host>` portant un jeton propre
+au domaine. Par domaine et non par compte, pour qu'en retirer un n'invalide pas un
+enregistrement déjà publié pour un autre.
+
+**L'éligibilité** est un pool payant, vérifiée à la revendication, quand l'edge demande, et à
+chaque requête — un pool qui expire doit cesser d'être une raison de renouveler un certificat et
+de résoudre vers du contenu, sinon résilier nous laisserait servir du trafic et payer des
+certificats indéfiniment.
+
+**Routage.** Un hook `onRequest` réécrit une requête arrivant sur un nom client : `/` devient le
+`repo.json` du dépôt (ou le `catalog.json` du catalogue), et `/x/y` devient
+`/hosting/<hostPath>/files/x/y`. Tout ce qui suit — listes d'accès, mot de passe de sync,
+compteurs, l'interrupteur d'index — est le code qui existait déjà. La recherche est évitée pour
+notre propre nom (soit toutes les requêtes en pratique) et mise en cache une minute sinon.
+
+**Noms refusés** : jokers (un certificat à la demande ne peut pas être un joker), adresses IP,
+noms à un seul label, tout ce qui contient un underscore, et tout nom égal ou sous le nôtre —
+comparé avec un point, pour que `notbettercommunity.test` ne passe pas pour un sous-domaine de
+`bettercommunity.test`.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

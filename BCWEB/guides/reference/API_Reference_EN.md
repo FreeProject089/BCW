@@ -721,4 +721,35 @@ and whether a moderator has checked the content, and a self-reported number from
 not run must not move them. A stolen token therefore buys an attacker the ability to lie about a
 file count, and revoking is one row.
 
+## 39. Custom domains (`domains.mjs`, `lib/domain.mjs`)
+A paying owner points their own hostname at us and their repo or catalogue answers on it. A row
+in `CustomDomain` is permission to spend a real resource on somebody else's name — the edge
+obtains a TLS certificate on demand — so the rules are enforced in three places, not one.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/domains/ask?domain=` | — (the edge) | Caddy's `on_demand_tls { ask }`. 200 = issue a certificate, anything else = refuse. |
+| GET | `/me/:kind/:id/domain` | owner | The domain and the DNS records to add. `:kind` is `repos` or `catalogs`. |
+| PUT | `/me/:kind/:id/domain` | owner | Claim a host. A new host means a new token and verification from zero. |
+| DELETE | `/me/:kind/:id/domain` | owner | Remove it. The bettercommunity address is unaffected. |
+| POST | `/me/:kind/:id/domain/verify` | owner | Resolve `_bcw-verify.<host>` TXT now and compare. |
+
+**Proof of control.** A TXT record at `_bcw-verify.<host>` carrying a per-domain token. Per
+domain rather than per account, so removing one does not invalidate a record already published
+for another.
+
+**Eligibility** is a paid pool, checked when claiming, when the edge asks, and on every request
+— a pool that lapses has to stop being a reason to renew a certificate and stop resolving to
+content, or cancelling would leave us serving traffic and buying certificates indefinitely.
+
+**Routing.** An `onRequest` hook rewrites a request arriving on a customer host: `/` becomes
+the repo's `repo.json` (or the catalogue's `catalog.json`), and `/x/y` becomes
+`/hosting/<hostPath>/files/x/y`. Everything downstream — access lists, sync password, counters,
+the directory-listing switch — is the code that was already there. The lookup is skipped for our
+own host (which is every request in practice) and memoised for a minute otherwise.
+
+**Refused hostnames**: wildcards (an on-demand certificate cannot be a wildcard), IP addresses,
+single labels, anything with an underscore, and any name at or under our own — compared with a
+dot, so `notbettercommunity.test` is not treated as a subdomain of `bettercommunity.test`.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

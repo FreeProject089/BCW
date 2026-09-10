@@ -44,6 +44,7 @@ import repoRoutes, { recheckRepos } from './routes/repos.mjs';
 import hostingContentRoutes from './routes/hosting-content.mjs';
 import repoDashboardRoutes from './routes/repo-dashboard.mjs';
 import repoAgentRoutes from './routes/repo-agent.mjs';
+import domainRoutes, { resolveHostTarget } from './routes/domains.mjs';
 import promoRoutes from './routes/promo.mjs';
 import campaignRoutes from './routes/campaigns.mjs';
 import eventRoutes from './routes/events.mjs';
@@ -217,6 +218,9 @@ async function refreshAcctLimit() {
 await refreshAcctLimit();
 const acctTimer = setInterval(refreshAcctLimit, 15_000);
 acctTimer.unref?.();
+// Our own hostname, resolved once. Every request compares against it, so parsing the URL
+// per request would be work done millions of times to get the same answer.
+const OWN_HOST = (() => { try { return new URL(process.env.SITE_URL || '').hostname.toLowerCase(); } catch { return ''; } })();
 const acctHits = new Map();
 app.addHook('onRequest', async (req, reply) => {
   if (!rlAcct) return;
@@ -309,6 +313,50 @@ app.get('/ready', PROBE_OPTS, async (req, reply) => {
              : reply.code(503).send({ ok: false, db: false, ts: Date.now() });
 });
 
+// ── Custom domains ────────────────────────────────────────────────────────────────────────
+//
+// A request arriving on a hostname that is not ours is rewritten to whatever that name points
+// at, so `https://mods.example.com/foo.zip` reaches exactly the handler
+// `/hosting/<ownerSlug>/<repoSlug>/files/foo.zip` would. Everything downstream — the access
+// lists, the sync password, the counters, the autoindex switch — is the code that was already
+// there; this only changes the path it sees.
+//
+// The lookup is skipped entirely for our own host, which is every request in practice, and
+// memoised for a minute otherwise. Without that this would be a database round trip on every
+// request in the system, added for a feature almost nobody is using at any given moment.
+const _hostCache = new Map();
+const HOST_TTL_MS = 60_000;
+app.addHook('onRequest', async (req) => {
+  const raw = String(req.headers.host || '');
+  if (!raw) return;
+  const host = raw.split(':')[0].toLowerCase();
+  if (!host || host === 'localhost' || host === '127.0.0.1' || host === OWN_HOST || host.endsWith(`.${OWN_HOST}`)) return;
+  const now = Date.now();
+  let hit = _hostCache.get(host);
+  if (!hit || now - hit.at > HOST_TTL_MS) {
+    let target = null;
+    try { target = await resolveHostTarget(await db(), host); } catch { target = null; }
+    if (_hostCache.size > 5000) _hostCache.clear();
+    hit = { at: now, target };
+    _hostCache.set(host, hit);
+  }
+  if (!hit.target) return;
+  const url = req.raw.url || '/';
+  const [path, query] = url.split('?');
+  const q = query ? `?${query}` : '';
+  if (hit.target.kind === 'repo') {
+    const base = `/hosting/${hit.target.hostPath}`;
+    // The apex of a repo domain is its manifest: a client handed "mods.example.com" and
+    // nothing else is asking for the repo, and the repo IS repo.json.
+    req.raw.url = (path === '/' || path === '')
+      ? `${base}/repo.json${q}`
+      : `${base}/files${path}${q}`;
+  } else {
+    const base = `/c/${hit.target.slug}`;
+    req.raw.url = (path === '/' || path === '') ? `${base}/catalog.json${q}` : `${base}${path}${q}`;
+  }
+});
+
 // Feeds the server-perf dashboard's response-time/status-code stats (monitor.mjs
 // flushes + persists this on each sweeper tick). Cheap: just two subtractions.
 app.addHook('onResponse', (req, reply, done) => {
@@ -351,6 +399,7 @@ await app.register(repoRoutes);
 await app.register(hostingContentRoutes);
 await app.register(repoDashboardRoutes);
 await app.register(repoAgentRoutes);
+await app.register(domainRoutes);
 await app.register(promoRoutes);
 await app.register(campaignRoutes);
 await app.register(eventRoutes);

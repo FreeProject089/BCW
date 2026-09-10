@@ -1,3 +1,22 @@
+# Global options. MUST be the first block in the file, and there was none before customer
+# domains needed one — `on_demand_tls` is a global setting in Caddy, not a per-site one.
+{
+	# Before Caddy obtains a certificate for a name it has never seen, it asks the API whether
+	# that name is one of ours. 200 = issue, anything else = refuse. This is the only thing
+	# standing between "a customer can bring their own domain" and "anybody who points DNS at
+	# this IP can make us request a certificate for their name" — which is both a way to burn
+	# the ACME rate limit and a way to have us serve a stranger's traffic.
+	#
+	# The rate limits are Caddy's own guard on top: at most `burst` new names per `interval`,
+	# so a flood of unknown hosts cannot turn into a flood of ACME orders even if the ask
+	# endpoint were somehow saying yes.
+	on_demand_tls {
+		ask http://api:3000/domains/ask
+		interval 2m
+		burst 5
+	}
+}
+
 # Reverse proxy. SITE_DOMAIN drives the scheme:
 #   local dev ? http://localhost  (plain HTTP on :80)
 #   production ? your-domain.com   (Caddy auto-provisions HTTPS)
@@ -247,4 +266,40 @@
 # signature match; do not add `header_up Host {upstream_hostport}` here.
 {$S3_DOMAIN:http://s3.invalid} {
 	reverse_proxy minio:9000
+}
+
+# ── Customer domains ──────────────────────────────────────────────────────────────────────
+#
+# A paying owner points a CNAME at us and their repo or catalogue answers on their own name.
+# This block is the catch-all: it matches any Host that none of the blocks above claimed.
+#
+# The certificate is obtained ON DEMAND, at the moment of the first TLS handshake for that
+# name — there is no list of domains in this file, because the list lives in the database and
+# changes without a redeploy. `ask` is what makes that safe: before Caddy will obtain a
+# certificate it asks the API whether the name is one of ours, and the API answers 200 only
+# for a VERIFIED domain attached to something on a paid pool. Without `ask`, anybody who
+# points a DNS record at this IP makes us request a certificate for their name, which is both
+# a way to burn the ACME rate limit and a way to have us serve a stranger's traffic.
+#
+# The API does the rest: an onRequest hook rewrites `/foo.zip` on a customer host to the
+# `/hosting/<path>/files/foo.zip` route, so every access rule, password and counter that
+# already existed applies unchanged. Nothing about the request reaches a different handler
+# than it would on our own domain.
+#
+# Not enabled by default: CUSTOM_DOMAINS must be set to `https://` for this block to bind.
+# The placeholder is a scheme+host nobody can request, exactly like TUNNEL_DOMAIN above, so a
+# stack that has not opted in costs nothing.
+{$CUSTOM_DOMAIN_MATCHER:http://custom-domains.invalid} {
+	encode gzip zstd
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	tls {
+		on_demand
+	}
+	# Everything, including `/`: on a customer domain the apex IS the repo manifest, and the
+	# API's rewrite decides what that means for a repo versus a catalogue.
+	import api_upstream
 }

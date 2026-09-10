@@ -101,6 +101,7 @@ model User {
   legalAcceptedAt  DateTime?
   stripeCustomerId String?        @unique
   apiKeys          ApiKey[]
+  customDomains     CustomDomain[]
   polls            Poll[]         @relation("PollAuthor")
   oauthClients     OAuthClient[]  @relation("OAuthClientOwner")
   pollVotes        PollVote[]     @relation("PollVoter")
@@ -874,6 +875,7 @@ model CommunityCatalog {
   updatedAt         DateTime               @updatedAt
   items             CommunityCatalogItem[]
   favorites         CatalogFavorite[]
+  domain            CustomDomain?
 
   @@index([ownerId])
   @@index([status, listed])
@@ -1124,6 +1126,7 @@ model ServerRepo {
   accessEvents      RepoAccessEvent[]
   favorites         RepoFavorite[]
   agent             RepoAgent?
+  domain            CustomDomain?
 
   @@index([groupId])
   @@index([deleteAt])
@@ -1179,6 +1182,41 @@ model RepoAgent {
   fileCount    Int?
   totalBytes   BigInt?
   manifestSha  String?
+}
+
+/// A hostname the owner controls, served by us.
+///
+/// This is a certificate-issuance decision before it is a routing one: the edge asks us
+/// whether a host is allowed before obtaining a certificate for it, so a row here is
+/// permission to spend a real resource on somebody else's name. Hence: proof of control
+/// (a TXT record) before `verifiedAt` is set, and a paid pool as the product gate — both
+/// re-checked at the point of USE, because a pool that lapses must stop being a reason to
+/// keep renewing a certificate.
+///
+/// Exactly one of repoId / catalogId is set. Two nullable unique columns rather than a
+/// polymorphic (type, id) pair, because the database can then enforce "one domain per repo"
+/// and "one domain per catalogue" itself instead of trusting every writer to.
+model CustomDomain {
+  id            String            @id @default(cuid())
+  /// Lowercased, no trailing dot, no port -- normaliseHost() in lib/domain.mjs is the one
+  /// place that decides what this string looks like.
+  host          String            @unique
+  owner         User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId       String
+  repo          ServerRepo?       @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  repoId        String?           @unique
+  catalog       CommunityCatalog? @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId     String?           @unique
+  /// The value the owner publishes at _bcw-verify.<host>. Per domain, so removing one does
+  /// not invalidate a record already published for another.
+  verifyToken   String
+  verifiedAt    DateTime?
+  lastCheckedAt DateTime?
+  /// Why the last check failed, for the panel. Never a raw resolver error object.
+  lastError     String?
+  createdAt     DateTime          @default(now())
+
+  @@index([ownerId])
 }
 
 // A user starring a Server-Repo on the public list — purely social (visibility
