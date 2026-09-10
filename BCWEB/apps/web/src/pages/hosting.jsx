@@ -24,43 +24,37 @@ const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)
 /* ─────────────────────────  Hosting  ───────────────────────── */
 // Custom, themeable dropdown for the prepaid billing term (replaces the segmented
 // cards). Shows the picked term + its discount, and flags the best-value option.
+/**
+ * The billing term — five numbers, all visible.
+ *
+ * It was a dropdown: a gradient tile, the label, a "Best value" pill and a sentence about the
+ * saving, to choose between 1, 3, 6, 12 and 24. Two clicks and a popup to pick one of five
+ * short options, and four of the five invisible until you opened it — which is the one thing
+ * a pricing control must not do, because the whole point is comparing them.
+ *
+ * A row of five, each carrying its own discount. Scrolls rather than wraps on a narrow
+ * screen, so the options stay one line and stay comparable.
+ */
 function TermSelect({ months, setMonths, termDisc, t }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc); return () => document.removeEventListener('mousedown', onDoc);
-  }, []);
   const opts = [1, 3, 6, 12, 24];
   const disc = (m) => Math.round((termDisc[m] || 0) * 100);
-  const label = (m) => `${m} ${t('hosting.mo', 'mo')}${m === 12 ? ` · ${t('hosting.1yr', '1 yr')}` : m === 24 ? ` · ${t('hosting.2yr', '2 yr')}` : ''}`;
-  const BestTag = () => <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/15 text-[var(--primary-2)] border border-[var(--primary)]/40 whitespace-nowrap">{t('hosting.best2', 'Best value')}</span>;
+  const label = (m) => (m === 12 ? t('hosting.1yr', '1 yr') : m === 24 ? t('hosting.2yr', '2 yr') : `${m} ${t('hosting.mo', 'mo')}`);
   return (
-    <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="listbox" aria-expanded={open}
-        className={`w-full flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-start transition ${open ? 'border-[var(--primary)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}
-        style={open ? { boxShadow: '0 0 0 1px var(--primary)' } : undefined}>
-        <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white shrink-0"><Receipt size={16} /></span>
-        <span className="flex-1 min-w-0">
-          <span className="font-semibold flex items-center gap-2">{label(months)}{months === 12 && <BestTag />}</span>
-          <span className="block text-xs text-[var(--muted)] mt-0.5">{disc(months) > 0 ? t('hosting.savepct', 'Save {n}% vs monthly').replace('{n}', disc(months)) : t('hosting.term.note', '· prepaid, min 1 month')}</span>
-        </span>
-        <ChevronDown size={18} className={`text-[var(--muted)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div role="listbox" className="absolute z-30 mt-2 w-full rounded-xl border border-[var(--line-strong)] overflow-hidden anim-fade" style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55)' }}>
-          {opts.map((m) => { const active = m === months; const d = disc(m); return (
-            <button key={m} type="button" role="option" aria-selected={active} onClick={() => { setMonths(m); setOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-start text-sm transition ${active ? 'bg-orange-500/10' : 'hover:bg-[var(--surface-2)]'}`}>
-              <span className={`w-2 h-2 rounded-full shrink-0 ${active ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />
-              <span className="flex-1 font-medium">{label(m)}</span>
-              {m === 12 && <BestTag />}
-              {d > 0 ? <span className="text-xs font-bold text-success">−{d}%</span> : <span className="text-[11px] text-[var(--faint)]">{t('hosting.standard', 'standard')}</span>}
-              {active && <CheckCircle2 size={14} className="text-[var(--primary-2)] shrink-0" />}
-            </button>
-          ); })}
-        </div>
-      )}
+    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')}
+      className="flex gap-1.5 overflow-x-auto no-scrollbar p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]">
+      {opts.map((m) => {
+        const active = m === months;
+        const d = disc(m);
+        return (
+          <button key={m} type="button" role="radio" aria-checked={active} onClick={() => setMonths(m)}
+            className={`flex-1 min-w-[74px] rounded-lg px-3 py-2 text-center transition-colors ${active ? 'bg-[var(--bg-solid)] border border-[var(--primary)]' : 'border border-transparent hover:bg-[var(--surface)]'}`}>
+            <div className={`text-[13.5px] font-semibold leading-none ${active ? '' : 'text-[var(--muted)]'}`}>{label(m)}</div>
+            <div className={`text-[11px] mt-1 leading-none ${d > 0 ? 'text-success font-bold' : 'text-[var(--faint)]'}`}>
+              {d > 0 ? `−${d}%` : t('hosting.termbar.full', 'full price')}
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -500,7 +494,6 @@ export function Hosting() {
       </>)}
       </section>
 
-      <HostingExplained />
       <HostingCompare freePlan={freePlan} />
       <HostingFaq />
 
@@ -858,12 +851,12 @@ function SubLead({ icon: Icon, title, sub }) {
 function TermBar({ months, setMonths }) {
   const { t } = useI18n();
   return (
-    <Card className="p-4 sm:p-5 mb-7 flex flex-col sm:flex-row sm:items-center gap-4">
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t', 'How long do you want to pay for up front?')}</div>
-        <div className="text-[13px] text-[var(--muted)] leading-relaxed mt-0.5">{t('hosting.termbar.s', 'Every price below follows this. The longer the term the less each month costs, and nothing renews on its own unless you turn that on.')}</div>
+    <Card className="p-4 sm:p-5 mb-7">
+      <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
+        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t2', 'Paid up front for')}</div>
+        <div className="text-[12.5px] text-[var(--muted)]">{t('hosting.termbar.s2', 'Sets every price below. Nothing renews on its own.')}</div>
       </div>
-      <div className="w-full sm:w-[290px] shrink-0"><TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} /></div>
+      <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
     </Card>
   );
 }
@@ -948,14 +941,24 @@ function PoolDiagram() {
   //
   // color-mix toward the surface rather than toward transparent, so each stays opaque and
   // keeps its contrast on either theme's ground.
+  // Named, with sizes that add up. "a repo / another / a catalogue" described the SHAPE of
+  // a pool without ever showing one, which is the difference between a diagram and an
+  // example — and the thing being explained (you decide the split) only becomes obvious once
+  // the parts have different sizes for a reason.
+  const TOTAL = 25;
   const seg = [
-    { w: '34%', label: t('hosting.diag.repo', 'a repo'), bg: 'var(--primary)' },
-    { w: '22%', label: t('hosting.diag.repo2', 'another'), bg: 'color-mix(in srgb, var(--primary) 60%, var(--surface-2))' },
-    { w: '19%', label: t('hosting.diag.cat', 'a catalogue'), bg: 'color-mix(in srgb, var(--primary-2) 45%, var(--surface-2))' },
-  ];
+    { gb: 8, label: t('hosting.diag.e1', 'Skyrim mods'), bg: 'var(--primary)' },
+    { gb: 5, label: t('hosting.diag.e2', 'Fallout mods'), bg: 'color-mix(in srgb, var(--primary) 60%, var(--surface-2))' },
+    { gb: 4, label: t('hosting.diag.e3', 'My catalogue'), bg: 'color-mix(in srgb, var(--primary-2) 45%, var(--surface-2))' },
+  ].map((x) => ({ ...x, w: `${(x.gb / TOTAL) * 100}%` }));
+  const freeGB = TOTAL - seg.reduce((a, x) => a + x.gb, 0);
   return (
     <div className="relative">
       <Card className="p-6 sm:p-7">
+        <div className="flex items-baseline justify-between mb-3">
+          <span className="text-[13px] text-[var(--muted)]">{t('hosting.diag.ex', 'For example, a {n} GB pool').replace('{n}', TOTAL)}</span>
+          <span className="text-[13px] font-semibold tabular-nums">{t('hosting.diag.left', '{n} GB left').replace('{n}', freeGB)}</span>
+        </div>
         <div className="h-12 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden flex">
           {seg.map((sg) => (
             /* A 2px gap between fills, not a border: a border would eat into the width and
@@ -966,57 +969,19 @@ function PoolDiagram() {
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
           {seg.map((sg) => (
             <span key={sg.label} className="flex items-center gap-1.5 text-[12px] text-[var(--muted)]">
-              <i className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: sg.bg }} aria-hidden />{sg.label}
+              <i className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: sg.bg }} aria-hidden />{sg.label} <span className="tabular-nums text-[var(--faint)]">{sg.gb} {t('hosting.gbshort', 'GB')}</span>
             </span>
           ))}
           <span className="flex items-center gap-1.5 text-[12px] text-[var(--faint)]">
             <i className="inline-block w-2.5 h-2.5 rounded-[3px] border border-[var(--line)] bg-[var(--surface-2)]" aria-hidden />
-            {t('hosting.diag.spare', 'still yours')}
+            {t('hosting.diag.spare', 'unused')} <span className="tabular-nums">{freeGB} {t('hosting.gbshort', 'GB')}</span>
           </span>
         </div>
         <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-4">
-          {t('hosting.diag.note2', 'You buy room, not a slot.')}
+          {t('hosting.diag.note3', 'One space. What goes in it, and how it is split, is yours to change at any time.')}
         </p>
       </Card>
     </div>
-  );
-}
-
-/**
- * The three words that are genuinely ambiguous.
- *
- * There were six. The other three were "upload speed", "the term" and "a boost" — each
- * defined a few hundred pixels away by the control that uses it: the slider says Mbps beside
- * the word, the term bar explains itself in its own subtitle, the boost card describes a
- * boost while selling one. Defining them again here was a glossary competing with the page.
- *
- * These three are the ones somebody can genuinely have backwards, so they get one row, plain
- * text, no card around each — a definition list, which is what it always was.
- */
-function HostingExplained() {
-  const { t } = useI18n();
-  const rows = [
-    [Layers, t('hosting.x.pool', 'A pool'), t('hosting.x.pool.d', 'The space you buy. Everything else goes inside it.')],
-    [HardDrive, t('hosting.x.repo', 'A repo'), t('hosting.x.repo.d', 'The files themselves, at one address people sync from.')],
-    [Boxes, t('hosting.x.cat', 'A catalogue'), t('hosting.x.cat.d', 'A list people browse, and install from.')],
-  ];
-  return (
-    <>
-      <SectionLead
-        title={t('hosting.x.title2', 'Three words, once and for all')}
-        sub={t('hosting.x.sub2', 'The rest of the page assumes you have these the right way round.')} />
-      <div className="grid sm:grid-cols-3 gap-x-8 gap-y-6 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6">
-        {rows.map(([Icon, term, desc]) => (
-          <div key={term}>
-            <div className="flex items-center gap-2">
-              <Icon size={15} className="text-[var(--primary-2)] shrink-0" />
-              <span className="font-semibold text-[14.5px]">{term}</span>
-            </div>
-            <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-1.5">{desc}</p>
-          </div>
-        ))}
-      </div>
-    </>
   );
 }
 
@@ -1038,8 +1003,12 @@ function HostingCompare({ freePlan }) {
       title: t('hosting.cmp.none', 'Hosting it yourself'),
       sub: t('hosting.cmp.none.s', 'A file host, a drive, your own box.'),
       rows: [
-        [false, t('hosting.cmp.none.1', 'The link changes, and everything that shared it breaks')],
-        [false, t('hosting.cmp.none.2', 'No idea how many people downloaded it')],
+        // Opening on a tick, because it is true. A column of four crosses over "hosting it
+        // yourself" is not a comparison, it is a strawman — and the reader most likely to
+        // be looking at it is the one who already does it and knows better.
+        [true, t('hosting.cmp.none.0', 'Total control, and nothing more to pay if the machine is already yours')],
+        [false, t('hosting.cmp.none.1b', 'The address moves when your server does, and what shared it breaks')],
+        [false, t('hosting.cmp.none.5', 'You stay outside: no public page, no search, no catalogue picking you up')],
         [false, t('hosting.cmp.none.3', 'Nothing tells you when it went down')],
       ],
     },
@@ -1050,6 +1019,7 @@ function HostingCompare({ freePlan }) {
         : t('hosting.cmp.free.s2', 'One per account, no card.'),
       rows: [
         [true, t('hosting.cmp.free.1', 'A stable address anything can sync from')],
+        [true, t('hosting.cmp.free.5', 'A public page, search, favourites — people can find it')],
         [true, t('hosting.cmp.free.2', 'Downloads counted, for real')],
         // The row the section promised: one place where free is the wrong answer.
         [false, t('hosting.cmp.free.4b', 'One space, and it is a small one')],
@@ -1061,8 +1031,9 @@ function HostingCompare({ freePlan }) {
       sub: t('hosting.cmp.paid.s', 'The size you pick, split how you like.'),
       rows: [
         [true, t('hosting.cmp.paid.2', 'Several repos AND catalogues in one space')],
+        [true, t('hosting.cmp.paid.5', 'Your own domain on a repo or a catalogue')],
         [true, t('hosting.cmp.paid.3', 'A faster upload cap')],
-        [true, t('hosting.cmp.paid.4', 'Boosts, gifting, and a longer term for less')],
+        [true, t('hosting.cmp.paid.6', 'Any size you like, changed whenever you like')],
       ],
     },
   ];
@@ -1101,16 +1072,17 @@ function HostingFaq() {
   const qs = [
     [t('hosting.faq.q1', 'What happens if I stop paying?'),
      t('hosting.faq.a1', 'Nothing is deleted the moment a term ends. Your content goes read-only for a grace window: it stays where it is, you can still download a copy or move it to another account, and renewing puts everything straight back. Only after that window does it actually go.')],
-    [t('hosting.faq.q2', 'Can I change size later?'),
+    [t('hosting.faq.q2b', 'Can I take a bigger one later? A smaller one?'),
      t('hosting.faq.a2', 'Yes, and the free allowance keeps applying — you only ever pay for what sits above it. The repo keeps its address, so nothing you shared stops working.')],
-    [t('hosting.faq.q3', 'Repo or catalogue — which do I want?'),
+    [t('hosting.faq.q3b', 'What is the difference between a repo and a catalogue?'),
      t('hosting.faq.a3', 'A repo is the FILES themselves, at a fixed address something can sync from. A catalogue is a LIST people browse and install from. Publishing your own work usually wants a repo; gathering other people’s usually wants a catalogue. A pool holds both, so you do not have to decide now.')],
-    [t('hosting.faq.q4', 'Several repos in one pool?'),
+    [t('hosting.faq.q4b', 'Can I put several repos in one pool?'),
      t('hosting.faq.a4', 'That is the whole point of it. You buy room, not a slot — put one big repo in it or a dozen small ones, and change your mind afterwards.')],
-    [t('hosting.faq.q5', 'Will you host my site or my Discord bot?'),
+    [t('hosting.faq.q5b', 'Can you host my site, or my Discord bot?'),
      t('hosting.faq.a5', 'Not today — this sells storage, not somewhere to run code. Ask anyway using the last card on this page: if enough people want it, that is how we will find out.')],
-    [t('hosting.faq.q6', 'What if everything is sold out?'),
-     t('hosting.faq.a6', 'You can leave your name and the size you were after, and be told when it frees up. The free pool and the paid disk are metered separately, so one can be full while the other has plenty of room.')],
+    // The question this page gets most often after the price one, now that it has an answer.
+    [t('hosting.faq.q7', 'Can I use my own domain?'),
+     t('hosting.faq.a7', 'Yes, on a paid pool: point a subdomain at us, add it to the repo or catalogue, and we serve it there once the DNS checks out. The free plan keeps its bettercommunity address.')],
   ];
   return (
     <>
