@@ -837,4 +837,25 @@ is stacking them precisely so there is no gap. The credit is claimed with a guar
 `featuredUntil`, so a featured catalogue already surfaced; what did not exist was any way to
 make one.
 
+## 43. What counts as a repo at a URL (`lib/repokind.mjs`)
+An external repo is a URL, and until now exactly one answer at that URL counted: a
+current-format `repo.json`. Anything else was `valid: false`, which for a listed repo means
+never verified, which means never public — so the most common way people already publish files,
+a plain web server with directory listing on, could be registered, showed as online, and
+silently never appeared, with nothing saying why.
+
+Two kinds now: a MANIFEST is a repo that describes itself, a LISTING is a directory a client
+walks. BMM has read the second since the beginning (it parses the index and uses each row's
+size and date to skip re-hashing unchanged files); the platform simply had no word for it.
+
+Recognition is deliberately narrow, because "valid" makes a repo verified and public — a claim
+that it works. A listing needs an `Index of /…` heading or a run of links inside a `<pre>`, near
+the START of the document, and at least two entries. A homepage with links is refused. The
+content type is a hint and never the decision: servers send `text/html` over manifests and
+`application/json` over 404 pages often enough that trusting it would misclassify both.
+
+`checkRepoHealth(repo, fetcher = safeFetch)` takes its fetcher so this is testable — safeFetch
+refuses loopback addresses, the SSRF guard doing its job, so a probe against a local test server
+gets a refusal that reads as broken code.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

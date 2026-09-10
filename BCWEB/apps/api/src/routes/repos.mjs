@@ -3,6 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
 import { gitManifestUrl } from '../lib/gitsource.mjs';
+import { classifyRepoBody } from '../lib/repokind.mjs';
 import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -106,18 +107,32 @@ const ser = (r) => {
 // Ping a repo's URL → ONLINE/OFFLINE + validity + a content SHA (for .json manifests).
 // A .json manifest must parse; anything else just needs to be reachable.
 // Exported for the provisioner's poller. `valid` drives auto-verification.
-export async function checkRepoHealth(repo) {
+/**
+ * `fetcher` is injectable, and defaults to safeFetch, so this can be tested without a network.
+ *
+ * It needs to be: safeFetch refuses private and loopback addresses — the SSRF guard, doing
+ * exactly its job — so a probe pointing this at a local test server gets a refusal that looks
+ * like the code being broken. The default is what production uses and is never bypassed by
+ * anything shipping; only a test passes anything else.
+ */
+export async function checkRepoHealth(repo, fetcher = safeFetch) {
   const url = repo.repoUrl || repo.publicUrl;
   if (!url) return { status: 'OFFLINE', valid: false, reason: 'no_url' };
   try {
-    const res = await safeFetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await fetcher(url, { signal: AbortSignal.timeout(8000) });
     if (!res.ok) return { status: 'OFFLINE', valid: false, reason: `http_${res.status}` };
-    // A repo must expose a valid CURRENT-format repo.json to be verifiable — reachable,
-    // or even parseable, is not enough (an old-format manifest must not be trusted).
+    // TWO shapes count, not one. A current-format repo.json is a repo that describes itself;
+    // a directory index is a repo somebody has to walk, which is how most people already
+    // publish files and which BMM has always been able to read. Refusing the second meant a
+    // plain file server could be registered, showed as online, and could never be verified —
+    // so it never appeared publicly, with nothing saying why.
+    //
+    // Reachable is still not enough either way: classifyRepoBody refuses a page that merely
+    // contains links, because verified is a public claim that the thing works.
     const text = await res.text();
-    let parsed; try { parsed = JSON.parse(text); } catch { return { status: 'ONLINE', valid: false, reason: 'not_a_manifest' }; }
-    if (!isValidRepoManifest(parsed)) return { status: 'ONLINE', valid: false, reason: 'outdated_format', sha: sha256(text) };
-    return { status: 'ONLINE', valid: true, sha: sha256(text) }; // auto content hash
+    const kind = classifyRepoBody(text, res.headers?.get?.('content-type') || '');
+    if (!kind.valid) return { status: 'ONLINE', valid: false, reason: kind.reason, kind: kind.kind, ...(kind.reason === 'outdated_format' ? { sha: sha256(text) } : {}) };
+    return { status: 'ONLINE', valid: true, kind: kind.kind, sha: sha256(text) }; // auto content hash
   } catch (e) {
     return { status: 'OFFLINE', valid: false, reason: String(e?.name || e) };
   }

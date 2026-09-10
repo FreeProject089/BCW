@@ -861,4 +861,27 @@ dépenser deux fois le même.
 `featuredUntil` : un catalogue mis en avant remontait déjà, il n'existait simplement aucun moyen
 d'en mettre un.
 
+## 43. Ce qui compte comme dépôt derrière une URL (`lib/repokind.mjs`)
+Un dépôt externe est une URL, et jusqu'ici une seule réponse à cette URL comptait : un
+`repo.json` au format courant. Tout le reste était `valid: false`, ce qui pour un dépôt listé
+veut dire jamais vérifié, donc jamais public — si bien que la façon la plus répandue de publier
+des fichiers, un simple serveur web avec l'index de dossier activé, pouvait être enregistrée,
+s'affichait en ligne, et n'apparaissait jamais, sans que rien ne dise pourquoi.
+
+Deux genres désormais : un MANIFESTE est un dépôt qui se décrit lui-même, un INDEX est un
+dossier que le client parcourt. BMM lit le second depuis toujours (il analyse l'index et se sert
+de la taille et de la date de chaque ligne pour éviter de re-hacher ce qui n'a pas bougé) ; la
+plateforme n'avait simplement pas de mot pour ça.
+
+La reconnaissance est volontairement étroite, parce que « valide » rend un dépôt vérifié et
+public — c'est une affirmation qu'il fonctionne. Un index exige un titre `Index of /…` ou une
+suite de liens dans un `<pre>`, près du DÉBUT du document, et au moins deux entrées. Une page
+d'accueil avec des liens est refusée. Le type de contenu est un indice, jamais la décision : les
+serveurs envoient assez souvent `text/html` sur un manifeste et `application/json` sur une page
+404 pour que s'y fier se trompe dans les deux sens.
+
+`checkRepoHealth(repo, fetcher = safeFetch)` prend son fetcher pour être testable — safeFetch
+refuse les adresses loopback, la garde SSRF faisant son travail, donc une sonde vers un serveur
+de test local reçoit un refus qui se lit comme du code cassé.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*
