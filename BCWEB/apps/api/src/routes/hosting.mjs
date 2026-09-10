@@ -151,6 +151,18 @@ export async function capacityStatus(p) {
 /** Flexible base price (cents/month) from the admin-tunable knobs. The first
  *  `hostingFreeGB` of STORAGE are free (small personal repos cost nothing) —
  *  only upload/CPU allotments and storage above that floor are ever billed. */
+/**
+ * Does saving `plan` leave the site with two free plans?
+ *
+ * `others` is every OTHER plan (the one being edited excluded by the caller). A plan is
+ * "the free plan" only when it is both priced at zero and active: an inactive one is not
+ * offered anywhere, so it cannot collide with anything.
+ */
+export function secondFreePlan(plan, others) {
+  if (!plan || plan.active !== true || Number(plan.priceMonthlyCents) !== 0) return null;
+  return (others || []).find((o) => o.active === true && Number(o.priceMonthlyCents) === 0) || null;
+}
+
 export function priceCents(s, storageGB, uploadMbps, cpuShare) {
   const freeGB = Number(s['pricing.hostingFreeGB'] ?? 1);
   const billableGB = Math.max(0, storageGB - freeGB);
@@ -379,6 +391,11 @@ export default async function hostingRoutes(app) {
     // number; `autoPriced` tells the caller it came from the settings rather than from them.
     const autoPriced = data.priceMonthlyCents == null;
     if (autoPriced) data.priceMonthlyCents = await autoPriceCents(p, data);
+    // Checked AFTER the auto-price, because "leave it empty" can itself compute to zero.
+    const clash = secondFreePlan(data, await p.hostingPlan.findMany({
+      where: { active: true, priceMonthlyCents: 0 }, select: { id: true, name: true, active: true, priceMonthlyCents: true },
+    }));
+    if (clash) return reply.code(409).send({ error: 'free_plan_exists', existing: { id: clash.id, name: clash.name } });
     const plan = await p.hostingPlan.create({ data });
     return { ok: true, plan, autoPriced };
   });
@@ -414,6 +431,15 @@ export default async function hostingRoutes(app) {
       // be AFTER this edit rather than as they were before it.
       data.priceMonthlyCents = await autoPriceCents(p, { ...current, ...data });
     }
+
+    // Same rule on the way in through an edit: a paid plan set to 0, or a retired free one
+    // switched back on while another is live. `next` is the plan as it will be, not as it is.
+    const next = { ...current, ...data };
+    const freeClash = secondFreePlan(next, await p.hostingPlan.findMany({
+      where: { active: true, priceMonthlyCents: 0, id: { not: current.id } },
+      select: { id: true, name: true, active: true, priceMonthlyCents: true },
+    }));
+    if (freeClash) return reply.code(409).send({ error: 'free_plan_exists', existing: { id: freeClash.id, name: freeClash.name } });
 
     // ── Scheduled change ────────────────────────────────────────────────────────
     let notified = 0;

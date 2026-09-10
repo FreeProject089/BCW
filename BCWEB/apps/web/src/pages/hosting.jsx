@@ -262,6 +262,10 @@ function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
   );
 }
 
+// The prepaid term discounts. Module scope because TermBar, the plan cards and the
+// configurator all price against the same table, and it never depends on state.
+const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
+
 export function Hosting() {
   const { user } = useAuth(); const nav = useNavigate(); const dialog = useDialog(); const toast = useToast(); const { t } = useI18n();
   const plans = useAsync(() => api.get('/hosting/plans'), []);
@@ -272,7 +276,6 @@ export function Hosting() {
   const [months, setMonths] = useState(12); // prepaid term (1yr recommended)
   const [promo, setPromo] = useState(null); // validated promo code for the simple plan-card checkout
   const [autoRenew, setAutoRenew] = useState(true); // recurring subscription vs one-time prepaid
-  const TERM_DISC = { 1: 0, 3: 0.05, 6: 0.10, 12: 0.20, 24: 0.35 };
   // ── Shopping cart: buy several repos + boosts in one prepaid checkout ──
   // Persisted in localStorage so it survives a refresh / navigating away and back.
   const [cart, setCart] = useState(() => { try { return JSON.parse(localStorage.getItem('bcw_cart') || '[]'); } catch { return []; } });
@@ -329,16 +332,23 @@ export function Hosting() {
   // same plan, and three separate `.find()` calls is three places to drift.
   const freePlan = (plans.data?.plans || []).find((pl) => pl.priceMonthlyCents === 0) || null;
   const c = cap.data?.capacity;
+  // Is the free plan actually TAKEABLE right now? Three separate ways it is not: no free
+  // plan exists at all (an admin can delete it), the free ceiling is full, or the disk is.
+  // Hoisted because the hero, the free card and the comparison must agree — a hero button
+  // promising free storage that the card below reports as sold out is worse than no button.
+  const freeTierSoldOut = !!c && c.freeTierCapEnabled && c.freeTierFreeGB <= 0.01;
   // Fully sold out — the whole pool is spoken for (or hosting is disabled by an
   // admin). Nothing at all can be bought until an existing repo shrinks/expires.
   const soldOut = !!c && (c.enabled === false || c.freeGB <= 0.01);
+  const freeOffered = !!freePlan && !soldOut && !freeTierSoldOut
+    && !(!!c && freePlan.storageGB > c.freeGB);
   return (
     <div>
       {/* The page used to open on the configurator — two sliders and a total, for somebody
           who had not yet been told what they would be buying. A price is an answer; this is
           the question it answers. The button goes to the plans, which is where the price
           lives now. */}
-      <HostingHero freePlan={freePlan} />
+      <HostingHero freePlan={freePlan} freeOffered={freeOffered} />
 
       {soldOut && (
         <div className="rounded-xl border border-error-border bg-error-bg p-4 mb-6 flex items-start gap-3">
@@ -362,12 +372,6 @@ export function Hosting() {
         title={t('hosting.plans.title', 'Pick a size, or set your own')}
         sub={t('hosting.plans.sub', 'The same space either way — the four below are just the sizes people ask for most.')} />
 
-      {/* The configurator replaces the old "storage space + billing term" text card. That
-          card explained the model and then asked for nothing; this asks for the two numbers
-          that decide the price, and shows the price while you choose them. */}
-      <PoolConfigurator months={months} setMonths={setMonths} termDisc={TERM_DISC} soldOut={soldOut} capacity={c}
-        onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
-
       {/* Free tier — a real $0 plan, called out on its own instead of blending into
           the paid grid below (it isn't really "one of the four tiers", it's the
           answer to "can I try this for free?"). Paid plans never draw from this
@@ -377,17 +381,18 @@ export function Hosting() {
       {!plans.loading && (() => {
         const free = freePlan;
         if (!free) return null;
-        const freeTierSoldOut = !!c && c.freeTierCapEnabled && c.freeTierFreeGB <= 0.01;
-        const freeDisabled = soldOut || freeTierSoldOut || (!!c && free.storageGB > c.freeGB);
+        const freeDisabled = !freeOffered;
         const freeTierPct = c?.freeTierCapEnabled && c.freeTierCapGB ? Math.min(100, (c.freeTierUsedGB / c.freeTierCapGB) * 100) : null;
         return (
-          <Card className="p-5 mb-4 bg-success/[0.05] overflow-hidden relative">
-            <div className="flex flex-col sm:flex-row items-center gap-4">
+          <Card className="p-6 mb-2 bg-success/[0.05] overflow-hidden relative">
+            <div className="flex flex-col sm:flex-row items-center gap-5">
               <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
               <div className="flex-1 text-center sm:text-start min-w-0">
                 <div className="font-semibold text-lg">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
                 <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
-                <div className="text-xs text-[var(--faint)] mt-1">{t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
+                <div className="text-xs text-[var(--faint)] mt-1">{freeTierSoldOut
+                  ? t('hosting.freeplan.soldout.d', 'The free allowance is fully taken right now. It is metered on its own, so the paid sizes below are unaffected — leave your name and we will tell you the moment one frees up.')
+                  : t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
               <Button variant="primary" className="!bg-success hover:!bg-success !border-transparent shrink-0" disabled={freeDisabled} onClick={() => checkout({ planId: free.id })}>
                 <Gift size={16} /> {freeTierSoldOut ? t('hosting.freeplan.soldout', 'Free plan sold out') : freeDisabled ? t('hosting.nospace', 'Not enough space') : t('hosting.freeplan.cta', 'Get it free')}</Button>
@@ -410,13 +415,23 @@ export function Hosting() {
         );
       })()}
 
+      <SubLead icon={HardDrive}
+        title={t('hosting.sizes.t', 'The ready-made sizes')}
+        sub={t('hosting.sizes.s', 'Four of them, because these are the ones people ask for. Anything else is a slider away, just below.')} />
+
+      {/* The term is chosen ONCE, here, for everything priced below it — the four cards and
+          the custom build alike. It used to sit inside the configurator, which sat UNDER the
+          cards: changing it repriced four cards nobody was looking at. A control belongs
+          above the numbers it moves. */}
+      <TermBar months={months} setMonths={setMonths} />
+
       {/* A swipe on a phone, a grid on a desktop.
           Four pricing cards stacked vertically is four screens of scrolling to compare two
           numbers, and comparison is the entire job of a pricing card. Below sm they sit in one
           scroll-snap row at 78% of the viewport — wide enough to read, narrow enough that the
           next card's edge is visible, which is what tells a thumb there is more. From sm up
           nothing changes: it is the same grid it was. */}
-      {plans.loading ? <Loading /> : <div className="flex sm:grid gap-4 lg:gap-5 items-stretch pt-2 overflow-x-auto snap-x snap-mandatory sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 no-scrollbar sm:grid-cols-2 lg:grid-cols-4">
+      {plans.loading ? <Loading /> : <div className="flex sm:grid gap-5 lg:gap-6 items-stretch overflow-x-auto snap-x snap-mandatory sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0 no-scrollbar sm:grid-cols-2 lg:grid-cols-4">
         {(plans.data?.plans || []).filter((pl) => pl.priceMonthlyCents > 0).map((pl) => {
           // A plan can be individually unavailable (not enough free space for ITS
           // size) even while the pool isn't fully soldOut — disable just that card.
@@ -436,7 +451,7 @@ export function Hosting() {
                 GB / Mbps / price, so two plans that happen to share those numbers were
                 literally indistinguishable — a wall of identical cards with no way to tell
                 which one you were buying. The name is the only thing that separates them. */}
-            <div className="px-5 pt-6 pb-5 border-b border-[var(--line)]">
+            <div className="px-5 pt-7 pb-6 border-b border-[var(--line)]">
               <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
               <div className="text-sm font-bold mt-2 leading-tight truncate" title={pl.name}>{pl.name}</div>
               {(() => { const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes); return (
@@ -445,7 +460,7 @@ export function Hosting() {
               <div className="text-[11px] font-semibold uppercase tracking-wider mt-1 text-[var(--faint)]">{t('hosting.storage', 'Storage')}</div>
             </div>
             {/* body — speed, price, CTA */}
-            <div className="p-5 flex-1 flex flex-col">
+            <div className="p-6 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)] flex items-center justify-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
               {(() => {
                 // Price anchoring: show the un-discounted monthly rate struck through next
@@ -472,10 +487,22 @@ export function Hosting() {
           ); })}
       </div>}
 
+      {/* The other half of the offer: none of the four fits, so build one. Given its own
+          heading instead of being a second card under the grid — it is an alternative to
+          the sizes above, not an extra on top of them. */}
+      <SubLead icon={Sliders}
+        title={t('hosting.cfg.title', 'Pick your size — the price follows')}
+        sub={t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')} />
+      <PoolConfigurator months={months} termDisc={TERM_DISC} soldOut={soldOut} capacity={c}
+        onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
+
       {/* Boost an existing repo — added to the same cart (one-time, priced per day). */}
-      {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (
+      {user && (myRepos.data?.repos || []).some((r) => r.hosted || r.listed) && (<>
+        <SubLead icon={Rocket}
+          title={t('hosting.boost.t', 'Already hosting something?')}
+          sub={t('hosting.boost.s', 'Put one of them in front of more people for a few days. One-off, priced per day, same cart.')} />
         <BoostAddCard repos={(myRepos.data?.repos || []).filter((r) => r.hosted || r.listed)} onAdd={addBoost} />
-      )}
+      </>)}
       </section>
 
       <HostingExplained />
@@ -715,7 +742,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
  * shops in. The estimate is deliberately coarse and labelled as an estimate — it is a sense
  * of scale, not a promise.
  */
-function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAdd }) {
+function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
   const { t } = useI18n();
   const [spec, setSpec] = useState({ storageGB: 20, uploadMbps: 8 });
   const [price, setPrice] = useState(null);
@@ -742,15 +769,10 @@ function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAd
   ];
 
   return (
-    <Card className="p-0 mb-6 overflow-hidden">
-      <div className="grid md:grid-cols-[1fr_290px]">
+    <Card className="p-0 overflow-hidden">
+      <div className="grid md:grid-cols-[1fr_300px]">
         {/* left: the controls */}
-        <div className="p-5 sm:p-6 space-y-5">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Sliders size={13} /> {t('hosting.cfg.eyebrow', 'Build your pool')}</div>
-            <h2 className="text-xl font-bold mt-1.5 mb-0">{t('hosting.cfg.title', 'Pick your size — the price follows')}</h2>
-            <p className="text-sm text-[var(--muted)] mt-1 mb-0">{t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')}</p>
-          </div>
+        <div className="p-6 sm:p-7 space-y-6">
           {sliders.map((s) => (
             <div key={s.key}>
               <div className="flex items-center justify-between mb-1.5 text-sm">
@@ -761,19 +783,13 @@ function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAd
                 aria-label={s.label} onChange={(e) => setSpec({ ...spec, [s.key]: Number(e.target.value) })} />
             </div>
           ))}
-          <div className="grid lg:grid-cols-2 gap-4">
-            <div>
-              <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Receipt size={14} /> {t('hosting.term', 'Billing term')}</div>
-              <TermSelect months={months} setMonths={setMonths} termDisc={termDisc} t={t} />
-            </div>
-            <div>
-              <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Ticket size={14} /> {t('hosting.promo.label', 'Promo code')}</div>
-              <PromoCodeField months={months} onChange={setPromo} />
-            </div>
+          <div>
+            <div className="text-sm text-[var(--muted)] mb-1.5 flex items-center gap-1.5"><Ticket size={14} /> {t('hosting.promo.label', 'Promo code')}</div>
+            <PromoCodeField months={months} onChange={setPromo} />
           </div>
         </div>
         {/* right: the price, always in view while dragging */}
-        <div className="p-5 sm:p-6 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
+        <div className="p-6 sm:p-7 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hosting.estprice', 'Estimated price')}</div>
           <div className="mt-2 flex items-end gap-1.5">
             <span className="text-4xl font-extrabold gradient-text leading-none">{termTotal == null ? '—' : `$${(termTotal / 100 / months).toFixed(2)}`}</span>
@@ -828,11 +844,44 @@ function PoolConfigurator({ months, setMonths, termDisc, soldOut, capacity, onAd
  *  time, so a reader learns the rhythm once and can skim by it afterwards. */
 function SectionLead({ eyebrow, title, sub }) {
   return (
-    <div className="mt-14 mb-5">
+    <div className="mt-20 mb-7">
       <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--primary-2)]">{eyebrow}</div>
       <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight mt-1.5 text-balance">{title}</h2>
       {sub && <p className="text-[var(--muted)] mt-2 text-[15px] leading-relaxed max-w-2xl">{sub}</p>}
     </div>
+  );
+}
+
+/** A heading inside a section — smaller than SectionLead, and indented behind an icon so
+ *  the two levels are told apart at a glance rather than by font size alone. */
+function SubLead({ icon: Icon, title, sub }) {
+  return (
+    <div className="mt-12 mb-4 flex items-start gap-2.5">
+      {Icon && <Icon size={17} className="text-[var(--primary-2)] shrink-0 mt-[3px]" />}
+      <div className="min-w-0">
+        <h3 className="font-bold text-[17px] leading-tight">{title}</h3>
+        {sub && <p className="text-[13.5px] text-[var(--muted)] leading-relaxed mt-1 max-w-2xl">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The billing term, chosen once for the whole section.
+ *
+ * A full-width row rather than a field tucked in a corner: it is the one control on the page
+ * that changes every price at once, and it now sits above all of them.
+ */
+function TermBar({ months, setMonths }) {
+  const { t } = useI18n();
+  return (
+    <Card className="p-4 sm:p-5 mb-7 flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t', 'How long do you want to pay for up front?')}</div>
+        <div className="text-[13px] text-[var(--muted)] leading-relaxed mt-0.5">{t('hosting.termbar.s', 'Every price below follows this. The longer the term the less each month costs, and nothing renews on its own unless you turn that on.')}</div>
+      </div>
+      <div className="w-full sm:w-[290px] shrink-0"><TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} /></div>
+    </Card>
   );
 }
 
@@ -844,17 +893,17 @@ function SectionLead({ eyebrow, title, sub }) {
  * says that in one glance — which is more than the paragraph it replaces managed in three
  * lines. Drawn from the same tokens as everything else, so it holds in both themes.
  */
-function HostingHero({ freePlan }) {
+function HostingHero({ freePlan, freeOffered }) {
   const { t } = useI18n();
   const gb = freePlan?.storageGB;
   const perks = [
     [Layers, t('hosting.hero.p1', 'One space, split how you like'), t('hosting.hero.p1d', 'Repos and catalogues share it. Move the line whenever.')],
     [Zap, t('hosting.hero.p2', 'An address that stops moving'), t('hosting.hero.p2d', 'Updating a repo does not change its URL, so nothing you shared breaks.')],
-    [HardDrive, t('hosting.hero.p3', 'BMM reads it directly'), t('hosting.hero.p3d', 'No link to paste, no mirror to keep in sync.')],
+    [HardDrive, t('hosting.hero.p3', 'Ready for an app to read'), t('hosting.hero.p3d', 'A direct URL, read as it is — no mirror to keep in sync.')],
     [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing — your call'), t('hosting.hero.p4d', 'A term that simply ends, or auto-renew. Per item, in the cart.')],
   ];
   return (
-    <div className="relative pt-8 sm:pt-12 pb-2">
+    <div className="relative pt-10 sm:pt-16 pb-8">
       <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-10 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
       <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-12 items-center">
         <div>
@@ -868,7 +917,7 @@ function HostingHero({ freePlan }) {
             {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like — we keep it up, you decide what goes in it.')}
           </p>
 
-          <ul className="mt-6 grid sm:grid-cols-2 gap-x-6 gap-y-4">
+          <ul className="mt-8 grid sm:grid-cols-2 gap-x-8 gap-y-5">
             {perks.map(([Icon, title, desc]) => (
               <li key={title} className="flex gap-2.5">
                 <Icon size={16} className="text-[var(--primary-2)] shrink-0 mt-[3px]" />
@@ -880,13 +929,14 @@ function HostingHero({ freePlan }) {
             ))}
           </ul>
 
-          <div className="flex flex-wrap gap-3 mt-8">
+          <div className="flex flex-wrap gap-3 mt-9">
             {/* A real anchor, not a scroll handler: it works with the middle button, it can be
                 copied, and `html { scroll-behavior: smooth }` in index.css already animates it. */}
             <a href="#plans"><Button variant="primary" className="!px-6 !py-3">{t('hosting.hero.cta', 'See the plans')} <ChevronDown size={16} /></Button></a>
-            {/* Only offered when there IS a free plan. A button promising free storage that
-                the API does not list is a button that lands on nothing. */}
-            {gb != null && (
+            {/* Only when the free plan exists AND can actually be taken. A button promising
+                free storage that the card below reports as sold out is worse than no button:
+                it spends somebody's click to tell them no. */}
+            {gb != null && freeOffered && (
               <a href="#plans"><Button className="!px-6 !py-3"><Gift size={16} /> {t('hosting.hero.cta2', 'Start free — {gb} GB').replace('{gb}', gb)}</Button></a>
             )}
           </div>
@@ -960,8 +1010,8 @@ function HostingExplained() {
   const { t } = useI18n();
   const rows = [
     [Layers, t('hosting.x.pool', 'A pool'), t('hosting.x.pool.d', 'The space you buy. Everything else goes inside it.')],
-    [HardDrive, t('hosting.x.repo', 'A repo'), t('hosting.x.repo.d', 'What BMM syncs from: your mods, your profiles, your files.')],
-    [Layers, t('hosting.x.cat', 'A catalogue'), t('hosting.x.cat.d', 'A browsable list somebody installs from, inside BMM.')],
+    [HardDrive, t('hosting.x.repo', 'A repo'), t('hosting.x.repo.d', 'The files themselves, at one address people sync from.')],
+    [Layers, t('hosting.x.cat', 'A catalogue'), t('hosting.x.cat.d', 'A list people browse, and install from.')],
     [Zap, t('hosting.x.up', 'Upload speed'), t('hosting.x.up.d', 'How fast your files go up to us. It caps the upload, never the download.')],
     [Receipt, t('hosting.x.term', 'The term'), t('hosting.x.term.d', 'How many months you pay up front. Longer costs less per month.')],
     [Rocket, t('hosting.x.boost', 'A boost'), t('hosting.x.boost.d', 'Puts one of your repos in front of more people, for a few days.')],
@@ -972,9 +1022,9 @@ function HostingExplained() {
         eyebrow={t('hosting.x.eyebrow', 'The words above')}
         title={t('hosting.x.title', 'What each of them actually means')}
         sub={t('hosting.x.sub', 'Six words the plans use. If one of them was doing the work of a guess, here it is.')} />
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {rows.map(([Icon, term, desc]) => (
-          <div key={term} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
+          <div key={term} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
             <div className="flex items-center gap-2">
               <Icon size={16} className="text-[var(--primary-2)] shrink-0" />
               <span className="font-semibold text-[14.5px]">{term}</span>
@@ -997,6 +1047,8 @@ function HostingExplained() {
 function HostingCompare({ freePlan }) {
   const { t } = useI18n();
   const gb = freePlan?.storageGB;
+  // No free plan on the site — an admin can delete it — means no column about one. A
+  // comparison that praises an offer the page does not make is the page lying to itself.
   const cols = [
     {
       k: 'none', tone: 'border-[var(--line)]',
@@ -1006,7 +1058,7 @@ function HostingCompare({ freePlan }) {
         [false, t('hosting.cmp.none.1', 'The link changes, and everything that shared it breaks')],
         [false, t('hosting.cmp.none.2', 'No idea how many people downloaded it')],
         [false, t('hosting.cmp.none.3', 'Nothing tells you when it went down')],
-        [false, t('hosting.cmp.none.4', 'BMM cannot sync from it')],
+        [false, t('hosting.cmp.none.4', 'Nothing can sync from it on its own')],
       ],
     },
     {
@@ -1015,7 +1067,7 @@ function HostingCompare({ freePlan }) {
       sub: gb != null ? t('hosting.cmp.free.s', '{gb} GB, one per account, no card.').replace('{gb}', gb)
         : t('hosting.cmp.free.s2', 'One per account, no card.'),
       rows: [
-        [true, t('hosting.cmp.free.1', 'A stable address BMM syncs from')],
+        [true, t('hosting.cmp.free.1', 'A stable address anything can sync from')],
         [true, t('hosting.cmp.free.2', 'Downloads counted, for real')],
         [true, t('hosting.cmp.free.3', 'Upgrade later and keep the same repo')],
         [false, t('hosting.cmp.free.4', 'One space, and a small one')],
@@ -1033,18 +1085,19 @@ function HostingCompare({ freePlan }) {
       ],
     },
   ];
+  const shown = cols.filter((col) => col.k !== 'free' || !!freePlan);
   return (
     <>
       <SectionLead
         eyebrow={t('hosting.cmp.eyebrow', 'With and without')}
         title={t('hosting.cmp.title', 'What changes, honestly')}
         sub={t('hosting.cmp.sub', 'Including the row where the free plan is the wrong answer.')} />
-      <div className="grid md:grid-cols-3 gap-3 items-stretch">
-        {cols.map((col) => (
-          <div key={col.k} className={`rounded-xl border p-5 flex flex-col ${col.tone}`}>
+      <div className={`grid gap-5 items-stretch ${shown.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+        {shown.map((col) => (
+          <div key={col.k} className={`rounded-xl border p-6 flex flex-col ${col.tone}`}>
             <div className="font-bold text-[15.5px]">{col.title}</div>
             <div className="text-[12.5px] text-[var(--muted)] mt-0.5">{col.sub}</div>
-            <ul className="mt-4 flex flex-col gap-2.5">
+            <ul className="mt-5 flex flex-col gap-3">
               {col.rows.map(([yes, text]) => (
                 <li key={text} className="flex gap-2 text-[13px] leading-relaxed">
                   {yes
@@ -1071,7 +1124,7 @@ function HostingFaq() {
     [t('hosting.faq.q2', 'Can I change size later?'),
      t('hosting.faq.a2', 'Yes, and the free allowance keeps applying — you only ever pay for what sits above it. The repo keeps its address, so nothing you shared stops working.')],
     [t('hosting.faq.q3', 'Repo or catalogue — which do I want?'),
-     t('hosting.faq.a3', 'A repo is what BMM SYNCS from: the files themselves. A catalogue is a LIST people browse and install from. Most people who publish mods want a repo; somebody curating other people’s work wants a catalogue. A pool holds both, so you do not have to decide now.')],
+     t('hosting.faq.a3', 'A repo is the FILES themselves, at a fixed address something can sync from. A catalogue is a LIST people browse and install from. Publishing your own work usually wants a repo; gathering other people’s usually wants a catalogue. A pool holds both, so you do not have to decide now.')],
     [t('hosting.faq.q4', 'Several repos in one pool?'),
      t('hosting.faq.a4', 'That is the whole point of it. You buy room, not a slot — put one big repo in it or a dozen small ones, and change your mind afterwards.')],
     [t('hosting.faq.q5', 'Will you host my site or my Discord bot?'),
@@ -1085,7 +1138,7 @@ function HostingFaq() {
         eyebrow={t('hosting.faq.eyebrow', 'Before you ask')}
         title={t('hosting.faq.title', 'The questions we actually get')}
         sub={t('hosting.faq.sub', 'Starting with the one a pricing page usually leaves out.')} />
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         {qs.map(([q, a], i) => {
           const isOpen = open === i;
           return (
@@ -1093,11 +1146,11 @@ function HostingFaq() {
               {/* A real button with aria-expanded, not a clickable div: this is the one control
                   on the page a keyboard user has to be able to reach. */}
               <button type="button" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : i)}
-                className="w-full text-start px-4 py-3.5 flex items-center gap-3 hover:bg-[var(--surface-2)] transition-colors">
+                className="w-full text-start px-5 py-4 flex items-center gap-3 hover:bg-[var(--surface-2)] transition-colors">
                 <span className="font-semibold text-[14.5px] flex-1">{q}</span>
                 <ChevronDown size={16} className={`shrink-0 text-[var(--muted)] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>
-              {isOpen && <p className="px-4 pb-4 -mt-0.5 text-[13.5px] text-[var(--muted)] leading-relaxed max-w-3xl">{a}</p>}
+              {isOpen && <p className="px-5 pb-5 -mt-0.5 text-[13.5px] text-[var(--muted)] leading-relaxed max-w-3xl">{a}</p>}
             </div>
           );
         })}

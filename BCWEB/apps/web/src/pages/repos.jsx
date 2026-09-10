@@ -581,6 +581,7 @@ export function MyRepos() {
   const [sandbox, setSandbox] = useState(null);
   const [sandboxTab, setSandboxTab] = useState('access'); // which tab RepoManageModal opens on
   const [poolAdd, setPoolAdd] = useState(null);
+  const [addWhat, setAddWhat] = useState(false);  // the "hosted here, or elsewhere?" chooser
   const [moveFrom, setMoveFrom] = useState(null);   // { from, options } → destination picker
   const repos = data?.repos || [];
   const shared = data?.shared || [];
@@ -780,7 +781,7 @@ export function MyRepos() {
     <div>
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} /> {t('repos.mine', 'My Server Repos')}</h2>
-        <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
+        <Button size="sm" variant="primary" onClick={() => setAddWhat(true)}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
       {(poolsF.data?.groups || []).length > 0 && (
         <PoolsPanel groups={poolsF.data.groups} onAddRepo={setPoolAdd} t={t} reload={() => { poolsF.reload?.(); reload(); }} toast={toast} dialog={dialog} />
@@ -936,6 +937,13 @@ export function MyRepos() {
       {featuring && <FeatureModal repo={featuring} onClose={() => setFeaturing(null)} />}
       {managing && <HostFilesModal repo={managing} onClose={() => setManaging(null)} onChanged={reload} />}
       {sandbox && <RepoManageModal repo={sandbox} initialTab={sandboxTab} onClose={() => setSandbox(null)} onChanged={reload} />}
+      {addWhat && (
+        <AddRepoChoice
+          pools={poolsF.data?.groups || []}
+          onClose={() => setAddWhat(false)}
+          onPool={(g) => { setAddWhat(false); setPoolAdd(g); }}
+          onExternal={() => { setAddWhat(false); setEditing({}); }} />
+      )}
       {poolAdd && <PoolAddModal group={poolAdd} onClose={() => setPoolAdd(null)} onDone={() => { setPoolAdd(null); reload(); }} />}
       {moveFrom && (
         <Modal open onClose={() => setMoveFrom(null)} title={t('repos.move.title', 'Move content')} icon={GitMerge}
@@ -1147,6 +1155,81 @@ function QuotaResizer({ repo, onChanged }) {
 }
 
 // Add a new repo drawing from a multi pool's remaining storage.
+/**
+ * Which kind of repo is this?
+ *
+ * Deliberately NOT a list of two links: the hosted side shows the pools that can actually
+ * take one right now, with what is left in each, so the choice and the destination are the
+ * same click. When no pool can, it says which of the two reasons it is -- none bought, or
+ * all full -- because those need different things done about them.
+ *
+ * The free plan is never named here. Whether one exists at all is a live property of the
+ * plan list (an admin can delete it), and a dashboard promising "there is a free one" the
+ * day there is not would be a lie told by a page that never asked.
+ */
+function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
+  const { t } = useI18n();
+  // 50 MB, not 0: a pool with a few kilobytes left cannot hold a repo, and offering it
+  // would send somebody into a form that fails at the last step.
+  const MIN_FREE = 50 * 1024 ** 2;
+  const withRoom = (pools || []).filter((g) => (g.poolBytes - g.usedBytes) > MIN_FREE);
+  return (
+    <Modal open onClose={onClose} title={t('repos.addwhat.title', 'Add a repo')} icon={Plus} width="max-w-3xl"
+      footer={<Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>}>
+      <p className="text-sm text-[var(--muted)] -mt-1 mb-5">{t('repos.addwhat.sub', 'Two different things, and it is worth knowing which one you want.')}</p>
+      <div className="grid md:grid-cols-2 gap-5 items-stretch">
+
+        {/* Hosted here */}
+        <div className="rounded-xl border border-[var(--ring)] bg-[var(--primary)]/[0.04] p-5 flex flex-col">
+          <div className="flex items-center gap-2 font-semibold text-[15px]"><Server size={17} className="text-[var(--primary-2)] shrink-0" /> {t('repos.addwhat.host', 'Host it here')}</div>
+          <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">{t('repos.addwhat.host.d', 'We keep the files and serve them. You get an address that does not move, a real download count, and access control.')}</p>
+          <div className="mt-4 flex-1">
+            {withRoom.length ? (<>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('repos.addwhat.pick', 'Into which pool?')}</div>
+              <div className="flex flex-col gap-2">
+                {withRoom.map((g) => (
+                  <button key={g.id} type="button" onClick={() => onPool(g)}
+                    className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-start hover:border-[var(--ring)] transition-colors">
+                    <Boxes size={14} className="text-[var(--primary-2)] shrink-0" />
+                    <span className="font-medium text-[13.5px] flex-1 truncate">{g.name}</span>
+                    <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{fmtSize(g.poolBytes - g.usedBytes)} {t('repos.addwhat.left', 'left')}</span>
+                    <ArrowRight size={14} className="text-[var(--faint)] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </>) : (
+              <div className="rounded-lg border border-dashed border-[var(--line)] p-3.5 text-[12.5px] text-[var(--muted)] leading-relaxed">
+                {pools.length
+                  ? t('repos.addwhat.full', 'Your pools are full — take a bigger one, or make room first.')
+                  : t('repos.addwhat.nopool', 'You have no space here yet. Pick a size and it lands on this page straight away.')}
+              </div>
+            )}
+          </div>
+          <Link to="/hosting" className="mt-4">
+            <Button variant={withRoom.length ? 'default' : 'primary'} className="w-full">
+              <HardDrive size={15} /> {withRoom.length ? t('repos.addwhat.more', 'Get more space') : t('repos.addwhat.get', 'See the plans')}
+            </Button>
+          </Link>
+        </div>
+
+        {/* Already hosted elsewhere */}
+        <div className="rounded-xl border border-[var(--line)] p-5 flex flex-col">
+          <div className="flex items-center gap-2 font-semibold text-[15px]"><Link2 size={17} className="text-[var(--muted)] shrink-0" /> {t('repos.addwhat.ext', 'I already have one elsewhere')}</div>
+          <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">{t('repos.addwhat.ext.d', 'It is already online somewhere — your own server, a host, another platform. You give the address; we keep the listing, not the files.')}</p>
+          <div className="flex-1" />
+          <div className="text-[11.5px] text-[var(--faint)] leading-relaxed mt-4 flex items-start gap-1.5">
+            <Info size={13} className="shrink-0 mt-[2px]" />
+            <span>{t('repos.addwhat.ext.note', 'Nothing is copied to us: if your server goes down, the repo goes with it.')}</span>
+          </div>
+          <Button variant="default" className="w-full mt-3" onClick={onExternal}>
+            <ExternalLink size={15} /> {t('repos.addwhat.ext.go', 'Enter the address')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function PoolAddModal({ group, onClose, onDone }) {
   const toast = useToast(); const { t } = useI18n();
   const { data } = useFetch(() => api.get('/me/hosting/groups'), []);

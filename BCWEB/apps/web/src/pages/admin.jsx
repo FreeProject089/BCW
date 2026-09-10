@@ -8086,6 +8086,12 @@ function AdminHostingPlans() {
           // way past it from here on purpose: the public Hosting page is a shop window, and
           // the way it ended up listing 27 identical 5 GB plans was one accidental save at a
           // time. Editing the existing plan is almost always what was meant.
+          // Only one plan can be the free one: the public page reads the FIRST zero-priced
+          // plan and never sees a second, so saving one creates a live plan nobody can reach.
+          if (x?.data?.error === 'free_plan_exists') {
+            toast.error(t('adm.plans.freedup', 'There is already an active free plan ("{n}"). Edit that one, or deactivate it first — the public page only ever shows one.')
+              .replace('{n}', x.data?.existing?.name || ''));
+          }
           if (x?.data?.error === 'duplicate_plan') {
             toast.error(t('adm.plans.dup', 'A plan with this name and these specs already exists ({n}) — edit that one instead of adding a second.')
               .replace('{n}', x.data?.existing?.name || ''));
