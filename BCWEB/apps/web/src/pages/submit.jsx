@@ -351,7 +351,7 @@ function HostCatalog({ onBack }) {
           <div key={i} className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button type="button" onClick={() => { if (i < step || (i === step + 1 && stepOk(step))) setStep(i); }} disabled={i > step && !stepOk(step)}
               className="flex items-center gap-2 disabled:cursor-not-allowed">
-              <span className={`grid place-items-center w-7 h-7 rounded-full text-xs font-bold shrink-0 border transition ${i < step ? 'bg-[var(--primary)] text-[var(--text-on-accent)] border-[var(--primary)]' : i === step ? 'border-[var(--primary)] text-[var(--primary-2)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--faint)]'}`}>{i < step ? <Check size={14} /> : i + 1}</span>
+              <span className={`grid place-items-center w-7 h-7 rounded-full text-xs font-bold shrink-0 border transition ${i < step ? 'bg-[var(--primary)] text-[var(--on-primary)] border-[var(--primary)]' : i === step ? 'border-[var(--primary)] text-[var(--primary-2)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--faint)]'}`}>{i < step ? <Check size={14} /> : i + 1}</span>
               <span className={`text-xs font-medium ${i === step ? 'text-[var(--text)]' : 'text-[var(--faint)]'} hidden sm:inline`}>{lbl}</span>
             </button>
             {i < STEPS.length - 1 && <span className={`w-4 sm:w-6 h-px ${i < step ? 'bg-[var(--primary)]' : 'bg-[var(--line)]'}`} />}

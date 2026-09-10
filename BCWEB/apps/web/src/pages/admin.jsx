@@ -14021,7 +14021,7 @@ function Fold({ title, summary, children, defaultOpen = false }) {
       <button type="button" onClick={() => setOn((v) => !v)}
         className="w-full flex items-center gap-2 py-2.5 text-start group">
         <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${on ? 'rotate-180' : ''}`} />
-        <span className="text-[12.5px] font-medium group-hover:text-[var(--fg)] transition-colors">{title}</span>
+        <span className="text-[12.5px] font-medium group-hover:text-[var(--text)] transition-colors">{title}</span>
         {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]">{summary}</span> : null}
       </button>
       {on && <div className="pb-3">{children}</div>}
@@ -22480,10 +22480,10 @@ function ProjectPayoutCard({ pages, onChanged }) {
               <div key={pg.scope} className="flex items-start gap-2 flex-wrap border-t border-[var(--line)] pt-2">
                 <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
                 <div className="flex-1 min-w-[12rem] text-[11px]">
-                  {state === 'none' && <span className="text-[var(--warn)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected — the platform keeps every sale')}</span>}
+                  {state === 'none' && <span className="text-[var(--warning)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected — the platform keeps every sale')}</span>}
                   {state === 'onboarding' && <span className="text-[var(--muted)] flex items-center gap-1"><Loader2 size={11} /> {t('mkadm.po.pending', 'Stripe has not enabled it yet — sales still go to the platform')}</span>}
-                  {state === 'ready' && <span className="text-[var(--ok)] flex items-center gap-1"><CheckCircle2 size={11} /> {t('mkadm.po.ready', 'Paid out at the moment of sale')}</span>}
-                  {state === 'disabled' && <span className="text-[var(--danger)] flex items-center gap-1"><AlertTriangle size={11} /> {sel.disabledReason}</span>}
+                  {state === 'ready' && <span className="text-[var(--success)] flex items-center gap-1"><CheckCircle2 size={11} /> {t('mkadm.po.ready', 'Paid out at the moment of sale')}</span>}
+                  {state === 'disabled' && <span className="text-[var(--error)] flex items-center gap-1"><AlertTriangle size={11} /> {sel.disabledReason}</span>}
                   {sel && <div className="text-[var(--faint)] font-mono mt-0.5 truncate">{sel.stripeAccountId}</div>}
                 </div>
                 <div className="flex items-center gap-1">

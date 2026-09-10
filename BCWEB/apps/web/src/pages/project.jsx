@@ -556,7 +556,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
   const spanValue = a.spanYears >= 1 ? `${a.spanYears} y` : `${a.spanMonths} mo`;
 
   const Stat = ({ value, label, sub }) => (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-1)] p-4">
+    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="text-2xl font-extrabold tabular-nums">{value}</div>
       <div className="text-xs text-[var(--muted)] mt-0.5">{label}</div>
       {sub ? <div className="text-[11px] text-[var(--faint)] mt-0.5 truncate">{sub}</div> : null}
@@ -589,7 +589,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
                   <button key={d.date} type="button" title={`${d.date}: ${d.count} ${t('act.commitsl', 'commit(s)')}`}
                     onClick={() => setSelDay((s) => (s?.date === d.date ? null : d))}
                     aria-label={`${d.date}: ${d.count}`}
-                    className={`w-3 h-3 rounded-sm transition ${selDay?.date === d.date ? 'ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--surface-1)]' : ''}`}
+                    className={`w-3 h-3 rounded-sm transition ${selDay?.date === d.date ? 'ring-2 ring-[var(--primary)] ring-offset-1 ring-offset-[var(--surface)]' : ''}`}
                     style={{ backgroundColor: heatColor(d.count) }} />
                 ))}
               </div>

@@ -121,7 +121,7 @@ export function MyoPage() {
             <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
             <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
           </summary>
-          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface-1)] p-4 sm:p-5">
+          <div className="mt-4 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:p-5">
             <DealRail cfg={cfg} />
           </div>
         </details>

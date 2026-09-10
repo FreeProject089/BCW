@@ -37,11 +37,33 @@ const files = [];
     }
 })(SRC);
 
+/**
+ * Comments out, line numbers kept.
+ *
+ * `var(--x)` in a sentence describing the format is not a usage, and three unactionable
+ * failures on a gate teach everybody to ignore it. Block comments become the same number of
+ * newlines rather than nothing, because the report names file:line and a wrong line is worse
+ * than a wrong count.
+ *
+ * A `//` is only a comment when the line has no quote and no `var(` before it — otherwise it
+ * is inside a string, or a URL, and cutting there would hide a real usage.
+ */
+function stripComments(text) {
+    const noBlocks = text.replace(/\/\*[\s\S]*?\*\//g, (m) => '\n'.repeat((m.match(/\n/g) || []).length));
+    return noBlocks.split('\n').map((line) => {
+        const i = line.indexOf('//');
+        if (i === -1) return line;
+        const before = line.slice(0, i);
+        if (/['"`]/.test(before) || before.includes('var(')) return line;
+        return before;
+    }).join('\n');
+}
+
 const defined = new Set(EXTERNAL);
 const used = new Map();   // name -> [file:line]
 
 for (const f of files) {
-    const text = fs.readFileSync(f, 'utf8');
+    const text = stripComments(fs.readFileSync(f, 'utf8'));
     // A definition is `--x:` at the start of a declaration. Written in a JS string (the theme
     // editor builds CSS text) it counts too — it really does define the token.
     for (const m of text.matchAll(/(^|[;{\s'"`])(--[a-zA-Z0-9-]+)\s*:/g)) defined.add(m[2]);

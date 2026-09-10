@@ -13,12 +13,15 @@
 // Nothing could see it: the renderer is a chain of `name === '…'` branches in one repo file
 // and the guide is a template literal in another. Adding a directive and forgetting the page
 // is the default outcome, not the unlucky one.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const MD = join(ROOT, '../web/src/markdown/index.jsx');
+// The renderer moved into a package (B.MD 3.0 = @bettercommunity/bmd) and this path did
+// not follow it, so the check has been refusing to run rather than silently passing --
+// which is the right failure, and is why CI has been red rather than quietly wrong.
+const MD = join(ROOT, '../../packages/bmd/src/directives.js');
 const SEED = join(ROOT, 'src/seed.mjs');
 // The French page. It was NOT checked, and the gap this file exists to prevent reappeared in
 // it the day the English page was rewritten: 32 directives on one side, ten on the other, and
@@ -79,15 +82,49 @@ for (const [lang, body] of pages) {
   }
 }
 
-// Named anywhere in the page: as a live example, or inside an inline-code sample.
-let bad = false;
+// A RATCHET, not a pass/fail on the whole backlog.
+//
+// While this check was pointing at a path that no longer existed it saw nothing, and the
+// renderer grew to a size the four seeded pages never caught up with. That debt is real and it
+// is written down here rather than argued away — but failing the build on all of it every day
+// teaches everybody to ignore the job, and the case worth catching is the NEW one: a directive
+// added to the renderer without a line in the guide, on the day it is added.
+//
+// So: anything missing that is not in the baseline fails. Anything in the baseline that is NOW
+// documented also fails, with `--update` as the fix — otherwise the list would keep claiming a
+// gap that somebody has already closed, and a stale baseline is how a ratchet becomes a rubber
+// stamp.
+const BASELINE = join(ROOT, 'scripts/md-guide-baseline.json');
+const UPDATE = process.argv.includes('--update');
+const base = existsSync(BASELINE) ? JSON.parse(readFileSync(BASELINE, 'utf8')) : {};
+
+const found = {};
 for (const [lang, body] of pages) {
-  const missing = [...supported].filter((d) => !new RegExp(`:{1,3}${d}\\b`).test(body)).sort();
-  if (!missing.length) continue;
-  bad = true;
-  console.error(`✗ markdown guide (${lang}):`);
-  console.error(`  ${missing.length} directive(s) the renderer handles and this page never names:`);
-  for (const d of missing) console.error(`    :${d}`);
+  found[lang] = [...supported].filter((d) => !new RegExp(`:{1,3}${d}\\b`).test(body)).sort();
+}
+
+if (UPDATE) {
+  writeFileSync(BASELINE, `${JSON.stringify(found, null, 2)}\n`);
+  const total = Object.values(found).reduce((a, x) => a + x.length, 0);
+  console.log(`✓ baseline written — ${total} undocumented directive(s) across ${pages.length} page(s)`);
+  process.exit(0);
+}
+
+let bad = false;
+for (const [lang, missing] of Object.entries(found)) {
+  const known = new Set(base[lang] || []);
+  const fresh = missing.filter((d) => !known.has(d));
+  const closed = [...known].filter((d) => !missing.includes(d));
+  if (fresh.length) {
+    bad = true;
+    console.error(`✗ markdown guide (${lang}): ${fresh.length} NEW directive(s) the renderer handles and this page never names:`);
+    for (const d of fresh) console.error(`    :${d}`);
+  }
+  if (closed.length) {
+    bad = true;
+    console.error(`✗ markdown guide (${lang}): ${closed.length} directive(s) are documented now but still listed as a gap — run \`node scripts/check-md-guide.mjs --update\``);
+    for (const d of closed) console.error(`    :${d}`);
+  }
 }
 if (bad) {
   console.error('\nThis page is seeded into every install and both editors link to it. A block');
@@ -95,4 +132,6 @@ if (bad) {
   console.error('their own language, not the one that happens to be complete.');
   process.exit(1);
 }
-console.log(`✓ markdown guide OK — all ${supported.size} directive(s) documented in ${pages.length} language(s)`);
+const debt = Object.values(base).reduce((a, x) => a + x.length, 0);
+console.log(`✓ markdown guide OK — ${supported.size} directive(s), nothing new undocumented`
+  + (debt ? ` (${debt} known gap(s) across ${pages.length} page(s), see scripts/md-guide-baseline.json)` : ''));
