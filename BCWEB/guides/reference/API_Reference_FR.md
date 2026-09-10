@@ -704,4 +704,37 @@ Webhooks sortants auxquels un compte s'abonne depuis Dev → Config. Chaque livr
 
 **Événements.** Contenu : `catalog.item.published` · `.updated` · `.removed` · `.submitted`, `repo.updated`, `repo.status.changed`, `item.downloaded` (regroupé par minute), `item.milestone`, `repo.downloaded` (regroupé), `review.posted`, `stats.daily`. Compte : `pool.storage.warning` · `.changed`, `subscription.expiring`, `sanction.issued`, `transfer.offered`. Communauté & économie (2026-09-05) : `poll.opened` / `poll.closed` (**diffusion** — à chaque point de terminaison abonné, avec les ids d'options pour répondre), `charity.month.closed` (**diffusion**), `badge.earned` (une règle, un achat, le staff ou un œuf de Pâques — `via` le dit), `economy.level_up` (`level`, `from`, `pointsGranted`), `shop.purchased` (`purchaseId`, `kind`, `cost`, `status`).
 
+## 38. Agent de dépôt — un serveur que le propriétaire gère (`repo-agent.mjs`)
+Un dépôt qui vit ailleurs, pilotable d'ici sans que nous détenions une clé de cette machine. La
+forme évidente de « gérer mon serveur depuis BCWEB », c'est une clé SSH ; nous refusons d'en
+prendre une, parce qu'une clé privée qui ouvre un shell sur une machine qui n'est pas la nôtre
+est le pire actif qu'une plateforme web puisse stocker — une fuite ici cesserait de coûter des
+comptes pour coûter aux utilisateurs leurs serveurs. Le sens est donc inversé : c'est **leur**
+machine qui garde un jeton pour **nous**.
+
+Le propriétaire crée le jeton dans le tableau de bord du dépôt (onglet Serveur, dépôts externes
+seulement). Il est affiché une seule fois et stocké sous forme de hash sha256, exactement comme
+une clé d'API personnelle ; aucun endpoint ne peut le relire, et le renouvellement est le chemin
+de secours.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/me/repos/:id/agent` | propriétaire | État : préfixe, dernier appel, ce que la machine a annoncé. Jamais le secret. |
+| POST | `/me/repos/:id/agent` | propriétaire | Créer ou renouveler. Renvoie `{ token }` — le seul moment où il existe ici. |
+| DELETE | `/me/repos/:id/agent` | propriétaire | Révoquer. La ligne reste, pour que le panneau dise encore ce qui servait. |
+| POST | `/me/repos/:id/agent/command` | propriétaire | Mettre une tâche en file : `rescan` ou `ping`. Une seule place. |
+| POST | `/agent/hello` | jeton agent | Battement de cœur. Corps `{ version?, host? }` → `{ repo, command }`. |
+| POST | `/agent/report` | jeton agent | `{ ok, command?, fileCount?, totalBytes?, manifestSha?, error? }`. |
+
+**La boucle.** `hello` sur une minuterie → si `command` n'est pas nul, l'exécuter localement →
+`report` **en nommant cette commande**, ce qui est ce qui l’efface. Un rapport qui ne la nomme
+pas la laisse en file : un battement de cœur de routine ne peut donc pas avaler une tâche mise
+en file une seconde plus tôt.
+
+**Ce qu'il ne peut pas faire.** Un rapport écrit sur la ligne de l'agent et nulle part ailleurs
+— jamais `status`, `sha`, `verified` ni `pendingReview` du dépôt. Ces colonnes décident de ce que
+la liste publique montre et de la vérification par un modérateur ; un chiffre auto-déclaré par
+une machine que nous ne gérons pas ne doit pas les bouger. Un jeton volé permet donc de mentir
+sur un nombre de fichiers, et révoquer est une ligne.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

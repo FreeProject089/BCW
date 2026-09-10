@@ -691,4 +691,34 @@ Outgoing webhooks an account subscribes from Dev → Config. Every delivery is s
 
 **Events.** Content: `catalog.item.published` · `.updated` · `.removed` · `.submitted`, `repo.updated`, `repo.status.changed`, `item.downloaded` (coalesced per minute), `item.milestone`, `repo.downloaded` (coalesced), `review.posted`, `stats.daily`. Account: `pool.storage.warning` · `.changed`, `subscription.expiring`, `sanction.issued`, `transfer.offered`. Community & economy (2026-09-05): `poll.opened` / `poll.closed` (**broadcast** — to every endpoint subscribed, carries the option ids to answer with), `charity.month.closed` (**broadcast**), `badge.earned` (a rule, a purchase, staff, or an easter egg — `via` says which), `economy.level_up` (`level`, `from`, `pointsGranted`), `shop.purchased` (`purchaseId`, `kind`, `cost`, `status`).
 
+## 38. Repo agent — a server the owner runs (`repo-agent.mjs`)
+A repo hosted somewhere else, managed from here without us holding a key to that machine. The
+obvious shape for "manage my server from BCWEB" is an SSH key; we refuse to take one, because a
+private key that opens a shell on a box we do not own is the worst asset a web platform can
+store — a breach here would stop costing accounts and start costing users their servers. The
+direction is reversed instead: **their** machine holds a bearer token for **us**.
+
+The owner mints the token in the repo dashboard (Server tab, external repos only). It is shown
+once and stored as a sha256 hash, exactly like a personal API key; there is no endpoint that can
+read it back, and rotating is the recovery path.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/me/repos/:id/agent` | owner | Status: prefix, last call, what the machine reported. Never the secret. |
+| POST | `/me/repos/:id/agent` | owner | Create or rotate. Returns `{ token }` — the only time it exists here. |
+| DELETE | `/me/repos/:id/agent` | owner | Revoke. The row stays so the panel can still say what was in use. |
+| POST | `/me/repos/:id/agent/command` | owner | Queue one job: `rescan` or `ping`. One slot, not a queue. |
+| POST | `/agent/hello` | agent token | Heartbeat. Body `{ version?, host? }` → `{ repo, command }`. |
+| POST | `/agent/report` | agent token | `{ ok, command?, fileCount?, totalBytes?, manifestSha?, error? }`. |
+
+**The loop.** `hello` on a timer → if `command` is non-null, do it locally → `report` **naming
+that command**, which is what clears it. A report that does not name the job leaves it queued,
+so a routine heartbeat cannot swallow a job the owner queued a second earlier.
+
+**What it cannot do.** A report writes to the agent's own row and nothing else — never the
+repo's `status`, `sha`, `verified` or `pendingReview`. Those decide what the public list shows
+and whether a moderator has checked the content, and a self-reported number from a machine we do
+not run must not move them. A stolen token therefore buys an attacker the ability to lie about a
+file count, and revoking is one row.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

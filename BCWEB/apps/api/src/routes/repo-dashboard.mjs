@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import argon2 from 'argon2';
 import archiver from 'archiver';
 import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode } from '../lib/lib.mjs';
-import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA } from './repos.mjs';
+import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA, mergeSettings } from './repos.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
 import { getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
@@ -240,11 +240,7 @@ export default async function repoDashboardRoutes(app) {
     const b = settingsSchema.safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     const r = req.repo; const cur = r.settings || DEFAULT_SETTINGS;
-    const next = {
-      access: { ...DEFAULT_SETTINGS.access, ...cur.access, ...(b.data.access || {}) },
-      bans: { ...DEFAULT_SETTINGS.bans, ...cur.bans, ...(b.data.bans || {}) },
-      requestedUploadKbps: b.data.requestedUploadKbps !== undefined ? b.data.requestedUploadKbps : (cur.requestedUploadKbps ?? null),
-    };
+    const next = mergeSettings(cur, b.data);
     const out = await req._p.serverRepo.update({ where: { id: r.id }, data: { settings: next } });
     await repoLog(req._p, r.id, req.actor, 'settings', 'sandbox settings updated');
     return { ok: true, settings: out.settings, effectiveUploadKbps: effUpload(out), uploadCapKbps: out.uploadLimitKbps };

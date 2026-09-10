@@ -6,6 +6,7 @@ import {
   FileJson, FileText, Trash2, UploadCloud, FolderUp, Rocket, CheckCircle2, AlertTriangle, KeyRound,
   Users, Mail, Plus, X, Eye, EyeOff, Files, Settings2, Loader2, Globe, History, Hash, Search, ChevronDown,
   UploadCloud as UploadIcon, Trash, Wifi as WifiOn, WifiOff as WifiGone, Download, Ban, Radio, Star,
+  Terminal, RefreshCw, ListTree,
 } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { repoStatusMeta, repoCategoryMeta, repoLocked } from './repos.jsx';
@@ -99,6 +100,11 @@ function Dashboard({ data, reload }) {
     ['files', t('rd.tab.files', 'Files'), Files],
     ['online', t('rd.tab.online', 'Online'), Globe],
     ...(r.hosted ? [['users', t('rd.tab.users', 'Users'), Users]] : []),
+    // Only for a repo that lives somewhere else, and only for its owner. On a repo we host
+    // there is nothing for an agent to do — the files are already here — and a token is a
+    // credential, so a collaborator or a shared dashboard password must not be able to mint
+    // one that outlives their access to this page.
+    ...(!r.hosted && r.level === 'owner' ? [['agent', t('rd.tab.agent', 'Server'), Terminal]] : []),
     ['activity', t('rd.tab.activity', 'Activity'), History],
     ['settings', t('rd.tab.settings', 'Settings'), Settings2],
     ...(r.level === 'owner' ? [['access', t('rd.tab.access', 'Access'), KeyRound]] : []),
@@ -165,6 +171,7 @@ function Dashboard({ data, reload }) {
       {tab === 'online' && <OnlineTab r={r} reload={reload} publicUrl={publicUrl} />}
       {tab === 'users' && <UsersTab r={r} />}
       {tab === 'activity' && <ActivityTab r={r} />}
+      {tab === 'agent' && !r.hosted && r.level === 'owner' && <AgentTab r={r} />}
       {tab === 'settings' && <SettingsTab r={r} reload={reload} />}
       {tab === 'access' && r.level === 'owner' && <AccessTab r={r} reload={reload} />}
     </div>
@@ -689,6 +696,9 @@ function SettingsTab({ r, reload }) {
   const s0 = r.settings || { access: {}, bans: {}, requestedUploadKbps: null };
   const capKbps = r.uploadLimitKbps || 0;
   const [reqMbps, setReqMbps] = useState(s0.requestedUploadKbps ? s0.requestedUploadKbps / 1024 : capKbps / 1024);
+  // Undefined means a repo saved before this setting existed, and every one of those has
+  // been serving a listing all along — so absent reads as on, not off.
+  const [listing, setListing] = useState(s0.listing !== false);
   const [busy, setBusy] = useState(false);
   const GiB = 1024 ** 3;
   const usedGB = (r.used || 0) / GiB;
@@ -742,7 +752,7 @@ function SettingsTab({ r, reload }) {
     // was changed on the Access tab in between — a save on one screen quietly reverting
     // another is the worst kind of data loss, because nothing reports it.
     const cur = r.settings || {};
-    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access: cur.access || {}, bans: cur.bans || {}, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
+    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access: cur.access || {}, bans: cur.bans || {}, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps, listing }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
     // Name the failure when the server named it: "Failed to save." over a form holding a key
     // somebody just pasted tells them nothing about which of the six fields is wrong.
     catch (x) {
@@ -808,7 +818,150 @@ function SettingsTab({ r, reload }) {
         <input type="range" min={0.5} max={Math.max(1, capKbps / 1024)} step={0.5} value={Math.min(reqMbps, capKbps / 1024)} className="bcw-range w-full" onChange={(e) => setReqMbps(Number(e.target.value))} />
         <div className="text-xs mt-2 flex items-center gap-1.5"><Lock size={12} className="text-[var(--faint)]" /><span className="text-[var(--muted)]">{t('repos.sandboxcap', 'Sandbox cap:')} <b>{(capKbps / 1024).toFixed(1)} Mbps</b>. {t('repos.effective', 'Effective:')} <b className="text-[var(--primary-2)]">{(effectiveKbps / 1024).toFixed(1)} Mbps</b>.</span></div>
       </Card>
+      {/* A hosted repo already serves an nginx-format directory index next to its JSON
+          manifest, and always has — there was no way to turn it off. This is that switch:
+          off, the folder 404s and every file still downloads at its own URL, which is a
+          plain file server with `autoindex off`. Worth having because a listing publishes
+          the INVENTORY, and an unlisted repo shared by link may want the files reachable
+          without handing over the index of everything in it. */}
+      <Card className="p-4">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" className="mt-1 shrink-0" checked={listing} onChange={(e) => setListing(e.target.checked)} />
+          <span className="min-w-0">
+            <span className="flex items-center gap-1.5 font-medium text-sm"><ListTree size={14} className="text-[var(--primary-2)]" /> {t('rd.listing', 'Serve a directory listing')}</span>
+            <span className="block text-xs text-[var(--muted)] mt-1 leading-relaxed">
+              {t('rd.listing.d', 'On, browsing a folder shows an index of what is in it, in the same format a plain file server produces — which is how a client can sync without downloading everything. Off, folders answer 404 and each file still downloads at its own URL.')}
+            </span>
+          </span>
+        </label>
+      </Card>
       <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('repos.savesettings', 'Save settings')}</Button></div>
+    </div>
+  );
+}
+
+/**
+ * A server the owner runs, talking to us about this repo.
+ *
+ * The ask behind this panel was "let me put an SSH key in here and manage the box from the
+ * site". We do not take a key — see repo-agent.mjs for why — so the panel's job is partly to
+ * explain the shape it took instead, in one sentence, at the point where somebody is looking
+ * for the key field and not finding it.
+ */
+function AgentTab({ r }) {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const [agent, setAgent] = useState(undefined);   // undefined = loading, null = none
+  const [token, setToken] = useState('');          // shown once, never re-fetchable
+  const [busy, setBusy] = useState(false);
+  const load = () => api.get(`/me/repos/${r.id}/agent`).then((d) => setAgent(d.agent)).catch(() => setAgent(null));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [r.id]);
+
+  const issue = async () => {
+    setBusy(true);
+    try {
+      const d = await api.post(`/me/repos/${r.id}/agent`, {});
+      setToken(d.token); setAgent(d.agent);
+    } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const revoke = async () => {
+    const ok = await dialog.confirm({
+      title: t('rd.agent.revoke', 'Revoke this token'),
+      message: t('rd.agent.revoke.m', 'The server using it stops being able to call us, immediately. Nothing else about the repo changes.'),
+      okLabel: t('rd.agent.revoke.ok', 'Revoke'), danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try { const d = await api.del(`/me/repos/${r.id}/agent`); setAgent(d.agent); setToken(''); }
+    catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+  const queue = async (cmd) => {
+    setBusy(true);
+    try { const d = await api.post(`/me/repos/${r.id}/agent/command`, { cmd }); setAgent(d.agent); toast.success(t('rd.agent.queued', 'Queued — it runs on the next call in.')); }
+    catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
+  };
+
+  if (agent === undefined) return <Card className="p-5 flex justify-center"><Spinner /></Card>;
+  const live = agent && !agent.revokedAt;
+  const base = `${location.origin}/api`;
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="flex items-center gap-2 font-semibold"><Terminal size={16} className="text-[var(--primary-2)]" /> {t('rd.agent.t', 'Your server, talking to us')}</div>
+        <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2 max-w-2xl">
+          {t('rd.agent.s', 'This repo lives on a machine of yours. Rather than us holding a key to it — which would put your server inside our breaches — your machine holds a token for us: it calls in on a timer to say it is alive and what it is serving, and picks up anything you queue below. We never get a way in.')}
+        </p>
+      </Card>
+
+      {/* The secret, the one time it exists outside the machine that will use it. */}
+      {token && (
+        <Card className="p-5" style={{ borderColor: 'var(--ring)' }}>
+          <div className="font-semibold text-sm">{t('rd.agent.new', 'Copy this now — it is not shown again')}</div>
+          <div className="mt-2 flex items-center gap-2">
+            <code className="flex-1 min-w-0 truncate text-[12.5px] bg-[var(--surface-2)] border border-[var(--line)] rounded-lg px-3 py-2">{token}</code>
+            <Button size="sm" variant="secondary" onClick={() => { copyText(token); toast.success(t('common.copied', 'Copied.')); }}><Copy size={14} /></Button>
+          </div>
+          <div className="text-xs text-[var(--muted)] mt-3">{t('rd.agent.snip', 'A heartbeat is one call. Put this on a timer on your server:')}</div>
+          <pre className="text-[11.5px] bg-[var(--surface-2)] border border-[var(--line)] rounded-lg p-3 mt-1.5 overflow-x-auto"><code>{`curl -s -X POST ${base}/agent/hello \\
+  -H "Authorization: Bearer ${token}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"version":"1.0","host":"my-box"}'`}</code></pre>
+        </Card>
+      )}
+
+      {!agent || agent.revokedAt ? (
+        <Card className="p-5">
+          <div className="text-sm text-[var(--muted)]">
+            {agent?.revokedAt
+              ? t('rd.agent.revoked', 'The last token was revoked. Issue a new one when the server is ready to use it.')
+              : t('rd.agent.none', 'No token yet. Issuing one does nothing on its own — nothing happens until your server uses it.')}
+          </div>
+          <Button variant="primary" className="mt-3" disabled={busy} onClick={issue}>
+            {busy ? <Spinner /> : <><KeyRound size={15} /> {agent?.revokedAt ? t('rd.agent.reissue', 'Issue a new token') : t('rd.agent.issue', 'Issue a token')}</>}
+          </Button>
+        </Card>
+      ) : (
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <Badge tone={agent.lastSeenAt ? 'success' : ''}>{agent.lastSeenAt ? t('rd.agent.seen', 'Seen') : t('rd.agent.never', 'Never called in')}</Badge>
+              <code className="text-[12px] text-[var(--muted)]">{agent.prefix}…</code>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" disabled={busy || !!agent.pendingCmd} onClick={() => queue('rescan')}>
+                <RefreshCw size={14} /> {agent.pendingCmd ? t('rd.agent.pending', 'Job queued') : t('rd.agent.rescan', 'Ask for a re-scan')}
+              </Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={issue}>{t('rd.agent.rotate', 'Rotate')}</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={revoke}>{t('rd.agent.revoke', 'Revoke')}</Button>
+            </div>
+          </div>
+
+          {/* Everything below is what the machine SAID about itself. Labelled as such,
+              because it is the owner's own box describing itself and nothing here is
+              checked — the panel must not read like a measurement we took. */}
+          <dl className="grid sm:grid-cols-2 gap-x-8 gap-y-2.5 mt-4 text-[13px]">
+            {[
+              [t('rd.agent.f.last', 'Last call'), agent.lastSeenAt ? new Date(agent.lastSeenAt).toLocaleString() : '—'],
+              [t('rd.agent.f.host', 'Host'), agent.hostLabel || '—'],
+              [t('rd.agent.f.ver', 'Agent version'), agent.agentVersion || '—'],
+              [t('rd.agent.f.ip', 'From'), agent.lastIp || '—'],
+              [t('rd.agent.f.files', 'Files reported'), agent.fileCount == null ? '—' : String(agent.fileCount)],
+              [t('rd.agent.f.sha', 'Manifest'), agent.manifestSha ? `${agent.manifestSha.slice(0, 12)}…` : '—'],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-1.5">
+                <dt className="text-[var(--muted)]">{k}</dt><dd className="font-medium truncate">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          {agent.reportedAt && !agent.reportOk && (
+            <div className="mt-4 text-[12.5px] text-error flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+              <span>{t('rd.agent.lasterr', 'Last run reported: {e}').replace('{e}', agent.reportError || '')}</span>
+            </div>
+          )}
+          <div className="text-[11.5px] text-[var(--faint)] mt-4">{t('rd.agent.selfreport', 'Everything above is what your machine told us. We do not check it, and nothing here changes how the repo is listed.')}</div>
+        </Card>
+      )}
     </div>
   );
 }

@@ -1123,12 +1123,62 @@ model ServerRepo {
   auditLogs         RepoAuditLog[]
   accessEvents      RepoAccessEvent[]
   favorites         RepoFavorite[]
+  agent             RepoAgent?
 
   @@index([groupId])
   @@index([deleteAt])
   // Public list (/repos): the exact filter + sort of the community repo browser, so it
   // doesn't seq-scan every repo to find the listed + verified ones.
   @@index([listed, verified, pendingReview, createdAt])
+}
+
+/// A server the OWNER runs, allowed to talk to us on this repo's behalf.
+///
+/// The ask was "let me manage a repo on another server from BCWEB", and the obvious shape
+/// for that is an SSH key. We do not take one. A private key that opens a shell on somebody
+/// else's machine is the worst possible thing to hold: a breach here would stop costing
+/// accounts and start costing our users their servers, and it puts us inside every incident
+/// they ever have.
+///
+/// So the direction is reversed. Their machine holds a credential for US, not the other way
+/// round: a bearer token, hashed here exactly like an ApiKey, that lets their box say "I am
+/// alive, here is what I am serving" and pick up a job the owner queued from the dashboard.
+/// Nothing here can reach into their server; revoking is one row.
+///
+/// Deliberately ONE per repo (repoId is unique). Rotating replaces it, which is the whole
+/// vocabulary an owner needs — a list of five tokens for one machine is a list of four
+/// things nobody remembers issuing.
+model RepoAgent {
+  id           String     @id @default(cuid())
+  repo         ServerRepo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  repoId       String     @unique
+  /// The owner's name for the machine. Cosmetic.
+  label        String     @default("")
+  /// First characters of the secret, in clear, so the owner can recognise it in the panel
+  /// without it being usable. Same trick as ApiKey.prefix.
+  prefix       String
+  hash         String     @unique
+  createdAt    DateTime   @default(now())
+  revokedAt    DateTime?
+  /// What the agent last told us about itself. All self-reported: it is the owner's own
+  /// machine describing itself, so it is displayed and never trusted for a decision.
+  lastSeenAt   DateTime?
+  lastIp       String?
+  agentVersion String?
+  hostLabel    String?
+  /// A ONE-SLOT job queue. The owner presses "resync"; the agent picks it up on its next
+  /// call and reports back. One slot rather than a real queue because pressing the button
+  /// four times means "do it", not "do it four times".
+  pendingCmd   String?
+  pendingAt    DateTime?
+  /// The last report. Counts only -- we do not hold the files, and saying otherwise on a
+  /// repo we do not host would be the panel lying about where the content is.
+  reportedAt   DateTime?
+  reportOk     Boolean    @default(false)
+  reportError  String?
+  fileCount    Int?
+  totalBytes   BigInt?
+  manifestSha  String?
 }
 
 // A user starring a Server-Repo on the public list — purely social (visibility

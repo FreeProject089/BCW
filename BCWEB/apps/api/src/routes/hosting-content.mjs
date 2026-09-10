@@ -840,6 +840,11 @@ function generatedManifest(repo, ownerName) {
         // error — it takes 301 as the URL and answers 500 with Location: .../files/301.
         return reply.redirect(`/hosting/${repo.hostPath}/files/${rel}/`, 301);
       }
+      // Autoindex off: the directory does not exist as far as a caller is concerned, while
+      // every file under it still downloads at its own URL. That is exactly a plain file
+      // server with `autoindex off` — which is what an owner asking for this wants: the
+      // content stays reachable, the inventory of it does not.
+      if (repo.settings?.listing === false) return reply.code(404).send({ error: 'not_found' });
       const entries = indexEntries(repo.files, prefix);
       const body = renderAutoindex(`/hosting/${repo.hostPath}/files/${prefix}`, entries);
       logAccess(p, repo.id, req, prefix || '/', 'connect', identity); // walked the listing

@@ -39,7 +39,10 @@ const linksSchema = z.object({ discord: httpUrl(300), website: httpUrl(300), cha
 // `accounts` entries ({type:"bcweb"|"discord", id, label}) whitelist/ban a specific
 // account rather than an IP/key; the site-wide GlobalAccessPolicy (access-policy.mjs)
 // is enforced ON TOP of this, identically for every repo (see hosting-content.mjs).
-export const DEFAULT_SETTINGS = { access: { whitelistEnabled: false, ips: [], keys: [], pubkeys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null };
+// `listing` defaults TRUE, which is what every existing repo has been doing since the
+// nginx-format index shipped. Turning it off is the plain-file-server setup without
+// autoindex: every file still downloads at its own URL, the directory itself 404s.
+export const DEFAULT_SETTINGS = { access: { whitelistEnabled: false, ips: [], keys: [], pubkeys: [], accounts: [] }, bans: { ips: [], keys: [], accounts: [] }, requestedUploadKbps: null, listing: true };
 
 // The sandbox-settings shape, defined ONCE and imported by every route that accepts it.
 // It used to be written out twice, identically, in two files — which is how one copy gains a
@@ -54,7 +57,30 @@ export const SETTINGS_SCHEMA = z.object({
   }).partial(),
   bans: z.object({ ips: z.array(z.string().max(64)).max(10000), keys: z.array(z.string().max(128)).max(10000), accounts: z.array(accountEntrySchema).max(10000) }).partial(),
   requestedUploadKbps: z.number().int().min(0).max(10_000_000).nullable(),
+  listing: z.boolean(),
 }).partial();
+/**
+ * Fold a validated settings patch onto the stored settings.
+ *
+ * Written out inline in TWO route files before this, identically -- which is precisely the
+ * failure the SETTINGS_SCHEMA comment above warns about, one level down. The object returned
+ * here REPLACES the stored JSON, so a key this function forgets is a key deleted: the field
+ * passes zod, arrives in the body, gets a 200 back, and is silently not saved. That is what
+ * happened the first time `listing` was added, in the copy that was not being looked at.
+ *
+ * One function, so a new setting is one edit and both doors get it.
+ */
+export function mergeSettings(cur = {}, patch = {}) {
+  return {
+    access: { ...DEFAULT_SETTINGS.access, ...cur.access, ...(patch.access || {}) },
+    bans: { ...DEFAULT_SETTINGS.bans, ...cur.bans, ...(patch.bans || {}) },
+    requestedUploadKbps: patch.requestedUploadKbps !== undefined ? patch.requestedUploadKbps : (cur.requestedUploadKbps ?? null),
+    // Absent from both the patch and the row means the default, which is ON: every repo
+    // saved before this setting existed has been serving a listing all along.
+    listing: patch.listing !== undefined ? patch.listing : (cur.listing !== false),
+  };
+}
+
 export function effUpload(repo) {
   const cap = repo.uploadLimitKbps || 0;
   const req = repo.settings?.requestedUploadKbps;
@@ -383,11 +409,7 @@ export default async function repoRoutes(app) {
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
     const cur = repo.settings || DEFAULT_SETTINGS;
-    const next = {
-      access: { ...DEFAULT_SETTINGS.access, ...cur.access, ...(b.data.access || {}) },
-      bans: { ...DEFAULT_SETTINGS.bans, ...cur.bans, ...(b.data.bans || {}) },
-      requestedUploadKbps: b.data.requestedUploadKbps !== undefined ? b.data.requestedUploadKbps : (cur.requestedUploadKbps ?? null),
-    };
+    const next = mergeSettings(cur, b.data);
     const out = await p.serverRepo.update({ where: { id: repo.id }, data: { settings: next } });
     // Return the CLAMPED effective upload so the UI can show "asked X, capped to Y".
     return { repo: ser(out), effectiveUploadKbps: effUpload(out), uploadCapKbps: out.uploadLimitKbps };
