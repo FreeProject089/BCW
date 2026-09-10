@@ -32,32 +32,51 @@ export function looksLikeManifest(parsed) {
  * What a directory index has and a normal page does not: a run of links inside a <pre> block,
  * or the `Index of /…` heading every autoindex implementation writes. Both are required to be
  * near the start, since a page that mentions "Index of" in its footer is not one.
+ *
+ * SCANNED, not matched. The obvious regexes for this are quadratic on hostile input and this
+ * body comes from a URL somebody registered: `/<pre[^>]*>[\s\S]{0,50000}?<a\s+href=/` spent
+ * 1.7 seconds on 200 KB of `<pre>` spam, and `/<(?:title|h1)[^>]*>\s*Index of\s/` spent 3.2 on
+ * unclosed tags — once per health check, on every listed repo, forever. indexOf does not
+ * backtrack, and the work here is bounded by a fixed number of candidate positions.
  */
 export function looksLikeDirectoryIndex(html) {
   const s = String(html || '');
   if (!s || s.length > 4_000_000) return false;
   const head = s.slice(0, 200_000);
-  // NOTE the quantifier: {0,50000}, not {0,50_000}. A numeric separator is fine in JS source
-  // and is NOT one inside a regex literal -- there it is the literal text "{0,50_000}", so the
-  // pattern silently stops being a quantifier and matches nothing. It read as correct, the
-  // nginx case still passed (on the title), and only a mutation test showed the branch was
-  // never reached.
-  // nginx, Apache, Caddy and Python's http.server all write one of these two.
-  const titled = /<(?:title|h1)[^>]*>\s*Index of\s/i.test(head);
-  const pre = /<pre[^>]*>[\s\S]{0,50000}?<a\s+href=/i.test(head);
+  const low = head.toLowerCase();
+
+  // The heading nginx, Apache, Caddy and Python's http.server all write. Found by locating the
+  // phrase first — there are few of those — and then looking BACK a little for the tag, rather
+  // than scanning forward from every tag for the phrase.
+  let titled = false;
+  for (let i = low.indexOf('index of'); i !== -1 && !titled; i = low.indexOf('index of', i + 1)) {
+    const before = low.slice(Math.max(0, i - 200), i);
+    const tag = Math.max(before.lastIndexOf('<title'), before.lastIndexOf('<h1'));
+    // The tag has to be open right before the phrase: `>` between them means the phrase is in
+    // some other element that merely follows one.
+    titled = tag !== -1 && before.indexOf('>', tag) !== -1 && !before.slice(before.indexOf('>', tag) + 1).trim();
+  }
+
+  // Or a run of links inside a <pre>. At most five candidate blocks, each searched over a fixed
+  // window, so the cost is bounded whatever the document does.
+  let pre = false;
+  let from = 0;
+  for (let n = 0; n < 5 && !pre; n++) {
+    const open = low.indexOf('<pre', from);
+    if (open === -1) break;
+    const gt = low.indexOf('>', open);
+    if (gt === -1) break;
+    pre = low.indexOf('<a href=', gt) !== -1 && low.indexOf('<a href=', gt) < gt + 50_000;
+    from = gt + 1;
+  }
   if (!titled && !pre) return false;
+
   // At least two entries, so a page with one stray link in a <pre> is not a repo.
-  const links = (head.match(/<a\s+href=/gi) || []).length;
+  let links = 0;
+  for (let i = low.indexOf('<a href'); i !== -1 && links < 2; i = low.indexOf('<a href', i + 1)) links++;
   return links >= 2;
 }
 
-/**
- * Classify what came back from an external repo URL.
- *
- * Returns `{ kind, valid, reason }` where kind is 'manifest' | 'listing' | 'unknown'. The
- * caller decides what to do with it; this only says what it is, so the same answer is available
- * to the health check, the admin view and anything written later.
- */
 export function classifyRepoBody(text, contentType = '') {
   const body = String(text || '');
   if (!body.trim()) return { kind: 'unknown', valid: false, reason: 'empty' };

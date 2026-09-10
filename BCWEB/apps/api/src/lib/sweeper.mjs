@@ -33,6 +33,7 @@ import { sweepStaleMyoRequests } from '../routes/myo.mjs';
 import { memberCapacity , memberPolicy, evictForRoom } from './discord-storage.mjs';
 import { recomputePoolBytes, stripe, capacityStatus } from '../routes/hosting.mjs';
 import { grantIncludedBoosts } from '../routes/boosts.mjs';
+import { refreshHostMapIfStale } from '../routes/domains.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
@@ -184,6 +185,10 @@ async function sweepChangeHistory(p, log) {
       where: { repoId: { not: null } },
       _count: { _all: true },
       having: { repoId: { _count: { gt: KEEP_PER_SUBJECT } } },
+      // Prisma requires an explicit orderBy on a groupBy that TAKEs, and the field has to be
+      // one of the by-arguments. Without it the whole sweep threw on every tick and was
+      // swallowed by the catch below — so it silently never trimmed anything.
+      orderBy: { repoId: 'asc' },
       take: 200,
     });
     for (const row of busy) {
@@ -750,6 +755,9 @@ export function startSweeper(app) {
       await grantIncludedBoosts(p).then((n) => { if (n) app.log.info({ n }, 'included boosts granted'); })
         .catch((e) => app.log.warn({ e: String(e) }, 'included boost grant failed')),
       await sweepChangeHistory(p, app.log),
+      // The routing table for customer domains. rewriteUrl cannot await, so the map has to be
+      // kept warm from somewhere; every write invalidates it too.
+      await refreshHostMapIfStale(p),
         await runWebhookQueue(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];

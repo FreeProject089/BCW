@@ -74,6 +74,83 @@ export async function resolveHostTarget(p, hostHeader) {
   return null;
 }
 
+/*
+ * The verified domains, synchronously.
+ *
+ * `rewriteUrl` runs before routing — which is the only place a URL rewrite CAN run — and it
+ * cannot await, so the routing table has to be in memory. Refreshed on a timer and invalidated
+ * by every write here, so a domain starts and stops working within one refresh at worst and
+ * immediately in the ordinary case.
+ *
+ * Eligibility (a paid pool, still verified, still published) is decided when the map is BUILT,
+ * so a lapsed pool stops routing at the next refresh rather than being re-checked per request.
+ * The certificate side is unaffected: /domains/ask still asks the database every time.
+ */
+const _hostMap = new Map();
+let _hostMapAt = 0;
+const HOST_MAP_TTL_MS = 60_000;
+
+/** What should serve this Host header, or null. Synchronous by necessity. */
+export function hostTargetSync(hostHeader) {
+  const host = normaliseHost(String(hostHeader || '').split(':')[0]);
+  if (!host) return null;
+  return _hostMap.get(host) || null;
+}
+
+/** Rebuild the map. Cheap: one indexed query over a table with one row per customer domain. */
+export async function refreshHostMap(p) {
+  const rows = await p.customDomain.findMany({
+    where: { verifiedAt: { not: null } },
+    include: {
+      repo: { select: { id: true, hosted: true, hostPath: true, published: true, group: { select: { freePlan: true } } } },
+      catalog: { select: { id: true, slug: true, status: true, group: { select: { freePlan: true } } } },
+    },
+    take: 20_000,
+  });
+  _hostMap.clear();
+  for (const d of rows) {
+    if (d.repo) {
+      if (!domainEligible(d.repo).ok || !d.repo.published) continue;
+      _hostMap.set(d.host, { kind: 'repo', hostPath: d.repo.hostPath, id: d.repo.id });
+    } else if (d.catalog) {
+      if (!domainEligible({ hosted: true, hostPath: d.catalog.slug, group: d.catalog.group }).ok) continue;
+      if (d.catalog.status !== 'ACTIVE') continue;
+      _hostMap.set(d.host, { kind: 'catalog', slug: d.catalog.slug, id: d.catalog.id });
+    }
+  }
+  _hostMapAt = Date.now();
+  return _hostMap.size;
+}
+
+/** Refresh if it is stale. Called from the sweeper; never throws into the caller. */
+export async function refreshHostMapIfStale(p) {
+  if (Date.now() - _hostMapAt < HOST_MAP_TTL_MS) return -1;
+  try { return await refreshHostMap(p); } catch { return -1; }
+}
+
+/**
+ * The rewrite itself, as a pure function of (host, url, target) so it can be tested without a
+ * server. Returns the new URL, or the original when nothing should change.
+ */
+export function rewriteForTarget(target, url) {
+  if (!target) return url;
+  const [path, query] = String(url || '/').split('?');
+  const q = query ? `?${query}` : '';
+  // A `..` segment is refused rather than rewritten. It is not exploitable downstream today —
+  // the wildcard is compared against exact stored paths and never reaches a filesystem — but
+  // depending on a property of a module two files away is how it quietly stops being true.
+  const decoded = (() => { try { return decodeURIComponent(path); } catch { return path; } })();
+  if (/(^|\/)\.\.(\/|$)/.test(decoded) || /(^|\/)\.\.(\/|$)/.test(path)) return url;
+  if (target.kind === 'repo') {
+    const base = `/hosting/${target.hostPath}`;
+    // The apex of a repo domain is its manifest: a client handed the bare hostname is asking
+    // for the repo, and the repo IS repo.json.
+    return (path === '/' || path === '') ? `${base}/repo.json${q}` : `${base}/files${path}${q}`;
+  }
+  const base = `/c/${target.slug}`;
+  return (path === '/' || path === '') ? `${base}/catalog.json${q}` : `${base}${path}${q}`;
+}
+
 export default async function domainRoutes(app) {
   // ── the edge, before it obtains a certificate ─────────────────────────────────────────
   //
@@ -82,6 +159,15 @@ export default async function domainRoutes(app) {
   // it must leak nothing and cost nothing: one indexed lookup, and the same empty answer for
   // "no such domain" and "not allowed any more".
   app.get('/domains/ask', { config: { rateLimit: { max: 300, timeWindow: '1 minute' } } }, async (req, reply) => {
+    // The edge reaches this at http://api:3000/domains/ask, but the public site also proxies
+    // /api/* to the same server — so without a guard this is an unauthenticated oracle:
+    // 200 means "that hostname is hosted here", 404 means it is not, for any name a stranger
+    // cares to try (CWE-200). The edge additionally blocks the public path; this is the half
+    // that survives the API being reachable some other way.
+    //
+    // Optional so an existing deployment does not break by upgrading: unset behaves as before.
+    const key = process.env.DOMAIN_ASK_KEY || '';
+    if (key && String(req.query?.key || '') !== key) return reply.code(404).send({ error: 'unknown_domain' });
     const host = normaliseHost(req.query?.domain);
     if (!host) return reply.code(400).send({ error: 'bad_request' });
     // Our own name is always allowed: refusing it here would stop the site getting its own
@@ -153,6 +239,7 @@ export default async function domainRoutes(app) {
     const out = mine
       ? await ctx.p.customDomain.update({ where: { id: mine }, data })
       : await ctx.p.customDomain.create({ data });
+    await refreshHostMap(ctx.p).catch(() => {});
     await logAudit(ctx.p, req.user.uid, 'domain.set', `${ctx.subject.name} — ${host}`, clientIp(req)).catch(() => {});
     await recordChange(ctx.p, ctx.kind === 'repos' ? { repoId: ctx.subject.id } : { catalogId: ctx.subject.id }, {
       actorId: req.user.uid, actorLabel: req.user.name || req.user.uid, action: 'domain', summary: host,
@@ -165,6 +252,7 @@ export default async function domainRoutes(app) {
     const ctx = await load(req, reply); if (!ctx) return;
     if (!ctx.subject.domain) return reply.code(404).send({ error: 'not_found' });
     await ctx.p.customDomain.delete({ where: { id: ctx.subject.domain.id } });
+    await refreshHostMap(ctx.p).catch(() => {});
     await logAudit(ctx.p, req.user.uid, 'domain.remove', `${ctx.subject.name} — ${ctx.subject.domain.host}`, clientIp(req)).catch(() => {});
     await recordChange(ctx.p, ctx.kind === 'repos' ? { repoId: ctx.subject.id } : { catalogId: ctx.subject.id }, {
       actorId: req.user.uid, actorLabel: req.user.name || req.user.uid, action: 'domain', summary: '',
@@ -205,6 +293,8 @@ export default async function domainRoutes(app) {
         lastError: ok ? null : (err || 'txt_mismatch'),
       },
     });
+    // A domain that just passed verification has to start working now, not in a minute.
+    await refreshHostMap(ctx.p).catch(() => {});
     return { domain: domainView(out), ok };
   });
 }

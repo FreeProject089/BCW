@@ -44,7 +44,7 @@ import repoRoutes, { recheckRepos } from './routes/repos.mjs';
 import hostingContentRoutes from './routes/hosting-content.mjs';
 import repoDashboardRoutes from './routes/repo-dashboard.mjs';
 import repoAgentRoutes from './routes/repo-agent.mjs';
-import domainRoutes, { resolveHostTarget } from './routes/domains.mjs';
+import domainRoutes, { hostTargetSync, rewriteForTarget, refreshHostMap } from './routes/domains.mjs';
 import boostRoutes from './routes/boosts.mjs';
 import promoRoutes from './routes/promo.mjs';
 import campaignRoutes from './routes/campaigns.mjs';
@@ -119,7 +119,25 @@ if (isProduction(process.env)) {
 // The custom serialiser keeps everything the default one gives (method, host, remote
 // address) and replaces `url` with the path. The KEY NAMES are kept — knowing a request
 // carried `k` is useful when reading a log, knowing its value is a breach.
+// A request arriving on a customer's own hostname is rewritten to whatever that name points
+// at, so `https://mods.example.com/foo.zip` reaches exactly the handler
+// `/hosting/<owner>/<repo>/files/foo.zip` would — access lists, sync password, counters and the
+// directory-listing switch all unchanged, because it is the same handler.
+//
+// It lives in `rewriteUrl` and not in an onRequest hook, and that is not a style choice: Fastify
+// routes BEFORE onRequest, so a hook mutating req.raw.url runs after the handler has already
+// been chosen and changes nothing. That is what the first version of this did. Measured.
+//
+// The price of running before routing is that it cannot await, which is why domains.mjs keeps
+// the verified ones in a map refreshed on a timer and invalidated on every write.
 const app = Fastify({
+  rewriteUrl(req) {
+    const host = String(req.headers.host || '');
+    // Ours, or nothing we know: leave it exactly as it is, which is every request in practice.
+    if (!host || host.startsWith('localhost') || host.startsWith('127.0.0.1')) return req.url;
+    const target = hostTargetSync(host);
+    return target ? rewriteForTarget(target, req.url) : req.url;
+  },
   logger: {
     serializers: {
       req(req) {
@@ -314,50 +332,6 @@ app.get('/ready', PROBE_OPTS, async (req, reply) => {
              : reply.code(503).send({ ok: false, db: false, ts: Date.now() });
 });
 
-// ── Custom domains ────────────────────────────────────────────────────────────────────────
-//
-// A request arriving on a hostname that is not ours is rewritten to whatever that name points
-// at, so `https://mods.example.com/foo.zip` reaches exactly the handler
-// `/hosting/<ownerSlug>/<repoSlug>/files/foo.zip` would. Everything downstream — the access
-// lists, the sync password, the counters, the autoindex switch — is the code that was already
-// there; this only changes the path it sees.
-//
-// The lookup is skipped entirely for our own host, which is every request in practice, and
-// memoised for a minute otherwise. Without that this would be a database round trip on every
-// request in the system, added for a feature almost nobody is using at any given moment.
-const _hostCache = new Map();
-const HOST_TTL_MS = 60_000;
-app.addHook('onRequest', async (req) => {
-  const raw = String(req.headers.host || '');
-  if (!raw) return;
-  const host = raw.split(':')[0].toLowerCase();
-  if (!host || host === 'localhost' || host === '127.0.0.1' || host === OWN_HOST || host.endsWith(`.${OWN_HOST}`)) return;
-  const now = Date.now();
-  let hit = _hostCache.get(host);
-  if (!hit || now - hit.at > HOST_TTL_MS) {
-    let target = null;
-    try { target = await resolveHostTarget(await db(), host); } catch { target = null; }
-    if (_hostCache.size > 5000) _hostCache.clear();
-    hit = { at: now, target };
-    _hostCache.set(host, hit);
-  }
-  if (!hit.target) return;
-  const url = req.raw.url || '/';
-  const [path, query] = url.split('?');
-  const q = query ? `?${query}` : '';
-  if (hit.target.kind === 'repo') {
-    const base = `/hosting/${hit.target.hostPath}`;
-    // The apex of a repo domain is its manifest: a client handed "mods.example.com" and
-    // nothing else is asking for the repo, and the repo IS repo.json.
-    req.raw.url = (path === '/' || path === '')
-      ? `${base}/repo.json${q}`
-      : `${base}/files${path}${q}`;
-  } else {
-    const base = `/c/${hit.target.slug}`;
-    req.raw.url = (path === '/' || path === '') ? `${base}/catalog.json${q}` : `${base}${path}${q}`;
-  }
-});
-
 // Feeds the server-perf dashboard's response-time/status-code stats (monitor.mjs
 // flushes + persists this on each sweeper tick). Cheap: just two subtractions.
 app.addHook('onResponse', (req, reply, done) => {
@@ -466,6 +440,11 @@ ensureBucket().catch((e) => app.log.warn({ e: String(e) }, 'ensureBucket failed 
 
 // Periodic sweep: hard-delete items/repos whose 72h grace window has elapsed.
 startSweeper(app);
+// Load the customer-domain routing table before the first request rather than on the first
+// sweeper tick: rewriteUrl cannot await, so an empty map means every customer domain 404s until
+// something happens to fill it — which would look exactly like the feature not working.
+db().then((p) => refreshHostMap(p)).then((n) => { if (n) app.log.info({ n }, 'custom domains loaded'); })
+  .catch((e) => app.log.warn({ e: String(e) }, 'custom domain map failed to load'));
 
 // Periodic repo re-verification (health + SHA) so listed statuses stay fresh.
 const repoRecheckTimer = setInterval(() => recheckRepos().then((r) => { if (r.checked) app.log.info(`[repos] re-checked ${r.checked} (${r.online} online, ${r.verified} verified)`); }).catch(() => {}), 15 * 60 * 1000);

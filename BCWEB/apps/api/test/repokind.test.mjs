@@ -152,3 +152,33 @@ describe('checkRepoHealth', () => {
     assert.equal((await checkRepoHealth({}, respond(''))).reason, 'no_url');
   });
 });
+
+// ── the cost of saying no ─────────────────────────────────────────────────────────────────
+//
+// This runs over a body fetched from a URL somebody registered, on create, on edit, and on the
+// periodic recheck of every listed repo. The first version used two regexes that looked
+// innocent and were quadratic: 200 KB of `<pre>` spam cost 1.7 seconds, and unclosed `<h1 `
+// tags cost 3.2 — per health check, per repo, forever. A handful of such repos is a sweeper
+// that never finishes.
+//
+// A time assertion is a blunt instrument and this one is deliberately loose: the fixed version
+// answers in single-digit milliseconds, so a 500 ms ceiling cannot fail on a slow machine but
+// catches any return to backtracking, which costs seconds.
+describe('looksLikeDirectoryIndex is linear', () => {
+  const hostile = [
+    ['<pre> spam', '<pre>'.repeat(40_000)],
+    ['nested <pre>', '<pre><pre><pre>'.repeat(15_000)],
+    ['unclosed <title>', '<title'.repeat(30_000)],
+    ['unclosed <h1 ', '<h1 '.repeat(50_000)],
+    ['"Index of" spam', 'Index of '.repeat(22_000)],
+    ['4 MB of <pre>', '<pre>'.repeat(800_000)],
+  ];
+  for (const [label, body] of hostile) {
+    test(`${label} is answered promptly`, () => {
+      const t = process.hrtime.bigint();
+      looksLikeDirectoryIndex(body);
+      const ms = Number(process.hrtime.bigint() - t) / 1e6;
+      assert.ok(ms < 500, `took ${ms.toFixed(0)}ms — that is backtracking, not scanning`);
+    });
+  }
+});
