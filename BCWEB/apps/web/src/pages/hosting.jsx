@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Rocket, Upload, Check, CheckCircle2, XCircle, ShieldCheck, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, Building2, ShoppingCart, Save, MessageSquare, Server,
+  Rocket, Upload, CheckCircle2, XCircle, HardDrive, Gauge, Zap, Sliders, Receipt, Plus, Mail, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, CreditCard, Gift, Layers, ShoppingCart, Save, MessageSquare, Server, Boxes,
 } from 'lucide-react';
 import { Button, Card, Badge, Input, Select, PageHeader, Spinner, Modal, bestByteUnit, bytesInUnit, useDialog, useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
@@ -368,7 +368,6 @@ export function Hosting() {
           under the bar, which reads as the button having done nothing. */}
       <section id="plans" className="scroll-mt-24">
       <SectionLead
-        eyebrow={t('hosting.plans.eyebrow', 'The plans')}
         title={t('hosting.plans.title', 'Pick a size, or set your own')}
         sub={t('hosting.plans.sub', 'The same space either way — the four below are just the sizes people ask for most.')} />
 
@@ -384,13 +383,13 @@ export function Hosting() {
         const freeDisabled = !freeOffered;
         const freeTierPct = c?.freeTierCapEnabled && c.freeTierCapGB ? Math.min(100, (c.freeTierUsedGB / c.freeTierCapGB) * 100) : null;
         return (
-          <Card className="p-6 mb-2 bg-success/[0.05] overflow-hidden relative">
-            <div className="flex flex-col sm:flex-row items-center gap-5">
-              <span className="grid place-items-center w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-white shrink-0 shadow-lg shadow-emerald-500/25"><Gift size={22} /></span>
-              <div className="flex-1 text-center sm:text-start min-w-0">
-                <div className="font-semibold text-lg">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
-                <div className="text-sm text-[var(--muted)]">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
-                <div className="text-xs text-[var(--faint)] mt-1">{freeTierSoldOut
+          <Card className="p-5 mb-2 bg-success/[0.04] overflow-hidden relative" style={{ borderColor: 'var(--success-border)' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <Gift size={20} className="text-success shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[15px]">{t('hosting.freeplan.title', 'Just want to try it out?')}</div>
+                <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, forever free.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
+                <div className="text-[12px] text-[var(--faint)] mt-1">{freeTierSoldOut
                   ? t('hosting.freeplan.soldout.d', 'The free allowance is fully taken right now. It is metered on its own, so the paid sizes below are unaffected — leave your name and we will tell you the moment one frees up.')
                   : t('hosting.freeplan.note', 'One free repo per account. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
               </div>
@@ -437,52 +436,48 @@ export function Hosting() {
           // size) even while the pool isn't fully soldOut — disable just that card.
           const planDisabled = soldOut || (!!c && pl.storageGB > c.freeGB);
           const recommended = pl.storageGB === 25;
+          // One column of type, left-aligned, in reading order: which plan, how big, how
+          // fast, how much, take it. The old card was centred and stacked an icon, a name, a
+          // number, and the caption "STORAGE" under the number — in a card whose column
+          // heading already said storage — then hovered up 1.5 units and grew 4% when
+          // recommended, so the row of four never sat still.
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`group card overflow-hidden text-center relative flex flex-col transition-all duration-200 shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:-translate-y-1.5'} ${recommended && !planDisabled ? 'md:scale-[1.04] md:z-10 !border-[var(--primary)] shadow-lg shadow-orange-500/15' : ''}`}>
-            {/* Diagonal corner ribbon on the recommended tier (image-2 style). */}
-            {recommended && !planDisabled && (
-              <span className="absolute top-0 right-0 w-[104px] h-[104px] overflow-hidden pointer-events-none z-20">
-                <span className="absolute rotate-45 text-white text-[9px] font-extrabold tracking-wider text-center py-1 shadow-md" style={{ width: 150, top: 22, right: -40, background: 'linear-gradient(90deg,#f97316,#f59e0b)' }}>{t('hosting.popular2', 'RECOMMENDED')}</span>
-              </span>
-            )}
-            {/* Uniform tier header. The plan's NAME leads it: the card used to show only
-                GB / Mbps / price, so two plans that happen to share those numbers were
-                literally indistinguishable — a wall of identical cards with no way to tell
-                which one you were buying. The name is the only thing that separates them. */}
-            <div className="px-5 pt-7 pb-6 border-b border-[var(--line)]">
-              <HardDrive size={20} className="mx-auto transition-transform group-hover:scale-110 text-[var(--primary-2)]" />
-              <div className="text-sm font-bold mt-2 leading-tight truncate" title={pl.name}>{pl.name}</div>
-              {(() => { const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes); return (
-              <div className="text-4xl font-extrabold mt-1 leading-none">{Number(bytesInUnit(bytes, u).toFixed(2))}<span className="text-lg font-semibold text-[var(--muted)]"> {u}</span></div>
-              ); })()}
-              <div className="text-[11px] font-semibold uppercase tracking-wider mt-1 text-[var(--faint)]">{t('hosting.storage', 'Storage')}</div>
+            className={`card relative flex flex-col p-5 transition-colors shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--ring)]'} ${recommended && !planDisabled ? '!border-[var(--primary)]' : ''}`}>
+            {/* A word, where the ribbon was. It is one plan out of four being pointed at,
+                which does not need a rotated gradient banner to say. */}
+            <div className={`text-[10.5px] font-bold uppercase tracking-[0.12em] mb-2.5 ${recommended && !planDisabled ? 'text-[var(--primary-2)]' : 'text-transparent select-none'}`} aria-hidden={!recommended || planDisabled}>
+              {t('hosting.popular2', 'RECOMMENDED')}
             </div>
-            {/* body — speed, price, CTA */}
-            <div className="p-6 flex-1 flex flex-col">
-              <div className="text-xs text-[var(--faint)] flex items-center justify-center gap-1"><Zap size={12} />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
-              {(() => {
-                // Price anchoring: show the un-discounted monthly rate struck through next
-                // to the (lower) prepaid-term rate, plus a "−N%" pill — the saving reads
-                // instantly instead of being buried in a "billed for 12 mo" line.
-                const eff = termTotal(pl.priceMonthlyCents) / 100 / months;
-                const base = pl.priceMonthlyCents / 100;
-                const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
-                return (<>
-                  <div className="mt-3 flex items-end justify-center gap-1.5">
-                    {save > 0 && <span className="text-sm text-[var(--faint)] line-through mb-1">${base.toFixed(2)}</span>}
-                    <span className="text-3xl font-bold gradient-text leading-none">${eff.toFixed(2)}</span>
-                    <span className="text-sm text-[var(--muted)] font-medium mb-0.5">{t('hosting.permo', '/mo')}</span>
+            <div className="text-[13px] text-[var(--muted)] truncate" title={pl.name}>{pl.name}</div>
+            {(() => { const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes); return (
+            <div className="text-[2.15rem] font-extrabold leading-none mt-1">{Number(bytesInUnit(bytes, u).toFixed(2))}<span className="text-base font-semibold text-[var(--muted)]"> {u}</span></div>
+            ); })()}
+            <div className="text-[12.5px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Zap size={13} className="text-[var(--faint)]" />{(pl.uploadLimitKbps / 1024).toFixed(0)} Mbps {t('hosting.uploadword', 'upload')}</div>
+            {(() => {
+              // Price anchoring: the un-discounted monthly rate struck through beside the
+              // (lower) prepaid rate, and a "−N%" pill — the saving reads at a glance
+              // instead of being buried in the "billed for 12 mo" line.
+              const eff = termTotal(pl.priceMonthlyCents) / 100 / months;
+              const base = pl.priceMonthlyCents / 100;
+              const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
+              return (
+                <div className="mt-5 pt-5 border-t border-[var(--line)]">
+                  <div className="flex items-end gap-1.5 flex-wrap">
+                    {save > 0 && <span className="text-[13px] text-[var(--faint)] line-through mb-0.5">${base.toFixed(2)}</span>}
+                    <span className="text-2xl font-bold leading-none">${eff.toFixed(2)}</span>
+                    <span className="text-[13px] text-[var(--muted)] mb-0.5">{t('hosting.permo', '/mo')}</span>
+                    {save > 0 && <span className="text-[10px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 mb-0.5">−{save}%</span>}
                   </div>
-                  <div className="text-[11px] text-[var(--muted)] mb-4 mt-1 flex items-center justify-center gap-1.5 flex-wrap">
-                    {months > 1 ? <><span>${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} {t('hosting.billedfor', 'billed for')} {months} {t('hosting.mo', 'mo')}</span>{save > 0 && <span className="text-[10px] font-bold text-[var(--success)] bg-[var(--success-bg)] border border-[var(--success-border)] rounded-full px-1.5 py-0.5">−{save}%</span>}</> : t('hosting.billedmonthly', 'billed monthly')}
+                  <div className="text-[11.5px] text-[var(--faint)] mt-1.5">
+                    {months > 1 ? `$${(termTotal(pl.priceMonthlyCents) / 100).toFixed(2)} ${t('hosting.billedfor', 'billed for')} ${months} ${t('hosting.mo', 'mo')}` : t('hosting.billedmonthly', 'billed monthly')}
                   </div>
-                </>);
-              })()}
-              <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-auto" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
-                {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
-            </div>
+                </div>
+              );
+            })()}
+            <Button variant={recommended && !planDisabled ? 'primary' : 'default'} disabled={planDisabled} className="w-full mt-5" onClick={(e) => { e.stopPropagation(); addHosting({ planId: pl.id }); }}>
+              {planDisabled ? t('hosting.nospace', 'Not enough space') : <><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}</>}</Button>
           </div>
           ); })}
       </div>}
@@ -517,19 +512,12 @@ export function Hosting() {
           Each button carries its own ?topic=, which sets the form's kind AND its template —
           so the queue counts what people actually asked for. */}
       <SectionLead
-        eyebrow={t('hosting.talk.eyebrow', 'Still not it?')}
         title={t('hosting.talk.h', 'Then tell us what you need')}
         sub={t('hosting.talk.h.sub', 'Three doors, so what you write arrives where somebody can answer it.')} />
-      <Card className="p-6 bg-gradient-to-r from-[var(--primary)]/10 to-transparent" style={{ borderColor: 'var(--ring)' }}>
-        <div className="flex items-start gap-4">
-          <Building2 size={26} className="text-[var(--primary-2)] shrink-0 mt-1" />
-          <div className="flex-1">
-            <div className="font-semibold text-lg">{t('hosting.talk.title', 'Need something the page above does not sell?')}</div>
-            <div className="text-sm text-[var(--muted)]">{t('hosting.talk.sub', 'Tell us which of these it is — the form arrives already asking the right questions.')}</div>
-          </div>
-        </div>
-
-        <div className="grid gap-2 mt-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+      {/* The heading above already says what this is. It used to say it, and then the card
+          said it again in a larger font beside a building icon. */}
+      <Card className="p-6">
+        <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
           {[
             ['hosting-plan', Server, t('hosting.talk.plan', 'A bigger hosting plan'),
               t('hosting.talk.plan.d', 'More storage or bandwidth than any plan listed, an SLA, dedicated resources, invoicing.')],
@@ -544,15 +532,15 @@ export function Hosting() {
             const to = topic ? `/contact?topic=${topic}` : '/contact';
             return (
               <button key={label} type="button" onClick={() => nav(to)}
-                className="text-start rounded-xl border border-[var(--line)] p-3 hover:border-[var(--ring)] transition-colors">
-                <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
-                <div className="text-[11px] text-[var(--muted)] mt-1 leading-relaxed">{desc}</div>
+                className="text-start rounded-xl border border-[var(--line)] p-4 hover:border-[var(--ring)] transition-colors">
+                <div className="flex items-center gap-2 font-medium text-[14px]"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
+                <div className="text-[12px] text-[var(--muted)] mt-1.5 leading-relaxed">{desc}</div>
               </button>
             );
           })}
         </div>
 
-        <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-1.5">
+        <div className="text-xs text-[var(--faint)] mt-4 flex items-center gap-1.5">
           <Mail size={13} className="shrink-0" />
           {user
             ? t('hosting.enterprise.msg', "You're signed in — send it as a message and we'll reply in your dashboard → Reports, so the whole conversation stays in one place.")
@@ -560,7 +548,6 @@ export function Hosting() {
         </div>
       </Card>
 
-      <p className="text-xs text-[var(--faint)] mt-5 flex items-center gap-1.5"><ShieldCheck size={13} /> {t('hosting.note', 'Updates only require a valid SHA. We set the upload limit per repo.')}</p>
       <CartPanel open={cartOpen} setOpen={setCartOpen} cart={cart} count={cartCount} removeItem={removeItem} setItemAutoRenew={setItemAutoRenew} setItemGift={setItemGift} clearCart={clearCart} />
     </div>
   );
@@ -819,13 +806,6 @@ function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
               </div>
             </div>
           )}
-          <div className="mt-5 pt-4 border-t border-[var(--line)] space-y-1.5 text-[11px] text-[var(--muted)]">
-            {[
-              t('hosting.cfg.p1', 'Prepaid — no rolling charge unless you turn auto-renew on'),
-              t('hosting.cfg.p2', 'Repos and catalogs share the same pool'),
-              t('hosting.cfg.p3', 'Resize the split at any time'),
-            ].map((line) => <div key={line} className="flex items-start gap-1.5"><Check size={12} className="shrink-0 mt-0.5 text-success" /><span>{line}</span></div>)}
-          </div>
         </div>
       </div>
     </Card>
@@ -840,13 +820,16 @@ function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
    when I stop paying" — so the four cards were doing work they are bad at.
    ───────────────────────────────────────────────────────────────────────── */
 
-/** One heading for a section. Eyebrow, title, one line under it — the same three every
- *  time, so a reader learns the rhythm once and can skim by it afterwards. */
-function SectionLead({ eyebrow, title, sub }) {
+/** One heading for a section: a title and one line under it.
+ *
+ *  There used to be a coloured eyebrow above each one — THE PLANS over "Pick a size",
+ *  WITH AND WITHOUT over "What changes". A label naming the thing directly beneath it adds
+ *  a line of shouting and no information, and five of them down one page turn a document
+ *  into a brochure. The heading is the label. */
+function SectionLead({ title, sub }) {
   return (
     <div className="mt-20 mb-7">
-      <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--primary-2)]">{eyebrow}</div>
-      <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight mt-1.5 text-balance">{title}</h2>
+      <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight text-balance">{title}</h2>
       {sub && <p className="text-[var(--muted)] mt-2 text-[15px] leading-relaxed max-w-2xl">{sub}</p>}
     </div>
   );
@@ -896,20 +879,21 @@ function TermBar({ months, setMonths }) {
 function HostingHero({ freePlan, freeOffered }) {
   const { t } = useI18n();
   const gb = freePlan?.storageGB;
-  const perks = [
-    [Layers, t('hosting.hero.p1', 'One space, split how you like'), t('hosting.hero.p1d', 'Repos and catalogues share it. Move the line whenever.')],
-    [Zap, t('hosting.hero.p2', 'An address that stops moving'), t('hosting.hero.p2d', 'Updating a repo does not change its URL, so nothing you shared breaks.')],
-    [HardDrive, t('hosting.hero.p3', 'Ready for an app to read'), t('hosting.hero.p3d', 'A direct URL, read as it is — no mirror to keep in sync.')],
-    [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing — your call'), t('hosting.hero.p4d', 'A term that simply ends, or auto-renew. Per item, in the cart.')],
+  // Three, and each says the whole thing on its own line. It was four title-and-paragraph
+  // pairs, which is a features section wearing a hero's clothes: eight lines of type to get
+  // past before reaching the button they exist to justify.
+  const facts = [
+    [Layers, t('hosting.hero.p1', 'One space, split how you like')],
+    [Zap, t('hosting.hero.p2', 'An address that stops moving')],
+    [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing — your call')],
   ];
   return (
     <div className="relative pt-10 sm:pt-16 pb-8">
       <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-10 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
       <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-12 items-center">
         <div>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] bg-[var(--primary)]/[0.08] border border-[var(--primary)]/25 mb-4">
-            <HardDrive size={13} /> {t('hosting.eyebrow', 'Hosting')}
-          </span>
+          {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
+              about hosting — a third naming of the same thing before a word of substance. */}
           <h1 className="text-3xl sm:text-[2.75rem] font-extrabold tracking-tight leading-[1.06] text-balance">
             {t('hosting.hero.h', 'Somewhere to put your repos and catalogues')}
           </h1>
@@ -917,14 +901,11 @@ function HostingHero({ freePlan, freeOffered }) {
             {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like — we keep it up, you decide what goes in it.')}
           </p>
 
-          <ul className="mt-8 grid sm:grid-cols-2 gap-x-8 gap-y-5">
-            {perks.map(([Icon, title, desc]) => (
-              <li key={title} className="flex gap-2.5">
-                <Icon size={16} className="text-[var(--primary-2)] shrink-0 mt-[3px]" />
-                <div className="min-w-0">
-                  <div className="font-semibold text-[14px] leading-snug">{title}</div>
-                  <div className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-0.5">{desc}</div>
-                </div>
+          <ul className="mt-7 flex flex-col gap-2.5">
+            {facts.map(([Icon, label]) => (
+              <li key={label} className="flex items-center gap-2.5 text-[14.5px]">
+                <Icon size={15} className="text-[var(--primary-2)] shrink-0" />
+                <span>{label}</span>
               </li>
             ))}
           </ul>
@@ -975,11 +956,7 @@ function PoolDiagram() {
   return (
     <div className="relative">
       <Card className="p-6 sm:p-7">
-        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-          <span>{t('hosting.diag.title', 'One pool')}</span>
-          <span>{t('hosting.diag.free', 'room left')}</span>
-        </div>
-        <div className="mt-3 h-11 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden flex">
+        <div className="h-12 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden flex">
           {seg.map((sg) => (
             /* A 2px gap between fills, not a border: a border would eat into the width and
                make the segments lie about their share. */
@@ -997,36 +974,42 @@ function PoolDiagram() {
             {t('hosting.diag.spare', 'still yours')}
           </span>
         </div>
-        <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
-          {t('hosting.diag.note', 'You are not buying "a repo". You are buying room — put one big thing in it, or a dozen small ones, and move the line whenever you want.')}
+        <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-4">
+          {t('hosting.diag.note2', 'You buy room, not a slot.')}
         </p>
       </Card>
     </div>
   );
 }
 
-/** Every word the plans use, said once in plain language. */
+/**
+ * The three words that are genuinely ambiguous.
+ *
+ * There were six. The other three were "upload speed", "the term" and "a boost" — each
+ * defined a few hundred pixels away by the control that uses it: the slider says Mbps beside
+ * the word, the term bar explains itself in its own subtitle, the boost card describes a
+ * boost while selling one. Defining them again here was a glossary competing with the page.
+ *
+ * These three are the ones somebody can genuinely have backwards, so they get one row, plain
+ * text, no card around each — a definition list, which is what it always was.
+ */
 function HostingExplained() {
   const { t } = useI18n();
   const rows = [
     [Layers, t('hosting.x.pool', 'A pool'), t('hosting.x.pool.d', 'The space you buy. Everything else goes inside it.')],
     [HardDrive, t('hosting.x.repo', 'A repo'), t('hosting.x.repo.d', 'The files themselves, at one address people sync from.')],
-    [Layers, t('hosting.x.cat', 'A catalogue'), t('hosting.x.cat.d', 'A list people browse, and install from.')],
-    [Zap, t('hosting.x.up', 'Upload speed'), t('hosting.x.up.d', 'How fast your files go up to us. It caps the upload, never the download.')],
-    [Receipt, t('hosting.x.term', 'The term'), t('hosting.x.term.d', 'How many months you pay up front. Longer costs less per month.')],
-    [Rocket, t('hosting.x.boost', 'A boost'), t('hosting.x.boost.d', 'Puts one of your repos in front of more people, for a few days.')],
+    [Boxes, t('hosting.x.cat', 'A catalogue'), t('hosting.x.cat.d', 'A list people browse, and install from.')],
   ];
   return (
     <>
       <SectionLead
-        eyebrow={t('hosting.x.eyebrow', 'The words above')}
-        title={t('hosting.x.title', 'What each of them actually means')}
-        sub={t('hosting.x.sub', 'Six words the plans use. If one of them was doing the work of a guess, here it is.')} />
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        title={t('hosting.x.title2', 'Three words, once and for all')}
+        sub={t('hosting.x.sub2', 'The rest of the page assumes you have these the right way round.')} />
+      <div className="grid sm:grid-cols-3 gap-x-8 gap-y-6 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-6">
         {rows.map(([Icon, term, desc]) => (
-          <div key={term} className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-5">
+          <div key={term}>
             <div className="flex items-center gap-2">
-              <Icon size={16} className="text-[var(--primary-2)] shrink-0" />
+              <Icon size={15} className="text-[var(--primary-2)] shrink-0" />
               <span className="font-semibold text-[14.5px]">{term}</span>
             </div>
             <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-1.5">{desc}</p>
@@ -1058,7 +1041,6 @@ function HostingCompare({ freePlan }) {
         [false, t('hosting.cmp.none.1', 'The link changes, and everything that shared it breaks')],
         [false, t('hosting.cmp.none.2', 'No idea how many people downloaded it')],
         [false, t('hosting.cmp.none.3', 'Nothing tells you when it went down')],
-        [false, t('hosting.cmp.none.4', 'Nothing can sync from it on its own')],
       ],
     },
     {
@@ -1069,8 +1051,8 @@ function HostingCompare({ freePlan }) {
       rows: [
         [true, t('hosting.cmp.free.1', 'A stable address anything can sync from')],
         [true, t('hosting.cmp.free.2', 'Downloads counted, for real')],
-        [true, t('hosting.cmp.free.3', 'Upgrade later and keep the same repo')],
-        [false, t('hosting.cmp.free.4', 'One space, and a small one')],
+        // The row the section promised: one place where free is the wrong answer.
+        [false, t('hosting.cmp.free.4b', 'One space, and it is a small one')],
       ],
     },
     {
@@ -1078,7 +1060,6 @@ function HostingCompare({ freePlan }) {
       title: t('hosting.cmp.paid', 'A paid pool'),
       sub: t('hosting.cmp.paid.s', 'The size you pick, split how you like.'),
       rows: [
-        [true, t('hosting.cmp.paid.1', 'Everything in the free plan')],
         [true, t('hosting.cmp.paid.2', 'Several repos AND catalogues in one space')],
         [true, t('hosting.cmp.paid.3', 'A faster upload cap')],
         [true, t('hosting.cmp.paid.4', 'Boosts, gifting, and a longer term for less')],
@@ -1089,7 +1070,6 @@ function HostingCompare({ freePlan }) {
   return (
     <>
       <SectionLead
-        eyebrow={t('hosting.cmp.eyebrow', 'With and without')}
         title={t('hosting.cmp.title', 'What changes, honestly')}
         sub={t('hosting.cmp.sub', 'Including the row where the free plan is the wrong answer.')} />
       <div className={`grid gap-5 items-stretch ${shown.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
@@ -1135,7 +1115,6 @@ function HostingFaq() {
   return (
     <>
       <SectionLead
-        eyebrow={t('hosting.faq.eyebrow', 'Before you ask')}
         title={t('hosting.faq.title', 'The questions we actually get')}
         sub={t('hosting.faq.sub', 'Starting with the one a pricing page usually leaves out.')} />
       <div className="flex flex-col gap-3">
