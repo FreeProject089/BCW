@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
+import { gitManifestUrl } from '../lib/gitsource.mjs';
 import { purgeRepo } from '../lib/sweeper.mjs';
 import { safeFetch } from '../lib/net.mjs';
 import { repoFingerprint, normalizeFingerprint, loadOwnerIdentities, userBcId } from '../lib/repofingerprint.mjs';
@@ -998,6 +999,13 @@ export default async function repoRoutes(app) {
     const p = await db();
     const gate = await repoCreateGate(p, req.user);
     if (!gate.ok) return reply.code(403).send({ error: gate.reason });
+    // A forge URL is a WEB PAGE. Somebody pasting github.com/me/mods means the repository,
+    // but a client fetching that address gets HTML, fails to parse a manifest out of it, and
+    // reports the repo as broken -- so the address is converted to the raw file the forge
+    // serves for the same tree. Not git: no clone, no protocol, no credentials. The forge is
+    // being used as a static file host, which is what a repo already is.
+    const git = gitManifestUrl(b.data.repoUrl);
+    if (git) b.data.repoUrl = git.manifestUrl;
     const blocked = await repoUrlBlocked(p, b.data.repoUrl);
     if (blocked) return reply.code(409).send({ error: 'url_blocked', url: blocked.url, scope: blocked.rule.scope });
     // A repo name may not claim an endorsement. BMM writes every imported repo as
@@ -1061,6 +1069,10 @@ export default async function repoRoutes(app) {
       const reservedEdit = reservedTermIn(b.data.name);
       if (reservedEdit) return reply.code(409).send({ error: 'reserved_name', term: reservedEdit });
     }
+    // Same conversion as on create. A rule applied on one of two doors is a rule that
+    // depends on which door somebody used.
+    const gitEdit = gitManifestUrl(b.data.repoUrl);
+    if (gitEdit) b.data.repoUrl = gitEdit.manifestUrl;
     const urlChanged = b.data.repoUrl && b.data.repoUrl !== repo.repoUrl;
     // Only when it CHANGED: re-checking an unchanged url would lock the owner out of
     // editing a description on a repo blocked for something they have since fixed.

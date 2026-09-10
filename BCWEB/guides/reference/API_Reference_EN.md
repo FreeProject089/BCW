@@ -752,4 +752,28 @@ own host (which is every request in practice) and memoised for a minute otherwis
 single labels, anything with an underscore, and any name at or under our own — compared with a
 dot, so `notbettercommunity.test` is not treated as a subdomain of `bettercommunity.test`.
 
+## 40. Linking a git forge (`lib/gitsource.mjs`)
+"Link my git repo" means pasting `https://github.com/me/mods`, which is a WEB PAGE: a client
+fetching it gets HTML, fails to parse a manifest out of it, and reports the repo as broken. The
+address is converted to the raw file the forge serves for the same tree, on repo create and on
+repo edit — both doors, because a rule applied to one of two is a rule that depends on which
+door somebody used.
+
+| Pasted | Becomes |
+|---|---|
+| `github.com/me/mods` | `raw.githubusercontent.com/me/mods/HEAD/repo.json` |
+| `github.com/me/mods/tree/dev` | `raw.githubusercontent.com/me/mods/dev/repo.json` |
+| `gitlab.com/team/sub/proj` | `gitlab.com/team/sub/proj/-/raw/HEAD/repo.json` |
+| `codeberg.org/me/mods` | `codeberg.org/me/mods/raw/branch/HEAD/repo.json` |
+
+`HEAD`, never `main` — a repository whose default branch is called something else would 404,
+and that 404 reads as "the manifest is missing". A URL that is already raw is left exactly as
+it is; so is any host that is not a forge we know.
+
+**This is not git.** No clone, no protocol, no credentials, no history: the forge is being used
+as a static file host, which is what a repo already is. It therefore works with the client that
+exists today and costs nothing to serve, and a PRIVATE repository is not supported — its raw
+URLs need a token, and holding somebody's forge token would be the same mistake as holding
+their SSH key.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

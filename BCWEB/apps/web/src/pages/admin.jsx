@@ -2505,6 +2505,7 @@ function AdminServerPerf() {
                       <tr className="text-[10px] uppercase tracking-wider text-[var(--faint)]">
                         <th className="font-semibold text-start py-1.5 ps-1 pe-3 min-w-[150px]">{t('sp.repo', 'Repo')}</th>
                         <th className="font-semibold text-start py-1.5 px-3 min-w-[150px]">{t('sp.upload', 'Upload')}</th>
+                        <th className="font-semibold text-start py-1.5 px-3 min-w-[130px]">{t('sp.delivered', 'Delivered')}</th>
                         <th className="font-semibold text-start py-1.5 ps-3 pe-1 min-w-[150px]">{t('sp.storage', 'Storage')}</th>
                       </tr>
                     </thead>
@@ -2528,6 +2529,23 @@ function AdminServerPerf() {
                                 <span className="text-[var(--faint)]">{live <= 0 ? t('sp.alloc.idle', 'idle') : t('sp.alloc.pctused', '{n}%').replace('{n}', upPct.toFixed(0))}</span>
                               </div>
                               <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-info transition-all" style={{ width: `${Math.max(live > 0 ? 3 : 0, upPct)}%` }} /></div>
+                            </td>
+                            {/* What we have ACTUALLY delivered, across every sample where this
+                                repo was serving, against its own cap. The plans state a speed and
+                                the terms call it a ceiling; this is the only place either claim can
+                                be checked. A dash means it has never been seen transferring — which
+                                is no data, not zero. */}
+                            <td className="py-2 px-3">
+                              {r.delivered ? (<>
+                                <div className="flex items-baseline justify-between gap-2 text-[11px] tabular-nums mb-1">
+                                  <span><b className="text-[var(--text)]">{r.delivered.avgMbps}</b> <span className="text-[var(--faint)]">{t('sp.avgof', 'avg of {n}').replace('{n}', r.delivered.samples)}</span></span>
+                                  <span className={r.delivered.underPct >= 50 ? 'text-warning' : 'text-[var(--faint)]'}>{t('sp.under', '{n}% low').replace('{n}', r.delivered.underPct)}</span>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden">
+                                  <div className="h-full rounded-full bg-success transition-all" style={{ width: `${cap > 0 ? Math.min(100, (r.delivered.avgMbps / cap) * 100) : 0}%` }} />
+                                </div>
+                                <div className="text-[10px] text-[var(--faint)] mt-1">{t('sp.peak', 'peak {n} Mbps').replace('{n}', r.delivered.maxMbps)}</div>
+                              </>) : <span className="text-[11px] text-[var(--faint)]">{t('sp.nodata', 'never seen serving')}</span>}
                             </td>
                             {/* Storage actually used vs quota. */}
                             <td className="py-2 ps-3 pe-1">

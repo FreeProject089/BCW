@@ -771,4 +771,28 @@ noms à un seul label, tout ce qui contient un underscore, et tout nom égal ou 
 comparé avec un point, pour que `notbettercommunity.test` ne passe pas pour un sous-domaine de
 `bettercommunity.test`.
 
+## 40. Lier une forge git (`lib/gitsource.mjs`)
+« Lier mon dépôt git » veut dire coller `https://github.com/me/mods`, qui est une PAGE WEB : un
+client qui la récupère reçoit du HTML, n'arrive pas à en tirer un manifeste, et déclare le dépôt
+cassé. L'adresse est convertie vers le fichier brut que la forge sert pour le même arbre, à la
+création et à la modification d'un dépôt — les deux portes, parce qu'une règle appliquée à une
+seule dépend de la porte utilisée.
+
+| Collé | Devient |
+|---|---|
+| `github.com/me/mods` | `raw.githubusercontent.com/me/mods/HEAD/repo.json` |
+| `github.com/me/mods/tree/dev` | `raw.githubusercontent.com/me/mods/dev/repo.json` |
+| `gitlab.com/team/sub/proj` | `gitlab.com/team/sub/proj/-/raw/HEAD/repo.json` |
+| `codeberg.org/me/mods` | `codeberg.org/me/mods/raw/branch/HEAD/repo.json` |
+
+`HEAD`, jamais `main` — un dépôt dont la branche par défaut s'appelle autrement donnerait un 404,
+et ce 404 se lit comme « le manifeste est absent ». Une URL déjà brute est laissée telle quelle,
+comme tout hôte qui n'est pas une forge connue.
+
+**Ce n'est pas git.** Pas de clone, pas de protocole, pas d'identifiants, pas d'historique : la
+forge sert de simple hébergeur de fichiers, ce qu'un dépôt est déjà. Ça marche donc avec le
+client qui existe aujourd'hui et ne coûte rien à servir, et un dépôt PRIVÉ n'est pas supporté —
+ses URLs brutes exigent un jeton, et détenir le jeton de forge de quelqu'un serait la même erreur
+que détenir sa clé SSH.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

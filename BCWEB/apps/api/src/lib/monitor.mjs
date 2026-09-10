@@ -260,6 +260,62 @@ export function getRepoUploadKbps() {
   }
   return out;
 }
+/*
+ * How close the delivered rate has been to the advertised one.
+ *
+ * The plans state a speed and the terms call it a ceiling; both are claims about reality, and
+ * neither was measurable. This records one observation per ACTIVE repo per tick.
+ *
+ * Idle repos are skipped deliberately. A repo nobody is downloading from delivers 0 Mbps, and
+ * counting those would bury the real observations under zeros -- which would make the average
+ * look terrible while meaning nothing, and would make the "did we keep up" question
+ * unanswerable in the one direction that matters.
+ *
+ * `under` counts observations below 60% of the cap WHILE SERVING. It is a heuristic and is
+ * labelled as one wherever it is shown: a small file finishing inside one sample window reads
+ * as a slow transfer, so a repo serving many small files will always show some. It is useful
+ * for spotting a repo that is consistently far off, not for grading one.
+ */
+const UNDER_FRACTION = 0.6;
+const _rateStats = new Map(); // repoId -> { n, sumKbps, maxKbps, under, firstAt, lastAt }
+
+/** One observation per repo currently transferring. `capsKbps` is { repoId: cap }. */
+export function sampleRepoRates(capsKbps = {}) {
+  const live = getRepoUploadKbps();
+  const now = Date.now();
+  for (const [id, kbps] of Object.entries(live)) {
+    if (!(kbps > 0)) continue;
+    let st = _rateStats.get(id);
+    if (!st) { st = { n: 0, sumKbps: 0, maxKbps: 0, under: 0, firstAt: now, lastAt: now }; _rateStats.set(id, st); }
+    st.n++; st.sumKbps += kbps; st.lastAt = now;
+    if (kbps > st.maxKbps) st.maxKbps = kbps;
+    const cap = Number(capsKbps[id] || 0);
+    if (cap > 0 && kbps < cap * UNDER_FRACTION) st.under++;
+  }
+  // Unbounded growth is the only way this becomes a problem, and a deleted repo never
+  // reappears -- so drop anything untouched for a day.
+  for (const [id, st] of _rateStats) if (now - st.lastAt > 86_400_000) _rateStats.delete(id);
+  return _rateStats.size;
+}
+
+/** { repoId: { samples, avgKbps, maxKbps, underPct, since } } — empty for a repo never seen serving. */
+export function getRepoRateStats() {
+  const out = {};
+  for (const [id, st] of _rateStats) {
+    out[id] = {
+      samples: st.n,
+      avgKbps: st.n ? Math.round(st.sumKbps / st.n) : 0,
+      maxKbps: st.maxKbps,
+      underPct: st.n ? Math.round((st.under / st.n) * 100) : 0,
+      since: st.firstAt,
+    };
+  }
+  return out;
+}
+
+/** Start again — after changing the caps, the numbers before the change are about a different
+ *  promise and averaging across it would hide exactly the change somebody made. */
+export function resetRepoRateStats() { _rateStats.clear(); }
 // A passthrough stream that meters bytes for a repo as they flow to the client.
 export function repoMeter(repoId) {
   return new Transform({

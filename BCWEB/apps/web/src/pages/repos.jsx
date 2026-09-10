@@ -1176,7 +1176,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
   return (
     <Modal open onClose={onClose} title={t('repos.addwhat.title', 'Add a repo')} icon={Plus} width="max-w-3xl"
       footer={<Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>}>
-      <p className="text-sm text-[var(--muted)] -mt-1 mb-5">{t('repos.addwhat.sub', 'Two different things, and it is worth knowing which one you want.')}</p>
+      <p className="text-sm text-[var(--muted)] -mt-1 mb-5">{t('repos.addwhat.sub2', 'Two different things, and it is worth knowing which one you want. Only the first needs a pool.')}</p>
       <div className="grid md:grid-cols-2 gap-5 items-stretch">
 
         {/* Hosted here */}
@@ -1215,7 +1215,19 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
         {/* Already hosted elsewhere */}
         <div className="rounded-xl border border-[var(--line)] p-5 flex flex-col">
           <div className="flex items-center gap-2 font-semibold text-[15px]"><Link2 size={17} className="text-[var(--muted)] shrink-0" /> {t('repos.addwhat.ext', 'I already have one elsewhere')}</div>
-          <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">{t('repos.addwhat.ext.d', 'It is already online somewhere — your own server, a host, another platform. You give the address; we keep the listing, not the files.')}</p>
+          <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">{t('repos.addwhat.ext.d2', 'Your own server, an nginx with a directory listing, a GitHub or GitLab repository — anything already online. You give the address; we keep the listing, not the files. No pool needed.')}</p>
+          {/* Naming the forges is the point: "give a URL" and "link my git repo" read as two
+              different features to somebody who has only ever seen the second one offered as a
+              button. Pasting the project page works — the API converts it to the raw manifest
+              the forge serves, because the project page itself is HTML and a client fetching it
+              would report the repo as broken. */}
+          <ul className="text-[12px] text-[var(--muted)] leading-relaxed mt-3 flex flex-col gap-1">
+            {[
+              t('repos.addwhat.ext.1', 'A repo.json on your own server or CDN'),
+              t('repos.addwhat.ext.2', 'A GitHub, GitLab or Codeberg project — paste the project page, we work out the raw file'),
+              t('repos.addwhat.ext.3', 'A plain file server with a directory index'),
+            ].map((x) => <li key={x} className="flex gap-1.5"><span className="text-[var(--faint)]">·</span><span>{x}</span></li>)}
+          </ul>
           <div className="flex-1" />
           <div className="text-[11.5px] text-[var(--faint)] leading-relaxed mt-4 flex items-start gap-1.5">
             <Info size={13} className="shrink-0 mt-[2px]" />

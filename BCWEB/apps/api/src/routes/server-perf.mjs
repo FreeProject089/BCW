@@ -2,7 +2,7 @@ import os from 'node:os';
 import { ALERT_THRESHOLDS, ALERT_THRESHOLD_KEYS, readThresholds, serverVerdict } from '../lib/thresholds.mjs';
 import { z } from 'zod';
 import { db, requireRole, botAuth } from '../lib/lib.mjs';
-import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps } from '../lib/monitor.mjs';
+import { checkSslExpiry, checkDependenciesTimed, cgroupMemory, sampleAndAlert, getDepsConfig, DEP_KEYS, DEP_LABELS, readNetBytes, getBandwidthByCat, getRepoUploadKbps, getRepoRateStats, sampleRepoRates } from '../lib/monitor.mjs';
 import { realDiskStats } from './hosting.mjs';
 
 
@@ -235,12 +235,28 @@ export default async function serverPerfRoutes(app) {
     const maxCpuShare = Number.isFinite(ceil['hosting.maxCpuShare']) && ceil['hosting.maxCpuShare'] > 0 ? ceil['hosting.maxCpuShare'] : 8;
     const maxUploadMbps = Number.isFinite(ceil['hosting.maxUploadMbps']) && ceil['hosting.maxUploadMbps'] > 0 ? ceil['hosting.maxUploadMbps'] : 1000;
     const liveUp = getRepoUploadKbps(); // { repoId: kbps } — live upload throughput now
+    // Take a sample on the way past. The dashboard is polled every 30s while somebody has it
+    // open, which is a perfectly good tick for this and costs one map read — and it means the
+    // measurement exists even on a deployment whose sweeper interval is long.
+    sampleRepoRates(Object.fromEntries(hostedRepos.map((r) => [r.id, r.uploadLimitKbps || 0])));
+    const rateStats = getRepoRateStats(); // { repoId: { samples, avgKbps, maxKbps, underPct } }
     const repoAllocations = {
       repos: hostedRepos.map((r) => ({
         id: r.id, name: r.name, owner: r.owner?.displayName, status: r.status,
         cpuShare: r.cpuShare, uploadMbps: +(r.uploadLimitKbps / 1024).toFixed(1),
         // Live upload actually served right now (Mbps), 0 when idle.
         liveUploadMbps: +(((liveUp[r.id] || 0) / 1024)).toFixed(2),
+        // What has actually been DELIVERED across every sample where this repo was serving,
+        // against its own cap. Null when it has never been observed transferring — which is
+        // "no data", and must not render as "0 Mbps delivered".
+        delivered: rateStats[r.id]
+          ? {
+            samples: rateStats[r.id].samples,
+            avgMbps: +((rateStats[r.id].avgKbps / 1024).toFixed(2)),
+            maxMbps: +((rateStats[r.id].maxKbps / 1024).toFixed(2)),
+            underPct: rateStats[r.id].underPct,
+          }
+          : null,
         storageUsedBytes: Number(r.storageUsedBytes), storageQuotaBytes: Number(r.storageQuotaBytes),
       })),
       totalCpuShare: +hostedRepos.reduce((a, r) => a + (r.cpuShare || 0), 0).toFixed(2),
