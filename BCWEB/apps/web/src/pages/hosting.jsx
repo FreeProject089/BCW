@@ -38,19 +38,27 @@ const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)
 function TermSelect({ months, setMonths, termDisc, t }) {
   const opts = [1, 3, 6, 12, 24];
   const disc = (m) => Math.round((termDisc[m] || 0) * 100);
-  const label = (m) => (m === 12 ? t('hosting.1yr', '1 yr') : m === 24 ? t('hosting.2yr', '2 yr') : `${m} ${t('hosting.mo', 'mo')}`);
+  // The months are the answer to "how long", so they lead. "1 yr" replacing "12 mo" made two
+  // of the five options measured in a different unit from the other three, which is exactly
+  // the row where somebody is comparing them.
+  const years = (m) => (m === 12 ? t('hosting.1yr', '1 yr') : m === 24 ? t('hosting.2yr', '2 yr') : '');
   return (
-    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')}
-      className="flex gap-1.5 overflow-x-auto no-scrollbar p-1 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]">
+    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')} className="grid grid-cols-2 sm:grid-cols-5 gap-2">
       {opts.map((m) => {
         const active = m === months;
         const d = disc(m);
         return (
           <button key={m} type="button" role="radio" aria-checked={active} onClick={() => setMonths(m)}
-            className={`flex-1 min-w-[74px] rounded-lg px-3 py-2 text-center transition-colors ${active ? 'bg-[var(--bg-solid)] border border-[var(--primary)]' : 'border border-transparent hover:bg-[var(--surface)]'}`}>
-            <div className={`text-[13.5px] font-semibold leading-none ${active ? '' : 'text-[var(--muted)]'}`}>{label(m)}</div>
-            <div className={`text-[11px] mt-1 leading-none ${d > 0 ? 'text-success font-bold' : 'text-[var(--faint)]'}`}>
-              {d > 0 ? `−${d}%` : t('hosting.termbar.full', 'full price')}
+            className={`rounded-xl border px-3 py-3 text-center transition-colors ${active
+              ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07]'
+              : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+            <div className={`text-[14px] font-bold leading-none ${active ? 'text-[var(--primary-2)]' : ''}`}>{m} {t('hosting.mo', 'mo')}</div>
+            {/* Nothing at all where there is no discount. "full price" under the one-month
+                option was a label invented to keep the slot occupied, and it read like a
+                warning about the option it sat under. */}
+            <div className="mt-1.5 h-[18px] flex items-center justify-center gap-1.5">
+              {years(m) && <span className="text-[11px] text-[var(--faint)]">{years(m)}</span>}
+              {d > 0 && <span className="text-[10.5px] font-bold text-success bg-success-bg border border-success-border rounded-full px-1.5 py-0.5 leading-none">−{d}%</span>}
             </div>
           </button>
         );
@@ -438,11 +446,14 @@ export function Hosting() {
           return (
           <div key={pl.id} role="button" tabIndex={0} aria-disabled={planDisabled} onClick={() => !planDisabled && addHosting({ planId: pl.id })}
             onKeyDown={(e) => { if (e.key === 'Enter' && !planDisabled) addHosting({ planId: pl.id }); }}
-            className={`card relative flex flex-col p-5 transition-colors shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--ring)]'} ${recommended && !planDisabled ? '!border-[var(--primary)]' : ''}`}>
-            {/* A word, where the ribbon was. It is one plan out of four being pointed at,
-                which does not need a rotated gradient banner to say. */}
-            <div className={`text-[10.5px] font-bold uppercase tracking-[0.12em] mb-2.5 ${recommended && !planDisabled ? 'text-[var(--primary-2)]' : 'text-transparent select-none'}`} aria-hidden={!recommended || planDisabled}>
-              {t('hosting.popular2', 'RECOMMENDED')}
+            className={`card relative flex flex-col p-5 transition-colors shrink-0 w-[78%] snap-center sm:w-auto sm:shrink ${planDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[var(--ring)]'} ${recommended && !planDisabled ? '!border-[var(--primary)] bg-[var(--primary)]/[0.04]' : ''}`}>
+            {/* A filled pill rather than a word floating in the padding — four cards with a
+                gap at the top of three of them read as three cards missing something. The
+                other three keep an invisible copy so the bodies stay on the same line. */}
+            <div className="mb-3">
+              <span className={`inline-block text-[10px] font-bold uppercase tracking-[0.1em] rounded-full px-2 py-1 leading-none ${recommended && !planDisabled ? 'bg-[var(--primary)] text-white' : 'invisible'}`} aria-hidden={!recommended || planDisabled}>
+                {t('hosting.popular2', 'RECOMMENDED')}
+              </span>
             </div>
             <div className="text-[13px] text-[var(--muted)] truncate" title={pl.name}>{pl.name}</div>
             {(() => { const bytes = (pl.storageGB || 0) * (1024 ** 3); const u = bestByteUnit(bytes); return (
@@ -457,7 +468,10 @@ export function Hosting() {
               const base = pl.priceMonthlyCents / 100;
               const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
               return (
-                <div className="mt-5 pt-5 border-t border-[var(--line)]">
+                /* Pinned to the bottom: plan names wrap differently, and without this the
+                    four prices sat at four different heights in a row whose entire job is
+                    comparing them. */
+                <div className="mt-auto pt-5 border-t border-[var(--line)]">
                   <div className="flex items-end gap-1.5 flex-wrap">
                     {save > 0 && <span className="text-[13px] text-[var(--faint)] line-through mb-0.5">${base.toFixed(2)}</span>}
                     <span className="text-2xl font-bold leading-none">${eff.toFixed(2)}</span>
@@ -853,8 +867,8 @@ function TermBar({ months, setMonths }) {
   return (
     <Card className="p-4 sm:p-5 mb-7">
       <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
-        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t2', 'Paid up front for')}</div>
-        <div className="text-[12.5px] text-[var(--muted)]">{t('hosting.termbar.s2', 'Sets every price below. Nothing renews on its own.')}</div>
+        <div className="font-semibold text-[14.5px]">{t('hosting.termbar.t3', 'How long you pay for, up front')}</div>
+        <div className="text-[12.5px] text-[var(--muted)]">{t('hosting.termbar.s3', 'Every price below follows this. Nothing renews on its own.')}</div>
       </div>
       <TermSelect months={months} setMonths={setMonths} termDisc={TERM_DISC} t={t} />
     </Card>
@@ -941,24 +955,21 @@ function PoolDiagram() {
   //
   // color-mix toward the surface rather than toward transparent, so each stays opaque and
   // keeps its contrast on either theme's ground.
-  // Named, with sizes that add up. "a repo / another / a catalogue" described the SHAPE of
-  // a pool without ever showing one, which is the difference between a diagram and an
-  // example — and the thing being explained (you decide the split) only becomes obvious once
-  // the parts have different sizes for a reason.
+  // Generic parts with sizes that add up. They were briefly named after two real games,
+  // which turned a picture of a pool into an advert for those games — and made it read as a
+  // preset rather than as "whatever you put in it". What has to differ between the parts is
+  // their SIZE, because that is the thing being explained: you decide the split.
   const TOTAL = 25;
   const seg = [
-    { gb: 8, label: t('hosting.diag.e1', 'Skyrim mods'), bg: 'var(--primary)' },
-    { gb: 5, label: t('hosting.diag.e2', 'Fallout mods'), bg: 'color-mix(in srgb, var(--primary) 60%, var(--surface-2))' },
-    { gb: 4, label: t('hosting.diag.e3', 'My catalogue'), bg: 'color-mix(in srgb, var(--primary-2) 45%, var(--surface-2))' },
+    { gb: 8, label: t('hosting.diag.s1', 'A repo'), bg: 'var(--primary)' },
+    { gb: 5, label: t('hosting.diag.s2', 'Another repo'), bg: 'color-mix(in srgb, var(--primary) 60%, var(--surface-2))' },
+    { gb: 4, label: t('hosting.diag.s3', 'A catalogue'), bg: 'color-mix(in srgb, var(--primary-2) 45%, var(--surface-2))' },
   ].map((x) => ({ ...x, w: `${(x.gb / TOTAL) * 100}%` }));
   const freeGB = TOTAL - seg.reduce((a, x) => a + x.gb, 0);
   return (
     <div className="relative">
       <Card className="p-6 sm:p-7">
-        <div className="flex items-baseline justify-between mb-3">
-          <span className="text-[13px] text-[var(--muted)]">{t('hosting.diag.ex', 'For example, a {n} GB pool').replace('{n}', TOTAL)}</span>
-          <span className="text-[13px] font-semibold tabular-nums">{t('hosting.diag.left', '{n} GB left').replace('{n}', freeGB)}</span>
-        </div>
+        <div className="text-[12.5px] text-[var(--muted)] mb-2.5">{t('hosting.diag.ex', 'For example, a {n} GB pool').replace('{n}', TOTAL)}</div>
         <div className="h-12 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden flex">
           {seg.map((sg) => (
             /* A 2px gap between fills, not a border: a border would eat into the width and
@@ -966,16 +977,22 @@ function PoolDiagram() {
             <div key={sg.label} className="h-full" style={{ width: sg.w, background: sg.bg, marginInlineEnd: '2px' }} />
           ))}
         </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3">
+        {/* A breakdown, not a wrapped legend. Four rows with the sizes right-aligned and
+            tabular reads as the thing itself — what is in the pool and how much is left —
+            where a comma-separated legend read as a key to a chart. */}
+        <div className="mt-4 flex flex-col gap-2">
           {seg.map((sg) => (
-            <span key={sg.label} className="flex items-center gap-1.5 text-[12px] text-[var(--muted)]">
-              <i className="inline-block w-2.5 h-2.5 rounded-[3px]" style={{ background: sg.bg }} aria-hidden />{sg.label} <span className="tabular-nums text-[var(--faint)]">{sg.gb} {t('hosting.gbshort', 'GB')}</span>
-            </span>
+            <div key={sg.label} className="flex items-center gap-2.5 text-[13px]">
+              <i className="inline-block w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: sg.bg }} aria-hidden />
+              <span className="flex-1 min-w-0 truncate text-[var(--muted)]">{sg.label}</span>
+              <span className="tabular-nums font-medium">{sg.gb} {t('hosting.gbshort', 'GB')}</span>
+            </div>
           ))}
-          <span className="flex items-center gap-1.5 text-[12px] text-[var(--faint)]">
-            <i className="inline-block w-2.5 h-2.5 rounded-[3px] border border-[var(--line)] bg-[var(--surface-2)]" aria-hidden />
-            {t('hosting.diag.spare', 'unused')} <span className="tabular-nums">{freeGB} {t('hosting.gbshort', 'GB')}</span>
-          </span>
+          <div className="flex items-center gap-2.5 text-[13px] pt-2 mt-0.5 border-t border-[var(--line)]">
+            <i className="inline-block w-2.5 h-2.5 rounded-[3px] border border-[var(--line-strong)] shrink-0" aria-hidden />
+            <span className="flex-1 min-w-0 truncate text-[var(--muted)]">{t('hosting.diag.spare', 'unused')}</span>
+            <span className="tabular-nums font-medium">{freeGB} {t('hosting.gbshort', 'GB')}</span>
+          </div>
         </div>
         <p className="text-[12.5px] text-[var(--muted)] leading-relaxed mt-4">
           {t('hosting.diag.note3', 'One space. What goes in it, and how it is split, is yours to change at any time.')}
