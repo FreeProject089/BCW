@@ -1,0 +1,11 @@
+-- Subscription had no createdAt.
+--
+-- Its absence is recorded as a trap in this project's notes, and it is what the included-boost
+-- grant needed: a period has to be anchored to when the subscription began, or somebody who
+-- bought on the 28th gets a second month's worth of boosts three days later when the calendar
+-- turns over.
+--
+-- Existing rows take the default, so their first boost period starts at migration time. That is
+-- harmless because no plan includes boosts until an admin sets a number on one — the columns
+-- that decide it default to zero.
+ALTER TABLE "Subscription" ADD COLUMN "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;

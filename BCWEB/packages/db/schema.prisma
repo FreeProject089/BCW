@@ -102,6 +102,7 @@ model User {
   stripeCustomerId String?        @unique
   apiKeys          ApiKey[]
   customDomains     CustomDomain[]
+  boostCredits      BoostCredit[]
   polls            Poll[]         @relation("PollAuthor")
   oauthClients     OAuthClient[]  @relation("OAuthClientOwner")
   pollVotes        PollVote[]     @relation("PollVoter")
@@ -1051,6 +1052,13 @@ model HostingPlan {
   subscriptions        Subscription[]
 
   @@index([pendingPriceAt])
+  /// Boosts that come WITH the plan: `boostsPerPeriod` credits granted every
+  /// `boostPeriodMonths` months, each worth `boostDays` days of being featured. Zero (the
+  /// default) means the plan includes none, which is what every existing plan had before
+  /// this column existed -- so the default has to be the no-op.
+  boostsPerPeriod   Int      @default(0)
+  boostPeriodMonths Int      @default(1)
+  boostDays         Int      @default(7)
 }
 
 model ServerRepo {
@@ -1257,6 +1265,42 @@ model ChangeEvent {
   @@index([repoId, createdAt])
   @@index([catalogId, createdAt])
   @@index([groupId, createdAt])
+}
+
+/// One included boost, granted by a plan and not yet spent.
+///
+/// A ledger rather than a counter on the subscription, because "you have 2 boosts" answers
+/// nothing when somebody asks where they went: each row says which period granted it, when it
+/// expires, and what it was spent on. A counter would have to be adjusted by every writer and
+/// would drift the first time one of them failed halfway.
+///
+/// Spendable on a REPO or a CATALOGUE. Both already sort their public listing by
+/// featuredUntil, so a boost on either has always worked -- what did not exist was any way to
+/// apply one to a catalogue.
+model BoostCredit {
+  id             String        @id @default(cuid())
+  owner          User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId        String
+  /// Which subscription granted it. Null for a credit an admin handed out by hand.
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  subscriptionId String?
+  planId         String?
+  days           Int           @default(7)
+  /// The period this was granted FOR, and its index within that period. Unique together with
+  /// the subscription, which is what makes granting idempotent: a sweeper that runs twice, or
+  /// two containers running it at once, cannot mint the same credit twice.
+  periodStart    DateTime
+  seq            Int           @default(0)
+  /// Use it or lose it, at the next grant. A credit that never expires turns a monthly perk
+  /// into a savings account, and a year of them arriving at once is not what was sold.
+  expiresAt      DateTime?
+  usedAt         DateTime?
+  usedRepoId     String?
+  usedCatalogId  String?
+  createdAt      DateTime      @default(now())
+
+  @@unique([subscriptionId, periodStart, seq])
+  @@index([ownerId, usedAt])
 }
 
 // A user starring a Server-Repo on the public list — purely social (visibility
@@ -1886,8 +1930,13 @@ model Subscription {
   status           String        @default("active")
   currentPeriodEnd DateTime?
   warnedAt         DateTime? // set when the 72h-before-expiry warning was sent (once per term)
+  /// When this subscription began. Absent until now, which is why the included-boost
+  /// grant had nothing to anchor a period to -- and anchoring to the calendar would hand
+  /// somebody who bought on the 28th a second month of boosts three days later.
+  createdAt        DateTime      @default(now())
 
   @@index([hostingGroupId])
+  boostCredits      BoostCredit[]
 }
 
 // Recurring "featured" boost — a Stripe subscription that re-extends a repo's

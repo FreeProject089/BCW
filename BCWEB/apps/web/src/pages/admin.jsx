@@ -8031,7 +8031,7 @@ function AdminHostingPlans() {
 
   // priceMonthlyCents starts EMPTY, not 0. Empty means "use the Hosting settings rate";
   // zero would mean "free", and a new plan defaulting to free is the wrong accident.
-  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true };
+  const blank = { name: '', storageGB: 5, uploadLimitKbps: 1024, cpuShare: 0.25, priceMonthlyCents: '', active: true, boostsPerPeriod: 0, boostPeriodMonths: 1, boostDays: 7 };
   // Default notice period. 30 days is what the Payments policy describes, and a default
   // is what makes "give notice" the easy path rather than the conscientious one.
   const in30Days = () => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().slice(0, 10); };
@@ -8076,6 +8076,9 @@ function AdminHostingPlans() {
     const body = {
       name: draft.name, storageGB: Number(draft.storageGB), uploadLimitKbps: Number(draft.uploadLimitKbps),
       cpuShare: Number(draft.cpuShare), active: !!draft.active,
+      boostsPerPeriod: Number(draft.boostsPerPeriod) || 0,
+      boostPeriodMonths: Math.max(1, Number(draft.boostPeriodMonths) || 1),
+      boostDays: Math.max(1, Number(draft.boostDays) || 7),
       priceMonthlyCents: draft.priceMonthlyCents === '' || draft.priceMonthlyCents == null
         ? null : Number(draft.priceMonthlyCents),
     };
@@ -8188,6 +8191,21 @@ function AdminHostingPlans() {
             <Field label={t('adm.plans.f.storage', 'Storage')}><ByteSize value={(Number(draft.storageGB) || 0) * (1024 ** 3)} onChange={(bytes) => setDraft({ ...draft, storageGB: bytes / (1024 ** 3) })} /></Field>
             <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
             <Field label={t('adm.plans.f.cpu', 'CPU share')}><Input type="number" step="0.05" min="0" value={draft.cpuShare} onChange={(e) => setDraft({ ...draft, cpuShare: e.target.value })} /></Field>
+            {/* Boosts INCLUDED with the plan. Zero is the default and the no-op: every plan
+                that existed before this column did included none, so a save that leaves these
+                alone must not start granting something nobody sold. */}
+            <Field label={t('adm.plans.f.boosts', 'Boosts included')} hint={Number(draft.boostsPerPeriod) > 0
+              ? t('adm.plans.f.boosts.h', '{n} every {m} month(s), {d} days each — usable on a repo or a catalogue.')
+                .replace('{n}', Number(draft.boostsPerPeriod)).replace('{m}', Number(draft.boostPeriodMonths) || 1).replace('{d}', Number(draft.boostDays) || 7)
+              : t('adm.plans.f.boosts.h0', 'None. Set a number to include boosts with this plan.')}>
+              <Input type="number" min="0" max="50" value={draft.boostsPerPeriod} onChange={(e) => setDraft({ ...draft, boostsPerPeriod: e.target.value })} />
+            </Field>
+            <Field label={t('adm.plans.f.boostevery', '…every N months')}>
+              <Input type="number" min="1" max="24" value={draft.boostPeriodMonths} onChange={(e) => setDraft({ ...draft, boostPeriodMonths: e.target.value })} />
+            </Field>
+            <Field label={t('adm.plans.f.boostdays', '…each lasting N days')}>
+              <Input type="number" min="1" max="365" value={draft.boostDays} onChange={(e) => setDraft({ ...draft, boostDays: e.target.value })} />
+            </Field>
             {/* Cents, not dollars: money in floats is how a $9.99 plan quietly becomes
                 $9.98999. The hint shows what the buyer will read. */}
             <Field
@@ -8282,6 +8300,7 @@ function AdminHostingPlans() {
                 </div>
                 <div className="text-[11px] text-[var(--faint)] font-mono">
                   {formatBytes((pl.storageGB || 0) * (1024 ** 3))} · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
+                  {pl.boostsPerPeriod > 0 && ` · ${pl.boostsPerPeriod}×${pl.boostDays}${t('adm.plans.boostsuffix', 'd boost')}/${pl.boostPeriodMonths}${t('adm.plans.mo', 'mo')}`}
                 </div>
                 {/* A change that has been PROMISED to customers is not an editor detail —
                     it is a commitment with a date on it, so it belongs on the row. */}

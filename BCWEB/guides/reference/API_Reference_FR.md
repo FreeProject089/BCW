@@ -827,4 +827,38 @@ autre produit, avec une facture de stockage. Un changement de fichier enregistre
 empreinte, avant et après : de quoi retrouver quand le contenu a bougé et le comparer à une copie
 qu'on a gardée.
 
+## 42. Boosts inclus (`boosts.mjs`, `lib/boostcredit.mjs`)
+Une formule d'hébergement peut inclure N boosts tous les M mois, valant chacun D jours de mise
+en avant. Ils sont accordés sous forme de LIGNES dans `BoostCredit`, pas comptés sur
+l'abonnement : « tu en as 2 » ne répond à rien quand on demande où sont passés les autres, et un
+compteur doit être ajusté par chaque écrivain, donc il dérive dès que l'un d'eux échoue à
+mi-chemin.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/me/boosts` | utilisateur | Le registre, combien sont utilisables, et tous les dépôts ET catalogues sur lesquels en dépenser un. |
+| POST | `/me/boosts/spend` | utilisateur | `{ kind: 'repo' \| 'catalog', id }`. |
+| POST | `/admin/hosting/boosts/grant` | manage_hosting | En offrir un — support, excuse, cadeau. |
+
+Champs de formule côté admin : `boostsPerPeriod` (0 = aucun, et c'est le défaut parce que toutes
+les formules antérieures à cette colonne n'en incluaient aucun), `boostPeriodMonths`,
+`boostDays`.
+
+**L'octroi** tourne dans le sweeper et est idempotent par un index unique
+`(subscriptionId, periodStart, seq)`, pas par une vérification suivie d'une écriture — deux
+conteneurs lançant le sweeper au même instant passeraient tous les deux la vérification. La
+période est ancrée au début de l'abonnement, pas au calendrier : sinon, qui achète le 28
+recevrait un deuxième mois de boosts trois jours plus tard. `Subscription.createdAt` a été
+ajouté pour ça ; il n'existait pas.
+
+**Dépenser cumule.** Un boost appliqué à quelque chose de déjà mis en avant prolonge à partir de
+la fin en cours, pas de maintenant — mesurer depuis maintenant détruirait silencieusement le
+reste, pour quelqu'un qui les empile justement pour qu'il n'y ait pas de trou. Le crédit est
+réclamé par un `updateMany` gardé (`usedAt: null` dans le WHERE), donc deux clics ne peuvent pas
+dépenser deux fois le même.
+
+**Les catalogues aussi.** Les listes de dépôts et de catalogues trient depuis toujours par
+`featuredUntil` : un catalogue mis en avant remontait déjà, il n'existait simplement aucun moyen
+d'en mettre un.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

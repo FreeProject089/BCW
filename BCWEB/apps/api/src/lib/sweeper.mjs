@@ -32,6 +32,7 @@ import { sweepReports } from '../routes/reports.mjs';
 import { sweepStaleMyoRequests } from '../routes/myo.mjs';
 import { memberCapacity , memberPolicy, evictForRoom } from './discord-storage.mjs';
 import { recomputePoolBytes, stripe, capacityStatus } from '../routes/hosting.mjs';
+import { grantIncludedBoosts } from '../routes/boosts.mjs';
 import { sweepAccountClosures } from '../routes/closure.mjs';
 import { FILES_ROOT, FILES_BACKUP_ROOT, DB_BACKUP_ROOT, snapshotTree, repoSizeBytes, gcRepo } from './gitbackup.mjs';
 import { createSnapshot, pruneSnapshots } from './snapshots.mjs';
@@ -152,6 +153,52 @@ async function sweepItems(p, log) {
 // REJECTED item row itself stays — only the object bytes go, plus the payloadKey/Size
 // are cleared so it no longer counts anywhere. A resubmit within the grace clears
 // payloadPurgeAt (see /catalog/:id/update), so anything reaching here is truly stale.
+/**
+ * Trim the change history.
+ *
+ * It has to be trimmed, because a history is the one table that only ever grows, and whose rows
+ * arrive fastest exactly when somebody is working hardest -- a bulk upload writes one per file.
+ *
+ * Worth being precise about WHERE that space is, because the natural assumption is the other
+ * one: these are database rows, not files. They do not come out of the pool the owner bought
+ * and they are not counted against a repo's storage quota. The pool holds the content; the
+ * history of the pool lives with the rest of the platform's own data. So what follows is a cap
+ * on OUR disk, not a charge on theirs.
+ *
+ * Two limits, because either alone fails. An age limit alone lets one busy afternoon keep forty
+ * thousand rows for a year; a count limit alone keeps a dead repo's last five hundred rows
+ * forever. Age first, then the per-subject count.
+ */
+async function sweepChangeHistory(p, log) {
+  const KEEP_DAYS = 365;
+  const KEEP_PER_SUBJECT = 500;
+  const cutoff = new Date(Date.now() - KEEP_DAYS * 86400_000);
+  let removed = 0;
+  try {
+    removed += (await p.changeEvent.deleteMany({ where: { createdAt: { lt: cutoff } } })).count;
+    // Grouped rather than one query per repo: a platform with thousands of them would
+    // otherwise make thousands of round trips every tick to discover that almost none are over
+    // the limit.
+    const busy = await p.changeEvent.groupBy({
+      by: ['repoId'],
+      where: { repoId: { not: null } },
+      _count: { _all: true },
+      having: { repoId: { _count: { gt: KEEP_PER_SUBJECT } } },
+      take: 200,
+    });
+    for (const row of busy) {
+      const keep = await p.changeEvent.findMany({
+        where: { repoId: row.repoId }, orderBy: { createdAt: 'desc' }, take: KEEP_PER_SUBJECT, select: { id: true },
+      });
+      removed += (await p.changeEvent.deleteMany({
+        where: { repoId: row.repoId, id: { notIn: keep.map((k) => k.id) } },
+      })).count;
+    }
+  } catch (e) { log?.warn?.({ e: String(e) }, 'change history sweep failed'); return 0; }
+  if (removed) log?.info?.({ removed }, 'change history trimmed');
+  return removed;
+}
+
 /**
  * Give back pool keys held by a checkout that never finished.
  *
@@ -698,6 +745,11 @@ export function startSweeper(app) {
         await sweepDiscordActivityCap(p, app.log), await sweepDailyFileBackup(p, app.log),
         await sweepEndedSuspensions(p, app.log),
       await sweepStalePoolHolds(p, app.log),
+      // Boosts a plan includes. Idempotent by a unique index rather than by a check, so a
+      // tick that overlaps the previous one cannot mint the same credit twice.
+      await grantIncludedBoosts(p).then((n) => { if (n) app.log.info({ n }, 'included boosts granted'); })
+        .catch((e) => app.log.warn({ e: String(e) }, 'included boost grant failed')),
+      await sweepChangeHistory(p, app.log),
         await runWebhookQueue(p, app.log),
         await sweepAnalyticsRetention(p, app.log),
       ];

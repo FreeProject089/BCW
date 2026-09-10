@@ -1023,10 +1023,10 @@ function HostingCompare({ freePlan }) {
         // Opening on a tick, because it is true. A column of four crosses over "hosting it
         // yourself" is not a comparison, it is a strawman — and the reader most likely to
         // be looking at it is the one who already does it and knows better.
-        [true, t('hosting.cmp.none.0', 'Total control, and nothing more to pay if the machine is already yours')],
-        [false, t('hosting.cmp.none.1b', 'The address moves when your server does, and what shared it breaks')],
-        [false, t('hosting.cmp.none.5', 'You stay outside: no public page, no search, no catalogue picking you up')],
-        [false, t('hosting.cmp.none.3', 'Nothing tells you when it went down')],
+        [true, t('hosting.cmp.none.0b', 'It is your machine: your rules, your uptime, no bill from us')],
+        [true, t('hosting.cmp.none.6', 'No size limit other than your own disk')],
+        [false, t('hosting.cmp.none.7', 'You are on your own for the address, the certificate, the backups and the abuse')],
+        [false, t('hosting.cmp.none.5', 'And nobody finds you here: no page, no search, no catalogue picks you up')],
       ],
     },
     {
@@ -1088,18 +1088,18 @@ function HostingFaq() {
   const [open, setOpen] = useState(null);
   const qs = [
     [t('hosting.faq.q1', 'What happens if I stop paying?'),
-     t('hosting.faq.a1', 'Nothing is deleted the moment a term ends. Your content goes read-only for a grace window: it stays where it is, you can still download a copy or move it to another account, and renewing puts everything straight back. Only after that window does it actually go.')],
+     t('hosting.faq.a1b', 'Nothing is deleted when a term ends. The pool goes read-only: the repos stay online and downloadable, the catalogues stop being listed, and you can still fetch a copy of everything or hand it to another account. That lasts 72 hours by default, and only then does deletion get scheduled — with its own 72-hour window on top, which you can still cancel. Renewing at any point in either window puts it all straight back, unchanged.')],
     [t('hosting.faq.q2b', 'Can I take a bigger one later? A smaller one?'),
-     t('hosting.faq.a2', 'Yes, and the free allowance keeps applying — you only ever pay for what sits above it. The repo keeps its address, so nothing you shared stops working.')],
+     t('hosting.faq.a2b', 'Both, at any time, and it takes effect immediately — a bigger pool is charged pro rata for the rest of the term, a smaller one credits the difference. The floor is what the pool already holds: you cannot shrink below the files that are in it, so delete first if you mean to go under. Nothing moves address, so no link you have shared stops working.')],
     [t('hosting.faq.q3b', 'What is the difference between a repo and a catalogue?'),
      t('hosting.faq.a3', 'A repo is the FILES themselves, at a fixed address something can sync from. A catalogue is a LIST people browse and install from. Publishing your own work usually wants a repo; gathering other people’s usually wants a catalogue. A pool holds both, so you do not have to decide now.')],
     [t('hosting.faq.q4b', 'Can I put several repos in one pool?'),
-     t('hosting.faq.a4', 'That is the whole point of it. You buy room, not a slot — put one big repo in it or a dozen small ones, and change your mind afterwards.')],
+     t('hosting.faq.a4b', 'Yes, and catalogues alongside them — they all draw from the same gigabytes, and there is no per-item limit. Each one gets its own size within the pool, which you move around whenever you like without re-buying anything. The only ceiling is the pool total.')],
     [t('hosting.faq.q5b', 'Can you host my site, or my Discord bot?'),
-     t('hosting.faq.a5', 'Not today — this sells storage, not somewhere to run code. Ask anyway using the last card on this page: if enough people want it, that is how we will find out.')],
+     t('hosting.faq.a5b', 'No. What is sold here is storage and delivery: we serve files over HTTPS and we do not run your code — no process, no container, no database. Ask anyway with the last card on this page, because that is how we will find out whether enough people want it to be worth building.')],
     // The question this page gets most often after the price one, now that it has an answer.
     [t('hosting.faq.q7', 'Can I use my own domain?'),
-     t('hosting.faq.a7', 'Yes, on a paid pool: point a subdomain at us, add it to the repo or catalogue, and we serve it there once the DNS checks out. The free plan keeps its bettercommunity address.')],
+     t('hosting.faq.a7b', 'Yes, with a paid pool, one hostname per repo or catalogue. You point a subdomain at us with a CNAME and add one TXT record so we can check the name is yours; from then on it is served over HTTPS on your name, with the certificate obtained on the first visit. The free plan keeps its bettercommunity address.')],
   ];
   return (
     <>

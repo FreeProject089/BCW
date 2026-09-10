@@ -13,6 +13,7 @@ import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Drop
 import { startOwnershipTransfer } from './pages.jsx';
 import { useUploads } from './uploads.jsx';
 import { useI18n } from '../i18n.jsx';
+import BoostCredits from '../ui/boost-credits.jsx';
 import FeedLink, { FeedMenu } from '../ui/feed-link.jsx';
 import { useAuth } from './auth.jsx';
 
@@ -783,6 +784,9 @@ export function MyRepos() {
         <h2 className="font-semibold flex items-center gap-2"><Server size={16} /> {t('repos.mine', 'My Server Repos')}</h2>
         <Button size="sm" variant="primary" onClick={() => setAddWhat(true)}><Plus size={15} /> {t('repos.add', 'Add repo')}</Button>
       </div>
+      {/* Renders nothing at all when no plan includes boosts and none was ever granted — an
+          advert for a feature this account does not have has no business in a dashboard. */}
+      <BoostCredits />
       {(poolsF.data?.groups || []).length > 0 && (
         <PoolsPanel groups={poolsF.data.groups} onAddRepo={setPoolAdd} t={t} reload={() => { poolsF.reload?.(); reload(); }} toast={toast} dialog={dialog} />
       )}

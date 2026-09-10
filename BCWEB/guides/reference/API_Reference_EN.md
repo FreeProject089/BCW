@@ -806,4 +806,35 @@ product with a storage bill attached. A file change records its size and checksu
 after, which is what lets somebody find when content moved and compare it against a copy they
 kept.
 
+## 42. Included boosts (`boosts.mjs`, `lib/boostcredit.mjs`)
+A hosting plan can come with N boosts every M months, each worth D days of being featured. They
+are granted as ROWS in `BoostCredit`, not counted on the subscription: "you have 2" answers
+nothing when somebody asks where the others went, and a counter has to be adjusted by every
+writer, so it drifts the first time one of them fails halfway.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/me/boosts` | user | The ledger, how many are usable, and every repo AND catalogue one can be spent on. |
+| POST | `/me/boosts/spend` | user | `{ kind: 'repo' \| 'catalog', id }`. |
+| POST | `/admin/hosting/boosts/grant` | manage_hosting | Hand one out — support, an apology, a giveaway. |
+
+Admin plan fields: `boostsPerPeriod` (0 = none, and that is the default because every plan that
+existed before this column included none), `boostPeriodMonths`, `boostDays`.
+
+**Granting** runs on the sweeper and is idempotent through a unique index
+`(subscriptionId, periodStart, seq)`, not a check-then-write — two containers running the
+sweeper at the same instant would both pass a check. The period is anchored to the
+subscription's own start, not the calendar: somebody who bought on the 28th would otherwise
+receive a second month's worth three days later. `Subscription.createdAt` was added for this;
+it did not exist.
+
+**Spending stacks.** A boost applied to something already featured extends from the current end
+date, not from now — measuring from now would silently destroy the remainder for somebody who
+is stacking them precisely so there is no gap. The credit is claimed with a guarded
+`updateMany` (`usedAt: null` in the WHERE), so two clicks cannot spend one credit twice.
+
+**Catalogues too.** Both the repo and the catalogue listings have always sorted by
+`featuredUntil`, so a featured catalogue already surfaced; what did not exist was any way to
+make one.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*

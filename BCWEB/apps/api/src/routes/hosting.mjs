@@ -334,6 +334,12 @@ export default async function hostingRoutes(app) {
     // that silently stops matching them the next time those rates move.
     priceMonthlyCents: z.number().int().min(0).max(10_000_000).nullable(),
     active: z.boolean(),
+    // Boosts included with the plan. Defaulted rather than optional so a save that omits them
+    // writes the no-op instead of leaving whatever was there -- the same trap mergeSettings
+    // was extracted for, one table over.
+    boostsPerPeriod: z.number().int().min(0).max(50).default(0),
+    boostPeriodMonths: z.number().int().min(1).max(24).default(1),
+    boostDays: z.number().int().min(1).max(365).default(7),
   };
 
   // The price Hosting settings computes for a plan's own specs. Same function the public
