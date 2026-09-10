@@ -5,6 +5,7 @@ import { Transform } from 'node:stream';
 import { createHash } from 'node:crypto';
 import archiver from 'archiver';
 import { db, requireRole, optionalAuth, slugify, notify, repoLog, isValidRepoManifest, getGlobalAccessPolicy, getUserAccessPolicy, matchAccountList, safeEqual } from '../lib/lib.mjs';
+import { recordChange } from '../lib/changelog.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
@@ -247,6 +248,10 @@ export async function presignRepoFile(p, repo, { path: rawPath, size, contentTyp
 
 export async function registerRepoFile(p, repo, { path: rawPath, key, size, contentType = 'application/octet-stream', sha256: fileSha }, actor) {
   const path = norm(rawPath);
+  // Read BEFORE the upsert: this is the only moment the previous size and checksum still
+  // exist, and they are what turn a history entry from "somebody touched a file" into
+  // something you can compare a local copy against.
+  const prev = repo.files?.find((f) => f.path === path) || null;
   await p.repoFile.upsert({
     where: { serverRepoId_path: { serverRepoId: repo.id, path } },
     create: { serverRepoId: repo.id, path, key, size: BigInt(size), contentType, sha256: fileSha || null },
@@ -281,6 +286,17 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
   }
   await p.serverRepo.update({ where: { id: repo.id }, data });
   if (actor) await repoLog(p, repo.id, actor, 'upload', path);
+  // Size and checksum, which is what makes this useful without storing a second copy of
+  // the file: it says when the content moved, and against what.
+  if (actor) {
+    await recordChange(p, { repoId: repo.id }, {
+      actorLabel: actor, action: prev ? 'file.update' : 'file.add', summary: path,
+      // `fileSha`, not `sha256` — in this module `sha256` is the hashing FUNCTION, and
+      // recording it would have written "function sha256..." into every row.
+      changes: [{ field: 'size', from: prev ? String(prev.size) : null, to: String(size) },
+        { field: 'sha256', from: prev?.sha256 || null, to: fileSha || null }],
+    });
+  }
   return { ok: true, verified: !!data.verified };
 }
 
@@ -300,6 +316,7 @@ export async function removeRepoFile(p, repo, fid, actor) {
   if (removed?.path === 'repo.json') { data.verified = false; data.repoJson = null; data.sha = null; }
   await p.serverRepo.update({ where: { id: repo.id }, data });
   if (actor) await repoLog(p, repo.id, actor, 'delete', removed?.path || fid);
+  if (actor) await recordChange(p, { repoId: repo.id }, { actorLabel: actor, action: 'file.remove', summary: removed?.path || fid });
   return { ok: true };
 }
 
@@ -317,12 +334,14 @@ export async function publishRepo(p, repo, actor) {
   await p.serverRepo.update({ where: { id: repo.id }, data: { published: true, status: 'ONLINE', hostPath } });
   await notify(p, repo.ownerId, 'repo_published', `Your hosted repo "${repo.name}" is online at /hosting/${hostPath}/repo.json`);
   if (actor) await repoLog(p, repo.id, actor, 'publish', hostPath);
+  if (actor) await recordChange(p, { repoId: repo.id }, { actorLabel: actor, action: 'publish', summary: hostPath });
   return { ok: true, published: true, status: 'ONLINE', hostPath, url: `/hosting/${hostPath}/repo.json` };
 }
 
 export async function unpublishRepo(p, repo, actor) {
   await p.serverRepo.update({ where: { id: repo.id }, data: { published: false, status: 'OFFLINE' } });
   if (actor) await repoLog(p, repo.id, actor, 'unpublish', '');
+  if (actor) await recordChange(p, { repoId: repo.id }, { actorLabel: actor, action: 'unpublish', summary: '' });
   return { ok: true, published: false, status: 'OFFLINE' };
 }
 

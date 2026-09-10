@@ -795,4 +795,36 @@ client qui existe aujourd'hui et ne coûte rien à servir, et un dépôt PRIVÉ 
 ses URLs brutes exigent un jeton, et détenir le jeton de forge de quelqu'un serait la même erreur
 que détenir sa clé SSH.
 
+## 41. Historique (`lib/changelog.mjs`, `ChangeEvent`)
+Ce qui a changé sur un dépôt, un catalogue ou un pool — avec le diff, pas seulement le verbe. Le
+journal d'audit par dépôt qui existait avant avait la faiblesse de tous les journaux d'audit :
+un `detail` en texte libre, si bien que la ligne la plus fréquente de la plateforme disait
+« sandbox settings updated ». Vrai, inutile, et sans réponse.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/repos/:id/dashboard/history` | tableau de bord | Du plus récent au plus ancien. `?limit=` (max 200) et `?before=<ISO>` pour paginer. |
+
+Une ligne porte `action` (liste fermée : `settings`, `access`, `publish`, `unpublish`,
+`file.add`, `file.update`, `file.remove`, `domain`, …), un `summary` d'une ligne, et `changes` :
+`[{ field, from, to }]`.
+
+**Ce qu'un diff ne doit jamais contenir**, décidé à un seul endroit parce qu'un diff écrit à
+neuf endroits, ce sont neuf occasions de fuiter : tout champ dont le dernier segment ressemble à
+un secret (password, hash, token, key, clé de partage) est écarté ; un tableau devient `[3]` et
+un objet `{2}` — jamais leur contenu, parce qu'une liste de bannissement, ce sont des adresses IP
+et qu'un historique est lisible par tous les collaborateurs ; et la descente s'arrête après un
+niveau d'imbrication, car aucune liste noire ne suit un blob JSON qui grossit.
+
+**Pas de prose dans les chaînes stockées.** `summaryFor` renvoie le nom du champ pour un seul
+changement et rien du tout pour plusieurs, et les comptes sont en notation crochets plutôt que
+« 3 items » — ces chaînes sont stockées telles quelles et rendues telles quelles dans une page
+qui peut être en français, donc une phrase anglaise fabriquée sur le serveur passerait tout droit
+à côté de l'i18n.
+
+**Ce n'est pas du versionnage de contenu.** Garder chaque version de chaque fichier envoyé est un
+autre produit, avec une facture de stockage. Un changement de fichier enregistre sa taille et son
+empreinte, avant et après : de quoi retrouver quand le contenu a bougé et le comparer à une copie
+qu'on a gardée.
+
 *Généré depuis `apps/api/src/routes/` (dernière mise à jour 2026-08-13 — sections 18-33 ajoutées : tous les modules de routes qui n'avaient aucune section, plus les endpoints des appareils connectés au §1 ; §34 ajoutée le 2026-08-27 avec la table des formats de l’inspecteur ; §§35-36 ajoutées le 2026-08-29 pour le constructeur de pages et l’export du contenu ; §37 (webhooks) et les lignes du 2026-09-05 aux §§5, 13, 15, 18 — import de commits, boutique + inventaire du site, icônes d'apps, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Les chemins, méthodes et la colonne Auth ont été extraits du source, pas écrits de mémoire). Pour les formes de requête/réponse, lire le module de route correspondant — chacun est court et commenté.*

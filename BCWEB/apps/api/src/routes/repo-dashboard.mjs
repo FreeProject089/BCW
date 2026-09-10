@@ -4,6 +4,7 @@ import argon2 from 'argon2';
 import archiver from 'archiver';
 import { db, repoLog, notify, accountEntrySchema, pubkeyErrorCode } from '../lib/lib.mjs';
 import { effUpload, DEFAULT_SETTINGS, SETTINGS_SCHEMA, mergeSettings } from './repos.mjs';
+import { diffFields, recordChange, summaryFor } from '../lib/changelog.mjs';
 import { presignRepoFile, registerRepoFile, removeRepoFile, publishRepo, unpublishRepo, throttle } from './hosting-content.mjs';
 import { getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
@@ -242,6 +243,14 @@ export default async function repoDashboardRoutes(app) {
     const r = req.repo; const cur = r.settings || DEFAULT_SETTINGS;
     const next = mergeSettings(cur, b.data);
     const out = await req._p.serverRepo.update({ where: { id: r.id }, data: { settings: next } });
+    // The diff, next to the log line that only ever said "sandbox settings updated". Computed
+    // from `cur` and `next` rather than from the request body, so a field the merge defaulted
+    // is described as it was actually stored.
+    const changed = diffFields(cur, next);
+    await recordChange(req._p, { repoId: r.id }, {
+      actorId: req.user?.uid || null, actorLabel: req.actor, action: 'settings',
+      summary: summaryFor('settings', changed), changes: changed,
+    });
     await repoLog(req._p, r.id, req.actor, 'settings', 'sandbox settings updated');
     return { ok: true, settings: out.settings, effectiveUploadKbps: effUpload(out), uploadCapKbps: out.uploadLimitKbps };
   });
@@ -249,6 +258,25 @@ export default async function repoDashboardRoutes(app) {
   // ── Traffic / connected users (owner / collab / password) ──
   // Aggregates recent consumer access events (BMM clients syncing the repo) by IP+key,
   // and flags which are currently banned, so the owner can see + ban abusers.
+  /**
+   * The history of this repo, newest first.
+   *
+   * Dashboard-level rather than owner-only: a collaborator who can change these things can see
+   * what was changed, which is the point of writing it down. diffFields() is what keeps that
+   * safe — the rows never carry a secret or the contents of an access list.
+   */
+  app.get('/repos/:id/dashboard/history', { preHandler: resolve() }, async (req) => {
+    const p = await db();
+    const limit = Math.min(200, Math.max(1, parseInt(req.query?.limit, 10) || 60));
+    const before = req.query?.before ? new Date(req.query.before) : null;
+    const events = await p.changeEvent.findMany({
+      where: { repoId: req.repo.id, ...(before && !Number.isNaN(before.getTime()) ? { createdAt: { lt: before } } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    return { events, more: events.length === limit };
+  });
+
   app.get('/repos/:id/dashboard/traffic', { preHandler: resolve() }, async (req) => {
     const p = req._p; const repoId = req.repo.id;
     const since = new Date(Date.now() - 7 * 864e5);

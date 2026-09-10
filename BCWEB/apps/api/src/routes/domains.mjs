@@ -16,6 +16,7 @@ import dns from 'node:dns/promises';
 import { z } from 'zod';
 import { db, requireRole, logAudit, clientIp } from '../lib/lib.mjs';
 import { normaliseHost, isServableHost, isOurOwnHost, domainEligible, txtMatches, genVerifyToken, VERIFY_PREFIX } from '../lib/domain.mjs';
+import { recordChange } from '../lib/changelog.mjs';
 
 /** Our own hostname, from the configured site URL. Empty if unset — see isOurOwnHost. */
 export function siteHost() {
@@ -153,6 +154,10 @@ export default async function domainRoutes(app) {
       ? await ctx.p.customDomain.update({ where: { id: mine }, data })
       : await ctx.p.customDomain.create({ data });
     await logAudit(ctx.p, req.user.uid, 'domain.set', `${ctx.subject.name} — ${host}`, clientIp(req)).catch(() => {});
+    await recordChange(ctx.p, ctx.kind === 'repos' ? { repoId: ctx.subject.id } : { catalogId: ctx.subject.id }, {
+      actorId: req.user.uid, actorLabel: req.user.name || req.user.uid, action: 'domain', summary: host,
+      changes: [{ field: 'host', from: ctx.subject.domain?.host || null, to: host }],
+    });
     return { domain: domainView(out) };
   });
 
@@ -161,6 +166,10 @@ export default async function domainRoutes(app) {
     if (!ctx.subject.domain) return reply.code(404).send({ error: 'not_found' });
     await ctx.p.customDomain.delete({ where: { id: ctx.subject.domain.id } });
     await logAudit(ctx.p, req.user.uid, 'domain.remove', `${ctx.subject.name} — ${ctx.subject.domain.host}`, clientIp(req)).catch(() => {});
+    await recordChange(ctx.p, ctx.kind === 'repos' ? { repoId: ctx.subject.id } : { catalogId: ctx.subject.id }, {
+      actorId: req.user.uid, actorLabel: req.user.name || req.user.uid, action: 'domain', summary: '',
+      changes: [{ field: 'host', from: ctx.subject.domain.host, to: null }],
+    });
     return { ok: true };
   });
 

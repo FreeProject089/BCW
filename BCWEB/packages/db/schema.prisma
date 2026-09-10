@@ -487,6 +487,7 @@ model HostingGroup {
   subscriptions   Subscription[] // the pool's hosting subscriptions (>1 once pools are merged)
 
   @@index([ownerId])
+  changes           ChangeEvent[]
 }
 
 model Project {
@@ -876,6 +877,7 @@ model CommunityCatalog {
   items             CommunityCatalogItem[]
   favorites         CatalogFavorite[]
   domain            CustomDomain?
+  changes           ChangeEvent[]
 
   @@index([ownerId])
   @@index([status, listed])
@@ -1127,6 +1129,7 @@ model ServerRepo {
   favorites         RepoFavorite[]
   agent             RepoAgent?
   domain            CustomDomain?
+  changes           ChangeEvent[]
 
   @@index([groupId])
   @@index([deleteAt])
@@ -1217,6 +1220,43 @@ model CustomDomain {
   createdAt     DateTime          @default(now())
 
   @@index([ownerId])
+}
+
+/// One entry in the history of a repo, a catalogue or a storage pool.
+///
+/// There was already a per-repo audit log, and it had the weakness every audit log has: a
+/// free-text `detail`, so the most common row on the platform read "sandbox settings updated".
+/// True, useless, and unanswerable -- the person reading it wants to know WHICH setting and
+/// what it was before. That difference is what `changes` holds: [{ field, from, to }], built
+/// by diffFields() in lib/changelog.mjs, which is also the one place that decides what must
+/// never appear in it.
+///
+/// Deliberately not file-content versioning. Keeping every version of every uploaded file is a
+/// different product with a storage bill; this records THAT a file changed, with its size and
+/// checksum, which is what lets somebody find when something moved.
+model ChangeEvent {
+  id         String            @id @default(cuid())
+  /// Exactly one subject. Three nullable columns rather than a (type, id) pair so the foreign
+  /// keys are real and a deleted repo takes its history with it.
+  repo       ServerRepo?       @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  repoId     String?
+  catalog    CommunityCatalog? @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+  catalogId  String?
+  group      HostingGroup?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId    String?
+  /// Who. The id for linking, and the LABEL frozen at write time -- joining the name on read
+  /// would rename people retroactively through the whole history the day they change it, and
+  /// a history that rewrites itself is not one.
+  actorId    String?
+  actorLabel String            @default("")
+  action     String
+  summary    String            @default("")
+  changes    Json?
+  createdAt  DateTime          @default(now())
+
+  @@index([repoId, createdAt])
+  @@index([catalogId, createdAt])
+  @@index([groupId, createdAt])
 }
 
 // A user starring a Server-Repo on the public list — purely social (visibility

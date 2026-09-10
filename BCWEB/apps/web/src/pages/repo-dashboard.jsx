@@ -16,6 +16,7 @@ import { useUploads } from './uploads.jsx';
 import { useUndoableSave } from './pages.jsx';
 import { useI18n } from '../i18n.jsx';
 import DomainPanel from '../ui/domain-panel.jsx';
+import HistoryTimeline from '../ui/history-timeline.jsx';
 
 // Either spelling is a manifest — the API accepts both (see MANIFEST_NAMES in
 // hosting-content.mjs). Kept as one predicate so the icon, the "ready to publish" check
@@ -603,6 +604,11 @@ function UsersTab({ r }) {
 
 function ActivityTab({ r }) {
   const { t } = useI18n();
+  // Two views of the same tab, because they answer different questions and merging them would
+  // make both worse. HISTORY is what changed and what it was before, newest first, with the
+  // diff. ACTIVITY is the older searchable log — it holds real rows written before the
+  // history existed, and rewriting those into diffs they never had would be inventing them.
+  const [view, setView] = useState('history');
   const [logs, setLogs] = useState(null);
   const [q, setQ] = useState('');
   const [action, setAction] = useState('');
@@ -614,6 +620,12 @@ function ActivityTab({ r }) {
     }, q ? 250 : 0);
     return () => clearTimeout(id);
   }, [r.id, q, action]);
+  const tabBtn = (k, label) => (
+    <button key={k} type="button" onClick={() => setView(k)}
+      className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${view === k ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+      {label}
+    </button>
+  );
   const meta = {
     upload: [UploadIcon, 'text-[var(--primary-2)]', t('rd.act.upload', 'uploaded')],
     delete: [Trash, 'text-error', t('rd.act.delete', 'deleted')],
@@ -633,10 +645,23 @@ function ActivityTab({ r }) {
       </Select>
     </div>
   );
-  if (logs === null) return <div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div>;
-  if (!logs.length) return <>{toolbar}<Card className="p-6 text-center text-sm text-[var(--faint)]"><History size={22} className="mx-auto mb-2 text-[var(--faint)]" /> {(q || action) ? t('rd.act.nomatch', 'No activity matches.') : t('rd.act.empty', 'No activity yet.')}</Card></>;
+  const switcher = (
+    <div className="flex items-center gap-1 mb-3 p-1 rounded-xl bg-[var(--surface)] border border-[var(--line)] w-fit">
+      {tabBtn('history', t('rd.act.v.history', 'History'))}
+      {tabBtn('activity', t('rd.act.v.activity', 'Activity log'))}
+    </div>
+  );
+  if (view === 'history') {
+    return (<>
+      {switcher}
+      <HistoryTimeline url={`/repos/${r.id}/dashboard/history`} />
+    </>);
+  }
+  if (logs === null) return <>{switcher}<div className="flex items-center gap-2 text-[var(--muted)] py-6"><Spinner /> {t('common.loading', 'Loading…')}</div></>;
+  if (!logs.length) return <>{switcher}{toolbar}<Card className="p-6 text-center text-sm text-[var(--faint)]"><History size={22} className="mx-auto mb-2 text-[var(--faint)]" /> {(q || action) ? t('rd.act.nomatch', 'No activity matches.') : t('rd.act.empty', 'No activity yet.')}</Card></>;
   return (
     <>
+    {switcher}
     {toolbar}
     <Card className="p-0 overflow-hidden">
       <div className="divide-y divide-[var(--line)] max-h-[60vh] overflow-auto">

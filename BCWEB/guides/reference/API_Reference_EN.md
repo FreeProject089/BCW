@@ -776,4 +776,34 @@ exists today and costs nothing to serve, and a PRIVATE repository is not support
 URLs need a token, and holding somebody's forge token would be the same mistake as holding
 their SSH key.
 
+## 41. History (`lib/changelog.mjs`, `ChangeEvent`)
+What changed on a repo, a catalogue or a pool — with the diff, not just the verb. The per-repo
+audit log that existed before had the weakness every audit log has: a free-text `detail`, so the
+commonest row on the platform read "sandbox settings updated". True, useless, and unanswerable.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/repos/:id/dashboard/history` | dashboard | Newest first. `?limit=` (max 200) and `?before=<ISO>` to page. |
+
+A row carries `action` (a closed list: `settings`, `access`, `publish`, `unpublish`, `file.add`,
+`file.update`, `file.remove`, `domain`, …), a one-line `summary`, and `changes`:
+`[{ field, from, to }]`.
+
+**What a diff may never contain**, decided in one place because a diff written at nine call
+sites is nine chances to leak: any field whose last path segment looks like a secret (password,
+hash, token, key, share key) is dropped; an array becomes `[3]` and an object `{2}` — never
+their contents, because a ban list is IP addresses and a timeline is readable by every
+collaborator; and the walk stops after one level of nesting, since no denylist keeps up with a
+JSON blob that grows.
+
+**No prose in stored strings.** `summaryFor` returns the field name for a single change and
+nothing at all for several, and counts are bracket notation rather than "3 items" — these
+strings are stored as written and rendered as-is into a page that may be in French, so an
+English sentence built on the server would travel straight past i18n.
+
+**Not file-content versioning.** Keeping every version of every uploaded file is a different
+product with a storage bill attached. A file change records its size and checksum, before and
+after, which is what lets somebody find when content moved and compare it against a copy they
+kept.
+
 *Generated from `apps/api/src/routes/` (last refreshed 2026-08-13 — sections 18-33 added: every route module that previously had no section at all, plus the signed-in devices endpoints in §1; §34 added 2026-08-27 with the inspector’s format table; §§35-36 added 2026-08-29 for the page builder and the content export; §37 (webhooks) and the 2026-09-05 rows in §§5, 13, 15, 18 — commit import, the site shop + inventory, app icons, `/v1/polls/:id`, `/v1/charity`, `/v1/economy`, `/v1/badges`. Paths, methods and the Auth column were extracted from the source rather than written from memory). For request/response shapes, read the corresponding route module — each is small and commented.*
