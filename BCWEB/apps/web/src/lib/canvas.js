@@ -39,6 +39,8 @@
 
 /** The width every stored coordinate is relative to. Changing it would move every canvas. */
 export const DESIGN_WIDTH = 1200;
+/** The phone board's width, when an author places blocks for phones by hand. */
+export const PHONE_WIDTH = 390;
 /** Below this viewport width the canvas stacks instead of scaling into illegibility. */
 export const STACK_BELOW = 700;
 /** Smallest scale we will render at before stacking is the better answer. */
@@ -58,7 +60,19 @@ export const GRID = 8;
  * inherits the page's colours — is not worth an injection point on a platform that meters and
  * gates everything else. It can come back behind a real sanitiser.
  */
-export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay'];
+export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button'];
+
+/**
+ * How a block moves. The first five are ENTRANCES — they run once, when the trigger fires.
+ * `pulse` and `float` are ambient: they keep going. `custom` is the author's own keyframes.
+ */
+export const ANIM_KINDS = ['fade', 'rise', 'slide-left', 'slide-right', 'zoom', 'pulse', 'float', 'custom'];
+/** When it starts: as it scrolls into view, on page load, after a delay, or while hovered. */
+export const ANIM_TRIGGERS = ['show', 'load', 'delay', 'hover'];
+/** What a button block can look like. */
+export const BUTTON_VARIANTS = ['button', 'card', 'dropdown-down', 'dropdown-up'];
+/** What pressing it does. */
+export const BUTTON_ACTIONS = ['link', 'copy', 'scroll', 'download', 'api'];
 
 /** Kinds whose height is theirs to keep in a stack — a media box with no intrinsic height in
  *  the column would collapse to nothing the way `box` did. */
@@ -105,6 +119,7 @@ export function normalizeCanvas(raw) {
         opacity: clamp(num(b.opacity, 1), 0, 1),
         themes: themeOverlays(b.themes),
         phone: phoneOverlay(b.phone),
+        anim: animOverlay(b.anim),
       };
     })
     .filter(Boolean);
@@ -116,7 +131,29 @@ export function normalizeCanvas(raw) {
     height: Math.max(240, num(c.height, 0) || contentHeight(blocks)),
     bg: typeof c.bg === 'string' ? c.bg : '',
     blocks,
+    // Set the moment an author places anything on the phone board. Until then a phone gets
+    // the reading-order stack it always got, so a canvas that never touched this renders
+    // exactly as before.
+    phoneBoard: c.phoneBoard === true || blocks.some((b) => b.phone?.x != null && b.phone?.y != null),
+    phoneHeight: Math.max(240, num(c.phoneHeight, 0) || phoneContentHeight(blocks)),
   };
+}
+
+/**
+ * How a block moves, or null for "it does not". Only the fields that were written survive,
+ * with the defaults applied where they are READ so the stored shape stays small.
+ */
+function animOverlay(raw) {
+  const o = raw && typeof raw === 'object' ? raw : null;
+  if (!o || !ANIM_KINDS.includes(o.kind)) return null;
+  const out = { kind: o.kind };
+  out.trigger = ANIM_TRIGGERS.includes(o.trigger) ? o.trigger : 'show';
+  out.delay = clamp(Math.round(num(o.delay, 0)), 0, 60_000);
+  out.duration = clamp(Math.round(num(o.duration, 700)), 50, 20_000);
+  // The ambient kinds loop by nature; an entrance loops only if asked.
+  out.loop = o.kind === 'pulse' || o.kind === 'float' ? o.loop !== false : o.loop === true;
+  if (o.kind === 'custom') out.custom = typeof o.custom === 'string' ? o.custom.slice(0, 4000) : '';
+  return out;
 }
 
 /**
@@ -149,7 +186,41 @@ function phoneOverlay(raw) {
   if (o.order != null && Number.isFinite(Number(o.order))) out.order = num(o.order);
   if (o.hidden === true) out.hidden = true;
   if (o.h != null && Number.isFinite(Number(o.h))) out.h = Math.max(GRID, snap(num(o.h)));
+  // A place on the phone BOARD. Only the fields written: an x without a y is a block that
+  // has not been placed, and it is laid under the placed ones like any other.
+  if (o.x != null && Number.isFinite(Number(o.x))) out.x = clamp(snap(num(o.x)), 0, PHONE_WIDTH - GRID);
+  if (o.y != null && Number.isFinite(Number(o.y))) out.y = Math.max(0, snap(num(o.y)));
+  if (o.w != null && Number.isFinite(Number(o.w))) out.w = clamp(snap(num(o.w)), GRID, PHONE_WIDTH);
   return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The phone board: every block that is not hidden on phones, with a place on the 390px board.
+ *
+ * A block the author placed keeps its place. One they did not is laid BELOW everything
+ * placed, full width with a margin, in reading order — so switching the board on never loses
+ * a block, and a page with one hand-placed hero and six untouched cards is the hero followed
+ * by the cards, not the hero alone.
+ */
+export function phoneBoardBlocks(blocks, band = 40) {
+  const shown = (blocks || []).filter((b) => !b.phone?.hidden);
+  const placed = shown.filter((b) => b.phone?.x != null && b.phone?.y != null)
+    .map((b) => ({ ...b, x: b.phone.x, y: b.phone.y, w: b.phone.w ?? Math.min(snap(PHONE_WIDTH - 32), num(b.w)), h: b.phone.h ?? num(b.h), placed: true }));
+  let bottom = placed.reduce((m, b) => Math.max(m, num(b.y) + num(b.h)), 0);
+  const rest = readingOrder(shown.filter((b) => !(b.phone?.x != null && b.phone?.y != null)), band).map((b) => {
+    const h = b.phone?.h ?? num(b.h);
+    const y = bottom ? bottom + 16 : 16;
+    bottom = y + h;
+    return { ...b, x: 16, y, w: b.phone?.w ?? snap(PHONE_WIDTH - 32), h, placed: false };
+  });
+  return [...placed, ...rest];
+}
+
+/** The bottom edge of the phone board, plus a little air. */
+export function phoneContentHeight(blocks) {
+  let bottom = 0;
+  for (const b of phoneBoardBlocks(blocks)) bottom = Math.max(bottom, num(b.y) + num(b.h));
+  return bottom ? bottom + 40 : 0;
 }
 
 /**
@@ -211,7 +282,15 @@ export function contentHeight(blocks) {
 export function layoutFor(viewportWidth, canvas) {
   const vw = num(viewportWidth, DESIGN_WIDTH);
   if (vw <= 0) return { mode: 'scale', scale: 1, width: DESIGN_WIDTH, height: canvas.height };
-  if (vw < STACK_BELOW) return { mode: 'stack', scale: 1, width: vw, height: null };
+  if (vw < STACK_BELOW) {
+    // The hand-placed phone board, when there is one; the reading-order stack otherwise.
+    // Scaled DOWN to a narrower phone, never up: 390 is a design width, not a minimum.
+    if (canvas.phoneBoard) {
+      const ps = clamp(Math.min(1, vw / PHONE_WIDTH), 0.5, 1);
+      return { mode: 'phone', scale: ps, width: PHONE_WIDTH * ps, height: canvas.phoneHeight * ps };
+    }
+    return { mode: 'stack', scale: 1, width: vw, height: null };
+  }
   const raw = vw / DESIGN_WIDTH;
   // Never magnify: a canvas designed at 1200 blown up to 2400 is a blurry poster, and text
   // that grows with the window is nobody's idea of a page.
@@ -257,11 +336,12 @@ export function paintOrder(blocks) {
 export function dragTo(start, dxScreen, dyScreen, scale, opts = {}) {
   const s = Math.abs(num(scale, 1)) || 1;
   const grid = opts.snap === false ? 1 : (opts.grid || GRID);
+  const W = num(opts.width, 0) || DESIGN_WIDTH;   // the board being edited: 1200, or the phone's 390
   const x = Math.round((num(start.x) + num(dxScreen) / s) / grid) * grid;
   const y = Math.round((num(start.y) + num(dyScreen) / s) / grid) * grid;
   return {
     // Off the left edge is a block you cannot grab again; off the right is one nobody sees.
-    x: clamp(x, 0, DESIGN_WIDTH - num(start.w, GRID)),
+    x: clamp(x, 0, W - num(start.w, GRID)),
     y: Math.max(0, y),
   };
 }
@@ -312,9 +392,10 @@ export function resizeTo(start, handle, dxScreen, dyScreen, scale, opts = {}) {
 
   if (w < min) { if (ax === -1) x = x + (w - min); w = min; }
   if (h < min) { if (ay === -1) y = y + (h - min); h = min; }
-  x = clamp(x, 0, DESIGN_WIDTH - min);
+  const W = num(opts.width, 0) || DESIGN_WIDTH;
+  x = clamp(x, 0, W - min);
   y = Math.max(0, y);
-  w = clamp(w, min, DESIGN_WIDTH - x);
+  w = clamp(w, min, W - x);
   return { x, y, w, h };
 }
 
@@ -456,7 +537,7 @@ export function moveMany(blocks, ids, dxScreen, dyScreen, scale, opts = {}) {
   // Where the BOX wants to go, snapped, then clamped so the whole box stays on the canvas.
   const wantX = Math.round((num(opts.startX ?? bb.x) + num(dxScreen) / s) / grid) * grid;
   const wantY = Math.round((num(opts.startY ?? bb.y) + num(dyScreen) / s) / grid) * grid;
-  const nx = clamp(wantX, 0, Math.max(0, DESIGN_WIDTH - bb.w));
+  const nx = clamp(wantX, 0, Math.max(0, (num(opts.width, 0) || DESIGN_WIDTH) - bb.w));
   const ny = Math.max(0, wantY);
   const dx = nx - bb.x, dy = ny - bb.y;
   return blocks.map((b) => (set.has(b.id) ? { ...b, x: num(b.x) + dx, y: num(b.y) + dy } : b));

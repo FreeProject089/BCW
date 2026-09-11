@@ -578,6 +578,50 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .logo-plate { background: #fff; padding: 11%; object-fit: contain !important; box-sizing: border-box; }
 .logo-plate:not([class*="rounded"]) { border-radius: 22%; }
 
+/* ── Canvas blocks: how they arrive, and what a button block looks like ─────────────
+   (ui/canvas-view.jsx). An entrance runs once when `.in` lands; the ambient kinds keep going;
+   `.cv-hover` waits for the pointer. Reduced motion: everything is simply there. */
+.cv-anim { opacity: 0; }
+.cv-anim.in { opacity: 1; animation-duration: var(--cv-dur, 700ms); animation-delay: var(--cv-delay, 0ms); animation-fill-mode: both; animation-timing-function: cubic-bezier(.2,.7,.2,1); }
+.cv-anim.cv-loop.in { animation-iteration-count: infinite; }
+.cv-anim-fade.in { animation-name: cvFade; }
+.cv-anim-rise.in { animation-name: cvRise; }
+.cv-anim-slide-left.in { animation-name: cvSlideL; }
+.cv-anim-slide-right.in { animation-name: cvSlideR; }
+.cv-anim-zoom.in { animation-name: cvZoom; }
+.cv-anim-pulse, .cv-anim-float { opacity: 1; }
+.cv-anim-pulse.in { animation-name: cvPulse; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.cv-anim-float.in { animation-name: cvFloat; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+.cv-anim.cv-hover { opacity: 1; animation-duration: var(--cv-dur, 700ms); animation-fill-mode: both; }
+.cv-anim.cv-hover.cv-anim-fade:hover { animation-name: cvFade; }
+.cv-anim.cv-hover.cv-anim-rise:hover { animation-name: cvRise; }
+.cv-anim.cv-hover.cv-anim-slide-left:hover { animation-name: cvSlideL; }
+.cv-anim.cv-hover.cv-anim-slide-right:hover { animation-name: cvSlideR; }
+.cv-anim.cv-hover.cv-anim-zoom:hover { animation-name: cvZoom; }
+.cv-anim.cv-hover.cv-anim-pulse:hover { animation-name: cvPulse; animation-iteration-count: infinite; }
+.cv-anim.cv-hover.cv-anim-float:hover { animation-name: cvFloat; animation-iteration-count: infinite; }
+@keyframes cvFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cvRise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes cvSlideL { from { opacity: 0; transform: translateX(-32px); } to { opacity: 1; transform: none; } }
+@keyframes cvSlideR { from { opacity: 0; transform: translateX(32px); } to { opacity: 1; transform: none; } }
+@keyframes cvZoom { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes cvPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.04); } }
+@keyframes cvFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .cv-anim { opacity: 1 !important; animation: none !important; } }
+
+.cv-btn-wrap { width: 100%; }
+.cv-btn-card { display: flex; flex-direction: column; gap: 4px; width: 100%; height: 100%; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none; position: relative; transition: border-color .15s, transform .15s; }
+.cv-btn-card:hover { border-color: var(--btn, var(--primary)); transform: translateY(-1px); }
+.cv-btn-card-t { font-weight: 700; font-size: 15px; }
+.cv-btn-card-d { font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.cv-btn-card-arrow { position: absolute; right: 14px; top: 12px; color: var(--btn, var(--primary)); font-weight: 700; }
+.cv-dd { position: relative; display: inline-block; }
+.cv-dd-menu { position: absolute; left: 0; top: calc(100% + 6px); min-width: 180px; padding: 6px; border-radius: 12px; border: 1px solid var(--line-strong); background: var(--bg-solid); box-shadow: 0 16px 40px -12px rgba(0,0,0,.45); z-index: 50; display: flex; flex-direction: column; gap: 2px; }
+.cv-dd-up .cv-dd-menu { top: auto; bottom: calc(100% + 6px); }
+.cv-dd-item { display: block; padding: 7px 10px; border-radius: 8px; font-size: 13px; color: var(--text); text-decoration: none; }
+.cv-dd-item:hover { background: var(--surface-2); }
+.cv-dd-empty { color: var(--faint); }
+
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 /* Home "get started" steps: a glowing pulse travels the wave left→right. */
 @keyframes stepFlow { from { stroke-dashoffset: 300; } to { stroke-dashoffset: -46; } }

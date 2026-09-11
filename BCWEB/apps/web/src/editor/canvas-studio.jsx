@@ -8,13 +8,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Type, Image as ImageIcon, Square, Trash2, ArrowUp, ArrowDown, Eye, Smartphone, Monitor, Magnet, Copy,
-  Film, Globe, PlayCircle, EyeOff, Sun, Moon, Layers,
+  Film, Globe, PlayCircle, EyeOff, Sun, Moon, Layers, MousePointerClick, Sparkles,
   Undo2, Redo2, AlertTriangle, Upload,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
 } from 'lucide-react';
-import { Button, Field, Input, Textarea, useToast } from '../ui/ui.jsx';
+import { Button, Field, Input, Textarea, Select, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { uploadMedia } from '../lib/api.js';
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
@@ -22,7 +22,8 @@ import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
-  DESIGN_WIDTH, GRID, HANDLES,
+  phoneBoardBlocks, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
+  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS,
 } from '../lib/canvas.js';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -36,6 +37,7 @@ const NEW_BLOCK = {
   video: { kind: 'video', w: 560, h: 315, props: { src: '', controls: true, muted: false, loop: false, fit: 'contain' } },
   embed: { kind: 'embed', w: 560, h: 315, props: { url: '', title: '' } },
   replay: { kind: 'replay', w: 640, h: 400, props: { src: '' } },
+  button: { kind: 'button', w: 240, h: 56, props: { label: 'Discover', variant: 'button', size: 'md', action: { type: 'link', href: '/' } } },
 };
 
 export default function CanvasStudio({ value, onChange }) {
@@ -130,10 +132,19 @@ export default function CanvasStudio({ value, onChange }) {
   // The editor always works on the SCALED plane, never stacked: you cannot place things on a
   // layout that has given up on placement. `layoutFor` is asked for the scale so the editor
   // and the page agree, but the stacking decision is the page's alone.
-  const scale = Math.min(1, Math.max(0.3, vw / DESIGN_WIDTH));
-  // The board and the panel both show the theme being authored — resolveBlock is the SAME
-  // function the public page uses, so "what the author sees" cannot drift from what is served.
-  const view = useMemo(() => ({ ...canvas, blocks: canvas.blocks.map((b) => resolveBlock(b, editTheme)) }), [canvas, editTheme]);
+  // Which board: the 1200px desktop plane, or the 390px phone board. Everything that clamps
+  // or scales reads this rather than DESIGN_WIDTH.
+  const phoneBoard = editTheme === 'phone';
+  const boardW = phoneBoard ? PHONE_WIDTH : DESIGN_WIDTH;
+  const boardH = phoneBoard ? canvas.phoneHeight : canvas.height;
+  const scale = Math.min(1, Math.max(0.3, vw / boardW));
+  // The board and the panel both show the target being authored — resolveBlock and
+  // phoneBoardBlocks are the SAME functions the public page uses, so "what the author sees"
+  // cannot drift from what is served. On the phone board every block has a place, hand-placed
+  // or laid in reading order under the placed ones.
+  const view = useMemo(() => (phoneBoard
+    ? { ...canvas, blocks: phoneBoardBlocks(canvas.blocks.map((b) => resolveBlock(b, 'light'))) }
+    : { ...canvas, blocks: canvas.blocks.map((b) => resolveBlock(b, editTheme)) }), [canvas, editTheme, phoneBoard]);
   const sel = view.blocks.find((b) => b.id === selId) || null;
   /** Does this block say anything of its own on the dark theme? Drives the badge and Reset. */
   const rawSel = canvas.blocks.find((b) => b.id === selId) || null;
@@ -160,6 +171,15 @@ export default function CanvasStudio({ value, onChange }) {
   const patch = useCallback((id, next, key = null) => {
     if (editTheme === 'light') {
       emit(canvas.blocks.map((b) => (b.id === id ? { ...b, ...next } : b)), {}, key);
+      return;
+    }
+    if (editTheme === 'phone') {
+      // Geometry goes to the phone overlay; everything else (content, an animation, a
+      // button's action) is the block's own and has one copy, whichever board it was typed on.
+      const { x, y, w, h, ...rest } = next;
+      const geo = {};
+      if (x != null) geo.x = x; if (y != null) geo.y = y; if (w != null) geo.w = w; if (h != null) geo.h = h;
+      emit(canvas.blocks.map((b) => (b.id === id ? { ...b, ...rest, phone: { ...(b.phone || {}), ...geo } } : b)), Object.keys(geo).length ? { phoneBoard: true } : {}, key);
       return;
     }
     emit(canvas.blocks.map((b) => {
@@ -190,6 +210,16 @@ export default function CanvasStudio({ value, onChange }) {
   const commitMoved = useCallback((nextBlocks, key) => {
     if (editTheme === 'light') { emit(nextBlocks, {}, key); return; }
     const by = new Map(nextBlocks.map((b) => [b.id, b]));
+    if (editTheme === 'phone') {
+      // A group drag on the phone board pins every moved block's phone place — including one
+      // that was only laid there by reading order, which is now a decision of the author's.
+      emit(canvas.blocks.map((b) => {
+        const nb = by.get(b.id);
+        if (!nb) return b;
+        return { ...b, phone: { ...(b.phone || {}), x: nb.x, y: nb.y, w: nb.w, h: nb.h } };
+      }), { phoneBoard: true }, key);
+      return;
+    }
     emit(canvas.blocks.map((b) => {
       const n = by.get(b.id);
       const cur = resolveBlock(b, 'dark');
@@ -219,7 +249,7 @@ export default function CanvasStudio({ value, onChange }) {
   const chosen = canvas.blocks.filter((b) => selIds.includes(b.id));
   const duplicate = () => {
     if (!chosen.length) return;
-    const copies = chosen.map((b) => ({ ...b, id: uid(), x: Math.min(b.x + GRID * 3, DESIGN_WIDTH - b.w), y: b.y + GRID * 3 }));
+    const copies = chosen.map((b) => ({ ...b, id: uid(), x: Math.min(b.x + GRID * 3, boardW - b.w), y: b.y + GRID * 3 }));
     emit([...canvas.blocks, ...copies]);
     setSelIds(copies.map((b) => b.id));
   };
@@ -251,16 +281,16 @@ export default function CanvasStudio({ value, onChange }) {
     const dx = e.clientX - d.sx; const dy = e.clientY - d.sy;
     const others = canvas.blocks.filter((b) => b.id !== d.id);
     if (d.handle) {
-      patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn }), `resize:${d.id}:${d.handle}`);
+      patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn, width: boardW }), `resize:${d.id}:${d.handle}`);
       return;
     }
     if (d.ids && d.ids.length > 1) {
       // Resize is deliberately single-block; a group drag is the whole selection at once,
       // clamped as one box so the arrangement cannot collapse against an edge.
-      commitMoved(moveMany(view.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y }), `drag:${d.ids.join(',')}`);
+      commitMoved(moveMany(view.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y, width: boardW }), `drag:${d.ids.join(',')}`);
       return;
     }
-    let next = dragTo(d.start, dx, dy, scale, { snap: snapOn });
+    let next = dragTo(d.start, dx, dy, scale, { snap: snapOn, width: boardW });
     // Alignment to the other blocks, on top of the grid. This is what makes a hand-placed
     // page look composed rather than approximately aligned.
     if (snapOn) {
@@ -324,7 +354,7 @@ export default function CanvasStudio({ value, onChange }) {
         e.preventDefault();
         // The whole selection, at scale 1 because a nudge is in DESIGN pixels — it is the
         // gesture for "exactly one grid step", which is the point of having it.
-        commitMoved(moveMany(view.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false }), `nudge:${selIds.join(',')}`);
+        commitMoved(moveMany(view.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false, width: boardW }), `nudge:${selIds.join(',')}`);
       } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       else if (e.key === 'Escape') setSelIds([]);
     };
@@ -381,7 +411,7 @@ export default function CanvasStudio({ value, onChange }) {
           <Button size="sm" variant="ghost" onClick={() => setPreview('phone')} title={t('cst.phone', 'Phone preview')}><Eye size={14} /></Button>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap mb-2">
-          {[['text', Type], ['image', ImageIcon], ['box', Square], ['video', Film], ['embed', Globe], ['replay', PlayCircle]].map(([k, Icon]) => (
+          {[['text', Type], ['image', ImageIcon], ['box', Square], ['button', MousePointerClick], ['video', Film], ['embed', Globe], ['replay', PlayCircle]].map(([k, Icon]) => (
             <Button key={k} size="sm" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
           ))}
           <div className="flex-1" />
@@ -444,7 +474,7 @@ export default function CanvasStudio({ value, onChange }) {
           keeps following the light layout. */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
-          {[['light', Sun, t('cst.theme.light', 'Light')], ['dark', Moon, t('cst.theme.dark', 'Dark')]].map(([k, Icon, label]) => (
+          {[['light', Sun, t('cst.theme.light', 'Light')], ['dark', Moon, t('cst.theme.dark', 'Dark')], ['phone', Smartphone, t('cst.board.phone', 'Phone')]].map(([k, Icon, label]) => (
             <button key={k} type="button" onClick={() => setEditTheme(k)}
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors ${editTheme === k ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
               <Icon size={12} /> {label}
@@ -453,6 +483,11 @@ export default function CanvasStudio({ value, onChange }) {
         </div>
         {editTheme === 'dark' && (
           <span className="text-[11px] text-[var(--muted)]">{t('cst.theme.h', 'Editing the dark version. Anything you do not change here keeps following the light layout.')}</span>
+        )}
+        {phoneBoard && (
+          <span className="text-[11px] text-[var(--muted)]">{canvas.phoneBoard
+            ? t('cst.board.phone.h', 'The 390px phone board. Blocks you place stay where you put them; the rest are laid underneath in reading order.')
+            : t('cst.board.phone.h0', 'Phones get the reading-order stack until you place something here. Move or resize a block and the board takes over.')}</span>
         )}
       </div>
       {narrow && !preview && (
@@ -472,8 +507,8 @@ export default function CanvasStudio({ value, onChange }) {
           onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
           onPointerCancel={(e) => { onMarqueeUp(); onUp(e); }}
           onPointerDown={onCanvasDown}>
-          <div style={{ height: canvas.height * scale, position: 'relative' }}>
-            <div style={{ width: DESIGN_WIDTH, height: canvas.height, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
+          <div style={{ height: boardH * scale, position: 'relative', ...(phoneBoard ? { width: boardW * scale, margin: '0 auto' } : {}) }}>
+            <div style={{ width: boardW, height: boardH, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
               {/* The grid, drawn so placement is legible rather than guessed at. */}
               <div aria-hidden style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.5,
@@ -521,6 +556,99 @@ export default function CanvasStudio({ value, onChange }) {
           <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** The button block's own fields: the look, the action, and the action's parameters. */
+function ButtonFields({ t, p, setProp }) {
+  const act = p.action || { type: 'link' };
+  const setAct = (k, v) => setProp('action', { ...act, [k]: v });
+  const items = Array.isArray(p.items) ? p.items : [];
+  const itemsText = items.map((it) => `${it.label || ''} | ${it.href || ''}`).join('\n');
+  const isDropdown = (p.variant || 'button').startsWith('dropdown');
+  return (<>
+    <Field label={t('cst.btn.label', 'Label')}><Input value={p.label || ''} onChange={(e) => setProp('label', e.target.value)} /></Field>
+    <div className="grid grid-cols-2 gap-2">
+      <Field label={t('cst.btn.variant', 'Look')}>
+        <Select value={p.variant || 'button'} onChange={(e) => setProp('variant', e.target.value)}>
+          {BUTTON_VARIANTS.map((v) => <option key={v} value={v}>{t(`cst.btn.v.${v}`, v)}</option>)}
+        </Select>
+      </Field>
+      <Field label={t('cst.btn.size', 'Size')}>
+        <Select value={p.size || 'md'} onChange={(e) => setProp('size', e.target.value)}>
+          {['sm', 'md', 'lg'].map((v) => <option key={v} value={v}>{v}</option>)}
+        </Select>
+      </Field>
+    </div>
+    <div className="grid grid-cols-2 gap-2">
+      <Field label={t('cst.btn.color', 'Colour')}><Input value={p.color || ''} onChange={(e) => setProp('color', e.target.value)} placeholder="#f97316" /></Field>
+      <Field label={t('cst.btn.align', 'Align')}>
+        <Select value={p.align || 'center'} onChange={(e) => setProp('align', e.target.value)}>
+          {['left', 'center', 'right'].map((v) => <option key={v} value={v}>{t(`cst.btn.align.${v}`, v)}</option>)}
+        </Select>
+      </Field>
+    </div>
+    <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!p.outline} onChange={(e) => setProp('outline', e.target.checked)} /> {t('cst.btn.outline', 'Outline')}</label>
+    {p.variant === 'card' && <Field label={t('cst.btn.desc', 'Description (card)')}><Input value={p.desc || ''} onChange={(e) => setProp('desc', e.target.value)} /></Field>}
+    {isDropdown ? (
+      <Field label={t('cst.btn.items', 'Menu items — one per line: label | link')}>
+        <Textarea rows={4} value={itemsText} onChange={(e) => setProp('items', e.target.value.split('\n').map((l) => { const [label, href] = l.split('|'); return { label: (label || '').trim(), href: (href || '').trim() }; }).filter((it) => it.label))} />
+      </Field>
+    ) : (<>
+      <Field label={t('cst.btn.action', 'On press')}>
+        <Select value={act.type || 'link'} onChange={(e) => setAct('type', e.target.value)}>
+          {BUTTON_ACTIONS.map((v) => <option key={v} value={v}>{t(`cst.btn.a.${v}`, v)}</option>)}
+        </Select>
+      </Field>
+      {(act.type === 'link' || act.type === 'download' || !act.type) && <Field label={t('cst.btn.href', 'Link')}><Input value={act.href || ''} onChange={(e) => setAct('href', e.target.value)} placeholder="/hosting · https://…" /></Field>}
+      {act.type === 'copy' && <Field label={t('cst.btn.copytext', 'Text to copy')}><Input value={act.text || ''} onChange={(e) => setAct('text', e.target.value)} /></Field>}
+      {act.type === 'scroll' && <Field label={t('cst.btn.target', 'Scroll to (CSS selector)')}><Input value={act.target || ''} onChange={(e) => setAct('target', e.target.value)} placeholder="#plans" /></Field>}
+      {act.type === 'api' && (<>
+        <div className="grid grid-cols-[80px_1fr] gap-2">
+          <Field label={t('cst.btn.method', 'Method')}>
+            <Select value={act.method || 'GET'} onChange={(e) => setAct('method', e.target.value)}><option>GET</option><option>POST</option></Select>
+          </Field>
+          <Field label={t('cst.btn.path', 'API path')}><Input value={act.path || ''} onChange={(e) => setAct('path', e.target.value)} placeholder="/updates/bmm/latest" /></Field>
+        </div>
+        <Field label={t('cst.btn.open', 'Open the URL found at (optional, e.g. asset.url)')}><Input value={act.open || ''} onChange={(e) => setAct('open', e.target.value)} /></Field>
+        <p className="text-[11px] text-[var(--muted)]">{t('cst.btn.api.h', 'Calls /api + path with the reader’s session. Only paths on this site.')}</p>
+      </>)}
+      <Field label={t('cst.btn.done', 'Label after (copy / API)')}><Input value={p.doneLabel || ''} onChange={(e) => setProp('doneLabel', e.target.value)} placeholder="✓" /></Field>
+    </>)}
+  </>);
+}
+
+/** How a block arrives, and whether it keeps moving. On every kind. */
+function AnimFields({ t, sel, patch }) {
+  const a = sel.anim || null;
+  const set = (k, v) => patch(sel.id, { anim: { ...(a || { kind: 'fade' }), [k]: v } });
+  return (
+    <div className="rounded-lg border border-[var(--line)] p-2 space-y-2">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Sparkles size={12} /> {t('cst.anim', 'Animation')}</div>
+      <Field label={t('cst.anim.kind', 'Kind')}>
+        <Select value={a?.kind || ''} onChange={(e) => (e.target.value ? set('kind', e.target.value) : patch(sel.id, { anim: null }))}>
+          <option value="">{t('cst.anim.none', 'None')}</option>
+          {ANIM_KINDS.map((k) => <option key={k} value={k}>{t(`cst.anim.k.${k}`, k)}</option>)}
+        </Select>
+      </Field>
+      {a && (<>
+        <Field label={t('cst.anim.trigger', 'Starts')}>
+          <Select value={a.trigger || 'show'} onChange={(e) => set('trigger', e.target.value)}>
+            {ANIM_TRIGGERS.map((k) => <option key={k} value={k}>{t(`cst.anim.t.${k}`, k)}</option>)}
+          </Select>
+        </Field>
+        <div className="grid grid-cols-2 gap-2">
+          <Field label={t('cst.anim.delay', 'Delay (ms)')}><Input type="number" min="0" step="50" value={a.delay ?? 0} onChange={(e) => set('delay', Number(e.target.value) || 0)} /></Field>
+          <Field label={t('cst.anim.duration', 'Duration (ms)')}><Input type="number" min="50" step="50" value={a.duration ?? 700} onChange={(e) => set('duration', Number(e.target.value) || 700)} /></Field>
+        </div>
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!a.loop} onChange={(e) => set('loop', e.target.checked)} /> {t('cst.anim.loop', 'Loop')}</label>
+        {a.kind === 'custom' && (
+          <Field label={t('cst.anim.custom', 'Keyframes (the body of an @keyframes rule)')} hint={t('cst.anim.custom.h', 'e.g.  from { opacity: 0; transform: rotate(-6deg) }  to { opacity: 1; transform: none }')}>
+            <Textarea rows={4} value={a.custom || ''} onChange={(e) => set('custom', e.target.value)} />
+          </Field>
+        )}
+      </>)}
     </div>
   );
 }
@@ -594,6 +722,10 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
       <Button size="sm" variant="ghost" onClick={() => add('text')}><Type size={14} /> {t('cst.text', 'Text')}</Button>
       <Button size="sm" variant="ghost" onClick={() => add('image')}><ImageIcon size={14} /> {t('cst.image', 'Image')}</Button>
       <Button size="sm" variant="ghost" onClick={() => add('box')}><Square size={14} /> {t('cst.box', 'Box')}</Button>
+      <Button size="sm" variant="ghost" onClick={() => add('button')}><MousePointerClick size={14} /> {t('cst.button', 'Button')}</Button>
+      <Button size="sm" variant="ghost" onClick={() => add('video')} title={t('cst.add.video', 'video')}><Film size={14} /></Button>
+      <Button size="sm" variant="ghost" onClick={() => add('embed')} title={t('cst.add.embed', 'embed')}><Globe size={14} /></Button>
+      <Button size="sm" variant="ghost" onClick={() => add('replay')} title={t('cst.add.replay', 'replay')}><PlayCircle size={14} /></Button>
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} data-undo-key={String(hist.key)} title={`Ctrl+Z · ${hist.past.length}`}><Undo2 size={14} /></Button>
       <Button size="sm" variant="ghost" disabled={!hist.future.length} onClick={doRedo} title="Ctrl+Shift+Z"><Redo2 size={14} /></Button>
@@ -718,6 +850,8 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
           <Input value={p.src || ''} onChange={(e) => setProp('src', e.target.value)} placeholder="/uploads/demo.bmmreplay" />
         </Field>
       )}
+      {sel.kind === 'button' && <ButtonFields t={t} p={p} setProp={setProp} />}
+      <AnimFields t={t} sel={sel} patch={patch} />
       {/* Opacity sits on the BLOCK, not in props: it applies to the wrapper, so it behaves the
           same for a picture, a video and a paragraph. Per-kind it would have been written five
           times and forgotten in two. */}

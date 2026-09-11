@@ -9,7 +9,8 @@
 // B.MD later shows up here without this file changing.
 import { useEffect, useRef, useState } from 'react';
 import Markdown from './md.jsx';
-import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, DESIGN_WIDTH } from '../lib/canvas.js';
+import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
+import { api } from '../lib/api.js';
 import { markdownConfig } from '@bettercommunity/bmd/config';
 
 /** One block's own painting, shared by both modes so they cannot look different.
@@ -34,8 +35,126 @@ export function embedAllowed(url) {
   return allow instanceof RegExp ? allow.test(u) : !!allow;
 }
 
+/** A keyframe body, reduced to what a keyframe body is made of. Admin-authored, but a `</style>`
+ *  or a `url(` in the wrong place is still not something a page should carry. */
+function keyframeBody(src) {
+  return String(src || '').replace(/[^\w\s%.,:;()#\-]/g, '').slice(0, 4000);
+}
+
+/**
+ * The animation wrapper. `anim` is the block's normalised animation (lib/canvas.js) or null.
+ *
+ * "in" is what starts it: on load, immediately; after a delay, then; on scroll, when at least a
+ * fifth of the block is on screen; on hover, never — the CSS `:hover` rule carries that one.
+ * Reduced motion is honoured in the stylesheet, so a reader who asked for stillness gets the
+ * block, already in place, with nothing moving.
+ */
+function Animated({ anim, id, style, className, children }) {
+  const ref = useRef(null);
+  const trigger = anim?.trigger || 'show';
+  const [on, setOn] = useState(!anim || trigger === 'hover' || trigger === 'load');
+  useEffect(() => {
+    if (!anim || trigger === 'hover' || trigger === 'load') return undefined;
+    if (trigger === 'delay') { const t = setTimeout(() => setOn(true), anim.delay || 0); return () => clearTimeout(t); }
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setOn(true); return undefined; }
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setOn(true); io.disconnect(); } }, { threshold: 0.2 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [anim, trigger]);
+  if (!anim) return <div style={style} className={className}>{children}</div>;
+  const vars = { '--cv-dur': `${anim.duration || 700}ms`, '--cv-delay': trigger === 'show' || trigger === 'load' ? `${anim.delay || 0}ms` : '0ms' };
+  const cls = `${className || ''} cv-anim cv-anim-${anim.kind}${on ? ' in' : ''}${anim.loop ? ' cv-loop' : ''}${trigger === 'hover' ? ' cv-hover' : ''}`;
+  const custom = anim.kind === 'custom' && anim.custom
+    ? `@keyframes cv-${id}{${keyframeBody(anim.custom)}}[data-anim="${id}"].in,[data-anim="${id}"].cv-hover:hover{animation-name:cv-${id}}`
+    : null;
+  return (
+    <div ref={ref} style={{ ...style, ...vars }} className={cls} data-anim={id}>
+      {custom ? <style>{custom}</style> : null}
+      {children}
+    </div>
+  );
+}
+
+/** What a button does when pressed. */
+function useButtonAction(p) {
+  const [state, setState] = useState('');
+  const act = p.action || {};
+  const type = act.type || 'link';
+  const href = String(act.href || '').trim();
+  const external = /^https?:\/\//i.test(href);
+  const run = async (e) => {
+    if (type === 'link' || type === 'download') return;   // the anchor does it
+    e.preventDefault();
+    try {
+      if (type === 'copy') { await navigator.clipboard.writeText(String(act.text || '')); setState('done'); }
+      else if (type === 'scroll') { const target = document.querySelector(String(act.target || '').trim() || '#top'); target?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      else if (type === 'api') {
+        setState('busy');
+        const path = String(act.path || '').trim();
+        if (!path.startsWith('/')) throw new Error('path');
+        const method = String(act.method || 'GET').toUpperCase() === 'POST' ? 'post' : 'get';
+        const res = await api[method](path, method === 'post' ? {} : undefined);
+        const open = String(act.open || '').trim();
+        const url = open && res && typeof res === 'object' ? open.split('.').reduce((o, k) => (o == null ? o : o[k]), res) : null;
+        if (url && typeof url === 'string') window.open(url, '_blank', 'noopener');
+        setState('done');
+      }
+    } catch { setState('err'); }
+    setTimeout(() => setState(''), 1800);
+  };
+  const anchorProps = type === 'link' && href ? { href, ...(external ? { target: '_blank', rel: 'noreferrer' } : {}) }
+    : type === 'download' && href ? { href, download: true }
+    : { href: '#', role: 'button' };
+  return { run, state, anchorProps };
+}
+
+function CanvasButton({ p }) {
+  const variant = p.variant || 'button';
+  const size = ['sm', 'md', 'lg'].includes(p.size) ? p.size : 'md';
+  const style = p.color ? { '--btn': p.color } : undefined;
+  const { run, state, anchorProps } = useButtonAction(p);
+  const [open, setOpen] = useState(false);
+  const face = state === 'done' ? (p.doneLabel || '✓') : state === 'err' ? '✕' : (p.label || 'Button');
+  if (variant === 'card') {
+    return (
+      <a {...anchorProps} onClick={run} className="cv-btn-card" style={style}>
+        <span className="cv-btn-card-t">{face}</span>
+        {p.desc ? <span className="cv-btn-card-d">{p.desc}</span> : null}
+        <span className="cv-btn-card-arrow" aria-hidden>→</span>
+      </a>
+    );
+  }
+  if (variant === 'dropdown-down' || variant === 'dropdown-up') {
+    const items = Array.isArray(p.items) ? p.items.filter((it) => it && it.label) : [];
+    return (
+      <div className={`cv-dd ${variant === 'dropdown-up' ? 'cv-dd-up' : ''}`} onMouseLeave={() => setOpen(false)}>
+        <button type="button" className={`doc-btn doc-btn-${size}${p.outline ? ' doc-btn-outline' : ''}`} style={style} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {face} <span aria-hidden>{variant === 'dropdown-up' ? '▴' : '▾'}</span>
+        </button>
+        {open && (
+          <div className="cv-dd-menu" role="menu">
+            {items.length ? items.map((it, i) => {
+              const h = String(it.href || '').trim();
+              const ext = /^https?:\/\//i.test(h);
+              return <a key={i} role="menuitem" className="cv-dd-item" href={h || '#'} {...(ext ? { target: '_blank', rel: 'noreferrer' } : {})} onClick={() => setOpen(false)}>{it.label}</a>;
+            }) : <span className="cv-dd-item cv-dd-empty">—</span>}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <a {...anchorProps} onClick={run} className={`doc-btn doc-btn-${size}${p.outline ? ' doc-btn-outline' : ''}`} style={style}>{face}</a>
+  );
+}
+
 export function CanvasBlock({ b, stacked }) {
   const p = b.props || {};
+  if (b.kind === 'button') {
+    // Centred in its box on the board; a natural inline element in a stack.
+    return <div className="cv-btn-wrap" style={stacked ? undefined : { display: 'flex', alignItems: 'center', justifyContent: p.align === 'left' ? 'flex-start' : p.align === 'right' ? 'flex-end' : 'center', height: '100%' }}><CanvasButton p={p} /></div>;
+  }
   const style = {
     background: p.bg || undefined,
     border: p.border ? `1px solid ${p.border}` : undefined,
@@ -165,9 +284,9 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
     return (
       <div ref={hostRef} className="space-y-4" style={{ background: canvas.bg || undefined }}>
         {phoneOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
-          <div key={b.id} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
+          <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
             <CanvasBlock b={b} stacked />
-          </div>
+          </Animated>
         ))}
       </div>
     );
@@ -177,13 +296,22 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // author placed it. transform-origin at the top-left keeps the design's left edge on the
   // container's left edge; the wrapper's height is the SCALED height, because a transform
   // does not affect layout and the page below would otherwise overlap the canvas.
+  //
+  // The PHONE BOARD is this same painting on a 390px plane with the phone coordinates —
+  // hand-placed blocks where the author put them, the rest laid underneath in reading order.
+  const phone = L.mode === 'phone';
+  const planeW = phone ? PHONE_WIDTH : DESIGN_WIDTH;
+  const planeH = phone ? canvas.phoneHeight : canvas.height;
+  const blocks = phone
+    ? phoneBoardBlocks(canvas.blocks.map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden))
+    : paintOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden);
   return (
     <div ref={hostRef} className="w-full overflow-hidden" style={{ background: canvas.bg || undefined }}>
-      <div style={{ height: canvas.height * L.scale, position: 'relative' }}>
+      <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
         <div
           style={{
-            width: DESIGN_WIDTH,
-            height: canvas.height,
+            width: planeW,
+            height: planeH,
             transform: `scale(${L.scale})`,
             transformOrigin: 'top left',
             position: 'absolute',
@@ -191,19 +319,19 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
             left: 0,
           }}
         >
-          {paintOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
-            <div
-              key={b.id}
+          {blocks.map((b) => (
+            <Animated
+              key={b.id} id={b.id} anim={b.anim}
               // CLIPPED, on purpose. A block has the size the author gave it, and content
               // that spills would land on top of whatever is placed below it — a canvas
               // where one paragraph silently pushes into its neighbour is not a layout.
               // The cost is that overrunning text disappears for the reader, so the EDITOR
               // flags a block whose content is taller than its box; this is the wrong place
-              // to discover it.
-              style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: b.z, overflow: 'hidden', opacity: b.opacity < 1 ? b.opacity : undefined }}
+              // to discover it. A dropdown's menu is the one thing allowed out of the box.
+              style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: b.z, overflow: b.kind === 'button' ? 'visible' : 'hidden', opacity: b.opacity < 1 ? b.opacity : undefined }}
             >
               <CanvasBlock b={b} />
-            </div>
+            </Animated>
           ))}
         </div>
       </div>
