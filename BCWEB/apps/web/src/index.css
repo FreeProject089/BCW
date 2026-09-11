@@ -315,6 +315,21 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     transition: border-color .16s ease, box-shadow .16s ease; outline: none;
   }
   .input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 3px var(--error-bg); }
+  /* Number fields: the native spinner (a grey 8px stub that differs per browser and is
+     unreachable on a phone) is replaced by two real buttons drawn by <Input type="number">. */
+  .num-wrap { position: relative; display: inline-flex; width: 100%; min-width: 0; }
+  .num-wrap > .num-input { width: 100%; padding-inline-end: 2.3rem; appearance: textfield; -moz-appearance: textfield; }
+  .num-input::-webkit-outer-spin-button, .num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .num-btns { position: absolute; inset-block: 4px; inset-inline-end: 4px; width: 1.65rem; display: flex; flex-direction: column;
+    border-radius: calc(var(--r-md) - 3px); overflow: hidden; border: 1px solid var(--control-border); background: var(--surface-2); }
+  .num-btns button { flex: 1; display: grid; place-items: center; border: 0; background: transparent; padding: 0; margin: 0;
+    color: var(--muted); cursor: pointer; line-height: 1; min-height: 0; }
+  .num-btns button:hover { background: color-mix(in srgb, var(--primary) 14%, var(--surface-2)); color: var(--text); }
+  .num-btns button:active { background: color-mix(in srgb, var(--primary) 26%, var(--surface-2)); }
+  .num-btns button + button { border-top: 1px solid var(--control-border); }
+  .num-btns svg { width: 11px; height: 11px; }
+  .num-wrap:has(.num-input:disabled) .num-btns, .num-wrap:has(.num-input[readonly]) .num-btns { opacity: .4; pointer-events: none; }
+  @media (pointer: coarse) { .num-btns { width: 2rem; } .num-wrap > .num-input { padding-inline-end: 2.7rem; } }
   /* Inputs (incl. search + filter bars — <Select> is a styled .input too) are
      SOLID by default so "Translucent surfaces = off" is actually honoured. The
      frosted variant lives under [data-surface-glass] below. */
@@ -575,7 +590,16 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
    theme it read as a smudge wherever it was drawn. A white plate under it, everywhere,
    once. Padding is inside the box for a replaced element, so the plate shows through it
    without a wrapper — the class goes on the <img> itself and callers keep their sizes. */
-.logo-plate { background: #fff; padding: 11%; object-fit: contain !important; box-sizing: border-box; }
+/* The white plate under a mark.
+   Padding in PIXELS, tiered by the size classes in use — a percentage padding on an <img>
+   resolves against the containing block's width, not the image's: the 32px topbar mark got
+   19px of padding a side (content area zero — a white square with nothing in it) and the
+   36px footer mark grew to 70px. The image itself is the only thing whose size we know. */
+.logo-plate { background: #fff; padding: 3px; object-fit: contain !important; box-sizing: border-box; }
+.logo-plate.w-8, .logo-plate.w-9, .logo-plate.w-10 { padding: 4px; }
+.logo-plate.w-12 { padding: 6px; }
+.logo-plate.w-16, .logo-plate.w-20 { padding: 8px; }
+.logo-plate.w-4, .logo-plate.w-5 { padding: 2px; }
 .logo-plate:not([class*="rounded"]) { border-radius: 22%; }
 
 /* ── Canvas blocks: how they arrive, and what a button block looks like ─────────────

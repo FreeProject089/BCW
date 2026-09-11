@@ -1144,8 +1144,8 @@ function Footer() {
         <div className="mb-4 md:mb-0">
           <div className="flex items-center gap-2.5 font-extrabold text-lg">
             {cfg?.brand?.logo
-              ? <img src={cfg.brand.logo} alt="" className="w-9 h-9 rounded-xl object-contain" />
-              : <SiteLogo className="w-9 h-9 rounded-xl object-contain" />}
+              ? <img src={cfg.brand.logo} alt="" className="logo-plate w-8 h-8 rounded-xl object-contain shrink-0" />
+              : <SiteLogo className="w-8 h-8 rounded-xl object-contain shrink-0" />}
             {cfg?.brand?.name || 'BetterCommunity'}
           </div>
           <p className="text-sm text-[var(--muted)] mt-3 max-w-xs leading-relaxed">{frOr(cfg?.brand?.taglineFr, cfg?.brand?.tagline) || t('foot.tagline')}</p>

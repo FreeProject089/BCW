@@ -45,7 +45,7 @@ function TermSelect({ months, setMonths, termDisc, t }) {
   // the row where somebody is comparing them.
   const years = (m) => (m === 12 ? t('hosting.1yr', '1 yr') : m === 24 ? t('hosting.2yr', '2 yr') : '');
   return (
-    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')} className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+    <div role="radiogroup" aria-label={t('hosting.term', 'Billing term')} className="grid grid-cols-3 sm:grid-cols-5 gap-2">
       {opts.map((m) => {
         const active = m === months;
         const d = disc(m);
@@ -577,7 +577,7 @@ function BoostAddCard({ repos, onAdd }) {
       <div className="flex-1 w-full">
         <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
         <div className="text-sm text-[var(--muted)] mb-2">{t('cart.boost.sub', 'Feature one of your repos at the top of the public listing for a set number of days.')}</div>
-        <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 items-end">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-end [&>button]:w-full sm:[&>button]:w-auto">
           <Select value={repoId} onChange={(e) => setRepoId(e.target.value)}>{repos.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}</Select>
           <Select className="!w-auto" value={days} onChange={(e) => setDays(Number(e.target.value))}>{[3, 7, 14, 30, 90].map((d) => <option key={d} value={d}>{d} {t('cart.days', 'days')}</option>)}</Select>
           <Button variant="primary" disabled={!repoId} onClick={() => onAdd({ repoId, repoName: repo?.name, days })}><ShoppingCart size={15} /> {t('cart.add', 'Add to cart')}{fp?.priceCents != null ? ` · $${(fp.priceCents / 100).toFixed(2)}` : ''}</Button>
@@ -770,7 +770,7 @@ function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
     <Card className="p-0 overflow-hidden">
       <div className="grid md:grid-cols-[1fr_300px]">
         {/* left: the controls */}
-        <div className="p-6 sm:p-7 space-y-6">
+        <div className="p-5 sm:p-7 space-y-6">
           {sliders.map((s) => (
             <div key={s.key}>
               <div className="flex items-center justify-between mb-1.5 text-sm">
@@ -787,7 +787,7 @@ function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
           </div>
         </div>
         {/* right: the price, always in view while dragging */}
-        <div className="p-6 sm:p-7 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
+        <div className="p-5 sm:p-7 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hosting.estprice', 'Estimated price')}</div>
           <div className="mt-2 flex items-end gap-1.5">
             <span className="text-4xl font-extrabold gradient-text leading-none">{termTotal == null ? '—' : `$${(termTotal / 100 / months).toFixed(2)}`}</span>
@@ -839,7 +839,7 @@ function PoolConfigurator({ months, termDisc, soldOut, capacity, onAdd }) {
  *  into a brochure. The heading is the label. */
 function SectionLead({ title, sub }) {
   return (
-    <div className="mt-20 mb-7">
+    <div className="mt-14 sm:mt-20 mb-6 sm:mb-7">
       <h2 className="text-2xl sm:text-[1.75rem] font-extrabold tracking-tight text-balance">{title}</h2>
       {sub && <p className="text-[var(--muted)] mt-2 text-[15px] leading-relaxed max-w-2xl">{sub}</p>}
     </div>
@@ -850,7 +850,7 @@ function SectionLead({ title, sub }) {
  *  the two levels are told apart at a glance rather than by font size alone. */
 function SubLead({ icon: Icon, title, sub }) {
   return (
-    <div className="mt-12 mb-4 flex items-start gap-2.5">
+    <div className="mt-9 sm:mt-12 mb-4 flex items-start gap-2.5">
       {Icon && <Icon size={17} className="text-[var(--primary-2)] shrink-0 mt-[3px]" />}
       <div className="min-w-0">
         <h3 className="font-bold text-[17px] leading-tight">{title}</h3>
@@ -905,7 +905,7 @@ function HostingHero({ freePlan, freeOffered }) {
     // it. The plans start where a scroll starts, which is the whole request.
     <div className="relative min-h-[calc(100svh-7rem)] flex flex-col justify-center pb-10">
       <div aria-hidden className="absolute left-1/2 -translate-x-1/2 top-4 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
-      <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-12 items-center">
+      <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-7 sm:gap-10 lg:gap-12 items-center">
         <div>
           {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
               about hosting — a third naming of the same thing before a word of substance. */}
@@ -981,7 +981,7 @@ function PoolDiagram() {
   const freeGB = TOTAL - seg.reduce((a, x) => a + x.gb, 0);
   return (
     <div className="relative">
-      <Card className="p-6 sm:p-7">
+      <Card className="p-5 sm:p-7">
         <div className="text-[12.5px] text-[var(--muted)] mb-2.5">{t('hosting.diag.ex', 'For example, a {n} GB pool').replace('{n}', TOTAL)}</div>
         <div className="h-12 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden flex">
           {seg.map((sg) => (
@@ -1070,9 +1070,7 @@ function HostingCompare({ freePlan }) {
   const shown = cols.filter((col) => col.k !== 'free' || !!freePlan);
   return (
     <>
-      <SectionLead
-        title={t('hosting.cmp.title', 'What changes, honestly')}
-        sub={t('hosting.cmp.sub', 'Including the row where the free plan is the wrong answer.')} />
+      <SectionLead title={t('hosting.cmp.title', 'What changes, honestly')} />
       <div className={`grid gap-5 items-stretch ${shown.length === 3 ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         {shown.map((col) => (
           <div key={col.k} className={`rounded-xl border p-6 flex flex-col ${col.tone}`}>

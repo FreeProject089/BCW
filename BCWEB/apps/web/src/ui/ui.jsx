@@ -209,7 +209,51 @@ export function StarButton({ favorited, count, post, onDone, signedIn, size = 's
     </Button>
   );
 }
-export const Input = forwardRef((p, ref) => <input ref={ref} {...p} className={`input ${p.className || ''}`} />);
+export const Input = forwardRef((p, ref) => {
+  if (p.type === 'number' && !p.plain) return <NumberInput {...p} ref={ref} />;
+  const { plain: _p, ...rest } = p;
+  return <input ref={ref} {...rest} className={`input ${p.className || ''}`} />;
+});
+
+// Layout classes belong on the wrapper (it is what sits in the grid); the rest style the
+// field itself. A width on the <input> inside a 100% wrapper would be a width inside a width.
+const WRAP_CLASS = /^(!?)(w-|max-w-|min-w-|flex|grow|shrink|basis-|col-span|row-span|m[tbsexy]?-|hidden|block|inline|self-|justify-self|order-)/;
+function splitClasses(cls) {
+  const wrap = [], inner = [];
+  for (const c of String(cls || '').split(/\s+/).filter(Boolean)) (WRAP_CLASS.test(c) ? wrap : inner).push(c);
+  return [wrap.join(' '), inner.join(' ')];
+}
+
+/**
+ * A number field with its own up/down buttons.
+ *
+ * The native spinner is an 8px grey stub that looks different in every browser, cannot be
+ * themed, and on a phone cannot be hit at all. These are two real buttons that call the
+ * field's own stepUp/stepDown (so `min`, `max` and `step` are honoured exactly as typing
+ * would) and then raise `input` so React's onChange runs — the DOM value changed behind
+ * React's back, and telling it is what makes a controlled field follow.
+ */
+const NumberInput = forwardRef(({ className, plain: _p, ...p }, ref) => {
+  const inner = useRef(null);
+  const setRef = (el) => { inner.current = el; if (typeof ref === 'function') ref(el); else if (ref) ref.current = el; };
+  const [wrapCls, innerCls] = splitClasses(className);
+  const bump = (dir) => {
+    const el = inner.current;
+    if (!el || el.disabled || el.readOnly) return;
+    try { dir > 0 ? el.stepUp() : el.stepDown(); } catch { /* a value outside the step grid: leave it */ }
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.focus({ preventScroll: true });
+  };
+  return (
+    <span className={`num-wrap ${wrapCls}`}>
+      <input ref={setRef} {...p} type="number" className={`input num-input ${innerCls}`} />
+      <span className="num-btns" aria-hidden>
+        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(1)}><ChevronDown style={{ transform: 'rotate(180deg)' }} /></button>
+        <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => bump(-1)}><ChevronDown /></button>
+      </span>
+    </span>
+  );
+});
 export const Textarea = forwardRef((p, ref) => <textarea ref={ref} {...p} className={`input ${p.className || ''}`} />);
 export const Select = ({ className = '', children, ...p }) => <select className={`input ${className}`} {...p}>{children}</select>;
 

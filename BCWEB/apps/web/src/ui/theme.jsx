@@ -277,8 +277,10 @@ export function SiteLogo({ className = '', size, alt = '', plain = false, ...res
   // Rendered outside the provider (a standalone preview, a test harness) it still has to
   // draw something — a logo that vanishes when the context is missing is worse than the
   // bundled mark.
-  const src = ctx?.logo || siteLogo(ctx?.theme || 'light');
   // On the plate unless the caller says otherwise (an avatar fallback fills its circle).
+  // The plate is white whatever the scheme, so the mark ON it is always the light-scheme
+  // one: a site whose dark mark is a white glyph drew white-on-white and vanished.
+  const src = plain ? (ctx?.logo || siteLogo(ctx?.theme || 'light')) : siteLogo('light');
   return <img src={src} alt={alt} width={size} height={size} className={`${plain ? '' : 'logo-plate '}${className}`} {...rest} />;
 }
 
