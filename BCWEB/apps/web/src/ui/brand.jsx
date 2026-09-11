@@ -8,8 +8,11 @@
 export { GithubIcon, GoogleIcon, KofiIcon, DiscordIcon, RedditIcon, XIcon, YoutubeIcon, TwitchIcon, MastodonIcon, BlueskyIcon, InstagramIcon, TelegramIcon, TiktokIcon } from '@bettercommunity/bmd/brands';
 
 export const APP_LOGO = { bmm: '/icons/bmm.png', bsm: '/icons/bsm.png', installer: '/icons/bi.png', bi: '/icons/bi.png' };
-export function AppLogo({ pkey, size = 22, className = '', fallback: F }) {
-  const src = APP_LOGO[pkey];
-  if (src) return <img src={src} alt="" width={size} height={size} className={`rounded-md object-contain ${className}`} onError={(e) => { e.currentTarget.style.display = 'none'; }} />;
+// `name` as well as `pkey`: home-sections.jsx has passed `name` since it was written, and this
+// only read `pkey` — so the landing's product rows drew NO logo and nobody noticed, because the
+// row still had its text. A prop that is silently ignored is the worst kind of wrong.
+export function AppLogo({ pkey, name, size = 22, className = '', fallback: F }) {
+  const src = APP_LOGO[pkey || name];
+  if (src) return <img src={src} alt="" width={size} height={size} className={`logo-plate rounded-md object-contain ${className}`} onError={(e) => { e.currentTarget.style.display = 'none'; }} />;
   return F ? <F size={size} className={className} /> : null;
 }

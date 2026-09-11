@@ -152,7 +152,11 @@ export const CATALOG_PROJECTS = Object.keys(PROJECT_KINDS);
 export const kindLabel = (kind, project) =>
   (kind === 'PRESET' && project === 'bmm') ? 'Automation' : (KIND_LABEL[kind] || kind);
 export const statusTone = (s) => s === 'PUBLISHED' ? 'green' : (s === 'REJECTED' || s === 'SUSPENDED') ? 'red' : 'amber';
-export const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
+// Reserves room. A one-line spinner replaced by a screen of content is a layout shift the
+// size of that content, and it happens once per async section on every page — which is what
+// a CLS of 1.5 on the dashboard was. 10rem is not the final height; it is enough that the
+// swap moves the page by a fraction of a viewport rather than most of one.
+export const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10 min-h-[10rem]"><Spinner /> Loading…</div>;
 
 // Optimistic, undoable delete/revoke. `del(id, run, msg)` hides the row immediately (add id
 // to `pending`, filter your list by !pending.has(id)) and shows a "Undo" toast; the actual

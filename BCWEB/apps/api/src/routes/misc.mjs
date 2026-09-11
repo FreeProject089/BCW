@@ -417,7 +417,7 @@ export const scenePartial = (v) => {
   if (SCENE_HOVERS.includes(v.hover)) out.hover = v.hover;
   const set = (k, lo, hi, round) => { const n = num(v[k], lo, hi); if (n !== undefined) out[k] = round ? Math.round(n) : n; };
   set('detail', 0, 5, true); set('noise', 0, 1.5); set('speed', 0, 3); set('opacity', 0.1, 1);
-  set('scale', 0.5, 1.8); set('glow', 0, 1); set('twinkles', 0, 240, true);
+  set('scale', 0.5, 1.8); set('glow', 0, 1); set('twinkles', 0, 240, true); set('fps', 15, 60, true);
   return Object.keys(out).length ? out : null;
 };
 const sceneEvents = (v) => {
@@ -463,6 +463,9 @@ const sceneConfig = (row) => {
     // is added to the scene rather than added invisibly.
     glow: num(v.glow, 0, 1, 0.45),
     twinkles: Math.round(num(v.twinkles, 0, 240, 110)),
+    // The idle frame budget. 30 by default: a backdrop drifting at 30 is indistinguishable
+    // from 60 and costs half the CPU, which is what "my PC lags with the site open" was.
+    fps: Math.round(num(v.fps, 15, 60, 30)),
     // Per-event overrides, applied client-side while an event is live (B11).
     events: sceneEvents(v.events),
   };
@@ -519,6 +522,7 @@ export default async function miscRoutes(app) {
       reveal: z.enum(SCENE_REVEALS).optional(),
       glow: z.number().min(0).max(1).optional(),
       twinkles: z.number().int().min(0).max(240).optional(),
+      fps: z.number().int().min(15).max(60).optional(),
       // A map of event id → partial scene override. Sanitised (scenePartial) on store, so a
       // client that posts junk cannot poison the config every visitor reads.
       events: z.record(z.any()).optional(),

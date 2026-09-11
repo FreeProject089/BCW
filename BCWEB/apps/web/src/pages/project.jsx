@@ -357,7 +357,7 @@ export default function ProjectPage() {
       {/* header */}
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {APP_LOGO[key]
-          ? <img src={APP_LOGO[key]} alt="" className="w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
+          ? <img src={APP_LOGO[key]} alt="" className="logo-plate w-16 h-16 rounded-2xl object-contain shrink-0 bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-2xl font-extrabold text-white">{c.name?.[0] || 'B'}</span></div>}
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{c.name}</h1>{c.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{c.version}</Badge></button>}</div>
@@ -475,7 +475,7 @@ function AppPreview({ pkey, replayUrl }) {
         </div>
         <div className="grid grid-cols-[130px_1fr]" style={{ background: '#0d0f15', color: '#e2e6ee', minHeight: 270 }}>
           <aside className="p-3" style={{ borderRight: '1px solid rgba(255,255,255,0.06)' }}>
-            <div className="flex items-center gap-1.5 font-bold text-sm mb-3"><img src="/logo.png" alt="" className="w-5 h-5 rounded" /><span style={{ color: '#f59e0b' }}>{pkey.toUpperCase()}</span></div>
+            <div className="flex items-center gap-1.5 font-bold text-sm mb-3"><img src="/logo.png" alt="" className="logo-plate w-5 h-5 rounded" /><span style={{ color: '#f59e0b' }}>{pkey.toUpperCase()}</span></div>
             {['Installed', 'Catalog', 'Plugins', 'Themes', 'Server Repos', 'Settings'].map((s, i) => (
               <div key={s} className="px-2 py-1.5 rounded-lg text-xs mb-0.5" style={i === 0 ? { background: 'rgba(249,115,22,0.15)', color: '#fdba74' } : { color: '#9aa0ac' }}>{s}</div>
             ))}

@@ -353,7 +353,7 @@ export function Home({ draft = null }) {
   // The projects, as media. Absent or switched off leaves the hero exactly as it was — a
   // site that has never configured this must not gain an empty black rectangle the day it
   // ships.
-  const { data: showcase } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
+  const { data: showcase, loading: showcaseLoading } = useAsync(() => api.get('/site/showcase').catch(() => null), []);
   // The official projects, which the suite row is built from. Same failure rule as the
   // others: a request that fails leaves the row on its written-in fallback rather than
   // emptying the section this page exists for.
@@ -462,7 +462,17 @@ export function Home({ draft = null }) {
           {/* The projects, moving, under the one line that names the site. This is what the
               page opens with now: a paragraph is what a site says about itself, and what a
               visitor is deciding is whether the thing looks like something they want. */}
-          {showcase?.enabled && (
+          {/* While the config is on its way, the FRAME the showcase will draw into — same
+              width, same 16:10 aspect — so its arrival moves nothing. This block sits inside
+              the first viewport, so before this the whole visible page jumped by its height
+              on every load; that alone was most of the home page's CLS. Once loaded and
+              disabled, nothing is drawn, as before. */}
+          {showcaseLoading && (
+            <div className="mt-14 mx-auto w-full max-w-5xl" aria-hidden>
+              <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]" style={{ aspectRatio: '16 / 10' }} />
+            </div>
+          )}
+          {!showcaseLoading && showcase?.enabled && (
             <div className="anim-slide mt-14" style={{ animationDelay: '320ms' }}>
               <ErrorBoundary fallback={null}>
                 <Suspense fallback={null}><ProjectShowcase config={showcase} /></Suspense>

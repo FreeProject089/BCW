@@ -328,7 +328,10 @@ export default async function hostingRoutes(app) {
     // the GB value). max 100000 GB ≈ 100 TB, well within a JS-safe number.
     storageGB: z.number().min(0).max(100000),
     uploadLimitKbps: z.number().int().min(0).max(10_000_000),
-    cpuShare: z.number().min(0).max(64),
+    // Optional now that the editor no longer shows it. Defaulted rather than dropped so the
+    // price formula, which still multiplies by it, keeps computing the same number for a plan
+    // saved without one as for the plans that already exist.
+    cpuShare: z.number().min(0).max(64).optional().default(0.5),
     // NULLABLE on purpose: leaving the price empty means "whatever Hosting settings say
     // this costs", so a plan tracks the per-GB/per-Mbps rates instead of freezing a number
     // that silently stops matching them the next time those rates move.

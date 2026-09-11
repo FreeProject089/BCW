@@ -244,6 +244,10 @@ export const SCENE_DEFAULTS = {
   reveal: 'rise',
   glow: 0.45,
   twinkles: 110,
+  // The frame budget while nothing fast is happening. A backdrop drifting at 30 cannot be told
+  // from one drifting at 60; the CPU it costs can. Full rate only during the intro, a hover
+  // reaction or a page transition.
+  fps: 30,
 };
 
 /**

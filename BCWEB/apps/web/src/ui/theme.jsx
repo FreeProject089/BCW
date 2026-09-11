@@ -272,13 +272,14 @@ export function ThemeProvider({ children }) {
  * footer, sign-in, the default avatar. Not for the per-project marks (those are app icons)
  * and not for a user-uploaded nav logo, which already overrides this by configuration.
  */
-export function SiteLogo({ className = '', size, alt = '', ...rest }) {
+export function SiteLogo({ className = '', size, alt = '', plain = false, ...rest }) {
   const ctx = useTheme();
   // Rendered outside the provider (a standalone preview, a test harness) it still has to
   // draw something — a logo that vanishes when the context is missing is worse than the
   // bundled mark.
   const src = ctx?.logo || siteLogo(ctx?.theme || 'light');
-  return <img src={src} alt={alt} width={size} height={size} className={className} {...rest} />;
+  // On the plate unless the caller says otherwise (an avatar fallback fills its circle).
+  return <img src={src} alt={alt} width={size} height={size} className={`${plain ? '' : 'logo-plate '}${className}`} {...rest} />;
 }
 
 // Clean sliding switch: a single high-contrast knob carrying the current mode's icon

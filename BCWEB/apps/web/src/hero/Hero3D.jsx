@@ -5,7 +5,7 @@ import { useIntro, SKIP_KEY } from '../ui/IntroContext.jsx';
 import { useI18n } from '../i18n.jsx';
 import { api } from '../lib/api.js';
 import {
-  isLight, palette, VERTEX_SHADER, FRAGMENT_SHADER,
+  isLight, palette, cssHex, VERTEX_SHADER, FRAGMENT_SHADER,
   FRACTURE_VERTEX_SHADER, FRACTURE_FRAGMENT_SHADER,
   buildGeometry, SCENE_DEFAULTS, readSceneConfig,
 } from './scene-shapes.js';
@@ -77,9 +77,16 @@ export default function Hero3D() {
     // WebGL2, or a software renderer that would lag). Reveals the page immediately so
     // the intro loader never hangs on top of the site.
     const paintStaticGlow = () => {
+      // From the palette, not two amber literals. This is the backdrop every machine that
+      // cannot run the orb gets — and the one the adaptive watchdog bails to — so a site
+      // whose accent is blue was getting an orange halo precisely on the machines where the
+      // backdrop is all there is. `palette()` already answers "what colour is the orb" for
+      // the shader; the same answer, as CSS.
+      const q = palette();
+      const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
       el.style.background = isLight()
-        ? 'radial-gradient(1100px 780px at 80% 16%, rgba(243,168,105,0.34), rgba(255,224,191,0.12) 42%, transparent 70%)'
-        : 'radial-gradient(1100px 780px at 80% 16%, rgba(217,119,10,0.26), rgba(58,28,13,0.16) 42%, transparent 70%)';
+        ? `radial-gradient(1100px 780px at 80% 16%, color-mix(in srgb, ${hex(q.colorB)} 34%, transparent), color-mix(in srgb, ${hex(q.colorA)} 12%, transparent) 42%, transparent 70%)`
+        : `radial-gradient(1100px 780px at 80% 16%, color-mix(in srgb, ${hex(q.colorB)} 26%, transparent), color-mix(in srgb, ${hex(q.colorA)} 16%, transparent) 42%, transparent 70%)`;
       el.style.opacity = '1';
       setShowOverlay(false); finish();
     };
@@ -280,7 +287,9 @@ export default function Hero3D() {
       // use the SATURATED primary orange, bigger points, and normal blending so
       // they read as real specks; dark theme keeps the airy additive glow.
       if (isLight()) {
-        twinkleMat.color.setHex(0xf97316);
+        // The saturated ACCENT, whatever it is — not orange. Read from the same custom
+        // property palette() reads, so a site palette change moves this too.
+        twinkleMat.color.setHex(cssHex('--primary', 0xf97316));
         twinkleMat.size = 0.11; twinkleMat.opacity = 0.7; twinkleMat.blending = THREE.NormalBlending;
         twinkleBase = 0.55;
       } else {
@@ -424,6 +433,10 @@ export default function Hero3D() {
     //    sphere), holds a beat, then glides to its small background position
     //    while the logo fades — all one continuous scene, no hard cut. ──
     let baseX = BG_POS.x, baseY = BG_POS.y, baseZ = BG_POS.z;
+    // Live, unlike `active`, which is the intro state captured when this effect ran and stays
+    // true for its whole lifetime — a frame budget keyed on it would never engage after an
+    // intro. Cleared by finishIntro, which both the timeline's end and the skip go through.
+    let introRunning = !!active;
     if (active) {
       orb.position.set(HERO_POS.x, HERO_POS.y, HERO_POS.z);
       orb.scale.setScalar(0.35);
@@ -432,7 +445,7 @@ export default function Hero3D() {
       // "materialising from its own pieces" intro rather than a plain scale-in.
       reseedFracture();
       fractureState.value = 1;
-      const finishIntro = () => { setShowOverlay(false); finish(); };
+      const finishIntro = () => { introRunning = false; setShowOverlay(false); finish(); };
       const tl = gsap.timeline({ onComplete: finishIntro });
       tl.to(orb.scale, { x: heroScale, y: heroScale, z: heroScale, duration: 1.35, ease: 'back.out(1.4)' });
       tl.to(fractureState, { value: 0, duration: 1.5, ease: 'power3.inOut' }, '<'); // shards fly in + fuse into the orb
@@ -488,6 +501,19 @@ export default function Hero3D() {
     //   • still < 30 fps  → give up on the live orb: dispose it and switch to the
     //                       (free) static glow. Guarantees no sustained lag.
     let winStart = 0, winFrames = 0, stage = 0, bailed = false;
+    // The frame budget. `sceneCfg.fps` while idle; the display's own rate while something
+    // fast is on screen — the intro, a hover reaction, the page-transition dolly — because
+    // those are the moments a dropped frame would read as a stutter. A slowly drifting
+    // backdrop at 30 cannot be told from 60; the core it pins can.
+    const idleFps = Math.max(15, Math.min(60, Number(sceneCfg.fps) || 30));
+    let lastDraw = 0;
+    // A window behind another one is a window nobody is looking at. Hiding the tab already
+    // paused this; leaving the site open behind an editor did not, and that was the report.
+    let blurred = typeof document.hasFocus === 'function' ? !document.hasFocus() : false;
+    const onBlur = () => { blurred = true; };
+    const onFocus = () => { blurred = false; };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
     const bailToStatic = () => {
       bailed = true;
       if (raf) cancelAnimationFrame(raf);
@@ -498,19 +524,29 @@ export default function Hero3D() {
       if (bailed) return;
       raf = requestAnimationFrame(tick);
       if (ctxLost) return;
-      // Pause work while the tab/page is hidden — no point rendering off-screen.
-      if (document.hidden) { winStart = 0; winFrames = 0; return; }
+      // Pause work while the tab/page is hidden or the window is behind another — no point
+      // rendering what nobody sees.
+      if (document.hidden || blurred) { winStart = 0; winFrames = 0; return; }
       const now = performance.now();
+      // Busy = full rate. Everything else waits for its slot in the budget. `- 2` so a
+      // display at exactly the budget's rate is not skipped every other frame by jitter.
+      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001;
+      const target = busy ? 60 : idleFps;
+      if (!busy && now - lastDraw < 1000 / target - 2) return;
+      lastDraw = now;
       if (!winStart) winStart = now;
       winFrames++;
       if (now - winStart >= 1000) {
         const fps = winFrames / ((now - winStart) / 1000);
         winStart = now; winFrames = 0;
+        // Judged against the TARGET, not against 60: a 30 fps budget would otherwise read
+        // as a struggling machine and the throttle would drop the pixel ratio on its first
+        // window and bail to the static glow on its second.
         if (stage === 0) stage = 1;
         else if (stage === 1) {
-          if (fps < 48 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
+          if (fps < target * 0.8 && renderer.getPixelRatio() > 1) { renderer.setPixelRatio(1); renderer.setSize(W(), H()); }
           stage = 2;
-        } else if (fps < 30) { bailToStatic(); return; }
+        } else if (fps < target * 0.5) { bailToStatic(); return; }
       }
       try {
         t += 0.01 * sceneCfg.speed;
@@ -599,6 +635,8 @@ export default function Hero3D() {
       window.removeEventListener('bcweb:orb-transition', onPageTransition);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
       renderer.domElement.removeEventListener('webglcontextlost', onLost);
       renderer.domElement.removeEventListener('webglcontextrestored', onRestore);
@@ -618,7 +656,8 @@ export default function Hero3D() {
       {showOverlay && (
         <div className="fixed inset-0 z-[999] flex flex-col items-center justify-center pointer-events-none">
           <div ref={logoRef} className="flex flex-col items-center gap-3 pointer-events-none">
-            <img src="/logo-white.webp" alt="BetterCommunity" className="w-16 h-16 rounded-2xl shadow-lg" />
+            {/* The plated mark, not the white cut-out: that one only ever worked on dark. */}
+            <img src="/logo.png" alt="BetterCommunity" className="logo-plate w-16 h-16 rounded-2xl shadow-lg" />
             <div className="font-extrabold text-lg tracking-tight text-[var(--text)]">{t('intro.brand', 'BetterCommunity')}</div>
             <div ref={barRef} className="w-32 h-[2px] rounded-full overflow-hidden bg-[var(--surface-2)] relative mt-1">
               <div className="absolute inset-y-0 w-1/3 rounded-full anim-intro-shimmer" style={{ background: 'linear-gradient(90deg, var(--primary), var(--primary-2))' }} />

@@ -208,7 +208,7 @@ function projectLogo(to) {
 function NavIcon({ item, size = 15 }) {
   const src = item.img || projectLogo(item.to);
   const [ok, setOk] = useState(!!src);
-  if (src && ok) return <img src={src} alt="" width={size + 3} height={size + 3} className="nav-ic rounded-[4px] object-contain" onError={() => setOk(false)} />;
+  if (src && ok) return <img src={src} alt="" width={size + 3} height={size + 3} className="nav-ic logo-plate rounded-[4px] object-contain" onError={() => setOk(false)} />;
   if (typeof item.icon !== 'string') { const I = item.icon || Boxes; return <I size={size} className="nav-ic" />; }
   return <IconGlyph name={navIconName(item.icon)} size={size} className="nav-ic" />;
 }

@@ -8190,7 +8190,10 @@ function AdminHostingPlans() {
             <Field label={t('adm.plans.f.name', 'Name')}><Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></Field>
             <Field label={t('adm.plans.f.storage', 'Storage')}><ByteSize value={(Number(draft.storageGB) || 0) * (1024 ** 3)} onChange={(bytes) => setDraft({ ...draft, storageGB: bytes / (1024 ** 3) })} /></Field>
             <Field label={t('adm.plans.f.upload', 'Upload cap (kbps)')} hint={mbps(Number(draft.uploadLimitKbps) || 0)}><Input type="number" min="0" value={draft.uploadLimitKbps} onChange={(e) => setDraft({ ...draft, uploadLimitKbps: e.target.value })} /></Field>
-            <Field label={t('adm.plans.f.cpu', 'CPU share')}><Input type="number" step="0.05" min="0" value={draft.cpuShare} onChange={(e) => setDraft({ ...draft, cpuShare: e.target.value })} /></Field>
+            {/* No CPU share field. It was never something a customer could choose (repos.jsx:
+                "no longer user-adjustable") and nothing the pool enforces; the column stays so
+                existing plans keep their value and their price, but an admin has no reason to
+                see or type it. */}
             {/* Boosts INCLUDED with the plan. Zero is the default and the no-op: every plan
                 that existed before this column did included none, so a save that leaves these
                 alone must not start granting something nobody sold. */}
@@ -8299,7 +8302,7 @@ function AdminHostingPlans() {
                   {pl.priceMonthlyCents === 0 && <Badge tone="success">{t('adm.plans.free', 'free')}</Badge>}
                 </div>
                 <div className="text-[11px] text-[var(--faint)] font-mono">
-                  {formatBytes((pl.storageGB || 0) * (1024 ** 3))} · {mbps(pl.uploadLimitKbps)} · CPU {pl.cpuShare} · {money(pl.priceMonthlyCents)}/mo
+                  {formatBytes((pl.storageGB || 0) * (1024 ** 3))} · {mbps(pl.uploadLimitKbps)} · {money(pl.priceMonthlyCents)}/mo
                   {pl.boostsPerPeriod > 0 && ` · ${pl.boostsPerPeriod}×${pl.boostDays}${t('adm.plans.boostsuffix', 'd boost')}/${pl.boostPeriodMonths}${t('adm.plans.mo', 'mo')}`}
                 </div>
                 {/* A change that has been PROMISED to customers is not an editor detail —
@@ -12521,6 +12524,7 @@ function SceneEditor() {
             {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'), 0.5, 1.8, 0.05, pct)}
             {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d', 'The soft light behind it. At 0 it is not drawn at all.'), 0, 1, 0.05, pct)}
             {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'), 0, 240, 10)}
+            {slider('fps', t('scn.fps', 'Frame budget'), t('scn.fps.d', 'Frames per second while nothing fast is happening. 30 looks the same as 60 for a drifting backdrop and costs half the CPU; the intro and hover still run at full rate.'), 15, 60, 5)}
           </div>
         </div>
 

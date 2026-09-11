@@ -235,6 +235,11 @@ export default async function analyticsRoutes(app) {
     // CLS is unitless (a layout-shift score), so the millisecond ceiling above is
     // meaningless for it — anything past 10 is already off the "poor" end of the scale.
     if (b.data.metric === 'CLS' && b.data.value > 10) return reply.code(400).send({ error: 'invalid' });
+    // A paint cannot happen in 1 ms. The vitals export carried thirty-odd `/ret-<timestamp>`
+    // rows — a path this app does not have — each with LCP = 1 and one sample, and together
+    // they dragged the site-wide LCP p50 down to 1 ms: a number that describes nothing. Paint
+    // metrics below one frame are not measurements of this site and do not get in.
+    if ((b.data.metric === 'LCP' || b.data.metric === 'FCP') && b.data.value < 16) return reply.code(400).send({ error: 'invalid' });
     const p = await db();
     const { device, browser, os } = parseUA(req.headers['user-agent']);
     const geo = await geoOf(req).catch(() => ({}));

@@ -6182,6 +6182,7 @@ const DICT = {
     'scn.glow.d': 'La lumière douce derrière. À 0 elle n’est pas dessinée du tout.',
     'scn.tw': 'Poussière',
     'scn.tw.d': 'Des grains sur une ceinture inclinée qui orbite la forme, passant devant et derrière. 0 les enlève.',
+    'scn.fps': 'Budget d’images', 'scn.fps.d': 'Images par seconde quand rien de rapide ne se passe. 30 rend pareil que 60 pour un fond qui dérive et coûte moitié moins de CPU ; l’intro et le survol restent à plein régime.',
     'scn.prev.d': 'La vraie : même géométrie, même shader, même palette que la page derrière vous. Seuls l’intro, la parallaxe du curseur et la dérive au défilement sont laissés de côté.',
     'scn.prev.off': 'Rien n’est dessiné. Les pages s’affichent exactement comme sur une machine sans WebGL — un chemin que le site a toujours dû savoir tenir.',
     'scn.detail': 'Détail',

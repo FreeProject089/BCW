@@ -19,7 +19,9 @@ function useAsync(fn, deps = []) {
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, deps);
   return { data, err, loading, reload };
 }
-const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
+// min-h: see the shared Loading in pages.jsx. The plans grid arriving under a 40px spinner
+// moved everything below it by ~500px, which is most of the page's CLS.
+const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10 min-h-[10rem]"><Spinner /> Loading…</div>;
 
 /* ─────────────────────────  Hosting  ───────────────────────── */
 // Custom, themeable dropdown for the prepaid billing term (replaces the segmented
@@ -368,7 +370,9 @@ export function Hosting() {
       {/* Everything you can actually buy, under one anchor. `scroll-mt` keeps the heading
           clear of the sticky topbar — without it the anchor lands with the title hidden
           under the bar, which reads as the button having done nothing. */}
-      <section id="plans" className="scroll-mt-24">
+      {/* min-h while the plans load: the grid is four cards tall and used to arrive under a
+          one-line spinner, pushing the comparison and the FAQ down by its whole height. */}
+      <section id="plans" className={`scroll-mt-24 ${plans.loading ? 'min-h-[28rem]' : ''}`}>
       <SectionLead
         title={t('hosting.plans.title', 'Pick a size, or set your own')}
         sub={t('hosting.plans.sub', 'The same space either way — the four below are just the sizes people ask for most.')} />
@@ -895,8 +899,12 @@ function HostingHero({ freePlan, freeOffered }) {
     [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing — your call')],
   ];
   return (
-    <div className="relative pt-10 sm:pt-16 pb-8">
-      <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-10 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
+    // The first SCREEN, whatever its height: the topbar is 3.5rem + its 0.75rem inset and
+    // <main> adds 2.5rem above, so `100svh − 7rem` is exactly the viewport below the chrome.
+    // svh, not vh — on a phone the URL bar is part of 100vh and the buttons would sit under
+    // it. The plans start where a scroll starts, which is the whole request.
+    <div className="relative min-h-[calc(100svh-7rem)] flex flex-col justify-center pb-10">
+      <div aria-hidden className="absolute left-1/2 -translate-x-1/2 top-4 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
       <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-10 lg:gap-12 items-center">
         <div>
           {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
@@ -932,6 +940,11 @@ function HostingHero({ freePlan, freeOffered }) {
 
         <PoolDiagram />
       </div>
+      {/* A cue, at the bottom of the screen rather than under the buttons: the buttons say
+          where the plans are, this says there IS a below. Decorative, so hidden from readers. */}
+      <a href="#plans" aria-hidden tabIndex={-1} className="absolute left-1/2 -translate-x-1/2 bottom-2 hidden sm:flex flex-col items-center gap-1 text-[var(--faint)] hover:text-[var(--muted)] transition text-[11px]">
+        <ChevronDown size={16} className="animate-bounce" />
+      </a>
     </div>
   );
 }
