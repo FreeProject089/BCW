@@ -14795,38 +14795,73 @@ function AdminBot() {
         <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account — the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
           <div className="grid grid-cols-3 gap-2">
             <Field label={t('db.eco.minbet', 'Min bet')} className="!mb-0"><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
-            <Field label={t('db.eco.maxbet', 'Max bet')} className="!mb-0"><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
+            <Field label={t('db.eco.maxbet', 'Max bet')} hint={t('db.eco.maxbet.h', '0 = no cap. The bot then says so on the table instead of silently capping an all-in.')} className="!mb-0"><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
             <Field label={t('db.eco.edge', 'House edge %')} className="!mb-0"><Input type="number" value={eco.casino?.houseEdgePct ?? 5} onChange={(e) => set('economy.casino.houseEdgePct', Number(e.target.value))} /></Field>
           </div>
           {(() => {
-            const edge = 1 - Math.min(100, Math.max(0, Number(eco.casino?.houseEdgePct) || 0)) / 100;
-            // Same pricing as the API: the edge taxes the PROFIT of a winning outcome only — a 1×
-            // bucket returns the stake, a 0.3× bucket returns 30 % of it, a 2× win pays 1 + edge.
+            // The SAME arithmetic as the API (lib/casino-rules.mjs): the edge taxes the profit
+            // of a winning outcome only, and it is per game — a blank override means the
+            // global percentage. Rebuilt here rather than imported because this bundle does
+            // not reach into the API's source; the numbers are small enough to keep honest.
+            const globalPct = Math.min(100, Math.max(0, Number(eco.casino?.houseEdgePct) || 0));
+            const byGame = eco.casino?.edgeByGame || {};
+            const pctOf = (g) => { const v = byGame[g]; return v !== '' && v != null && Number.isFinite(Number(v)) ? Math.min(100, Math.max(0, Number(v))) : globalPct; };
+            const keepOf = (g) => 1 - pctOf(g) / 100;
+            const rtp = (outs, g) => outs.reduce((acc, [pr, m]) => acc + pr * (m >= 1 ? 1 + (m - 1) * keepOf(g) : m), 0);
             const C = [1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1]; const T = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
-            const rtp = (outs) => outs.reduce((acc, [pr, m]) => acc + pr * (m >= 1 ? 1 + (m - 1) * edge : m), 0);
-            const plinko = (k) => rtp(T[k].map((m, i) => [C[i] / 1024, m]));
+            const plinko = (k) => rtp(T[k].map((m, i) => [C[i] / 1024, m]), 'plinko');
             const two = [[0.5, 2], [0.5, 0]];
             const GAMES = [
-              ['🪙', t('db.eco.game.coin', 'Coin flip'), rtp(two), '2× · 50%'],
-              ['🎲', t('db.eco.game.dice', 'Dice'), rtp(two), '2× · 50%'],
-              ['🎰', t('db.eco.game.slots', 'Slots'), rtp([[0.04, 8], [0.48, 1.5], [0.48, 0]]), '8× / 1.5×'],
-              ['🎡', t('db.eco.game.roulette', 'Roulette'), rtp([[18 / 37, 2], [19 / 37, 0]]), '2× · 14× · 35×'],
-              ['🎯', t('db.eco.game.wheel', 'Wheel'), rtp([[0.45, 2], [0.55, 0]]), '2×…50×'],
-              ['🟡', t('db.eco.game.plinko', 'Plinko'), plinko('medium'), `${plinko('low').toFixed(2)} · ${plinko('medium').toFixed(2)} · ${plinko('high').toFixed(2)}`],
+              ['coinflip', '🪙', t('db.eco.game.coin', 'Coin flip'), rtp(two, 'coinflip'), '2× · 50%'],
+              ['dice', '🎲', t('db.eco.game.dice', 'Dice'), rtp(two, 'dice'), '2× · 50%'],
+              ['slots', '🎰', t('db.eco.game.slots', 'Slots'), rtp([[0.04, 8], [0.48, 1.5], [0.48, 0]], 'slots'), '8× / 1.5×'],
+              ['roulette', '🎡', t('db.eco.game.roulette', 'Roulette'), rtp([[18 / 37, 2], [19 / 37, 0]], 'roulette'), '2× · 14× · 35×'],
+              ['wheel', '🎯', t('db.eco.game.wheel', 'Wheel'), rtp([[0.45, 2], [0.55, 0]], 'wheel'), '2×…50×'],
+              ['plinko', '🟡', t('db.eco.game.plinko', 'Plinko'), plinko('medium'), `${plinko('low').toFixed(2)} · ${plinko('medium').toFixed(2)} · ${plinko('high').toFixed(2)}`],
+              // Crash: the edge is inside the curve the crash point is drawn from, so the return
+              // is 1 − e whatever multiplier a player cashes out at. Race: six cars, 6× on the
+              // right one. Pot: the two-player equal-stakes case is the only one with a fixed
+              // answer (the winner's 2× taxed on its profit); with more players it is the same
+              // rule on a bigger pot.
+              ['crash', '📈', t('db.eco.game.crash', 'Crash'), keepOf('crash'), t('db.eco.game.crash.o', 'cash out before it crashes')],
+              ['race', '🏎️', t('db.eco.game.race', 'Race'), rtp([[1 / 6, 6], [5 / 6, 0]], 'race'), '6× · 1/6'],
+              ['pot', '🎁', t('db.eco.game.pot', 'Pot'), rtp(two, 'pot'), t('db.eco.game.pot.o', 'winner takes all, odds ∝ stake')],
             ];
+            const setEdge = (g, v) => set('economy.casino.edgeByGame', { ...byGame, [g]: v === '' ? '' : Number(v) });
+            const live = { multi: true, crash: true, race: true, pot: true, ...(eco.casino?.live || {}) };
+            const setLive = (k, v) => set('economy.casino.live', { ...live, [k]: v });
             return (
-              <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
-                <Lbl>{t('db.eco.payoutprev2', 'Return to player, after the house edge')}</Lbl>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                  {GAMES.map(([emoji, name, eff, odds]) => { const take = 1 - eff; return (
-                    <div key={name} className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">
-                      <div className="text-xs font-medium">{emoji} {name}</div>
-                      <div className="text-[10px] text-[var(--faint)] tabular-nums">{odds}</div>
-                      <div className={`text-[11px] font-semibold tabular-nums ${take >= 0 ? 'text-success' : 'text-warning'}`}>{(eff * 100).toFixed(1)}% RTP</div>
-                    </div>
-                  ); })}
+              <div className="space-y-3">
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                  <Lbl>{t('db.eco.payoutprev2', 'Return to player, after the house edge')}</Lbl>
+                  <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.edgegame.d', 'Each game can carry its own edge. Leave a box empty to use the global percentage above.')}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {GAMES.map(([g, emoji, name, eff, odds]) => { const take = 1 - eff; const own = byGame[g] !== '' && byGame[g] != null; return (
+                      <div key={g} className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">
+                        <div className="text-xs font-medium">{emoji} {name}</div>
+                        <div className="text-[10px] text-[var(--faint)] tabular-nums">{odds}</div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Input type="number" min="0" max="100" step="0.5" className="!w-16 !py-0.5 !text-[11px]" value={own ? byGame[g] : ''} placeholder={String(globalPct)} onChange={(e) => setEdge(g, e.target.value)} aria-label={t('db.eco.edgegame', 'Edge for this game, %')} />
+                          <span className="text-[10px] text-[var(--faint)]">%{own ? '' : ` · ${t('db.eco.usesglobal', 'global')}`}</span>
+                        </div>
+                        <div className={`text-[11px] font-semibold tabular-nums mt-0.5 ${take >= 0 ? 'text-success' : 'text-warning'}`}>{(eff * 100).toFixed(1)}% RTP</div>
+                      </div>
+                    ); })}
+                  </div>
+                  <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote3', 'RTP = share of a bet paid back on average. The edge only taxes the profit of a winning play: a 1× bucket gives the bet back to the point, a 0.3× bucket returns 30 % of it.')}</p>
                 </div>
-                <p className="text-[10px] text-[var(--faint)] mt-2 leading-snug">{t('db.eco.payoutnote3', 'RTP = share of a bet paid back on average. The edge only taxes the profit of a winning play: a 1× bucket gives the whole bet back, a 0.3× bucket exactly 30 % of it. Above 100 % means players win long-term — slots pays 104 % with no edge, keep it above 8 %.')}</p>
+                {/* The live tables: several members on one round, in the channel, in real time.
+                    Crash and the race only exist this way; the pot is the stake-weighted draw;
+                    "multi" is the shared roll for the classic games. */}
+                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                  <Lbl>{t('db.eco.live', 'Live tables')}</Lbl>
+                  <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Crash: a multiplier climbs, cash out before it breaks. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[['crash', '📈 ' + t('db.eco.game.crash', 'Crash')], ['race', '🏎️ ' + t('db.eco.game.race', 'Race')], ['pot', '🎁 ' + t('db.eco.game.pot', 'Pot')], ['multi', '👥 ' + t('db.eco.live.multi', 'Multi (classic games)')]].map(([k, label]) => (
+                      <label key={k} className="flex items-center gap-2 text-xs cursor-pointer"><BotSwitch checked={live[k] !== false} onChange={(v) => setLive(k, v)} /> <span>{label}</span></label>
+                    ))}
+                  </div>
+                </div>
               </div>
             );
           })()}

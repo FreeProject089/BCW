@@ -339,9 +339,10 @@ export default async function ogRoutes(app) {
     const game = String(req.params.game || '').replace(/[^a-z]/g, '');
     const outcome = String(req.params.outcome || '');
     const win = outcome.startsWith('win');
-    const detail = String(req.query?.d || '').slice(0, 40);
+    // 160, not 40: a pot's detail carries one stake and one label per player.
+    const detail = String(req.query?.d || '').slice(0, 160);
     const amount = String(req.query?.a || '').replace(/[^0-9,. -]/g, '').slice(0, 16);
-    if (!['coinflip', 'dice', 'slots', 'roulette', 'wheel', 'plinko'].includes(game)) return reply.code(404).send({ error: 'not_found' });
+    if (!['coinflip', 'dice', 'slots', 'roulette', 'wheel', 'plinko', 'crash', 'race', 'pot'].includes(game)) return reply.code(404).send({ error: 'not_found' });
     // Animated: the spin that ends on this outcome, seeded per play (?s=) so it differs each
     // time; encoded once and cached five minutes. Falls through to the still card on failure.
     if (/.gif$/i.test(outcome)) {
@@ -362,8 +363,9 @@ export default async function ogRoutes(app) {
       const vg = x.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, 560); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.55)');
       x.fillStyle = vg; x.fillRect(0, 0, W, H);
       // Title strip
-      const titles = { coinflip: 'COIN FLIP', dice: 'DICE', slots: 'SLOTS', roulette: 'ROULETTE' };
-      x.font = 'bold 22px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.textAlign = 'left'; x.fillText(titles[game], 36, 48);
+      // Every game the route accepts, or the still card wrote the word "undefined" as a title.
+      const titles = { coinflip: 'COIN FLIP', dice: 'DICE', slots: 'SLOTS', roulette: 'ROULETTE', wheel: 'WHEEL', plinko: 'PLINKO', crash: 'CRASH', race: 'RACE', pot: 'POT' };
+      x.font = 'bold 22px sans-serif'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.textAlign = 'left'; x.fillText(titles[game] || game.toUpperCase(), 36, 48);
       x.font = 'bold 20px sans-serif'; x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.35)'; x.fillText('BetterCommunity', W - 36, 48);
       // The play itself, big and centred. Emoji render through the system font on the server;
       // if it lacks colour emoji the glyph still draws, just monochrome.
@@ -382,7 +384,11 @@ export default async function ogRoutes(app) {
         const fill = col === 'red' ? '#c0392b' : col === 'green' ? '#1e8449' : '#1b1f2a';
         x.beginPath(); x.arc(W / 2, H / 2 + 10, 110, 0, Math.PI * 2); x.fillStyle = fill; x.fill(); x.lineWidth = 8; x.strokeStyle = '#d4af37'; x.stroke();
         x.font = 'bold 96px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff'; x.fillText(num, W / 2, H / 2 + 46);
-      } else if (game === 'dice') { mid(detail || '🎲'); } else { mid(detail || '🪙'); }
+      } else if (game === 'dice') { mid(detail || '🎲'); }
+      else if (game === 'crash') { mid(`${(Number(String(detail).split('|')[0]) || 1).toFixed(2)}×`); }
+      else if (game === 'race') { mid(`#${(parseInt(String(detail).split('|')[0], 10) || 0) + 1}`); }
+      else if (game === 'pot') { mid('🎁'); }
+      else { mid(detail || '🪙'); }
       // Outcome banner
       const bh = 76; x.fillStyle = win ? 'rgba(46,204,113,0.92)' : 'rgba(231,76,60,0.92)'; x.fillRect(0, H - bh, W, bh);
       x.font = 'bold 34px sans-serif'; x.fillStyle = '#0a0f1e'; x.textAlign = 'center';

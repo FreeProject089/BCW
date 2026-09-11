@@ -11,6 +11,7 @@ import * as ui from './ui.mjs';
 import { tr } from './i18n.mjs';
 import { cmdSetup, onboardingSelect } from './features/onboarding.mjs';
 import { cmdConfig, configComponent } from './features/configure.mjs';
+import { openLive, liveComponent, liveModal, LIVE_GAMES, MULTI_GAMES } from './features/casino-live.mjs';
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -72,6 +73,9 @@ export const commandData = [
       { name: 'Roulette — colour, green or a number', value: 'roulette' },
       { name: 'Wheel — pick a multiplier, thinner slice the bigger it is', value: 'wheel' },
       { name: 'Plinko — a ball drops into a multiplier bucket', value: 'plinko' },
+      { name: 'Crash — cash out before the multiplier breaks (live table)', value: 'crash' },
+      { name: 'Race — six cars, pick yours, 6× (live table)', value: 'race' },
+      { name: 'Pot — everyone stakes, one takes it all, odds ∝ stake (live, 2+ players)', value: 'pot' },
     ))
     .addStringOption((o) => o.setName('bet_on').setDescription('Roulette: what you bet on (default red)').addChoices(
       { name: 'Red (2×)', value: 'red' }, { name: 'Black (2×)', value: 'black' }, { name: 'Green / zero (14×)', value: 'green' }, { name: 'A number (35×)', value: 'number' }))
@@ -139,6 +143,9 @@ export async function handleInteraction(i) {
   if ((i.isStringSelectMenu() || i.isChannelSelectMenu()) && i.customId.startsWith('cfg:')) return configComponent(i);
   if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('cas:')) return casinoSetup(i);
   if (i.isModalSubmit() && i.customId.startsWith('casm:')) return casinoModal(i);
+  // The live tables (features/casino-live.mjs): join / pick / start / cash out / new round.
+  if (i.isButton() && i.customId.startsWith('cl:')) return liveComponent(i);
+  if (i.isModalSubmit() && i.customId.startsWith('clm:')) return liveModal(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
   // It returns false when the custom id is not one of its own, so this stays a filter and
   // not a fork somebody has to keep in sync.
@@ -502,7 +509,7 @@ function rollGame({ game, betOn, num, target, risk }) {
   return { mult, detail, card };
 }
 
-const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko' };
+const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko', crash: 'Crash', race: 'Race', pot: 'Pot' };
 
 // The "Play again" button re-runs the same bet with the same options. Its custom id carries
 // them plus the player's id, so nobody spends someone else's points from their button.
@@ -532,7 +539,7 @@ async function playCasino(i, opts) {
     if (r.error === 'not_linked') return notLinked(i);
     const msg = r.error === 'casino_off' ? 'The casino is off.'
       : r.error === 'insufficient' ? "You don't have enough points for that bet."
-      : r.error === 'bad_bet' ? `Your bet must be between ${r.min} and ${r.max}.`
+      : r.error === 'bad_bet' ? t('cas.betRange', { a: n(r.min), b: r.max == null ? t('live.noCap') : n(r.max) })
       : 'Could not place that bet.';
     return ui.reply(i, { title: `${ui.ic('casino')} Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
   }
@@ -576,6 +583,9 @@ async function cmdCasino(i) {
   const num = i.options.getInteger('number');
   const target = i.options.getInteger('target') || 2;
   const risk = ['low', 'medium', 'high'].includes(i.options.getString('risk')) ? i.options.getString('risk') : 'medium';
+  // Crash, race and the pot are tables in the channel, not private pages: a bet given up
+  // front seats the host, the rest join from the card.
+  if (LIVE_GAMES.includes(game)) return openLive(i, game, { bet: bet || 0, target: game === 'crash' && target > 1 ? target : null });
   const st = { view: i.options.getString('game') ? 'game' : 'list', game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
   // No bet: the table opens — on the list of games, or straight on the named game's page with
   // everything given so far already selected. A number bet without its number does the same.
@@ -597,6 +607,11 @@ const CASINO_GAMES = [
   { id: 'roulette', emoji: '🎡', preview: '17', odds: [['2×', '18 / 37'], ['14×', '1 / 37'], ['35×', '1 / 37']] },
   { id: 'wheel', emoji: '🎯', preview: '5|5', odds: [['2×', '45 %'], ['3×', '24 %'], ['5×', '16 %'], ['10×', '9 %'], ['20×', '4 %'], ['50×', '2 %']] },
   { id: 'plinko', emoji: '🟡', preview: 'medium|RRLRLRLRLR|5', odds: [['low', '0.5×–5×'], ['medium', '0.3×–13×'], ['high', '0.2×–50×']] },
+  // Live tables — see features/casino-live.mjs. No private page; the list's button opens
+  // the table in the channel.
+  { id: 'crash', emoji: '📈', live: true, preview: '2.4|1.8', odds: [['cash out at M', 'reaches M (1−e)/M of the time']] },
+  { id: 'race', emoji: '🏎️', live: true, preview: '2|2', odds: [['6×', '1 / 6']] },
+  { id: 'pot', emoji: '🎁', live: true, preview: '1|10,30,60|A,B,C', odds: [['the pot', 'your stake / the pot']] },
 ];
 const ROULETTE_BETS = [['red', '🔴 Red — 2×'], ['black', '⚫ Black — 2×'], ['green', '🟢 Green (zero) — 14×'], ['number', '🔢 An exact number — 35×']];
 const WHEEL_TARGETS = [[2, '2× — 45 % of the wheel'], [3, '3× — 24 %'], [5, '5× — 16 %'], [10, '10× — 9 %'], [20, '20× — 4 %'], [50, '50× — 2 %']];
@@ -625,17 +640,34 @@ const casOpt = (value, label, selected, description = null) => {
 };
 const casSelect = (id, placeholder, options) => new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).addOptions(options.slice(0, 25));
 
+/**
+ * The bet limits. `max` is Infinity when the admin set 0 — "no cap", like every other 0 in
+ * this config. `Number(cfg.maxBet) || 100` used to turn that 0 into a 100 here and on the API,
+ * and every "Tapis" was silently capped at 100 with nothing saying so.
+ */
+function betLimits(cfg = {}) {
+  const min = Math.max(1, Math.floor(Number(cfg.minBet) || 1));
+  const raw = Number(cfg.maxBet);
+  const max = Number.isFinite(raw) && raw > 0 ? Math.max(min, Math.floor(raw)) : Infinity;
+  return { min, max };
+}
+/** `max` as words: a number, or "no cap". */
+const maxLabel = (t, max) => (Number.isFinite(max) ? n(max) : t('live.noCap'));
+
 /** The bet presets between min and max — the config's bounds plus the usual round numbers. */
 function betPresets(min, max) {
-  const out = new Set([min, 5, 10, 25, 50, 100, 250, 500, 1000, max].filter((v) => v >= min && v <= max));
+  // `max` only when it is a number: with no cap it is Infinity, and an "Infinity" preset is
+  // not a bet anybody can place.
+  const out = new Set([min, 5, 10, 25, 50, 100, 250, 500, 1000, ...(Number.isFinite(max) ? [max] : [])].filter((v) => v >= min && v <= max));
   return [...out].sort((a, b) => a - b).slice(0, 22);
 }
 
 async function casinoContext(i) {
   const [{ t }, cfgAll, e] = await Promise.all([tr(i), config(), api.economyUser(i.user.id)]);
   const cfg = cfgAll.economy?.casino || {};
-  const min = Math.max(1, Number(cfg.minBet) || 1), max = Math.max(min, Number(cfg.maxBet) || 100);
-  return { t, cfg, min, max, e, cur: curLabel(e.currency), balance: e.linked ? Number(e.points) || 0 : 0, enabled: cfg.enabled !== false };
+  const { min, max } = betLimits(cfg);
+  const live = { multi: true, crash: true, race: true, pot: true, ...(cfg.live || {}) };
+  return { t, cfg, min, max, live, e, cur: curLabel(e.currency), balance: e.linked ? Number(e.points) || 0 : 0, enabled: cfg.enabled !== false };
 }
 
 /** Page 1: the games, one big entry each, with the ◀ Games ▶ bar underneath. */
@@ -647,10 +679,12 @@ async function casinoList(i, st, { update = false } = {}) {
     title: `${ui.ic('casino')} ${t('cas.title')}`,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: [
-      e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: n(max) }) : t('cas.bets', { a: n(min), b: n(max), cur }),
+      e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: maxLabel(t, max) }) : t('cas.bets', { a: n(min), b: maxLabel(t, max), cur }),
       !enabled ? t('cas.off') : t('cas.pick'),
     ],
-    sections: CASINO_GAMES.map((g) => ({ text: `## ${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
+    // The live games open a TABLE in the channel rather than a page: there is no bet to pick
+    // in private first, the table is where you bet.
+    sections: CASINO_GAMES.map((g) => ({ text: `## ${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: g.live ? ui.btn(`cl:new:${g.id}`, t('live.openTable'), ButtonStyle.Success) : ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
     footer: t('cas.footer'),
     buttons: [
       // `:p` / `:n` after the payload: every custom id on a message must be unique, and the
@@ -668,8 +702,10 @@ async function casinoList(i, st, { update = false } = {}) {
 /** One game's page: an animated round as preview, rules, the bet + option menus, Play, and the nav bar. */
 async function casinoMenu(i, st, { update = false } = {}) {
   if (st.view === 'list') return casinoList(i, st, { update });
-  const { t, min, max, e, cur, balance, enabled } = await casinoContext(i);
+  const { t, min, max, live, e, cur, balance, enabled } = await casinoContext(i);
   const idx = Math.max(0, CASINO_GAMES.findIndex((x) => x.id === st.game));
+  // A live-only game has no private page: its ◀ ▶ neighbours land here, so open its table.
+  if (CASINO_GAMES[idx].live) return openLive(i, CASINO_GAMES[idx].id, {});
   const g = CASINO_GAMES[idx];
   const prev = CASINO_GAMES[(idx + CASINO_GAMES.length - 1) % CASINO_GAMES.length].id;
   const next = CASINO_GAMES[(idx + 1) % CASINO_GAMES.length].id;
@@ -682,8 +718,8 @@ async function casinoMenu(i, st, { update = false } = {}) {
     : st.game === 'plinko' ? `**${t('cas.risk')}** ${PLINKO_RISKS.find(([v]) => v === st.risk)?.[1] || st.risk}` : null;
   const why = !enabled ? t('cas.off')
     : !e.linked ? t('cas.linkFirst')
-    : !bet ? t('cas.pickBet', { a: n(min), b: n(max) })
-    : bet < min || bet > max ? t('cas.betRange', { a: n(min), b: n(max) })
+    : !bet ? t('cas.pickBet', { a: n(min), b: maxLabel(t, max) })
+    : bet < min || bet > max ? t('cas.betRange', { a: n(min), b: maxLabel(t, max) })
     : bet > balance ? t('cas.onlyHave', { n: n(balance), cur })
     : needsNumber ? t('cas.pickNumber') : null;
 
@@ -691,8 +727,10 @@ async function casinoMenu(i, st, { update = false } = {}) {
   const presets = betPresets(min, max);
   const betSel = casSelect(`cas:bet:${S({})}`, t('cas.bet'), [
     ...presets.map((v) => casOpt(v, `${n(v)} ${cur}`, st.bet !== 'all' && v === st.bet)),
-    ...(e.linked && balance >= min ? [casOpt('all', t('cas.allIn', { n: n(Math.min(max, balance)), cur }), st.bet === 'all')] : []),
-    casOpt('custom', t('cas.custom'), false, t('cas.customDesc', { a: n(min), b: n(max) })),
+    // The all-in SAYS when the cap cut it: "All in — 100 (capped at the max)" rather than a
+    // number smaller than the balance with no explanation, which is what the report was.
+    ...(e.linked && balance >= min ? [casOpt('all', balance > max ? t('cas.allInCap', { n: n(max), cur }) : t('cas.allIn', { n: n(Math.min(max, balance)), cur }), st.bet === 'all')] : []),
+    casOpt('custom', t('cas.custom'), false, t('cas.customDesc', { a: n(min), b: maxLabel(t, max) })),
   ]);
   const optSel = st.game === 'roulette' ? casSelect(`cas:opt:${S({})}`, t('cas.betOn'), ROULETTE_BETS.map(([v, l]) => casOpt(v, l, v === st.betOn)))
     : st.game === 'wheel' ? casSelect(`cas:opt:${S({})}`, t('cas.goingFor'), WHEEL_TARGETS.map(([m, l]) => casOpt(m, l, m === st.target)))
@@ -705,6 +743,8 @@ async function casinoMenu(i, st, { update = false } = {}) {
   const buttons = [betSel, optSel,
     ui.btn(`cas:play:${S({})}`, canPlay ? t('btn.play', { n: n(bet), cur }) : t('btn.playPlain'), ButtonStyle.Success, { emoji: 'casino', disabled: !canPlay }),
     ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? t('btn.pickNumber') : t('btn.number', { n: st.num }), ButtonStyle.Primary)] : []),
+    // Multi: the same game on one shared roll, at a table in the channel.
+    ...(live.multi !== false && MULTI_GAMES.includes(st.game) ? [ui.btn(`cl:new:${st.game}`, t('live.multiBtn'), ButtonStyle.Secondary, { emoji: 'multi' })] : []),
     ui.btn(`cas:open:${S({ game: prev })}:p`, '◀', ButtonStyle.Secondary),
     ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary),
     ui.btn(`cas:open:${S({ game: next })}:n`, '▶', ButtonStyle.Secondary),
@@ -718,8 +758,8 @@ async function casinoMenu(i, st, { update = false } = {}) {
       `### ${t('cas.odds')}`,
       ...g.odds.map(([pays, chance]) => `- **${pays}** · ${chance}`),
       '',
-      e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: n(max) }) : t('cas.bets', { a: n(min), b: n(max), cur }),
-      `**${t('cas.bet')}** ${bet ? `${n(bet)} ${cur}${st.bet === 'all' ? ' (all in)' : ''}` : '—'}`,
+      e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: maxLabel(t, max) }) : t('cas.bets', { a: n(min), b: maxLabel(t, max), cur }),
+      `**${t('cas.bet')}** ${bet ? `${n(bet)} ${cur}${st.bet === 'all' ? (balance > max ? ` (${t('cas.cappedShort', { m: n(max) })})` : ' (all in)') : ''}` : '—'}`,
       optionLine,
       why ? `\n${why}` : `\n${t('cas.ready')}`,
     ],
@@ -758,7 +798,7 @@ async function casinoSetup(i) {
   if (verb === 'num') return casinoNumberModal(i, st);
   if (verb === 'play') {
     const cfg = (await config()).economy?.casino || {};
-    const max = Math.max(1, Number(cfg.maxBet) || 100);
+    const { max } = betLimits(cfg);
     let bet = st.bet;
     if (bet === 'all') { const e = await api.economyUser(i.user.id); bet = Math.min(max, Number(e.points) || 0); }
     if (!bet) return casinoMenu(i, st, { update: true });

@@ -95,6 +95,8 @@ export const api = {
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
   economyCasino: (discordId, bet, multiplier, game) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier, game }).catch(() => ({ ok: false, error: 'network' })),
+  // A whole live table at once — one round, every seat's own bet and multiplier.
+  economySettle: (game, plays) => call('POST', '/bot/economy/casino/settle', { game, plays }).catch(() => ({ ok: false, error: 'network' })),
   economyReveal: (discordId, purchaseId) => call('POST', '/bot/economy/reveal', { discordId, purchaseId }).catch(() => ({ ok: false, error: 'network' })),
   economyGift: (body) => call('POST', '/bot/economy/gift', body).catch(() => ({ ok: false, error: 'network' })),
   economyHistory: (discordId, kind = '') => call('GET', `/bot/economy/history/${encodeURIComponent(discordId)}${kind ? `?kind=${encodeURIComponent(kind)}` : ''}`).catch(() => ({ history: [] })),

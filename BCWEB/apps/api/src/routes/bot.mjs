@@ -7,6 +7,7 @@ import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
+import { betLimits, edgePctFor, payoutFor, edgeApplied, CASINO_GAMES } from '../lib/casino-rules.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -143,7 +144,10 @@ const DEFAULT_BOT_CONFIG = {
     // hosting | promo | custom. badge/pool/boost/hosting are fulfilled site-side on /buy
     // (award a badge, mint an assigned promo code); ref = badge/role id, amount = GB or days.
     shop: [],
-    casino: { enabled: false, minBet: 1, maxBet: 100, houseEdgePct: 5 },
+    // maxBet 0 = no cap (like every other 0 in here). edgeByGame: per-game edge overrides in
+    // percent, blank = the global houseEdgePct. live: the multiplayer tables and the two games
+    // that only exist as live rounds (crash, race); pot is the stake-weighted draw.
+    casino: { enabled: false, minBet: 1, maxBet: 100, houseEdgePct: 5, edgeByGame: {}, live: { multi: true, crash: true, race: true, pot: true } },
     // Members handing points to each other (/gift, the site's Boutique). A daily cap per giver
     // keeps a compromised account from draining itself into another in one go; 0 = no cap.
     gifts: { enabled: true, min: 1, maxPerDay: 0 },
@@ -2278,27 +2282,77 @@ export default async function botRoutes(app) {
   // payout, and settles the balance. The RNG lives on the bot (per game) — the API is the ledger.
   app.post('/bot/economy/casino', async (req, reply) => {
     if (!botAuth(req, reply)) return;
-    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(1000000), multiplier: z.number().min(0).max(1000), game: z.string().max(20).optional() }).safeParse(req.body);
+    const b = z.object({ discordId: z.string().min(1).max(32), bet: z.number().int().min(1).max(100_000_000), multiplier: z.number().min(0).max(10000), game: z.string().max(20).optional() }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const eco = (await getBotConfig(p)).economy || {};
     if (!eco.casino?.enabled) return { ok: false, error: 'casino_off' };
-    const min = Number(eco.casino.minBet) || 1, max = Number(eco.casino.maxBet) || 100;
-    if (b.data.bet < min || b.data.bet > max) return { ok: false, error: 'bad_bet', min, max };
+    // The limits and the edge come from casino-rules.mjs — the same functions the settlement
+    // below and the admin's RTP table use. `max` is Infinity for "no cap" and travels as null.
+    const { min, max } = betLimits(eco.casino);
+    const maxOut = Number.isFinite(max) ? max : null;
+    if (b.data.bet < min || b.data.bet > max) return { ok: false, error: 'bad_bet', min, max: maxOut };
     const link = await p.discordLink.findUnique({ where: { discordId: b.data.discordId }, select: { userId: true } });
     if (!link) return { ok: false, error: 'not_linked' };
     const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
     if ((cur?.points || 0) < b.data.bet) return { ok: false, error: 'insufficient', points: cur?.points || 0 };
     // The house edge is a tax on the PROFIT of a winning play, never on the stake: a 1× bucket
     // gives the bet back to the point, a 0.3× bucket returns exactly 30 % of it, a 2× flip pays
-    // bet + (bet · edge). The old formula taxed the whole payout (a 1× "win" lost 5 %) and
-    // floored it (a 3-point bet in the 0.3× bucket returned 0, more than the game promised).
-    const edge = 1 - Math.min(100, Math.max(0, Number(eco.casino.houseEdgePct) || 0)) / 100;
-    const m = b.data.multiplier;
-    const payout = Math.max(0, Math.round(m >= 1 ? b.data.bet + (b.data.bet * m - b.data.bet) * edge : b.data.bet * m));
+    // bet + (bet · edge). Per game now, falling back to the global percentage. A crash
+    // multiplier already carries its edge inside the curve it was drawn from, so it is paid
+    // as-is rather than taxed twice.
+    const game = b.data.game || null;
+    const edgePct = edgeApplied(game) ? 0 : edgePctFor(eco.casino, game);
+    const payout = payoutFor(b.data.bet, b.data.multiplier, edgePct);
     const delta = payout - b.data.bet;
-    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game || null, meta: { game: b.data.game || null, bet: b.data.bet, multiplier: b.data.multiplier, payout } }, { clamp: true });
-    return { ok: true, delta, payout, points: newPts };
+    const newPts = await movePoints(p, link.userId, delta, { kind: 'casino', ref: game, meta: { game, bet: b.data.bet, multiplier: b.data.multiplier, payout } }, { clamp: true });
+    return { ok: true, delta, payout, points: newPts, min, max: maxOut };
+  });
+
+  // A whole TABLE settles at once: one round, many players, each on their own bet and their
+  // own multiplier — a shared coin flip, a crash round where each cashed out at a different
+  // moment, a race, the pot. The bot ran the round in front of everybody; this is the ledger
+  // catching up. Validated as a batch so a bad payload settles nobody, then applied one by
+  // one: a player who can no longer cover their stake by the time the round ends is REPORTED
+  // rather than failing the table, because the round cannot be un-played for the others.
+  app.post('/bot/economy/casino/settle', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      game: z.enum(CASINO_GAMES),
+      plays: z.array(z.object({
+        discordId: z.string().min(1).max(32),
+        bet: z.number().int().min(1).max(100_000_000),
+        multiplier: z.number().min(0).max(10000),
+        // Free-form, bounded: what they picked, when they cashed out — for the ledger line.
+        note: z.string().max(60).optional(),
+      })).min(1).max(50),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const eco = (await getBotConfig(p)).economy || {};
+    if (!eco.casino?.enabled) return { ok: false, error: 'casino_off' };
+    const { min, max } = betLimits(eco.casino);
+    const maxOut = Number.isFinite(max) ? max : null;
+    // One player, one seat: a duplicate id would be settled twice on one stake.
+    const seen = new Set();
+    for (const pl of b.data.plays) {
+      if (seen.has(pl.discordId)) return reply.code(400).send({ error: 'duplicate_player' });
+      seen.add(pl.discordId);
+      if (pl.bet < min || pl.bet > max) return { ok: false, error: 'bad_bet', min, max: maxOut, discordId: pl.discordId };
+    }
+    const edgePct = edgeApplied(b.data.game) ? 0 : edgePctFor(eco.casino, b.data.game);
+    const results = [];
+    for (const pl of b.data.plays) {
+      const link = await p.discordLink.findUnique({ where: { discordId: pl.discordId }, select: { userId: true } });
+      if (!link) { results.push({ discordId: pl.discordId, ok: false, error: 'not_linked' }); continue; }
+      const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
+      if ((cur?.points || 0) < pl.bet) { results.push({ discordId: pl.discordId, ok: false, error: 'insufficient', points: cur?.points || 0 }); continue; }
+      const payout = payoutFor(pl.bet, pl.multiplier, edgePct);
+      const delta = payout - pl.bet;
+      const points = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout, live: true, note: pl.note || null } }, { clamp: true });
+      results.push({ discordId: pl.discordId, ok: true, delta, payout, points });
+    }
+    return { ok: true, results, edgePct };
   });
 
   // ── Website side: redeem / list / unlink Discord links ──

@@ -252,6 +252,129 @@ function drawPlinko(x, f, { path, risk, bucket, r }) {
 
 const cache = new Map(); const TTL = 5 * 60 * 1000;
 
+// ── Crash — a multiplier climbs along a curve and breaks ─────────────────────────────
+// The curve is drawn in a chart box: time along the bottom, multiplier up the side. It climbs
+// to `crashAt` over the first 85 % of the clip, then the line snaps red and the label reads
+// the crash point. Cash-out markers (each player who got out, or the single player's own)
+// are pinned on the curve as they are passed — so a win is visibly "got out here" and a loss
+// is visibly "the curve went past you and broke".
+function drawCrash(x, f, { crashAt, cashes, r }) {
+  const t = f / (FRAMES - 1);
+  const L = 44, T = 26, Rr = W - 22, B = PLAY_BOTTOM - 22;
+  // Chart box
+  x.fillStyle = 'rgba(255,255,255,0.05)'; x.beginPath(); x.roundRect(L - 8, T - 8, Rr - L + 16, B - T + 16, 10); x.fill();
+  x.strokeStyle = 'rgba(255,255,255,0.14)'; x.lineWidth = 1;
+  const top = Math.max(2, crashAt * 1.15);
+  const yOf = (m) => B - ((m - 1) / (top - 1)) * (B - T);
+  for (const g of [1.5, 2, 3, 5, 10, 20, 50]) {
+    if (g >= top) break;
+    const y = yOf(g); x.beginPath(); x.moveTo(L, y); x.lineTo(Rr, y); x.stroke();
+    x.font = '11px sans-serif'; x.textAlign = 'left'; x.fillStyle = 'rgba(255,255,255,0.4)'; x.fillText(`${g}×`, L + 4, y - 3);
+  }
+  // Progress along the curve: 85 % of the frames climbing, then the break.
+  const climb = clamp01(t / 0.85);
+  const broke = t >= 0.85;
+  // m(s) = 1 + (crashAt − 1)·s^1.6 — slow start, steep end, like the real thing.
+  const mAt = (s) => 1 + (crashAt - 1) * Math.pow(s, 1.6);
+  x.lineWidth = 4; x.strokeStyle = broke ? '#ef4444' : '#22c55e'; x.lineJoin = 'round';
+  x.beginPath();
+  const N = 60;
+  for (let i = 0; i <= N; i++) {
+    const s = (i / N) * climb; const px = L + s * (Rr - L); const py = yOf(mAt(s));
+    if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+  }
+  x.stroke();
+  // Fill under the curve
+  x.lineTo(L + climb * (Rr - L), B); x.lineTo(L, B); x.closePath();
+  x.fillStyle = broke ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)'; x.fill();
+  // Markers for every cash-out already passed
+  const curM = mAt(climb);
+  for (const c of cashes) {
+    if (c > curM || c > crashAt) continue;
+    const s = Math.pow((c - 1) / Math.max(1e-6, crashAt - 1), 1 / 1.6);
+    const px = L + s * (Rr - L), py = yOf(c);
+    x.fillStyle = '#fbbf24'; x.beginPath(); x.arc(px, py, 6, 0, Math.PI * 2); x.fill();
+    x.lineWidth = 2; x.strokeStyle = '#0a0f1e'; x.stroke();
+    x.font = 'bold 12px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fbbf24'; x.fillText(`${c.toFixed(2)}×`, px, py - 10);
+  }
+  // The big number
+  const shown = broke ? crashAt : curM;
+  label(x, `${shown.toFixed(2)}×`, W / 2, T + 44, broke ? 34 : 30);
+  if (broke) {
+    // A little burst at the break point
+    const bx = L + (Rr - L), by = yOf(crashAt); const k = clamp01((t - 0.85) / 0.15);
+    x.strokeStyle = 'rgba(239,68,68,0.9)'; x.lineWidth = 3;
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + r.k[0]; x.beginPath(); x.moveTo(bx, by); x.lineTo(bx + Math.cos(a) * 14 * k, by + Math.sin(a) * 14 * k); x.stroke(); }
+    label(x, 'CRASH', W / 2, T + 78, 22);
+  }
+}
+
+// ── Race — six cars on six lanes, the winner decided, the run seeded ─────────────────
+// The finish is fixed by the outcome: the winner is the car that reaches the flag, and the
+// others are scaled to end short of it. Along the way every car has its own speed profile
+// from the seed, so two races to the same winner never look alike, and the leader changes
+// hands on the way — the thing a race needs to be worth watching.
+const CAR_COLOURS = ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316'];
+function drawRace(x, f, { winner, pick, r }) {
+  const t = f / (FRAMES - 1);
+  const lanes = 6, laneH = (PLAY_BOTTOM - 30) / lanes, L = 40, Rr = W - 40;
+  // Track
+  x.fillStyle = 'rgba(255,255,255,0.05)'; x.fillRect(L - 20, 12, Rr - L + 40, PLAY_BOTTOM - 20);
+  x.strokeStyle = 'rgba(255,255,255,0.12)'; x.lineWidth = 1;
+  for (let i = 1; i < lanes; i++) { const y = 12 + i * laneH; x.setLineDash([6, 8]); x.beginPath(); x.moveTo(L - 20, y); x.lineTo(Rr + 20, y); x.stroke(); }
+  x.setLineDash([]);
+  // Finish line: a checkered strip
+  for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#fff' : '#111'; x.fillRect(Rr + 6, 12 + i * ((PLAY_BOTTOM - 20) / 12), 8, (PLAY_BOTTOM - 20) / 12); }
+  // Progress of each car: a seeded speed profile, then the finish forced by the outcome.
+  const eased = easeOut(t);
+  for (let c = 0; c < lanes; c++) {
+    const k1 = r.k[c % 12], k2 = r.k[(c + 5) % 12];
+    // Two sine wobbles so the order shuffles mid-race, then converge on the fixed finish.
+    const wobble = Math.sin(t * Math.PI * (2 + k1 * 2) + k2 * 6) * 0.10 * (1 - t);
+    const finish = c === winner ? 1 : 0.72 + 0.22 * k1;
+    const p = clamp01(eased * finish + wobble * (t < 0.9 ? 1 : 0));
+    const cx = L + p * (Rr - L), cy = 12 + c * laneH + laneH / 2;
+    // The car: body, cabin, wheels, and the player's pick outlined.
+    x.fillStyle = 'rgba(0,0,0,0.35)'; x.beginPath(); x.ellipse(cx + 2, cy + 10, 22, 6, 0, 0, Math.PI * 2); x.fill();
+    x.fillStyle = CAR_COLOURS[c]; x.beginPath(); x.roundRect(cx - 22, cy - 8, 44, 16, 7); x.fill();
+    x.fillStyle = 'rgba(255,255,255,0.75)'; x.beginPath(); x.roundRect(cx - 6, cy - 12, 16, 8, 3); x.fill();
+    x.fillStyle = '#111'; for (const wx of [-13, 11]) { x.beginPath(); x.arc(cx + wx, cy + 8, 4, 0, Math.PI * 2); x.fill(); }
+    if (c === pick) { x.strokeStyle = '#fbbf24'; x.lineWidth = 2.5; x.beginPath(); x.roundRect(cx - 26, cy - 15, 52, 30, 9); x.stroke(); }
+    x.font = 'bold 11px sans-serif'; x.textAlign = 'left'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillText(String(c + 1), L - 34, cy + 4);
+  }
+  if (t > 0.92) label(x, `#${winner + 1} WINS`, W / 2, PLAY_BOTTOM - 4, 20);
+}
+
+// ── Pot — one slice per player, sized by stake, a pointer that settles on the winner ──
+const POT_COLOURS = ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316', '#14b8a6', '#ec4899'];
+function drawPot(x, f, { winner, stakes, labels, r }) {
+  const t = f / (FRAMES - 1);
+  const total = stakes.reduce((a, b) => a + b, 0) || 1;
+  const cx = W / 2, cy = (PLAY_BOTTOM + 8) / 2, R = Math.min(96, (PLAY_BOTTOM - 20) / 2);
+  // Where the winner's slice sits, so the pointer (fixed at the top) ends inside it.
+  let acc = 0; const arcs = stakes.map((s) => { const a0 = acc / total; acc += s; return [a0, acc / total]; });
+  const [w0, w1] = arcs[winner] || [0, 1];
+  const target = -((w0 + w1) / 2) * Math.PI * 2 - Math.PI / 2; // slice centre under the top pointer
+  const spins = 4 + Math.floor(r.k[0] * 3);
+  const rot = easeOut(t) * (spins * Math.PI * 2) + target * easeOut(t) + (1 - easeOut(t)) * r.k[1] * Math.PI * 2;
+  x.save(); x.translate(cx, cy); x.rotate(rot);
+  arcs.forEach(([a0, a1], i) => {
+    x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R, a0 * Math.PI * 2, a1 * Math.PI * 2); x.closePath();
+    x.fillStyle = POT_COLOURS[i % POT_COLOURS.length]; x.fill(); x.strokeStyle = '#0a0f1e'; x.lineWidth = 2; x.stroke();
+    const mid = ((a0 + a1) / 2) * Math.PI * 2;
+    if (a1 - a0 > 0.06) {
+      x.save(); x.rotate(mid); x.translate(R * 0.62, 0); x.rotate(-mid - rot);
+      x.font = 'bold 12px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fff'; x.fillText(String(labels[i] || i + 1).slice(0, 8), 0, 4);
+      x.restore();
+    }
+  });
+  x.restore();
+  // Hub + pointer
+  x.fillStyle = '#0a0f1e'; x.beginPath(); x.arc(cx, cy, 14, 0, Math.PI * 2); x.fill();
+  x.fillStyle = '#fbbf24'; x.beginPath(); x.moveTo(cx - 10, cy - R - 12); x.lineTo(cx + 10, cy - R - 12); x.lineTo(cx, cy - R + 8); x.closePath(); x.fill();
+  if (t > 0.9) label(x, `${String(labels[winner] || winner + 1).slice(0, 12)} TAKES THE POT`, W / 2, PLAY_BOTTOM - 2, 18);
+}
+
 /** Render one play as an animated GIF. `detail` is the same short string the PNG route takes:
  *  slots "cherry lemon bell" (emoji accepted) · coinflip "H"/"T" · dice "1".."6" ·
  *  roulette "17" · wheel "10|2" (landed|target) · plinko "medium|LRLRLLRRLR|bucketIdx". */
@@ -268,7 +391,10 @@ export async function renderCasinoGif({ game, win, detail, amount, seed }) {
   else if (game === 'roulette') p.pocket = Math.min(36, Math.max(0, parseInt(detail, 10) || 0));
   else if (game === 'wheel') { const [m, tg] = String(detail || '2|2').split('|'); p.mult = Number(m) || 2; p.target = Number(tg) || 2; }
   else if (game === 'plinko') { const [risk, path, b] = String(detail || 'medium||5').split('|'); p.risk = PLINKO_BUCKETS[risk] ? risk : 'medium'; p.path = Array.from({ length: PLINKO_ROWS }, (_, i) => (path[i] === 'R' ? 1 : 0)); p.bucket = Math.min(10, Math.max(0, parseInt(b, 10) || 5)); }
-  const draw = { slots: drawSlots, coinflip: drawCoin, dice: drawDice, roulette: drawRoulette, wheel: drawWheel, plinko: drawPlinko }[game];
+  else if (game === 'crash') { const [c, list] = String(detail || '2|').split('|'); p.crashAt = Math.max(1, Math.min(10000, Number(c) || 1)); p.cashes = String(list || '').split(',').map(Number).filter((v) => Number.isFinite(v) && v >= 1).slice(0, 8); }
+  else if (game === 'race') { const [wnr, pk] = String(detail || '0|0').split('|'); p.winner = Math.min(5, Math.max(0, parseInt(wnr, 10) || 0)); p.pick = pk === '' || pk == null ? -1 : Math.min(5, Math.max(-1, parseInt(pk, 10))); }
+  else if (game === 'pot') { const [wnr, st, lb] = String(detail || '0|1,1|A,B').split('|'); p.stakes = String(st || '1').split(',').map((v) => Math.max(0, Number(v) || 0)).slice(0, 8); if (!p.stakes.length) p.stakes = [1]; p.winner = Math.min(p.stakes.length - 1, Math.max(0, parseInt(wnr, 10) || 0)); p.labels = String(lb || '').split(',').slice(0, 8); }
+  const draw = { slots: drawSlots, coinflip: drawCoin, dice: drawDice, roulette: drawRoulette, wheel: drawWheel, plinko: drawPlinko, crash: drawCrash, race: drawRace, pot: drawPot }[game];
   if (!draw) throw new Error('unknown game');
   const c = createCanvas(W, H); const x = c.getContext('2d');
   const frame = (fi) => { const t = fi / (FRAMES - 1); felt(x, win); draw(x, fi, p); banner(x, win, amount, t); return x.getImageData(0, 0, W, H).data; };

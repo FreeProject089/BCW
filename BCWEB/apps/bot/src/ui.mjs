@@ -24,7 +24,7 @@ const DEFAULT_ICONS = {
   level: '⭐', shop: '🛒', inventory: '🎒', leaderboard: '🏆', casino: '🎰', again: '🔁', refresh: '🔄', link: '🔗', buy: '🛍️',
   gift: '🎁', coin: '🪙', reveal: '✉️', history: '📜', enter: '🎉', site: '🌐', voice: '🎙️', rename: '✏️', limit: '👥', region: '🌍',
   lock: '🔒', unlock: '🔓', private: '🙈', public: '👁️', claim: '🙋', export: '📤', import: '📥',
-  coinflip: '🪙', dice: '🎲', slots: '🎰', roulette: '🎡', wheel: '🎯', plinko: '🟡',
+  coinflip: '🪙', dice: '🎲', slots: '🎰', roulette: '🎡', wheel: '🎯', plinko: '🟡', crash: '📈', race: '🏎️', pot: '🎁', multi: '👥',
   levelup: '⬆️', staff: '🛡️', purchase: '🧾', games: '🎮', profile: '👤', done: '✅',
   // Economy card + leaderboard glyphs — admin-mappable like the rest, so the body emoji stop
   // being hard-coded unicode (🏅 💬 ✨ …).
