@@ -911,7 +911,7 @@ export function Dashboard() {
           {s === 'economy' && <EconomyShop view={ecoView} onView={setEcoView} />}
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
-          {s === 'reports' && <MyReports />}
+          {s === 'reports' && <><MyReports /><MyRightsNotices /></>}
           {s === 'data' && <MyData />}
         </>)}
       </SideDash>
@@ -1376,5 +1376,30 @@ function Starred() {
       <Section icon={Server} title={t('star.repos', 'Server repos')} rows={repos} kind="repo" />
       <Section icon={Boxes} title={t('star.catalogs', 'Community catalogs')} rows={catalogs} kind="catalog" />
     </div>
+  );
+}
+
+/** The rights notices this account filed — status and decision, with the reference. */
+function MyRightsNotices() {
+  const { t } = useI18n();
+  const { data, loading } = useAsync(() => api.get('/me/rights').catch(() => ({ notices: [] })), []);
+  const list = data?.notices || [];
+  if (loading || !list.length) return null;
+  return (
+    <Card className="p-4 mt-4">
+      <div className="font-semibold mb-2">{t('rn.my', 'Rights notices you filed')}</div>
+      <div className="space-y-1.5">
+        {list.map((n) => (
+          <div key={n.id} className="flex items-center gap-2 text-sm flex-wrap">
+            <span className="font-mono text-xs">{n.code}</span>
+            <Badge>{t(`rn.k.${n.kind}`, n.kind)}</Badge>
+            <Badge tone={n.status === 'actioned' ? 'success' : n.status === 'rejected' ? 'error' : undefined}>{t(`rn.s.${n.status}`, n.status)}</Badge>
+            <span className="text-[var(--faint)] text-xs">{new Date(n.createdAt).toLocaleDateString()}</span>
+            {n.decision && <span className="text-xs text-[var(--muted)] basis-full">{n.decision}</span>}
+          </div>
+        ))}
+      </div>
+      <Link to="/report" className="text-xs text-[var(--primary-2)] hover:underline mt-2 inline-block">{t('rn.my.new', 'File another notice')}</Link>
+    </Card>
   );
 }

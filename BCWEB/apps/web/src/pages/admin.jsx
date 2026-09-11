@@ -212,6 +212,7 @@ export function Admin() {
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
+        can('manage_reports') && { id: 'rights', label: t('adm.tab.rights', 'Rights notices'), icon: Scale, badge: pc.rights || undefined },
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
         can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
@@ -417,6 +418,7 @@ export function Admin() {
         {s === 'catalogs' && <AdminCatalogCreator />}
         {s === 'commcatalogs' && <AdminCatalogs />}
         {s === 'reports' && <AdminReports />}
+        {s === 'rights' && <AdminRights />}
         {s === 'plans' && <AdminHostingPlans />}
         {s === 'mail' && <AdminMail />}
         {s === 'history' && <AdminHistory />}
@@ -21038,6 +21040,248 @@ function AdminReports() {
       {openId && <ReportThreadModal id={openId} admin onClose={() => { setOpenId(null); reload(); }} />}
       {cfgOpen && <AdminReportsConfig onClose={() => setCfgOpen(false)} />}
     </div>
+  );
+}
+
+/**
+ * The rights queue. Every element of a notice on one screen with the three things a decision
+ * needs — what is LIVE at each target now, who is answerable and how many times before, and
+ * the sanctions a takedown issued — and the actions beside them. Plus the registry: the works
+ * that were asserted, what identifies them, and a scan of everything already hosted.
+ */
+function AdminRights() {
+  const { t } = useI18n(); const toast = useToast();
+  const [status, setStatus] = useState('open');
+  const [openId, setOpenId] = useState(null);
+  const [tab, setTab] = useState('queue');
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/rights?status=${status}`), [status]);
+  const list = data?.notices || []; const counts = data?.counts || {};
+  const STATUSES = [['open', t('ar.s.open', 'Open')], ['actioned', t('rn.s.actioned', 'Actioned')], ['rejected', t('rn.s.rejected', 'Rejected')], ['restored', t('rn.s.restored', 'Restored')], ['closed', t('ar.s.closed', 'Closed')], ['all', t('common.all', 'All')]];
+  const KIND_ICON = { copyright: Scale, trademark: Shield, privacy: Lock, illegal: AlertTriangle, other: MessageSquare, match: Search };
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div><h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--primary-2)]" /> {t('rn.adm.title', 'Rights notices')}</h2>
+          <p className="text-sm text-[var(--muted)]">{t('rn.adm.sub', 'Copyright and other rights claims, DSA reports, and what the protected-works registry matched. Take down as narrowly as the claim; register the work so it stays down.')}</p></div>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
+          {[['queue', t('rn.adm.queue', 'Queue')], ['works', t('rn.adm.works', 'Protected works')], ['config', t('common.settings', 'Settings')]].map(([k, lbl]) => <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm ${tab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>)}
+        </div>
+      </div>
+      {tab === 'queue' && (<>
+        <div className="flex rounded-lg border border-[var(--line)] overflow-hidden w-fit flex-wrap">
+          {STATUSES.map(([k, lbl]) => <button key={k} onClick={() => setStatus(k)} className={`px-3 py-1.5 text-sm ${status === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{k === 'open' && (counts.new || 0) + (counts.countered || 0) ? ` · ${(counts.new || 0) + (counts.countered || 0)}` : ''}</button>)}
+        </div>
+        {loading ? <Loading /> : list.length ? <div className="space-y-1.5">
+          {list.map((n) => { const Ico = KIND_ICON[n.kind] || Scale; return (
+            <button key={n.id} onClick={() => setOpenId(n.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="font-mono text-xs">{n.code}</span><span className="truncate min-w-0">{n.work?.title || n.targets?.[0]?.label || n.targets?.[0]?.url || '—'}</span> <Badge>{t(`rn.k.${n.kind}`, n.kind)}</Badge> <Badge tone={n.status === 'new' || n.status === 'countered' ? 'warning' : n.status === 'actioned' ? 'success' : undefined}>{t(`rn.s.${n.status}`, n.status)}</Badge></div>
+                <div className="text-xs text-[var(--faint)] truncate">{n.kind === 'match' ? `${t('rn.adm.matched', 'matched')} ${n.matchVia}` : `${n.name}${n.org ? ` · ${n.org}` : ''}`} · {n.targets?.length || 0} {t('rn.adm.targets', 'target(s)')} · {new Date(n.createdAt).toLocaleString()}</div>
+              </div>
+            </Card></button>
+          ); })}
+        </div> : <EmptyState icon={Scale} title={t('ar.none.t', 'Nothing here')} sub={t('rn.adm.none', 'No notices with this status.')} />}
+        {openId && <RightsNoticeModal id={openId} onClose={() => { setOpenId(null); reload(); }} />}
+      </>)}
+      {tab === 'works' && <ProtectedWorks />}
+      {tab === 'config' && <RightsConfig config={data?.config} onSaved={reload} />}
+    </div>
+  );
+}
+
+function RightsNoticeModal({ id, onClose }) {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/rights/${id}`), [id]);
+  const n = data?.notice; const owners = data?.owners || []; const resolved = data?.resolved || []; const sanctions = data?.sanctions || [];
+  const [decision, setDecision] = useState('');
+  const [protect, setProtect] = useState(true);
+  const [note, setNote] = useState('');
+  const [counter, setCounter] = useState({ name: '', email: '', body: '' });
+  const [busy, setBusy] = useState('');
+  useEffect(() => { if (n) setNote(n.internalNote || ''); }, [n]);
+  const act = async (verb, body) => {
+    setBusy(verb);
+    try { const r = await api.post(`/admin/rights/${id}/${verb}`, body); if (r.failed?.length) toast.error(t('rn.adm.partial', '{n} target(s) could not be handled — see the note.').replace('{n}', r.failed.length)); else toast.success(t('common.done', 'Done.')); reload(); }
+    catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
+    finally { setBusy(''); }
+  };
+  const canAct = n && ['new', 'reviewing', 'countered'].includes(n.status);
+  return (
+    <Modal open onClose={onClose} title={n ? `${n.code} · ${t(`rn.k.${n.kind}`, n.kind)}` : '…'} icon={Scale} width="max-w-3xl">
+      {loading || !n ? <Loading /> : (
+        <div className="space-y-4 text-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge tone={n.status === 'actioned' ? 'success' : n.status === 'rejected' ? 'error' : 'warning'}>{t(`rn.s.${n.status}`, n.status)}</Badge>
+            <span className="text-[var(--faint)] text-xs">{new Date(n.createdAt).toLocaleString()}{n.reviewedById ? ` · ${t('rn.adm.reviewed', 'reviewed')}` : ''}</span>
+            {n.work_ && <Badge>{t('rn.adm.work', 'work')}: {n.work_.title}</Badge>}
+          </div>
+          {/* who */}
+          {n.kind !== 'match' && (
+            <Card className="p-3">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s4', 'Who')}</div>
+              <div><b>{n.name}</b>{n.org ? ` · ${n.org}` : ''} · <a href={`mailto:${n.email}`} className="text-[var(--primary-2)]">{n.email}</a>{n.country ? ` · ${n.country}` : ''}{n.phone ? ` · ${n.phone}` : ''}</div>
+              {n.address && <div className="text-xs text-[var(--muted)]">{n.address}</div>}
+              <div className="text-xs text-[var(--muted)]">{t(`rn.b.${n.onBehalfOf}`, n.onBehalfOf)} · {t('rn.adm.signed', 'signed')} "{n.signature}" · {n.goodFaith && n.accurate ? t('rn.adm.stmts', 'both statements made') : t('rn.adm.nostmts', 'STATEMENTS MISSING')} · ip {n.ip}{n.reporter ? ` · ${t('rn.adm.account', 'account')} ${n.reporter.displayName}` : ''}</div>
+            </Card>
+          )}
+          {/* the work */}
+          {(n.work?.title || n.work?.urls?.length) && (
+            <Card className="p-3">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s3', 'The work')}</div>
+              <div><b>{n.work.title}</b> · {t(`rn.b.${n.work.basis || 'owner'}`, n.work.basis)}</div>
+              {n.work.urls?.map((u) => <div key={u} className="text-xs"><a href={u} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] break-all">{u}</a></div>)}
+              {n.work.basisText && <p className="text-xs text-[var(--muted)] whitespace-pre-wrap mt-1">{n.work.basisText}</p>}
+              {n.work.hashes?.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-1">{n.work.hashes.length} {t('rn.adm.hashes', 'hash(es) supplied')}</div>}
+            </Card>
+          )}
+          {/* the targets, live */}
+          <Card className="p-3 space-y-2">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('rn.s1', 'Where')}</div>
+            {resolved.map((tg, i) => (
+              <div key={i} className="rounded-lg border border-[var(--line)] p-2">
+                <div className="flex items-center gap-2 flex-wrap"><Badge>{t(`rn.t.${tg.type}`, tg.type)}</Badge><span className="font-medium">{tg.label || tg.url}</span>{tg.url && <a href={tg.url} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)]">{t('common.open', 'open')}</a>}
+                  <span className="text-xs text-[var(--faint)]">{tg.live?.exists === false ? t('rn.adm.gone', 'no longer exists') : tg.live?.status ? `${t('common.status', 'status')} ${tg.live.status}` : ''}{tg.live?.files != null ? ` · ${tg.live.files} ${t('rn.adm.files', 'files')}` : ''}{tg.live?.items != null ? ` · ${tg.live.items} ${t('rn.adm.items', 'items')}` : ''}</span></div>
+                {tg.files?.length > 0 && <div className="text-xs font-mono text-[var(--muted)] mt-1">{tg.files.join(' · ')}</div>}
+                {tg.note && <div className="text-xs text-[var(--muted)] mt-1">{tg.note}</div>}
+              </div>
+            ))}
+          </Card>
+          <Card className="p-3">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s2', 'Why')}</div>
+            <p className="whitespace-pre-wrap">{n.explanation}</p>
+          </Card>
+          {/* who is answerable */}
+          {owners.length > 0 && (
+            <Card className="p-3">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.adm.owners', 'Answerable accounts')}</div>
+              {owners.map((o) => (
+                <div key={o.id} className="flex items-center gap-2 flex-wrap text-sm">
+                  <Link to={`/admin?s=users&q=${encodeURIComponent(o.email || o.id)}`} className="text-[var(--primary-2)]">{o.displayName}</Link><span className="font-mono text-xs text-[var(--faint)]">{o.bcId}</span>
+                  <Badge tone={o.strikes?.over ? 'error' : o.strikes?.strikes ? 'warning' : undefined}>{t('rn.adm.strikes', '{n} / {m} strikes in {d} days').replace('{n}', o.strikes?.strikes ?? 0).replace('{m}', o.strikes?.threshold ?? 3).replace('{d}', o.strikes?.windowDays ?? 365)}</Badge>
+                  {o.prior?.length > 0 && <span className="text-xs text-[var(--faint)]">{o.prior.join(', ')}</span>}
+                  {o.strikes?.over && <span className="text-xs text-error">{t('rn.adm.repeat', 'Repeat infringer — consider the account screen.')}</span>}
+                </div>
+              ))}
+            </Card>
+          )}
+          {sanctions.length > 0 && (
+            <Card className="p-3">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.adm.sanctions', 'Sanctions issued')}</div>
+              {sanctions.map((sn) => <div key={sn.id} className="text-xs flex items-center gap-2"><span className="font-mono">{sn.code}</span> {sn.kind} · {sn.targetType} {sn.targetName} · <Badge>{sn.status}</Badge>{sn.contestedAt && <Badge tone="warning">{t('rn.adm.contested', 'contested')}</Badge>}</div>)}
+            </Card>
+          )}
+          {n.counter && (
+            <Card className="p-3 border-warning-border">
+              <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.adm.counter', 'Counter-notice')} · {new Date(n.counter.at).toLocaleString()}</div>
+              <div className="text-xs">{n.counter.name} · {n.counter.email}</div>
+              <p className="whitespace-pre-wrap text-sm mt-1">{n.counter.body}</p>
+            </Card>
+          )}
+          {n.decision && <Card className="p-3"><div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.adm.decision', 'Decision sent')}</div><p className="whitespace-pre-wrap">{n.decision}</p></Card>}
+
+          {/* actions */}
+          <Card className="p-3 space-y-2">
+            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('rn.adm.actions', 'Decide')}</div>
+            <Field label={t('rn.adm.decisiontext', 'What the sender is told (goes in the mail)')}><Textarea rows={3} value={decision} onChange={(e) => setDecision(e.target.value)} /></Field>
+            <div className="flex flex-wrap gap-2 items-center">
+              {canAct && <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={protect} onChange={(e) => setProtect(e.target.checked)} /> {t('rn.adm.protect', 'Register the work so it stays down (hashes of the files taken down)')}</label>}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {canAct && <Button variant="primary" disabled={!!busy} onClick={() => act('takedown', { decision, protect })}>{busy === 'takedown' ? <Spinner /> : <Gavel size={14} />} {t('rn.adm.takedown', 'Take down')}</Button>}
+              {canAct && <Button disabled={!!busy || decision.trim().length < 3} onClick={() => act('reject', { decision })}>{t('rn.adm.reject', 'No action')}</Button>}
+              {n.status === 'new' && <Button variant="ghost" disabled={!!busy} onClick={() => act('status', { status: 'reviewing' })}>{t('rn.adm.reviewing', 'Mark as reviewing')}</Button>}
+              {['actioned', 'countered'].includes(n.status) && n.sanctionIds?.length > 0 && <Button variant="ghost" disabled={!!busy} onClick={() => act('restore', { decision })}>{t('rn.adm.restore', 'Restore the content')}</Button>}
+              {!['closed'].includes(n.status) && <Button variant="ghost" disabled={!!busy} onClick={() => act('status', { status: 'closed' })}>{t('rn.adm.close', 'Close')}</Button>}
+            </div>
+            {n.status === 'actioned' && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-[var(--muted)]">{t('rn.adm.recordcounter', 'Record a counter-notice from the other side')}</summary>
+                <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                  <Input placeholder={t('rn.name', 'Full name')} value={counter.name} onChange={(e) => setCounter({ ...counter, name: e.target.value })} />
+                  <Input placeholder={t('rn.email', 'E-mail')} value={counter.email} onChange={(e) => setCounter({ ...counter, email: e.target.value })} />
+                </div>
+                <Textarea rows={3} className="mt-2" placeholder={t('rn.adm.counterbody', 'Their statement…')} value={counter.body} onChange={(e) => setCounter({ ...counter, body: e.target.value })} />
+                <Button size="sm" className="mt-2" disabled={!!busy || counter.body.trim().length < 3} onClick={() => act('counter', counter)}>{t('rn.adm.recordcounter.go', 'Record')}</Button>
+              </details>
+            )}
+            <Field label={t('rn.adm.note', 'Internal note (staff only, never sent)')}><Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => api.post(`/admin/rights/${id}/note`, { internalNote: note }).catch(() => {})} /></Field>
+          </Card>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ProtectedWorks() {
+  const { t } = useI18n(); const toast = useToast();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/rights/works'), []);
+  const works = data?.works || [];
+  const blank = { title: '', owner: '', contact: '', urls: '', hashes: '', patterns: '', notes: '' };
+  const [draft, setDraft] = useState(null);
+  const [scan, setScan] = useState(null);
+  const save = async () => {
+    try {
+      if (draft.id) await api.patch(`/admin/rights/works/${draft.id}`, draft); else await api.post('/admin/rights/works', draft);
+      setDraft(null); reload(); toast.success(t('common.saved', 'Saved.'));
+    } catch (x) { toast.error(x.data?.error === 'pattern_invalid' ? `${t('rn.w.badpattern', 'This pattern does not compile:')} ${x.data.pattern}` : (x.data?.error || t('acc.failed', 'Failed.'))); }
+  };
+  const doScan = async () => { setScan({ busy: true }); try { setScan(await api.post('/admin/rights/scan', {})); reload(); } catch { setScan({ error: true }); } };
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-[var(--muted)]">{t('rn.w.d', 'A registered work is matched against every file that lands and every listing that is created — by SHA-256 first (the work itself), then by a name pattern (a guess a person confirms), then by the address it was taken from. A hit opens a notice in the queue. This is the stay-down duty (Swiss CopA 39d) as code — the nearest a self-hosted service gets to what Content ID or Rights Manager do inside their own platforms.')}</p>
+      <div className="flex gap-2 flex-wrap">
+        <Button size="sm" variant="primary" onClick={() => setDraft(blank)}><Plus size={14} /> {t('rn.w.add', 'Register a work')}</Button>
+        <Button size="sm" onClick={doScan} disabled={scan?.busy}>{scan?.busy ? <Spinner /> : <Search size={14} />} {t('rn.w.scan', 'Scan everything hosted now')}</Button>
+        {scan && !scan.busy && !scan.error && <span className="text-xs text-[var(--muted)] self-center">{t('rn.w.scanres', '{f} files, {i} items, {w} works — {m} new match(es)').replace('{f}', scan.files).replace('{i}', scan.items).replace('{w}', scan.works).replace('{m}', scan.matches?.length || 0)}</span>}
+      </div>
+      {draft && (
+        <Card className="p-4 space-y-2">
+          <div className="grid sm:grid-cols-2 gap-2">
+            <Field label={t('rn.wtitle', 'Its name')}><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></Field>
+            <Field label={t('rn.w.owner', 'Rights holder')}><Input value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} /></Field>
+            <Field label={t('rn.w.contact', 'Contact')}><Input value={draft.contact} onChange={(e) => setDraft({ ...draft, contact: e.target.value })} /></Field>
+            <Field label={t('rn.w.urls', 'Source URLs (one per line) — a listing pointing here matches')}><Textarea rows={2} value={Array.isArray(draft.urls) ? draft.urls.join('\n') : draft.urls} onChange={(e) => setDraft({ ...draft, urls: e.target.value })} /></Field>
+            <Field label={t('rn.w.hashes', 'SHA-256 of the files (one per line) — a file with this hash matches')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.hashes) ? draft.hashes.join('\n') : draft.hashes} onChange={(e) => setDraft({ ...draft, hashes: e.target.value })} /></Field>
+            <Field label={t('rn.w.patterns', 'Name patterns (regex, one per line) — a file or item NAME matching one is flagged for review')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.patterns) ? draft.patterns.join('\n') : draft.patterns} onChange={(e) => setDraft({ ...draft, patterns: e.target.value })} placeholder="^foo[-_ ]?pack" /></Field>
+          </div>
+          <Field label={t('rn.w.notes', 'Notes')}><Textarea rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
+          <div className="flex gap-2"><Button variant="primary" onClick={save} disabled={!draft.title.trim()}>{t('common.save', 'Save')}</Button><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button></div>
+        </Card>
+      )}
+      {loading ? <Loading /> : works.length ? <div className="space-y-1.5">
+        {works.map((w) => (
+          <Card key={w.id} className="p-3 flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="font-medium flex items-center gap-2 flex-wrap">{w.title} {!w.active && <Badge>{t('rn.w.off', 'inactive')}</Badge>} {w.hits > 0 && <Badge tone="warning">{w.hits} {t('rn.w.hits', 'hit(s)')}</Badge>}</div>
+              <div className="text-xs text-[var(--faint)] truncate">{w.owner || '—'} · {w.hashCount} {t('rn.w.hashes.n', 'hash(es)')} · {w.patterns.length} {t('rn.w.patterns.n', 'pattern(s)')} · {w.urls.length} URL</div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setDraft({ ...w })}>{t('common.edit', 'Edit')}</Button>
+            <Button size="sm" variant="ghost" onClick={async () => { await api.patch(`/admin/rights/works/${w.id}`, { active: !w.active }); reload(); }}>{w.active ? t('rn.w.disable', 'Disable') : t('rn.w.enable', 'Enable')}</Button>
+            <Button size="sm" variant="ghost" className="!text-error" onClick={async () => { if (!window.confirm(t('rn.w.del.q', 'Remove this work from the registry?'))) return; await api.del(`/admin/rights/works/${w.id}`); reload(); }}><Trash2 size={14} /></Button>
+          </Card>
+        ))}
+      </div> : <EmptyState icon={Shield} title={t('rn.w.none.t', 'No registered works')} sub={t('rn.w.none.s', 'Take a notice down with "register the work" ticked, or add one here.')} />}
+    </div>
+  );
+}
+
+function RightsConfig({ config, onSaved }) {
+  const { t } = useI18n(); const toast = useToast();
+  const [c, setC] = useState(config || { strikeThreshold: 3, strikeWindowDays: 365, counterDays: 14, autoMatch: true });
+  useEffect(() => { if (config) setC(config); }, [config]);
+  const save = async () => { try { await api.put('/admin/rights/config', c); toast.success(t('common.saved', 'Saved.')); onSaved?.(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
+  return (
+    <Card className="p-4 space-y-3 max-w-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={t('rn.c.threshold', 'Strikes before "repeat infringer"')}><Input type="number" min="1" value={c.strikeThreshold} onChange={(e) => setC({ ...c, strikeThreshold: Number(e.target.value) })} /></Field>
+        <Field label={t('rn.c.window', 'Counted over (days)')}><Input type="number" min="1" value={c.strikeWindowDays} onChange={(e) => setC({ ...c, strikeWindowDays: Number(e.target.value) })} /></Field>
+        <Field label={t('rn.c.counter', 'Days to counter a takedown')}><Input type="number" min="1" value={c.counterDays} onChange={(e) => setC({ ...c, counterDays: Number(e.target.value) })} /></Field>
+      </div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={c.autoMatch !== false} onChange={(e) => setC({ ...c, autoMatch: e.target.checked })} /> {t('rn.c.auto', 'Match the registry on every upload and every new listing')}</label>
+      <p className="text-[11px] text-[var(--faint)]">{t('rn.c.d', 'The repeat-infringer count is per answerable account: notices ACTIONED against its content inside the window. It is shown on every notice; suspending the account stays a decision made on the account screen.')}</p>
+      <Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button>
+    </Card>
   );
 }
 

@@ -9,6 +9,8 @@ import { recordChange } from '../lib/changelog.mjs';
 import { presignPut, presignGet, getObject } from '../lib/storage.mjs';
 import { zipEntryName } from '../lib/zip-path.mjs';
 import { repoMeter } from '../lib/monitor.mjs';
+import { flagIfProtected } from './rights.mjs';
+const SITE_URL = (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 
 const sha256 = (s) => createHash('sha256').update(s).digest('hex');
 
@@ -257,6 +259,10 @@ export async function registerRepoFile(p, repo, { path: rawPath, key, size, cont
     create: { serverRepoId: repo.id, path, key, size: BigInt(size), contentType, sha256: fileSha || null },
     update: { key, size: BigInt(size), contentType, sha256: fileSha || null },
   });
+  // The stay-down check (Swiss CopA 39d): a file that matches a registered work — by hash,
+  // or by a name pattern — opens a match notice for staff. Best-effort and never awaited
+  // past this line's failure: an upload must not fail because the registry was slow.
+  flagIfProtected(p, { sha256: fileSha || null, path, name: path.split('/').pop() }, { type: 'repo', id: repo.id, label: repo.name, url: `${SITE_URL}/r/${repo.id}`, ownerId: repo.ownerId }).catch(() => {});
   await recomputeUsage(p, repo.id);
   // Content changed → must be re-published to be served again. The manifest is
   // auto-hashed + auto-verified: a valid repo.json → verified, else not.

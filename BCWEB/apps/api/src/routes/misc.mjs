@@ -121,6 +121,15 @@ export const PENDING_QUEUES = [
     handle: (p, id) => p.feedback.update({ where: { id }, data: { status: 'triaged' } }).catch(() => null),
   },
   {
+    // Rights notices carry the same clock as the legal contact messages did — and now they
+    // arrive here instead, as records. New ones and counter-notices both need a person.
+    key: 'rights', cap: 'manage_reports', to: '/admin?s=rights',
+    count: (p) => p.rightsNotice.count({ where: { status: { in: ['new', 'countered'] } } }),
+    recent: (p) => p.rightsNotice.findMany({
+      where: { status: { in: ['new', 'countered'] } }, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, code: true, kind: true, status: true, createdAt: true },
+    }),
+  }, {
     key: 'reports', cap: 'manage_reports', to: '/admin?s=reports',
     count: (p) => p.report.count({ where: { status: 'open' } }),
     recent: (p) => p.report.findMany({

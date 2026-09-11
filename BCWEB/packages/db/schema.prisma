@@ -257,6 +257,9 @@ model User {
   // relation would make both unanswerable.
   sanctions            Sanction[]           @relation("SanctionTarget")
   sanctionsIssued      Sanction[]           @relation("SanctionIssuer")
+  rightsNotices        RightsNotice[]       @relation("RightsNoticeReporter")
+  rightsReviews        RightsNotice[]       @relation("RightsNoticeReviewer")
+  protectedWorks       ProtectedWork[]      @relation("ProtectedWorkAuthor")
   botActions           BotAction[]          @relation("BotActionRequester")
   staffNotes           StaffNote[]          @relation("StaffNoteAuthor")
   sanctionEvidence     SanctionAttachment[] @relation("SanctionAttachmentAuthor")
@@ -4086,4 +4089,95 @@ model ProjectProductPurchase {
   @@index([buyerId, createdAt])
   @@index([productId, createdAt])
   @@index([stripeSubId])
+}
+
+// ── Rights notices & protected works ─────────────────────────────────────────
+//
+// A rights-holder notice (or a DSA Art. 16 report) as a RECORD with every element the legal
+// page promises to act on — who, what work, exactly where on this service, why, and the two
+// statements — instead of a free-text contact message. `targets` is a JSON list of
+// { type, id, label, url, files[] } so a takedown can be as narrow as the claim.
+// `kind: "match"` rows are not sent by anybody: the protected-works registry produced them
+// when a file or a listing matched a registered work (Swiss CopA 39d: prevent the same work
+// coming back once we have been told about it).
+model RightsNotice {
+  id     String @id @default(cuid())
+  /// NTC-XXXX-XXXX — quoted in every mail, given by the sender to follow up without an account.
+  code   String @unique
+  /// copyright · trademark · privacy · illegal · other · match
+  kind   String @default("copyright")
+  /// new · reviewing · actioned · rejected · countered · restored · closed
+  status String @default("new")
+
+  /// NULLABLE: most rights holders have no account here, and a notice outlives a deleted one.
+  reporter   User?   @relation("RightsNoticeReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  reporterId String?
+  name       String  @default("")
+  email      String  @default("")
+  org        String  @default("")
+  /// owner · licensee · agent
+  onBehalfOf String  @default("owner")
+  address    String  @default("")
+  country    String  @default("")
+  phone      String  @default("")
+
+  targets     Json    @default("[]")
+  work        Json    @default("{}")
+  explanation String  @default("")
+  goodFaith   Boolean @default(false)
+  accurate    Boolean @default(false)
+  signature   String  @default("")
+  ip          String  @default("")
+
+  reviewedBy   User?     @relation("RightsNoticeReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedById String?
+  /// What the sender is told. Goes in the mail, so it has to be defensible to the person reading it.
+  decision     String    @default("")
+  decisionAt   DateTime?
+  /// STAFF ONLY. Never sent, never quoted.
+  internalNote String    @default("")
+  /// The sanctions a takedown issued, so a restore knows what to lift.
+  sanctionIds  String[]  @default([])
+  /// The accounts answerable for the targets — what the repeat-infringer count is taken over.
+  ownerIds     String[]  @default([])
+  /// A counter-notice from the person whose content was taken down: { name, email, body, at }.
+  counter      Json?
+  restoredAt   DateTime?
+
+  /// For a `match`: the registered work it matched, and how.
+  work_  ProtectedWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  workId String?
+  /// hash · pattern · url — what fired, for a match.
+  matchVia String @default("")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([reporterId])
+  @@index([email])
+  @@index([workId])
+}
+
+/// A work somebody has asserted rights over, with what identifies copies of it: file hashes
+/// (the work itself), name patterns (a guess a human confirms) and the addresses it was taken
+/// from. Matched against every file that lands and every listing that is created.
+model ProtectedWork {
+  id       String   @id @default(cuid())
+  title    String
+  owner    String   @default("")
+  contact  String   @default("")
+  urls     String[] @default([])
+  hashes   String[] @default([])
+  patterns String[] @default([])
+  notes    String   @default("")
+  active   Boolean  @default(true)
+  hits     Int      @default(0)
+
+  createdBy   User?   @relation("ProtectedWorkAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+  notices     RightsNotice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

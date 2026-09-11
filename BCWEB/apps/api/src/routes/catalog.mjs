@@ -19,6 +19,7 @@ import { hasProjectLink, replyNeedsLink, requirementFor } from '../lib/project-l
 // running. Same client, same gate, one place to change.
 import { stripe } from './hosting.mjs';
 import { isProjectKey, KEY_SHAPE } from '../lib/project-keys.mjs';
+import { flagIfProtected } from './rights.mjs';
 
 // ── Blocked addresses ────────────────────────────────────────────────────────
 // The Terms promise that a link taken down after a notice cannot simply be posted again.
@@ -163,6 +164,8 @@ async function revalidatePlugin(p, item) {
     const res = await validatePlugin(buf, meta.sha256);
     const validation = { valid: res.valid, reason: res.reason, sha256: res.sha256, files: res.files, checkedAt: res.checkedAt, manifestId: res.manifest?.id };
     await p.catalogItem.update({ where: { id: item.id }, data: { meta: { ...meta, sha256: res.sha256, validation } } });
+    // The stay-down check, for a listing: its package hash, its name, and where it points.
+    flagIfProtected(p, { sha256: res.sha256, name: item.name, urls: [meta.download_url, meta.url, meta.source, meta.homepage].filter(Boolean) }, { type: 'item', id: item.id, label: item.name, url: `${(process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '')}/item/${item.slug || item.id}`, ownerId: item.ownerId }).catch(() => {});
     return { ...res, validation };
   } catch (e) {
     // A fetch-side failure (no download source yet, an SSRF-blocked/unreachable host, a

@@ -102,8 +102,10 @@ export function ReportButton({ targetType, targetId, targetLabel, size = 'sm', v
   const [open, setOpen] = useState(false);
   const go = () => {
     if (user) return setOpen(true);
-    const q = new URLSearchParams({ report: targetType, id: targetId || '', label: targetLabel || '' });
-    navigate(`/contact?${q.toString()}`);
+    // Logged out: the notice form, with the target already resolved — not the contact page's
+    // free-text template, which is where rights claims used to land with nothing to act on.
+    const q = new URLSearchParams({ type: targetType, id: targetId || '', label: targetLabel || '' });
+    navigate(`/report?${q.toString()}`);
   };
   return (
     <>
@@ -191,6 +193,12 @@ export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
         </div>
         <ReportComposer onSend={send} sending={busy} placeholder={t('rp.detailph', 'Add details — what’s wrong, links, screenshots…')} />
         <p className="text-[11px] text-[var(--faint)]">{t('rp.note', 'Reports go to the moderation team. You can track the conversation in your dashboard → Reports.')}</p>
+        {/* A rights claim is a legal instrument with required elements; the chat thread is not
+            the place for it. The full form knows the target already. */}
+        <p className="text-[11px] text-[var(--muted)]">
+          {t('rp.rights', 'Copyright, trademark, privacy or illegal content?')}{' '}
+          <Link to={`/report?${new URLSearchParams({ type: targetType, id: targetId || '', label: targetLabel || '' }).toString()}`} className="text-[var(--primary-2)] hover:underline" onClick={onClose}>{t('rp.rights.go', 'Use the notice form')}</Link>
+        </p>
       </div>
     </Modal>
   );

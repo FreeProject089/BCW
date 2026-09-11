@@ -71,7 +71,8 @@
     ],
     "manage_reports": [
       "/admin/feedback",
-      "/admin/reports"
+      "/admin/reports",
+      "/admin/rights"
     ],
     "manage_repos": [
       "/admin/hosting",

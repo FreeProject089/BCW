@@ -113,6 +113,7 @@ const Legal = named(() => import('./pages/legal.jsx'), 'Legal');
 const LegalIndex = named(() => import('./pages/legal.jsx'), 'LegalIndex');
 const LegalArchive = named(() => import('./pages/legal.jsx'), 'LegalArchive');
 const Contact = named(() => import('./pages/contact.jsx'), 'Contact');
+const ReportPage = named(() => import('./pages/report.jsx'), 'ReportPage');
 const Settings = named(() => import('./pages/account-pages.jsx'), 'Settings');
 const Authorize = named(() => import('./pages/account-pages.jsx'), 'Authorize');
 const VerifyEmail = named(() => import('./pages/account-pages.jsx'), 'VerifyEmail');
@@ -1438,6 +1439,7 @@ export default function App() {
               <Route path="/authorize" element={<Authorize />} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/report" element={<ReportPage />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/2fa" element={<TwoFactor />} />
               <Route path="/legal" element={<LegalIndex />} />
