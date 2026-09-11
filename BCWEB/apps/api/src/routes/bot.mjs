@@ -7,7 +7,7 @@ import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
-import { betLimits, edgePctFor, payoutFor, edgeApplied, CASINO_GAMES } from '../lib/casino-rules.mjs';
+import { betLimits, edgePctFor, payoutFor, edgeApplied, splitPot, CASINO_GAMES } from '../lib/casino-rules.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -2326,6 +2326,10 @@ export default async function botRoutes(app) {
         // Free-form, bounded: what they picked, when they cashed out — for the ledger line.
         note: z.string().max(60).optional(),
       })).min(1).max(50),
+      // A POT: the seats are settled between themselves. The losers' stakes go to the
+      // winners, split by stake × multiplier, each winner keeping their own stake; the edge
+      // is taken once, on the winners' share. Off, every seat is settled against the house.
+      pot: z.boolean().optional().default(false),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
@@ -2341,18 +2345,23 @@ export default async function botRoutes(app) {
       if (pl.bet < min || pl.bet > max) return { ok: false, error: 'bad_bet', min, max: maxOut, discordId: pl.discordId };
     }
     const edgePct = edgeApplied(b.data.game) ? 0 : edgePctFor(eco.casino, b.data.game);
+    // With a pot the multipliers become payout ÷ stake with the edge already inside, so the
+    // per-seat settlement below pays them at a 0 % edge rather than taxing them twice.
+    const plays = b.data.pot ? splitPot(b.data.plays, edgePct) : b.data.plays;
+    const seatEdge = b.data.pot ? 0 : edgePct;
+    const potTotal = b.data.pot ? (plays[0]?.pot || 0) : null;
     const results = [];
-    for (const pl of b.data.plays) {
+    for (const pl of plays) {
       const link = await p.discordLink.findUnique({ where: { discordId: pl.discordId }, select: { userId: true } });
       if (!link) { results.push({ discordId: pl.discordId, ok: false, error: 'not_linked' }); continue; }
       const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
       if ((cur?.points || 0) < pl.bet) { results.push({ discordId: pl.discordId, ok: false, error: 'insufficient', points: cur?.points || 0 }); continue; }
-      const payout = payoutFor(pl.bet, pl.multiplier, edgePct);
+      const payout = payoutFor(pl.bet, pl.multiplier, seatEdge);
       const delta = payout - pl.bet;
-      const points = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout, live: true, note: pl.note || null } }, { clamp: true });
-      results.push({ discordId: pl.discordId, ok: true, delta, payout, points });
+      const points = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout, live: true, pot: b.data.pot || undefined, share: pl.share ?? undefined, note: pl.note || null } }, { clamp: true });
+      results.push({ discordId: pl.discordId, ok: true, delta, payout, points, share: pl.share ?? undefined });
     }
-    return { ok: true, results, edgePct };
+    return { ok: true, results, edgePct, pot: potTotal };
   });
 
   // ── Website side: redeem / list / unlink Discord links ──

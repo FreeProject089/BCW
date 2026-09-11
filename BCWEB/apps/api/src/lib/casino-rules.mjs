@@ -104,3 +104,31 @@ export const RACE_MULTIPLIER = 6;
 export function raceWinner(u) {
   return Math.min(RACE_CARS - 1, Math.floor(Math.min(0.999999, Math.max(0, Number(u) || 0)) * RACE_CARS));
 }
+
+/**
+ * A table settled between its players.
+ *
+ * `plays` carry each seat's stake and a WIN WEIGHT: 0 for a loser, the game's multiplier for a
+ * winner (1 for a pot draw, 6 for the right car, 2 for the right side of a coin, 14 for green).
+ * The losers' stakes form the pot. Each winner keeps their stake and takes a share of the pot
+ * proportional to stake × weight, less the house edge on that share only. With no winner the
+ * pot stays with the house.
+ *
+ * Returns the plays with `multiplier` rewritten as payout ÷ stake, so the ordinary settlement
+ * can pay them with payoutFor(bet, multiplier, 0) — the edge has already been taken here, once,
+ * on the share, and taking it again on the "profit" of a rewritten multiplier would tax the
+ * returned stake too.
+ */
+export function splitPot(plays, edgePct) {
+  const list = (plays || []).map((p) => ({ ...p, bet: Math.max(0, Math.round(Number(p.bet) || 0)), multiplier: Math.max(0, Number(p.multiplier) || 0) }));
+  const winners = list.filter((p) => p.multiplier > 0 && p.bet > 0);
+  const pot = list.filter((p) => !(p.multiplier > 0)).reduce((a, p) => a + p.bet, 0);
+  const keep = 1 - Math.min(100, Math.max(0, Number(edgePct) || 0)) / 100;
+  if (!winners.length) return list.map((p) => ({ ...p, multiplier: 0, share: 0, pot }));
+  const weight = winners.reduce((a, p) => a + p.bet * p.multiplier, 0);
+  return list.map((p) => {
+    if (!(p.multiplier > 0) || !p.bet) return { ...p, multiplier: 0, share: 0, pot };
+    const share = Math.floor(pot * ((p.bet * p.multiplier) / weight) * keep);
+    return { ...p, multiplier: (p.bet + share) / p.bet, share, pot };
+  });
+}

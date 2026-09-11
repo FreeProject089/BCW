@@ -7,7 +7,7 @@
 // nine runs out of ten; it fails this one every time.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { betLimits, edgePctFor, payoutFor, crashPoint, potWinner, potMultiplier, raceWinner, RACE_CARS, edgeApplied } from '../src/lib/casino-rules.mjs';
+import { betLimits, edgePctFor, payoutFor, crashPoint, potWinner, potMultiplier, raceWinner, RACE_CARS, edgeApplied, splitPot } from '../src/lib/casino-rules.mjs';
 
 describe('betLimits', () => {
   test('0 means no cap, not 100', () => {
@@ -133,5 +133,36 @@ describe('race', () => {
     for (const w of wins) assert.equal(w, N / RACE_CARS);
     assert.equal(raceWinner(1), RACE_CARS - 1);
     assert.equal(raceWinner(-1), 0);
+  });
+});
+
+describe('splitPot — a table settled between its players', () => {
+  test('the losers’ stakes go to the winner, who keeps their own', () => {
+    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 50, multiplier: 0 }, { discordId: 'c', bet: 30, multiplier: 0 }], 0);
+    const a = r.find((p) => p.discordId === 'a');
+    assert.equal(a.pot, 80);
+    assert.equal(a.share, 80);
+    assert.equal(a.multiplier, 1.8);          // (100 + 80) / 100
+    assert.equal(r.find((p) => p.discordId === 'b').multiplier, 0);
+  });
+  test('two winners split by stake × multiplier, and the edge taxes the share only', () => {
+    // a: 100 at 2× (weight 200), c: 50 at 6× (weight 300); pot = 100 from b. Edge 10 %.
+    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 100, multiplier: 0 }, { discordId: 'c', bet: 50, multiplier: 6 }], 10);
+    const a = r.find((p) => p.discordId === 'a'), c = r.find((p) => p.discordId === 'c');
+    assert.equal(a.share, 36);   // floor(100 · 200/500 · 0.9)
+    assert.equal(c.share, 54);   // floor(100 · 300/500 · 0.9)
+    assert.equal(a.multiplier, 1.36);
+    assert.equal(c.multiplier, (50 + 54) / 50);
+    // paid with no second edge: the stake comes back to the point
+    assert.equal(payoutFor(100, a.multiplier, 0), 136);
+  });
+  test('nobody wins → the house keeps the pot, everyone is at 0', () => {
+    const r = splitPot([{ bet: 10, multiplier: 0 }, { bet: 20, multiplier: 0 }], 5);
+    assert.ok(r.every((p) => p.multiplier === 0 && p.pot === 30));
+  });
+  test('a lone winner with no losers gets exactly their stake back', () => {
+    const r = splitPot([{ bet: 40, multiplier: 2 }], 5);
+    assert.equal(r[0].multiplier, 1);
+    assert.equal(payoutFor(40, 1, 0), 40);
   });
 });

@@ -141,7 +141,7 @@ function lobbyCard(t, L, cur) {
   return {
     title: `${ui.ic(L.game) || '🎮'} ${t(`live.title.${gameKey(L.game)}`, { g: t(`game.${L.game}`) })}`,
     color: ui.BRAND,
-    body: [t(`live.rules.${gameKey(L.game)}`), '', `### ${t('live.players', { n: have })}`, playersBlock(t, L, cur), '', status],
+    body: [t(`live.rules.${gameKey(L.game)}`), ...(L.game !== 'crash' ? [t('live.rules.pot2')] : []), '', `### ${t('live.players', { n: have })}`, playersBlock(t, L, cur), '', status],
     footer: t('live.footer', { u: L.hostName }),
     buttons,
   };
@@ -269,10 +269,17 @@ async function start(L) {
 /** Settle every seat with the API and draw the result card. */
 async function finish(L, plays, lines, gifPath) {
   L.state = 'done'; L.touched = Date.now();
-  const r = await api.economySettle(L.game, plays);
+  // Two or more seats and it is a POT: the losers' stakes go to the winners, split by stake
+  // (times the game's multiplier where it has one), every winner keeping their own stake, the
+  // house taking its edge on the winners' share only. Alone at the table you play the house,
+  // as before. Crash is the exception either way: everybody cashes out on their own clock, so
+  // there is no roll the seats share.
+  const pot = L.players.size >= 2 && L.game !== 'crash';
+  const r = await api.economySettle(L.game, plays, pot);
   const results = r?.ok ? r.results : plays.map((p) => ({ discordId: p.discordId, ok: false }));
+  const potLine = pot && r?.ok ? [L.t('live.potline', { n: n(r.pot || 0), cur: L.cur })] : [];
   const gif = gifPath ? await api.siteImage(gifPath) : null;
-  await redraw(L, resultCard(L.t, L, L.cur, lines, results, gif));
+  await redraw(L, resultCard(L.t, L, L.cur, [...lines, ...potLine], results, gif));
 }
 
 async function runCrash(L) {
@@ -338,7 +345,8 @@ async function runPot(L) {
   const list = (hi) => ids.map((id, i) => `${i === hi ? '👉' : '•'} **${names[i]}** — ${n(stakes[i])} ${L.cur} (${Math.round((stakes[i] / total) * 100)} %)`).join('\n');
   await redraw(L, runningCard(t, L, L.cur, [t('live.pot.total', { n: n(total), cur: L.cur }), t('live.pot.drawing'), '', list(-1)]));
   for (let k = 0; k < 7; k++) { await sleep(700); await redraw(L, runningCard(t, L, L.cur, [t('live.pot.total', { n: n(total), cur: L.cur }), t('live.pot.drawing'), '', list(k < 6 ? Math.floor(rnd() * ids.length) : winnerIdx)])); }
-  const plays = ids.map((id, i) => ({ discordId: id, bet: stakes[i], multiplier: i === winnerIdx ? total / stakes[i] : 0, note: i === winnerIdx ? 'pot' : '' }));
+  // Weight 1: the settlement's pot split hands the winner every other stake plus their own.
+  const plays = ids.map((id, i) => ({ discordId: id, bet: stakes[i], multiplier: i === winnerIdx ? 1 : 0, note: i === winnerIdx ? 'pot' : '' }));
   const labels = names.map((s) => s.replace(/[^\w]/g, '').slice(0, 6) || 'P').slice(0, 8).join(',');
   const gifPath = `/og/casino/pot/win.gif?d=${encodeURIComponent(`${winnerIdx}|${stakes.slice(0, 8).join(',')}|${labels}`)}&a=${encodeURIComponent(n(total))}&s=${Math.floor(rnd() * 4294967295)}`;
   await finish(L, plays, [t('live.pot.won', { u: names[winnerIdx], n: n(total), cur: L.cur }), '', list(winnerIdx)], gifPath);
