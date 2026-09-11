@@ -113,7 +113,12 @@
   no cron), cancellable.
 - **Discord bot** — multi-role gated access with per-role requirements + `/refreshroles`,
   Ko-fi tip announcements, server-perf alerts, moderation, welcome, join-to-create
-  voice, blog announcements. Every message is an embed. Per-server settings are edited under a
+  voice, blog announcements. The `/casino` has **live tables** (crash with an animated
+  climb, a six-car race, a stake-weighted pot, and a shared roll of any single-player game)
+  that other members join from the same message; with two or more seated the table settles
+  **between the players** — the losers' stakes are the pot, split by stake × multiplier,
+  edge on the share only — and the admin sets the **house edge per game** and a max bet where
+  **0 means no cap** (all-in is then really all of it). Every message is an embed. Per-server settings are edited under a
   server picker that shows which servers the bot is in, and the section navigation works on
   phones. An admin can **block a server** — the bot leaves and never rejoins, or stays but
   every command is inert there — and an `/appeal` command (which still answers in a blocked
@@ -282,7 +287,18 @@
   streams and announcements — YouTube/Twitch/mp4 embed inline) and an optional **headline
   counter**, above the media frame and progress tracker; the Activity tab shows contributor
   **avatars** and a commit calendar you can **tap for a day's detail**, and timeline notes
-  render as Markdown.
+  render as Markdown. A project's custom pages are drawn in the **studio**: blocks placed by
+  hand on a 1200px board (text, image, box, video, embed, replay, **button** — plain, card or
+  dropdown, with link / copy / scroll / download / API actions), a separate **phone board**
+  (390px) beside the light and dark variants, per-block **animations** (fade, rise, slide,
+  zoom, pulse, float, custom keyframes; on show, on load, after a delay, on hover; looped or
+  not), a **Layers** panel (name, lock, hide, reorder), rotation, shadow, hover effects, a
+  block-wide link, text alignment, a chosen grid step and presets to start from.
+- **Rights notices** — `/report` files a formal copyright / trademark / privacy / illegal-
+  content notice with every legally required element, resolving a pasted link to a precise
+  target (repo, catalogue entry, user, file); notice codes to follow up, counter-notices,
+  strikes, a **protected-works registry** whose hashes / patterns / URLs flag matching uploads
+  on save, and an admin **Rights** queue with takedown, reject, restore and scan.
 - **Legal** — Privacy, Terms, Cookies, **About**, **Payments & Refunds** (EN/FR).
 
 ## Abuse & safety

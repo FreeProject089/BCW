@@ -37,6 +37,32 @@ onglet manquant = capacité manquante ; demande à un admin, ne contourne pas.
 **À faire :** lis tout le fil avant d'agir ; demande des précisions si c'est vague.
 **À éviter :** clore un signalement sans note de résolution — le **journal d'audit** te tient.
 
+### 3b. Notifications de droits (droit d’auteur)
+
+- **Admin → Droits** (`/admin?s=rights`, capacité `manage_reports`) est une file séparée pour
+  les notifications formelles déposées sur `/report` : droit d’auteur, marque, vie privée,
+  contenu illicite, et les **correspondances** automatiques avec le registre des œuvres
+  protégées.
+- Une notification porte tout ce que la loi demande (identité de l’expéditeur, l’œuvre, les
+  cibles résolues jusqu’aux fichiers, le titre auquel il agit, les déclarations, une
+  signature) — le formulaire refuse ce qui en manque, donc ce qui t’arrive est exploitable.
+- Traite-la par **statut** : accuse réception (`reviewing`), ajoute une **note interne**, puis
+  **retire** (la cible est sanctionnée par le même chemin de sanction de contenu qu’un
+  signalement, l’expéditeur et le propriétaire sont prévenus), **rejette** avec un motif, ou
+  **demande** des précisions. Le propriétaire peut répondre par une **contre-notification** ;
+  tu peux **restaurer** après.
+- Les **strikes** se comptent par propriétaire sur une fenêtre (Admin → Droits → Réglages) ;
+  le dépassement du seuil est affiché sur la notification, un récidiviste n’est pas une
+  surprise.
+- Le registre des **œuvres protégées** (titre, titulaire, hachages de fichiers, motifs de nom,
+  URL) permet d’enregistrer une fois le catalogue d’un ayant droit ; les nouveaux envois sont
+  comparés à la sauvegarde et une notification `match` s’ouvre pour toi. **Scanner** revérifie
+  le contenu existant après l’ajout d’une œuvre.
+
+**À faire :** agis sur la notification telle qu’écrite, note ce que tu as fait, préviens
+l’expéditeur. **À éviter :** retirer un contenu sur une notification qui ne nomme ni œuvre ni
+cible — rejette-la en disant pourquoi.
+
 ## 4. Modérer les utilisateurs
 
 - **Suspendre** (MOD+) verrouille l'utilisateur avec un panneau de connexion clair ; un

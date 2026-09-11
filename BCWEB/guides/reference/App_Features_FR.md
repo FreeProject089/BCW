@@ -127,7 +127,13 @@
   date/heure future (paresseux, sans cron), annulable.
 - **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
-  vocal, annonces de blog. Chaque message est un embed. Les réglages par serveur s'éditent
+  vocal, annonces de blog. Le `/casino` a des **tables en direct** (crash avec montée animée,
+  une course à six voitures, une cagnotte pondérée par la mise, et un tirage partagé de
+  n’importe quel jeu solo) que d’autres membres rejoignent depuis le même message ; à deux ou
+  plus, la table se règle **entre les joueurs** — les mises des perdants forment la cagnotte,
+  répartie par mise × multiplicateur, avantage pris sur la part seulement — et l’admin fixe
+  l’**avantage maison par jeu** et une mise max où **0 = pas de plafond** (le tapis est alors
+  vraiment tout). Chaque message est un embed. Les réglages par serveur s'éditent
   sous un sélecteur qui montre dans quels serveurs le bot se trouve, et la navigation par
   sections marche sur téléphone. Un admin peut **bloquer un serveur** — le bot le quitte et
   n'y revient jamais, ou y reste mais toutes ses commandes sont inertes — et une commande
@@ -309,7 +315,21 @@
   — embed YouTube/Twitch/mp4) et un **compteur en tête** optionnel, au-dessus du média et du
   suivi d'avancement ; l'onglet Activité montre les **avatars** des contributeurs et un
   calendrier de commits **cliquable pour le détail d'un jour**, et les notes de chronologie
-  s'affichent en Markdown.
+  s'affichent en Markdown. Les pages personnalisées d’un projet se dessinent dans le
+  **studio** : des blocs placés à la main sur une planche de 1200 px (texte, image, boîte,
+  vidéo, embed, replay, **bouton** — simple, carte ou menu déroulant, avec actions lien /
+  copie / défilement / téléchargement / API), une **planche téléphone** (390 px) séparée à côté
+  des variantes claire et sombre, des **animations** par bloc (fondu, montée, glissement,
+  zoom, pulsation, flottement, keyframes libres ; à l’apparition, au chargement, après un
+  délai, au survol ; en boucle ou non), un panneau **Calques** (nom, verrou, masquage,
+  ordre), rotation, ombre, effets au survol, lien sur tout le bloc, alignement du texte, pas
+  de grille au choix et des presets pour démarrer.
+- **Notifications de droits** — `/report` dépose une notification formelle droit d’auteur /
+  marque / vie privée / contenu illicite avec tous les éléments légalement requis, en
+  résolvant un lien collé en cible précise (dépôt, entrée de catalogue, utilisateur,
+  fichier) ; codes de suivi, contre-notifications, strikes, un **registre d’œuvres protégées**
+  dont les hachages / motifs / URL repèrent les envois correspondants à la sauvegarde, et une
+  file admin **Droits** avec retrait, rejet, restauration et scan.
 - **Légal** — Confidentialité, CGU, Cookies, **À propos**, **Paiements & Remboursements**
   (EN/FR).
 

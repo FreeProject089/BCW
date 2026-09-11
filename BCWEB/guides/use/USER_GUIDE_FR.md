@@ -35,7 +35,7 @@ Si le bot Discord de la communauté a son économie activée, être actif sur le
 - **Tableau de bord → Vue d'ensemble** montre ton anneau de niveau, d'où vient ton XP, et ton solde.
 - **Tableau de bord → Boutique & inventaire** est la boutique de points sur le site — les mêmes articles et prix que `/shop` sur Discord — et l'inventaire : tout ce que tu as acheté, d'un côté ou de l'autre, avec le code remis (pool de stockage, boost, hébergement offert, promo). Un rôle Discord ou une récompense perso reste *en attente* jusqu'à ce qu'un admin le remette.
 - Un code acheté (pool, boost, hébergement, promo) arrive **scellé** : appuie sur **Révéler** quand tu le veux (il est créé à ce moment, avec sa validité), ou **Offre** l'article non ouvert à un autre membre. Les points s'envoient aussi — l'onglet Historique sur le site, ou `/gift` sur Discord — dans les limites fixées par les admins.
-- Sur Discord : `/level`, `/shop`, `/inventory`, `/gift`, `/history`, `/leaderboard` (ce serveur ou global, en image, avec ton propre rang), `/profile`, et `/casino` (une table animée — pile ou face, dés, machine à sous, roulette avec mise couleur / vert / numéro, roue, plinko). `/casino` sans option ouvre une table interactive : choisis le jeu, la mise (paliers, tapis ou montant libre) et les options du jeu dans des menus, puis Jouer ; les options de la commande sont des raccourcis vers le même tirage. L’avantage maison ne taxe que ce que tu gagnes — une case 1× rend ta mise au point près, une case 0,3× en rend exactement 30 %.
+- Sur Discord : `/level`, `/shop`, `/inventory`, `/gift`, `/history`, `/leaderboard` (ce serveur ou global, en image, avec ton propre rang), `/profile`, et `/casino` (une table animée — pile ou face, dés, machine à sous, roulette avec mise couleur / vert / numéro, roue, plinko). `/casino` sans option ouvre une table interactive : choisis le jeu, la mise (paliers, tapis ou montant libre) et les options du jeu dans des menus, puis Jouer ; les options de la commande sont des raccourcis vers le même tirage. L’avantage maison ne taxe que ce que tu gagnes — une case 1× rend ta mise au point près, une case 0,3× en rend exactement 30 %. Trois jeux de plus sont des **tables en direct** que d’autres membres rejoignent depuis le même message : **Crash** (un multiplicateur grimpe, encaisse avant qu’il s’arrête), **Course** (six voitures, choisis la tienne) et **Cagnotte** (chacun mise ce qu’il veut ; plus tu mises, plus tu as de chances), et **Multi** ouvre pile ou face, dés, roulette ou roue en tirage partagé. À deux ou plus, la table se règle **entre les joueurs** : les mises des perdants forment la cagnotte, chaque gagnant garde sa propre mise et prend une part de la cagnotte au prorata de mise × multiplicateur, et l’avantage maison n’est pris que sur cette part. Personne ne gagne → la maison garde la cagnotte. Seul à une table, tu joues contre la maison comme d’habitude, et Crash n’est jamais mis en commun — chacun encaisse à son propre moment. Si le serveur n’a pas fixé de mise maximale, **Tapis** est vraiment tout ; sinon la table dit quel est le plafond.
 - Des badges s'obtiennent par les règles que les admins fixent — un niveau, un nombre de messages, un achat, un sondage répondu, un élément publié, un dépôt hébergé, Discord lié, la 2FA activée, l'âge du compte — en plus des attributions du staff et des œufs de Pâques. Ils apparaissent aussitôt sur ton profil.
 
 ## 3. Parcourir le contenu
@@ -121,6 +121,23 @@ confiance à une source Communauté non identifiable — vérifie le profil et l
 
 **À faire :** signale avec une raison claire. **À éviter :** utiliser les signalements pour
 harceler — l'abus du système de signalement est lui-même modérable.
+
+### Droits d’auteur et notifications de droits
+
+Pour un contenu qui viole **tes** droits — un mod, un thème ou un catalogue qui est à toi,
+une image, un nom — passe par **`/report`** (aussi lié depuis le pied de page et depuis
+chaque bouton Signaler quand tu n’es pas connecté). C’est une notification formelle, pas un
+signalement de modération : tu nommes la cible précisément (un dépôt, une entrée de
+catalogue, un utilisateur, ou n’importe quelle URL du site — colle un lien et le formulaire le
+résout, jusqu’au fichier), l’œuvre concernée, à quel titre tu agis (titulaire, mandataire,
+licencié), et tu signes les déclarations de bonne foi et d’exactitude. Pas besoin de compte.
+Tu reçois un **code de notification** et tu la suis sur `/report` avec ton e-mail, ou depuis
+**Tableau de bord → Notifications de droits** une fois connecté. L’équipe accuse réception,
+examine, puis retire le contenu, rejette la notification avec un motif, ou te demande des
+précisions. Le propriétaire du contenu peut déposer une **contre-notification**, et les
+récidivistes sont sanctionnés. Si tu as fait enregistrer une œuvre à l’avance (l’équipe peut
+le faire pour toi), les envois qui lui correspondent sont repérés avant que quiconque ait à
+le remarquer.
 
 ## 7. Réglages & apparence
 

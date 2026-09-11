@@ -35,6 +35,27 @@ granted. If a tab is missing, you lack that capability — ask an admin, don't w
 **Do:** read the whole thread before acting; ask the reporter for specifics if vague.
 **Don't:** close a report without a resolution note — the **audit log** keeps you honest.
 
+### 3b. Rights notices (copyright)
+
+- **Admin → Rights** (`/admin?s=rights`, capability `manage_reports`) is a separate queue
+  for formal notices filed at `/report`: copyright, trademark, privacy, illegal content, and
+  automatic **matches** against the protected-works registry.
+- A notice carries every element the law asks for (sender identity, the work, the targets
+  resolved down to files, the basis, the statements, a signature) — the form refuses one
+  that does not, so what reaches you is actionable.
+- Work it through **status**: acknowledge (`reviewing`), add an **internal note**, then
+  **take down** (the target is sanctioned through the same content-sanction path as a
+  report, the sender and the owner are notified), **reject** with a reason, or **ask** the
+  sender. The owner may answer with a **counter-notice**; you can **restore** after it.
+- **Strikes** are counted per owner over a window (Admin → Rights → Settings); crossing the
+  threshold is shown on the notice so a repeat infringer is not a surprise.
+- The **protected works** registry (title, owner, file hashes, name patterns, URLs) lets you
+  register a rightsholder's catalogue once; new uploads are matched on save and a `match`
+  notice is opened for you. **Scan** re-checks existing content after you add a work.
+
+**Do:** act on the notice as written, note what you did, tell the sender. **Don't:** take
+content down on a notice that names no work or no target — reject it and say why.
+
 ## 4. Moderating users
 
 - **Suspend** (MOD+) locks a user out with a clear locked-sign-in panel; a suspended user

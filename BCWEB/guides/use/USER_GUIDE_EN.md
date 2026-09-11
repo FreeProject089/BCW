@@ -34,7 +34,7 @@ If the community's Discord bot has its economy on, being active on the servers i
 - **Dashboard → Overview** shows your level ring, where your XP comes from, and your balance.
 - **Dashboard → Shop & inventory** is the points shop on the site — the same items and prices as `/shop` on Discord — and the inventory: everything you bought, either way, with the code you were handed (a storage pool, a boost, free hosting, a promo). A Discord role or a custom reward shows as *pending* until an admin hands it out.
 - A code you buy (pool, boost, hosting, promo) arrives **sealed**: press **Reveal** when you want it (it is minted then, with its validity), or **Gift** the unopened item to another member. Points can be sent too — the History tab on the site, or `/gift` on Discord — within the limits the admins set.
-- On Discord: `/level`, `/shop`, `/inventory`, `/gift`, `/history`, `/leaderboard` (this server or global, as a picture, with your own rank), `/profile`, and `/casino` (an animated table — coin flip, dice, slots, roulette with colour / green / number bets, wheel, plinko). `/casino` with no options opens an interactive table: pick the game, the bet (presets, all-in or a custom amount) and the game's own options from menus, then Play; the slash options are shortcuts to the same roll. The house edge only taxes what you win — a 1× bucket gives your bet back to the point, a 0.3× bucket returns exactly 30 % of it.
+- On Discord: `/level`, `/shop`, `/inventory`, `/gift`, `/history`, `/leaderboard` (this server or global, as a picture, with your own rank), `/profile`, and `/casino` (an animated table — coin flip, dice, slots, roulette with colour / green / number bets, wheel, plinko). `/casino` with no options opens an interactive table: pick the game, the bet (presets, all-in or a custom amount) and the game's own options from menus, then Play; the slash options are shortcuts to the same roll. The house edge only taxes what you win — a 1× bucket gives your bet back to the point, a 0.3× bucket returns exactly 30 % of it. Three more games are **live tables** other members can join from the same message: **Crash** (a multiplier climbs, cash out before it stops), **Race** (six cars, pick yours) and **Pot** (everyone stakes what they like; the more you put in, the likelier you win), and **Multi** opens coin flip, dice, roulette or the wheel as a shared roll. With two or more at a table the game settles **between the players**: the losers' stakes form the pot, every winner keeps their own stake and takes a share of the pot in proportion to stake × multiplier, and the house edge is taken on that share only. Nobody wins → the house keeps the pot. Alone at a table you play the house as usual, and Crash is never pooled — everybody cashes out on their own clock. If the server has set no maximum bet, **All-in** really is all of it; otherwise the table says what the cap is.
 - Badges can be earned by rules the admins set — a level, a number of messages, a purchase, an answered poll, a published item, hosting a repo, linking Discord, turning on 2FA, an account's age — on top of staff grants and easter eggs. They appear on your profile at once.
 
 ## 3. Browsing content
@@ -117,6 +117,21 @@ source you can't identify — check the owner's profile and BC id first.
 
 **Do:** report with a clear reason. **Don't:** use reports to harass — abuse of the report
 system is itself moderatable.
+
+### Copyright and rights notices
+
+For content that infringes **your** rights — a mod, theme or catalogue that is yours, a
+picture, a name — use **`/report`** (also linked from the footer and from every Report
+button when you are not signed in). It is a formal notice, not a moderation report: you name
+the target precisely (a repo, a catalogue entry, a user, or any URL on the site — paste a link
+and the form resolves it, down to the file), the work it infringes, on what basis you act
+(owner, agent, licensee), and you sign the good-faith and accuracy statements. You do not
+need an account. You get a **notice code** and can follow it at `/report` with your e-mail,
+or from **Dashboard → Rights notices** when signed in. Staff acknowledge, review, and either
+take the content down, reject the notice with a reason, or ask you for more. The owner of the
+content can file a **counter-notice**, and repeat infringers are struck. If you registered a
+work in advance (staff can do this for you), matching uploads are flagged before anyone has
+to notice them.
 
 ## 7. Settings & appearance
 

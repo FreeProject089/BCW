@@ -212,6 +212,8 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | The bot's button icons: the key list, one PNG, the whole pack to upload on the app's Emojis page. Mapped in `economy.icons`. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Now also `role_add` / `role_remove` with `roleId` (+ `guildId` for the admin route). An owner may only name a role the heartbeat lists for that guild. |
 | GET | `/bot/economy/purchases/:discordId` | bot | The member's purchases — the `/inventory` command. |
+| POST | `/bot/economy/casino` | bot | One seat against the house: `{ discordId, game, bet, multiplier, note? }`. Limits from `betLimits()` (`maxBet: 0` = no cap, sent as `max: null`), edge from `edgePctFor()` (per game, else global), payout from `payoutFor()` — the edge taxes profit only. Crash's multiplier already carries the edge (`crashPoint()`), so it is passed through untaxed. |
+| POST | `/bot/economy/casino/settle` | bot | A live table: `{ game, plays: [{ discordId, bet, multiplier, note? }], pot? }`. With `pot: true` (two or more seats, any game but crash) `splitPot()` rewrites the multipliers: the losers' stakes are the pot, each winner keeps their stake and takes a share ∝ stake × multiplier, the edge is taken once on the share, no winner → the house keeps it. Returns `{ results: [{ discordId, ok, delta, payout, points, share }], edgePct, pot }`. |
 | GET | `/bot/economy/leaderboard?discordId=` | bot | Top 10 by level (+ avatar, userId, total). With `discordId`, also `me: { rank, level, xp, points }` for the caller. |
 | GET | `/me/economy` | user | Level, XP, points, stats, rates — plus `shopItems`, `purchases`, `pendingDeliveries` for the dashboard card. |
 | GET | `/me/economy/shop` | user | The shop from the site: balance, every item (`fulfil: site|admin`, `owned` for a badge already held), and the purchases. |
@@ -529,6 +531,23 @@ User-filed reports with a participant thread, invites, and the moderation queue.
 | DELETE | `/admin/reports/:id` | `manage_reports` | Delete a report. |
 | GET | `/admin/reports/config` | `manage_reports` / mod | Read the reporting config. |
 | PUT | `/admin/reports/config` | `manage_reports` | Update the reporting config. |
+
+### 30b. Rights notices (`rights.mjs`)
+Formal copyright / trademark / privacy / illegal-content notices (DSA Art. 16, LCEN, Swiss CopA), a protected-works registry with hash + pattern + URL matching, and the admin tooling around them. Rules live in `lib/rights-match.mjs` (pure).
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/rights/resolve?q=` | — | Turn a pasted URL / id into a precise target (repo, catalogue item, user, file). Owner ids are stripped. |
+| POST | `/rights/notice` | PoW, account optional | File a notice. Refused unless every element is present (`no_target`, `work_required`, `explanation_short`, `name_required`, `email_invalid`, `good_faith_required`, `accuracy_required`, `signature_required`); `own_content` when every target is the caller's; 5 per day per IP / e-mail. Returns the notice with its `code`. |
+| GET | `/rights/notice/:code?email=` | — | Follow a notice by code + the sender's e-mail (404 otherwise). |
+| GET | `/me/rights` | user | Notices the caller filed, and those against the caller's content (with the counter-notice they may answer with). |
+| GET | `/admin/rights` · `/admin/rights/:id` | `manage_reports` | The queue (filter by status / kind) and one notice with its history. |
+| POST | `/admin/rights/:id/status` · `/note` | `manage_reports` | `new` / `reviewing` / `closed`; an internal note. |
+| POST | `/admin/rights/:id/takedown` | `manage_reports` | Sanction every target through `/admin/sanctions/content` (same path as a report), record the decision, notify sender and owner, count a strike. |
+| POST | `/admin/rights/:id/reject` · `/counter` · `/restore` | `manage_reports` | Reject with a reason (sender told when `tellReporter`); record the owner's counter-notice; lift the sanction. |
+| GET/POST/PUT/DELETE | `/admin/rights/works[/:id]` | `manage_reports` | The protected-works registry: title, owner, hashes, name patterns, URLs. New uploads are matched on save (`flagIfProtected`). |
+| POST | `/admin/rights/scan` | `manage_reports` | Re-match existing content against the registry; opens `match` notices. |
+| GET/PUT | `/admin/rights/config` | `manage_reports` | `strikeThreshold`, `strikeWindowDays`, `counterDays`, notice e-mail copy. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
 SUPERADMIN-authored role bundles layered on top of the role enum, and per-project edit grants.

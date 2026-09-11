@@ -218,6 +218,8 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | Les icônes des boutons du bot : la liste des clés, un PNG, tout le pack à téléverser sur la page Emojis de l'app. Associées dans `economy.icons`. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Aussi `role_add` / `role_remove` avec `roleId` (+ `guildId` pour la route admin). Un propriétaire ne peut nommer qu'un rôle listé par le heartbeat pour ce serveur. |
 | GET | `/bot/economy/purchases/:discordId` | bot | Les achats du membre — la commande `/inventory`. |
+| POST | `/bot/economy/casino` | bot | Un siège contre la maison : `{ discordId, game, bet, multiplier, note? }`. Limites via `betLimits()` (`maxBet: 0` = pas de plafond, envoyé `max: null`), avantage via `edgePctFor()` (par jeu, sinon global), gain via `payoutFor()` — l’avantage ne taxe que le profit. Le multiplicateur de Crash porte déjà l’avantage (`crashPoint()`), il passe sans seconde taxe. |
+| POST | `/bot/economy/casino/settle` | bot | Une table en direct : `{ game, plays: [{ discordId, bet, multiplier, note? }], pot? }`. Avec `pot: true` (deux sièges ou plus, tout jeu sauf crash) `splitPot()` réécrit les multiplicateurs : les mises des perdants forment la cagnotte, chaque gagnant garde sa mise et prend une part ∝ mise × multiplicateur, l’avantage est pris une fois sur la part, aucun gagnant → la maison garde. Renvoie `{ results: [{ discordId, ok, delta, payout, points, share }], edgePct, pot }`. |
 | GET | `/bot/economy/leaderboard?discordId=` | bot | Top 10 par niveau (+ avatar, userId, total). Avec `discordId`, aussi `me: { rank, level, xp, points }` pour l'appelant. |
 | GET | `/me/economy` | user | Niveau, XP, points, stats, taux — plus `shopItems`, `purchases`, `pendingDeliveries` pour la carte du tableau de bord. |
 | GET | `/me/economy/shop` | user | La boutique depuis le site : solde, chaque article (`fulfil: site|admin`, `owned` pour un badge déjà possédé), et les achats. |
@@ -535,6 +537,23 @@ Signalements déposés par les utilisateurs, avec fil de participants, invitatio
 | DELETE | `/admin/reports/:id` | `manage_reports` | Supprimer un signalement. |
 | GET | `/admin/reports/config` | `manage_reports` / mod | Lire la configuration des signalements. |
 | PUT | `/admin/reports/config` | `manage_reports` | Mettre à jour la configuration des signalements. |
+
+### 30b. Notifications de droits (`rights.mjs`)
+Notifications formelles droit d’auteur / marque / vie privée / contenu illicite (DSA art. 16, LCEN, LDA suisse), un registre d’œuvres protégées avec correspondance par hachage + motif + URL, et l’outillage admin autour. Les règles vivent dans `lib/rights-match.mjs` (pur).
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/rights/resolve?q=` | — | Transforme une URL / un id collé en cible précise (dépôt, entrée de catalogue, utilisateur, fichier). Les ids de propriétaire sont retirés. |
+| POST | `/rights/notice` | PoW, compte optionnel | Dépose une notification. Refusée s’il manque un élément (`no_target`, `work_required`, `explanation_short`, `name_required`, `email_invalid`, `good_faith_required`, `accuracy_required`, `signature_required`) ; `own_content` quand toutes les cibles sont à l’appelant ; 5 par jour par IP / e-mail. Renvoie la notification avec son `code`. |
+| GET | `/rights/notice/:code?email=` | — | Suivre une notification par code + e-mail de l’expéditeur (404 sinon). |
+| GET | `/me/rights` | user | Les notifications déposées par l’appelant, et celles contre son contenu (avec la contre-notification qu’il peut déposer). |
+| GET | `/admin/rights` · `/admin/rights/:id` | `manage_reports` | La file (filtre statut / type) et une notification avec son historique. |
+| POST | `/admin/rights/:id/status` · `/note` | `manage_reports` | `new` / `reviewing` / `closed` ; une note interne. |
+| POST | `/admin/rights/:id/takedown` | `manage_reports` | Sanctionne chaque cible via `/admin/sanctions/content` (même chemin qu’un signalement), enregistre la décision, prévient expéditeur et propriétaire, compte un strike. |
+| POST | `/admin/rights/:id/reject` · `/counter` · `/restore` | `manage_reports` | Rejeter avec motif (expéditeur prévenu si `tellReporter`) ; enregistrer la contre-notification du propriétaire ; lever la sanction. |
+| GET/POST/PUT/DELETE | `/admin/rights/works[/:id]` | `manage_reports` | Le registre des œuvres protégées : titre, titulaire, hachages, motifs de nom, URL. Les nouveaux envois sont comparés à la sauvegarde (`flagIfProtected`). |
+| POST | `/admin/rights/scan` | `manage_reports` | Recompare le contenu existant au registre ; ouvre des notifications `match`. |
+| GET/PUT | `/admin/rights/config` | `manage_reports` | `strikeThreshold`, `strikeWindowDays`, `counterDays`, texte des e-mails. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
 Ensembles de rôles créés par un SUPERADMIN par-dessus l’énumération de rôles, et droits d’édition par projet.

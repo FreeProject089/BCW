@@ -2355,6 +2355,22 @@ convenience items. They are never bought with money.
 The bot's \`/casino\` lets you wager points on small games. The house edge is taken from the
 **profit** of a win, never from your stake, and every game's page shows its odds before you bet.
 
+Three of the games are **live tables** other members can join from the same message —
+**Crash** (a multiplier climbs; cash out before it stops), **Race** (six cars, pick yours) and
+**Pot** (everyone stakes what they like; the more you put in, the likelier you win) — and
+**Multi** opens coin flip, dice, roulette or the wheel as one shared roll.
+
+:::note[The pot rule]
+With **two or more** at a table the game settles between the players, not against the house:
+the losers' stakes form the pot, every winner keeps their own stake and takes a share of the
+pot in proportion to stake × multiplier, and the house edge is taken on that share only.
+Nobody wins → the house keeps the pot. Alone at a table you play the house as usual. Crash is
+never pooled — everybody cashes out on their own clock.
+:::
+
+Each game can carry its own house edge, and the maximum bet is whatever the server set — if it
+set none, **All-in** is really all of it; the table says what the cap is otherwise.
+
 See also: [Feedback, bugs & crash reports](/docs/feedback-reports).`,
     bodyFr: `::toc[Sur cette page]
 
@@ -2386,6 +2402,23 @@ en articles cosmétiques ou pratiques. Ils ne s'achètent jamais avec de l'argen
 Le \`/casino\` du bot permet de miser des points sur de petits jeux. L'avantage de la maison est
 pris sur le **gain** d'une victoire, jamais sur ta mise, et chaque page de jeu montre ses cotes
 avant que tu mises.
+
+Trois des jeux sont des **tables en direct** que d'autres membres rejoignent depuis le même
+message — **Crash** (un multiplicateur grimpe ; encaisse avant qu'il s'arrête), **Course** (six
+voitures, choisis la tienne) et **Cagnotte** (chacun mise ce qu'il veut ; plus tu mises, plus
+tu as de chances) — et **Multi** ouvre pile ou face, dés, roulette ou roue en un seul tirage
+partagé.
+
+:::note[La règle de la cagnotte]
+À **deux ou plus** à une table, le jeu se règle entre les joueurs, pas contre la maison : les
+mises des perdants forment la cagnotte, chaque gagnant garde sa propre mise et prend une part
+de la cagnotte au prorata de mise × multiplicateur, et l'avantage maison n'est pris que sur
+cette part. Personne ne gagne → la maison garde la cagnotte. Seul à une table, tu joues contre
+la maison comme d'habitude. Crash n'est jamais mis en commun — chacun encaisse à son moment.
+:::
+
+Chaque jeu peut porter son propre avantage maison, et la mise maximale est celle que le serveur
+a fixée — s'il n'en a fixé aucune, **Tapis** est vraiment tout ; sinon la table dit le plafond.
 
 Voir aussi : [Retours, bugs & rapports de plantage](/docs/feedback-reports).`,
   },
