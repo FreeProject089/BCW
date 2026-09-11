@@ -17473,6 +17473,8 @@ function AdminFeedback() {
               <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perIp.windowMin} onChange={(e) => ld('perIp', { ...draft.limits.perIp, windowMin: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.peracct', 'Feedback per account')}><Input type="number" min="0" value={draft.limits.perAccount.max} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, max: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAccount.windowMin} onChange={(e) => ld('perAccount', { ...draft.limits.perAccount, windowMin: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.peranon', 'Feedback per IP, unrecognised sender')} hint={t('fb.cfg.peranon.d', 'On top of the per-IP limit above, for senders we cannot tie to an account. 0 = no extra limit.')}><Input type="number" min="0" value={draft.limits.perAnonIp?.max ?? 4} onChange={(e) => ld('perAnonIp', { ...(draft.limits.perAnonIp || { windowMin: 60 }), max: num(e.target.value) })} /></Field>
+              <Field label={t('fb.cfg.window', 'per window (min)')}><Input type="number" min="1" value={draft.limits.perAnonIp?.windowMin ?? 60} onChange={(e) => ld('perAnonIp', { ...(draft.limits.perAnonIp || { max: 4 }), windowMin: num(e.target.value) })} /></Field>
               <Field label={t('fb.cfg.perday', 'Feedback per project per day')}><Input type="number" min="0" value={draft.limits.perProjectDay} onChange={(e) => ld('perProjectDay', num(e.target.value))} /></Field>
             </div>
             <div className="flex flex-wrap gap-2 pt-1">

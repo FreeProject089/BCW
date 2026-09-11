@@ -2,6 +2,7 @@ import { z } from 'zod';
 import crypto from 'node:crypto';
 import { db, requireCap, optionalAuth, notify } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
+import { verifyCreatorProof, expectedProofAudience } from '../lib/creator-proof.mjs';
 import { putObject, getObject, deleteObject, prefixUsage } from '../lib/storage.mjs';
 import { sendMail, mailShell, emailEnabled } from '../lib/mail.mjs';
 
@@ -57,6 +58,11 @@ export const DEFAULT_STORAGE = {
 export const DEFAULT_LIMITS = {
   perIp: { max: 10, windowMin: 60 },
   perAccount: { max: 20, windowMin: 60 },
+  // Anonymous senders, on top of perIp. An account carries its own budget and a name to
+  // answer; a sender we cannot recognise carries neither, and the reports that arrive in
+  // bulk are the ones nobody can be written back to. Deliberately not zero: somebody whose
+  // first experience of BMM is a crash must still be able to say so.
+  perAnonIp: { max: 4, windowMin: 60 },
   perProjectDay: 2000,
   // The platform-wide API limiter (server.mjs) — per IP and, new, per signed-in account.
   // Kept here so one screen owns every rate limit an admin can set. 0 = off.
@@ -71,7 +77,7 @@ export async function feedbackConfig(p) {
   const v = row?.value || {};
   const projects = {};
   for (const [k, pc] of Object.entries(v.projects || {})) projects[k] = { ...DEFAULT_PROJECT, ...pc, kinds: { ...DEFAULT_PROJECT.kinds, ...(pc?.kinds || {}) } };
-  const cfg = { projects, limits: { ...DEFAULT_LIMITS, ...(v.limits || {}), perIp: { ...DEFAULT_LIMITS.perIp, ...(v.limits?.perIp || {}) }, perAccount: { ...DEFAULT_LIMITS.perAccount, ...(v.limits?.perAccount || {}) } }, storage: { ...DEFAULT_STORAGE, ...(v.storage || {}) } };
+  const cfg = { projects, limits: { ...DEFAULT_LIMITS, ...(v.limits || {}), perIp: { ...DEFAULT_LIMITS.perIp, ...(v.limits?.perIp || {}) }, perAccount: { ...DEFAULT_LIMITS.perAccount, ...(v.limits?.perAccount || {}) }, perAnonIp: { ...DEFAULT_LIMITS.perAnonIp, ...(v.limits?.perAnonIp || {}) } }, storage: { ...DEFAULT_STORAGE, ...(v.storage || {}) } };
   cache = { at: Date.now(), cfg };
   return cfg;
 }
@@ -131,6 +137,47 @@ const pub = (f) => ({
   reportId: f.reportId, createdAt: f.createdAt, updatedAt: f.updatedAt,
 });
 
+/**
+ * Which account a submission is from, or null.
+ *
+ * Three sources, in order of how much they prove:
+ *
+ *   1. a session — a report sent from the website is already signed in;
+ *   2. a PROVEN creator id — BMM has no session and identifies itself with `X-Creator-ID`,
+ *      which is an ed25519 public key and therefore something other people hold. So the
+ *      header is ignored unless `X-Creator-Proof` verifies against it: a short, origin-bound
+ *      signature made with the private half. Resolved through CreatorLink, the table the
+ *      whole pairing flow in links.mjs exists to fill;
+ *   3. a BC code — for a caller that really does send one. Reached only for something shaped
+ *      like one, because resolving it costs a scan over every account and this endpoint is
+ *      public.
+ *
+ * Step 2 used to BE step 3: the creator id went straight to the BC-code lookup, whose own gate
+ * refuses anything longer than eight characters. It never matched, so every BMM report was
+ * anonymous — while the app promised the sender a thread.
+ *
+ * The lookups are arguments so the rule can be checked without a database; the route passes
+ * the real ones.
+ */
+export async function senderIdFrom({ sessionUid = null, headers = {}, aud, now, byCreatorId, byBcId }) {
+  if (sessionUid) return sessionUid;
+  const claimed = String(headers['x-creator-id'] || '').slice(0, 200).toLowerCase();
+  const proven = verifyCreatorProof(headers['x-creator-proof'], aud, now);
+  // The proof carries its own id; the header is consulted only to notice a DISAGREEMENT,
+  // which means a misconfigured client rather than an attack — either way, not this account.
+  if (proven) {
+    if (claimed && claimed !== proven) return null;
+    return (await byCreatorId(proven)) || null;
+  }
+  if (!claimed) return null;
+  // Unproven. A creator id alone identifies nobody (see above); a BC code is a different
+  // thing, pasted by a human, and carries no such promise either — but it is the pre-existing
+  // path for non-BMM callers and it stays.
+  if (!looksLikeBcId(claimed)) return null;
+  if (await byCreatorId(claimed)) return null;   // a linked creator id still needs a proof
+  return (await byBcId(claimed)) || null;
+}
+
 export default async function feedbackRoutes(app) {
   // ── Public: what a client may send, before it builds the payload ──
   app.get('/feedback/:project/config', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req) => {
@@ -153,15 +200,39 @@ export default async function feedbackRoutes(app) {
     const d = b.data;
     if (!pc.kinds[d.kind]) return reply.code(403).send({ error: 'kind_disabled' });
 
-    // Who is this. Session first, then the creator id BMM sends on every call it makes.
-    let userId = req.user?.uid || null;
-    const creatorId = String(req.headers['x-creator-id'] || '').slice(0, 80);
-    if (!userId && creatorId && looksLikeBcId(creatorId)) userId = await findUserIdByBcId(p, creatorId).catch(() => null);
+    // ── Who is this ──────────────────────────────────────────────────────────────────
+    //
+    // A session first: a report sent from the website is already signed in.
+    //
+    // Then BMM, which has no session and identifies itself with `X-Creator-ID`. That header
+    // used to be handed straight to findUserIdByBcId — the BC ID lookup, which matches an
+    // eight-character code like "BC-7K2M-9XQ4". BMM sends a 64-character ed25519 public key,
+    // so the gate refused it before the scan began and userId was ALWAYS null: every BMM
+    // report was filed anonymously while the app promised the sender a thread. CreatorLink is
+    // the table that answers this question, and it is asked first now; the BC ID scan stays
+    // for a caller that really does send a BC code.
+    //
+    // But only when PROVEN. A creator id is a public key — repo owners hold other people's,
+    // which is the entire point of a whitelist — so the header alone identifies nobody, and
+    // acting on it would let anyone who has seen your id file reports in your name and have
+    // us mail you about them. BMM signs an audience-bound statement with the key the id names;
+    // an unsigned or unverifiable header is simply anonymous, exactly as it was.
+    const userId = await senderIdFrom({
+      sessionUid: req.user?.uid || null,
+      headers: req.headers,
+      aud: expectedProofAudience(),
+      byCreatorId: (cid) => p.creatorLink.findUnique({ where: { creatorId: cid }, select: { userId: true } }).then((r) => r?.userId || null).catch(() => null),
+      byBcId: (code) => findUserIdByBcId(p, code).catch(() => null),
+    });
     const ip = clientIp(req);
 
-    // Limits: per IP, per account, per project per day.
+    // Limits: per IP, per account, per project per day — and a tighter one for senders we
+    // cannot recognise, so the cost of being anonymous falls on anonymity and not on whoever
+    // else is behind the same address.
     const L = cfg.limits;
     if (!hit(`ip:${ip}`, L.perIp.max, L.perIp.windowMin * 60_000)) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: L.perIp.windowMin * 60 });
+    const anon = L.perAnonIp || DEFAULT_LIMITS.perAnonIp;
+    if (!userId && anon?.max > 0 && !hit(`anon:${ip}`, anon.max, anon.windowMin * 60_000)) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: anon.windowMin * 60, anonymous: true });
     if (userId && !hit(`acct:${userId}`, L.perAccount.max, L.perAccount.windowMin * 60_000)) return reply.code(429).send({ error: 'rate_limited', retryAfterSec: L.perAccount.windowMin * 60 });
     if (!hit(`proj:${key}`, L.perProjectDay, 86_400_000)) return reply.code(429).send({ error: 'project_quota', retryAfterSec: 3600 });
 
