@@ -428,6 +428,21 @@ weight as prefix (\`ph-bold:\`, \`ph-fill:\`, \`ph-duotone:\`).
 :::
 :::
 
+## New in B.MD 3.0
+
+The rest of the vocabulary, each with live examples on the **Documentation blocks** page:
+
+- **Settings rows** — \`:::field[Tile shape]{key=icons.shape type=select icon=palette}\` (\`:::setting\` is the same block): a bold label, a type tag, the key in monospace, then the description. Stack them to document a screen of settings without a table.
+- **A rule you can steer** — \`:::divider[Part two]\` puts the words in the middle of the line.
+- **A styled table** — \`:::table[Caption]{style="striped bordered" align=center width=100%}\` around an ordinary GFM table.
+- **Images with everything \`![]()\` cannot carry** — \`:img[Alt]{src=/a.png width=480 align=center caption="…" link=/big.png border}\` (\`:image\` is the same); a number is pixels, \`50%\` or \`20rem\` pass through.
+- **Media** — \`::audio{src=/ep12.mp3 title="Episode 12"}\`, \`::youtube{src=https://youtu.be/ID start=90}\` (\`::yt\` is the same, served from youtube-nocookie), \`::spotify{src=https://open.spotify.com/track/…}\` (also \`track:ID\`, \`album:ID\`, \`playlist:ID\`, \`episode:ID\`, \`show:ID\`).
+- **API cards** — \`:::api[GET /api/feedback/:project]{auth=session summary="…" deprecated}\` (\`:::endpoint\` is the same), holding \`:::params\`, \`:::request\` and \`:::response{status=200}\` sections. \`::openapi{src=/api/openapi.json tag=feedback}\` (\`::swagger\`) draws a whole spec as those same cards.
+- **Live values** — \`:counter[Downloads]{src=/api/stats.json path=downloads refresh=60}\` (a number, formatted), \`:fetch[…]\` (text, inline), \`::live{src=… path=message}\` (a block); \`:action[Vote]{href=… method=POST confirm="Sure?" done="Thanks!" counter=votes once}\` is a button that calls a URL and can refresh a named counter.
+- **Include** — \`::include{src=/docs/partials/install.md}\` (\`::embed-md\`) renders another document in place, two levels deep at most.
+- **Diagrams** — \`:::mermaid[Caption]\` (\`:::diagram\`) around a code fence; a bare \`\`\`mermaid fence works too.
+- The 2.0 blocks each have a second name: \`:::moment\` for an event, \`:::before\` / \`:::after\` inside a compare, \`:::kpi\` for a stat, \`:::testimonial\` for a \`:::quote\`, \`:::release\` for a version, \`:::question\` for a FAQ entry — and \`:::hero\`, \`:::changelog\`, \`:::spoiler\`, \`:::checklist\`, \`:::grid\` are written exactly like that.
+
 That is the whole vocabulary. Combine callouts, cards and short bullets for pages people actually read.`;
   const guideFr = BLOG_FR['markdown-guide'] || {};
   const guide = {

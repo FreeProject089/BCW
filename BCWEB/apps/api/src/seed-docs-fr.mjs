@@ -1093,6 +1093,366 @@ Seuls les 384 noms de la liste sont remplacés : \`10:30:45\` reste un horodatag
 
 Mets \`::toc[Sur cette page]\` en haut et il construit un résumé depuis tes titres \`##\` / \`###\`, tout seul.
 
+## La chronologie
+
+\`\`\`
+:::timeline[Comment on en est arrivé là]
+:::event[Première version]{date="2025-03-01" state=done}
+La bibliothèque, les profils et le premier catalogue.
+:::
+:::event[Dépôts serveur]{date="2026-01-12" state=done icon=server}
+Des dépôts partagés, hébergés ou auto-servis.
+:::
+:::event[Où on en est]{date="now" state=now}
+Les niveaux, la boutique, le casino.
+:::
+:::event[Ensuite]{state=next}
+Ce que le vote dira.
+:::
+:::
+\`\`\`
+
+:::timeline[Comment on en est arrivé là]
+:::event[Première version]{date="2025-03-01" state=done}
+La bibliothèque, les profils et le premier catalogue.
+:::
+:::event[Dépôts serveur]{date="2026-01-12" state=done icon=server}
+Des dépôts partagés, hébergés ou auto-servis.
+:::
+:::event[Où on en est]{date="now" state=now}
+Les niveaux, la boutique, le casino.
+:::
+:::event[Ensuite]{state=next}
+Ce que le vote dira.
+:::
+:::
+
+\`state\` vaut \`done\`, \`now\` ou \`next\` (alias : past/shipped, current/active, planned/future). \`:::moment\` est le même bloc.
+
+## Avant / après
+
+\`\`\`
+:::compare{before="v1" after="v2"}
+:::before
+Un profil à la fois, et un redémarrage entre deux.
+:::
+:::after
+Les profils basculent en direct, et le jeu est prévenu.
+:::
+:::
+\`\`\`
+
+:::compare{before="v1" after="v2"}
+:::before
+Un profil à la fois, et un redémarrage entre deux.
+:::
+:::after
+Les profils basculent en direct, et le jeu est prévenu.
+:::
+:::
+
+## Les stats
+
+\`\`\`
+:::stats
+:::stat[Téléchargements]{value="12 400" delta="+8%" icon=download}
+:::
+:::stat[Membres]{value="2 310" delta="+3%" icon=users color=#16a34a}
+:::
+:::stat[Tickets ouverts]{value="7" delta="-4" icon=bug}
+Depuis le mois dernier.
+:::
+:::
+\`\`\`
+
+:::stats
+:::stat[Téléchargements]{value="12 400" delta="+8%" icon=download}
+:::
+:::stat[Membres]{value="2 310" delta="+3%" icon=users color=#16a34a}
+:::
+:::stat[Tickets ouverts]{value="7" delta="-4" icon=bug}
+Depuis le mois dernier.
+:::
+:::
+
+Le signe du delta choisit la couleur. Le corps est la petite ligne sous le nombre. \`:::kpi\` est le même bloc.
+
+## La citation
+
+\`\`\`
+:::quote[Ada Lovelace]{role="Analyste, 1843" avatar=/icons/bmm.png}
+La machine pourrait composer des morceaux de musique élaborés, de n'importe quel degré de complexité.
+:::
+\`\`\`
+
+:::quote[Ada Lovelace]{role="Analyste, 1843" avatar=/icons/bmm.png}
+La machine pourrait composer des morceaux de musique élaborés, de n'importe quel degré de complexité.
+:::
+
+\`href\` fait du nom un lien ; \`color\` recolore la barre. \`:::testimonial\` est le même bloc.
+
+## La bannière hero
+
+\`\`\`
+:::hero[Better Mods Manager]{subtitle="Une bibliothèque, tous les jeux." icon=rocket align=center color=#7c3aed}
+:button[Télécharger]{href=/p/bmm size=lg} :button[Lire la doc]{href=/docs outline}
+:::
+\`\`\`
+
+:::hero[Better Mods Manager]{subtitle="Une bibliothèque, tous les jeux." icon=rocket align=center color=#7c3aed}
+:button[Télécharger]{href=/p/bmm size=lg} :button[Lire la doc]{href=/docs outline}
+:::
+
+\`image=\` place une couverture au-dessus du texte ; \`align\` vaut left, center ou right.
+
+## Le changelog
+
+\`\`\`
+:::changelog
+:::version[1.4.0]{date="2026-09-01" label=latest}
+- [NOUVEAU] Une galerie de modèles pour les automatisations
+- [FIXÉ] Casino : un palier 1× rendait moins que la mise
+:::
+:::version[1.3.2]{date="2026-08-14"}
+- [AMÉLIORÉ] Synchronisation des dépôts plus rapide
+:::
+:::
+\`\`\`
+
+:::changelog
+:::version[1.4.0]{date="2026-09-01" label=latest}
+- [NOUVEAU] Une galerie de modèles pour les automatisations
+- [FIXÉ] Casino : un palier 1× rendait moins que la mise
+:::
+:::version[1.3.2]{date="2026-08-14"}
+- [AMÉLIORÉ] Synchronisation des dépôts plus rapide
+:::
+:::
+
+Les pastilles \`[NOUVEAU]\` / \`[FIXÉ]\` / \`[AMÉLIORÉ]\` sont le raccourci habituel. \`:::release\` est le même bloc.
+
+## Le spoiler
+
+\`\`\`
+:::spoiler[La réponse]
+Quarante-deux.
+:::
+\`\`\`
+
+:::spoiler[La réponse]
+Quarante-deux.
+:::
+
+## La FAQ
+
+\`\`\`
+:::faq[Les questions qu'on nous pose]
+:::q[L'hébergement est-il gratuit ?]{open}
+Il y a un palier gratuit ; au-dessus, tu paies la taille que tu utilises.
+:::
+:::q[Puis-je transférer un dépôt à un autre compte ?]
+Oui — Transfert de propriété, dans le tableau de bord du dépôt.
+:::
+:::
+\`\`\`
+
+:::faq[Les questions qu'on nous pose]
+:::q[L'hébergement est-il gratuit ?]{open}
+Il y a un palier gratuit ; au-dessus, tu paies la taille que tu utilises.
+:::
+:::q[Puis-je transférer un dépôt à un autre compte ?]
+Oui — Transfert de propriété, dans le tableau de bord du dépôt.
+:::
+:::
+
+\`:::question\` est le même bloc que \`:::q\`.
+
+## La checklist
+
+\`\`\`
+:::checklist[Jour de sortie]
+- [x] Tagger la version
+- [x] Écrire les notes
+- [ ] Poster sur Discord
+:::
+\`\`\`
+
+:::checklist[Jour de sortie]
+- [x] Tagger la version
+- [x] Écrire les notes
+- [ ] Poster sur Discord
+:::
+
+Le compte et la barre viennent des cases cochées ; rien à tenir à jour.
+
+## La grille
+
+\`\`\`
+:::grid{cols=3 gap=lg}
+:::card[Un]
+a
+:::
+:::card[Deux]
+b
+:::
+:::card[Trois]
+c
+:::
+:::
+\`\`\`
+
+Là où \`:::columns\` se dimensionne seul, \`:::grid\` prend un nombre fixe de colonnes (1–6) et se replie sur deux, puis une, sur les petits écrans.
+
+## La jauge en ligne
+
+\`\`\`
+Migration : :meter[72]{label=Fait} · Tests : :meter[9]{max=12 color=#16a34a}
+\`\`\`
+
+Migration : :meter[72]{label=Fait} · Tests : :meter[9]{max=12 color=#16a34a}
+
+## Les icônes Phosphor
+
+Partout où va un nom d'icône — \`:icon[…]\`, le \`icon=\` d'une carte, une stat, un bouton — une icône **Phosphor** marche à côté de celles de lucide : \`:icon[ph:rocket]\` :icon[ph:rocket], et la graisse en préfixe : \`:icon[ph-bold:rocket]\` :icon[ph-bold:rocket] · \`:icon[ph-fill:heart]\` :icon[ph-fill:heart] · \`:icon[ph-duotone:star]\` :icon[ph-duotone:star].
+Le sélecteur de chaque éditeur en liste les 1 500.
+
+## Les lignes de réglage
+
+\`\`\`
+:::field[Forme des tuiles]{key=icons.shape type=select icon=palette}
+Carrée, arrondie ou ronde. S'applique à toutes les tuiles de la bibliothèque.
+:::
+:::field[Sauvegarde auto]{key=editor.autosave type=toggle}
+Enregistre un brouillon toutes les trente secondes pendant la frappe.
+:::
+\`\`\`
+
+:::field[Forme des tuiles]{key=icons.shape type=select icon=palette}
+Carrée, arrondie ou ronde. S'applique à toutes les tuiles de la bibliothèque.
+:::
+:::field[Sauvegarde auto]{key=editor.autosave type=toggle}
+Enregistre un brouillon toutes les trente secondes pendant la frappe.
+:::
+
+Un libellé en gras, une étiquette de type optionnelle, la clé en monospace à droite, puis la description. \`anchor=\` fait de la ligne une cible de lien profond ; \`:::setting\` est le même bloc.
+
+## Le séparateur
+
+\`\`\`
+:::divider[Deuxième partie]
+:::
+\`\`\`
+
+:::divider[Deuxième partie]
+:::
+
+\`---\` trace toujours un trait simple. Celui-ci prend un libellé, posé au milieu de la ligne.
+
+## Le tableau
+
+\`\`\`
+:::table[Offres]{style="striped bordered" align=center width=100%}
+| Offre | Stockage | Prix |
+|---|---|---|
+| Gratuite | 200 Mo | 0 |
+| Pool | au Go | mensuel |
+:::
+\`\`\`
+
+:::table[Offres]{style="striped bordered" align=center width=100%}
+| Offre | Stockage | Prix |
+|---|---|---|
+| Gratuite | 200 Mo | 0 |
+| Pool | au Go | mensuel |
+:::
+
+Le tableau à l'intérieur est du GFM ordinaire : les cellules gardent liens, code et icônes. \`style\` accepte \`striped\`, \`bordered\`, \`compact\`, \`hover\`, \`plain\`, \`wide\`, \`sticky\`, \`numbers\`.
+
+## L'image
+
+\`\`\`
+:img[Le logo]{src=/logo.png width=96 align=center caption="Tout ce que \`![alt](src)\` ne sait pas porter." border}
+\`\`\`
+
+:img[Le logo]{src=/logo.png width=96 align=center caption="Tout ce que ![alt](src) ne sait pas porter." border}
+
+\`width\` / \`height\` / \`max\` : un nombre = des pixels, le reste (\`50%\`, \`20rem\`) passe tel quel. \`link=\` l'entoure d'un lien, \`zoom=false\` coupe la visionneuse, \`lazy=false\` la charge tout de suite. \`:image\` est le même bloc ; dans une phrase, c'est un \`<span>\`.
+
+## Les médias
+
+\`\`\`
+::audio{src=/uploads/ep12.mp3 title="Épisode 12"}
+::youtube{src=https://youtu.be/dQw4w9WgXcQ start=90}
+::spotify{src=https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC compact}
+\`\`\`
+
+\`::audio\` est un lecteur natif (\`preload=none\`, rien ne se télécharge avant d'appuyer). \`::youtube\` (\`::yt\`) accepte une URL complète, une courte, un Short ou un simple id, et l'encadre depuis youtube-nocookie. \`::spotify\` prend une URL de partage ou \`track:ID\` / \`album:ID\` / \`playlist:ID\` / \`episode:ID\` / \`show:ID\` / \`artist:ID\` ; un lien non reconnu le dit à la place du lecteur.
+
+## Les cartes d'API
+
+\`\`\`
+:::api[GET /api/feedback/:project]{auth=session summary="Les cent dernières entrées d'un projet."}
+:::params
+| Nom | Où | Type |
+|---|---|---|
+| project | chemin | string |
+:::
+:::request
+\`GET /api/feedback/bmm\`
+:::
+:::response{status=200}
+Un tableau JSON, le plus récent en premier.
+:::
+:::
+\`\`\`
+
+:::api[GET /api/feedback/:project]{auth=session summary="Les cent dernières entrées d'un projet."}
+:::params
+| Nom | Où | Type |
+|---|---|---|
+| project | chemin | string |
+:::
+:::request
+\`GET /api/feedback/bmm\`
+:::
+:::response{status=200}
+Un tableau JSON, le plus récent en premier.
+:::
+:::
+
+La méthode colore la carte ; \`auth=\` dit qui peut l'appeler ; \`deprecated\` ajoute le badge. \`:::endpoint\` est le même bloc. \`::openapi{src=/api/openapi.json tag=feedback filter=/feedback toc}\` (\`::swagger\`) va chercher une spec et dessine chaque opération comme une de ces cartes, par le même chemin, si bien qu'une carte générée et une carte écrite à la main se ressemblent.
+
+## Les valeurs en direct
+
+\`\`\`
+Téléchargements : :counter[downloads]{src=/api/stats.json path=downloads refresh=60 name=dl}
+État : :fetch[status]{src=/api/status.json path=message}
+::live{src=/api/status.json path=message refresh=30}
+:action[Voter]{href=/api/vote method=POST body='{"id":1}' confirm="Sûr ?" done="Merci !" counter=dl once}
+\`\`\`
+
+\`:counter\` formate un nombre, \`:fetch\` affiche du texte en ligne et \`::live\` est la forme bloc ; \`refresh=\` est en secondes. \`:action\` est un bouton qui appelle une URL quand on appuie — \`confirm=\` demande d'abord, \`done=\` est le libellé après, \`once\` le désactive après un succès, et \`counter=\` nomme un compteur à rafraîchir. L'URL passe par la même politique que n'importe quel lien, et une URL refusée affiche un tiret plutôt que de lancer une requête.
+
+## L'inclusion
+
+\`\`\`
+::include{src=/docs/partials/install.md}
+\`\`\`
+
+Rend un autre document à cet endroit, deux niveaux de profondeur au plus. \`::embed-md\` est le même bloc.
+
+## Le diagramme
+
+\`\`\`\`
+:::mermaid[Le parcours d'un signalement]
+\`\`\`mermaid
+graph LR; Nouveau --> Examen --> Clos
+\`\`\`
+:::
+\`\`\`\`
+
+\`:::diagram\` est le même bloc, et un simple bloc \`\`\`mermaid sans directive marche aussi. Mermaid le dessine dans le navigateur, en mode strict.
+
 ## Deux bonus qui ne sont pas des directives
 
 Une citation qui commence par \`[!NOTE]\`, \`[!TIP]\`, \`[!IMPORTANT]\`, \`[!WARNING]\` ou

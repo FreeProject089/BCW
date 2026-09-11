@@ -167,6 +167,21 @@ de **Phosphor** : \`:icon[ph:rocket]\`, avec la graisse en préfixe (\`ph-bold:\
 :::
 :::
 
+## Nouveau dans B.MD 3.0
+
+Le reste du vocabulaire, chacun avec des exemples vivants sur la page **Blocs de documentation** :
+
+- **Lignes de réglage** — \`:::field[Forme des tuiles]{key=icons.shape type=select icon=palette}\` (\`:::setting\` est le même bloc) : un libellé en gras, une étiquette de type, la clé en monospace, puis la description. Empile-les pour documenter un écran de réglages sans tableau.
+- **Un séparateur qu'on pilote** — \`:::divider[Deuxième partie]\` met les mots au milieu du trait.
+- **Un tableau habillé** — \`:::table[Légende]{style="striped bordered" align=center width=100%}\` autour d'un tableau GFM ordinaire.
+- **Des images avec tout ce que \`![]()\` ne sait pas porter** — \`:img[Alt]{src=/a.png width=480 align=center caption="…" link=/grande.png border}\` (\`:image\` est le même) ; un nombre = des pixels, \`50%\` ou \`20rem\` passent tels quels.
+- **Médias** — \`::audio{src=/ep12.mp3 title="Épisode 12"}\`, \`::youtube{src=https://youtu.be/ID start=90}\` (\`::yt\` est le même, servi depuis youtube-nocookie), \`::spotify{src=https://open.spotify.com/track/…}\` (aussi \`track:ID\`, \`album:ID\`, \`playlist:ID\`, \`episode:ID\`, \`show:ID\`).
+- **Cartes d'API** — \`:::api[GET /api/feedback/:project]{auth=session summary="…" deprecated}\` (\`:::endpoint\` est le même), contenant des sections \`:::params\`, \`:::request\` et \`:::response{status=200}\`. \`::openapi{src=/api/openapi.json tag=feedback}\` (\`::swagger\`) dessine une spec entière sous forme de ces mêmes cartes.
+- **Valeurs en direct** — \`:counter[Téléchargements]{src=/api/stats.json path=downloads refresh=60}\` (un nombre, formaté), \`:fetch[…]\` (du texte, en ligne), \`::live{src=… path=message}\` (un bloc) ; \`:action[Voter]{href=… method=POST confirm="Sûr ?" done="Merci !" counter=votes once}\` est un bouton qui appelle une URL et peut rafraîchir un compteur nommé.
+- **Inclusion** — \`::include{src=/docs/partials/install.md}\` (\`::embed-md\`) rend un autre document à cet endroit, deux niveaux de profondeur au plus.
+- **Diagrammes** — \`:::mermaid[Légende]\` (\`:::diagram\`) autour d'un bloc de code ; un simple bloc \`\`\`mermaid marche aussi.
+- Les blocs 2.0 ont chacun un second nom : \`:::moment\` pour un événement, \`:::before\` / \`:::after\` dans un compare, \`:::kpi\` pour une stat, \`:::testimonial\` pour une \`:::quote\`, \`:::release\` pour une version, \`:::question\` pour une entrée de FAQ — et \`:::hero\`, \`:::changelog\`, \`:::spoiler\`, \`:::checklist\`, \`:::grid\` s'écrivent exactement comme ça.
+
 Voilà tout le vocabulaire. Combinez encadrés, cartes et listes courtes pour des pages que les gens lisent vraiment.`,
   },
   'guide-app-catalog': {

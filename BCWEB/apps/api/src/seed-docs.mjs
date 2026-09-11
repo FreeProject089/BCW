@@ -1281,6 +1281,8 @@ Yes — Ownership transfers, in the repo's dashboard.
 :::
 :::
 
+\`:::question\` is the same block as \`:::q\`.
+
 ## Checklist
 
 \`\`\`
@@ -1331,6 +1333,143 @@ Anywhere an icon name goes — \`:icon[…]\`, a card's \`icon=\`, a stat, a but
 icon works next to the lucide ones: \`:icon[ph:rocket]\` :icon[ph:rocket], and a weight as a
 prefix: \`:icon[ph-bold:rocket]\` :icon[ph-bold:rocket] · \`:icon[ph-fill:heart]\` :icon[ph-fill:heart] · \`:icon[ph-duotone:star]\` :icon[ph-duotone:star].
 The picker in every editor lists all 1 500 of them.
+
+## Settings rows
+
+\`\`\`
+:::field[Tile shape]{key=icons.shape type=select icon=palette}
+Square, rounded or circle. Applies to every tile in the library.
+:::
+:::field[Autosave]{key=editor.autosave type=toggle}
+Saves a draft every thirty seconds while you type.
+:::
+\`\`\`
+
+:::field[Tile shape]{key=icons.shape type=select icon=palette}
+Square, rounded or circle. Applies to every tile in the library.
+:::
+:::field[Autosave]{key=editor.autosave type=toggle}
+Saves a draft every thirty seconds while you type.
+:::
+
+A bold label, an optional type tag, the key in monospace on the right, then the description. \`anchor=\` makes the row a deep-link target; \`:::setting\` is the same block.
+
+## Divider
+
+\`\`\`
+:::divider[Part two]
+:::
+\`\`\`
+
+:::divider[Part two]
+:::
+
+\`---\` still draws a plain rule. This one takes a label, set in the middle of the line.
+
+## Table
+
+\`\`\`
+:::table[Plans]{style="striped bordered" align=center width=100%}
+| Plan | Storage | Price |
+|---|---|---|
+| Free | 200 MB | 0 |
+| Pool | per GB | monthly |
+:::
+\`\`\`
+
+:::table[Plans]{style="striped bordered" align=center width=100%}
+| Plan | Storage | Price |
+|---|---|---|
+| Free | 200 MB | 0 |
+| Pool | per GB | monthly |
+:::
+
+The table inside is ordinary GFM, so cells keep holding links, code and icons. \`style\` takes any of \`striped\`, \`bordered\`, \`compact\`, \`hover\`, \`plain\`, \`wide\`, \`sticky\`, \`numbers\`.
+
+## Image
+
+\`\`\`
+:img[The app logo]{src=/logo.png width=96 align=center caption="Everything \`![alt](src)\` cannot carry." border}
+\`\`\`
+
+:img[The app logo]{src=/logo.png width=96 align=center caption="Everything ![alt](src) cannot carry." border}
+
+\`width\` / \`height\` / \`max\`: a number is pixels, anything else (\`50%\`, \`20rem\`) passes through. \`link=\` wraps it, \`zoom=false\` disables the lightbox, \`lazy=false\` loads it eagerly. \`:image\` is the same block; inline in a sentence it is a \`<span>\`.
+
+## Media
+
+\`\`\`
+::audio{src=/uploads/ep12.mp3 title="Episode 12"}
+::youtube{src=https://youtu.be/dQw4w9WgXcQ start=90}
+::spotify{src=https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC compact}
+\`\`\`
+
+\`::audio\` is a native player (\`preload=none\`, nothing downloads until pressed). \`::youtube\` (\`::yt\`) accepts a full URL, a short one, a Shorts or a bare id, and frames it from youtube-nocookie. \`::spotify\` takes a share URL or \`track:ID\` / \`album:ID\` / \`playlist:ID\` / \`episode:ID\` / \`show:ID\` / \`artist:ID\`; an unrecognised link says so in place of the player.
+
+## API cards
+
+\`\`\`
+:::api[GET /api/feedback/:project]{auth=session summary="The last hundred entries for a project."}
+:::params
+| Name | In | Type |
+|---|---|---|
+| project | path | string |
+:::
+:::request
+\`GET /api/feedback/bmm\`
+:::
+:::response{status=200}
+A JSON array, newest first.
+:::
+:::
+\`\`\`
+
+:::api[GET /api/feedback/:project]{auth=session summary="The last hundred entries for a project."}
+:::params
+| Name | In | Type |
+|---|---|---|
+| project | path | string |
+:::
+:::request
+\`GET /api/feedback/bmm\`
+:::
+:::response{status=200}
+A JSON array, newest first.
+:::
+:::
+
+The method colours the card; \`auth=\` names who may call it; \`deprecated\` adds the badge. \`:::endpoint\` is the same block. \`::openapi{src=/api/openapi.json tag=feedback filter=/feedback toc}\` (\`::swagger\`) fetches a spec and draws every operation as one of these cards, through the same pipeline, so a generated card and a hand-written one look the same.
+
+## Live values
+
+\`\`\`
+Downloads so far: :counter[downloads]{src=/api/stats.json path=downloads refresh=60 name=dl}
+Status: :fetch[status]{src=/api/status.json path=message}
+::live{src=/api/status.json path=message refresh=30}
+:action[Vote]{href=/api/vote method=POST body='{"id":1}' confirm="Sure?" done="Thanks!" counter=dl once}
+\`\`\`
+
+\`:counter\` formats a number, \`:fetch\` shows text inline and \`::live\` is the block form; \`refresh=\` is in seconds. \`:action\` is a button that calls a URL when pressed — \`confirm=\` asks first, \`done=\` is the label afterwards, \`once\` disables it after one success, and \`counter=\` names a counter to refresh. The URL goes through the same policy as every other link, and a refused one renders an em-dash rather than a request.
+
+## Include
+
+\`\`\`
+::include{src=/docs/partials/install.md}
+\`\`\`
+
+Renders another document in place, two levels deep at most. \`::embed-md\` is the same block.
+
+## Diagram
+
+\`\`\`\`
+:::mermaid[How a notice moves]
+\`\`\`mermaid
+graph LR; New --> Reviewing --> Closed
+\`\`\`
+:::
+\`\`\`\`
+
+\`:::diagram\` is the same block, and a bare \`\`\`mermaid fence with no directive works too. Mermaid draws it in the browser under its strict setting.
 
 ## Two extras that aren't directives
 
