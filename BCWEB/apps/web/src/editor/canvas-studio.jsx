@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Type, Image as ImageIcon, Square, Trash2, ArrowUp, ArrowDown, Eye, Smartphone, Monitor, Magnet, Copy,
   Film, Globe, PlayCircle, EyeOff, Sun, Moon, Layers, MousePointerClick, Sparkles,
-  Undo2, Redo2, AlertTriangle, Upload,
+  Undo2, Redo2, AlertTriangle, Upload, Lock, LockOpen, LayoutList, ChevronUp, ChevronDown, Grid2x2,
   AlignStartVertical, AlignCenterVertical, AlignEndVertical,
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
@@ -22,8 +22,8 @@ import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
-  phoneBoardBlocks, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
-  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS,
+  phoneBoardBlocks, reorder, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
+  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS,
 } from '../lib/canvas.js';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -51,6 +51,7 @@ export default function CanvasStudio({ value, onChange }) {
   // A marquee in flight, in DESIGN coordinates. In state because it has to draw.
   const [marquee, setMarquee] = useState(null);
   const [snapOn, setSnapOn] = useState(true);
+  const [layersOpen, setLayersOpen] = useState(false);
   const [preview, setPreview] = useState('');         // '' | 'desktop' | 'phone'
   /**
    * On a phone, edit the STACK — not a 1200px board shrunk to a third of its size.
@@ -138,6 +139,8 @@ export default function CanvasStudio({ value, onChange }) {
   const boardW = phoneBoard ? PHONE_WIDTH : DESIGN_WIDTH;
   const boardH = phoneBoard ? canvas.phoneHeight : canvas.height;
   const scale = Math.min(1, Math.max(0.3, vw / boardW));
+  // The author's grid step. Snapping, the drawn grid and the keyboard nudge all read it.
+  const grid = canvas.grid || GRID;
   // The board and the panel both show the target being authored — resolveBlock and
   // phoneBoardBlocks are the SAME functions the public page uses, so "what the author sees"
   // cannot drift from what is served. On the phone board every block has a place, hand-placed
@@ -253,7 +256,10 @@ export default function CanvasStudio({ value, onChange }) {
     emit([...canvas.blocks, ...copies]);
     setSelIds(copies.map((b) => b.id));
   };
-  const remove = () => { if (!chosen.length) return; emit(canvas.blocks.filter((b) => !selIds.includes(b.id))); setSelIds([]); };
+  // A locked block survives Delete — the lock is there so a finished background cannot be
+  // taken out by a keypress meant for whatever sits on it.
+  const remove = () => { if (!chosen.length) return; emit(canvas.blocks.filter((b) => !selIds.includes(b.id) || b.locked)); setSelIds([]); };
+  const setGrid = (n) => emit(canvas.blocks, { grid: n });
   const doAlign = (how) => emit(alignMany(canvas.blocks, selIds, how));
   const doDistribute = (axis) => emit(distributeMany(canvas.blocks, selIds, axis));
 
@@ -272,6 +278,8 @@ export default function CanvasStudio({ value, onChange }) {
     // multi-select wrong.
     else ids = selIds.includes(b.id) ? selIds : [b.id];
     setSelIds(ids);
+    // Locked: selectable (the panel still edits it), never dragged or resized.
+    if (b.locked) return;
     const startBB = boundsOf(canvas.blocks.filter((x) => ids.includes(x.id)));
     drag.current = { id: b.id, ids, handle, sx: e.clientX, sy: e.clientY, start: { ...b }, startBB };
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -281,16 +289,16 @@ export default function CanvasStudio({ value, onChange }) {
     const dx = e.clientX - d.sx; const dy = e.clientY - d.sy;
     const others = canvas.blocks.filter((b) => b.id !== d.id);
     if (d.handle) {
-      patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn, width: boardW }), `resize:${d.id}:${d.handle}`);
+      patch(d.id, resizeTo(d.start, d.handle, dx, dy, scale, { snap: snapOn, grid, width: boardW }), `resize:${d.id}:${d.handle}`);
       return;
     }
     if (d.ids && d.ids.length > 1) {
       // Resize is deliberately single-block; a group drag is the whole selection at once,
       // clamped as one box so the arrangement cannot collapse against an edge.
-      commitMoved(moveMany(view.blocks, d.ids, dx, dy, scale, { snap: snapOn, startX: d.startBB?.x, startY: d.startBB?.y, width: boardW }), `drag:${d.ids.join(',')}`);
+      commitMoved(moveMany(view.blocks, d.ids.filter((id) => !view.blocks.find((b) => b.id === id)?.locked), dx, dy, scale, { snap: snapOn, grid, startX: d.startBB?.x, startY: d.startBB?.y, width: boardW }), `drag:${d.ids.join(',')}`);
       return;
     }
-    let next = dragTo(d.start, dx, dy, scale, { snap: snapOn, width: boardW });
+    let next = dragTo(d.start, dx, dy, scale, { snap: snapOn, grid, width: boardW });
     // Alignment to the other blocks, on top of the grid. This is what makes a hand-placed
     // page look composed rather than approximately aligned.
     if (snapOn) {
@@ -348,13 +356,13 @@ export default function CanvasStudio({ value, onChange }) {
       }
       if (!selIds.length) return;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;   // typing, not nudging
-      const step = e.shiftKey ? GRID * 4 : GRID;
+      const step = e.shiftKey ? grid * 4 : grid;
       const map = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
       if (map[e.key]) {
         e.preventDefault();
         // The whole selection, at scale 1 because a nudge is in DESIGN pixels — it is the
         // gesture for "exactly one grid step", which is the point of having it.
-        commitMoved(moveMany(view.blocks, selIds, map[e.key][0], map[e.key][1], 1, { snap: false, width: boardW }), `nudge:${selIds.join(',')}`);
+        commitMoved(moveMany(view.blocks, selIds.filter((id) => !view.blocks.find((b) => b.id === id)?.locked), map[e.key][0], map[e.key][1], 1, { snap: false, width: boardW }), `nudge:${selIds.join(',')}`);
       } else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
       else if (e.key === 'Escape') setSelIds([]);
     };
@@ -366,7 +374,7 @@ export default function CanvasStudio({ value, onChange }) {
   if (preview) {
     return (
       <div>
-        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
+        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }} />
         <div className={preview === 'phone' ? 'mx-auto border border-[var(--line)] rounded-2xl p-3' : ''} style={preview === 'phone' ? { width: 390 } : undefined}>
           <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
         </div>
@@ -467,7 +475,7 @@ export default function CanvasStudio({ value, onChange }) {
 
   return (
     <div>
-      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute }} />
+      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }} />
       {/* Which theme is being authored. A page is read on both backgrounds and a hero built
           for one is not the same picture on the other; the alternative to this switch was
           authoring the page twice. Dark writes a partial OVERLAY, so anything not touched here
@@ -513,7 +521,7 @@ export default function CanvasStudio({ value, onChange }) {
               <div aria-hidden style={{
                 position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.5,
                 backgroundImage: 'linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)',
-                backgroundSize: `${GRID * 8}px ${GRID * 8}px`,
+                backgroundSize: `${Math.max(32, grid * 4)}px ${Math.max(32, grid * 4)}px`,
               }} />
               {paintOrder(view.blocks).map((b) => {
                 const on = selIds.includes(b.id);
@@ -521,10 +529,15 @@ export default function CanvasStudio({ value, onChange }) {
                 return (
                   <div key={b.id}
                     onPointerDown={(e) => onDown(e, b, null)}
-                    style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: 'move', touchAction: 'none' }}>
+                    style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
                     <BlockBody b={b} />
                     <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
-                    {only && Object.keys(HANDLES).map((hk) => (
+                    {(b.locked || b.hidden) && (
+                      <span aria-hidden style={{ position: 'absolute', left: 2, top: 2, display: 'inline-flex', gap: 2, background: 'var(--bg-solid)', borderRadius: 6, padding: '1px 4px', pointerEvents: 'none' }}>
+                        {b.locked && <Lock size={10} />}{b.hidden && <EyeOff size={10} />}
+                      </span>
+                    )}
+                    {only && !b.locked && Object.keys(HANDLES).map((hk) => (
                       <span key={hk} onPointerDown={(e) => onDown(e, b, hk)}
                         className="cst-handle"
                         style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
@@ -553,8 +566,46 @@ export default function CanvasStudio({ value, onChange }) {
             canvas would just be a smaller canvas. */}
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
+          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit }} />}
           <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Layers panel: every block, top of the paint order first, with its name, a lock, an eye
+ * and the two arrows. The one place a hidden block can be found again, and the one place a
+ * block under three others can be selected without moving them.
+ */
+function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit }) {
+  const rows = paintOrder(view.blocks).slice().reverse();
+  return (
+    <div className="mb-3 rounded-xl border border-[var(--line)] p-2">
+      <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+        <LayoutList size={12} /> {t('cst.layers', 'Layers')}
+        <span className="ms-auto tabular-nums font-normal">{rows.length}</span>
+      </div>
+      {!rows.length && <div className="text-xs text-[var(--faint)] py-2 text-center">{t('cst.layers.empty', 'Nothing on this page yet.')}</div>}
+      <div className="max-h-56 overflow-auto space-y-0.5">
+        {rows.map((b, i) => {
+          const on = selIds.includes(b.id);
+          return (
+            <div key={b.id}
+              className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs cursor-pointer ${on ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}
+              onClick={(e) => setSelIds(e.shiftKey || e.ctrlKey || e.metaKey ? (on ? selIds.filter((x) => x !== b.id) : [...selIds, b.id]) : [b.id])}>
+              <span className={`flex-1 min-w-0 truncate ${b.hidden ? 'text-[var(--faint)] line-through' : ''}`}>
+                {b.name || t(`cst.kind.${b.kind}`, b.kind)}
+                {!b.name && <span className="text-[var(--faint)] ms-1">#{b.id.slice(-3)}</span>}
+              </span>
+              <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === 0} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'up')); }} title={t('cst.layer.up', 'Move up')} aria-label={t('cst.layer.up', 'Move up')}><ChevronUp size={12} /></button>
+              <button type="button" className="p-0.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30" disabled={i === rows.length - 1} onClick={(e) => { e.stopPropagation(); emit(reorder(canvas.blocks, b.id, 'down')); }} title={t('cst.layer.down', 'Move down')} aria-label={t('cst.layer.down', 'Move down')}><ChevronDown size={12} /></button>
+              <button type="button" className={`p-0.5 rounded hover:bg-[var(--surface-2)] ${b.locked ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} onClick={(e) => { e.stopPropagation(); patch(b.id, { locked: !b.locked }); }} title={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')} aria-label={b.locked ? t('cst.layer.unlock', 'Unlock') : t('cst.layer.lock', 'Lock')}>{b.locked ? <Lock size={12} /> : <LockOpen size={12} />}</button>
+              <button type="button" className={`p-0.5 rounded hover:bg-[var(--surface-2)] ${b.hidden ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} onClick={(e) => { e.stopPropagation(); patch(b.id, { hidden: !b.hidden }); }} title={b.hidden ? t('cst.layer.show', 'Show') : t('cst.layer.hide', 'Hide')} aria-label={b.hidden ? t('cst.layer.show', 'Show') : t('cst.layer.hide', 'Hide')}>{b.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -716,7 +767,7 @@ function BlockBody({ b }) {
 
 // (the block painter is imported from canvas-view.jsx — see CanvasBlock there)
 
-function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute }) {
+function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 mb-3">
       <Button size="sm" variant="ghost" onClick={() => add('text')}><Type size={14} /> {t('cst.text', 'Text')}</Button>
@@ -749,6 +800,13 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
       </>)}
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant={snapOn ? 'primary' : 'ghost'} onClick={() => setSnapOn((v) => !v)} title={t('cst.snap.h', 'Snap to the grid and to other blocks')}><Magnet size={14} /></Button>
+      <label className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)]" title={t('cst.grid.h', 'The grid step blocks snap to')}>
+        <Grid2x2 size={13} />
+        <select className="bg-transparent text-[var(--text)] text-xs" value={grid} onChange={(e) => setGrid(Number(e.target.value))} aria-label={t('cst.grid', 'Grid')}>
+          {GRID_SIZES.map((n) => <option key={n} value={n}>{n}px</option>)}
+        </select>
+      </label>
+      <Button size="sm" variant={layersOpen ? 'primary' : 'ghost'} onClick={() => setLayersOpen((v) => !v)} title={t('cst.layers.h', 'Every block, top first — name, lock, hide, reorder')}><LayoutList size={14} /> {t('cst.layers', 'Layers')}</Button>
       {/* A desktop author cannot otherwise ever see the stacked version, and the stacked
           version is what most visitors get. */}
       <Button size="sm" variant={preview === 'desktop' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'desktop' ? '' : 'desktop'))}><Eye size={14} /> {t('cst.preview', 'Preview')}</Button>
@@ -793,12 +851,24 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
           )}
         </div>
       </div>
+      <div className="flex items-center gap-2">
+        <Input className="flex-1 min-w-0" value={sel.name || ''} placeholder={t('cst.name.ph', 'Name this block…')} aria-label={t('cst.name', 'Name')} onChange={(e) => patch(sel.id, { name: e.target.value.slice(0, 60) }, `name-${sel.id}`)} />
+        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.locked ? 'text-[var(--primary-2)] bg-[var(--primary)]/12' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { locked: !sel.locked })} title={t('cst.locked.h', 'Locked: the panel still edits it, the pointer cannot move, resize or delete it')} aria-label={t('cst.locked', 'Locked')}>{sel.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
+        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.hidden ? 'text-[var(--primary-2)] bg-[var(--primary)]/12' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { hidden: !sel.hidden })} title={t('cst.hidden.h', 'Hidden: kept on the board, not shown to readers')} aria-label={t('cst.hidden', 'Hidden')}>{sel.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         {numField('X', 'x')}{numField('Y', 'y')}{numField(t('cst.w', 'Width'), 'w')}{numField(t('cst.h', 'Height'), 'h')}
       </div>
       {sel.kind === 'text' && (
         <Field label={t('cst.md', 'Content (B.MD)')}>
           <Textarea rows={8} value={p.md || ''} onChange={(e) => setProp('md', e.target.value)} />
+        </Field>
+      )}
+      {sel.kind === 'text' && (
+        <Field label={t('cst.text.align', 'Text alignment')}>
+          <Select value={p.align || 'left'} onChange={(e) => setProp('align', e.target.value === 'left' ? undefined : e.target.value)}>
+            {TEXT_ALIGNS.map((v) => <option key={v} value={v}>{t(`cst.text.align.${v}`, v)}</option>)}
+          </Select>
         </Field>
       )}
       {sel.kind === 'image' && (<>
@@ -860,6 +930,26 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
           value={Math.round((sel.opacity ?? 1) * 100)}
           onChange={(e) => patch(sel.id, { opacity: Number(e.target.value) / 100 }, `op-${sel.id}`)} />
       </Field>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label={t('cst.rotate', 'Rotation (°)')}><Input type="number" min={-180} max={180} value={sel.rotate || 0} onChange={(e) => patch(sel.id, { rotate: Math.max(-180, Math.min(180, Number(e.target.value) || 0)) }, `rot-${sel.id}`)} /></Field>
+        <Field label={t('cst.shadow', 'Shadow')}>
+          <Select value={sel.shadow || ''} onChange={(e) => patch(sel.id, { shadow: e.target.value })}>
+            <option value="">{t('cst.shadow.none', 'None')}</option>
+            {SHADOWS.map((v) => <option key={v} value={v}>{t(`cst.shadow.${v}`, v)}</option>)}
+          </Select>
+        </Field>
+      </div>
+      <Field label={t('cst.hover', 'On hover')}>
+        <Select value={sel.hover || ''} onChange={(e) => patch(sel.id, { hover: e.target.value })}>
+          <option value="">{t('cst.hover.none', 'Nothing')}</option>
+          {HOVER_EFFECTS.map((v) => <option key={v} value={v}>{t(`cst.hover.${v}`, v)}</option>)}
+        </Select>
+      </Field>
+      {sel.kind !== 'button' && (
+        <Field label={t('cst.link', 'Link (whole block)')} hint={t('cst.link.h', 'A path on this site, an anchor, or an https address. The block becomes clickable.')}>
+          <Input value={sel.link || ''} onChange={(e) => patch(sel.id, { link: e.target.value }, `link-${sel.id}`)} placeholder="/docs · #plans · https://…" />
+        </Field>
+      )}
       <Field label={t('cst.bg', 'Background')}><Input value={p.bg || ''} onChange={(e) => setProp('bg', e.target.value)} placeholder="rgba(99,102,241,0.1)" /></Field>
       <Field label={t('cst.radius', 'Corner radius')}><Input type="number" value={p.radius ?? ''} onChange={(e) => setProp('radius', e.target.value === '' ? undefined : Number(e.target.value))} /></Field>
       <button className="text-[11px] text-[var(--faint)] hover:text-[var(--text)]" onClick={() => setSelId(null)}>{t('cst.deselect', 'Deselect')}</button>

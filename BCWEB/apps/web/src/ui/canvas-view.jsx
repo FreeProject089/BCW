@@ -76,6 +76,32 @@ function Animated({ anim, id, style, className, children }) {
   );
 }
 
+/**
+ * The shell inside the animation wrapper: rotation, shadow, hover effect and the block-wide
+ * link. INSIDE, not on the wrapper, because the entrance animations own the wrapper's
+ * `transform` (fill-mode both keeps it forever) and a hover lift on the same element would
+ * never show. The wrapper's clipping moves down here for the same reason: a shadow and a
+ * lift paint outside the box, so the wrapper lets them and the shell clips the content.
+ */
+function BlockShell({ b, children }) {
+  const p = b.props || {};
+  const cls = `cv-shell${b.shadow ? ` cv-shadow-${b.shadow}` : ''}${b.hover ? ` cv-hov-${b.hover}` : ''}`;
+  const style = {
+    width: '100%', height: '100%',
+    overflow: b.kind === 'button' ? 'visible' : 'hidden',
+    borderRadius: p.radius != null ? `${p.radius}px` : undefined,
+    transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined,
+  };
+  const body = <div className={cls} style={style}>{children}</div>;
+  if (b.link && b.kind !== 'button') {
+    const ext = /^https?:\/\//i.test(b.link);
+    return <a href={b.link} className="cv-blk-link" {...(ext ? { target: '_blank', rel: 'noreferrer noopener' } : {})}>{body}</a>;
+  }
+  return body;
+}
+/** Whether the wrapper must stop clipping so the shell's effects can paint outside the box. */
+const spills = (b) => b.kind === 'button' || !!b.rotate || !!b.shadow || !!b.hover;
+
 /** What a button does when pressed. */
 function useButtonAction(p) {
   const [state, setState] = useState('');
@@ -226,7 +252,7 @@ export function CanvasBlock({ b, stacked }) {
   // keeps the height it was drawn at, so a band stays a band.
   if (b.kind === 'box') return <div style={boxed} />;
   return (
-    <div style={style} className="bcw-canvas-text">
+    <div style={{ ...style, textAlign: p.align || undefined }} className="bcw-canvas-text">
       <Markdown>{String(p.md || '')}</Markdown>
     </div>
   );
@@ -285,7 +311,7 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
       <div ref={hostRef} className="space-y-4" style={{ background: canvas.bg || undefined }}>
         {phoneOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
           <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
-            <CanvasBlock b={b} stacked />
+            <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
           </Animated>
         ))}
       </div>
@@ -328,9 +354,9 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
               // The cost is that overrunning text disappears for the reader, so the EDITOR
               // flags a block whose content is taller than its box; this is the wrong place
               // to discover it. A dropdown's menu is the one thing allowed out of the box.
-              style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: b.z, overflow: b.kind === 'button' ? 'visible' : 'hidden', opacity: b.opacity < 1 ? b.opacity : undefined }}
+              style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: b.z, overflow: spills(b) ? 'visible' : 'hidden', opacity: b.opacity < 1 ? b.opacity : undefined }}
             >
-              <CanvasBlock b={b} />
+              <BlockShell b={b}><CanvasBlock b={b} /></BlockShell>
             </Animated>
           ))}
         </div>

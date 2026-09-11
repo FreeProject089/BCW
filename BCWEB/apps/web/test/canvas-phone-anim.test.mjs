@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeCanvas, layoutFor, phoneBoardBlocks, phoneContentHeight, dragTo, resizeTo, moveMany,
   PHONE_WIDTH, DESIGN_WIDTH, STACK_BELOW, BLOCK_KINDS, ANIM_KINDS, GRID,
+  reorder, paintOrder, safeLink, presetBlocks, CANVAS_PRESETS, SHADOWS, HOVER_EFFECTS, GRID_SIZES,
 } from '../src/lib/canvas.js';
 
 const B = (id, x, y, w, h, extra = {}) => ({ id, kind: 'text', x, y, w, h, props: { md: id }, ...extra });
@@ -116,5 +117,73 @@ describe('the button block', () => {
     const b = normalizeCanvas({ blocks: [{ id: 'b', kind: 'button', x: 0, y: 0, w: 240, h: 56, props: { label: 'Go', variant: 'card', action: { type: 'copy', text: 'hi' } } }] }).blocks[0];
     assert.equal(b.kind, 'button');
     assert.equal(b.props.action.type, 'copy');
+  });
+});
+
+describe('the layer fields', () => {
+  test('name, lock, hide, rotation, shadow, hover and link survive normalisation — and junk does not', () => {
+    const b = normalizeCanvas({ blocks: [{ id: 'a', kind: 'box', x: 0, y: 0, w: 200, h: 100,
+      name: 'Hero band', locked: true, hidden: true, rotate: 400, shadow: 'md', hover: 'lift', link: '/docs' }] }).blocks[0];
+    assert.equal(b.name, 'Hero band');
+    assert.equal(b.locked, true);
+    assert.equal(b.hidden, true);
+    assert.equal(b.rotate, 180, 'rotation is clamped to ±180');
+    assert.equal(b.shadow, 'md');
+    assert.equal(b.hover, 'lift');
+    assert.equal(b.link, '/docs');
+    const junk = normalizeCanvas({ blocks: [{ id: 'j', kind: 'box', x: 0, y: 0, w: 200, h: 100,
+      name: 42, locked: 'yes', rotate: 'x', shadow: 'huge', hover: 'explode', link: 'javascript:alert(1)' }] }).blocks[0];
+    assert.equal(junk.name, '');
+    assert.equal(junk.locked, false);
+    assert.equal(junk.hidden, false);
+    assert.equal(junk.rotate, 0);
+    assert.equal(junk.shadow, '');
+    assert.equal(junk.hover, '');
+    assert.equal(junk.link, '', 'a javascript: link never reaches an href');
+  });
+
+  test('a block link is a same-site path, an anchor, https or mailto — nothing else', () => {
+    assert.equal(safeLink('/hosting'), '/hosting');
+    assert.equal(safeLink('#plans'), '#plans');
+    assert.equal(safeLink('https://example.org/x'), 'https://example.org/x');
+    assert.equal(safeLink('mailto:hi@example.org'), 'mailto:hi@example.org');
+    assert.equal(safeLink('//evil.example'), '', 'protocol-relative is another host');
+    assert.equal(safeLink('data:text/html,hi'), '');
+    assert.equal(safeLink(' JAVASCRIPT:void(0)'), '');
+  });
+
+  test('the grid step is one of the offered sizes and defaults to 8', () => {
+    assert.equal(normalizeCanvas({ grid: 16 }).grid, 16);
+    assert.equal(normalizeCanvas({ grid: 7 }).grid, GRID);
+    assert.equal(normalizeCanvas({}).grid, GRID);
+    assert.ok(GRID_SIZES.includes(GRID));
+  });
+
+  test('reorder swaps a block with its paint-order neighbour, and stops at the ends', () => {
+    const blocks = [B('a', 0, 0, 100, 100, { z: 0 }), B('b', 0, 0, 100, 100, { z: 0 }), B('c', 0, 0, 100, 100, { z: 5 })];
+    // a and b tie on z; array order paints a under b. Moving a up puts it over b, under c.
+    const up = reorder(blocks, 'a', 'up');
+    assert.deepEqual(paintOrder(up).map((b) => b.id), ['b', 'a', 'c']);
+    const top = reorder(reorder(blocks, 'a', 'up'), 'a', 'up');
+    assert.deepEqual(paintOrder(top).map((b) => b.id), ['b', 'c', 'a']);
+    assert.equal(reorder(top, 'a', 'up'), top, 'already on top: unchanged');
+    assert.equal(reorder(blocks, 'a', 'down'), blocks, 'already at the bottom: unchanged');
+    assert.equal(reorder(blocks, 'nope', 'up'), blocks);
+  });
+
+  test('the two new presets are on the grid, inside the design width, and carry valid effects', () => {
+    for (const id of ['cta', 'gallery']) {
+      assert.ok(CANVAS_PRESETS.some((p) => p.id === id), id);
+      const blocks = normalizeCanvas({ blocks: presetBlocks(id) }).blocks;
+      assert.ok(blocks.length >= 4, id);
+      for (const b of blocks) {
+        assert.equal(b.x % GRID, 0); assert.equal(b.y % GRID, 0);
+        assert.ok(b.x + b.w <= DESIGN_WIDTH, `${id}: ${b.id} inside`);
+        if (b.shadow) assert.ok(SHADOWS.includes(b.shadow));
+        if (b.hover) assert.ok(HOVER_EFFECTS.includes(b.hover));
+      }
+      // Normalising did not throw the effects away: the preset's author set them on purpose.
+      assert.ok(blocks.some((b) => b.hover === 'lift'), `${id}: a lift on hover`);
+    }
   });
 });

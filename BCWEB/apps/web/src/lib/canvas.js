@@ -73,6 +73,29 @@ export const ANIM_TRIGGERS = ['show', 'load', 'delay', 'hover'];
 export const BUTTON_VARIANTS = ['button', 'card', 'dropdown-down', 'dropdown-up'];
 /** What pressing it does. */
 export const BUTTON_ACTIONS = ['link', 'copy', 'scroll', 'download', 'api'];
+/** Drop shadows a block may carry. The CSS is `.cv-shadow-<name>` in index.css. */
+export const SHADOWS = ['sm', 'md', 'lg', 'glow'];
+/** What a block does under the pointer. The CSS is `.cv-hov-<name>` in index.css. */
+export const HOVER_EFFECTS = ['lift', 'grow', 'glow', 'dim', 'tilt'];
+/** The grid steps an author may pick. 8 is what every preset was drawn on. */
+export const GRID_SIZES = [4, 8, 16, 24, 32];
+/** Where a block's text sits. */
+export const TEXT_ALIGNS = ['left', 'center', 'right', 'justify'];
+
+/**
+ * A link an entire block can carry. Same-site paths, anchors and http(s) only — a canvas is
+ * authored by an editor, and an `<a href>` is a sink a `javascript:` string must never reach
+ * (see check-url-schemas.mjs for the API side of the same rule).
+ */
+export function safeLink(raw) {
+  const s = typeof raw === 'string' ? raw.trim().slice(0, 2000) : '';
+  if (!s) return '';
+  if (s.startsWith('/') && !s.startsWith('//')) return s;
+  if (s.startsWith('#')) return s;
+  if (/^https?:\/\//i.test(s)) return s;
+  if (/^mailto:[^\s]+$/i.test(s)) return s;
+  return '';
+}
 
 /** Kinds whose height is theirs to keep in a stack — a media box with no intrinsic height in
  *  the column would collapse to nothing the way `box` did. */
@@ -120,6 +143,17 @@ export function normalizeCanvas(raw) {
         themes: themeOverlays(b.themes),
         phone: phoneOverlay(b.phone),
         anim: animOverlay(b.anim),
+        // The Layers panel's fields. A name so a page of twelve text blocks is navigable;
+        // locked so a finished background stops catching drags meant for what sits on it;
+        // hidden so a block can be kept without being shown.
+        name: typeof b.name === 'string' ? b.name.slice(0, 60) : '',
+        locked: b.locked === true,
+        hidden: b.hidden === true,
+        // Presentation that applies to the wrapper, whatever the kind — like opacity.
+        rotate: clamp(Math.round(num(b.rotate, 0)), -180, 180),
+        shadow: SHADOWS.includes(b.shadow) ? b.shadow : '',
+        hover: HOVER_EFFECTS.includes(b.hover) ? b.hover : '',
+        link: safeLink(b.link),
       };
     })
     .filter(Boolean);
@@ -136,6 +170,9 @@ export function normalizeCanvas(raw) {
     // exactly as before.
     phoneBoard: c.phoneBoard === true || blocks.some((b) => b.phone?.x != null && b.phone?.y != null),
     phoneHeight: Math.max(240, num(c.phoneHeight, 0) || phoneContentHeight(blocks)),
+    // The snapping step. Stored positions are NOT re-snapped to it — a coarser grid is a
+    // choice about the next drag, not a reflow of what is already placed.
+    grid: GRID_SIZES.includes(num(c.grid, GRID)) ? num(c.grid, GRID) : GRID,
   };
 }
 
@@ -431,6 +468,23 @@ export function bringTo(blocks, id, where) {
   return blocks.map((b) => (b.id === id ? { ...b, z } : b));
 }
 
+/**
+ * One step up or down the paint order — the Layers panel's arrows. Every block gets a
+ * distinct z equal to its paint position first, so a swap is a swap and not a tie between two
+ * blocks that happened to share a z; ties are otherwise broken by array order, which the
+ * author cannot see.
+ */
+export function reorder(blocks, id, dir) {
+  const order = paintOrder(blocks);
+  const i = order.findIndex((b) => b.id === id);
+  const j = dir === 'up' ? i + 1 : i - 1;
+  if (i < 0 || j < 0 || j >= order.length) return blocks;
+  const zOf = new Map(order.map((b, k) => [b.id, k]));
+  zOf.set(order[i].id, j);
+  zOf.set(order[j].id, i);
+  return blocks.map((b) => ({ ...b, z: zOf.get(b.id) }));
+}
+
 // ── Undo ─────────────────────────────────────────────────────────────────────
 // A canvas editor without undo is one bad drag away from losing work, and undo in a canvas
 // editor is not "one entry per change": a single drag fires a state update on every pointer
@@ -640,6 +694,32 @@ export const CANVAS_PRESETS = [
       P('text', 64, 40, 520, 280, { md: '## A heading\n\nA paragraph explaining the thing beside it.\n\n:::tip[Good to know]\nSomething worth pulling out.\n:::' }),
       P('image', 640, 40, 496, 280, { src: '', alt: '', fit: 'cover' }),
     ],
+  },
+  {
+    id: 'cta',
+    name: 'Call to action',
+    nameFr: 'Appel à l’action',
+    blocks: () => [
+      { ...P('box', 0, 0, 1200, 320, { bg: 'color-mix(in srgb, var(--primary) 12%, transparent)', radius: 24 }), shadow: 'md' },
+      { ...P('text', 160, 56, 880, 136, { md: '# Ready when you are\n\nOne line on what happens next.', align: 'center' }), anim: { kind: 'rise', trigger: 'show' } },
+      { ...P('button', 400, 216, 192, 56, { label: 'Get started', variant: 'button', size: 'lg', action: { type: 'link', href: '/' } }), anim: { kind: 'zoom', trigger: 'show', delay: 150 }, hover: 'lift' },
+      { ...P('button', 608, 216, 192, 56, { label: 'Read the docs', variant: 'button', size: 'lg', outline: true, action: { type: 'link', href: '/docs' } }), anim: { kind: 'zoom', trigger: 'show', delay: 250 }, hover: 'lift' },
+    ],
+  },
+  {
+    id: 'gallery',
+    name: 'Picture gallery',
+    nameFr: 'Galerie d’images',
+    blocks: () => {
+      const out = [P('text', 64, 0, 720, 88, { md: '# Gallery\n\nA few pictures, hover to lift.' })];
+      // Four across, two down — 256 wide with 32 between, inside 64px margins.
+      for (let i = 0; i < 8; i++) {
+        const col = i % 4, row = Math.floor(i / 4);
+        out.push({ ...P('image', 64 + col * 288, 120 + row * 208, 256, 176, { src: '', alt: '', fit: 'cover', radius: 16 }),
+          shadow: 'sm', hover: 'lift', anim: { kind: 'fade', trigger: 'show', delay: i * 60 } });
+      }
+      return out;
+    },
   },
   {
     id: 'blank',
