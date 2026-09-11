@@ -44,6 +44,7 @@ const SITE_URL = process.env.SITE_URL || 'http://localhost:5176';
 const escapeHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 import { signBytes } from './signing.mjs';
 import { awardSeason } from './game-season.mjs';
+import { runSeasonIfDue } from './economy-season.mjs';
 
 const DAY_MS = 864e5;
 
@@ -768,6 +769,8 @@ export function startSweeper(app) {
       await rollupAnalyticsDaily(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'analytics rollup failed'));
       await sweepHostingWaitlist(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'hosting waitlist sweep failed'));
       await sweepReports(p).catch((e) => app.log.warn({ e: String(e) }, 'report sweep failed'));
+      // A season ends on its schedule, not when somebody remembers the button.
+      await runSeasonIfDue(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'season reset failed'));
       await sweepStaleMyoRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'MYO auto-archive sweep failed'));
       await pruneApiRequests(p, app.log).catch((e) => app.log.warn({ e: String(e) }, 'api request prune failed'));
       await sampleAndAlert(p, app.log);

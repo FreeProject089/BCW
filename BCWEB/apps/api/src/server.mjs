@@ -72,6 +72,7 @@ import codeWebhookRoutes from './routes/code-webhook.mjs';
 import reportRoutes from './routes/reports.mjs';
 import feedbackRoutes from './routes/feedback.mjs';
 import rightsRoutes from './routes/rights.mjs';
+import economyAdminRoutes from './routes/economy-admin.mjs';
 import jwt from 'jsonwebtoken';
 import connectionRoutes from './routes/connections.mjs';
 import { recordRequest } from './lib/monitor.mjs';
@@ -399,6 +400,7 @@ await app.register(ogRoutes); // crawler link-unfurl prerender (og:title/image p
 await app.register(socialRoutes); // profile badges + public profiles + user search
 await app.register(reportRoutes); // user reports + support threads + admin moderation
 await app.register(feedbackRoutes); // feedback & crash centre (per-project inbox for BMM and friends)
+await app.register(economyAdminRoutes); // economy statistics + seasons (manage_economy)
 await app.register(rightsRoutes); // rights notices (copyright & co.), the queue, the protected-works registry
 await app.register(connectionRoutes); // social profile connections (youtube/twitch/github/steam)
 await app.register(statusRoutes); // public status page: service uptime, incidents, alert sign-up

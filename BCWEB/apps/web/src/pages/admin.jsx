@@ -9,7 +9,7 @@ import { ChipList, AccountChipList, PubkeyList } from '../ui/access-lists.jsx';
 import { lucideFileName } from '../editor/icon-picker.jsx';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins} from 'lucide-react';
+  BarChart3, Boxes, Music2, Puzzle, Server, Rocket, Download, Power, PowerOff, ArrowRight, ArrowRightLeft, Search, Upload, Bell, CheckCircle2, XCircle, Wallet, Scale, Clock, Package, ShieldCheck, Inbox, Tag, FileJson, HardDrive, HelpCircle, Cpu, Gauge, TrendingUp, Eye, Sparkles, Lock, Zap, Users, GitBranch, Settings2, Newspaper, LayoutDashboard, Cookie, Sliders, Heart, Vote, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, ArrowUpRight, Receipt, Wand2, Plus, Link2, Copy, Globe, BadgeCheck, Mail, Send, MessageSquare, Files, RefreshCw, X, ChevronUp, ChevronRight, ChevronDown, Monitor, MonitorOff, AlertTriangle, Ticket, CreditCard, Gift, Archive, Shield, Ban, FolderGit2, FileText, History, Target, Megaphone, EyeOff, Rss, Info, Fingerprint, Layers, MapPin, Globe2, Activity, Building2, Map as MapIcon, Mic, KeyRound, MousePointerClick, PanelTop, Navigation, Save, Loader2, BookOpen, LayoutGrid, Smartphone, Monitor as MonitorIcon, Upload as UploadIcon, RotateCcw, Calendar, Minus, Sun, Moon, Languages, LogOut, LogIn, User as UserIcon, Settings as SettingsIcon, GripVertical, Check, ExternalLink, Palette, Pencil, Gavel, Code2, Database, Network, Share2, Link as LinkIcon, PlayCircle, Anchor, Boxes as BoxesIcon, Image as ImageIcon, ShoppingBag, Key, Coins, ShieldAlert, ServerCog, HeartPulse, Wrench, Bot, OctagonAlert, Flag as FlagIcon } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
 // The `all` sub-tab on Hosting settings; nothing else here needs a plain list glyph.
 import { List } from 'lucide-react';
@@ -208,14 +208,14 @@ export function Admin() {
     // added. The numbers belong on the tabs where the work is actually done; this tab answers
     // "what is waiting", not "how much".
     isMod && { id: 'needs', label: t('adm.tab.needs', 'Needs attention'), icon: BellIcon },
-    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: Inbox,
+    isMod && { id: 'moderation', label: t('adm.tab.moderation', 'Moderation'), icon: ShieldAlert,
       sub: [
         { id: 'moderation', label: t('adm.tab.submissions', 'Submissions'), icon: Inbox, badge: queue.length || undefined },
         can('manage_reports') && { id: 'reports', label: t('adm.tab.reports', 'Reports'), icon: AlertTriangle, badge: pc.reports || undefined },
         can('manage_reports') && { id: 'rights', label: t('adm.tab.rights', 'Rights notices'), icon: Scale, badge: pc.rights || undefined },
         can('manage_reports') && { id: 'feedback', label: t('adm.tab.feedback', 'Feedback & crashes'), icon: BugIcon, badge: pc.feedback || undefined },
         { id: 'messages', label: t('adm.tab.messages', 'Messages'), icon: Mail, badge: pc.contact || undefined },
-        can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: Scale },
+        can('manage_legal') && { id: 'legal', label: t('adm.tab.legal', 'Legal'), icon: FileText },
         can('manage_sanctions') && { id: 'sanctions', label: t('adm.tab.sanctions', 'Sanctions'), icon: Gavel, badge: pc.contests || undefined },
       ].filter(Boolean) },
 
@@ -253,14 +253,14 @@ export function Admin() {
         can('manage_faq') && { id: 'faq', label: t('adm.tab.faq', 'FAQ'), icon: HelpCircle },
         can('manage_newsletter') && { id: 'newsletter', label: t('adm.tab.newsletter', 'Newsletter'), icon: Mail },
         isAdmin && { id: 'mail', label: t('adm.tab.mail', 'Mail delivery'), icon: Send },
-        isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: MessageSquare },
+        isAdmin && { id: 'reviews', label: t('adm.tab.reviews', 'Reviews'), icon: Star },
         can('manage_polls') && { id: 'polls', label: t('adm.tab.polls', 'Polls'), icon: BarChart3 },
         can('manage_announcements') && { id: 'reactions', label: t('adm.tab.reactions', 'Reader feedback'), icon: Heart },
       ].filter(Boolean) },
     isAdmin && { id: 'badges', label: t('adm.tab.badges', 'Badges'), icon: BadgeCheck },
 
     { heading: t('adm.h.repos', 'Hosting') },
-    can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Repos & pools'), icon: Server,
+    can('manage_repos') && { id: 'repos', label: t('adm.tab.repos', 'Repos & pools'), icon: Database,
       sub: [
         { id: 'repos', label: t('adm.tab.repos2', 'Server repos'), icon: Server },
         { id: 'pools', label: t('adm.tab.pools', 'Storage pools'), icon: HardDrive },
@@ -278,24 +278,24 @@ export function Admin() {
     { heading: t('adm.h.integrations', 'Integrations') },
     isAdmin && { id: 'sso', label: t('adm.tab.sso', 'SSO / OAuth'), icon: Shield },
     can('manage_api') && { id: 'api', label: t('adm.tab.api', 'Public API'), icon: KeyRound },
-    can('manage_bot') && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: MessageSquare },
+    can('manage_bot') && { id: 'bot', label: t('adm.tab.bot', 'Discord bot'), icon: Bot },
 
     { heading: t('adm.h.serverdata', 'The machine') },
-    isAdmin && { id: 'serverperf', label: t('adm.tab.server', 'Server'), icon: Cpu,
+    isAdmin && { id: 'serverperf', label: t('adm.tab.server', 'Server'), icon: ServerCog,
       sub: [
-        { id: 'serverperf', label: t('adm.tab.serverperf2', 'Performance'), icon: Cpu, badge: pc.alerts || undefined },
+        { id: 'serverperf', label: t('adm.tab.serverperf2', 'Performance'), icon: Activity, badge: pc.alerts || undefined },
         { id: 'storage', label: t('adm.tab.storage', 'Storage'), icon: HardDrive },
         // Beside Performance rather than in its own group: the incidents on the public page are
         // the outages this screen's probes recorded, and writing the account of one is what you
         // do straight after looking at what broke.
-        { id: 'statuspage', label: t('adm.tab.statuspage', 'Status page'), icon: Activity },
-        { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced'), icon: AlertTriangle },
+        { id: 'statuspage', label: t('adm.tab.statuspage', 'Status page'), icon: HeartPulse },
+        { id: 'serveradv', label: t('adm.tab.serveradv', 'Advanced'), icon: Wrench },
       ] },
     can('manage_analytics') && { id: 'analytics', label: t('adm.tab.analytics', 'Analytics'), icon: TrendingUp,
       sub: [
         { id: 'analytics', label: t('adm.tab.analytics2', 'Traffic'), icon: TrendingUp },
         { id: 'goals', label: t('adm.tab.goals', 'Goals'), icon: Target },
-        { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: AlertTriangle },
+        { id: 'errors', label: t('adm.tab.errors', 'Errors'), icon: OctagonAlert },
       ] },
 
     { heading: t('adm.h.settings', 'How it looks & behaves') },
@@ -4496,7 +4496,7 @@ function BackupManager() {
 // area + its endpoints.
 const ADMIN_CAPS = [
   { id: 'manage_users', cat: 'people', icon: Users, label: 'Manage users', labelFr: 'Gérer les utilisateurs', desc: 'View users, moderate, suspend/ban.', descFr: 'Voir les utilisateurs, modérer, suspendre/bannir.' },
-  { id: 'manage_reports', cat: 'people', icon: MessageSquare, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
+  { id: 'manage_reports', cat: 'people', icon: FlagIcon, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
   { id: 'manage_projects', cat: 'content', icon: Settings2, label: 'Manage projects', labelFr: 'Gérer les projets', desc: 'Edit every fixed project page + its visibility & schedule.', descFr: 'Modifier chaque page de projet fixe + sa visibilité et sa planification.' },
   { id: 'manage_showcase', cat: 'content', icon: Sparkles, label: 'Manage other projects', labelFr: 'Gérer les autres projets', desc: 'Create, edit, pin and publish every other-project page.', descFr: 'Créer, modifier, épingler et publier chaque page « autre projet ».' },
   { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners — publishing one also sends a notification to every user.', descFr: 'Publier et modifier les bannières d’annonce du site — en publier une envoie aussi une notification à tous les membres.' },
@@ -4512,7 +4512,7 @@ const ADMIN_CAPS = [
   { id: 'manage_repos', cat: 'ops', icon: Server, label: 'Manage server repos', labelFr: 'Gérer les dépôts serveur', desc: 'Review, verify and moderate hosted repos.', descFr: 'Vérifier, valider et modérer les dépôts hébergés.' },
   { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
   { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
-  { id: 'manage_bot', cat: 'ops', icon: MessageSquare, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
+  { id: 'manage_bot', cat: 'ops', icon: Bot, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
   { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things — grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Rocket, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
   { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
@@ -15584,7 +15584,7 @@ function AdminBotMembersPage({ currency }) {
           </button>
         ))}
       </div>
-      {view === 'roster' || !canEco ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
+      {view === 'roster' || !canEco ? <AdminBotMembers /> : <div className="mt-4 space-y-4"><EconomyStatsCard /><EconomySeasonCard /><EconomyLedger currency={currency} /><PendingDeliveries currency={currency} /><EconomyHistoryCard currency={currency} /></div>}
     </div>
   );
 }
@@ -22461,6 +22461,190 @@ function TempStorageManager({ open, onClose, onChange }) {
         </>
       )}
     </Modal>
+  );
+}
+
+// ── Economy statistics ─────────────────────────────────────────────────────────────────
+// Where the points go. Six windows side by side (today against yesterday, this week against
+// last, this month against last) and, under them, one small chart PER FLOW over thirty days
+// — small multiples, one series each, so no two scales ever share an axis.
+const ECO_FLOWS = ['generated', 'won', 'lost', 'given', 'used'];
+function EconomyStatsCard() {
+  const { t } = useI18n();
+  const [days, setDays] = useState(30);
+  const { data, loading, reload } = useAsync(() => api.get(`/admin/economy/stats?days=${days}`), [days]);
+  const label = (k) => ({
+    generated: t('db.eco.st.generated', 'Generated'), won: t('db.eco.st.won', 'Won'), lost: t('db.eco.st.lost', 'Lost'),
+    given: t('db.eco.st.given', 'Given'), used: t('db.eco.st.used', 'Spent'), net: t('db.eco.st.net', 'Net'), rows: t('db.eco.st.rows', 'Entries'),
+  })[k] || k;
+  const winLabel = (k) => ({
+    today: t('db.eco.st.today', 'Today'), yesterday: t('db.eco.st.yesterday', 'Yesterday'), thisWeek: t('db.eco.st.thisWeek', 'This week'),
+    lastWeek: t('db.eco.st.lastWeek', 'Last week'), thisMonth: t('db.eco.st.thisMonth', 'This month'), lastMonth: t('db.eco.st.lastMonth', 'Last month'),
+  })[k] || k;
+  const fmt = (n) => (Math.abs(n) >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : Math.abs(n) >= 1e4 ? `${(n / 1e3).toFixed(1)}k` : String(n));
+  const T = data?.totals;
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <TrendingUp size={16} className="text-[var(--primary-2)]" />
+        <div className="font-semibold">{t('db.eco.st.title', 'Where the points go')}</div>
+        <span className="text-[11px] text-[var(--faint)]">{t('db.eco.st.utc', 'Days and weeks are UTC; weeks start on Monday.')}</span>
+        <div className="ms-auto flex items-center gap-1">
+          {[14, 30, 90].map((d) => <Button key={d} size="sm" variant={days === d ? 'primary' : 'ghost'} onClick={() => setDays(d)}>{d}j</Button>)}
+          <Button size="sm" variant="ghost" onClick={reload} title={t('common.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
+        </div>
+      </div>
+      {loading && !data ? <Loading /> : !data ? null : (<>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 mb-4">
+          {[[t('db.eco.st.members', 'Members'), T.members], [t('db.eco.st.active', 'Active 7 d'), T.active7d], [t('db.eco.st.points', 'Points in play'), fmt(T.points)],
+            [t('db.eco.st.xp', 'XP'), fmt(T.xp)], [t('db.eco.st.avgLevel', 'Avg level'), T.avgLevel], [t('db.eco.st.maxLevel', 'Top level'), T.maxLevel],
+            [t('db.eco.st.messages', 'Messages'), fmt(T.messages)], [t('db.eco.st.voice', 'Voice hours'), fmt(T.voiceHours)]].map(([l, v]) => (
+            <div key={l} className="rounded-lg border border-[var(--line)] px-2.5 py-2">
+              <div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)] truncate">{l}</div>
+              <div className="text-[17px] font-bold tabular-nums leading-tight">{v}</div>
+            </div>
+          ))}
+        </div>
+        {/* The windows: a table, because six columns of five numbers each is a table and a
+            grouped bar chart of it would need a legend to say which bar is which. */}
+        <div className="overflow-x-auto -mx-1 px-1">
+          <table className="w-full text-[12.5px] tabular-nums">
+            <thead><tr className="text-[var(--faint)] text-[10.5px] uppercase tracking-wider">
+              <th className="text-start font-medium py-1 pe-2"></th>
+              {Object.keys(data.windows).map((w) => <th key={w} className="text-end font-medium py-1 px-2 whitespace-nowrap">{winLabel(w)}</th>)}
+            </tr></thead>
+            <tbody>
+              {[...ECO_FLOWS, 'net', 'rows'].map((k) => (
+                <tr key={k} className={`border-t border-[var(--line)] ${k === 'net' ? 'font-semibold' : ''} ${k === 'rows' ? 'text-[var(--faint)]' : ''}`}>
+                  <td className="py-1.5 pe-2 whitespace-nowrap text-[var(--muted)]">{label(k)}</td>
+                  {Object.entries(data.windows).map(([w, b]) => (
+                    <td key={w} className={`py-1.5 px-2 text-end ${k === 'net' ? (b.net < 0 ? 'text-error' : b.net > 0 ? 'text-success' : '') : ''}`}>{k === 'net' && b.net > 0 ? '+' : ''}{fmt(b[k] ?? 0)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 mt-4">
+          {ECO_FLOWS.map((k) => <FlowChart key={k} label={label(k)} series={data.series} field={k} />)}
+        </div>
+      </>)}
+    </Card>
+  );
+}
+
+// One flow over the period: a line with its area, the last value labelled, and a hover
+// readout (day + value) under the plot. Same hue for every chart — identity is the title.
+function FlowChart({ label, series, field }) {
+  const [hover, setHover] = useState(null);
+  const W = 240, H = 64, P = 4;
+  const vals = series.map((s) => s[field] || 0);
+  const max = Math.max(1, ...vals);
+  const n = vals.length;
+  const x = (i) => P + (i / Math.max(1, n - 1)) * (W - 2 * P);
+  const y = (v) => H - P - (v / max) * (H - 2 * P);
+  const pts = vals.map((v, i) => ({ x: x(i), y: y(v) }));
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  const area = `${line} L ${x(n - 1).toFixed(1)} ${H - P} L ${P} ${H - P} Z`;
+  const total = vals.reduce((a, b) => a + b, 0);
+  const cur = hover == null ? null : series[hover];
+  const onMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.round(((e.clientX - r.left) / r.width) * (n - 1));
+    setHover(Math.max(0, Math.min(n - 1, i)));
+  };
+  return (
+    <div className="rounded-lg border border-[var(--line)] p-2.5 min-w-0">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] truncate">{label}</div>
+        <div className="text-[13px] font-semibold tabular-nums">{total}</div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-16 mt-1 cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label={`${label}: ${total}`}>
+        <path d={area} fill="var(--primary)" opacity="0.12" />
+        <path d={line} fill="none" stroke="var(--primary)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+        {hover != null && <line x1={x(hover)} x2={x(hover)} y1={P} y2={H - P} stroke="var(--line-strong)" strokeWidth="1" vectorEffect="non-scaling-stroke" />}
+        {hover != null && <circle cx={x(hover)} cy={y(vals[hover])} r="3.5" fill="var(--primary)" stroke="var(--bg-solid)" strokeWidth="2" vectorEffect="non-scaling-stroke" />}
+      </svg>
+      <div className="text-[11px] text-[var(--muted)] tabular-nums h-4 truncate">
+        {cur ? `${cur.day} · ${cur[field] || 0}` : `${series[0]?.day || ''} → ${series[n - 1]?.day || ''}`}
+      </div>
+    </div>
+  );
+}
+
+// ── Seasons ────────────────────────────────────────────────────────────────────────────
+// When the points reset, on a schedule the sweeper keeps — instead of a button somebody has
+// to remember. The manual "end the season now" stays, as the same reset run by hand.
+function EconomySeasonCard() {
+  const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
+  const { data, loading, reload } = useAsync(() => api.get('/admin/economy/season'), []);
+  const [form, setForm] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const cfg = form || data?.season || { every: 'never', days: 30, weekday: 1, dayOfMonth: 1, hour: 4, resetXp: false, announce: true };
+  const set = (k, v) => setForm({ ...cfg, [k]: v });
+  const save = async () => {
+    setBusy(true);
+    try { await api.put('/admin/economy/season', cfg); setForm(null); await reload(); toast.success(t('common.saved', 'Saved.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const endNow = async () => {
+    if (!await dialog.confirm({
+      title: t('db.eco.season.end.title', 'End the season now?'),
+      message: cfg.resetXp ? t('db.eco.reset.m.all', 'Sets every member’s points, XP and level back to zero. This cannot be undone.') : t('db.eco.reset.m.pts', 'Sets every member’s points back to zero (XP and levels are kept). This cannot be undone.'),
+      confirmLabel: t('db.eco.season.end.ok', 'End it'), danger: true,
+    })) return;
+    setBusy(true);
+    try { const r = await api.post('/admin/economy/season/end', { resetXp: cfg.resetXp }); await reload(); toast.success(t('db.eco.season.ended', 'Season {s} ended — {n} member(s), {p} point(s) retired.').replace('{s}', r.entry.seasonNo).replace('{n}', r.entry.affected).replace('{p}', r.entry.points)); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    finally { setBusy(false); }
+  };
+  const WD = [t('db.eco.season.wd0', 'Sunday'), t('db.eco.season.wd1', 'Monday'), t('db.eco.season.wd2', 'Tuesday'), t('db.eco.season.wd3', 'Wednesday'), t('db.eco.season.wd4', 'Thursday'), t('db.eco.season.wd5', 'Friday'), t('db.eco.season.wd6', 'Saturday')];
+  const when = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <RotateCcw size={16} className="text-[var(--primary-2)]" />
+        <div className="font-semibold">{t('db.eco.season.title', 'Seasons')}</div>
+        {data?.state && <span className="text-[11px] text-[var(--faint)]">{t('db.eco.season.no', 'Season {n}').replace('{n}', data.state.seasonNo)}</span>}
+        <div className="ms-auto text-[12px] text-[var(--muted)]">
+          {data?.next ? t('db.eco.season.next', 'Next reset: {d}').replace('{d}', when(data.next)) : t('db.eco.season.off', 'No automatic reset')}
+        </div>
+      </div>
+      <p className="text-[12.5px] text-[var(--muted)] mb-3">{t('db.eco.season.desc', 'On the schedule, every member’s points go back to zero and a “season” line is written in their history. Levels and XP are kept unless you say otherwise.')}</p>
+      {loading && !data ? <Loading /> : (
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+          <Field label={t('db.eco.season.every', 'Reset')}>
+            <Select value={cfg.every} onChange={(e) => set('every', e.target.value)}>
+              {[['never', t('db.eco.season.e.never', 'Never (manual only)')], ['daily', t('db.eco.season.e.daily', 'Every day')], ['weekly', t('db.eco.season.e.weekly', 'Every week')],
+                ['monthly', t('db.eco.season.e.monthly', 'Every month')], ['quarterly', t('db.eco.season.e.quarterly', 'Every quarter')], ['yearly', t('db.eco.season.e.yearly', 'Every year')],
+                ['custom', t('db.eco.season.e.custom', 'Every N days')]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+          </Field>
+          {cfg.every === 'custom' && <Field label={t('db.eco.season.days', 'Every N days')}><Input type="number" min={1} max={3650} value={cfg.days} onChange={(e) => set('days', Number(e.target.value) || 1)} /></Field>}
+          {cfg.every === 'weekly' && <Field label={t('db.eco.season.weekday', 'On')}><Select value={cfg.weekday} onChange={(e) => set('weekday', Number(e.target.value))}>{WD.map((l, i) => <option key={i} value={i}>{l}</option>)}</Select></Field>}
+          {['monthly', 'quarterly', 'yearly'].includes(cfg.every) && <Field label={t('db.eco.season.dom', 'Day of month (1–28)')}><Input type="number" min={1} max={28} value={cfg.dayOfMonth} onChange={(e) => set('dayOfMonth', Number(e.target.value) || 1)} /></Field>}
+          {cfg.every !== 'never' && <Field label={t('db.eco.season.hour', 'At (hour, UTC)')}><Input type="number" min={0} max={23} value={cfg.hour} onChange={(e) => set('hour', Number(e.target.value) || 0)} /></Field>}
+          <div className="flex flex-col gap-1.5 text-xs text-[var(--muted)]">
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!cfg.resetXp} onChange={(e) => set('resetXp', e.target.checked)} /> {t('db.eco.season.xp', 'Also wipe XP and levels')}</label>
+            <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={cfg.announce !== false} onChange={(e) => set('announce', e.target.checked)} /> {t('db.eco.season.announce', 'Let the bot announce it')}</label>
+          </div>
+          <div className="flex items-center gap-2 lg:col-span-4">
+            <Button size="sm" variant="primary" disabled={busy || !form} onClick={save}>{t('common.save', 'Save')}</Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={endNow} className="!text-error">{t('db.eco.season.endNow', 'End the season now')}</Button>
+            {data?.state?.lastResetAt && <span className="text-[11px] text-[var(--faint)] ms-auto">{t('db.eco.season.last', 'Last reset: {d}').replace('{d}', when(data.state.lastResetAt))}</span>}
+          </div>
+        </div>
+      )}
+      {data?.state?.history?.length > 0 && (
+        <details className="mt-3 text-[12px]">
+          <summary className="cursor-pointer text-[var(--muted)]">{t('db.eco.season.history', 'Past seasons')}</summary>
+          <ul className="mt-1.5 space-y-1 tabular-nums">
+            {data.state.history.map((h) => <li key={h.at} className="text-[var(--muted)]"><b className="text-[var(--text)]">#{h.seasonNo}</b> · {when(h.at)} · {h.affected} {t('db.eco.season.members', 'members')} · {h.points} pts{h.resetXp ? ' · XP' : ''} · {h.by === 'schedule' ? t('db.eco.season.bySchedule', 'schedule') : t('db.eco.season.byHand', 'by hand')}</li>)}
+          </ul>
+        </details>
+      )}
+    </Card>
   );
 }
 
