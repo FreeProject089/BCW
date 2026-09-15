@@ -293,7 +293,7 @@
   (390px) beside the light and dark variants, per-block **animations** (fade, rise, slide,
   zoom, pulse, float, custom keyframes; on show, on load, after a delay, on hover; looped or
   not), a **Layers** panel (name, lock, hide, reorder), rotation, shadow, hover effects, a
-  block-wide link, text alignment, a chosen grid step and presets to start from.
+  block-wide link, text alignment, a chosen grid step and presets to start from; **shapes** (twelve, as inline SVG with fill / gradient / stroke / label), **pasted SVG** through an allow-list sanitiser, twelve **tiling patterns**, a **page stylesheet** scoped to the page (external url(), @import and expression() refused and reported), per-block classes and inline style, the full **B.MD editor** for text blocks, copy / paste, zoom, and `.css` / `.svg` imports.
 - **Teams & contact** — a team (one contact address, roles, invitations by BC id / e-mail /
   name, a public page at `/t/<slug>`) manages the repos, catalogues and pools its owner
   attaches; a **Contact** button on every repo, catalogue, profile and team opens a

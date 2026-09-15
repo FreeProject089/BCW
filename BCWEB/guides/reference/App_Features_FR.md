@@ -323,7 +323,7 @@
   zoom, pulsation, flottement, keyframes libres ; à l’apparition, au chargement, après un
   délai, au survol ; en boucle ou non), un panneau **Calques** (nom, verrou, masquage,
   ordre), rotation, ombre, effets au survol, lien sur tout le bloc, alignement du texte, pas
-  de grille au choix et des presets pour démarrer.
+  de grille au choix et des presets pour démarrer ; des **formes** (douze, en SVG inline avec remplissage / dégradé / contour / libellé), du **SVG collé** passé par un assainisseur à liste blanche, douze **motifs** répétés, une **feuille de style de page** confinée à la page (url() externes, @import et expression() refusés et signalés), des classes et un style en ligne par bloc, l’**éditeur B.MD** complet pour les blocs texte, copier / coller, zoom, et l’import de fichiers `.css` / `.svg`.
 - **Équipes & contact** — une équipe (une adresse de contact, des rôles, des invitations par
   BC id / e-mail / pseudo, une page publique en `/t/<slug>`) gère les dépôts, catalogues et
   pools que son propriétaire y rattache ; un bouton **Contacter** sur chaque dépôt, catalogue,
