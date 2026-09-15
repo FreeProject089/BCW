@@ -118,7 +118,7 @@
   that other members join from the same message; with two or more seated the table settles
   **between the players** — the losers' stakes are the pot, split by stake × multiplier,
   edge on the share only — and the admin sets the **house edge per game** and a max bet where
-  **0 means no cap** (all-in is then really all of it). Every message is an embed. Per-server settings are edited under a
+  **0 means no cap** (all-in is then really all of it). The economy has **seasons** — points reset on a schedule (daily to yearly or every N days, UTC, XP kept or wiped, announced by the bot) or by hand — and a **statistics** card: generated / won / lost / given / spent for today vs yesterday, this week vs last, this month vs last, with a daily chart per flow. Every message is an embed. Per-server settings are edited under a
   server picker that shows which servers the bot is in, and the section navigation works on
   phones. An admin can **block a server** — the bot leaves and never rejoins, or stays but
   every command is inert there — and an `/appeal` command (which still answers in a blocked

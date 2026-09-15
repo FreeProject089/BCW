@@ -133,7 +133,7 @@
   plus, la table se règle **entre les joueurs** — les mises des perdants forment la cagnotte,
   répartie par mise × multiplicateur, avantage pris sur la part seulement — et l’admin fixe
   l’**avantage maison par jeu** et une mise max où **0 = pas de plafond** (le tapis est alors
-  vraiment tout). Chaque message est un embed. Les réglages par serveur s'éditent
+  vraiment tout). L’économie a des **saisons** — les points repartent à zéro selon un calendrier (du quotidien à l’annuel ou tous les N jours, en UTC, XP conservée ou effacée, annoncé par le bot) ou à la main — et une carte de **statistiques** : générés / gagnés / perdus / donnés / dépensés pour aujourd’hui vs hier, cette semaine vs la dernière, ce mois vs le dernier, avec un graphique quotidien par flux. Chaque message est un embed. Les réglages par serveur s'éditent
   sous un sélecteur qui montre dans quels serveurs le bot se trouve, et la navigation par
   sections marche sur téléphone. Un admin peut **bloquer un serveur** — le bot le quitte et
   n'y revient jamais, ou y reste mais toutes ses commandes sont inertes — et une commande

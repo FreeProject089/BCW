@@ -206,6 +206,9 @@ and sends are admin-triggered only (no auto-send on publish).
 | POST | `/me/economy/purchases/:id/gift` | user | Hand a giftable purchase `{ to }` (id, BC id, e-mail or display name) to another member. |
 | POST | `/me/economy/gift` | user | Send points `{ to, points, note? }` — min / daily cap from `economy.gifts`. Both sides get a ledger row; the recipient is notified. |
 | GET | `/me/economy/history?kind=` | user | The member's ledger (levelup · grant · purchase · casino · gift_out · gift_in · gift_item_out · gift_item_in). |
+| GET | `/admin/economy/stats?days=` | `manage_economy` | Where the points go: totals (members, active 7 d, XP, points, levels) plus generated / won / lost / given / spent for today, yesterday, this week, last week, this month, last month, and a daily series (7–90 days). One GROUP BY per day and kind (`lib/economy-season.mjs`). |
+| GET / PUT | `/admin/economy/season` | `manage_economy` | The season schedule (`every`: never / daily / weekly / monthly / quarterly / yearly / custom N days; `weekday`, `dayOfMonth` 1–28, `hour` UTC, `resetXp`, `announce`), the state row (season number, last reset, history) and the next reset. Turning a schedule on starts the clock now. |
+| POST | `/admin/economy/season/end` | `manage_economy` | End the season now: every member's points to zero (XP too when `resetXp`), one `season` ledger line per holder. The sweeper runs the same reset when the schedule says so. |
 | GET | `/admin/economy/history?q=&kind=` | admin | The whole ledger, by member. Retention: `economy.historyDays` (sweeper). |
 | POST | `/bot/economy/reveal` · `/bot/economy/gift` · GET `/bot/economy/history/:discordId` | bot | The same three, for /inventory Reveal / Gift, /gift and /history. |
 | GET | `/bot/economy/leaderboard?guildId=&discordId=` | bot | Top 10 — global, or a server's linked members with `guildId`; `me` = the caller's rank. `GET /og/leaderboard.png?guildId=&me=` draws it. |
