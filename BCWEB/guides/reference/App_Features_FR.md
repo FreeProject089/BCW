@@ -127,8 +127,8 @@
   date/heure future (paresseux, sans cron), annulable.
 - **Bot Discord** — accès multi-rôles avec exigences par rôle + `/refreshroles`,
   annonces de tips Ko-fi, alertes server-perf, modération, bienvenue, join-to-create
-  vocal, annonces de blog. Le `/casino` a des **tables en direct** (crash avec montée animée,
-  une course à six voitures, une cagnotte pondérée par la mise, et un tirage partagé de
+  vocal, annonces de blog. Le `/casino` a des **tables en direct** (une course à six voitures
+  avec la voiture choisie dans un menu, une cagnotte pondérée par la mise, et un tirage partagé de
   n’importe quel jeu solo) que d’autres membres rejoignent depuis le même message ; à deux ou
   plus, la table se règle **entre les joueurs** — les mises des perdants forment la cagnotte,
   répartie par mise × multiplicateur, avantage pris sur la part seulement — et l’admin fixe

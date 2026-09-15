@@ -14,7 +14,7 @@ export async function config(force = false) {
 
 // Features that can be configured PER SERVER. Everything else (master enable,
 // blog routes, alerts, kofi, limits) stays global/cross-server.
-const PER_GUILD_FEATURES = ['moderation', 'welcome', 'joinToCreate', 'gating'];
+const PER_GUILD_FEATURES = ['moderation', 'welcome', 'joinToCreate', 'gating', 'logs'];
 
 // Resolve the effective config for one guild: a per-guild override in
 // cfg.guilds[guildId] REPLACES the top-level feature (which acts as the default

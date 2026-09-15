@@ -11,6 +11,13 @@ import { commandData, handleInteraction } from './commands.mjs';
 import { onVoiceStateUpdate, sweepTempRooms } from './features/joinToCreate.mjs';
 import { onMemberAdd, onMemberRemove } from './features/welcome.mjs';
 import { onMessage } from './features/moderation.mjs';
+import { onAutomodJoin, setAutomodLogger } from './features/automod.mjs';
+import { initLogs, logEvent } from './features/logs.mjs';
+import {
+  onMessageDelete, onMessageUpdate, onMessageBulkDelete, onMemberJoinLog, onMemberLeaveLog, onMemberUpdateLog, onBanAdd, onBanRemove,
+  onVoiceLog, onChannelCreate, onChannelDelete, onChannelUpdate, onRoleCreate, onRoleDelete, onRoleUpdate, onEmojiCreate, onEmojiDelete, onEmojiUpdate,
+  onStickerCreate, onStickerDelete, onWebhooksUpdate, onHandlerErrorLog,
+} from './features/logevents.mjs';
 import { checkGating, syncAllGating } from './features/gating.mjs';
 import { scanAllMembers } from './features/scanMembers.mjs';
 import { sendOnboarding } from './features/onboarding.mjs';
@@ -26,6 +33,7 @@ import { pollDMs, pollDMBroadcast } from './features/dm.mjs';
 import { pollGiveaways } from './features/giveaways.mjs';
 import { pollRolePanels } from './features/rolepanel.mjs';
 import { pollLinks } from './features/links.mjs';
+import { pollSeason } from './features/season.mjs';
 import { temp, modStats } from './store.mjs';
 
 let client = null;
@@ -42,10 +50,18 @@ function buildClient() {
       GatewayIntentBits.MessageContent,
       // B-econ: reactions earn XP. Not a privileged intent.
       GatewayIntentBits.GuildMessageReactions,
+      // Logging: bans/unbans, emoji + sticker changes, webhook changes. None privileged.
+      GatewayIntentBits.GuildModeration,
+      GatewayIntentBits.GuildExpressions,
+      GatewayIntentBits.GuildWebhooks,
     ],
     // Reaction partials so a reaction on an uncached (older) message still fires the event.
-    partials: [Partials.Channel, Partials.Message, Partials.Reaction],
+    // GuildMember so a leave of an uncached member still reaches the log.
+    partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.GuildMember],
   });
+  // The log queue and the automod's log sink are bound to THIS client; a reconnect rebinds.
+  initLogs(c);
+  setAutomodLogger(logEvent);
   // Every handler is wrapped: an error is logged (the heartbeat ships the tail to the
   // dashboard's live logs) AND reported as an ErrorEvent, with what it was handling — the
   // command or button, the server, the member — because "Invalid Form Body" without the
@@ -58,9 +74,12 @@ function buildClient() {
       guildId: i.guildId || i.guild?.id || null, userId: i.user?.id || i.author?.id || i.member?.id || null,
     };
   };
-  const guard = (fn) => (...a) => fn(...a).catch((e) => {
+  const guard = (fn) => (...a) => Promise.resolve(fn(...a)).catch((e) => {
     console.error('[bot] handler error:', e?.message || e);
-    api.reportHandlerError(String(e?.message || e).slice(0, 400), String(e?.stack || '').slice(0, 6000), ctxOf(a[0]));
+    const ctx = ctxOf(a[0]);
+    api.reportHandlerError(String(e?.message || e).slice(0, 400), String(e?.stack || '').slice(0, 6000), ctx);
+    // …and into the guild's own bot.errors log, when it happened in one.
+    onHandlerErrorLog(ctx.guildId, String(e?.message || e).slice(0, 400), ctx).catch(() => {});
   });
   c.once(Events.ClientReady, async (ready) => {
     console.log(`[bot] logged in as ${ready.user.tag}`);
@@ -173,12 +192,38 @@ function buildClient() {
     // Link buffer: refresh roles for accounts freshly linked via website Discord sign-in (30s).
     pollLinks(c).catch(() => {});
     timers.push(setInterval(() => pollLinks(c).catch(() => {}), 30_000));
+    // Economy seasons: the first poll seeds the season number, later ones announce a new one (10 min).
+    pollSeason(c).catch(() => {});
+    timers.push(setInterval(() => pollSeason(c).catch(() => {}), 10 * 60_000));
   });
   c.on(Events.InteractionCreate, guard(handleInteraction));
   c.on(Events.VoiceStateUpdate, guard((o, n) => onVoiceStateUpdate(c, o, n)));
-  c.on(Events.GuildMemberAdd, guard(async (m) => { await onMemberAdd(m); await checkGating(m); }));
-  c.on(Events.GuildMemberRemove, guard(onMemberRemove));
+  c.on(Events.VoiceStateUpdate, guard(onVoiceLog));
+  // Automod's join gate (account age, raid lockdown) runs FIRST: a member it kicks gets no
+  // welcome banner and no gated role.
+  c.on(Events.GuildMemberAdd, guard(async (m) => { await onAutomodJoin(m); await onMemberJoinLog(m); await onMemberAdd(m); await checkGating(m); }));
+  c.on(Events.GuildMemberRemove, guard(async (m) => { await onMemberLeaveLog(m); await onMemberRemove(m); }));
+  c.on(Events.GuildMemberUpdate, guard(onMemberUpdateLog));
+  c.on(Events.GuildBanAdd, guard(onBanAdd));
+  c.on(Events.GuildBanRemove, guard(onBanRemove));
   c.on(Events.MessageCreate, guard(onMessage));
+  // Logging: messages, server changes. Every handler decides itself whether its guild routes
+  // the category anywhere; an unrouted category costs one config read and nothing else.
+  c.on(Events.MessageDelete, guard(onMessageDelete));
+  c.on(Events.MessageUpdate, guard(onMessageUpdate));
+  c.on(Events.MessageBulkDelete, guard(onMessageBulkDelete));
+  c.on(Events.ChannelCreate, guard(onChannelCreate));
+  c.on(Events.ChannelDelete, guard(onChannelDelete));
+  c.on(Events.ChannelUpdate, guard(onChannelUpdate));
+  c.on(Events.GuildRoleCreate, guard(onRoleCreate));
+  c.on(Events.GuildRoleDelete, guard(onRoleDelete));
+  c.on(Events.GuildRoleUpdate, guard(onRoleUpdate));
+  c.on(Events.GuildEmojiCreate, guard(onEmojiCreate));
+  c.on(Events.GuildEmojiDelete, guard(onEmojiDelete));
+  c.on(Events.GuildEmojiUpdate, guard(onEmojiUpdate));
+  c.on(Events.GuildStickerCreate, guard(onStickerCreate));
+  c.on(Events.GuildStickerDelete, guard(onStickerDelete));
+  c.on(Events.WebhooksUpdate, guard(onWebhooksUpdate));
   // Invited to a server that is banned from the bot? Leave at once (unless the ban is the
   // softer 'disable' mode, which keeps the bot present but inert). The 20s sweep in tick()
   // is the backstop; this is the immediate response.

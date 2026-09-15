@@ -219,6 +219,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | POST | `/bot/economy/reveal` · `/bot/economy/gift` · GET `/bot/economy/history/:discordId` | bot | Les trois mêmes, pour Révéler / Offrir dans /inventory, /gift et /history. |
 | GET | `/bot/economy/leaderboard?guildId=&discordId=` | bot | Top 10 — global, ou les membres liés d'un serveur avec `guildId` ; `me` = le rang de l'appelant. `GET /og/leaderboard.png?guildId=&me=` le dessine. |
 | GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | Les icônes des boutons du bot : la liste des clés, un PNG, tout le pack à téléverser sur la page Emojis de l'app. Associées dans `economy.icons`. |
+| GET | `/bot/emoji/keys` · `/bot/emoji/:key.png` | bot | Le même jeu d’icônes pour le bot lui-même : au démarrage il téléverse chaque clé comme **emoji d’application** (`bc_<clé>_<version>`), remplace celles dont le dessin a changé, et ne dessine jamais d’emoji unicode. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Aussi `role_add` / `role_remove` avec `roleId` (+ `guildId` pour la route admin). Un propriétaire ne peut nommer qu'un rôle listé par le heartbeat pour ce serveur. |
 | GET | `/bot/economy/purchases/:discordId` | bot | Les achats du membre — la commande `/inventory`. |
 | GET | `/bot/economy/season` | bot | Le calendrier de saison, l’état (numéro, dernière remise à zéro, historique) et la prochaine — pour l’annonce du bot et sa ligne « saison N ». |

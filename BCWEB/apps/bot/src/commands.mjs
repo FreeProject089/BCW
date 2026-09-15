@@ -1,5 +1,5 @@
 // Slash commands + interaction routing. Every response is a Components V2 card (see ui.mjs).
-import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } from 'discord.js';
+import { SlashCommandBuilder, PermissionFlagsBits, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ChannelType } from 'discord.js';
 import { api, SITE_URL } from './api.mjs';
 import { clearMessages } from './features/moderation.mjs';
 import { sendPanel, handlePanelInteraction } from './features/panel.mjs';
@@ -11,6 +11,9 @@ import * as ui from './ui.mjs';
 import { tr } from './i18n.mjs';
 import { cmdSetup, onboardingSelect } from './features/onboarding.mjs';
 import { cmdConfig, configComponent } from './features/configure.mjs';
+import { cmdLogs, cmdLockdown, logsAutocomplete } from './features/logcmd.mjs';
+import { logEvent } from './features/logs.mjs';
+import { ensureAppIcons } from './features/icons.mjs';
 import { openLive, liveComponent, liveModal, joinByCode, listLobbies, LIVE_GAMES, MULTI_GAMES, VISIBILITIES } from './features/casino-live.mjs';
 
 export const BRAND = ui.BRAND;
@@ -73,7 +76,6 @@ export const commandData = [
       { name: 'Roulette — colour, green or a number', value: 'roulette' },
       { name: 'Wheel — pick a multiplier, thinner slice the bigger it is', value: 'wheel' },
       { name: 'Plinko — a ball drops into a multiplier bucket', value: 'plinko' },
-      { name: 'Crash — cash out before the multiplier breaks (live table)', value: 'crash' },
       { name: 'Race — six cars, pick yours, 6× (live table)', value: 'race' },
       { name: 'Pot — everyone stakes, one takes it all, odds ∝ stake (live, 2+ players)', value: 'pot' },
     ))
@@ -92,12 +94,33 @@ export const commandData = [
     .addBooleanOption((o) => o.setName('lobbies').setDescription('List the open live tables you can join')),
   // The welcome card again — link, language for this server, dashboard. Posted on join too.
   new SlashCommandBuilder().setName('config').setDescription('Configure this server’s bot — moderation and its log channel (server managers)'),
+  // Logging: a forum with one tagged post per category (or per day), or a text channel, per
+  // category. `route` takes a category OR a group ('members' covers every members.* category).
+  new SlashCommandBuilder().setName('logs').setDescription('Where the bot logs each kind of event (server managers)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand((s) => s.setName('setup').setDescription('Create the log forum (with its tags) — or the admin-alerts forum')
+      .addChannelOption((o) => o.setName('category').setDescription('Put the forum under this category').addChannelTypes(ChannelType.GuildCategory))
+      .addStringOption((o) => o.setName('kind').setDescription('What to create (default: the log forum)').addChoices({ name: 'Log forum — one post per category', value: 'logs' }, { name: 'Admin-alerts forum — one post per alert kind', value: 'alerts' })))
+    .addSubcommand((s) => s.setName('route').setDescription('Send one category (or a whole group) to a channel, a forum, or nowhere')
+      .addStringOption((o) => o.setName('category').setDescription('Category or group, e.g. messages.delete or members').setRequired(true).setAutocomplete(true))
+      .addChannelOption((o) => o.setName('destination').setDescription('A text channel or a forum (leave empty = back to the default)').addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum, ChannelType.GuildMedia))
+      .addBooleanOption((o) => o.setName('off').setDescription('Turn this category off')))
+    .addSubcommand((s) => s.setName('test').setDescription('Post a sample entry for a category, where it is routed')
+      .addStringOption((o) => o.setName('category').setDescription('Category, e.g. automod').setRequired(true).setAutocomplete(true)))
+    .addSubcommand((s) => s.setName('status').setDescription('Every category and where it goes')),
+  new SlashCommandBuilder().setName('lockdown').setDescription('Raid lockdown by hand: raise verification, time out new joiners')
+    .addStringOption((o) => o.setName('state').setDescription('On or off').setRequired(true).addChoices({ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }))
+    .addIntegerOption((o) => o.setName('minutes').setDescription('How long (default 15)').setMinValue(1).setMaxValue(1440))
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('setup').setDescription('The bot’s welcome card: link your account, pick its language here, open the dashboard')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
-  // The admin's custom button emoji ride with the (cached) config.
+  if (i.isAutocomplete()) { if (i.commandName === 'logs') return logsAutocomplete(i); return i.respond([]).catch(() => {}); }
+  // The icon set: the site's icons as application emojis (uploaded once, in the background —
+  // never awaited, so a slow site cannot cost an interaction), then the admin's own mapping.
+  void ensureAppIcons(i.client);
   try { ui.setIcons((await config()).economy?.icons); } catch { /* defaults */ }
   if (i.isChatInputCommand()) {
     // A banned server: /appeal still answers (that is its whole point), everything else is
@@ -113,8 +136,11 @@ export async function handleInteraction(i) {
     if (i.commandName === 'clear') {
       const n = i.options.getInteger('count') || 100;
       const del = await clearMessages(i.channel, n);
-      return eReply(i, `Deleted **${del}** message(s).`, { title: '🧹 Clear' });
+      if (i.guildId) await logEvent(i.guildId, 'modcmd', { actor: actorOf(i), command: 'clear', channelId: i.channelId, detail: `${del} message(s) deleted (asked ${n})` });
+      return eReply(i, `Deleted **${del}** message(s).`, { title: `${ui.icx('clear')}Clear` });
     }
+    if (i.commandName === 'logs') return cmdLogs(i);
+    if (i.commandName === 'lockdown') return cmdLockdown(i);
     if (i.commandName === 'warn') return cmdWarn(i);
     if (i.commandName === 'warnings') return cmdWarnings(i);
     if (i.commandName === 'giveaway') return cmdGiveaway(i);
@@ -226,10 +252,10 @@ async function cmdLevel(i) {
     title: t('level.title', { n: e.level }),
     thumb: av.thumb || i.user.displayAvatarURL?.({ size: 128 }) || null, files: av.files,
     body: [
-      `**${e.displayName}**${e.badges?.length ? ` · ${ui.ic('medal')} ${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
+      `**${e.displayName}**${e.badges?.length ? ` · ${ui.icx('medal')}${e.badges.map((b) => b.name).join(' · ')}` : ''}`,
       `${ui.bar(e.xpThisLevel, e.xpForNext)}  ${t('level.xp', { a: n(e.xpThisLevel), b: n(e.xpForNext) })}`,
       `-# ${t('level.next', { n: n(next), l: e.level + 1 })}`,
-      `${ui.ic('coin')} **${n(e.points)}** ${cur}`,
+      `${ui.icx('coin')}**${n(e.points)}** ${cur}`,
     ],
     sections: statsOf(e.stats),
     footer: rateLine,
@@ -253,8 +279,8 @@ async function cmdProfile(i) {
     thumb: av.thumb || target.displayAvatarURL?.({ size: 128 }) || null,
     body: [
       `**Level ${e.level}** · **${n(e.points)}** ${cur}`,
-      e.badges?.length ? `${ui.ic('medal')} ${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
-      `${ui.ic('messages')} ${n(e.stats?.messages)} messages · ${ui.ic('reactions')} ${n(e.stats?.reactions)} reactions · ${ui.ic('voice')} ${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
+      e.badges?.length ? `${ui.icx('medal')}${e.badges.map((b) => `**${b.name}**`).join(' · ')}` : '-# No badges yet',
+      `${ui.icx('messages')}${n(e.stats?.messages)} messages · ${ui.icx('reactions')}${n(e.stats?.reactions)} reactions · ${ui.icx('voice')}${Math.floor((e.stats?.voiceSeconds || 0) / 3600)}h in voice`,
     ],
     image: png ? 'attachment://profile.png' : null, files,
     buttons: [ui.btn(url, 'View full profile', ButtonStyle.Secondary, { emoji: 'site' }), ...(target.id === i.user.id ? ecoButtons('') : [])],
@@ -278,19 +304,19 @@ const PAGE = 8;
 async function cmdShop(i, page = 0, isUpdate = false) {
   const [{ t }, eco, me] = await Promise.all([tr(i), api.economyConfig(), api.economyUser(i.user.id)]);
   const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts));
-  if (!eco.enabled) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.off') });
+  if (!eco.enabled) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.off') });
   const now = Date.now();
   // `onBot !== false`: an admin can hide an item from the Discord shop while keeping it on the
   // site (and vice-versa). Undefined = shown, so existing items are unaffected.
   const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && x.onBot !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
-  if (!items.length) return respond({ title: `${ui.ic('shop')} ${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
+  if (!items.length) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
   const pages = Math.ceil(items.length / PAGE);
   page = Math.max(0, Math.min(pages - 1, page));
   const slice = items.slice(page * PAGE, page * PAGE + PAGE);
   const balance = me.linked ? Number(me.points || 0) : null;
   return respond({
-    title: `${ui.ic('shop')} ${t('shop.title')}`,
+    title: `${ui.icx('shop')}${t('shop.title')}`,
     body: balance != null ? t('shop.balance', { n: n(balance), cur }) : t('shop.link'),
     sections: slice.map((x) => {
       const cost = Number(x.cost) || 0;
@@ -319,11 +345,11 @@ async function handleShopBuy(i) {
   if (r.ok) {
     const d = r.delivery || {};
     const lines = [`You bought **${r.item?.name || 'item'}**. Balance: **${n(r.points)}**.`];
-    if (d.kind === 'badge') lines.push(`${ui.ic('medal')} The **${d.badge}** badge is now on your BCWEB profile.`);
-    else if (d.revealed === false) lines.push(`${ui.ic('reveal')} Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
-    else if (r.item?.kind === 'role') lines.push('🎭 An admin will assign your role shortly — it shows as *pending* in your inventory until then.');
-    else lines.push(`${ui.ic('gift')} An admin has been notified to deliver it — *pending* in your inventory until then.`);
-    return ui.reply(i, { title: `${ui.ic('done')} Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+    if (d.kind === 'badge') lines.push(`${ui.icx('medal')}The **${d.badge}** badge is now on your BCWEB profile.`);
+    else if (d.revealed === false) lines.push(`${ui.icx('reveal')}Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
+    else if (r.item?.kind === 'role') lines.push(`${ui.icx('role')}An admin will assign your role shortly — it shows as *pending* in your inventory until then.`);
+    else lines.push(`${ui.icx('gift')}An admin has been notified to deliver it — *pending* in your inventory until then.`);
+    return ui.reply(i, { title: `${ui.icx('done')}Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
   }
   if (r.error === 'not_linked') return notLinked(i);
   const why = r.error === 'insufficient' ? `You need **${n(r.cost)}** points — you have ${n(r.points)}.`
@@ -333,7 +359,7 @@ async function handleShopBuy(i) {
     : r.error === 'no_such_item' ? 'That item is gone from the shop.'
     : r.error === 'economy_off' ? 'The economy is currently off.'
     : 'That purchase could not be completed.';
-  return ui.reply(i, { title: `${ui.ic('shop')} Shop`, color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+  return ui.reply(i, { title: `${ui.icx('shop')}Shop`, color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
 }
 
 // Everything bought with points, newest first: sealed codes to reveal, giftable items to gift.
@@ -342,21 +368,21 @@ async function cmdInventory(i) {
   if (!e.linked) return notLinked(i);
   const r = await api.economyPurchases(i.user.id);
   const rows = Array.isArray(r.purchases) ? r.purchases : [];
-  if (!rows.length) return ui.reply(i, { title: `${ui.ic('inventory')} ${t('inv.title')}`, body: t('inv.empty'), buttons: ecoButtons('inventory', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.icx('inventory')}${t('inv.title')}`, body: t('inv.empty'), buttons: ecoButtons('inventory', t) });
   const pending = rows.filter((x) => x.status === 'pending').length;
   const sections = rows.slice(0, 10).map((x) => {
     const when = `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d>`;
     const d = x.delivery || {};
-    const state = x.status === 'pending' ? '⏳ waiting for an admin'
+    const state = x.status === 'pending' ? `${ui.icx('timed')}waiting for an admin`
       : d.revealed && d.code ? `code \`${d.code}\`${x.expiresAt ? ` · until <t:${Math.floor(new Date(x.expiresAt).getTime() / 1000)}:d>` : ''}${x.expired ? ' · expired' : ''}`
       : d.badge ? `badge **${d.badge}**`
-      : x.canReveal ? `${ui.ic('reveal')} sealed — reveal when you want the code` : `${ui.ic('done')} delivered`;
+      : x.canReveal ? `${ui.icx('reveal')}sealed — reveal when you want the code` : `${ui.icx('done')}delivered`;
     const button = x.canReveal ? ui.btn(`inv:reveal:${x.id}`, t('btn.reveal'), ButtonStyle.Primary, { emoji: 'reveal' })
       : x.canGift ? ui.btn(`inv:gift:${x.id}`, t('btn.gift'), ButtonStyle.Secondary, { emoji: 'gift' }) : null;
-    return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ` · ${ui.ic('gift')} a gift` : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
+    return { text: `**${x.name}** — ${n(x.cost)} pts · ${when}${x.giftedFromId ? ` · ${ui.icx('gift')}a gift` : ''}\n-# ${state}${x.canReveal && x.canGift ? ' · giftable unopened' : ''}`, button };
   });
   return ui.reply(i, {
-    title: `${ui.ic('inventory')} ${t('inv.title')}`,
+    title: `${ui.icx('inventory')}${t('inv.title')}`,
     body: pending ? t('inv.pending', { n: pending }) : t('inv.count', { n: rows.length }),
     sections,
     footer: rows.length > 10 ? t('inv.more', { n: rows.length - 10 }) : t('inv.footer'),
@@ -370,7 +396,7 @@ async function invReveal(i) {
   if (!r.ok) return ui.line(i, r.error === 'not_found' ? 'That item is not in your inventory (was it gifted?).' : r.error === 'nothing_to_reveal' ? 'There is no code behind this one.' : 'Could not reveal that right now.', { color: ui.BAD });
   const d = r.delivery || {};
   return ui.reply(i, {
-    title: `${ui.ic('reveal')} Your code`, color: ui.GOOD,
+    title: `${ui.icx('reveal')}Your code`, color: ui.GOOD,
     body: [`# ${d.code}`, `Redeem it on the site${d.target ? ` (${d.target})` : ''}.`, r.expiresAt ? `-# Valid until <t:${Math.floor(new Date(r.expiresAt).getTime() / 1000)}:f>` : '-# No expiry.', '-# It is kept in your inventory — only you can see this message.'],
     buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, 'Open on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })],
   });
@@ -389,7 +415,7 @@ async function invGiftSubmit(i) {
   if (/^\d{15,22}$/.test(to)) body.toDiscordId = to; else body.to = to;
   const r = await api.economyGift(body);
   if (!r.ok) return ui.line(i, giftError(r), { color: ui.BAD });
-  return ui.reply(i, { title: `${ui.ic('gift')} Gifted`, color: ui.GOOD, body: `Handed to **${r.to?.displayName || to}** — it is in their inventory now, unopened.`, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })] });
+  return ui.reply(i, { title: `${ui.icx('gift')}Gifted`, color: ui.GOOD, body: `Handed to **${r.to?.displayName || to}** — it is in their inventory now, unopened.`, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Secondary, { emoji: 'inventory' })] });
 }
 const giftError = (r) => r.error === 'not_linked' ? 'Link your account first — **/link**.'
   : r.error === 'recipient_not_linked' ? 'They have not linked a BetterCommunity account yet.'
@@ -411,7 +437,7 @@ async function cmdGift(i) {
   const r = await api.economyGift({ discordId: i.user.id, toDiscordId: member.id, points, note });
   if (!r.ok) return r.error === 'not_linked' ? notLinked(i) : ui.line(i, giftError(r), { color: ui.BAD });
   return ui.reply(i, {
-    title: `${ui.ic('gift')} Gift sent`, color: ui.GOOD,
+    title: `${ui.icx('gift')}Gift sent`, color: ui.GOOD,
     body: [`**${n(points)}** points to **${member.username}**${note ? ` — “${note}”` : ''}.`, `Your balance: **${n(r.points)}**.`],
     buttons: [ui.btn('eco:history', 'History', ButtonStyle.Secondary, { emoji: 'history' }), ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })],
   }, { ephemeral: false });
@@ -425,14 +451,14 @@ async function cmdHistory(i, kind = '') {
   const [{ t }, r] = await Promise.all([tr(i), api.economyHistory(i.user.id, kind)]);
   if (r.linked === false) return notLinked(i);
   const rows = Array.isArray(r.history) ? r.history : [];
-  if (!rows.length) return ui.reply(i, { title: `${ui.ic('history')} ${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: ecoButtons('', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: ecoButtons('', t) });
   const lines = rows.slice(0, 20).map((x) => {
     const m = x.meta || {};
     const who = x.kind === 'gift_out' ? ` → ${m.toName || '?'}` : x.kind === 'gift_in' ? ` ← ${m.fromName || '?'}` : x.kind === 'purchase' ? ` · ${m.name || ''}` : x.kind === 'casino' ? ` · ${m.game || ''} ×${m.multiplier ?? '?'}` : x.kind === 'levelup' ? ` · Lv ${m.level}` : '';
     const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
     return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${kindLabel(x.kind) || x.kind}${who} — ${d} → ${n(x.balance)}`;
   });
-  return ui.reply(i, { title: `${ui.ic('history')} ${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
+  return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
 }
 
 async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
@@ -449,7 +475,7 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
   const body = rows.length ? rows.map((m, k) => `${medal(k)} **${m.displayName}** — Lv **${m.level}** · ${n(m.points)} pts`) : [t('lb.empty')];
   const you = r.me ? `\n${t('lb.you', { r: r.me.rank, l: r.me.level, p: n(r.me.points) })}` : '';
   return respond({
-    title: `${ui.ic('leaderboard')} ${t('lb.title', { scope: guildId ? (i.guild?.name || t('lb.thisServer')) : t('lb.global') })}`,
+    title: `${ui.icx('leaderboard')}${t('lb.title', { scope: guildId ? (i.guild?.name || t('lb.thisServer')) : t('lb.global') })}`,
     body: png ? [you || null] : [...body, you],
     image: png ? 'attachment://leaderboard.png' : null, files: png ? [ui.attach(png, 'leaderboard.png')] : [],
     footer: r.total ? t('lb.footer', { n: n(r.total) }) : null,
@@ -476,46 +502,45 @@ function rollGame({ game, betOn, num, target, risk }) {
     const pocket = Math.floor(Math.random() * 37);
     const reds = new Set([1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36]);
     const colour = pocket === 0 ? 'green' : reds.has(pocket) ? 'red' : 'black';
-    if (betOn === 'number') { mult = pocket === num ? 35 : 0; detail = `${ui.ic('roulette')} You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`; }
-    else if (betOn === 'green') { mult = pocket === 0 ? 14 : 0; detail = `${ui.ic('roulette')} You bet on **green** — the ball landed on **${pocket} ${colour}**.`; }
-    else { mult = colour === betOn ? 2 : 0; detail = `${ui.ic('roulette')} You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`; }
+    if (betOn === 'number') { mult = pocket === num ? 35 : 0; detail = `${ui.icx('roulette')}You bet on **${num}** — the ball landed on **${pocket} ${colour}**.`; }
+    else if (betOn === 'green') { mult = pocket === 0 ? 14 : 0; detail = `${ui.icx('roulette')}You bet on **green** — the ball landed on **${pocket} ${colour}**.`; }
+    else { mult = colour === betOn ? 2 : 0; detail = `${ui.icx('roulette')}You bet on **${betOn}** — the ball landed on **${pocket} ${colour}**.`; }
     card = String(pocket);
   } else if (game === 'wheel') {
     const SLICES = [[2, 45], [3, 24], [5, 16], [10, 9], [20, 4], [50, 2]];
     let roll = Math.random() * 100, landed = 2;
     for (const [m, w] of SLICES) { if (roll < w) { landed = m; break; } roll -= w; }
     mult = landed === target ? target : 0;
-    detail = `${ui.ic('wheel')} You went for **${target}×** — the wheel stopped on **${landed}×**.`;
+    detail = `${ui.icx('wheel')}You went for **${target}×** — the wheel stopped on **${landed}×**.`;
     card = `${landed}|${target}`;
   } else if (game === 'plinko') {
     const TABLES = { low: [5, 3, 1.5, 1.2, 1, 0.5, 1, 1.2, 1.5, 3, 5], medium: [13, 4, 2, 1.2, 0.6, 0.3, 0.6, 1.2, 2, 4, 13], high: [50, 10, 3, 1, 0.3, 0.2, 0.3, 1, 3, 10, 50] };
     let path = '', rights = 0;
     for (let k = 0; k < 10; k++) { const rgt = Math.random() < 0.5; path += rgt ? 'R' : 'L'; if (rgt) rights++; }
     mult = TABLES[risk][rights];
-    detail = `${ui.ic('plinko')} Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
+    detail = `${ui.icx('plinko')}Risk **${risk}** — the ball landed in the **${mult}×** bucket.`;
     card = `${risk}|${path}|${rights}`;
   } else if (game === 'dice') {
     const roll = 1 + Math.floor(Math.random() * 6);
     mult = roll >= 4 ? 2 : 0;
-    detail = `${ui.ic('dice')} You rolled a **${roll}** (win on 4-6).`; card = String(roll);
+    detail = `${ui.icx('dice')}You rolled a **${roll}** (win on 4-6).`; card = String(roll);
   } else if (game === 'slots') {
     const S = ['cherry', 'lemon', 'bell', 'star', 'diamond'];
-    const E = { cherry: '🍒', lemon: '🍋', bell: '🔔', star: '⭐', diamond: '💎' };
     const reels = [0, 1, 2].map(() => S[Math.floor(Math.random() * S.length)]);
     mult = reels[0] === reels[1] && reels[1] === reels[2] ? 8
       : reels[0] === reels[1] || reels[1] === reels[2] || reels[0] === reels[2] ? 1.5
       : 0;
-    detail = reels.map((r) => E[r]).join(' ');
+    detail = reels.map((r) => ui.ic(r) || `\`${r}\``).join(' ');
     card = reels.join(' ');
   } else {
     const heads = Math.random() < 0.5;
     mult = heads ? 2 : 0;
-    detail = heads ? '🪙 Heads!' : '🪙 Tails.'; card = heads ? '🪙' : '🌑';
+    detail = heads ? `${ui.icx('heads')}Heads!` : `${ui.icx('tails')}Tails.`; card = heads ? 'H' : 'T';
   }
   return { mult, detail, card };
 }
 
-const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko', crash: 'Crash', race: 'Race', pot: 'Pot' };
+const GAME_NAME = { coinflip: 'Coin flip', dice: 'Dice', slots: 'Slots', roulette: 'Roulette', wheel: 'Wheel', plinko: 'Plinko', race: 'Race', pot: 'Pot' };
 
 // The "Play again" button re-runs the same bet with the same options. Its custom id carries
 // them plus the player's id, so nobody spends someone else's points from their button.
@@ -547,7 +572,7 @@ async function playCasino(i, opts) {
       : r.error === 'insufficient' ? "You don't have enough points for that bet."
       : r.error === 'bad_bet' ? t('cas.betRange', { a: n(r.min), b: r.max == null ? t('live.noCap') : n(r.max) })
       : 'Could not place that bet.';
-    return ui.reply(i, { title: `${ui.ic('casino')} Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
+    return ui.reply(i, { title: `${ui.icx('casino')}Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
   }
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
@@ -594,9 +619,9 @@ async function cmdCasino(i) {
   const num = i.options.getInteger('number');
   const target = i.options.getInteger('target') || 2;
   const risk = ['low', 'medium', 'high'].includes(i.options.getString('risk')) ? i.options.getString('risk') : 'medium';
-  // Crash, race and the pot are tables in the channel, not private pages: a bet given up
-  // front seats the host, the rest join from the card.
-  if (LIVE_GAMES.includes(game)) return openLive(i, game, { bet: bet || 0, target: game === 'crash' && target > 1 ? target : null, visibility });
+  // The race and the pot are tables in the channel, not private pages: a bet given up front
+  // seats the host, the rest join from the card.
+  if (LIVE_GAMES.includes(game)) return openLive(i, game, { bet: bet || 0, visibility });
   const st = { view: i.options.getString('game') ? 'game' : 'list', game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
   // No bet: the table opens — on the list of games, or straight on the named game's page with
   // everything given so far already selected. A number bet without its number does the same.
@@ -605,26 +630,26 @@ async function cmdCasino(i) {
 }
 
 // ── Casino table (interactive) ───────────────────────────────────────────────
-// `/casino` alone opens a paged table: the LIST of games first (one big entry per game with
-// an Open button), then one page per game — an ANIMATED preview of a real round drawn by the
-// site's renderer, the rules and odds as a short list, the bet menu, the game's own option
-// menu, and Play — with ◀ Games ▶ at the bottom. The whole choice lives in the custom ids
+// `/casino` alone opens a paged table: the LIST of games first (one line per game and a
+// "Open a game" menu), then one page per game — an ANIMATED preview of a real round drawn by
+// the site's renderer, the rules and odds as a short list, the bet menu, the game's own option
+// menu, and Play — with Previous · Games · Next at the bottom. The whole choice lives in the custom ids
 // (view · game · bet · bet_on · number · target · risk · owner), so the table survives a bot
 // restart and needs no session state. Every word comes from the reader's language.
+// No unicode emoji anywhere here: a game's glyph is `ui.ic(game)`, the site's icon set.
 const CASINO_GAMES = [
-  { id: 'coinflip', emoji: '🪙', preview: '🪙', odds: [['2×', '50 %']] },
-  { id: 'dice', emoji: '🎲', preview: '6', odds: [['2×', '50 %']] },
-  { id: 'slots', emoji: '🎰', preview: 'cherry cherry cherry', odds: [['8×', '4 %'], ['1.5×', '48 %']] },
-  { id: 'roulette', emoji: '🎡', preview: '17', odds: [['2×', '18 / 37'], ['14×', '1 / 37'], ['35×', '1 / 37']] },
-  { id: 'wheel', emoji: '🎯', preview: '5|5', odds: [['2×', '45 %'], ['3×', '24 %'], ['5×', '16 %'], ['10×', '9 %'], ['20×', '4 %'], ['50×', '2 %']] },
-  { id: 'plinko', emoji: '🟡', preview: 'medium|RRLRLRLRLR|5', odds: [['low', '0.5×–5×'], ['medium', '0.3×–13×'], ['high', '0.2×–50×']] },
-  // Live tables — see features/casino-live.mjs. No private page; the list's button opens
-  // the table in the channel.
-  { id: 'crash', emoji: '📈', live: true, preview: '2.4|1.8', odds: [['cash out at M', 'reaches M (1−e)/M of the time']] },
-  { id: 'race', emoji: '🏎️', live: true, preview: '2|2', odds: [['6×', '1 / 6']] },
-  { id: 'pot', emoji: '🎁', live: true, preview: '1|10,30,60|A,B,C', odds: [['the pot', 'your stake / the pot']] },
+  { id: 'coinflip', preview: 'H', odds: [['2×', '50 %']] },
+  { id: 'dice', preview: '6', odds: [['2×', '50 %']] },
+  { id: 'slots', preview: 'cherry cherry cherry', odds: [['8×', '4 %'], ['1.5×', '48 %']] },
+  { id: 'roulette', preview: '17', odds: [['2×', '18 / 37'], ['14×', '1 / 37'], ['35×', '1 / 37']] },
+  { id: 'wheel', preview: '5|5', odds: [['2×', '45 %'], ['3×', '24 %'], ['5×', '16 %'], ['10×', '9 %'], ['20×', '4 %'], ['50×', '2 %']] },
+  { id: 'plinko', preview: 'medium|RRLRLRLRLR|5', odds: [['low', '0.5×–5×'], ['medium', '0.3×–13×'], ['high', '0.2×–50×']] },
+  // Live tables — see features/casino-live.mjs. No private page; picking one opens the
+  // table in the channel.
+  { id: 'race', live: true, preview: '2|2', odds: [['6×', '1 / 6']] },
+  { id: 'pot', live: true, preview: '1|10,30,60|A,B,C', odds: [['the pot', 'your stake / the pot']] },
 ];
-const ROULETTE_BETS = [['red', '🔴 Red — 2×'], ['black', '⚫ Black — 2×'], ['green', '🟢 Green (zero) — 14×'], ['number', '🔢 An exact number — 35×']];
+const ROULETTE_BETS = [['red', 'Red — 2×', 'red'], ['black', 'Black — 2×', 'black'], ['green', 'Green (zero) — 14×', 'green'], ['number', 'An exact number — 35×', 'number']];
 const WHEEL_TARGETS = [[2, '2× — 45 % of the wheel'], [3, '3× — 24 %'], [5, '5× — 16 %'], [10, '10× — 9 %'], [20, '20× — 4 %'], [50, '50× — 2 %']];
 const PLINKO_RISKS = [['low', 'Low — buckets 0.5× to 5×'], ['medium', 'Medium — buckets 0.3× to 13×'], ['high', 'High — buckets 0.2× to 50×']];
 
@@ -644,9 +669,10 @@ function unpackCas(parts) {
     owner: owner || '',
   };
 }
-const casOpt = (value, label, selected, description = null) => {
+const casOpt = (value, label, selected, description = null, icon = null) => {
   const o = new StringSelectMenuOptionBuilder().setValue(String(value)).setLabel(label.slice(0, 100)).setDefault(!!selected);
   if (description) o.setDescription(description.slice(0, 100));
+  if (icon && ui.ic(icon)) { try { o.setEmoji(ui.ic(icon)); } catch { /* label only */ } }
   return o;
 };
 const casSelect = (id, placeholder, options) => new StringSelectMenuBuilder().setCustomId(id).setPlaceholder(placeholder).addOptions(options.slice(0, 25));
@@ -677,37 +703,38 @@ async function casinoContext(i) {
   const [{ t }, cfgAll, e] = await Promise.all([tr(i), config(), api.economyUser(i.user.id)]);
   const cfg = cfgAll.economy?.casino || {};
   const { min, max } = betLimits(cfg);
-  const live = { multi: true, crash: true, race: true, pot: true, ...(cfg.live || {}) };
+  const live = { multi: true, race: true, pot: true, ...(cfg.live || {}) };
   return { t, cfg, min, max, live, e, cur: curLabel(e.currency), balance: e.linked ? Number(e.points) || 0 : 0, enabled: cfg.enabled !== false };
 }
 
-/** Page 1: the games, one big entry each, with the ◀ Games ▶ bar underneath. */
+/** Page 1: the games as one list (a line each) and an "Open a game" menu — with Previous · Games · Next underneath. */
 async function casinoList(i, st, { update = false } = {}) {
   const { t, min, max, e, cur, balance, enabled } = await casinoContext(i);
   const S = (patch) => packCas({ ...st, ...patch });
   const first = CASINO_GAMES[0].id, last = CASINO_GAMES[CASINO_GAMES.length - 1].id;
+  // The live games open a TABLE in the channel rather than a page: there is no bet to pick
+  // in private first, the table is where you bet.
+  const pickGame = casSelect(`cas:go:${S({})}`, t('cas.pickGame'), CASINO_GAMES.map((g) => casOpt(g.id, `${t(`game.${g.id}`)}${g.live ? ` · ${t('cas.liveTag')}` : ''}`, false, t(`game.${g.id}.d`), g.id)));
   const opts = {
-    title: `${ui.ic('casino')} ${t('cas.title')}`,
+    title: `${ui.icx('casino')}${t('cas.title')}`,
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: [
       e.linked ? t('cas.balance', { n: n(balance), cur, a: n(min), b: maxLabel(t, max) }) : t('cas.bets', { a: n(min), b: maxLabel(t, max), cur }),
       !enabled ? t('cas.off') : t('cas.pick'),
+      '',
+      ...CASINO_GAMES.map((g) => `${ui.icx(g.id)}**${t(`game.${g.id}`)}**${g.live ? ` · ${t('cas.liveTag')}` : ''}\n-# ${t(`game.${g.id}.d`)}`),
     ],
-    // The live games open a TABLE in the channel rather than a page: there is no bet to pick
-    // in private first, the table is where you bet.
-    sections: CASINO_GAMES.map((g) => ({ text: `## ${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}\n-# ${t(`game.${g.id}.d`)}`, button: g.live ? ui.btn(`cl:new:${g.id}`, t('live.openTable'), ButtonStyle.Success) : ui.btn(`cas:open:${S({ view: 'game', game: g.id })}`, t('cas.open'), ButtonStyle.Primary) })),
     footer: t('cas.footer'),
     buttons: [
-      // `:p` / `:n` after the payload: every custom id on a message must be unique, and the
-      // arrows' targets are also the first and last section's Open button. unpackCas reads
-      // eight fields and ignores the ninth.
-      ui.btn(`cas:open:${S({ view: 'game', game: last })}:p`, '◀', ButtonStyle.Secondary),
-      ui.btn('cas:noop', t('btn.games'), ButtonStyle.Secondary, { disabled: true }),
-      ui.btn(`cas:open:${S({ view: 'game', game: first })}:n`, '▶', ButtonStyle.Secondary),
+      pickGame,
+      // `:p` / `:n` after the payload: every custom id on a message must be unique. unpackCas
+      // reads eight fields and ignores the ninth.
+      ui.btn(`cas:open:${S({ view: 'game', game: last })}:p`, t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
+      ui.btn(`cas:open:${S({ view: 'game', game: first })}:n`, t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
       e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
       // The live tables' doors: a code typed into a modal, or the list of open tables.
-      ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'link' }),
-      ui.btn('cl:lobbies', t('live.lobbiesBtn'), ButtonStyle.Secondary, { emoji: 'multi' }),
+      ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'code' }),
+      ui.btn('cl:lobbies', t('live.lobbiesBtn'), ButtonStyle.Secondary, { emoji: 'lobbies' }),
     ],
   };
   return update ? ui.update(i, opts) : ui.reply(i, opts);
@@ -718,7 +745,7 @@ async function casinoMenu(i, st, { update = false } = {}) {
   if (st.view === 'list') return casinoList(i, st, { update });
   const { t, min, max, live, e, cur, balance, enabled } = await casinoContext(i);
   const idx = Math.max(0, CASINO_GAMES.findIndex((x) => x.id === st.game));
-  // A live-only game has no private page: its ◀ ▶ neighbours land here, so open its table.
+  // A live-only game has no private page: its Previous / Next neighbours land here, so open its table.
   if (CASINO_GAMES[idx].live) return openLive(i, CASINO_GAMES[idx].id, {});
   const g = CASINO_GAMES[idx];
   const prev = CASINO_GAMES[(idx + CASINO_GAMES.length - 1) % CASINO_GAMES.length].id;
@@ -746,7 +773,7 @@ async function casinoMenu(i, st, { update = false } = {}) {
     ...(e.linked && balance >= min ? [casOpt('all', balance > max ? t('cas.allInCap', { n: n(max), cur }) : t('cas.allIn', { n: n(Math.min(max, balance)), cur }), st.bet === 'all')] : []),
     casOpt('custom', t('cas.custom'), false, t('cas.customDesc', { a: n(min), b: maxLabel(t, max) })),
   ]);
-  const optSel = st.game === 'roulette' ? casSelect(`cas:opt:${S({})}`, t('cas.betOn'), ROULETTE_BETS.map(([v, l]) => casOpt(v, l, v === st.betOn)))
+  const optSel = st.game === 'roulette' ? casSelect(`cas:opt:${S({})}`, t('cas.betOn'), ROULETTE_BETS.map(([v, l, icon]) => casOpt(v, l, v === st.betOn, null, icon)))
     : st.game === 'wheel' ? casSelect(`cas:opt:${S({})}`, t('cas.goingFor'), WHEEL_TARGETS.map(([m, l]) => casOpt(m, l, m === st.target)))
     : st.game === 'plinko' ? casSelect(`cas:opt:${S({})}`, t('cas.risk'), PLINKO_RISKS.map(([v, l]) => casOpt(v, l, v === st.risk)))
     : null;
@@ -759,13 +786,13 @@ async function casinoMenu(i, st, { update = false } = {}) {
     ...(st.game === 'roulette' && st.betOn === 'number' ? [ui.btn(`cas:num:${S({})}`, st.num == null ? t('btn.pickNumber') : t('btn.number', { n: st.num }), ButtonStyle.Primary)] : []),
     // Multi: the same game on one shared roll, at a table in the channel.
     ...(live.multi !== false && MULTI_GAMES.includes(st.game) ? [ui.btn(`cl:new:${st.game}`, t('live.multiBtn'), ButtonStyle.Secondary, { emoji: 'multi' })] : []),
-    ui.btn(`cas:open:${S({ game: prev })}:p`, '◀', ButtonStyle.Secondary),
-    ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary),
-    ui.btn(`cas:open:${S({ game: next })}:n`, '▶', ButtonStyle.Secondary),
+    ui.btn(`cas:open:${S({ game: prev })}:p`, t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
+    ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary, { emoji: 'games' }),
+    ui.btn(`cas:open:${S({ game: next })}:n`, t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
     e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
   ];
   const opts = {
-    title: `${ui.ic(g.id) || g.emoji} ${t(`game.${g.id}`)}`,
+    title: `${ui.icx(g.id)}${t(`game.${g.id}`)}`,
     body: [
       `### ${t('cas.howTo')}`,
       t(`game.${g.id}.how`),
@@ -788,9 +815,19 @@ async function casinoSetup(i) {
   const [, verb, ...rest] = i.customId.split(':');
   if (verb === 'noop') return i.deferUpdate();
   const st = unpackCas(rest);
-  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.ic('casino')} ${t('cas.title')}` }); }
+  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.icx('casino')}${t('cas.title')}` }); }
   st.owner = i.user.id;
   if (verb === 'list') { st.view = 'list'; return casinoMenu(i, st, { update: true }); }
+  // The list page's "Open a game" menu: a live game opens its table in the channel, the rest
+  // turn the (ephemeral) list into that game's page.
+  if (verb === 'go') {
+    const v = i.values?.[0];
+    const g = CASINO_GAMES.find((x) => x.id === v);
+    if (!g) return i.deferUpdate().catch(() => {});
+    if (g.live) return openLive(i, g.id, {});
+    st.view = 'game'; st.game = g.id;
+    return casinoMenu(i, st, { update: true });
+  }
   if (verb === 'open') {
     st.view = 'game';
     const ephemeral = !!(i.message?.flags?.has?.('Ephemeral'));
@@ -834,7 +871,7 @@ function casinoNumberModal(i, st) {
 async function casinoModal(i) {
   const [, kind, ...rest] = i.customId.split(':');
   const st = unpackCas(rest);
-  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.ic('casino')} ${t('cas.title')}` }); }
+  if (st.owner && st.owner !== i.user.id) { const { t } = await tr(i); return ui.line(i, t('cas.someoneElse'), { title: `${ui.icx('casino')}${t('cas.title')}` }); }
   const raw = (i.fields.getTextInputValue('v') || '').replace(/[^0-9]/g, '');
   const v = raw === '' ? NaN : Number(raw);
   if (kind === 'bet') st.bet = Number.isFinite(v) ? Math.max(0, Math.floor(v)) : st.bet;
@@ -844,25 +881,29 @@ async function casinoModal(i) {
 
 async function cmdAppeal(i) {
   const ban = i.guildId ? guildBan(await config(), i.guildId) : null;
-  if (!ban) return ui.line(i, 'Good news — this server is not blocked from the bot. Everything works normally here.', { title: '✅ Appeal', color: ui.GOOD });
+  if (!ban) return ui.line(i, 'Good news — this server is not blocked from the bot. Everything works normally here.', { title: `${ui.icx('done')}Appeal`, color: ui.GOOD });
   const ref = ban.banId || i.guildId;
   return ui.reply(i, {
-    title: '📝 Appeal',
+    title: `${ui.icx('history')}Appeal`,
     body: ['This server is blocked from the bot.', '', `**Reference:** \`${ref}\``, ...(ban.reason ? [`**Reason:** ${ban.reason}`] : []), '', 'To contest it, contact us and quote the reference above.'],
     buttons: [ui.btn(`${SITE_URL}/contact`, 'Contact us', ButtonStyle.Secondary, { emoji: 'site' })],
   });
 }
+
+const actorOf = (i) => ({ id: i.user.id, tag: i.user.tag, avatar: i.user.displayAvatarURL?.({ size: 64 }) });
+const targetOf = (u) => (u ? { id: u.id, tag: u.tag, avatar: u.displayAvatarURL?.({ size: 64 }) } : null);
 
 async function cmdWarn(i) {
   const member = i.options.getUser('member');
   const reason = i.options.getString('reason');
   // A moderator warning themselves is a mis-click; warning the bot is a joke that leaves a
   // real row behind. Both refused here rather than recorded and explained later.
-  if (member.id === i.user.id) return eReply(i, 'You cannot warn yourself.', { title: '⚠ Warn' });
-  if (member.bot) return eReply(i, 'Bots do not get warnings.', { title: '⚠ Warn' });
+  if (member.id === i.user.id) return eReply(i, 'You cannot warn yourself.', { title: `${ui.icx('warn')}Warn` });
+  if (member.bot) return eReply(i, 'Bots do not get warnings.', { title: `${ui.icx('warn')}Warn` });
 
   const r = await api.warn(member.id, reason, i.guildId, i.user.username);
-  if (!r) return eReply(i, 'The site refused that — the warning was NOT recorded.', { title: '⚠ Warn', color: ui.BAD });
+  if (!r) return eReply(i, 'The site refused that — the warning was NOT recorded.', { title: `${ui.icx('warn')}Warn`, color: ui.BAD });
+  if (i.guildId) await logEvent(i.guildId, 'modcmd', { actor: actorOf(i), user: targetOf(member), command: 'warn', channelId: i.channelId, reason, detail: `warning #${r.count}${r.triggered ? ` → ${r.triggered.kind}${r.triggered.minutes ? ` ${r.triggered.minutes} min` : ''}` : ''}` });
 
   // What it triggered is said here, in the channel, because a moderator who does not know the
   // third warning bans somebody will keep issuing them.
@@ -871,7 +912,7 @@ async function cmdWarn(i) {
       : r.triggered.kind === 'kick' ? 'removed from the server' : 'banned')
     : null;
   return ui.reply(i, {
-    title: '⚠ Warn', color: what ? ui.BAD : BRAND, thumb: member.displayAvatarURL?.({ size: 128 }) || null,
+    title: `${ui.icx('warn')}Warn`, color: what ? ui.BAD : BRAND, thumb: member.displayAvatarURL?.({ size: 128 }) || null,
     body: [`**${member.username}** warned — that makes **${r.count}**.`, `Reason: ${reason}`, what ? `\n**Warning ${r.count} means they are ${what}.** Queued; the result shows on the site.` : null],
   });
 }
@@ -880,7 +921,7 @@ async function cmdWarnings(i) {
   const member = i.options.getUser('member');
   const r = await api.warnList(member.id);
   const warns = r?.warns || [];
-  if (!warns.length) return eReply(i, `**${member.username}** has no warnings.`, { title: '⚠ Warnings' });
+  if (!warns.length) return eReply(i, `**${member.username}** has no warnings.`, { title: `${ui.icx('warn')}Warnings` });
   // Revoked ones are shown, struck through: a record that hides what was taken back is not a
   // record, and "why is he at two when I gave him three" has to have an answer here.
   const lines = warns.slice(0, 10).map((w) => {
@@ -889,25 +930,25 @@ async function cmdWarnings(i) {
     return w.revokedAt ? `~~${text}~~ withdrawn` : text;
   });
   return ui.reply(i, {
-    title: '⚠ Warnings', thumb: member.displayAvatarURL?.({ size: 128 }) || null,
+    title: `${ui.icx('warn')}Warnings`, thumb: member.displayAvatarURL?.({ size: 128 }) || null,
     body: [`**${member.username}** — **${r.active ?? warns.filter((w) => !w.revokedAt).length}** standing`, '', ...lines, warns.length > 10 ? `\n…and ${warns.length - 10} more on the site.` : null],
   });
 }
 
 async function cmdGiveaway(i) {
-  if (!i.guildId) return eReply(i, 'Run this in a server.', { title: `${ui.ic('enter')} Giveaway` });
+  if (!i.guildId) return eReply(i, 'Run this in a server.', { title: `${ui.icx('enter')}Giveaway` });
   const prize = i.options.getString('prize');
   const minutes = i.options.getInteger('minutes');
   const winners = i.options.getInteger('winners') || 1;
   try {
     await api.giveawayCreate({ prize, channelId: i.channelId, guildId: i.guildId, hostDiscordId: i.user.id, durationMinutes: minutes, winnersCount: winners });
-    return eReply(i, `Giveaway for **${prize}** created (${winners} winner${winners === 1 ? '' : 's'}, ${minutes} min). It appears here within ~30s.`, { title: `${ui.ic('enter')} Giveaway`, color: ui.GOOD });
+    return eReply(i, `Giveaway for **${prize}** created (${winners} winner${winners === 1 ? '' : 's'}, ${minutes} min). It appears here within ~30s.`, { title: `${ui.icx('enter')}Giveaway`, color: ui.GOOD });
   } catch (e) {
     const err = e?.body?.error;
     const msg = err === 'guild_giveaway_cap'
       ? 'This server already has **5 active giveaways** — wait for one to end (or ask a mod to end one) before starting another.'
       : 'Could not create the giveaway — try again in a moment.';
-    return eReply(i, msg, { title: `${ui.ic('enter')} Giveaway`, color: ui.BAD });
+    return eReply(i, msg, { title: `${ui.icx('enter')}Giveaway`, color: ui.BAD });
   }
 }
 
@@ -916,11 +957,11 @@ async function cmdVerify(i) {
   const res = await checkGating(i.member).catch(() => null);
   if (res == null) return eReply(i, 'Gated access is not configured on this server.');
   const status = [`Discord linked: **${res.linked ? 'yes' : 'no'}**`, `BMM creator id: **${res.hasBmm ? 'yes' : 'no'}**`].join(' · ');
-  // Per-role result lines: ✅ granted / 🔒 not eligible for each configured rule.
-  const roleLines = (res.roles || []).map((r) => `${r.ok ? '✅' : '🔒'} <@&${r.roleId}> — ${r.ok ? 'granted' : 'not eligible'}`);
+  // Per-role result lines: granted / not eligible for each configured rule.
+  const roleLines = (res.roles || []).map((r) => `${r.ok ? ui.icx('done') : ui.icx('lock')}<@&${r.roleId}> — ${r.ok ? 'granted' : 'not eligible'}`);
   const anyGranted = (res.roles || []).some((r) => r.ok);
   return ui.reply(i, {
-    title: anyGranted ? '✅ Roles refreshed' : '🔒 No roles yet', color: anyGranted ? ui.GOOD : BRAND,
+    title: anyGranted ? `${ui.icx('done')}Roles refreshed` : `${ui.icx('lock')}No roles yet`, color: anyGranted ? ui.GOOD : BRAND,
     body: [status, '', roleLines.length ? roleLines.join('\n') : 'No roles configured.', anyGranted ? null : '\nUse **/link**, link your creator id on the site, then run **/refreshroles**.'],
     buttons: anyGranted ? [] : [ui.btn(`${SITE_URL}/profile`, 'Link on the site', ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:link', 'Get a link code', ButtonStyle.Primary, { emoji: 'link' })],
   });
@@ -930,9 +971,9 @@ async function cmdLink(i) {
   const { t } = await tr(i);
   try {
     const r = await api.issueLink(i.user.id, i.user.username);
-    if (r.linked) return ui.reply(i, { title: `${ui.ic('link')} ${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: ecoButtons('', t) });
+    if (r.linked) return ui.reply(i, { title: `${ui.icx('link')}${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: ecoButtons('', t) });
     return ui.reply(i, {
-      title: `${ui.ic('link')} ${t('link.title')}`,
+      title: `${ui.icx('link')}${t('link.title')}`,
       body: [t('link.body'), `# ${r.code}`, `-# ${t('link.expires')}`],
       buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' })],
     });

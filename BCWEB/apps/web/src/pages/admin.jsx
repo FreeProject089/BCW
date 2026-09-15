@@ -14821,17 +14821,14 @@ function AdminBot() {
               ['roulette', '🎡', t('db.eco.game.roulette', 'Roulette'), rtp([[18 / 37, 2], [19 / 37, 0]], 'roulette'), '2× · 14× · 35×'],
               ['wheel', '🎯', t('db.eco.game.wheel', 'Wheel'), rtp([[0.45, 2], [0.55, 0]], 'wheel'), '2×…50×'],
               ['plinko', '🟡', t('db.eco.game.plinko', 'Plinko'), plinko('medium'), `${plinko('low').toFixed(2)} · ${plinko('medium').toFixed(2)} · ${plinko('high').toFixed(2)}`],
-              // Crash: the edge is inside the curve the crash point is drawn from, so the return
-              // is 1 − e whatever multiplier a player cashes out at. Race: six cars, 6× on the
-              // right one. Pot: the two-player equal-stakes case is the only one with a fixed
-              // answer (the winner's 2× taxed on its profit); with more players it is the same
-              // rule on a bigger pot.
-              ['crash', '📈', t('db.eco.game.crash', 'Crash'), keepOf('crash'), t('db.eco.game.crash.o', 'cash out before it crashes')],
+              // Race: six cars, 6× on the right one. Pot: the two-player equal-stakes case is
+              // the only one with a fixed answer (the winner's 2× taxed on its profit); with
+              // more players it is the same rule on a bigger pot.
               ['race', '🏎️', t('db.eco.game.race', 'Race'), rtp([[1 / 6, 6], [5 / 6, 0]], 'race'), '6× · 1/6'],
               ['pot', '🎁', t('db.eco.game.pot', 'Pot'), rtp(two, 'pot'), t('db.eco.game.pot.o', 'winner takes all, odds ∝ stake')],
             ];
             const setEdge = (g, v) => set('economy.casino.edgeByGame', { ...byGame, [g]: v === '' ? '' : Number(v) });
-            const live = { multi: true, crash: true, race: true, pot: true, ...(eco.casino?.live || {}) };
+            const live = { multi: true, race: true, pot: true, ...(eco.casino?.live || {}) };
             const setLive = (k, v) => set('economy.casino.live', { ...live, [k]: v });
             return (
               <div className="space-y-3">
@@ -14858,9 +14855,9 @@ function AdminBot() {
                     "multi" is the shared roll for the classic games. */}
                 <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
                   <Lbl>{t('db.eco.live', 'Live tables')}</Lbl>
-                  <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Crash: a multiplier climbs, cash out before it breaks. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</p>
+                  <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {[['crash', '📈 ' + t('db.eco.game.crash', 'Crash')], ['race', '🏎️ ' + t('db.eco.game.race', 'Race')], ['pot', '🎁 ' + t('db.eco.game.pot', 'Pot')], ['multi', '👥 ' + t('db.eco.live.multi', 'Multi (classic games)')]].map(([k, label]) => (
+                    {[['race', '🏎️ ' + t('db.eco.game.race', 'Race')], ['pot', '🎁 ' + t('db.eco.game.pot', 'Pot')], ['multi', '👥 ' + t('db.eco.live.multi', 'Multi (classic games)')]].map(([k, label]) => (
                       <label key={k} className="flex items-center gap-2 text-xs cursor-pointer"><BotSwitch checked={live[k] !== false} onChange={(v) => setLive(k, v)} /> <span>{label}</span></label>
                     ))}
                   </div>

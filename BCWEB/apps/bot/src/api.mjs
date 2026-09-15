@@ -42,6 +42,12 @@ export const api = {
   setGuildSettings: (guildId, actorDiscordId, patch) =>
     call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/settings`, { actorDiscordId, patch })
       .catch((e) => ({ ok: false, error: e?.body?.error || 'network' })),
+  // Per-guild FEATURE config written from Discord (/logs setup, /logs route): the `logs` and
+  // `moderation` subtrees of guilds[guildId]. Same actor rule as settings — the API checks the
+  // owner/manager list itself. Keeps its error, for the same reason setGuildSettings does.
+  setGuildFeatures: (guildId, actorDiscordId, patch) =>
+    call('PUT', `/bot/guilds/${encodeURIComponent(guildId)}/features`, { actorDiscordId, patch })
+      .catch((e) => ({ ok: false, error: e?.body?.error || 'network', linked: e?.body?.linked })),
   reportHandlerError: (message, stack, context) => call('POST', '/bot/errors', { message, stack, context }).catch(() => {}),
   // Self-serve role panels. `panels` is EVERY panel (a button press on last month's
   // message must still work), `due` names the ones whose rendered form has changed.
@@ -92,6 +98,10 @@ export const api = {
   // turn them into XP + levels. Best-effort — a dropped batch just means that minute's XP is lost.
   accrueEconomy: (events) => call('POST', '/bot/economy/accrue', { events }).catch(() => ({})),
   economyConfig: () => call('GET', '/bot/economy/config').then((r) => r.economy || {}).catch(() => ({})),
+  // Seasons: { season: { every, hour, resetXp, announce }, state: { seasonNo, lastResetAt, since,
+  // history: [{ at, affected, points, seasonNo, by }] }, next: ISO|null }. Null on any failure
+  // (including an API that predates seasons), and the poller says nothing on null.
+  economySeason: () => call('GET', '/bot/economy/season').catch(() => null),
   economyUser: (discordId) => call('GET', `/bot/economy/user/${encodeURIComponent(discordId)}`).catch(() => ({ linked: false })),
   economyBuy: (discordId, itemId) => call('POST', '/bot/economy/buy', { discordId, itemId }).catch(() => ({ ok: false, error: 'network' })),
   economyCasino: (discordId, bet, multiplier, game) => call('POST', '/bot/economy/casino', { discordId, bet, multiplier, game }).catch(() => ({ ok: false, error: 'network' })),
@@ -105,6 +115,8 @@ export const api = {
   // A picture the site renders (the casino GIF, the profile card), fetched over the INTERNAL
   // API address and attached to the message — Discord never has to reach SITE_URL, which in a
   // dev or LAN deployment it cannot. Null on any failure, so the caller shows the card without.
+  // The icon set, for features/icons.mjs: which keys exist and how each currently draws.
+  emojiKeys: () => call('GET', '/bot/emoji/keys').then((r) => r.icons || []).catch(() => []),
   siteImage: async (path) => {
     try {
       const res = await fetch(BASE + path, { headers: { 'x-bot-secret': SECRET }, signal: AbortSignal.timeout(8000) });

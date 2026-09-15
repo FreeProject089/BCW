@@ -16,9 +16,9 @@ const maskEmail = (e) => { if (!e) return ''; const [u, d] = String(e).split('@'
 // Neutralise Discord markdown in user-controlled text (display names) so a crafted
 // name can't inject links/formatting into the announcement embed. Length-capped too.
 const clean = (s, n = 100) => String(s || '').replace(/[`*_~|>\\[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
-const KIND = { HOSTING: ['🖥️', 'Hosting'], FEATURE: ['🚀', 'Featured boost'], CATALOG: ['📦', 'Catalog listing'], SUBSCRIPTION: ['🔁', 'Subscription'] };
-const kindEmoji = (k) => (KIND[k] || ['💳', String(k || 'Payment')])[0];
-const kindLabel = (k) => (KIND[k] || ['💳', String(k || 'Payment')])[1];
+const KIND = { HOSTING: ['hosting', 'Hosting'], FEATURE: ['boost', 'Featured boost'], CATALOG: ['pool', 'Catalog listing'], SUBSCRIPTION: ['again', 'Subscription'] };
+const kindEmoji = (k) => ui.ic((KIND[k] || ['purchase'])[0]);
+const kindLabel = (k) => (KIND[k] || [null, String(k || 'Payment')])[1];
 
 export async function pollPayments(client) {
   if (_running) return;
@@ -40,7 +40,7 @@ export async function pollPayments(client) {
     // Admin "Send test message" → post a sample embed so channel/permissions can be
     // verified without a real payment. Fired before the early-return below.
     if (test) {
-      const embed = ui.card({ title: '🧪 Test message', color: 0x22c55e, body: 'If you can read this, the bot can post payment & refund notifications to this channel. ✅', footer: 'BetterCommunity · Payments' });
+      const embed = ui.card({ title: `${ui.icx('done')}Test message`, color: 0x22c55e, body: 'If you can read this, the bot can post payment & refund notifications to this channel.', footer: 'BetterCommunity · Payments' });
       const targets = [...new Set([...payChannelIds, ...refundTargets])];
       let ok = false;
       for (const id of targets) { const ch = client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null); if (ch?.send) { try { await ch.send(embed); ok = true; } catch (e) { console.warn('[bot] test post to', id, 'failed', e.message); } } }
@@ -97,7 +97,7 @@ export async function pollPayments(client) {
     if (refundTargets.length) {
       for (const r of refunds) {
         const embed = ui.card({
-          title: `↩️  −${money(r.amountCents, r.currency)}`, color: 0xef4444,
+          title: `${ui.icx('refund')}−${money(r.amountCents, r.currency)}`, color: 0xef4444,
           body: `A refund was issued${r.email ? ` to **${maskEmail(r.email)}**` : ''}.`,
           footer: `BetterCommunity · Refund issued · <t:${Math.floor((r.at ? new Date(r.at) : new Date()).getTime() / 1000)}:f>`,
         });

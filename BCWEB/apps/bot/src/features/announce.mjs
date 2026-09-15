@@ -7,8 +7,10 @@
 // because everybody assumes it went out.
 
 import { api } from '../api.mjs';
+import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { routeFor } from './announce-route.mjs';
+import { adminAlert } from './logs.mjs';
 
 const EVERY_MS = 20_000;
 
@@ -59,7 +61,7 @@ export function startAnnouncer(client) {
                     continue;
                 }
                 const k = KIND[a.kind] || KIND.custom;
-                const heading = `${a.urgent ? '⚠ URGENT · ' : ''}${k.label} — ${a.title}`.slice(0, 250);
+                const heading = `${a.urgent ? `${ui.icx('warn')}URGENT · ` : ''}${k.label} — ${a.title}`.slice(0, 250);
                 // An explicit colour wins over the per-kind one, but URGENT wins over both:
                 // a red-alert badge that an author accidentally made mint green is worse
                 // than no colour choice at all.
@@ -94,6 +96,14 @@ export function startAnnouncer(client) {
                         ...payload,
                         ...(roleId ? { allowedMentions: { roles: [roleId] } } : {}),
                     });
+                    // Admin-facing kinds (a commission, an incident, a legal notice, the
+                    // "something is waiting" digest) also land in the alerts forum, each
+                    // kind its own tagged post — when a forum is configured. Best-effort:
+                    // the channel post above is the one that is reported.
+                    if (a.kind !== 'event' && a.kind !== 'promo') {
+                        const forumKind = a.kind === 'legal' ? 'legal' : a.kind === 'incident' ? 'incident' : a.kind === 'myo' ? 'contact' : a.kind === 'custom' ? 'contact' : 'announce';
+                        adminAlert(forumKind, { embeds: [embed] }).catch(() => {});
+                    }
                     await api.announcementResult(a.id, true);
                 } catch (e) {
                     await api.announcementResult(a.id, false, String(e?.message || e).slice(0, 500));

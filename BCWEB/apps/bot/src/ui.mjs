@@ -18,31 +18,31 @@ export const GOOD = 0x16a34a;
 export const BAD = 0xef4444;
 export const INFO = 0x3b82f6;
 
-// Button icons: the admin's custom emoji (<:name:id>) when one is mapped for a key, else the
-// unicode fallback. Set from the bot config on every interaction (config() is cached 30 s).
-const DEFAULT_ICONS = {
-  level: '⭐', shop: '🛒', inventory: '🎒', leaderboard: '🏆', casino: '🎰', again: '🔁', refresh: '🔄', link: '🔗', buy: '🛍️',
-  gift: '🎁', coin: '🪙', reveal: '✉️', history: '📜', enter: '🎉', site: '🌐', voice: '🎙️', rename: '✏️', limit: '👥', region: '🌍',
-  lock: '🔒', unlock: '🔓', private: '🙈', public: '👁️', claim: '🙋', export: '📤', import: '📥',
-  coinflip: '🪙', dice: '🎲', slots: '🎰', roulette: '🎡', wheel: '🎯', plinko: '🟡', crash: '📈', race: '🏎️', pot: '🎁', multi: '👥',
-  levelup: '⬆️', staff: '🛡️', purchase: '🧾', games: '🎮', profile: '👤', done: '✅',
-  // Economy card + leaderboard glyphs — admin-mappable like the rest, so the body emoji stop
-  // being hard-coded unicode (🏅 💬 ✨ …).
-  medal: '🏅', messages: '💬', reactions: '✨', streak: '🔥', gold: '🥇', silver: '🥈', bronze: '🥉',
-  // Shop-kind + tag glyphs, so the shop listing's emoji are admin-mappable too.
-  badge: '🏅', role: '🎭', pool: '💾', boost: '🚀', hosting: '🖥️', promo: '🎟️',
-  exclusive: '💎', limited: '🔥', timed: '⏳',
-  // Body glyphs that used to be hard-coded inside the i18n strings ({i} placeholders now).
-  win: '🎉', push: '↩️', wallet: '💰',
+// Icons. The bot never draws a unicode emoji: every glyph is one of the site's icons
+// (apps/api/src/lib/bot-emoji.mjs), uploaded as APPLICATION emojis at boot by
+// features/icons.mjs (`setAutoIcons`), and overridable per key by the admin's own custom
+// emoji from the dashboard (`setIcons`, economy.icons). A key nobody mapped draws NOTHING —
+// the label stands alone — so a missing icon is a plain button, never a stray emoji.
+const CUSTOM = /^<a?:\w{2,32}:\d{15,22}>$/;
+let AUTO = {};
+let ADMIN = {};
+const pick = (map) => {
+  const out = {};
+  for (const [k, v] of Object.entries(map || {})) if (typeof v === 'string' && CUSTOM.test(v.trim())) out[k] = v.trim();
+  return out;
 };
-let ICONS = { ...DEFAULT_ICONS };
-export function setIcons(map) {
-  const next = { ...DEFAULT_ICONS };
-  for (const [k, v] of Object.entries(map || {})) if (k in DEFAULT_ICONS && typeof v === 'string' && v.trim()) next[k] = v.trim();
-  ICONS = next;
-}
-/** The emoji for a button key. */
-export const ic = (key) => ICONS[key] || null;
+/** The admin's per-key mapping (wins over the uploaded set). Set from the config on every interaction. */
+export function setIcons(map) { ADMIN = pick(map); }
+/** The application emojis features/icons.mjs uploaded (or found) — the whole icon set. */
+export function setAutoIcons(map) { AUTO = { ...AUTO, ...pick(map) }; }
+/** The emoji for a key, or '' when nothing is mapped. */
+export const ic = (key) => ADMIN[key] || AUTO[key] || '';
+/** The emoji plus a trailing space — for `${ui.icx('casino')}Casino` — or '' so the text does not start with a blank. */
+export const icx = (key) => { const e = ic(key); return e ? `${e} ` : ''; };
+/** Every mapped key (for tests and the /logs status card). */
+export const icons = () => ({ ...AUTO, ...ADMIN });
+/** True when `s` is a custom-emoji token the bot may put on a button. */
+export const isCustomEmoji = (s) => CUSTOM.test(String(s || '').trim());
 
 const clip = (s, n) => { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
 
@@ -51,7 +51,9 @@ export function btn(id, label, style = ButtonStyle.Secondary, { emoji = null, di
   const b = new ButtonBuilder().setLabel(clip(label, 80)).setDisabled(disabled);
   if (/^https?:\/\//.test(id)) b.setStyle(ButtonStyle.Link).setURL(id);
   else b.setCustomId(id).setStyle(style);
-  if (emoji) { try { b.setEmoji(ICONS[emoji] || emoji); } catch { /* an unusable custom emoji leaves the label */ } }
+  // A key resolves through the icon set; a literal custom-emoji token passes as is. Anything
+  // else (a unicode emoji, an unmapped key) is dropped: the label carries the button.
+  if (emoji) { const e = ic(emoji) || (isCustomEmoji(emoji) ? String(emoji).trim() : ''); if (e) { try { b.setEmoji(e); } catch { /* an unusable custom emoji leaves the label */ } } }
   return b;
 }
 
@@ -81,29 +83,45 @@ export function rows(...items) {
  *   footer     — small trailing text (rendered as -# small)
  *   buttons    — ButtonBuilders / selects, laid out in rows
  */
+export const MAX_COMPONENTS = 40;
 export function card({ title = null, body = '', color = BRAND, thumb = null, sections = [], image = null, files = [], footer = null, buttons = [] } = {}) {
   const c = new ContainerBuilder().setAccentColor(color);
+  // Discord counts EVERY component in the message — the container, each text display, each
+  // section AND its text AND its accessory, each separator, each row, each button — and
+  // refuses the message past 40 (COMPONENT_MAX_TOTAL_COMPONENTS_EXCEEDED). The budget is
+  // tracked here so a long list degrades (extra rows fold into text, extra button rows are
+  // cut) instead of failing to send.
+  let used = 1;
+  const btnRows = rows(...buttons).slice(0, 5);
+  const btnCost = btnRows.length ? 1 + btnRows.reduce((a, r) => a + 1 + r.components.length, 0) : 0;
+  const footerCost = footer ? 2 : 0;
+  const reserve = () => btnCost + footerCost;
   const text = [title ? `## ${clip(title, 200)}` : null, Array.isArray(body) ? body.filter(Boolean).join('\n') : body].filter(Boolean).join('\n');
   if (thumb) {
     c.addSectionComponents(new SectionBuilder()
-      .addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text || '​', 3500)))
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text || '\u200b', 3500)))
       .setThumbnailAccessory(new ThumbnailBuilder().setURL(thumb)));
+    used += 3;
   } else if (text) {
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(text, 3500)));
+    used += 1;
   }
-  if (image) c.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image)));
+  if (image) { c.addMediaGalleryComponents(new MediaGalleryBuilder().addItems(new MediaGalleryItemBuilder().setURL(image))); used += 1; }
   if (sections.length) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    used += 1;
     // A Components-V2 SectionBuilder is only valid WITH an accessory (a button or a thumbnail).
     // A row that carries neither — a plain stats line, as `/level` and `/casino` pass — must be
     // a bare TextDisplay, or `SectionBuilder.toJSON()` throws "Received one or more errors" and
     // the whole reply fails. Accessory-less rows are coalesced into one text block (fewer
-    // components, same look); rows with an accessory stay as their own section.
+    // components, same look); rows with an accessory stay as their own section while the
+    // budget allows, then fold into the text block too (their button is dropped, the text stays).
     let buf = [];
-    const flush = () => { if (buf.length) { c.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(buf.join('\n'), 3500))); buf = []; } };
+    const flush = () => { if (buf.length) { c.addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(buf.join('\n'), 3500))); buf = []; used += 1; } };
+    const room = () => used + (buf.length ? 1 : 0) + 3 + reserve() <= MAX_COMPONENTS;
     for (const s of sections.slice(0, 12)) {
-      if (s.button) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setButtonAccessory(s.button)); }
-      else if (s.thumb) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setThumbnailAccessory(new ThumbnailBuilder().setURL(s.thumb))); }
+      if (s.button && room()) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setButtonAccessory(s.button)); used += 3; }
+      else if (s.thumb && room()) { flush(); c.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(clip(s.text, 900))).setThumbnailAccessory(new ThumbnailBuilder().setURL(s.thumb))); used += 3; }
       else { buf.push(s.text); }
     }
     flush();
@@ -111,13 +129,33 @@ export function card({ title = null, body = '', color = BRAND, thumb = null, sec
   if (footer) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${clip(footer, 300)}`));
+    used += 2;
   }
-  const btnRows = rows(...buttons);
   if (btnRows.length) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
-    for (const r of btnRows.slice(0, 5)) c.addActionRowComponents(r);
+    used += 1;
+    for (const r of btnRows) {
+      if (used + 1 + r.components.length > MAX_COMPONENTS) break;
+      c.addActionRowComponents(r);
+      used += 1 + r.components.length;
+    }
   }
   return { components: [c], files, flags: MessageFlags.IsComponentsV2 };
+}
+
+/** How many components a built card carries — the number Discord caps at 40. */
+export function countComponents(msg) {
+  const walk = (node) => {
+    if (!node || typeof node !== 'object') return 0;
+    let k = 1;
+    for (const key of ['components', 'accessory']) {
+      const v = node[key];
+      if (Array.isArray(v)) for (const x of v) k += walk(x);
+      else if (v && typeof v === 'object') k += walk(v);
+    }
+    return k;
+  };
+  return (msg.components || []).reduce((a, c) => a + walk(typeof c.toJSON === 'function' ? c.toJSON() : c), 0);
 }
 
 /** Reply with a card (ephemeral by default — most acknowledgements are for one person). */

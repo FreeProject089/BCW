@@ -64,7 +64,7 @@ export async function pollGiveaways(client) {
         // Winners whose prize was placed in their BCWEB inventory (a linked account with a
         // promo/custom prize). Codes are minted on REVEAL there now, not embedded in the DM.
         const delivered = new Set(res?.delivered || []);
-        const tpl = (gw.winnerMessage && gw.winnerMessage.trim()) || 'Congrats {user} — you won {prize}! 🎉';
+        const tpl = (gw.winnerMessage && gw.winnerMessage.trim()) || 'Congrats {user} — you won {prize}!';
         for (const did of winners) {
           const code = gifts[did];
           try {
@@ -93,7 +93,7 @@ export async function handleGiveawayButton(interaction) {
   const [, , id] = interaction.customId.split(':');
   try {
     const r = await api.giveawayEnter(id, interaction.user.id);
-    await ui.line(interaction, r.already ? "You're already entered — good luck! 🍀" : `You're in! ${ui.ic('enter')} (${r.count} entrant${r.count === 1 ? '' : 's'})`, { color: ui.GOOD });
+    await ui.line(interaction, r.already ? `You're already entered — good luck! ${ui.ic('luck')}`.trim() : `You're in! ${ui.ic('enter')} (${r.count} entrant${r.count === 1 ? '' : 's'})`, { color: ui.GOOD });
   } catch (e) {
     const err = e.body?.error;
     const msg = err === 'need_link'

@@ -212,7 +212,8 @@ and sends are admin-triggered only (no auto-send on publish).
 | GET | `/admin/economy/history?q=&kind=` | admin | The whole ledger, by member. Retention: `economy.historyDays` (sweeper). |
 | POST | `/bot/economy/reveal` · `/bot/economy/gift` · GET `/bot/economy/history/:discordId` | bot | The same three, for /inventory Reveal / Gift, /gift and /history. |
 | GET | `/bot/economy/leaderboard?guildId=&discordId=` | bot | Top 10 — global, or a server's linked members with `guildId`; `me` = the caller's rank. `GET /og/leaderboard.png?guildId=&me=` draws it. |
-| GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | The bot's button icons: the key list, one PNG, the whole pack to upload on the app's Emojis page. Mapped in `economy.icons`. |
+| GET | `/admin/bot/emoji-keys` · `/admin/bot/emoji/:key.png` · `/admin/bot/emoji-pack.zip` | admin | The bot's button icons: the key list, one PNG, the whole pack. An admin's own mapping in `economy.icons` overrides a key. |
+| GET | `/bot/emoji/keys` · `/bot/emoji/:key.png` | bot | The same icon set for the bot itself: at boot it uploads every key as an **application emoji** (`bc_<key>_<version>`), re-uploads the ones whose drawing changed, and never draws a unicode emoji. |
 | POST | `/admin/bot/actions` · `/me/discord/guilds/:id/actions` | mod / owner | Now also `role_add` / `role_remove` with `roleId` (+ `guildId` for the admin route). An owner may only name a role the heartbeat lists for that guild. |
 | GET | `/bot/economy/purchases/:discordId` | bot | The member's purchases — the `/inventory` command. |
 | GET | `/bot/economy/season` | bot | The season schedule, the state row (season number, last reset, history) and the next reset — for the bot's announcement and its "season N" line. |

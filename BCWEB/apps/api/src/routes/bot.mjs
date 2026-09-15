@@ -38,7 +38,20 @@ const genCode = () => Array.from({ length: 8 }, () => ALPHABET[randomInt(ALPHABE
 const SITE_URL = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
 const DEFAULT_BOT_CONFIG = {
   enabled: true,
-  moderation: { enabled: true, antiSelfbot: true, purgeChannelId: '', clearMax: 100 },
+  // Moderation is PER GUILD (guilds[guildId].moderation replaces this whole object).
+  //   warnThresholds → the escalation ladder /warn AND the automod share (lib/warns.mjs):
+  //                    [{ count, action: 'warn'|'timeout'|'kick'|'ban', minutes? }], exact-count.
+  //   automod        → the rule table the bot's features/automod.mjs documents at its top. Each
+  //                    rule is { enabled, action, ...thresholds }; `exempt` lists roles/channels/
+  //                    users the rules skip. Empty here = the bot's own defaults (every threshold
+  //                    documented in automod.mjs); the dashboard renders the full shape from
+  //                    the bot's normalizeAutomod() output.
+  moderation: { enabled: true, antiSelfbot: true, purgeChannelId: '', clearMax: 100, warnThresholds: [], automod: { enabled: true, exempt: { roles: [], channels: [], users: [], moderators: true }, warnDecayHours: 168, rules: {} } },
+  // Logging is PER GUILD too (guilds[guildId].logs). See the bot's features/logs.mjs header:
+  //   forumId    → a forum: one tagged post per category (forumMode 'category') or per day ('day')
+  //   channelId  → the legacy single text channel (the /config log channel counts as a fallback)
+  //   routes     → { [category | group]: { kind: 'forum'|'channel'|'off', id, tags: [] } | 'off' | '<channelId>' }
+  logs: { enabled: true, forumId: '', channelId: '', forumMode: 'category', reaction: '', pinSummary: true, routes: {} },
   joinToCreate: { enabled: true, lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice', renameCooldownSec: 720 },
   welcome: { enabled: true, channelId: '', joinMessage: 'Welcome {user} to {servername}! You are member #{joinnumber}.', leaveMessage: '{user} left the server.', gifBg: 'dark' },
   // Multi-role gating: each rule grants one role to members meeting ITS own
@@ -58,7 +71,10 @@ const DEFAULT_BOT_CONFIG = {
   // `channelId` is the PERF channel and keeps its name: every config already saved uses
   // it. `generalChannelId` is optional — unset, incidents keep landing in the perf
   // channel exactly as before, so this default changes nothing for an existing install.
-  alerts: { enabled: false, channelId: '', generalChannelId: '' },
+  // `forumId` (optional): a forum channel — every admin alert kind (perf, incident, Ko-fi,
+  // payments, contact/commission doorbell, legal notice, moderation escalation, the digest)
+  // becomes a tagged post there instead of a loose message. Unset → channels, as before.
+  alerts: { enabled: false, channelId: '', generalChannelId: '', forumId: '' },
   // Where each kind of announcement lands, and who gets pinged when one is urgent.
   //
   // Empty means "the general channel", which is what every existing install has been doing —
@@ -200,7 +216,7 @@ function rolePanelHash(panel) {
   return (h >>> 0).toString(36);
 }
 
-async function getBotConfig(p) {
+export async function getBotConfig(p) {
   const row = await p.adminSetting.findUnique({ where: { key: 'bot.config' } });
   return { ...DEFAULT_BOT_CONFIG, ...(row?.value || {}) };
 }
@@ -556,14 +572,19 @@ export default async function botRoutes(app) {
     // here; the fix is to keep the field out of the object that round-trips.
     // The per-server language choices and the admin's string overrides ride beside the
     // config for the same reason restartAt does: the dashboard writes bot.config back whole.
-    const [langRows, i18nRow] = await Promise.all([
+    const [langRows, logRows, i18nRow] = await Promise.all([
       p.botGuild.findMany({ where: { language: { not: null } }, select: { guildId: true, language: true } }).catch(() => []),
+      // The /config log channel of each guild — the legacy fallback the bot's log routing
+      // uses when a guild has neither a forum nor a logs.channelId. Rides beside the config
+      // for the same reason guildLanguages does: the dashboard writes bot.config back whole.
+      p.botGuild.findMany({ where: { logChannelId: { not: null } }, select: { guildId: true, logChannelId: true } }).catch(() => []),
       p.adminSetting.findUnique({ where: { key: 'bot.i18n' } }).catch(() => null),
     ]);
     const guildLanguages = Object.fromEntries(langRows.map((r) => [r.guildId, r.language]));
+    const guildLogChannels = Object.fromEntries(logRows.filter((r) => r.logChannelId).map((r) => [r.guildId, r.logChannelId]));
     const i18n = i18nRow?.value && typeof i18nRow.value === 'object' ? i18nRow.value : {};
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.restart' } });
-    return { config: { ...(await getBotConfig(p)), guildLanguages, i18n }, restartAt: row?.value?.at || null };
+    return { config: { ...(await getBotConfig(p)), guildLanguages, guildLogChannels, i18n }, restartAt: row?.value?.at || null };
   });
 
   // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
@@ -2458,6 +2479,8 @@ export default async function botRoutes(app) {
     const gEntry = (status?.guildList || []).find((x) => x.id === g.guildId) || null;
     return {
       guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), logs, welcome: gc.welcome || {}, joinToCreate: gc.joinToCreate || {}, gating: gc.gating || {}, blog: { routes: blogRoutes }, rolePanels,
+      // `logs` above is the moderation RECORD (rows); `logRouting` is the routing config.
+      moderation: gc.moderation || {}, logRouting: gc.logs || {},
       globalStorage: { enabled: memberPolicy(cfg).enabled, inactiveDays: memberPolicy(cfg).inactiveDays },
       // Custom welcome-banner policy so the owner UI can show the gate (off / free / paid) and,
       // when paid, whether THIS guild is unlocked and at what price.
@@ -2594,6 +2617,11 @@ export default async function botRoutes(app) {
       memberMode: z.enum(['none', 'moderation', 'pool']).optional(),
       logChannelId: z.string().max(32).nullable().optional(),
       storeLogs: z.boolean().optional(),
+      // Moderation (automod rules, the warn ladder) and log routing for THIS guild — the two
+      // shapes the bot documents in features/automod.mjs and features/logs.mjs. Bounded like
+      // the rest: zod strips anything else, so an owner reaches nothing beyond their subtrees.
+      moderation: MODERATION_SCHEMA.optional(),
+      logs: LOGS_SCHEMA.optional(),
       // The guild's welcome/bye config — owner-editable. Bounded to exactly these fields, so an
       // owner can never reach any OTHER part of the shared bot.config blob through this path.
       welcome: z.object({
@@ -2664,7 +2692,7 @@ export default async function botRoutes(app) {
     // The feature subtrees ride in the same body but live in a different store (the config
     // blob, not the BotGuild row), so split them out — passing them to botGuild.update would be
     // unknown columns.
-    const { welcome, joinToCreate, gating, blog, rolePanels, ...guildData } = b.data;
+    const { welcome, joinToCreate, gating, blog, rolePanels, moderation, logs, ...guildData } = b.data;
     const next = { ...cur, ...guildData };
     // Custom welcome-banner policy (admin-set) + this guild's CURRENT banner, read once so the
     // save can (a) refuse a NEW banner when uploads aren't free, and (b) delete the previous
@@ -2702,6 +2730,8 @@ export default async function botRoutes(app) {
     }
     if (joinToCreate) featurePatch.joinToCreate = joinToCreate;
     if (gating) featurePatch.gating = gating;
+    if (moderation) featurePatch.moderation = moderation;
+    if (logs) featurePatch.logs = logs;
     const changed = Object.keys(featurePatch);
     if (changed.length || blog || rolePanels) {
       const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
@@ -2745,6 +2775,87 @@ export default async function botRoutes(app) {
     const outGc = (cfg.guilds && cfg.guilds[g.guildId]) || {};
     const outBlog = (Array.isArray(cfg.blog?.routes) ? cfg.blog.routes : []).filter((r) => r.guildId === g.guildId);
     const outPanels = (Array.isArray(cfg.rolePanels) ? cfg.rolePanels : []).filter((pnl) => pnl.guildId === g.guildId);
-    return { ok: true, guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog }, rolePanels: outPanels };
+    return { ok: true, guild: serGuildUser(g, stored, ids, Object.fromEntries((((await p.adminSetting.findUnique({ where: { key: 'bot.status' } }))?.value?.guildList) || []).filter((x) => x && x.id).map((x) => [x.id, x.icon || null]))), welcome: outGc.welcome || {}, joinToCreate: outGc.joinToCreate || {}, gating: outGc.gating || {}, blog: { routes: outBlog }, rolePanels: outPanels, moderation: outGc.moderation || {}, logRouting: outGc.logs || {} };
+  });
+
+  /**
+   * The same two subtrees, written FROM DISCORD (/logs setup, /logs route): the bot reports
+   * who pressed the command and this checks, exactly as /bot/guilds/:id/settings does, that
+   * the actor is the server's owner or a manager with a LINKED account. The value goes
+   * through the same bounded schemas as the owner dashboard, so the two doors cannot save
+   * different shapes.
+   */
+  app.put('/bot/guilds/:id/features', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    const b = z.object({
+      actorDiscordId: z.string().min(1).max(32),
+      patch: z.object({ moderation: MODERATION_SCHEMA.optional(), logs: LOGS_SCHEMA.optional() }),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const [g, link] = await Promise.all([
+      p.botGuild.findUnique({ where: { guildId: req.params.id } }),
+      p.discordLink.findUnique({ where: { discordId: b.data.actorDiscordId } }).catch(() => null),
+    ]);
+    if (!canConfigureGuild(g, b.data.actorDiscordId, !!link?.userId)) return reply.code(403).send({ error: 'not_allowed', linked: !!link?.userId });
+    const patch = b.data.patch;
+    const changed = Object.keys(patch).filter((k) => patch[k]);
+    if (!changed.length) return { ok: true, changed: [] };
+    const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    const guilds = { ...(raw.guilds || {}) };
+    const gc = { ...(guilds[g.guildId] || {}) };
+    for (const k of changed) gc[k] = { ...(gc[k] || {}), ...patch[k] };
+    guilds[g.guildId] = gc;
+    const nextCfg = { ...raw, guilds };
+    await p.adminSetting.upsert({ where: { key: 'bot.config' }, create: { key: 'bot.config', value: nextCfg }, update: { value: nextCfg } });
+    await logAudit(p, link.userId, 'bot.guild_discord', `${g.guildId} ${changed.join(',')}`);
+    return { ok: true, changed, moderation: gc.moderation || {}, logs: gc.logs || {} };
   });
 }
+
+// ── The two per-guild subtrees an owner (dashboard) or a manager (Discord) may write ───────
+// Kept as constants so the owner route and the bot route parse the SAME shape. Every number
+// is bounded; every list is capped; every action is an enum — an unknown key is stripped.
+const AUTOMOD_ACTION = z.enum(['log', 'delete', 'warn', 'timeout', 'kick', 'ban']);
+const idList = (n = 100) => z.array(z.string().max(32)).max(n);
+const rule = (extra) => z.object({ enabled: z.boolean().optional(), action: AUTOMOD_ACTION.optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), ...extra }).optional();
+const MODERATION_SCHEMA = z.object({
+  enabled: z.boolean().optional(),
+  antiSelfbot: z.boolean().optional(),
+  purgeChannelId: z.string().max(32).optional(),
+  purgeChannelIds: idList(50).optional(),
+  clearMax: z.number().int().min(1).max(100).optional(),
+  warnThresholds: z.array(z.object({ count: z.number().int().min(1).max(1000), action: z.enum(['warn', 'timeout', 'kick', 'ban']), minutes: z.number().int().min(1).max(40320).optional() })).max(20).optional(),
+  automod: z.object({
+    enabled: z.boolean().optional(),
+    exempt: z.object({ roles: idList().optional(), channels: idList().optional(), users: idList().optional(), moderators: z.boolean().optional() }).optional(),
+    warnDecayHours: z.number().int().min(0).max(8760).optional(),
+    rules: z.object({
+      spam: rule({ maxMessages: z.number().int().min(1).max(100).optional(), windowSec: z.number().int().min(1).max(600).optional(), maxRepeats: z.number().int().min(2).max(50).optional(), repeatWindowSec: z.number().int().min(1).max(3600).optional() }),
+      mentions: rule({ maxUsers: z.number().int().min(1).max(100).optional(), maxRoles: z.number().int().min(1).max(100).optional(), everyone: z.boolean().optional() }),
+      invites: rule({ allowGuilds: idList().optional(), allowCodes: z.array(z.string().max(64)).max(100).optional() }),
+      links: rule({ allowDomains: z.array(z.string().max(253)).max(200).optional() }),
+      words: rule({ patterns: z.array(z.string().max(200)).max(500).optional() }),
+      caps: rule({ ratio: z.number().min(0).max(1).optional(), minLetters: z.number().int().min(1).max(4000).optional() }),
+      zalgo: rule({ maxCombining: z.number().int().min(1).max(1000).optional(), maxRatio: z.number().min(0).max(1).optional() }),
+      attachments: rule({ allowTypes: z.array(z.string().max(16)).max(100).optional(), blockTypes: z.array(z.string().max(16)).max(100).optional() }),
+      accountAge: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'kick', 'ban', 'quarantine', 'timeout']).optional(), minDays: z.number().min(0).max(3650).optional(), timeoutMin: z.number().int().min(1).max(40320).optional() }).optional(),
+      selfbot: rule({ channelsPerWindow: z.number().int().min(2).max(50).optional(), windowSec: z.number().int().min(1).max(600).optional(), identicalAcrossSec: z.number().int().min(1).max(3600).optional(), maxPerMinute: z.number().int().min(1).max(1000).optional() }),
+      raid: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'timeout', 'kick', 'ban']).optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), joins: z.number().int().min(2).max(1000).optional(), windowSec: z.number().int().min(1).max(3600).optional(), lockdownMin: z.number().int().min(1).max(1440).optional(), raiseVerification: z.boolean().optional(), alert: z.boolean().optional() }).optional(),
+    }).optional(),
+  }).optional(),
+});
+const LOG_ROUTE = z.union([
+  z.literal('off'),
+  z.string().max(32),
+  z.object({ kind: z.enum(['forum', 'channel', 'off']), id: z.string().max(32).optional(), tags: z.array(z.string().max(40)).max(5).optional() }),
+]);
+const LOGS_SCHEMA = z.object({
+  enabled: z.boolean().optional(),
+  forumId: z.string().max(32).optional(),
+  channelId: z.string().max(32).optional(),
+  forumMode: z.enum(['category', 'day']).optional(),
+  reaction: z.string().max(64).optional(),
+  pinSummary: z.boolean().optional(),
+  routes: z.record(z.string().max(40), LOG_ROUTE).optional(),
+});

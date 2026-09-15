@@ -129,7 +129,7 @@ export async function handlePanelInteraction(i) {
       // only the clicker sees it. They keep the file/text and paste it to import.
       const preset = { v: 1, name: channel.name, limit: channel.userLimit || 0, locked: !!state.locked, private: !!state.private, region: channel.rtcRegion || null };
       const json = JSON.stringify(preset, null, 2);
-      const msg = ui.card({ title: '📤 Room preset', body: `Keep this and paste it into **Import preset** anytime:\n\`\`\`json\n${json}\n\`\`\``, files: [ui.attach(Buffer.from(json, 'utf8'), 'voice-preset.json')] });
+      const msg = ui.card({ title: `${ui.icx('export')}Room preset`, body: `Keep this and paste it into **Import preset** anytime:\n\`\`\`json\n${json}\n\`\`\``, files: [ui.attach(Buffer.from(json, 'utf8'), 'voice-preset.json')] });
       return i.reply({ ...msg, flags: msg.flags | MessageFlags.Ephemeral });
     }
     if (action === 'preset_import') {

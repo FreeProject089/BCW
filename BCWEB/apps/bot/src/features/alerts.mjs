@@ -5,6 +5,7 @@
 import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api } from '../api.mjs';
+import { adminAlert } from './logs.mjs';
 
 const KIND_COLOR = {
     cpu: 0xf59e0b, mem: 0xf59e0b, disk: 0xf59e0b, web_vitals: 0xf59e0b, storage: 0xf59e0b,
@@ -37,10 +38,12 @@ export async function pollAlerts(client) {
         // config already saved. `generalChannelId` is optional: unset, everything lands in
         // the perf channel exactly as it did before, so adding this changes nothing for an
         // install that does not configure it.
-        if (!cfg.enabled || !a.enabled || !a.channelId) return;
-        const perfChannel = client.channels.cache.get(a.channelId);
+        // With an alerts FORUM configured, the channel is optional: every alert becomes a
+        // tagged post there (Perf / Incident). Without one, everything is exactly as before.
+        if (!cfg.enabled || !a.enabled || (!a.channelId && !a.forumId)) return;
+        const perfChannel = a.channelId ? client.channels.cache.get(a.channelId) : null;
         const generalChannel = a.generalChannelId ? client.channels.cache.get(a.generalChannelId) : null;
-        if (!perfChannel?.send) return;
+        if (!perfChannel?.send && !a.forumId) return;
 
         const alerts = await api.alertsUnannounced();
         if (!alerts.length) return;
@@ -50,11 +53,16 @@ export async function pollAlerts(client) {
             // channel that is unset, deleted, or not in the cache must never mean silence.
             const target = (isPerf(alert.kind) ? perfChannel : (generalChannel?.send ? generalChannel : perfChannel));
             try {
-                await target.send(ui.card({
-                    title: `⚠️ ${KIND_LABEL[alert.kind] || alert.kind}`, color: KIND_COLOR[alert.kind] || 0xf59e0b,
+                const card = ui.card({
+                    title: `${ui.icx('warn')}${KIND_LABEL[alert.kind] || alert.kind}`, color: KIND_COLOR[alert.kind] || 0xf59e0b,
                     body: alert.message,
                     footer: `<t:${Math.floor(new Date(alert.createdAt).getTime() / 1000)}:f>`,
-                }));
+                });
+                const posted = await adminAlert(isPerf(alert.kind) ? 'perf' : 'incident', card);
+                if (!posted) {
+                    if (!target?.send) throw new Error('no alerts channel and no alerts forum');
+                    await target.send(card);
+                }
                 done.push(alert.id);
             } catch (e) {
                 console.warn('[bot] alert announce failed', e.message);

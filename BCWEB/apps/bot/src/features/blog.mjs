@@ -51,7 +51,7 @@ export async function pollBlog(client) {
         try {
           const when = post.publishedAt ? new Date(post.publishedAt) : new Date();
           await channel.send(ui.card({
-            title: `📰 ${post.title.slice(0, 200)}`,
+            title: `${ui.icx('news')}${post.title.slice(0, 200)}`,
             body: [(post.excerpt || '').slice(0, 400) || null],
             image: post.cover && /^https?:\/\//i.test(post.cover) ? post.cover : null,
             footer: `${post.space?.name || 'BetterCommunity'} · ${post.author?.displayName || ''} · <t:${Math.floor(when.getTime() / 1000)}:D>`.replace(' ·  ·', ' ·'),

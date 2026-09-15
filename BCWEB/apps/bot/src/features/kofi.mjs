@@ -5,6 +5,7 @@
 import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
+import { adminAlert } from './logs.mjs';
 
 let _running = false;
 export async function pollKofi(client) {
@@ -13,23 +14,28 @@ export async function pollKofi(client) {
   try {
     const cfg = await config();
     const k = cfg.kofi || {};
-    if (!cfg.enabled || !k.enabled || !k.channelId) return;
+    const forum = !!cfg.alerts?.forumId; // tips also go to the admin-alerts forum (Ko-fi post)
+    if (!cfg.enabled || !k.enabled || (!k.channelId && !forum)) return;
     // Cache miss is common (a channel the bot hasn't touched since startup) — fetch it
     // so tips still land in the configured salon instead of being silently dropped.
-    const channel = client.channels.cache.get(k.channelId) || await client.channels.fetch(k.channelId).catch(() => null);
-    if (!channel?.send) { console.warn('[bot] kofi channel not found/inaccessible:', k.channelId); return; }
+    const channel = k.channelId ? (client.channels.cache.get(k.channelId) || await client.channels.fetch(k.channelId).catch(() => null)) : null;
+    if (!channel?.send && !forum) { console.warn('[bot] kofi channel not found/inaccessible:', k.channelId); return; }
 
     const { tips, totals } = await api.kofiUnannounced();
     if (!tips.length) return;
     const done = [];
     for (const tip of tips) {
       try {
-        await channel.send(ui.card({
-          title: '☕ New Ko-fi tip!', color: 0xff5e5b, // Ko-fi red
-          body: `**${tip.fromName || 'Anonymous'}** just tipped **${tip.amount.toFixed(2)} ${tip.currency}**${tip.isSubscription ? ' *(monthly supporter)*' : ''} — thank you! 🧡`,
+        const card = ui.card({
+          title: `${ui.icx('kofi')}New Ko-fi tip!`, color: 0xff5e5b, // Ko-fi red
+          body: `**${tip.fromName || 'Anonymous'}** just tipped **${tip.amount.toFixed(2)} ${tip.currency}**${tip.isSubscription ? ' *(monthly supporter)*' : ''} — thank you!`,
           footer: `Total raised: ${(totals.totalAmount || 0).toFixed(2)} ${tip.currency} · ${totals.tipCount || 0} tips`,
           buttons: [ui.btn(`${SITE_URL}/about#support`, 'Support the project')],
-        }));
+        });
+        // The public thank-you in the tips channel stays; the admin forum gets a copy in its
+        // Ko-fi post. Neither replaces the other — one is for members, one for the books.
+        if (channel?.send) await channel.send(card);
+        await adminAlert('kofi', card);
         done.push(tip.id);
       } catch (e) {
         console.warn('[bot] kofi announce failed', e.message);

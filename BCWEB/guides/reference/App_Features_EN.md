@@ -113,8 +113,8 @@
   no cron), cancellable.
 - **Discord bot** — multi-role gated access with per-role requirements + `/refreshroles`,
   Ko-fi tip announcements, server-perf alerts, moderation, welcome, join-to-create
-  voice, blog announcements. The `/casino` has **live tables** (crash with an animated
-  climb, a six-car race, a stake-weighted pot, and a shared roll of any single-player game)
+  voice, blog announcements. The `/casino` has **live tables** (a six-car race with the car
+  picked from a dropdown, a stake-weighted pot, and a shared roll of any single-player game)
   that other members join from the same message; with two or more seated the table settles
   **between the players** — the losers' stakes are the pot, split by stake × multiplier,
   edge on the share only — and the admin sets the **house edge per game** and a max bet where
