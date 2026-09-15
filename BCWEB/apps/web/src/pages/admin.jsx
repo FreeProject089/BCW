@@ -1371,7 +1371,7 @@ function AuditDetail({ id, onClose, onPickActor }) {
   const d = useAsync(() => (id ? api.get(`/admin/security/audit/entry/${id}`) : Promise.resolve(null)), [id]);
   const e = d.data?.entry;
   const row = (label, value, mono) => (
-    <div className="grid grid-cols-[130px_1fr] gap-3 py-1.5 border-b border-[var(--line)] last:border-0">
+    <div className="grid grid-cols-1 sm:grid-cols-[130px_minmax(0,1fr)] gap-1 sm:gap-3 py-1.5 border-b border-[var(--line)] last:border-0">
       <div className="text-xs text-[var(--faint)] pt-0.5">{label}</div>
       <div className={`text-sm min-w-0 break-words ${mono ? 'font-mono text-[11.5px]' : ''}`}>{value}</div>
     </div>
@@ -2018,7 +2018,7 @@ function PerfCompare() {
       {loading ? <Spinner size={14} /> : !cur ? (
         <div className="text-[12px] text-[var(--faint)]">{t('perf.cmp.nodata', 'Nothing recorded for this period yet.')}</div>
       ) : (
-        <>
+        <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="text-[11px] uppercase tracking-wider text-[var(--faint)]">
@@ -2080,7 +2080,7 @@ function PerfCompare() {
               </span>
             )}
           </div>
-        </>
+        </div>
       )}
     </Card>
   );
@@ -3481,12 +3481,12 @@ function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
               : t('cb.pre.add', 'Nothing already on the site is overwritten by this file.')}
           </div>
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)]">
-            <div className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)]">
+            <div className="grid grid-cols-[minmax(0,1fr)_60px_60px_60px] sm:grid-cols-[minmax(0,1fr)_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)]">
               <span>{t('cb.pre.section', 'Section')}</span><span className="text-end">{t('cb.pre.records', 'In zip')}</span>
               <span className="text-end">{t('cb.pre.new', 'New')}</span><span className="text-end">{t('cb.pre.over', 'Replaced')}</span>
             </div>
             {rows.map(([key, v]) => (
-              <div key={key} className="grid grid-cols-[1fr_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[12px] items-center">
+              <div key={key} className="grid grid-cols-[minmax(0,1fr)_60px_60px_60px] sm:grid-cols-[minmax(0,1fr)_70px_70px_70px] gap-2 px-2.5 py-1.5 text-[12px] items-center">
                 <span className="truncate flex items-center gap-1.5">
                   {v.label || key}
                   {!v.restorable && <span className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--faint)]">{t('cb.exportonly', 'export only')}</span>}
@@ -12160,7 +12160,7 @@ function AnnouncementDetail({ a, onClose, t }) {
     () => toast.success(t('common.copied', 'Copied.')), () => {}); };
   const when = (d) => (d ? new Date(d).toLocaleString() : '\u2014');
   const Row = ({ label, children }) => (
-    <div className="grid grid-cols-[110px_1fr] gap-2 py-1.5 border-b border-[var(--line)] last:border-0">
+    <div className="grid grid-cols-1 sm:grid-cols-[110px_minmax(0,1fr)] gap-1 sm:gap-2 py-1.5 border-b border-[var(--line)] last:border-0">
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] pt-0.5">{label}</div>
       <div className="text-[12px] min-w-0 break-words">{children}</div>
     </div>
@@ -18355,7 +18355,7 @@ function AnnouncementSection({ value, onChange }) {
           <Field label={t('adm2.mddesc', "Markdown description")}><Textarea rows={4} value={value.announceMarkdown} onChange={(e) => set('announceMarkdown')(e.target.value)} placeholder={t('adm2.ph.mddesc', "Tell people what's coming \u2014 markdown supported.")} /></Field>
           {/* Optional CTA — points anywhere: an external URL, or an in-site
               /blog/<slug> or /docs/<slug> article. */}
-          <div className="grid grid-cols-[130px_1fr] gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-[130px_minmax(0,1fr)] gap-2">
             <Field label={t('adm2.btnlabel', "Button label")}><Input value={value.announceButtonLabel || ''} onChange={(e) => set('announceButtonLabel')(e.target.value)} placeholder={t('adm2.ph.learnmore', "Learn more")} /></Field>
             <Field label={t('adm2.btnlink', "Button link (URL, or /blog/\u2026 /docs/\u2026)")}><Input value={value.announceButtonUrl || ''} onChange={(e) => set('announceButtonUrl')(e.target.value)} placeholder="/docs/roadmap" /></Field>
           </div>
@@ -18468,7 +18468,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
       <p className="text-sm text-[var(--muted)] mb-3">{t('su.desc', 'Stage new content below — it automatically replaces the current version at the date/time you pick. Nothing changes until then.')}</p>
       <Field label={t('su.switchat', 'Switch at')}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
       {includeNameShort && (
-        <div className="grid grid-cols-[1fr_110px] gap-3 mt-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_110px] gap-3 mt-3">
           <Field label={t('su.newname', 'New name')}><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
           <Field label={t('su.newshort', 'New short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} /></Field>
         </div>
@@ -18663,7 +18663,7 @@ function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage =
   return (
     <Modal open onClose={onClose} title={isNew ? t('sh.new', 'New project') : t('sh.e.edit', 'Edit {name}').replace('{name}', project.name)} icon={Sparkles} width="max-w-2xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
-      <div className="grid grid-cols-[1fr_110px] gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_110px] gap-3">
         <Field label={t('sh.e.pname', 'Project name')}><Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('adm2.ph.bettersomething', "Better Something")} /></Field>
         <Field label={t('sh.e.pshort', 'Short (≤5)')}><Input value={short} maxLength={5} onChange={(e) => setShort(e.target.value)} placeholder="BS" /></Field>
       </div>

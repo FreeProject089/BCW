@@ -222,7 +222,7 @@ function MyoProductModal({ product, onClose, onDone }) {
     <Modal open onClose={onClose} title={product ? t('amyo.p.edit', 'Edit product') : t('amyo.p.new', 'New product')} icon={Wand2} width="max-w-lg"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
       <div className="space-y-3">
-        <div className="grid grid-cols-[150px_1fr] gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[150px_minmax(0,1fr)] gap-3">
           <Field label={t('amyo.p.kind', 'Kind')}><Select value={f.kind} onChange={(e) => set('kind', e.target.value)}>{MYO_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</Select></Field>
           <Field label={t('amyo.p.name', 'Name')}><Input value={f.name} onChange={(e) => set('name', e.target.value)} /></Field>
         </div>

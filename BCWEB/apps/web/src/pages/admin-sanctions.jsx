@@ -122,7 +122,7 @@ export function Evidence({ s, onChanged }) {
           </span>
         </label>
         <Input className="flex-1 min-w-[180px]" placeholder="https://…" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} />
-        <Input className="w-[150px]" placeholder={t('sanc.ev.label', 'label (optional)')} value={linkName} onChange={(e) => setLinkName(e.target.value)} />
+        <Input className="w-full sm:w-[150px]" placeholder={t('sanc.ev.label', 'label (optional)')} value={linkName} onChange={(e) => setLinkName(e.target.value)} />
         <Button size="sm" variant="ghost" disabled={busy || !linkUrl.trim()} onClick={addLink}>{t('sanc.ev.addlink', 'Add link')}</Button>
       </div>
     </Card>
