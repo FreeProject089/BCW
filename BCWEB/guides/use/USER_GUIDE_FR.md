@@ -122,6 +122,26 @@ confiance à une source Communauté non identifiable — vérifie le profil et l
 **À faire :** signale avec une raison claire. **À éviter :** utiliser les signalements pour
 harceler — l'abus du système de signalement est lui-même modérable.
 
+### Joindre les gens derrière un élément
+
+Chaque dépôt, catalogue, profil et page d’équipe a un bouton **Contacter**. Il ouvre une
+conversation avec ceux qui gèrent l’élément — le propriétaire et son équipe — pas avec
+l’équipe du site. Connecté, elle vit dans **Tableau de bord → Messages & signalements**
+(reçues / envoyées, non-lus, fermer, et « signaler à l’équipe » si ça tourne mal). Déconnecté,
+tu laisses un e-mail et reçois un lien privé vers la conversation ; les réponses t’arrivent par
+e-mail. Il y a des limites d’envoi, et l’équipe du site peut bloquer un expéditeur qui en
+abuse. Un dépôt servi depuis le serveur de son propriétaire affiche aussi l’e-mail de contact
+que celui-ci a dû donner ; une page d’équipe affiche celui de l’équipe.
+
+### Équipes
+
+**Tableau de bord → Équipes** permet de créer une équipe avec une adresse de contact,
+d’inviter des membres (par BC id, e-mail ou pseudo — ils acceptent depuis leur propre tableau
+de bord) et de leur donner des rôles. Le propriétaire d’un dépôt, d’un catalogue ou d’un pool
+de stockage peut le **rattacher** à une équipe : chaque membre le modifie, publie et répond à
+ses messages, la facturation restant au propriétaire. L’équipe a une page publique en
+`/t/<slug>`.
+
 ### Droits d’auteur et notifications de droits
 
 Pour un contenu qui viole **tes** droits — un mod, un thème ou un catalogue qui est à toi,

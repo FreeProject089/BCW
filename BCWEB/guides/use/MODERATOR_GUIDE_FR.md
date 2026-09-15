@@ -63,6 +63,23 @@ onglet manquant = capacité manquante ; demande à un admin, ne contourne pas.
 l’expéditeur. **À éviter :** retirer un contenu sur une notification qui ne nomme ni œuvre ni
 cible — rejette-la en disant pourquoi.
 
+### 3c. Conversations entre membres
+
+- **Admin → Messages → Conversations entre membres** liste les fils ouverts avec le bouton
+  Contacter (dépôt / catalogue / profil / équipe). Ils sont entre membres ; l’équipe du site
+  **modère**, elle ne répond pas à la place des propriétaires. Le filtre **signalées** est ce
+  qu’il faut lire d’abord — un participant a appuyé sur « signaler à l’équipe ».
+- Par fil : tout lire (messages masqués compris), **masquer / afficher** un message,
+  **fermer**, ou **bloquer l’expéditeur** — son compte ou e-mail ne peut plus rien ouvrir ni
+  répondre, et chaque fil qu’il a ouvert est bloqué.
+- **Limites & expéditeurs bloqués** : nouveaux fils par compte / par expéditeur anonyme par
+  heure et par jour, réponses par heure, longueur maximale, les e-mails bloqués, et un
+  interrupteur global.
+
+**À faire :** bloquer sur abus, masquer sur doxxing ou insultes, laisser les différends aux
+parties. **À éviter :** lire des conversations que personne n’a signalées, sauf si un
+signalement ou une notification y mène.
+
 ## 4. Modérer les utilisateurs
 
 - **Suspendre** (MOD+) verrouille l'utilisateur avec un panneau de connexion clair ; un

@@ -123,7 +123,7 @@ e-mail, et les envois sont déclenchés par admin uniquement (pas d'auto-envoi �
 | Méthode | Chemin | Auth | But |
 |---|---|---|---|
 | GET | `/repos` · `/repos.json` | — | Liste de repos publics + feed agrégé (avec empreinte). |
-| POST | `/repos` · DELETE `/repos/:id` · PATCH `/repos/:id` | user | Créer / supprimer / éditer son propre repo. |
+| POST | `/repos` · DELETE `/repos/:id` · PATCH `/repos/:id` | user | Créer / supprimer / éditer son propre repo. `contactEmail` obligatoire quand `repoUrl` est donné (un dépôt servi ailleurs nomme quelqu’un à joindre), `contactPhone` optionnel ; PATCH ouvert aux membres de l’équipe du dépôt, DELETE au propriétaire. |
 | POST | `/repos/:id/check` · `/list` · `/favorite` · `/push` | user | Vérifier / lister / mettre en favori / mettre à jour un repo (push SHA-seulement). |
 | GET | `/me/repos` · `/me/hosting/groups` | user | Mes repos + pools d'hébergement. |
 | POST | `/me/repos/:id/renew` · `/upgrade` · `/to-multi` · `/to-single` | user | Changements de cycle de vie/plan. |
@@ -554,6 +554,35 @@ Notifications formelles droit d’auteur / marque / vie privée / contenu illici
 | GET/POST/PUT/DELETE | `/admin/rights/works[/:id]` | `manage_reports` | Le registre des œuvres protégées : titre, titulaire, hachages, motifs de nom, URL. Les nouveaux envois sont comparés à la sauvegarde (`flagIfProtected`). |
 | POST | `/admin/rights/scan` | `manage_reports` | Recompare le contenu existant au registre ; ouvre des notifications `match`. |
 | GET/PUT | `/admin/rights/config` | `manage_reports` | `strikeThreshold`, `strikeWindowDays`, `counterDays`, texte des e-mails. |
+
+### 30c. Équipes (`teams.mjs`)
+Des comptes qui gèrent ensemble dépôts, catalogues et pools. `canManage()` (`lib/teams.mjs`) = propriétaire, staff, ou membre actif de l’équipe de l’élément ; facturation, suppression et clés restent au propriétaire.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| GET | `/teams/:slug` | — | Carte publique : membres, e-mail / téléphone / site / Discord de contact, dépôts et catalogues listés. |
+| GET | `/me/teams` | user | Les miennes, avec `myRole` (owner / admin / member) et `myStatus` (invited / active). |
+| POST | `/me/teams` | user | Créer `{ name, contactEmail*, contactPhone?, website?, discord?, description? }` (≤ 10 possédées). |
+| PATCH / DELETE | `/me/teams/:id` | owner (admin pour PATCH) | Détails ; dissoudre — les membres partent, les éléments rattachés sont détachés. |
+| POST | `/me/teams/:id/members` | owner / admin | Inviter `{ to, role? }` — id, BC id, e-mail ou pseudo exact ; l’invité est notifié. |
+| POST | `/me/teams/:id/accept` · `/decline` | invité | Répondre à l’invitation. |
+| PATCH / DELETE | `/me/teams/:id/members/:userId` | owner (un admin peut retirer un membre) | Rôle ; retirer, ou quitter (soi-même). |
+| POST | `/me/teams/:id/transfer` | owner | `{ userId }` — le nouveau propriétaire ; l’ancien reste admin. |
+| PUT | `/me/teams/:id/attach` | admin d’équipe + propriétaire de l’élément | `{ kind: repo\|catalog\|group, id, attach }`. |
+
+### 30d. Fils de contact (`threads.mjs`)
+Une conversation avec le propriétaire et l’équipe derrière un dépôt, un catalogue, un profil ou une équipe — pas un signalement. Les limites sont comptées en base ; un compte / e-mail bloqué ne peut ni ouvrir ni répondre.
+
+| Méthode | Chemin | Auth | Rôle |
+|---|---|---|---|
+| POST | `/threads` | optionnelle ; PoW + `email` si anonyme | `{ kind: repo\|catalog\|user\|team, targetId, subject, body, email?, name?, pow? }` → 201 avec le fil ; un expéditeur anonyme reçoit aussi `accessToken`. `yourself`, `blocked`, `rate_limited`, `disabled`. |
+| GET | `/me/threads?box=inbox\|sent` | user | Reçues = adressées à moi ou à mes équipes ; envoyées = ouvertes par moi ; `unread`. |
+| GET | `/me/threads/:id` | participant | Le fil et ses messages (marque mon côté lu) ; 404 pour quiconque d’autre. |
+| POST | `/me/threads/:id/messages` · `/close` · `/reopen` · `/flag` | participant | Répondre (l’autre côté est notifié / e-mailé) ; fermer ; rouvrir ; signaler à l’équipe. |
+| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | le jeton | Le côté de l’expéditeur anonyme. |
+| GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | La file (`flagged` d’abord) et un fil avec messages masqués, e-mail et IP de l’expéditeur. |
+| POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Modération ; bloquer ajoute l’expéditeur à la liste et bloque chaque fil qu’il a ouvert. |
+| GET / PUT | `/admin/threads/config` | `manage_reports` | `enabled`, `userPerHour/Day`, `anonPerHour/Day`, `messagesPerHour`, `maxBody`, `blockedEmails[]`, `blockedUserIds[]`. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
 Ensembles de rôles créés par un SUPERADMIN par-dessus l’énumération de rôles, et droits d’édition par projet.

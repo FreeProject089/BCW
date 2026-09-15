@@ -324,6 +324,14 @@
   délai, au survol ; en boucle ou non), un panneau **Calques** (nom, verrou, masquage,
   ordre), rotation, ombre, effets au survol, lien sur tout le bloc, alignement du texte, pas
   de grille au choix et des presets pour démarrer.
+- **Équipes & contact** — une équipe (une adresse de contact, des rôles, des invitations par
+  BC id / e-mail / pseudo, une page publique en `/t/<slug>`) gère les dépôts, catalogues et
+  pools que son propriétaire y rattache ; un bouton **Contacter** sur chaque dépôt, catalogue,
+  profil et équipe ouvre une conversation avec le propriétaire et l’équipe — dans les deux
+  tableaux de bord, ou par un lien privé envoyé par e-mail pour un visiteur sans compte — avec
+  des limites comptées en base, une liste de blocage et une modération du staff (masquer,
+  fermer, bloquer) sous Admin → Messages. Un dépôt servi depuis le serveur de son propriétaire
+  doit publier un e-mail de contact.
 - **Notifications de droits** — `/report` dépose une notification formelle droit d’auteur /
   marque / vie privée / contenu illicite avec tous les éléments légalement requis, en
   résolvant un lien collé en cible précise (dépôt, entrée de catalogue, utilisateur,

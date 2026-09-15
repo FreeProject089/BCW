@@ -294,6 +294,13 @@
   zoom, pulse, float, custom keyframes; on show, on load, after a delay, on hover; looped or
   not), a **Layers** panel (name, lock, hide, reorder), rotation, shadow, hover effects, a
   block-wide link, text alignment, a chosen grid step and presets to start from.
+- **Teams & contact** — a team (one contact address, roles, invitations by BC id / e-mail /
+  name, a public page at `/t/<slug>`) manages the repos, catalogues and pools its owner
+  attaches; a **Contact** button on every repo, catalogue, profile and team opens a
+  conversation with the owner and the team — in both dashboards, or by an e-mailed private
+  link for a visitor without an account — with database-counted limits, a blocklist, and staff
+  moderation (hide, close, block) under Admin → Messages. A repo served from its owner's own
+  server must publish a contact e-mail.
 - **Rights notices** — `/report` files a formal copyright / trademark / privacy / illegal-
   content notice with every legally required element, resolving a pasted link to a precise
   target (repo, catalogue entry, user, file); notice codes to follow up, counter-notices,

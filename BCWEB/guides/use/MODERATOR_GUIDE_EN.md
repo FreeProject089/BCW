@@ -56,6 +56,21 @@ granted. If a tab is missing, you lack that capability — ask an admin, don't w
 **Do:** act on the notice as written, note what you did, tell the sender. **Don't:** take
 content down on a notice that names no work or no target — reject it and say why.
 
+### 3c. Member conversations
+
+- **Admin → Messages → Member conversations** lists the threads opened with the Contact button
+  (repo / catalogue / profile / team). They are between members; staff **moderate**, they do
+  not answer for the owners. The **flagged** filter is what to read first — a participant
+  pressed "report to staff".
+- Per thread: read everything (hidden messages included), **hide / unhide** a message,
+  **close**, or **block the sender** — their account or e-mail can no longer open or answer
+  anything, and every thread they opened is blocked.
+- **Limits & blocked senders**: new threads per account / per anonymous sender per hour and
+  day, replies per hour, maximum length, the blocked e-mails, and a global switch.
+
+**Do:** block on abuse, hide on doxxing or insults, leave disputes to the parties. **Don't:**
+read conversations nobody reported unless a report or a notice points at them.
+
 ## 4. Moderating users
 
 - **Suspend** (MOD+) locks a user out with a clear locked-sign-in panel; a suspended user

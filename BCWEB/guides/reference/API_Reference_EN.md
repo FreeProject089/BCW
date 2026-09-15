@@ -120,7 +120,7 @@ and sends are admin-triggered only (no auto-send on publish).
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET | `/repos` · `/repos.json` | — | Public repo list + aggregate feed (with fingerprint). |
-| POST | `/repos` · DELETE `/repos/:id` · PATCH `/repos/:id` | user | Create / delete / edit own repo. |
+| POST | `/repos` · DELETE `/repos/:id` · PATCH `/repos/:id` | user | Create / delete / edit own repo. `contactEmail` is required when `repoUrl` is given (a repo served elsewhere names somebody to reach), `contactPhone` optional; PATCH is open to the repo's team members, DELETE to the owner. |
 | POST | `/repos/:id/check` · `/list` · `/favorite` · `/push` | user | Verify / list / star / update a repo (SHA-only push). |
 | GET | `/me/repos` · `/me/hosting/groups` | user | My repos + hosting pools. |
 | POST | `/me/repos/:id/renew` · `/upgrade` · `/to-multi` · `/to-single` | user | Lifecycle/plan changes. |
@@ -548,6 +548,35 @@ Formal copyright / trademark / privacy / illegal-content notices (DSA Art. 16, L
 | GET/POST/PUT/DELETE | `/admin/rights/works[/:id]` | `manage_reports` | The protected-works registry: title, owner, hashes, name patterns, URLs. New uploads are matched on save (`flagIfProtected`). |
 | POST | `/admin/rights/scan` | `manage_reports` | Re-match existing content against the registry; opens `match` notices. |
 | GET/PUT | `/admin/rights/config` | `manage_reports` | `strikeThreshold`, `strikeWindowDays`, `counterDays`, notice e-mail copy. |
+
+### 30c. Teams (`teams.mjs`)
+Accounts that manage repos, catalogues and pools together. `canManage()` (`lib/teams.mjs`) = owner, staff, or an active member of the entity's team; billing, deletion and keys stay owner-only.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| GET | `/teams/:slug` | — | Public card: members, contact e-mail / phone / website / Discord, listed repos and catalogues. |
+| GET | `/me/teams` | user | Mine, with `myRole` (owner / admin / member) and `myStatus` (invited / active). |
+| POST | `/me/teams` | user | Create `{ name, contactEmail*, contactPhone?, website?, discord?, description? }` (≤ 10 owned). |
+| PATCH / DELETE | `/me/teams/:id` | owner (admin for PATCH) | Details; dissolve — members cascade, attached items are detached. |
+| POST | `/me/teams/:id/members` | owner / admin | Invite `{ to, role? }` — id, BC id, e-mail or exact display name; the invitee is notified. |
+| POST | `/me/teams/:id/accept` · `/decline` | invitee | Answer an invitation. |
+| PATCH / DELETE | `/me/teams/:id/members/:userId` | owner (admin may remove members) | Role; remove, or leave (self). |
+| POST | `/me/teams/:id/transfer` | owner | `{ userId }` — the new owner; the old one stays admin. |
+| PUT | `/me/teams/:id/attach` | team admin + item owner | `{ kind: repo\|catalog\|group, id, attach }`. |
+
+### 30d. Contact threads (`threads.mjs`)
+A conversation with the owner and team behind a repo, a catalogue, a profile or a team — not a report. Limits are counted in the database; a blocked account / e-mail can neither open nor answer.
+
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/threads` | optional; PoW + `email` when anonymous | `{ kind: repo\|catalog\|user\|team, targetId, subject, body, email?, name?, pow? }` → 201 with the thread; an anonymous sender also gets `accessToken`. `yourself`, `blocked`, `rate_limited`, `disabled`. |
+| GET | `/me/threads?box=inbox\|sent` | user | Inbox = addressed to me or my teams; sent = opened by me; `unread`. |
+| GET | `/me/threads/:id` | participant | The thread and its messages (marks my side read); 404 for anyone else. |
+| POST | `/me/threads/:id/messages` · `/close` · `/reopen` · `/flag` | participant | Reply (the other side is notified / e-mailed); close; reopen; report to staff. |
+| GET / POST | `/threads/t/:token` · `/threads/t/:token/messages` | the token | The anonymous sender's side. |
+| GET | `/admin/threads?status=&q=` · `/admin/threads/:id` | `manage_reports` | The queue (`flagged` first) and one thread with hidden messages, sender e-mail and IP. |
+| POST | `/admin/threads/:id/close` · `/block` · `/messages/:mid/hide` · `/unhide` | `manage_reports` | Moderation; block adds the sender to the blocklist and blocks every thread they opened. |
+| GET / PUT | `/admin/threads/config` | `manage_reports` | `enabled`, `userPerHour/Day`, `anonPerHour/Day`, `messagesPerHour`, `maxBody`, `blockedEmails[]`, `blockedUserIds[]`. |
 
 ## 31. Custom roles & project grants (`roles.mjs`)
 SUPERADMIN-authored role bundles layered on top of the role enum, and per-project edit grants.

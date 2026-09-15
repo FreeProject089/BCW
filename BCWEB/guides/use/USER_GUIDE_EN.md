@@ -118,6 +118,24 @@ source you can't identify — check the owner's profile and BC id first.
 **Do:** report with a clear reason. **Don't:** use reports to harass — abuse of the report
 system is itself moderatable.
 
+### Reaching the people behind something
+
+Every repo, catalogue, profile and team page has a **Contact** button. It opens a conversation
+with whoever manages that thing — the owner and their team — not with the site staff. Signed
+in, it lives in **Dashboard → Messages & reports** (inbox / sent, unread markers, close, and
+"report to staff" if it turns sour). Signed out, you leave an e-mail and get a private link to
+the conversation; answers are e-mailed to you. There are sending limits, and staff can block a
+sender who abuses them. A repo served from its owner's own server also shows the contact
+e-mail its owner had to give; a team page shows the team's.
+
+### Teams
+
+**Dashboard → Teams** lets you create a team with one contact address, invite members (by BC
+id, e-mail or display name — they accept from their own dashboard), and give them roles. The
+owner of a repo, catalogue or storage pool can **attach** it to a team: every member then
+edits it, publishes, and answers its messages, while billing stays with the owner. The team has
+a public page at `/t/<slug>`.
+
 ### Copyright and rights notices
 
 For content that infringes **your** rights — a mod, theme or catalogue that is yours, a
