@@ -1826,7 +1826,7 @@ const DICT = {
 
     'foot.products': 'Produits', 'foot.community': 'Communauté', 'foot.legal': 'Légal', 'foot.members': 'Membres',
     'foot.tagline': 'La maison de tous les projets Better.', 'foot.kofi': 'Soutiens-nous sur Ko-fi',
-    'foot.privacy': 'Confidentialité', 'foot.terms': 'Conditions', 'foot.cookies': 'Cookies', 'foot.rights': 'Tous droits réservés.', 'foot.about': 'À propos', 'foot.refunds': 'Paiements & Remboursements', 'foot.submissions': 'Conditions de soumission',
+    'foot.privacy': 'Confidentialité', 'foot.terms': 'Conditions', 'foot.cookies': 'Cookies', 'foot.rights': 'Tous droits réservés.', 'foot.about': 'À propos', 'foot.dpa': 'Accord de traitement des données', 'foot.refunds': 'Paiements & Remboursements', 'foot.submissions': 'Conditions de soumission',
     'news.title': 'Reçois les nouveautés du blog par email', 'news.sub': 'Les nouveaux articles, directement dans ta boîte mail. Double opt-in, et désinscription en un clic dans chaque email.',
     'news.ph': 'toi@exemple.com', 'news.cta': "S'inscrire", 'news.sending': 'Inscription…',
     'news.check': 'Presque fini — vérifie ta boîte mail pour confirmer ton inscription.', 'news.err': "Inscription impossible — vérifie l'adresse et réessaie.",

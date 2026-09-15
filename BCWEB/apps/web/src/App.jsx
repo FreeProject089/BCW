@@ -1227,7 +1227,7 @@ function Protected({ children, role }) {
   return children;
 }
 
-const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/submit': 'Submit', '/blog': 'Blog', '/docs': 'Docs', '/faq': 'FAQ', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds' };
+const TITLES = { '/': 'Home', '/catalog': 'Catalog', '/submit': 'Submit', '/blog': 'Blog', '/docs': 'Docs', '/faq': 'FAQ', '/repos': 'Server Repos', '/hosting': 'Hosting', '/projects': 'Projects', '/contact': 'Contact', '/auth': 'Sign in', '/profile': 'Profile', '/dashboard': 'Dashboard', '/admin': 'Admin', '/settings': 'Settings', '/2fa': 'Authenticator', '/legal': 'Legal', '/legal/about': 'About', '/legal/privacy': 'Privacy', '/legal/terms': 'Terms', '/legal/cookies': 'Cookies', '/legal/refunds': 'Payments & Refunds', '/legal/dpa': 'Data Processing Addendum' };
 
 // Site-wide banner(s) for active admin announcements. Dismissal is per-announcement
 // (by id) and persisted in localStorage, so re-dismissing after a page reload isn't

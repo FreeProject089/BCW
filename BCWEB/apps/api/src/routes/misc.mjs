@@ -1585,14 +1585,15 @@ export default async function miscRoutes(app) {
   // The five that ship with the app. Not the list of what exists — the list of what has a
   // compiled-in fallback in the web bundle, which is a different and much smaller claim. It
   // is what `revert` may hand back to, and what may not be deleted.
-  const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds'];
+  const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds', 'submissions', 'dpa'];
   const DOC_LABEL = {
     privacy: 'Privacy Policy', terms: 'Terms of Service', cookies: 'Cookie Policy',
-    about: 'About', refunds: 'Payments & Refunds',
+    about: 'About', refunds: 'Payments & Refunds', submissions: 'Submission Terms', dpa: 'Data Processing Addendum',
   };
   const DOC_LABEL_FR = {
     privacy: 'Politique de confidentialité', terms: 'Conditions d’utilisation',
     cookies: 'Politique de cookies', about: 'À propos', refunds: 'Paiements & remboursements',
+    submissions: 'Conditions de soumission', dpa: 'Accord de traitement des données',
   };
 
   /**
