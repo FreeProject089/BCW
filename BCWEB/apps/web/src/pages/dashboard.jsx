@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap,
-} from 'lucide-react';
+  Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap, Users as UsersIcon } from 'lucide-react';
 import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
@@ -28,6 +27,8 @@ import { MyDiscordServers } from './discord-servers.jsx';
 // across it would fail the import and show a crash card. See lib/lazy-chunk.js.
 const OwnerCatalogs = lazyNamed(() => import('./admin.jsx'), 'OwnerCatalogs');
 const MyReports = lazyNamed(() => import('./admin.jsx'), 'MyReports');
+const MyThreads = lazyNamed(() => import('./threads.jsx'), 'MyThreads');
+const MyTeams = lazyNamed(() => import('./teams.jsx'), 'MyTeams');
 import { KofiIcon } from '../ui/brand.jsx';
 import { useAsync, Loading, statusTone, KIND_ICON, fmtRemaining, JsonEditor, SideDash, startOwnershipTransfer } from './pages.jsx';
 
@@ -804,6 +805,7 @@ export function Dashboard() {
     { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined, badgeTitle: t('dash.badge.polls', '{n} poll(s) waiting for your answer').replace('{n}', pollsOpen) },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
     { id: 'reports', label: t('dash.reports', 'Messages & reports'), icon: MessageSquare },
+    { id: 'teams', label: t('dash.teams', 'Teams'), icon: UsersIcon },
     { id: 'data', label: t('dash.mydata', 'Your data'), icon: HardDriveDownload },
   ];
   return (
@@ -911,7 +913,8 @@ export function Dashboard() {
           {s === 'economy' && <EconomyShop view={ecoView} onView={setEcoView} />}
           {s === 'polls' && <MyPolls />}
           {s === 'billing' && <Billing />}
-          {s === 'reports' && <><MyReports /><MyRightsNotices /></>}
+          {s === 'reports' && <><MyThreads /><MyReports /><MyRightsNotices /></>}
+          {s === 'teams' && <MyTeams />}
           {s === 'data' && <MyData />}
         </>)}
       </SideDash>

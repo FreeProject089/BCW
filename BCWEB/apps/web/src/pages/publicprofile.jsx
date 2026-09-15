@@ -9,6 +9,7 @@ import { Card, Button, Badge, EmptyState, Spinner, Input, useToast } from '../ui
 import Avatar, { avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
 import { ReportButton } from '../ui/report.jsx';
+import { ContactButton } from '../ui/contact.jsx';
 
 const roleTone = (r) => r === 'SUPERADMIN' || r === 'ADMIN' ? 'red' : r === 'MOD' ? 'amber' : '';
 const Loading = () => <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> Loading…</div>;
@@ -91,6 +92,7 @@ export default function PublicProfile() {
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="ghost" onClick={share}><Share2 size={14} /> {t('pp.share', 'Share')}</Button>
+            <ContactButton kind="user" targetId={u.id} targetLabel={u.displayName} />
             <ReportButton targetType="user" targetId={u.id} targetLabel={u.displayName} />
           </div>
         </div>

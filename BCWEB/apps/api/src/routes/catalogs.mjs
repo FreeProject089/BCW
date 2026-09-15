@@ -1,6 +1,7 @@
 import argon2 from 'argon2';
 import { CATALOG_KINDS, CATALOG_KINDS_LOWER, INDEX_TYPE_ORDER, DOCUMENT_KINDS, DOCUMENT_KIND_FIELD, isDocumentKind, ALL_HOSTABLE_LOWER } from '../lib/catalog-kinds.mjs';
 import { keyAuthOk, keyAudience } from '../lib/keyauth.mjs';
+import { canManage } from '../lib/teams.mjs';
 import { z } from 'zod';
 import crypto from 'node:crypto';
 import { zipReadAll, zipEntry } from '../lib/native.mjs';
@@ -301,6 +302,7 @@ const ser = (c) => ({
   // removed by accident. This serializer is an allowlist, so the field only exists because it
   // is named here; adding the column alone would have left the UI unable to see it.
   hasPassword: !!(c.syncPasswordHash || '').trim(),
+  teamId: c.teamId || null, contactEmail: c.contactEmail || '', contactPhone: c.contactPhone || '',
 });
 
 /**
@@ -527,7 +529,7 @@ export default async function communityCatalogRoutes(app) {
     // had to fetch the feed by hand to find out. Pull enough of each item to show a contents
     // list. Deliberately NOT payloadKey: that is the storage object, never public.
     const c = await p.communityCatalog.findUnique({ where: { slug: req.params.slug }, include: {
-      owner: { select: { displayName: true } },
+      owner: { select: { displayName: true } }, team: { select: { slug: true, name: true } },
       items: { select: { id: true, kind: true, name: true, slug: true, version: true, description: true, tags: true, downloads: true, payloadSize: true, updatedAt: true },
                orderBy: [{ downloads: 'desc' }, { name: 'asc' }], take: 300 },
       _count: { select: { items: true } },
@@ -551,6 +553,7 @@ export default async function communityCatalogRoutes(app) {
     ]);
     return { catalog: {
       ...ser(c), owner: c.owner?.displayName, ownerId: c.ownerId, ownerBcId: userBcId(c.ownerId), kindsPresent: [...present],
+      team: c.team ? { slug: c.team.slug, name: c.team.name } : null,
       favoriteCount, favorited: !!mine, items: publicContents(c),
       private: c.visibility === 'private', keySuffix: c.visibility === 'private' && req.query?.k ? `?k=${encodeURIComponent(String(req.query.k))}` : '',
     } };
@@ -653,7 +656,7 @@ export default async function communityCatalogRoutes(app) {
   app.get('/me/catalogs/:id', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id }, include: { items: true, project: { select: { key: true } }, _count: { select: { items: true } } } });
-    if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
+    if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     return { catalog: { ...ser(c), access: c.access || {}, rawJson: c.rawJson || null, items: c.items } };
   });
 
@@ -682,6 +685,9 @@ export default async function communityCatalogRoutes(app) {
       // exists.
       syncPassword: z.string().min(4).max(200).optional(),
       pubkeys: z.array(pubkeyLineSchema).max(200).optional(),
+      // Somebody to reach about the catalogue, shown on its page beside the message button.
+      contactEmail: z.string().trim().email().max(254).optional(),
+      contactPhone: z.string().trim().max(40).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: pubkeyErrorCode(b.error) || 'invalid_input' });
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
@@ -757,6 +763,8 @@ export default async function communityCatalogRoutes(app) {
     const b = z.object({
       name: z.string().trim().min(2).max(80).optional(),
       description: z.string().max(2000).optional(),
+      contactEmail: z.string().trim().email().max(254).nullable().optional(),
+      contactPhone: z.string().trim().max(40).nullable().optional(),
       kind: z.enum(ALL_HOSTABLE_LOWER).optional(),
       // Accepted at up to 4 so an older client gets a NAMED error (mixed_kinds, below) instead
       // of a blanket invalid_input it cannot act on; an empty array means "not specified".
@@ -775,7 +783,7 @@ export default async function communityCatalogRoutes(app) {
     if ((b.data.kinds?.length || 0) > 1) return reply.code(400).send({ error: 'mixed_kinds' });
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
-    if (!c || (c.ownerId !== req.user.uid && !['ADMIN', 'SUPERADMIN'].includes(req.user.role))) return reply.code(404).send({ error: 'not_found' });
+    if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     const data = { ...b.data };
     // 'app' is the API's word; the column is a Project relation. Resolved to an id here so
     // an unknown key is a clean 400 rather than a foreign-key error from Prisma.
@@ -848,7 +856,7 @@ export default async function communityCatalogRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
-    if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     if (c.mode !== 'managed') return reply.code(400).send({ error: 'not_managed' });
     // One catalog, one kind. Accepting a theme into an app catalog "works" — right up to the
     // point where the feed emits only apps and the theme is simply gone, with nothing to
@@ -883,7 +891,7 @@ export default async function communityCatalogRoutes(app) {
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
-    if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
     if (b.data.payloadKey && !b.data.payloadKey.startsWith(`uploads/${req.user.uid}/`)) return reply.code(400).send({ error: 'invalid_payload_key' });
@@ -900,7 +908,7 @@ export default async function communityCatalogRoutes(app) {
   app.delete('/me/catalogs/:id/items/:iid', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const c = await p.communityCatalog.findUnique({ where: { id: req.params.id } });
-    if (!c || c.ownerId !== req.user.uid) return reply.code(404).send({ error: 'not_found' });
+    if (!c || !(await canManage(p, req.user, c))) return reply.code(404).send({ error: 'not_found' });
     const item = await p.communityCatalogItem.findUnique({ where: { id: req.params.iid } });
     if (!item || item.catalogId !== c.id) return reply.code(404).send({ error: 'not_found' });
     await p.communityCatalogItem.delete({ where: { id: item.id } });

@@ -6,6 +6,7 @@ import { useI18n } from '../i18n.jsx';
 import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { ReportButton } from '../ui/report.jsx';
+import { ContactButton, ContactStrip } from '../ui/contact.jsx';
 import { useAuth } from './auth.jsx';
 
 const KIND_ICON = { PLUGIN: Package, THEME: Palette, APP: Boxes, PRESET: Music2 };
@@ -66,8 +67,10 @@ export default function CommunityCatalogPage() {
         {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
         <StarButton favorited={cat.favorited} count={cat.favoriteCount} signedIn={!!user}
           post={() => api.post(`/c/${encodeURIComponent(cat.slug)}/favorite`)} />
+        <ContactButton kind="catalog" targetId={cat.slug} targetLabel={cat.name} />
         <ReportButton targetType="catalog" targetId={cat.slug} targetLabel={cat.name} />
       </div>}
+      <ContactStrip team={cat.team} contactEmail={cat.contactEmail} contactPhone={cat.contactPhone} className="mb-4" />
 
       {kinds.length === 0 ? (
         <EmptyState icon={Boxes} title={t('ccp.empty.t', 'Nothing to add yet')} sub={t('ccp.empty.s', 'This catalog has no BMM-importable content yet.')} />

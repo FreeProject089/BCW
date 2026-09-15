@@ -7,6 +7,7 @@ import { useToast } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { ReportButton } from '../ui/report.jsx';
+import { ContactButton, ContactStrip } from '../ui/contact.jsx';
 
 const humanSize = (b) => {
   if (!b) return '0 B';
@@ -201,8 +202,10 @@ export default function RepoPublicPage() {
             list, which is the wrong place to decide you want to keep something. */}
         <StarButton favorited={repo.favorited} count={repo.favoriteCount} signedIn={!!user}
           post={() => api.post(`/repos/${encodeURIComponent(repo.id)}/favorite`)} />
+        <ContactButton kind="repo" targetId={repo.id} targetLabel={repo.name} />
         <ReportButton targetType="repo" targetId={repo.id} targetLabel={repo.name} />
       </div>
+      <ContactStrip team={repo.team} contactEmail={repo.contactEmail} contactPhone={repo.contactPhone} className="mb-3" />
 
       {deeplink ? (
         <Card className="p-4">

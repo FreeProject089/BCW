@@ -262,6 +262,11 @@ model User {
   protectedWorks       ProtectedWork[]      @relation("ProtectedWorkAuthor")
   botActions           BotAction[]          @relation("BotActionRequester")
   staffNotes           StaffNote[]          @relation("StaffNoteAuthor")
+  teamsOwned           Team[]               @relation("TeamOwner")
+  teamMemberships      TeamMember[]
+  threadsOwned         ContactThread[]      @relation("ThreadOwner")
+  threadsSent          ContactThread[]      @relation("ThreadSender")
+  threadMessages       ContactThreadMessage[] @relation("ThreadMsgAuthor")
   sanctionEvidence     SanctionAttachment[] @relation("SanctionAttachmentAuthor")
   pendingDismissals    PendingDismissal[]
   webhooks             WebhookEndpoint[]
@@ -485,6 +490,9 @@ model HostingGroup {
   color           String             @default("") // owner-chosen accent colour for the dashboard card
   uploadLimitKbps Int                @default(8192) // sandbox upload cap applied to every repo
   cpuShare        Float              @default(0.5)
+  // A pool attributed to a team: every member manages what sits in it.
+  team            Team?              @relation(fields: [teamId], references: [id])
+  teamId          String?
   createdAt       DateTime           @default(now())
   repos           ServerRepo[]
   catalogs        CommunityCatalog[]
@@ -871,6 +879,10 @@ model CommunityCatalog {
   freePlan          Boolean                @default(false) // provisioned via the $0 free catalog plan
   group             HostingGroup?          @relation(fields: [groupId], references: [id])
   groupId           String?
+  team              Team?                  @relation(fields: [teamId], references: [id])
+  teamId            String?
+  contactEmail      String?
+  contactPhone      String?
   storageQuotaBytes BigInt                 @default(0) // dedicated alloc when not in a pool
   storageUsedBytes  BigInt                 @default(0)
   views             Int                    @default(0)
@@ -1130,6 +1142,12 @@ model ServerRepo {
   dashPassword      String? // argon2 hash of the dashboard password (null = disabled)
   group             HostingGroup?     @relation(fields: [groupId], references: [id])
   groupId           String?
+  // A team manages it alongside the owner (see routes/teams.mjs). Contact details for a
+  // repo served from the owner's own server: the e-mail is required there, the phone is not.
+  team              Team?             @relation(fields: [teamId], references: [id])
+  teamId            String?
+  contactEmail      String?
+  contactPhone      String?
   deleteAt          DateTime? // scheduled hard-deletion (72h grace, e.g. after a failed payment)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
@@ -4180,4 +4198,95 @@ model ProtectedWork {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ── Teams ────────────────────────────────────────────────────────────────────────────────
+// A group of accounts that manage repos, catalogues and pools together, with one contact
+// address for whoever needs to reach them (see routes/teams.mjs, routes/threads.mjs).
+model Team {
+  id           String            @id @default(cuid())
+  slug         String            @unique
+  name         String
+  description  String            @default("")
+  avatar       String?
+  contactEmail String
+  contactPhone String?
+  website      String?
+  discord      String?
+  owner        User              @relation("TeamOwner", fields: [ownerId], references: [id])
+  ownerId      String
+  members      TeamMember[]
+  repos        ServerRepo[]
+  catalogs     CommunityCatalog[]
+  groups       HostingGroup[]
+  threads      ContactThread[]   @relation("ThreadTeam")
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([ownerId])
+}
+
+model TeamMember {
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  role      String   @default("member") // owner | admin | member
+  status    String   @default("active") // invited | active
+  invitedBy String?
+  createdAt DateTime @default(now())
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+// ── Contact threads ──────────────────────────────────────────────────────────────────────
+// A conversation between whoever presses "Contact" on a repo / catalogue / profile and the
+// user or team that manages it. Distinct from Report (that is staff's queue): staff only
+// moderate these. An anonymous sender follows the thread by its access token, e-mailed.
+model ContactThread {
+  id             String                 @id @default(cuid())
+  kind           String // repo | catalog | user | team
+  targetId       String
+  targetLabel    String                 @default("")
+  ownerUser      User?                  @relation("ThreadOwner", fields: [ownerUserId], references: [id])
+  ownerUserId    String?
+  ownerTeam      Team?                  @relation("ThreadTeam", fields: [ownerTeamId], references: [id])
+  ownerTeamId    String?
+  sender         User?                  @relation("ThreadSender", fields: [senderId], references: [id])
+  senderId       String?
+  senderEmail    String                 @default("")
+  senderName     String                 @default("")
+  accessToken    String                 @unique
+  subject        String                 @default("")
+  status         String                 @default("open") // open | closed | blocked
+  ownerUnread    Boolean                @default(true)
+  senderUnread   Boolean                @default(false)
+  staffFlag      String                 @default("") // "" | flagged | blocked
+  ip             String                 @default("")
+  lastActivityAt DateTime               @default(now())
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  messages       ContactThreadMessage[]
+
+  @@index([ownerUserId, lastActivityAt])
+  @@index([ownerTeamId, lastActivityAt])
+  @@index([senderId])
+  @@index([senderEmail])
+  @@index([status])
+  @@index([kind, targetId])
+}
+
+model ContactThreadMessage {
+  id        String        @id @default(cuid())
+  thread    ContactThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  threadId  String
+  author    User?         @relation("ThreadMsgAuthor", fields: [authorId], references: [id])
+  authorId  String?
+  side      String // sender | owner | staff
+  body      String
+  hidden    Boolean       @default(false) // hidden by staff
+  createdAt DateTime      @default(now())
+
+  @@index([threadId])
 }

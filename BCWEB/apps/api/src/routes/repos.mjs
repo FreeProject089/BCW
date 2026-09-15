@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { applyCampaign } from './campaigns.mjs';
+import { canManage } from '../lib/teams.mjs';
 import { db, requireRole, requireCap, optionalAuth, notify, isValidRepoManifest, accountEntrySchema, pubkeyLineSchema, pubkeyErrorCode, logAudit, httpUrl } from '../lib/lib.mjs';
 import { gitManifestUrl } from '../lib/gitsource.mjs';
 import { classifyRepoBody } from '../lib/repokind.mjs';
@@ -260,7 +261,8 @@ export default async function repoRoutes(app) {
       where: { id: req.params.id },
       select: { id: true, ownerId: true, name: true, description: true, tags: true, links: true, publicUrl: true, repoUrl: true,
                 status: true, hosted: true, hostPath: true, published: true, sha: true, listed: true, verified: true, pendingReview: true,
-                category: true, shareKey: true, createdAt: true, owner: { select: { displayName: true } }, _count: { select: { favorites: true } } },
+                category: true, shareKey: true, createdAt: true, owner: { select: { displayName: true } }, _count: { select: { favorites: true } },
+                teamId: true, contactEmail: true, contactPhone: true, team: { select: { slug: true, name: true } } },
     });
     if (!r) return reply.code(404).send({ error: 'not_found' });
     const publicListed = r.listed && r.verified && !r.pendingReview;
@@ -293,6 +295,11 @@ export default async function repoRoutes(app) {
         author: r.owner?.displayName || null, ownerBcId: userBcId(r.ownerId),
         fingerprint: repoFingerprint({ repoId: r.id, ownerId: r.ownerId, ...idn }),
         favoriteCount: r._count.favorites, favorited: !!mine, repoJson, manifestJson, filesBase, createdAt: r.createdAt,
+        // Who to reach. The team card when there is one; the declared e-mail/phone only for
+        // a repo served from the owner's own server (a hosted one is reached by message).
+        team: r.team ? { slug: r.team.slug, name: r.team.name } : null,
+        contactEmail: !r.hosted ? (r.contactEmail || null) : null,
+        contactPhone: !r.hosted ? (r.contactPhone || null) : null,
         // Present only to the owner/staff so they can manage the link; never to visitors.
         ...(isOwner ? { shared: !!r.shareKey } : {}),
       },
@@ -1009,8 +1016,13 @@ export default async function repoRoutes(app) {
       repoUrl: httpUrl(300).optional(),
       tags: z.array(z.string().max(24)).max(8).default([]),
       links: linksSchema.optional(),
+      // A repo served from the owner's own server names somebody to reach: the e-mail is
+      // required, the phone is not. A hosted repo is reached through the site's messages.
+      contactEmail: z.string().trim().email().max(254).optional(),
+      contactPhone: z.string().trim().max(40).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (b.data.repoUrl && !b.data.contactEmail) return reply.code(400).send({ error: 'contact_email_required' });
     const p = await db();
     const gate = await repoCreateGate(p, req.user);
     if (!gate.ok) return reply.code(403).send({ error: gate.reason });
@@ -1055,7 +1067,8 @@ export default async function repoRoutes(app) {
   async function ownRepo(p, id, user) {
     const repo = await p.serverRepo.findUnique({ where: { id } });
     if (!repo) return { err: 404 };
-    if (repo.ownerId !== user.uid && user.role === 'USER') return { err: 403 };
+    // The owner, staff, or an active member of the repo's team (lib/teams.mjs).
+    if (!(await canManage(p, user, repo))) return { err: 403 };
     return { repo };
   }
   // Owner AND not frozen. A SUSPENDED repo is read-only for its owner — no list, edit,
@@ -1074,11 +1087,18 @@ export default async function repoRoutes(app) {
       name: z.string().min(2).max(60).optional(), description: z.string().max(600).optional(),
       repoUrl: httpUrl(300).optional(), tags: z.array(z.string().max(24)).max(8).optional(),
       links: linksSchema.optional(),
+      contactEmail: z.string().trim().email().max(254).nullable().optional(),
+      contactPhone: z.string().trim().max(40).nullable().optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const { repo, err, code } = await ownRepoMutable(p, req.params.id, req.user);
     if (err) return reply.code(err).send({ error: code || (err === 404 ? 'not_found' : 'forbidden') });
+    // An external repo keeps a contact e-mail: clearing it, or pointing a repo at an external
+    // URL without one, is refused the same way creation is.
+    const nextUrl = b.data.repoUrl !== undefined ? b.data.repoUrl : repo.repoUrl;
+    const nextMail = b.data.contactEmail !== undefined ? b.data.contactEmail : repo.contactEmail;
+    if (nextUrl && !repo.hosted && !nextMail) return reply.code(400).send({ error: 'contact_email_required' });
     // A rename must face the same check as the creation, or the rule is decorative.
     if (b.data.name && req.user.role === 'USER') {
       const reservedEdit = reservedTermIn(b.data.name);

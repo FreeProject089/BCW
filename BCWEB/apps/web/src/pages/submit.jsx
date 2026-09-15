@@ -236,7 +236,7 @@ function HostCatalog({ onBack }) {
   // all, so the feed fell back to APP and a plugin catalog answered `unsupported_type` for the
   // only type it actually held. One catalog serves one type — BMM reads a separate URL per
   // type, each with its own payload shape.
-  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw', kind: 'plugin', syncPassword: '' });
+  const [form, setForm] = useState({ name: '', description: '', visibility: 'public', mode: 'raw', kind: 'plugin', syncPassword: '', contactEmail: '', contactPhone: '' });
   // Beside the form rather than inside it: this is a list, and every other field there is
   // a flat string the reset paths treat as one value each.
   const [pubkeys, setPubkeys] = useState([]);
@@ -302,6 +302,8 @@ function HostCatalog({ onBack }) {
       if (form.syncPassword.trim().length < 4) return toast.error(t('sub2.pw.short', 'Password too short (min 4).'));
       body.syncPassword = form.syncPassword.trim();
     }
+    if (form.contactEmail.trim()) body.contactEmail = form.contactEmail.trim();
+    if (form.contactPhone.trim()) body.contactPhone = form.contactPhone.trim();
     if (pubkeys.length) body.pubkeys = pubkeys;
     if (form.mode === 'raw') { if (!rawJson) return toast.error(t('sub2.raw.need', 'Upload your catalog.json first.')); body.rawJson = rawJson; }
     else {
@@ -419,6 +421,10 @@ function HostCatalog({ onBack }) {
         {step === 2 && (<>
           <div className="text-sm font-semibold flex items-center gap-2"><Lock size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.access.t', 'Who may sync it?')}</div>
           <p className="text-xs text-[var(--faint)] -mt-1">{t('sub2.step.access.d', 'All optional — leave everything blank for an open catalogue anyone can sync.')}</p>
+          <div className="grid sm:grid-cols-2 gap-2">
+            <Field label={t('sub2.contactmail', 'Contact e-mail (optional)')} hint={t('sub2.contact.h', 'Shown on the catalogue page so people can reach you; messages also arrive in your dashboard.')}><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
+            <Field label={t('sub2.phone', 'Phone (optional)')}><Input value={form.contactPhone} maxLength={40} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} /></Field>
+          </div>
           <Field label={t('sub2.pw', 'Download password (optional)')} hint={t('sub2.pw.hint', 'Anyone syncing is asked for it. Leave empty for an open catalogue.')}>
             <Input type="password" value={form.syncPassword} autoComplete="new-password" onChange={(e) => setForm({ ...form, syncPassword: e.target.value })} />
           </Field>

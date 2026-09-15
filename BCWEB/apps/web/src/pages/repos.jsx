@@ -1682,7 +1682,7 @@ function InvoiceModal({ id, onClose }) {
 
 function RepoEditor({ repo, onClose, onSaved }) {
   const toast = useToast(); const { t } = useI18n(); const { user } = useAuth();
-  const [f, setF] = useState({ name: '', description: '', repoUrl: '', tags: '', discord: '', website: '', changelog: '' });
+  const [f, setF] = useState({ name: '', description: '', repoUrl: '', tags: '', discord: '', website: '', changelog: '', contactEmail: '', contactPhone: '' });
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
   // Creating a public repo now requires a real, secured, BMM-linked identity — verified
@@ -1698,12 +1698,14 @@ function RepoEditor({ repo, onClose, onSaved }) {
   const missing = (!repo && !isStaff && !cl.loading) ? reqs.filter((r) => !r.ok) : [];
   const blocked = missing.length > 0;
   const resendVerify = async () => { setResending(true); try { await api.post('/auth/verify-email/resend', {}); toast.success(t('repos.req.emailsent', 'Verification email sent — check your inbox.')); } catch { toast.error(t('repos.req.emailfail', 'Could not send the email.')); } finally { setResending(false); } };
-  useEffect(() => { if (repo) setF({ name: repo.name, description: repo.description || '', repoUrl: repo.repoUrl || '', tags: (repo.tags || []).join(', '), discord: repo.links?.discord || '', website: repo.links?.website || '', changelog: repo.links?.changelog || '' }); }, [repo]);
+  useEffect(() => { if (repo) setF({ name: repo.name, description: repo.description || '', repoUrl: repo.repoUrl || '', contactEmail: repo.contactEmail || '', contactPhone: repo.contactPhone || '', tags: (repo.tags || []).join(', '), discord: repo.links?.discord || '', website: repo.links?.website || '', changelog: repo.links?.changelog || '' }); }, [repo]);
   const save = async () => {
     if (f.name.length < 2) return toast.error(t('repos.nameshort', 'Name too short.'));
     setBusy(true);
     const links = {}; if (f.discord) links.discord = f.discord; if (f.website) links.website = f.website; if (f.changelog) links.changelog = f.changelog;
-    const body = { name: f.name, description: f.description, repoUrl: f.repoUrl || undefined, tags: f.tags.split(',').map((s) => s.trim()).filter(Boolean), links };
+    if (!repo?.hosted && f.repoUrl && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.contactEmail || '')) return toast.error(t('repos.f.contact.need', 'A repo served from your own server needs a contact e-mail.'));
+    const body = { name: f.name, description: f.description, repoUrl: f.repoUrl || undefined, tags: f.tags.split(',').map((s) => s.trim()).filter(Boolean), links,
+      ...(repo?.hosted ? {} : { contactEmail: f.contactEmail || undefined, contactPhone: f.contactPhone || undefined }) };
     try { if (repo) await api.patch(`/repos/${repo.id}`, body); else await api.post('/repos', body); toast.success(repo ? t('repos.saved', 'Saved.') : t('repos.added', 'Repo added.')); onSaved(); }
     catch (x) {
       const e = x.data?.error;
@@ -1739,6 +1741,12 @@ function RepoEditor({ repo, onClose, onSaved }) {
         {repo?.hosted
           ? <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('repos.f.urlauto', 'Public URL is managed automatically for hosted repos — publish from the Files panel.')}</div>
           : <Field label={t('repos.f.url', 'Repo URL')} hint={t('repos.f.url.hint', 'Direct URL to the repo.json manifest — checked & hashed automatically.')}><Input value={f.repoUrl} onChange={(e) => setF({ ...f, repoUrl: e.target.value })} placeholder="https://…/repo.json" /></Field>}
+        {!repo?.hosted && (
+          <div className="grid sm:grid-cols-2 gap-2">
+            <Field label={t('repos.f.contact', 'Contact e-mail')} hint={t('repos.f.contact.h', 'Required for a repo served from your own server — shown on its page so people can reach you.')}><Input type="email" value={f.contactEmail} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>
+            <Field label={t('repos.f.phone', 'Phone (optional)')}><Input value={f.contactPhone} maxLength={40} onChange={(e) => setF({ ...f, contactPhone: e.target.value })} /></Field>
+          </div>
+        )}
         <Field label={t('repos.f.tags', 'Tags')} hint={t('repos.f.tags.hint', 'Comma-separated.')}><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="aircraft, sound" /></Field>
         <div className="grid sm:grid-cols-3 gap-2">
           <Field label="Discord"><Input value={f.discord} onChange={(e) => setF({ ...f, discord: e.target.value })} placeholder="https://discord.gg/…" /></Field>

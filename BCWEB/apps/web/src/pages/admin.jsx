@@ -63,6 +63,7 @@ import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
+import { AdminThreads } from './admin-threads.jsx';
 import ReplayPlayer from '../ui/ReplayPlayer.jsx';
 import { useAsync, Loading, useUndoableDelete, useUndoableToggle, useUndoableSave, useElementWidth, statusTone, KIND_ICON, KIND_LABEL, kindLabel, kindsFor, CATALOG_PROJECTS, csvCell, downloadCsv, toCsv, fmtRemaining, seededAvatar, JsonEditor, highlightJson, highlightCode, SideDash, useThreadStream } from './pages.jsx';
 
@@ -397,7 +398,7 @@ export function Admin() {
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
         {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
-        {s === 'messages' && <AdminMessages />}
+        {s === 'messages' && <><AdminMessages /><AdminThreads /></>}
         {s === 'legal' && <AdminLegal />}
         {s === 'users' && <AdminUsers />}
         {s === 'planusers' && <AdminPlanUsers />}
