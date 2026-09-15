@@ -292,6 +292,7 @@ const DICT = {
     'db.eco.reset.xp': 'Aussi l’XP & le niveau',
     'db.eco.reset.btn': 'Réinitialiser tous les points',
     'dash.teams': 'Équipes',
+    'dash.badge.threads': '{n} message(s) sans réponse',
     'cm.contact': 'Contacter',
     'cm.title': 'Message à propos de « {n} »',
     'cm.subject': 'Sujet',

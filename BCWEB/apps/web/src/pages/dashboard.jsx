@@ -770,6 +770,9 @@ export function Dashboard() {
   // a badge is not worth taking the dashboard down for, and a missing number simply hides it.
   const { data: pollMe } = useAsync(() => api.get('/me/polls').catch(() => null), []);
   const pollsOpen = pollMe?.open?.length || 0;
+  // Unanswered messages about my repos, catalogues, teams and profile — same rule as the polls.
+  const { data: inbox } = useAsync(() => api.get('/me/threads').catch(() => null), []);
+  const threadsUnread = inbox?.unread || 0;
 
   // B10: the "My Discord servers" tab only appears for people who actually manage a server the
   // bot is in — resolved server-side from their linked Discord account(s). `.catch` so a badge
@@ -804,7 +807,7 @@ export function Dashboard() {
     // goes down as you use it, rather than one that only ever grows and stops meaning anything.
     { id: 'polls', label: t('dash.polls', 'Polls'), icon: BarChart3, badge: pollsOpen || undefined, badgeTitle: t('dash.badge.polls', '{n} poll(s) waiting for your answer').replace('{n}', pollsOpen) },
     { id: 'billing', label: t('dash.billing', 'Billing'), icon: Receipt },
-    { id: 'reports', label: t('dash.reports', 'Messages & reports'), icon: MessageSquare },
+    { id: 'reports', label: t('dash.reports', 'Messages & reports'), icon: MessageSquare, badge: threadsUnread || undefined, badgeTitle: t('dash.badge.threads', '{n} unanswered message(s)').replace('{n}', threadsUnread) },
     { id: 'teams', label: t('dash.teams', 'Teams'), icon: UsersIcon },
     { id: 'data', label: t('dash.mydata', 'Your data'), icon: HardDriveDownload },
   ];
