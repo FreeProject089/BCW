@@ -1,0 +1,95 @@
+// Studio v3: shapes and pasted SVG, patterns, the page stylesheet scoper, block classes / style.
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeCanvas, BLOCK_KINDS, SHAPES, presetBlocks, DESIGN_WIDTH, GRID } from '../src/lib/canvas.js';
+import { sanitizeSvg, svgRefusals } from '../src/lib/svg-safe.js';
+import { scopeCss, safeClasses, safeInlineStyle } from '../src/lib/css-scope.js';
+import { PATTERNS, patternImage, patternStyle } from '../src/lib/patterns.js';
+
+describe('shapes and svg blocks', () => {
+  test('are kinds the renderer knows; a shape keeps its props; the page keeps its css', () => {
+    assert.ok(BLOCK_KINDS.includes('shape') && BLOCK_KINDS.includes('svg'));
+    assert.ok(SHAPES.length >= 10);
+    const c = normalizeCanvas({ css: '.a{color:red}', blocks: [{ id: 's', kind: 'shape', x: 0, y: 0, w: 200, h: 200, props: { shape: 'star', fill: '#f00' } }] });
+    assert.equal(c.blocks[0].kind, 'shape');
+    assert.equal(c.blocks[0].props.shape, 'star');
+    assert.equal(c.css, '.a{color:red}');
+    assert.equal(normalizeCanvas({ css: 42 }).css, '');
+  });
+  test('the shapes preset is on the grid, inside the width, and uses the new kinds', () => {
+    const blocks = normalizeCanvas({ blocks: presetBlocks('shapes') }).blocks;
+    assert.ok(blocks.some((b) => b.kind === 'shape'));
+    for (const b of blocks) { assert.equal(b.x % GRID, 0); assert.ok(b.x + b.w <= DESIGN_WIDTH); }
+  });
+});
+
+describe('sanitizeSvg', () => {
+  test('keeps drawing, drops everything that runs, fetches or frames', () => {
+    const dirty = `<?xml version="1.0"?><!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" onload="alert(1)">
+      <script>alert(1)</script><style>@import url(https://evil)</style>
+      <defs><linearGradient id="g"><stop offset="0" stop-color="#f00"/></linearGradient></defs>
+      <rect width="10" height="10" fill="url(#g)" onclick="x()" style="fill:url(https://evil/x.png)"/>
+      <a href="https://evil"><circle cx="5" cy="5" r="2"/></a>
+      <image href="https://evil/x.png"/><foreignObject><div>hi</div></foreignObject>
+      <use href="#g"/><use xlink:href="https://evil/#g"/>
+      <text x="1" y="1">ok</text><animate attributeName="x"/>
+    </svg>`;
+    const out = sanitizeSvg(dirty);
+    assert.ok(out.startsWith('<svg') && out.endsWith('</svg>'));
+    for (const bad of ['script', 'onload', 'onclick', '<style', 'evil', '<image', 'foreignObject', '<a ', 'xlink:href="https', '<animate', '<?xml', 'DOCTYPE']) {
+      assert.ok(!out.includes(bad), `${bad} survived: ${out}`);
+    }
+    assert.ok(out.includes('<rect') && out.includes('fill="url(#g)"') && out.includes('<circle') && out.includes('<text') && out.includes('<use href="#g"'));
+    assert.deepEqual(svgRefusals(dirty).sort(), ['SMIL animation', 'embedded content', 'event handlers', 'external references', 'script', 'style blocks'].sort());
+  });
+  test('no svg root → nothing; a plain svg is unchanged in substance', () => {
+    assert.equal(sanitizeSvg('<div>x</div>'), '');
+    assert.equal(sanitizeSvg(''), '');
+    const clean = '<svg viewBox="0 0 4 4"><path d="M0 0h4v4z" fill="#000"/></svg>';
+    assert.equal(sanitizeSvg(clean), clean);
+  });
+});
+
+describe('scopeCss', () => {
+  const SCOPE = '[data-cv="c1"]';
+  test('prefixes every selector and recurses into @media; keeps keyframes; maps :root/body to the page', () => {
+    const { css, refused } = scopeCss('.a, .b:hover { color: red } @media (max-width: 600px) { .c { top: 0 } } @keyframes k { from { x: 0 } to { x: 1 } } :root { --x: 1 } body .d { y: 2 }', SCOPE);
+    assert.equal(refused.length, 0);
+    assert.ok(css.includes(`${SCOPE} .a, ${SCOPE} .b:hover{color: red}`));
+    assert.ok(css.includes(`@media (max-width: 600px){\n${SCOPE} .c{top: 0}\n}`));
+    assert.ok(css.includes('@keyframes k{ from { x: 0 } to { x: 1 } }'));
+    assert.ok(css.includes(`${SCOPE}{--x: 1}`));
+    assert.ok(css.includes(`${SCOPE} .d{y: 2}`));
+  });
+  test('refuses what reaches outside the page and says so', () => {
+    const { css, refused } = scopeCss('@import url(https://evil/x.css); .a { background: url(https://evil/x.png); width: expression(1); behavior: url(x.htc) } .b { background: url(/ok.png) url(#a) url(data:image/png;base64,AAAA) }', SCOPE);
+    assert.ok(refused.includes('@import') && refused.includes('expression()') && refused.includes('behavior:'));
+    assert.ok(refused.some((r) => r.startsWith('url(https://evil')));
+    assert.ok(!css.includes('evil') && !css.includes('expression('));
+    assert.ok(css.includes('url(/ok.png)') && css.includes('url(#a)') && css.includes('url(data:image/png'));
+  });
+  test('classes and inline style are filtered the same way', () => {
+    assert.equal(safeClasses('hero rounded-2xl md:flex bg-[#fff] <script> a"b'), 'hero rounded-2xl md:flex bg-[#fff]');
+    assert.deepEqual(safeInlineStyle('letter-spacing: .04em; background-image: url(https://evil/x); color: red; --accent: #f00'), { letterSpacing: '.04em', color: 'red', '--accent': '#f00' });
+    assert.deepEqual(safeInlineStyle('width: expression(1)'), {});
+  });
+});
+
+describe('patterns', () => {
+  test('every pattern renders to a data-uri background, with size and opacity applied', () => {
+    for (const p of PATTERNS) {
+      const img = patternImage(p.id, { color: '#123456', size: 20 });
+      assert.ok(img.startsWith('url("data:image/svg+xml;utf8,'), p.id);
+      assert.ok(decodeURIComponent(img).includes('#123456'), p.id);
+    }
+    assert.equal(patternImage('nope'), '');
+    const st = patternStyle({ id: 'dots', color: '#000000', size: 30, opacity: 0.5 });
+    assert.equal(st.backgroundSize, '30px auto');
+    assert.ok(decodeURIComponent(st.backgroundImage).includes('#00000080'), 'opacity baked into the hex');
+    assert.deepEqual(patternStyle(null), {});
+  });
+  test('a colour cannot break out of the attribute', () => {
+    const img = patternImage('grid', { color: '"><script>' });
+    assert.ok(!decodeURIComponent(img).includes('<script>'));
+  });
+});

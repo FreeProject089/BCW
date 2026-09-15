@@ -14,16 +14,22 @@ import {
   AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal,
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
 } from 'lucide-react';
-import { Button, Field, Input, Textarea, Select, useToast } from '../ui/ui.jsx';
+import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
 import { uploadMedia } from '../lib/api.js';
+import { lazy, Suspense, memo } from 'react';
+import { PATTERNS } from '../lib/patterns.js';
+import { sanitizeSvg, svgRefusals } from '../lib/svg-safe.js';
+import { scopeCss } from '../lib/css-scope.js';
+// The full B.MD editor is heavy and most sessions never open it: loaded on first use.
+const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
   phoneBoardBlocks, reorder, DESIGN_WIDTH, PHONE_WIDTH, GRID, HANDLES,
-  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS,
+  ANIM_KINDS, ANIM_TRIGGERS, BUTTON_VARIANTS, BUTTON_ACTIONS, SHADOWS, HOVER_EFFECTS, GRID_SIZES, TEXT_ALIGNS, SHAPES,
 } from '../lib/canvas.js';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -38,6 +44,8 @@ const NEW_BLOCK = {
   embed: { kind: 'embed', w: 560, h: 315, props: { url: '', title: '' } },
   replay: { kind: 'replay', w: 640, h: 400, props: { src: '' } },
   button: { kind: 'button', w: 240, h: 56, props: { label: 'Discover', variant: 'button', size: 'md', action: { type: 'link', href: '/' } } },
+  shape: { kind: 'shape', w: 200, h: 200, props: { shape: 'rounded', fill: 'var(--primary)', corner: 16 } },
+  svg: { kind: 'svg', w: 240, h: 240, props: { svg: '' } },
 };
 
 export default function CanvasStudio({ value, onChange }) {
@@ -52,6 +60,10 @@ export default function CanvasStudio({ value, onChange }) {
   const [marquee, setMarquee] = useState(null);
   const [snapOn, setSnapOn] = useState(true);
   const [layersOpen, setLayersOpen] = useState(false);
+  const [zoom, setZoom] = useState('fit');            // 'fit' | 0.5 | 0.75 | 1
+  const [pageOpen, setPageOpen] = useState(false);
+  const [mdFor, setMdFor] = useState(null);           // block id whose text is in the B.MD editor
+  const clip = useRef([]);                           // copied blocks (also written to the clipboard)
   const [preview, setPreview] = useState('');         // '' | 'desktop' | 'phone'
   /**
    * On a phone, edit the STACK — not a 1200px board shrunk to a third of its size.
@@ -138,7 +150,8 @@ export default function CanvasStudio({ value, onChange }) {
   const phoneBoard = editTheme === 'phone';
   const boardW = phoneBoard ? PHONE_WIDTH : DESIGN_WIDTH;
   const boardH = phoneBoard ? canvas.phoneHeight : canvas.height;
-  const scale = Math.min(1, Math.max(0.3, vw / boardW));
+  const fitScale = Math.min(1, Math.max(0.3, vw / boardW));
+  const scale = zoom === 'fit' ? fitScale : Number(zoom);
   // The author's grid step. Snapping, the drawn grid and the keyboard nudge all read it.
   const grid = canvas.grid || GRID;
   // The board and the panel both show the target being authored — resolveBlock and
@@ -240,8 +253,9 @@ export default function CanvasStudio({ value, onChange }) {
     if (r) { setHist(r.hist); onChange(r.value); }
   }, [hist, canvas, onChange]);
 
-  const add = (kind) => {
-    const spec = NEW_BLOCK[kind];
+  const add = (kind, over = {}) => {
+    const base = NEW_BLOCK[kind];
+    const spec = { ...base, ...over, props: { ...(base.props || {}), ...(over.props || {}) } };
     // Dropped below everything already there, so a new block never lands hidden under one.
     const y = canvas.blocks.reduce((m, b) => Math.max(m, b.y + b.h), 0) + 24;
     const b = { id: uid(), x: 64, y, z: canvas.blocks.length, ...spec };
@@ -310,6 +324,11 @@ export default function CanvasStudio({ value, onChange }) {
     patch(d.id, next, `drag:${d.id}`);
   };
   const onUp = () => { drag.current = null; setGuides({ v: null, h: null }); };
+  // The handler the memoised blocks hold never changes; it reads the current one through a
+  // ref. Without this every block re-rendered on every pointer move, because the closure
+  // over `selIds` and `canvas` was new each time.
+  const onDownRef = useRef(onDown); onDownRef.current = onDown;
+  const stableDown = useCallback((e, b, h) => onDownRef.current(e, b, h), []);
 
   // ── Marquee ────────────────────────────────────────────────────────────────
   // Pressing empty canvas starts a rubber band; releasing selects everything it TOUCHED.
@@ -354,6 +373,25 @@ export default function CanvasStudio({ value, onChange }) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
         e.preventDefault(); setSelIds(canvas.blocks.map((b) => b.id)); return;
       }
+      // Copy / paste: the selection as JSON, kept in a ref and offered to the clipboard so a
+      // page can be assembled from another one open in a second tab.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && tag !== 'INPUT' && tag !== 'TEXTAREA' && selIds.length) {
+        const picked = canvas.blocks.filter((b) => selIds.includes(b.id));
+        clip.current = picked;
+        try { navigator.clipboard?.writeText(JSON.stringify({ bcwBlocks: picked })); } catch { /* no clipboard: the ref still works */ }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        const paste = (list) => {
+          if (!list?.length) return;
+          const copies = list.map((b) => ({ ...b, id: uid(), x: Math.min(Math.max(0, (b.x || 0) + GRID * 3), boardW - (b.w || GRID)), y: (b.y || 0) + GRID * 3 }));
+          emit([...canvas.blocks, ...copies]);
+          setSelIds(copies.map((b) => b.id));
+        };
+        e.preventDefault();
+        navigator.clipboard?.readText?.().then((txt) => { try { const j = JSON.parse(txt); if (Array.isArray(j?.bcwBlocks)) return paste(j.bcwBlocks); } catch { /* not ours */ } paste(clip.current); }).catch(() => paste(clip.current));
+        return;
+      }
       if (!selIds.length) return;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;   // typing, not nudging
       const step = e.shiftKey ? grid * 4 : grid;
@@ -374,7 +412,17 @@ export default function CanvasStudio({ value, onChange }) {
   if (preview) {
     return (
       <div>
-        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }} />
+        <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, addShape: (shape) => add('shape', { props: { shape, fill: 'var(--primary)', corner: 16 } }), sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen }} />
+      {pageOpen && <PagePanel t={t} canvas={canvas} emit={emit} add={add} onClose={() => setPageOpen(false)} />}
+      {mdFor && (
+        <Modal open onClose={() => setMdFor(null)} title={t('cst.md.editor', 'B.MD editor')} icon={Type} width="max-w-4xl">
+          <Suspense fallback={<div className="py-10 text-center text-sm text-[var(--muted)]">{t('common.loading', 'Loading…')}</div>}>
+            <LazyMarkdownEditor full minHeight={360} value={String(canvas.blocks.find((b) => b.id === mdFor)?.props?.md || '')}
+              onChange={(v) => patch(mdFor, { props: { ...(canvas.blocks.find((b) => b.id === mdFor)?.props || {}), md: v } }, `md-${mdFor}`)} />
+          </Suspense>
+          <div className="flex justify-end mt-3"><Button variant="primary" onClick={() => setMdFor(null)}>{t('common.done', 'Done')}</Button></div>
+        </Modal>
+      )}
         <div className={preview === 'phone' ? 'mx-auto border border-[var(--line)] rounded-2xl p-3' : ''} style={preview === 'phone' ? { width: 390 } : undefined}>
           <CanvasView canvas={canvas} stackPreview={preview === 'phone'} />
         </div>
@@ -466,7 +514,7 @@ export default function CanvasStudio({ value, onChange }) {
             selected — an empty panel over a list is just a shorter list. */}
         {sel && (
           <div className="sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t border-[var(--line-strong)] shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]" style={{ background: 'var(--bg-solid)' }}>
-            <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
+            <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor }} />
           </div>
         )}
       </div>
@@ -475,7 +523,17 @@ export default function CanvasStudio({ value, onChange }) {
 
   return (
     <div>
-      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }} />
+      <Toolbar {...{ t, preview, setPreview, snapOn, setSnapOn, add, addShape: (shape) => add('shape', { props: { shape, fill: 'var(--primary)', corner: 16 } }), sel, duplicate, remove, doUndo, doRedo, hist, selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen }} />
+      {pageOpen && <PagePanel t={t} canvas={canvas} emit={emit} add={add} onClose={() => setPageOpen(false)} />}
+      {mdFor && (
+        <Modal open onClose={() => setMdFor(null)} title={t('cst.md.editor', 'B.MD editor')} icon={Type} width="max-w-4xl">
+          <Suspense fallback={<div className="py-10 text-center text-sm text-[var(--muted)]">{t('common.loading', 'Loading…')}</div>}>
+            <LazyMarkdownEditor full minHeight={360} value={String(canvas.blocks.find((b) => b.id === mdFor)?.props?.md || '')}
+              onChange={(v) => patch(mdFor, { props: { ...(canvas.blocks.find((b) => b.id === mdFor)?.props || {}), md: v } }, `md-${mdFor}`)} />
+          </Suspense>
+          <div className="flex justify-end mt-3"><Button variant="primary" onClick={() => setMdFor(null)}>{t('common.done', 'Done')}</Button></div>
+        </Modal>
+      )}
       {/* Which theme is being authored. A page is read on both backgrounds and a hero built
           for one is not the same picture on the other; the alternative to this switch was
           authoring the page twice. Dark writes a partial OVERLAY, so anything not touched here
@@ -509,7 +567,7 @@ export default function CanvasStudio({ value, onChange }) {
             browser claims the gesture and drags scroll the page instead of moving the block —
             and a design surface you cannot drag on is not a design surface. The modal body
             around it still scrolls, so nothing is trapped. */}
-        <div ref={hostRef} className="overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--surface-2)]"
+        <div ref={hostRef} className={`${scale > fitScale ? 'overflow-auto' : 'overflow-hidden'} rounded-xl border border-[var(--line)] bg-[var(--surface-2)]`}
           style={{ touchAction: 'none' }}
           onPointerMove={(e) => { onMarqueeMove(e); onMove(e); }}
           onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
@@ -523,28 +581,9 @@ export default function CanvasStudio({ value, onChange }) {
                 backgroundImage: 'linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)',
                 backgroundSize: `${Math.max(32, grid * 4)}px ${Math.max(32, grid * 4)}px`,
               }} />
-              {paintOrder(view.blocks).map((b) => {
-                const on = selIds.includes(b.id);
-                const only = selIds.length === 1 && on;
-                return (
-                  <div key={b.id}
-                    onPointerDown={(e) => onDown(e, b, null)}
-                    style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
-                    <BlockBody b={b} />
-                    <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
-                    {(b.locked || b.hidden) && (
-                      <span aria-hidden style={{ position: 'absolute', left: 2, top: 2, display: 'inline-flex', gap: 2, background: 'var(--bg-solid)', borderRadius: 6, padding: '1px 4px', pointerEvents: 'none' }}>
-                        {b.locked && <Lock size={10} />}{b.hidden && <EyeOff size={10} />}
-                      </span>
-                    )}
-                    {only && !b.locked && Object.keys(HANDLES).map((hk) => (
-                      <span key={hk} onPointerDown={(e) => onDown(e, b, hk)}
-                        className="cst-handle"
-                        style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
-                    ))}
-                  </div>
-                );
-              })}
+              {paintOrder(view.blocks).map((b) => (
+                <BoardBlock key={b.id} b={b} on={selIds.includes(b.id)} only={selIds.length === 1 && selIds[0] === b.id} down={stableDown} />
+              ))}
               {/* Guides, drawn only while a drag is snapping to something. */}
               {guides.v && <div aria-hidden style={{ position: 'absolute', left: guides.v.at, top: 0, bottom: 0, width: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
               {guides.h && <div aria-hidden style={{ position: 'absolute', top: guides.h.at, left: 0, right: 0, height: 1, background: 'var(--primary)', pointerEvents: 'none' }} />}
@@ -567,7 +606,7 @@ export default function CanvasStudio({ value, onChange }) {
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
           {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit }} />}
-          <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark }} />
+          <Inspector {...{ t, sel, patch, canvas, emit, setSelId, hasDark, onOpenMd: setMdFor }} />
         </div>
       </div>
     </div>
@@ -767,7 +806,125 @@ function BlockBody({ b }) {
 
 // (the block painter is imported from canvas-view.jsx — see CanvasBlock there)
 
-function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen }) {
+/** One block on the board. Memoised: only the block whose props changed re-renders. */
+const BoardBlock = memo(function BoardBlock({ b, on, only, down }) {
+  return (
+    <div
+      onPointerDown={(e) => down(e, b, null)}
+      style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, zIndex: (b.z || 0) + (on ? 1000 : 0), cursor: b.locked ? 'default' : 'move', touchAction: 'none', opacity: b.hidden ? 0.3 : undefined, transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined }}>
+      <BlockBody b={b} />
+      <div style={{ position: 'absolute', inset: 0, outline: on ? '2px solid var(--primary)' : '1px dashed var(--line-strong)', outlineOffset: 0, pointerEvents: 'none' }} />
+      {(b.locked || b.hidden) && (
+        <span aria-hidden style={{ position: 'absolute', left: 2, top: 2, display: 'inline-flex', gap: 2, background: 'var(--bg-solid)', borderRadius: 6, padding: '1px 4px', pointerEvents: 'none' }}>
+          {b.locked && <Lock size={10} />}{b.hidden && <EyeOff size={10} />}
+        </span>
+      )}
+      {only && !b.locked && Object.keys(HANDLES).map((hk) => (
+        <span key={hk} onPointerDown={(e) => down(e, b, hk)}
+          className="cst-handle"
+          style={{ position: 'absolute', width: 12, height: 12, background: 'var(--primary)', borderRadius: 3, ...handlePos(hk), cursor: `${hk}-resize`, touchAction: 'none' }} />
+      ))}
+    </div>
+  );
+});
+
+/** The page itself: background, the author's stylesheet (scoped), and file imports. */
+function PagePanel({ t, canvas, emit, add, onClose }) {
+  const [css, setCss] = useState(canvas.css || '');
+  const [bg, setBg] = useState(canvas.bg || '');
+  const { refused } = scopeCss(css, '[data-cv="x"]');
+  const save = () => { emit(canvas.blocks, { css, bg }); onClose(); };
+  const importFile = async (file) => {
+    if (!file) return;
+    const text = await file.text();
+    if (/\.svg$/i.test(file.name)) { add('svg', { props: { svg: sanitizeSvg(text) }, w: 320, h: 320 }); onClose(); }
+    else setCss((c) => (c ? `${c}\n\n` : '') + `/* ${file.name} */\n${text}`);
+  };
+  return (
+    <Modal open onClose={onClose} title={t('cst.page', 'Page')} icon={Layers} width="max-w-2xl">
+      <div className="space-y-3">
+        <Field label={t('cst.bg.page', 'Page background')} hint={t('cst.bg.page.h', 'A colour, a gradient, or nothing for the site background.')}><Input value={bg} onChange={(e) => setBg(e.target.value)} placeholder="linear-gradient(…) · #fafafa · var(--surface-2)" /></Field>
+        <Field label={t('cst.css', 'Custom CSS (scoped to this page)')} hint={t('cst.css.h', 'Every selector is confined to this page. @import, external url(), expression() and behaviour are refused. Tailwind utilities work only if the site\u2019s build already contains them — prefer plain CSS here.')}>
+          <Textarea rows={10} value={css} onChange={(e) => setCss(e.target.value)} className="font-mono text-[12px]" spellCheck={false} placeholder={'.hero { letter-spacing: .02em }\n@media (max-width: 640px) { .cv-shell { border-radius: 8px } }'} />
+        </Field>
+        {refused.length > 0 && <p className="text-[11.5px] text-warning">{t('cst.css.refused', 'Left out:')} {refused.join(' · ')}</p>}
+        <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer text-[var(--primary-2)] hover:underline">
+          <Upload size={13} /> {t('cst.import', 'Import a .css or .svg file')}
+          <input type="file" accept=".css,.svg,text/css,image/svg+xml" className="hidden" onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = ''; }} />
+        </label>
+        <div className="flex justify-end gap-2"><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+/** A shape block's own fields. */
+function ShapeFields({ t, p, setProp }) {
+  return (<>
+    <div className="grid grid-cols-2 gap-2">
+      <Field label={t('cst.shape', 'Shape')}><Select value={p.shape || 'rect'} onChange={(e) => setProp('shape', e.target.value)}>{SHAPES.map((s) => <option key={s} value={s}>{t(`cst.shape.${s}`, s)}</option>)}</Select></Field>
+      <Field label={t('cst.shape.fill', 'Fill')}><Input value={p.fill || ''} onChange={(e) => setProp('fill', e.target.value)} placeholder="var(--primary) · #f97316 · none" /></Field>
+      <Field label={t('cst.shape.fill2', 'Gradient to (optional)')}><Input value={p.fill2 || ''} onChange={(e) => setProp('fill2', e.target.value || undefined)} placeholder="#ec4899" /></Field>
+      <Field label={t('cst.shape.stroke', 'Stroke')}><Input value={p.stroke || ''} onChange={(e) => setProp('stroke', e.target.value)} placeholder="none · #000" /></Field>
+      <Field label={t('cst.shape.sw', 'Stroke width')}><Input type="number" min={0} max={40} value={p.strokeWidth ?? 0} onChange={(e) => setProp('strokeWidth', Number(e.target.value) || 0)} /></Field>
+      <Field label={t('cst.shape.dash', 'Dash (e.g. 6 4)')}><Input value={p.dash || ''} onChange={(e) => setProp('dash', e.target.value.replace(/[^\d\s,.]/g, ''))} /></Field>
+      {(p.shape || 'rect') === 'rounded' && <Field label={t('cst.shape.corner', 'Corner (0–50)')}><Input type="number" min={0} max={50} value={p.corner ?? 12} onChange={(e) => setProp('corner', Number(e.target.value) || 0)} /></Field>}
+      <Field label={t('cst.shape.opacity', 'Opacity')}><Input type="number" min={0} max={1} step={0.05} value={p.opacity ?? 1} onChange={(e) => setProp('opacity', Math.max(0, Math.min(1, Number(e.target.value))))} /></Field>
+    </div>
+    <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!p.keepRatio} onChange={(e) => setProp('keepRatio', e.target.checked)} /> {t('cst.shape.ratio', 'Keep the shape\u2019s proportions')}</label>
+    <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+      <Field label={t('cst.shape.text', 'Text inside')}><Input value={p.text || ''} maxLength={80} onChange={(e) => setProp('text', e.target.value)} /></Field>
+      <Field label={t('cst.shape.textColor', 'Colour')}><Input value={p.textColor || ''} onChange={(e) => setProp('textColor', e.target.value)} placeholder="#fff" className="w-24" /></Field>
+      <Field label={t('cst.shape.textSize', 'Size')}><Input type="number" min={4} max={60} value={p.textSize ?? 14} onChange={(e) => setProp('textSize', Number(e.target.value) || 14)} className="w-20" /></Field>
+    </div>
+  </>);
+}
+
+/** A tiling pattern on a box or a shape. */
+function PatternFields({ t, p, setProp }) {
+  const pat = p.pattern || {};
+  const set = (k, v) => setProp('pattern', { ...pat, [k]: v });
+  return (
+    <div className="rounded-lg border border-[var(--line)] p-2 space-y-2">
+      <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('cst.pattern', 'Pattern')}</div>
+      <div className="grid grid-cols-2 gap-2">
+        <Select value={pat.id || ''} onChange={(e) => (e.target.value ? set('id', e.target.value) : setProp('pattern', undefined))}>
+          <option value="">{t('cst.pattern.none', 'None')}</option>
+          {PATTERNS.map((x) => <option key={x.id} value={x.id}>{t(`cst.pattern.${x.id}`, x.name)}</option>)}
+        </Select>
+        {pat.id && <Input value={pat.color || '#000000'} onChange={(e) => set('color', e.target.value)} placeholder="#000000" />}
+        {pat.id && <Field label={t('cst.pattern.size', 'Tile (px)')}><Input type="number" min={6} max={160} value={pat.size ?? 24} onChange={(e) => set('size', Number(e.target.value) || 24)} /></Field>}
+        {pat.id && <Field label={t('cst.pattern.opacity', 'Opacity')}><Input type="number" min={0} max={1} step={0.05} value={pat.opacity ?? 0.35} onChange={(e) => set('opacity', Math.max(0, Math.min(1, Number(e.target.value))))} /></Field>}
+      </div>
+    </div>
+  );
+}
+
+/** The raw-SVG block. What is stored is what is typed; what is drawn is what survives the sanitiser. */
+function SvgFields({ t, p, setProp }) {
+  const dropped = svgRefusals(p.svg);
+  return (
+    <Field label={t('cst.svg', 'SVG markup')} hint={t('cst.svg.h', 'Paste an <svg>. Scripts, event handlers, external references, images, styles and animation are removed when it is drawn.')}>
+      <Textarea rows={8} value={p.svg || ''} onChange={(e) => setProp('svg', e.target.value.slice(0, 200_000))} className="font-mono text-[11.5px]" spellCheck={false} />
+      {dropped.length > 0 && <p className="text-[11.5px] text-warning mt-1">{t('cst.svg.dropped', 'Removed when drawn:')} {dropped.join(' · ')}</p>}
+    </Field>
+  );
+}
+
+/** Classes and inline style, for any block. */
+function CssFields({ t, p, setProp }) {
+  return (
+    <details className="rounded-lg border border-[var(--line)] p-2">
+      <summary className="text-[11px] uppercase tracking-wider text-[var(--faint)] cursor-pointer">{t('cst.cssblock', 'Classes & style')}</summary>
+      <div className="mt-2 space-y-2">
+        <Field label={t('cst.cls', 'CSS classes')} hint={t('cst.cls.h', 'Your own classes from the page CSS, or utilities the site already ships (a class the build does not know does nothing).')}><Input value={p.cls || ''} onChange={(e) => setProp('cls', e.target.value)} placeholder="hero rounded-2xl backdrop-blur" /></Field>
+        <Field label={t('cst.style', 'Inline style')} hint={t('cst.style.h', 'Declarations, semicolon-separated. External url() is refused.')}><Textarea rows={2} value={p.style || ''} onChange={(e) => setProp('style', e.target.value.slice(0, 4000))} className="font-mono text-[11.5px]" spellCheck={false} placeholder="letter-spacing: .04em; backdrop-filter: blur(6px)" /></Field>
+      </div>
+    </details>
+  );
+}
+
+function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 mb-3">
       <Button size="sm" variant="ghost" onClick={() => add('text')}><Type size={14} /> {t('cst.text', 'Text')}</Button>
@@ -777,6 +934,18 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
       <Button size="sm" variant="ghost" onClick={() => add('video')} title={t('cst.add.video', 'video')}><Film size={14} /></Button>
       <Button size="sm" variant="ghost" onClick={() => add('embed')} title={t('cst.add.embed', 'embed')}><Globe size={14} /></Button>
       <Button size="sm" variant="ghost" onClick={() => add('replay')} title={t('cst.add.replay', 'replay')}><PlayCircle size={14} /></Button>
+      <label className="inline-flex items-center gap-1 text-[11px]" title={t('cst.add.shape', 'Add a shape')}>
+        <Sparkles size={13} className="text-[var(--muted)]" />
+        <select className="bg-transparent text-[var(--text)] text-xs" value="" onChange={(e) => { if (e.target.value) addShape(e.target.value); }} aria-label={t('cst.add.shape', 'Add a shape')}>
+          <option value="">{t('cst.shape', 'Shape')}…</option>
+          {SHAPES.map((s) => <option key={s} value={s}>{t(`cst.shape.${s}`, s)}</option>)}
+        </select>
+      </label>
+      <Button size="sm" variant="ghost" onClick={() => add('svg')} title={t('cst.add.svg', 'SVG')}>SVG</Button>
+      <Button size="sm" variant={pageOpen ? 'primary' : 'ghost'} onClick={() => setPageOpen((v) => !v)} title={t('cst.page.h', 'Page background, custom CSS, imports')}><Layers size={14} /> {t('cst.page', 'Page')}</Button>
+      <select className="bg-transparent text-[var(--text)] text-xs" value={String(zoom)} onChange={(e) => setZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} aria-label={t('cst.zoom', 'Zoom')} title={t('cst.zoom', 'Zoom')}>
+        <option value="fit">{t('cst.zoom.fit', 'Fit')}</option><option value="0.5">50%</option><option value="0.75">75%</option><option value="1">100%</option>
+      </select>
       <span className="w-px h-5 bg-[var(--line)] mx-1" />
       <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} data-undo-key={String(hist.key)} title={`Ctrl+Z · ${hist.past.length}`}><Undo2 size={14} /></Button>
       <Button size="sm" variant="ghost" disabled={!hist.future.length} onClick={doRedo} title="Ctrl+Shift+Z"><Redo2 size={14} /></Button>
@@ -816,7 +985,7 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, sel, duplicat
   );
 }
 
-function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
+function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onOpenMd }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   if (!sel) {
@@ -862,6 +1031,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
       {sel.kind === 'text' && (
         <Field label={t('cst.md', 'Content (B.MD)')}>
           <Textarea rows={8} value={p.md || ''} onChange={(e) => setProp('md', e.target.value)} />
+          <button type="button" className="mt-1 text-[11.5px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1" onClick={() => onOpenMd?.(sel.id)}><Type size={12} /> {t('cst.md.open', 'Open in the B.MD editor')}</button>
         </Field>
       )}
       {sel.kind === 'text' && (
@@ -921,6 +1091,10 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false }) {
         </Field>
       )}
       {sel.kind === 'button' && <ButtonFields t={t} p={p} setProp={setProp} />}
+      {sel.kind === 'shape' && <ShapeFields t={t} p={p} setProp={setProp} />}
+      {sel.kind === 'svg' && <SvgFields t={t} p={p} setProp={setProp} />}
+      {(sel.kind === 'box' || sel.kind === 'shape' || sel.kind === 'text') && <PatternFields t={t} p={p} setProp={setProp} />}
+      <CssFields t={t} p={p} setProp={setProp} />
       <AnimFields t={t} sel={sel} patch={patch} />
       {/* Opacity sits on the BLOCK, not in props: it applies to the wrapper, so it behaves the
           same for a picture, a video and a paragraph. Per-kind it would have been written five

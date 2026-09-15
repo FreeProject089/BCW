@@ -60,7 +60,9 @@ export const GRID = 8;
  * inherits the page's colours — is not worth an injection point on a platform that meters and
  * gates everything else. It can come back behind a real sanitiser.
  */
-export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button'];
+export const BLOCK_KINDS = ['text', 'image', 'box', 'video', 'embed', 'replay', 'button', 'shape', 'svg'];
+/** The shapes a `shape` block can be. Drawn as inline SVG scaled to the block (ui/canvas-view.jsx). */
+export const SHAPES = ['rect', 'rounded', 'ellipse', 'triangle', 'diamond', 'hexagon', 'star', 'arrow', 'chevron', 'blob', 'line', 'ring'];
 
 /**
  * How a block moves. The first five are ENTRANCES — they run once, when the trigger fires.
@@ -173,6 +175,9 @@ export function normalizeCanvas(raw) {
     // The snapping step. Stored positions are NOT re-snapped to it — a coarser grid is a
     // choice about the next drag, not a reflow of what is already placed.
     grid: GRID_SIZES.includes(num(c.grid, GRID)) ? num(c.grid, GRID) : GRID,
+    // The author's own stylesheet for this page. Scoped and filtered where it is RENDERED
+    // (lib/css-scope.js), so what is stored is what was typed and the rule is in one place.
+    css: typeof c.css === 'string' ? c.css.slice(0, 40_000) : '',
   };
 }
 
@@ -720,6 +725,18 @@ export const CANVAS_PRESETS = [
       }
       return out;
     },
+  },
+  {
+    id: 'shapes',
+    name: 'Shapes & pattern',
+    nameFr: 'Formes & motif',
+    blocks: () => [
+      P('box', 0, 0, 1200, 360, { bg: 'color-mix(in srgb, var(--primary) 8%, transparent)', radius: 24, pattern: { id: 'dots', color: '#000000', size: 20, opacity: 0.12 } }),
+      { ...P('shape', 64, 48, 160, 160, { shape: 'blob', fill: 'var(--primary)', opacity: 0.9 }), anim: { kind: 'float', trigger: 'load' } },
+      { ...P('shape', 992, 40, 144, 144, { shape: 'ring', stroke: 'var(--primary-2)', strokeWidth: 10, fill: 'none' }), anim: { kind: 'pulse', trigger: 'load' } },
+      P('text', 280, 72, 640, 216, { md: '# A page with shapes\n\nBlocks that are drawn, not uploaded — every colour follows the theme.', align: 'center' }),
+      { ...P('shape', 64, 424, 344, 96, { shape: 'arrow', fill: 'var(--primary)', text: 'Next', textColor: '#fff' }), hover: 'grow' },
+    ],
   },
   {
     id: 'blank',

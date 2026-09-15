@@ -53,6 +53,11 @@ try {
       '@bettercommunity/bmd': join(process.cwd(), '../../packages/bmd/src/index.jsx'),
       '@bettercommunity/bmd/editor-blocks': join(process.cwd(), '../../packages/bmd/src/editor-blocks.js'),
       '@bettercommunity/bmd/config': join(process.cwd(), '../../packages/bmd/src/config.js'),
+      // The studio now lazy-loads the B.MD editor for text blocks; esbuild bundles that dynamic
+      // import too, and the editor package reaches these subpaths of the kit.
+      '@bettercommunity/bmd/links': join(process.cwd(), '../../packages/bmd/src/links.js'),
+      '@bettercommunity/bmd/ast': join(process.cwd(), '../../packages/bmd/src/ast.js'),
+      '@bettercommunity/bmd/export': join(process.cwd(), '../../packages/bmd/src/export.jsx'),
       '@bettercommunity/bmd-editor': join(process.cwd(), '../../packages/bmd-editor/src/index.jsx'),
     },
   });

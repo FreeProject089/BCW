@@ -12,6 +12,9 @@ import Markdown from './md.jsx';
 import { normalizeCanvas, layoutFor, phoneOrder, paintOrder, resolveBlock, keepsHeightStacked, phoneBoardBlocks, DESIGN_WIDTH, PHONE_WIDTH } from '../lib/canvas.js';
 import { api } from '../lib/api.js';
 import { markdownConfig } from '@bettercommunity/bmd/config';
+import { sanitizeSvg } from '../lib/svg-safe.js';
+import { scopeCss, safeClasses, safeInlineStyle } from '../lib/css-scope.js';
+import { patternStyle } from '../lib/patterns.js';
 
 /** One block's own painting, shared by both modes so they cannot look different.
  *  Exported because the editor draws single blocks too, and a second implementation of
@@ -85,12 +88,17 @@ function Animated({ anim, id, style, className, children }) {
  */
 function BlockShell({ b, children }) {
   const p = b.props || {};
-  const cls = `cv-shell${b.shadow ? ` cv-shadow-${b.shadow}` : ''}${b.hover ? ` cv-hov-${b.hover}` : ''}`;
+  // The author's own classes (utility-shaped tokens only — a class exists at runtime only if
+  // the build knows it, which the studio says) and inline declarations, through the same
+  // filter as the page stylesheet.
+  const own = safeClasses(p.cls);
+  const cls = `cv-shell${b.shadow ? ` cv-shadow-${b.shadow}` : ''}${b.hover ? ` cv-hov-${b.hover}` : ''}${own ? ` ${own}` : ''}`;
   const style = {
     width: '100%', height: '100%',
     overflow: b.kind === 'button' ? 'visible' : 'hidden',
     borderRadius: p.radius != null ? `${p.radius}px` : undefined,
     transform: b.rotate ? `rotate(${b.rotate}deg)` : undefined,
+    ...safeInlineStyle(p.style),
   };
   const body = <div className={cls} style={style}>{children}</div>;
   if (b.link && b.kind !== 'button') {
@@ -175,14 +183,59 @@ function CanvasButton({ p }) {
   );
 }
 
+/** A shape as inline SVG, stretched to the block, with an optional label in the middle. */
+export function ShapeSvg({ p }) {
+  const fill = p.fill || 'var(--primary)';
+  const stroke = p.stroke || 'none';
+  const sw = Number(p.strokeWidth) || 0;
+  const common = { fill: p.shape === 'line' || p.shape === 'ring' ? 'none' : fill, stroke: stroke === 'none' && (p.shape === 'line' || p.shape === 'ring') ? fill : stroke, strokeWidth: sw || (p.shape === 'line' || p.shape === 'ring' ? 6 : 0), strokeDasharray: p.dash || undefined, strokeLinejoin: 'round', strokeLinecap: 'round', vectorEffect: 'non-scaling-stroke' };
+  const gid = p.fill2 ? `cvg-${String(p.fill).replace(/[^a-z0-9]/gi, '')}-${String(p.fill2).replace(/[^a-z0-9]/gi, '')}` : null;
+  if (gid) common.fill = `url(#${gid})`;
+  const r = Math.max(0, Math.min(50, Number(p.corner ?? 12)));
+  const shape = (() => {
+    switch (p.shape) {
+      case 'rounded': return <rect x="0" y="0" width="100" height="100" rx={r} ry={r} {...common} />;
+      case 'ellipse': return <ellipse cx="50" cy="50" rx="50" ry="50" {...common} />;
+      case 'triangle': return <polygon points="50,2 98,98 2,98" {...common} />;
+      case 'diamond': return <polygon points="50,2 98,50 50,98 2,50" {...common} />;
+      case 'hexagon': return <polygon points="25,3 75,3 98,50 75,97 25,97 2,50" {...common} />;
+      case 'star': return <polygon points="50,3 61,36 97,36 68,58 79,93 50,72 21,93 32,58 3,36 39,36" {...common} />;
+      case 'arrow': return <polygon points="2,30 62,30 62,8 98,50 62,92 62,70 2,70" {...common} />;
+      case 'chevron': return <polygon points="2,5 70,5 98,50 70,95 2,95 30,50" {...common} />;
+      case 'blob': return <path d="M 50 4 C 74 4 96 18 96 44 C 96 70 80 96 54 96 C 26 96 4 78 4 52 C 4 26 26 4 50 4 Z" {...common} />;
+      case 'line': return <line x1="2" y1="50" x2="98" y2="50" {...common} />;
+      case 'ring': return <circle cx="50" cy="50" r="44" {...common} />;
+      default: return <rect x="0" y="0" width="100" height="100" {...common} />;
+    }
+  })();
+  return (
+    <svg viewBox="0 0 100 100" preserveAspectRatio={p.keepRatio ? 'xMidYMid meet' : 'none'} style={{ opacity: p.opacity ?? 1 }} aria-hidden={!p.text}>
+      {gid && <defs><linearGradient id={gid} x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor={p.fill} /><stop offset="100%" stopColor={p.fill2} /></linearGradient></defs>}
+      {shape}
+      {p.text && <text x="50" y="50" textAnchor="middle" dominantBaseline="middle" fill={p.textColor || '#fff'} fontSize={Number(p.textSize) || 14} fontWeight="700" style={{ fontFamily: 'inherit' }} transform="scale(1,1)">{String(p.text).slice(0, 80)}</text>}
+    </svg>
+  );
+}
+
+/** The author's page stylesheet, confined to this canvas. */
+function ScopedCss({ canvas }) {
+  if (!canvas.css) return null;
+  const { css } = scopeCss(canvas.css, `[data-cv="${String(canvas.id).replace(/[^\w-]/g, '')}"]`);
+  return css ? <style>{css}</style> : null;
+}
+
 export function CanvasBlock({ b, stacked }) {
   const p = b.props || {};
   if (b.kind === 'button') {
     // Centred in its box on the board; a natural inline element in a stack.
     return <div className="cv-btn-wrap" style={stacked ? undefined : { display: 'flex', alignItems: 'center', justifyContent: p.align === 'left' ? 'flex-start' : p.align === 'right' ? 'flex-end' : 'center', height: '100%' }}><CanvasButton p={p} /></div>;
   }
+  // A tiling pattern rides on top of a plain colour; a gradient background keeps the
+  // shorthand and the pattern is skipped — two images in one shorthand is a syntax lesson.
+  const pat = p.pattern?.id ? patternStyle(p.pattern) : null;
+  const gradient = /gradient\(/i.test(String(p.bg || ''));
   const style = {
-    background: p.bg || undefined,
+    ...(pat && !gradient ? { backgroundColor: p.bg || undefined, ...pat } : { background: p.bg || undefined }),
     border: p.border ? `1px solid ${p.border}` : undefined,
     borderRadius: p.radius != null ? `${p.radius}px` : undefined,
     padding: p.pad != null ? `${p.pad}px` : undefined,
@@ -251,6 +304,15 @@ export function CanvasBlock({ b, stacked }) {
   // is auto-height — resolves to zero and the block silently disappears on phones. Stacked, it
   // keeps the height it was drawn at, so a band stays a band.
   if (b.kind === 'box') return <div style={boxed} />;
+  if (b.kind === 'shape') return <div style={{ ...boxed, background: undefined, backgroundColor: undefined, backgroundImage: undefined }} className="cv-shape"><ShapeSvg p={p} /></div>;
+  if (b.kind === 'svg') {
+    // Sanitised HERE, at render, whatever was stored: an allow-list of drawing tags and
+    // attributes, no scripts, handlers, external references or embedded content.
+    const html = sanitizeSvg(p.svg);
+    return html
+      ? <div style={boxed} className="cv-svg" dangerouslySetInnerHTML={{ __html: html }} />
+      : <div style={{ ...boxed, display: 'grid', placeItems: 'center' }} className="text-[12px] text-[var(--muted)] border border-dashed border-[var(--line)] rounded-xl">SVG</div>;
+  }
   return (
     <div style={{ ...style, textAlign: p.align || undefined }} className="bcw-canvas-text">
       <Markdown>{String(p.md || '')}</Markdown>
@@ -308,7 +370,8 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
   // Sizes go with it: a width measured in design pixels means nothing in a column.
   if (L.mode === 'stack') {
     return (
-      <div ref={hostRef} className="space-y-4" style={{ background: canvas.bg || undefined }}>
+      <div ref={hostRef} className="space-y-4" data-cv={canvas.id} style={{ background: canvas.bg || undefined }}>
+        <ScopedCss canvas={canvas} />
         {phoneOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden).map((b) => (
           <Animated key={b.id} id={b.id} anim={b.anim} className="min-w-0" style={b.opacity < 1 ? { opacity: b.opacity } : undefined}>
             <BlockShell b={b}><CanvasBlock b={b} stacked /></BlockShell>
@@ -332,7 +395,8 @@ export default function CanvasView({ canvas: raw, stackPreview = false, themePre
     ? phoneBoardBlocks(canvas.blocks.map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden))
     : paintOrder(canvas.blocks).map((raw2) => resolveBlock(raw2, mode)).filter((b) => !b.hidden);
   return (
-    <div ref={hostRef} className="w-full overflow-hidden" style={{ background: canvas.bg || undefined }}>
+    <div ref={hostRef} className="w-full overflow-hidden" data-cv={canvas.id} style={{ background: canvas.bg || undefined }}>
+      <ScopedCss canvas={canvas} />
       <div style={{ height: planeH * L.scale, position: 'relative', ...(phone ? { width: planeW * L.scale, margin: '0 auto' } : {}) }}>
         <div
           style={{

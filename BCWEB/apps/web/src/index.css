@@ -636,6 +636,8 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
 .cv-btn-wrap { width: 100%; }
 /* The block shell (canvas-view.jsx BlockShell): shadow, hover effect, block-wide link. */
 .cv-shell { transition: transform .25s cubic-bezier(.2,.7,.2,1), box-shadow .25s ease, opacity .25s ease; }
+.cv-shape svg, .cv-svg svg { width: 100%; height: 100%; display: block; }
+.cv-shape svg text { font-family: inherit; }
 .cv-shadow-sm { box-shadow: 0 2px 10px -2px rgba(0,0,0,.28); }
 .cv-shadow-md { box-shadow: 0 10px 28px -10px rgba(0,0,0,.4); }
 .cv-shadow-lg { box-shadow: 0 24px 56px -18px rgba(0,0,0,.5); }
