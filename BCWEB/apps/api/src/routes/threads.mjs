@@ -197,15 +197,17 @@ export default async function threadRoutes(app) {
     return { message: serMsg({ ...m, author: { displayName: req.user.displayName } }) };
   });
 
-  for (const [verb, data] of [['close', { status: 'closed' }], ['reopen', { status: 'open' }], ['flag', { staffFlag: 'flagged' }]]) {
-    app.post(`/me/threads/:id/${verb}`, { preHandler: requireRole() }, async (req, reply) => {
-      const p = await db();
-      const got = await participant(p, req, reply, req.params.id); if (!got) return;
-      if (verb === 'reopen' && got.t.status === 'blocked') return reply.code(403).send({ error: 'blocked' });
-      await p.contactThread.update({ where: { id: got.t.id }, data });
-      return { ok: true };
-    });
-  }
+  // Literal paths on purpose: the API-reference test and grep find routes by their string.
+  const setState = (verb, data) => async (req, reply) => {
+    const p = await db();
+    const got = await participant(p, req, reply, req.params.id); if (!got) return;
+    if (verb === 'reopen' && got.t.status === 'blocked') return reply.code(403).send({ error: 'blocked' });
+    await p.contactThread.update({ where: { id: got.t.id }, data });
+    return { ok: true };
+  };
+  app.post('/me/threads/:id/close', { preHandler: requireRole() }, setState('close', { status: 'closed' }));
+  app.post('/me/threads/:id/reopen', { preHandler: requireRole() }, setState('reopen', { status: 'open' }));
+  app.post('/me/threads/:id/flag', { preHandler: requireRole() }, setState('flag', { staffFlag: 'flagged' }));
 
   // ── the anonymous sender, by token ─────────────────────────────────────────────────────
   app.get('/threads/t/:token', { config: { rateLimit: { max: 60, timeWindow: '10 minutes' } } }, async (req, reply) => {
@@ -272,16 +274,16 @@ export default async function threadRoutes(app) {
     return { ok: true };
   });
 
-  for (const [verb, hidden] of [['hide', true], ['unhide', false]]) {
-    app.post(`/admin/threads/:id/messages/:mid/${verb}`, { preHandler: requireCap('manage_reports') }, async (req, reply) => {
-      const p = await db();
-      const m = await p.contactThreadMessage.findFirst({ where: { id: req.params.mid, threadId: req.params.id } });
-      if (!m) return reply.code(404).send({ error: 'not_found' });
-      await p.contactThreadMessage.update({ where: { id: m.id }, data: { hidden } });
-      await logAudit(p, req.user.uid, `thread.message.${verb}`, `thread=${req.params.id} message=${m.id}`).catch(() => {});
-      return { ok: true };
-    });
-  }
+  const setHidden = (verb, hidden) => async (req, reply) => {
+    const p = await db();
+    const m = await p.contactThreadMessage.findFirst({ where: { id: req.params.mid, threadId: req.params.id } });
+    if (!m) return reply.code(404).send({ error: 'not_found' });
+    await p.contactThreadMessage.update({ where: { id: m.id }, data: { hidden } });
+    await logAudit(p, req.user.uid, `thread.message.${verb}`, `thread=${req.params.id} message=${m.id}`).catch(() => {});
+    return { ok: true };
+  };
+  app.post('/admin/threads/:id/messages/:mid/hide', { preHandler: requireCap('manage_reports') }, setHidden('hide', true));
+  app.post('/admin/threads/:id/messages/:mid/unhide', { preHandler: requireCap('manage_reports') }, setHidden('unhide', false));
 
   app.get('/admin/threads/config', { preHandler: requireCap('manage_reports') }, async () => ({ config: await config(await db()) }));
   app.put('/admin/threads/config', { preHandler: requireCap('manage_reports') }, async (req, reply) => {

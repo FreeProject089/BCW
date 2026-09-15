@@ -131,17 +131,18 @@ export default async function teamRoutes(app) {
     return { ok: true, invited: { id: u.id, displayName: u.displayName } };
   });
 
-  for (const verb of ['accept', 'decline']) {
-    app.post(`/me/teams/:id/${verb}`, { preHandler: requireRole() }, async (req, reply) => {
-      const p = await db();
-      const m = await p.teamMember.findUnique({ where: { teamId_userId: { teamId: req.params.id, userId: req.user.uid } }, include: { team: true } });
-      if (!m || m.status !== 'invited') return reply.code(404).send({ error: 'no_invite' });
-      if (verb === 'decline') { await p.teamMember.delete({ where: { teamId_userId: { teamId: m.teamId, userId: m.userId } } }); return { ok: true }; }
-      await p.teamMember.update({ where: { teamId_userId: { teamId: m.teamId, userId: m.userId } }, data: { status: 'active' } });
-      await notify(p, m.team.ownerId, 'team_joined', `${req.user.displayName || 'A member'} joined “${m.team.name}”.`, { href: '/dashboard?s=teams' });
-      return { ok: true, team: serTeam(m.team, { myRole: m.role, myStatus: 'active' }) };
-    });
-  }
+  // Literal paths on purpose: the API-reference test and grep find routes by their string.
+  const answerInvite = (verb) => async (req, reply) => {
+    const p = await db();
+    const m = await p.teamMember.findUnique({ where: { teamId_userId: { teamId: req.params.id, userId: req.user.uid } }, include: { team: true } });
+    if (!m || m.status !== 'invited') return reply.code(404).send({ error: 'no_invite' });
+    if (verb === 'decline') { await p.teamMember.delete({ where: { teamId_userId: { teamId: m.teamId, userId: m.userId } } }); return { ok: true }; }
+    await p.teamMember.update({ where: { teamId_userId: { teamId: m.teamId, userId: m.userId } }, data: { status: 'active' } });
+    await notify(p, m.team.ownerId, 'team_joined', `${req.user.displayName || 'A member'} joined “${m.team.name}”.`, { href: '/dashboard?s=teams' });
+    return { ok: true, team: serTeam(m.team, { myRole: m.role, myStatus: 'active' }) };
+  };
+  app.post('/me/teams/:id/accept', { preHandler: requireRole() }, answerInvite('accept'));
+  app.post('/me/teams/:id/decline', { preHandler: requireRole() }, answerInvite('decline'));
 
   app.patch('/me/teams/:id/members/:userId', { preHandler: requireRole() }, async (req, reply) => {
     const b = z.object({ role: z.enum(['admin', 'member']) }).safeParse(req.body);
