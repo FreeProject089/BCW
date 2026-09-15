@@ -5,7 +5,8 @@
   "version": "0.1.0",
   "description": "BetterCommunity Discord bot — moderation, join-to-create voice, welcome/bye, account linking.",
   "scripts": {
-    "start": "node src/index.mjs"
+    "start": "node src/index.mjs",
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "discord.js": "^14.16.3",

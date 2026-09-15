@@ -7,7 +7,7 @@
 // nine runs out of ten; it fails this one every time.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { betLimits, edgePctFor, payoutFor, crashPoint, potWinner, potMultiplier, raceWinner, RACE_CARS, edgeApplied, splitPot } from '../src/lib/casino-rules.mjs';
+import { betLimits, edgePctFor, payoutFor, crashPoint, potWinner, potMultiplier, raceWinner, RACE_CARS, RACE_MULTIPLIER, edgeApplied, splitPot, settleTable } from '../src/lib/casino-rules.mjs';
 
 describe('betLimits', () => {
   test('0 means no cap, not 100', () => {
@@ -112,8 +112,8 @@ describe('pot', () => {
   test('the winner takes the pot, as a multiplier on their own stake', () => {
     assert.equal(potMultiplier(table, 0), 10);   // 100 / 10
     assert.equal(potMultiplier(table, 2), 100 / 60);
-    // …and the edge on the PROFIT of that, like every other game: 10 + 90·0.95
-    assert.equal(payoutFor(10, potMultiplier(table, 0), 5), 96);
+    // …and the live pot pays that with NO edge (zero-loss rule): 10 + 90
+    assert.equal(payoutFor(10, potMultiplier(table, 0), 0), 100);
   });
   test('an empty or zero-stake table has no winner', () => {
     assert.equal(potWinner([], 0.5), -1);
@@ -136,33 +136,110 @@ describe('race', () => {
   });
 });
 
-describe('splitPot — a table settled between its players', () => {
-  test('the losers’ stakes go to the winner, who keeps their own', () => {
-    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 50, multiplier: 0 }, { discordId: 'c', bet: 30, multiplier: 0 }], 0);
+describe('splitPot — a table settled between its players, zero-loss', () => {
+  test('the losers’ stakes go to the winner, who keeps their own — nothing to the house', () => {
+    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 50, multiplier: 0 }, { discordId: 'c', bet: 30, multiplier: 0 }], 25);
     const a = r.find((p) => p.discordId === 'a');
     assert.equal(a.pot, 80);
-    assert.equal(a.share, 80);
-    assert.equal(a.multiplier, 1.8);          // (100 + 80) / 100
+    assert.equal(a.share, 80);              // the edge argument is ignored: a pot is untaxed
+    assert.equal(a.multiplier, 1.8);        // (100 + 80) / 100
+    assert.equal(a.refund, false);
     assert.equal(r.find((p) => p.discordId === 'b').multiplier, 0);
   });
-  test('two winners split by stake × multiplier, and the edge taxes the share only', () => {
-    // a: 100 at 2× (weight 200), c: 50 at 6× (weight 300); pot = 100 from b. Edge 10 %.
-    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 100, multiplier: 0 }, { discordId: 'c', bet: 50, multiplier: 6 }], 10);
+  test('two winners split the pot by STAKE (not by multiplier), to the point', () => {
+    // a: 100, c: 50 both won (a 6× race pick, say); pot = 100 from b. 100 · 100/150 = 66.67,
+    // 100 · 50/150 = 33.33 → floors 66 + 33 = 99, the leftover point to the bigger fraction (a).
+    const r = splitPot([{ discordId: 'a', bet: 100, multiplier: 6 }, { discordId: 'b', bet: 100, multiplier: 0 }, { discordId: 'c', bet: 50, multiplier: 6 }], 10);
     const a = r.find((p) => p.discordId === 'a'), c = r.find((p) => p.discordId === 'c');
-    assert.equal(a.share, 36);   // floor(100 · 200/500 · 0.9)
-    assert.equal(c.share, 54);   // floor(100 · 300/500 · 0.9)
-    assert.equal(a.multiplier, 1.36);
-    assert.equal(c.multiplier, (50 + 54) / 50);
-    // paid with no second edge: the stake comes back to the point
-    assert.equal(payoutFor(100, a.multiplier, 0), 136);
+    assert.equal(a.share, 67);
+    assert.equal(c.share, 33);
+    assert.equal(a.share + c.share, 100);
+    assert.equal(payoutFor(100, a.multiplier, 0) + payoutFor(50, c.multiplier, 0), 250);
   });
-  test('nobody wins → the house keeps the pot, everyone is at 0', () => {
+  test('nobody wins → every stake comes back (refund), the house keeps nothing', () => {
     const r = splitPot([{ bet: 10, multiplier: 0 }, { bet: 20, multiplier: 0 }], 5);
-    assert.ok(r.every((p) => p.multiplier === 0 && p.pot === 30));
+    assert.ok(r.every((p) => p.multiplier === 1 && p.pot === 30 && p.refund === true));
+    assert.equal(r.reduce((a, p) => a + payoutFor(p.bet, p.multiplier, 0), 0), 30);
   });
   test('a lone winner with no losers gets exactly their stake back', () => {
     const r = splitPot([{ bet: 40, multiplier: 2 }], 5);
     assert.equal(r[0].multiplier, 1);
+    assert.equal(r[0].refund, false);
     assert.equal(payoutFor(40, 1, 0), 40);
+  });
+  test('sum paid out == sum staked for any table with a winner (fuzz)', () => {
+    let s = 12345; const rnd = () => { s = (s * 1103515245 + 12345) % 2147483648; return s / 2147483648; };
+    for (let k = 0; k < 2000; k++) {
+      const n = 2 + Math.floor(rnd() * 8);
+      const plays = Array.from({ length: n }, () => ({ bet: 1 + Math.floor(rnd() * 997), multiplier: rnd() < 0.4 ? 2 : 0 }));
+      if (!plays.some((p) => p.multiplier > 0)) plays[0].multiplier = 6;
+      const r = splitPot(plays);
+      const staked = plays.reduce((a, p) => a + p.bet, 0);
+      const paid = r.reduce((a, p) => a + payoutFor(p.bet, p.multiplier, 0), 0);
+      assert.equal(paid, staked, `table ${JSON.stringify(plays)}`);
+      // …and only winners are paid: every loser at 0.
+      assert.ok(r.every((p, i) => plays[i].multiplier > 0 || p.multiplier === 0));
+    }
+  });
+});
+
+describe('settleTable — every game in multi mode, and single-seat unchanged', () => {
+  const staked = (seats) => seats.filter((p) => !p.skipped).reduce((a, p) => a + p.bet, 0);
+  const paid = (seats) => seats.filter((p) => !p.skipped).reduce((a, p) => a + p.payout, 0);
+  test('race: one right pick takes the whole table', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: RACE_MULTIPLIER }, { discordId: 'b', bet: 40, multiplier: 0 }, { discordId: 'c', bet: 60, multiplier: 0 }], { pot: true, edgePct: 5 });
+    assert.equal(t.winners, 1); assert.equal(t.refund, false); assert.equal(t.pot, 100);
+    assert.equal(t.seats.find((p) => p.discordId === 'a').payout, 200);
+    assert.equal(paid(t.seats), staked(t.seats));
+  });
+  test('race: two right picks share by stake', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: 6 }, { discordId: 'b', bet: 300, multiplier: 6 }, { discordId: 'c', bet: 100, multiplier: 0 }], { pot: true });
+    assert.equal(t.winners, 2);
+    assert.equal(t.seats.find((p) => p.discordId === 'a').payout, 125);
+    assert.equal(t.seats.find((p) => p.discordId === 'b').payout, 375);
+    assert.equal(paid(t.seats), 500);
+  });
+  test('race: nobody picked the winner → stakes returned', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: 0 }, { discordId: 'b', bet: 300, multiplier: 0 }], { pot: true });
+    assert.equal(t.refund, true); assert.equal(t.winners, 0);
+    assert.ok(t.seats.every((p) => p.delta === 0 && p.payout === p.bet));
+  });
+  test('pot: the drawn player takes everything', () => {
+    const t = settleTable([{ discordId: 'a', bet: 10, multiplier: 0 }, { discordId: 'b', bet: 30, multiplier: 1 }, { discordId: 'c', bet: 60, multiplier: 0 }], { pot: true });
+    assert.equal(t.seats.find((p) => p.discordId === 'b').payout, 100);
+    assert.equal(t.seats.find((p) => p.discordId === 'b').delta, 70);
+    assert.equal(paid(t.seats), 100);
+  });
+  test('coin / dice / roulette / wheel on a shared roll: winners split the losers’ stakes', () => {
+    for (const m of [2, 2, 14, 50]) {
+      const t = settleTable([{ discordId: 'a', bet: 50, multiplier: m }, { discordId: 'b', bet: 50, multiplier: m }, { discordId: 'c', bet: 200, multiplier: 0 }], { pot: true, edgePct: 5 });
+      assert.equal(t.winners, 2);
+      assert.equal(t.seats.find((p) => p.discordId === 'a').payout, 150);
+      assert.equal(t.seats.find((p) => p.discordId === 'b').payout, 150);
+      assert.equal(paid(t.seats), 300);
+    }
+  });
+  test('everyone wins the shared roll → everyone keeps their stake, nobody gains', () => {
+    const t = settleTable([{ discordId: 'a', bet: 50, multiplier: 2 }, { discordId: 'b', bet: 80, multiplier: 2 }], { pot: true });
+    assert.equal(t.refund, false); assert.equal(t.winners, 2); assert.equal(t.pot, 0);
+    assert.ok(t.seats.every((p) => p.delta === 0));
+  });
+  test('a seat that cannot cover its stake is skipped and never part of the pot', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: 2 }, { discordId: 'b', bet: 100, multiplier: 0 }, { discordId: 'ghost', bet: 500, multiplier: 0 }], { pot: true, covered: (p) => p.discordId !== 'ghost' });
+    assert.equal(t.pot, 100);
+    assert.equal(t.seats.find((p) => p.discordId === 'a').payout, 200);
+    assert.ok(t.seats.find((p) => p.discordId === 'ghost').skipped);
+    assert.equal(paid(t.seats), staked(t.seats));
+  });
+  test('single seat against the house keeps the edge (unchanged)', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: 2 }], { pot: false, edgePct: 5 });
+    assert.equal(t.seats[0].payout, 195);
+    assert.equal(t.pot, null);
+    const lose = settleTable([{ discordId: 'a', bet: 100, multiplier: 0 }], { pot: false, edgePct: 5 });
+    assert.equal(lose.seats[0].payout, 0); assert.equal(lose.refund, false);
+  });
+  test('crash is never a pot: each seat on its own cash-out, no second edge', () => {
+    const t = settleTable([{ discordId: 'a', bet: 100, multiplier: 2.5 }, { discordId: 'b', bet: 100, multiplier: 0 }], { pot: false, edgePct: 0 });
+    assert.equal(t.seats[0].payout, 250); assert.equal(t.seats[1].payout, 0);
   });
 });

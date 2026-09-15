@@ -83,9 +83,9 @@ export function potWinner(entries, u) {
 }
 
 /**
- * The multiplier the pot winner receives on THEIR stake: pot ÷ stake. The house edge is then
- * applied to the profit by payoutFor, like every other game — so a two-player pot of equal
- * stakes pays the winner 2× minus the edge on the doubled part.
+ * The multiplier the pot winner receives on THEIR stake: pot ÷ stake. Informational (the
+ * admin's RTP table): the live pot is settled by `splitPot`, which pays the whole table's
+ * stakes to the winner with NO edge — see the zero-loss rule below.
  */
 export function potMultiplier(entries, winnerIdx) {
   const stakes = (entries || []).map((e) => Math.max(0, Math.round(Number(e?.bet) || 0)));
@@ -106,29 +106,63 @@ export function raceWinner(u) {
 }
 
 /**
- * A table settled between its players.
+ * A table settled between its players — the ZERO-LOSS rule.
  *
- * `plays` carry each seat's stake and a WIN WEIGHT: 0 for a loser, the game's multiplier for a
- * winner (1 for a pot draw, 6 for the right car, 2 for the right side of a coin, 14 for green).
- * The losers' stakes form the pot. Each winner keeps their stake and takes a share of the pot
- * proportional to stake × weight, less the house edge on that share only. With no winner the
- * pot stays with the house.
+ * `plays` carry each seat's stake and a WIN WEIGHT: 0 for a loser, anything > 0 for a winner
+ * (the game's multiplier is passed for the ledger line, but it does not change a share). The
+ * losers' stakes form the pot. Each winner keeps their own stake and takes a share of the pot
+ * in proportion to their stake; the house takes NOTHING from a multiplayer table — the sum
+ * paid out equals the sum staked, to the point (the rounding remainder goes one point at a
+ * time to the winners with the largest fractional share, so nothing is lost to flooring).
+ * With no winner every seat gets its stake back (`refund: true`, multiplier 1): the house
+ * never keeps a pot.
  *
  * Returns the plays with `multiplier` rewritten as payout ÷ stake, so the ordinary settlement
- * can pay them with payoutFor(bet, multiplier, 0) — the edge has already been taken here, once,
- * on the share, and taking it again on the "profit" of a rewritten multiplier would tax the
- * returned stake too.
+ * can pay them with payoutFor(bet, multiplier, 0) — no edge, because none applies here.
+ * `edgePct` is accepted for call-compatibility and ignored: a multiplayer pot is untaxed.
  */
-export function splitPot(plays, edgePct) {
+export function splitPot(plays, _edgePct = 0) {
   const list = (plays || []).map((p) => ({ ...p, bet: Math.max(0, Math.round(Number(p.bet) || 0)), multiplier: Math.max(0, Number(p.multiplier) || 0) }));
   const winners = list.filter((p) => p.multiplier > 0 && p.bet > 0);
   const pot = list.filter((p) => !(p.multiplier > 0)).reduce((a, p) => a + p.bet, 0);
-  const keep = 1 - Math.min(100, Math.max(0, Number(edgePct) || 0)) / 100;
-  if (!winners.length) return list.map((p) => ({ ...p, multiplier: 0, share: 0, pot }));
-  const weight = winners.reduce((a, p) => a + p.bet * p.multiplier, 0);
+  if (!winners.length) return list.map((p) => ({ ...p, multiplier: p.bet > 0 ? 1 : 0, share: 0, pot, refund: true }));
+  const weight = winners.reduce((a, p) => a + p.bet, 0);
+  // Largest-remainder split: floors first, then the leftover points to the biggest fractions.
+  const exact = winners.map((p) => (pot * p.bet) / weight);
+  const floors = exact.map((v) => Math.floor(v));
+  let left = pot - floors.reduce((a, b) => a + b, 0);
+  const order = exact.map((v, i) => [v - floors[i], i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]);
+  for (const [, i] of order) { if (left <= 0) break; floors[i] += 1; left -= 1; }
+  const shareOf = new Map(winners.map((p, i) => [p, floors[i]]));
   return list.map((p) => {
-    if (!(p.multiplier > 0) || !p.bet) return { ...p, multiplier: 0, share: 0, pot };
-    const share = Math.floor(pot * ((p.bet * p.multiplier) / weight) * keep);
-    return { ...p, multiplier: (p.bet + share) / p.bet, share, pot };
+    if (!shareOf.has(p)) return { ...p, multiplier: 0, share: 0, pot, refund: false };
+    const share = shareOf.get(p);
+    return { ...p, multiplier: (p.bet + share) / p.bet, share, pot, refund: false };
   });
+}
+
+/**
+ * The whole settlement of a live table as one pure step, so the route and the tests agree.
+ *
+ * `covered(play)` says whether a seat can still pay its stake (linked, balance ≥ bet). A
+ * seat that cannot is reported and left OUT of the pot: its stake never existed, so it is
+ * neither won by anybody nor refunded. With `pot` false every seat is settled against the
+ * house on its own multiplier with the game's edge (single-seat play, and crash, whose edge
+ * is in the curve and arrives with edgePct 0).
+ *
+ * Returns `{ seats: [{ ...play, payout, delta, skipped? }], pot, refund, winners }` — and the
+ * invariant the tests pin: with `pot` true, Σ payout over settled seats == Σ bet over them.
+ */
+export function settleTable(plays, { pot = false, edgePct = 0, covered = () => true } = {}) {
+  const seats = (plays || []).map((p) => ({ ...p, bet: Math.max(0, Math.round(Number(p.bet) || 0)), multiplier: Math.max(0, Number(p.multiplier) || 0) }));
+  const live = seats.filter((p) => covered(p));
+  const skipped = seats.filter((p) => !covered(p)).map((p) => ({ ...p, skipped: true, payout: 0, delta: 0 }));
+  if (!pot) {
+    const out = live.map((p) => { const payout = payoutFor(p.bet, p.multiplier, edgePct); return { ...p, payout, delta: payout - p.bet }; });
+    return { seats: [...out, ...skipped], pot: null, refund: false, winners: out.filter((p) => p.delta > 0).length };
+  }
+  const split = splitPot(live);
+  const out = split.map((p) => { const payout = payoutFor(p.bet, p.multiplier, 0); return { ...p, payout, delta: payout - p.bet }; });
+  const refund = split.length > 0 && split.every((p) => p.refund);
+  return { seats: [...out, ...skipped], pot: split[0]?.pot || 0, refund, winners: refund ? 0 : live.filter((p) => p.multiplier > 0 && p.bet > 0).length };
 }

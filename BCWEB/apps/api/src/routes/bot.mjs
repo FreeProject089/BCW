@@ -7,7 +7,7 @@ import { issueWarn } from '../lib/warns.mjs';
 import { memberCapacity, capacityStatus, logModeration, memberPolicy, inactiveWhere, evictForRoom } from '../lib/discord-storage.mjs';
 import { buyShopItem, listPurchases, visibleShopItems, SHOP_KINDS, soldCount, itemTag, revealPurchase, giftPurchase, giftPoints, listLedger, movePoints, ledger, resolveUser, deliverGiveawayPrize } from '../lib/economy-shop.mjs';
 import { looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
-import { betLimits, edgePctFor, payoutFor, edgeApplied, splitPot, CASINO_GAMES } from '../lib/casino-rules.mjs';
+import { betLimits, edgePctFor, payoutFor, edgeApplied, settleTable, CASINO_GAMES } from '../lib/casino-rules.mjs';
 import { ICONS as BOT_ICONS, ICON_STYLE_DEFAULTS, renderEmoji, renderEmojiPack } from '../lib/bot-emoji.mjs';
 import { emitWebhook } from '../lib/webhooks.mjs';
 import { grantAutoBadges } from './social.mjs';
@@ -2326,9 +2326,9 @@ export default async function botRoutes(app) {
         // Free-form, bounded: what they picked, when they cashed out — for the ledger line.
         note: z.string().max(60).optional(),
       })).min(1).max(50),
-      // A POT: the seats are settled between themselves. The losers' stakes go to the
-      // winners, split by stake × multiplier, each winner keeping their own stake; the edge
-      // is taken once, on the winners' share. Off, every seat is settled against the house.
+      // A POT: the seats are settled between themselves under the ZERO-LOSS rule — the
+      // winners pocket the whole sum staked, split by stake, and the house takes nothing;
+      // with no winner every stake comes back. Off, every seat is settled against the house.
       pot: z.boolean().optional().default(false),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -2345,23 +2345,26 @@ export default async function botRoutes(app) {
       if (pl.bet < min || pl.bet > max) return { ok: false, error: 'bad_bet', min, max: maxOut, discordId: pl.discordId };
     }
     const edgePct = edgeApplied(b.data.game) ? 0 : edgePctFor(eco.casino, b.data.game);
-    // With a pot the multipliers become payout ÷ stake with the edge already inside, so the
-    // per-seat settlement below pays them at a 0 % edge rather than taxing them twice.
-    const plays = b.data.pot ? splitPot(b.data.plays, edgePct) : b.data.plays;
-    const seatEdge = b.data.pot ? 0 : edgePct;
-    const potTotal = b.data.pot ? (plays[0]?.pot || 0) : null;
-    const results = [];
-    for (const pl of plays) {
+    // Who can still pay is decided BEFORE the pot is split: a seat whose balance no longer
+    // covers its stake is reported and left out, so the winners are paid from stakes that
+    // exist rather than from one the loser never had.
+    const cover = new Map();
+    for (const pl of b.data.plays) {
       const link = await p.discordLink.findUnique({ where: { discordId: pl.discordId }, select: { userId: true } });
-      if (!link) { results.push({ discordId: pl.discordId, ok: false, error: 'not_linked' }); continue; }
+      if (!link) { cover.set(pl.discordId, { error: 'not_linked' }); continue; }
       const cur = await p.userEconomy.findUnique({ where: { userId: link.userId } });
-      if ((cur?.points || 0) < pl.bet) { results.push({ discordId: pl.discordId, ok: false, error: 'insufficient', points: cur?.points || 0 }); continue; }
-      const payout = payoutFor(pl.bet, pl.multiplier, seatEdge);
-      const delta = payout - pl.bet;
-      const points = await movePoints(p, link.userId, delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout, live: true, pot: b.data.pot || undefined, share: pl.share ?? undefined, note: pl.note || null } }, { clamp: true });
-      results.push({ discordId: pl.discordId, ok: true, delta, payout, points, share: pl.share ?? undefined });
+      if ((cur?.points || 0) < pl.bet) { cover.set(pl.discordId, { error: 'insufficient', points: cur?.points || 0 }); continue; }
+      cover.set(pl.discordId, { userId: link.userId });
     }
-    return { ok: true, results, edgePct, pot: potTotal };
+    const table = settleTable(b.data.plays, { pot: b.data.pot, edgePct: b.data.pot ? 0 : edgePct, covered: (pl) => !!cover.get(pl.discordId)?.userId });
+    const results = [];
+    for (const pl of table.seats) {
+      const c = cover.get(pl.discordId);
+      if (pl.skipped) { results.push({ discordId: pl.discordId, ok: false, error: c?.error || 'insufficient', points: c?.points }); continue; }
+      const points = await movePoints(p, c.userId, pl.delta, { kind: 'casino', ref: b.data.game, meta: { game: b.data.game, bet: pl.bet, multiplier: pl.multiplier, payout: pl.payout, live: true, pot: b.data.pot || undefined, share: pl.share ?? undefined, refund: pl.refund || undefined, note: pl.note || null } }, { clamp: true });
+      results.push({ discordId: pl.discordId, ok: true, delta: pl.delta, payout: pl.payout, points, share: pl.share ?? undefined, refund: pl.refund || false });
+    }
+    return { ok: true, results, edgePct: b.data.pot ? 0 : edgePct, pot: table.pot, refund: table.refund, winners: table.winners };
   });
 
   // ── Website side: redeem / list / unlink Discord links ──

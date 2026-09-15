@@ -11,7 +11,7 @@ import * as ui from './ui.mjs';
 import { tr } from './i18n.mjs';
 import { cmdSetup, onboardingSelect } from './features/onboarding.mjs';
 import { cmdConfig, configComponent } from './features/configure.mjs';
-import { openLive, liveComponent, liveModal, LIVE_GAMES, MULTI_GAMES } from './features/casino-live.mjs';
+import { openLive, liveComponent, liveModal, joinByCode, listLobbies, LIVE_GAMES, MULTI_GAMES, VISIBILITIES } from './features/casino-live.mjs';
 
 export const BRAND = ui.BRAND;
 // Kept under its old name: panel.mjs and the pollers still call it. A one-card reply.
@@ -83,7 +83,13 @@ export const commandData = [
     .addIntegerOption((o) => o.setName('target').setDescription('Wheel: the multiplier you go for (default 2)').addChoices(
       { name: '2× (45%)', value: 2 }, { name: '3× (24%)', value: 3 }, { name: '5× (16%)', value: 5 }, { name: '10× (9%)', value: 10 }, { name: '20× (4%)', value: 20 }, { name: '50× (2%)', value: 50 }))
     .addStringOption((o) => o.setName('risk').setDescription('Plinko: bucket table (default medium)').addChoices(
-      { name: 'Low — 0.5× to 5×', value: 'low' }, { name: 'Medium — 0.3× to 13×', value: 'medium' }, { name: 'High — 0.2× to 50×', value: 'high' })),
+      { name: 'Low — 0.5× to 5×', value: 'low' }, { name: 'Medium — 0.3× to 13×', value: 'medium' }, { name: 'High — 0.2× to 50×', value: 'high' }))
+    // Live tables: who may sit (chosen when the table opens), a code to join one from ANY
+    // server or DM, and the list of open tables this reader may see.
+    .addStringOption((o) => o.setName('visibility').setDescription('Live table: who may join (default: this server)').addChoices(
+      { name: 'Public — listed everywhere, anyone with the code', value: 'public' }, { name: 'This server — members only, listed here', value: 'server' }, { name: 'Private — code only, unlisted', value: 'private' }))
+    .addStringOption((o) => o.setName('join').setDescription('Join a live table by its 6-character code (from any server or DM)').setMinLength(6).setMaxLength(8))
+    .addBooleanOption((o) => o.setName('lobbies').setDescription('List the open live tables you can join')),
   // The welcome card again — link, language for this server, dashboard. Posted on join too.
   new SlashCommandBuilder().setName('config').setDescription('Configure this server’s bot — moderation and its log channel (server managers)'),
   new SlashCommandBuilder().setName('setup').setDescription('The bot’s welcome card: link your account, pick its language here, open the dashboard')
@@ -577,6 +583,11 @@ async function playCasino(i, opts) {
 }
 
 async function cmdCasino(i) {
+  // `/casino join:<code>` and `/casino lobbies:true` are the live tables' front door.
+  const code = i.options.getString('join');
+  if (code) return joinByCode(i, code);
+  if (i.options.getBoolean('lobbies')) return listLobbies(i);
+  const visibility = VISIBILITIES.includes(i.options.getString('visibility')) ? i.options.getString('visibility') : 'server';
   const bet = i.options.getInteger('bet');
   const game = GAME_NAME[i.options.getString('game')] ? i.options.getString('game') : 'coinflip';
   const betOn = ['red', 'black', 'green', 'number'].includes(i.options.getString('bet_on')) ? i.options.getString('bet_on') : 'red';
@@ -585,7 +596,7 @@ async function cmdCasino(i) {
   const risk = ['low', 'medium', 'high'].includes(i.options.getString('risk')) ? i.options.getString('risk') : 'medium';
   // Crash, race and the pot are tables in the channel, not private pages: a bet given up
   // front seats the host, the rest join from the card.
-  if (LIVE_GAMES.includes(game)) return openLive(i, game, { bet: bet || 0, target: game === 'crash' && target > 1 ? target : null });
+  if (LIVE_GAMES.includes(game)) return openLive(i, game, { bet: bet || 0, target: game === 'crash' && target > 1 ? target : null, visibility });
   const st = { view: i.options.getString('game') ? 'game' : 'list', game, bet: bet || 0, betOn, num, target, risk, owner: i.user.id };
   // No bet: the table opens — on the list of games, or straight on the named game's page with
   // everything given so far already selected. A number bet without its number does the same.
@@ -694,6 +705,9 @@ async function casinoList(i, st, { update = false } = {}) {
       ui.btn('cas:noop', t('btn.games'), ButtonStyle.Secondary, { disabled: true }),
       ui.btn(`cas:open:${S({ view: 'game', game: first })}:n`, '▶', ButtonStyle.Secondary),
       e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
+      // The live tables' doors: a code typed into a modal, or the list of open tables.
+      ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'link' }),
+      ui.btn('cl:lobbies', t('live.lobbiesBtn'), ButtonStyle.Secondary, { emoji: 'multi' }),
     ],
   };
   return update ? ui.update(i, opts) : ui.reply(i, opts);

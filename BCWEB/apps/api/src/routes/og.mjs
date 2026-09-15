@@ -334,21 +334,27 @@ export default async function ogRoutes(app) {
   // The bot embeds one of these as the image of a /casino reply, so a win or a loss is a
   // picture (big reels / coin / die / roulette pocket + a banner) rather than a line of
   // emoji. Pure canvas, no assets on disk: game + outcome + a short detail in the query.
-  //   /og/casino/<coinflip|dice|slots|roulette>/<win|lose>.png?d=<detail>&a=<amount>
+  //   /og/casino/<game>/<win|lose>.png?d=<detail>&a=<amount>
+  //   /og/casino/<game>/<win|lose>.gif?d=<detail>&a=<amount>&s=<seed>[&t=<title>&o=<outcome>&w=<winners>]
   app.get('/og/casino/:game/:outcome', async (req, reply) => {
     const game = String(req.params.game || '').replace(/[^a-z]/g, '');
     const outcome = String(req.params.outcome || '');
     const win = outcome.startsWith('win');
-    // 160, not 40: a pot's detail carries one stake and one label per player.
-    const detail = String(req.query?.d || '').slice(0, 160);
+    // 240, not 40: a pot's detail carries one stake and one label per player, a crash one
+    // name@multiplier per cash-out.
+    const detail = String(req.query?.d || '').slice(0, 240);
     const amount = String(req.query?.a || '').replace(/[^0-9,. -]/g, '').slice(0, 16);
+    // The table's text, drawn INTO the frames (title top-left, outcome + winners in the end
+    // banner): plain text only — no control characters, bounded, and never interpreted.
+    const line = (v, n) => String(v || '').replace(/[\u0000-\u001f\u007f]/g, '').slice(0, n).trim();
+    const text = (req.query?.t || req.query?.o || req.query?.w) ? { title: line(req.query?.t, 48), outcome: line(req.query?.o, 64), winners: line(req.query?.w, 120) } : null;
     if (!['coinflip', 'dice', 'slots', 'roulette', 'wheel', 'plinko', 'crash', 'race', 'pot'].includes(game)) return reply.code(404).send({ error: 'not_found' });
     // Animated: the spin that ends on this outcome, seeded per play (?s=) so it differs each
     // time; encoded once and cached five minutes. Falls through to the still card on failure.
     if (/.gif$/i.test(outcome)) {
       try {
         const seed = (parseInt(String(req.query?.s || ''), 10) || Date.now()) >>> 0;
-        const buf = await renderCasinoGif({ game, win, detail, amount, seed });
+        const buf = await renderCasinoGif({ game, win, detail, amount, seed, text });
         reply.header('content-type', 'image/gif'); reply.header('cache-control', 'public, max-age=300');
         return reply.send(buf);
       } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino gif failed, serving still'); }

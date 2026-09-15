@@ -8,8 +8,13 @@
 
 // 60 frames at 33 ms ≈ 2 s of motion at 30 fps (was 34 × 42 ms, visibly steppy); the palette
 // is still built once per clip, so encode time grows linearly and stays well under a second.
+import { simulateRace, layoutTrack, drawTrack, drawRaceFrame, TRACK_COUNT } from './casino-race.mjs';
+
 const W = 480, H = 270, FRAMES = 60, DELAY = 33;
 const BANNER_H = 46, PLAY_BOTTOM = H - BANNER_H - 8; // nothing draws below this line
+// The race is the long one: a 3-lap film with pit stops and a safety car needs the frames.
+const CLIP = { race: { frames: 96, delay: 45 } };
+const clipOf = (game) => CLIP[game] || { frames: FRAMES, delay: DELAY };
 
 function rng(seed) {
   let s = (seed >>> 0) || 1;
@@ -31,16 +36,29 @@ function felt(x, _win) {
   x.font = 'bold 13px sans-serif'; x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.35)';
   x.fillText('BetterCommunity', W - 14, 22);
 }
-// Drawn LAST, over the game: slides up at the end.
-function banner(x, win, amount, t) {
+// Drawn LAST, over the game: slides up at the end. Two shapes:
+//   · single seat  — "YOU WIN +X" / "YOU LOSE −X" (the classic);
+//   · a table      — the OUTCOME line ("BLU wins", "Crashed at 2.31×") over the WINNERS line
+//                    ("Alice wins 300", "2 players win — Alice 120 · Bob 80", "Nobody wins —
+//                    stakes returned"): the GIF carries the result, the card adds one line.
+function banner(x, win, amount, t, text) {
   if (t <= 0.8) return;
-  const k = easeOut((t - 0.8) / 0.2); const bh = BANNER_H * k;
-  // A neutral banner too: the +/- amount is the reveal, the colour was just a spoiler.
-  x.fillStyle = 'rgba(107,114,128,0.96)'; x.fillRect(0, H - bh, W, bh);
+  const tall = !!(text && (text.outcome || text.winners));
+  const bh = (tall ? 62 : BANNER_H) * easeOut((t - 0.8) / 0.2);
+  x.fillStyle = tall ? 'rgba(17,24,39,0.96)' : 'rgba(107,114,128,0.96)'; x.fillRect(0, H - bh, W, bh);
   if (t <= 0.86) return;
-  x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#ffffff';
-  x.fillText(win ? `YOU WIN  +${amount}` : `YOU LOSE  −${amount}`, W / 2, H - 15);
+  x.textAlign = 'center'; x.fillStyle = '#ffffff';
+  if (!tall) { x.font = 'bold 22px sans-serif'; x.fillText(win ? `YOU WIN  +${amount}` : `YOU LOSE  −${amount}`, W / 2, H - 15); return; }
+  if (text.outcome) { x.font = 'bold 19px sans-serif'; x.fillStyle = '#fbbf24'; x.fillText(fit(x, text.outcome, W - 40), W / 2, H - 36); }
+  if (text.winners) { x.font = 'bold 14px sans-serif'; x.fillStyle = '#fff'; x.fillText(fit(x, text.winners, W - 40), W / 2, H - 13); }
 }
+// The table's title, top-left, from the first frame (the table's name and its code).
+function titleBar(x, text) {
+  if (!text?.title) return;
+  x.font = 'bold 13px sans-serif'; x.textAlign = 'left'; x.fillStyle = 'rgba(255,255,255,0.55)';
+  x.fillText(fit(x, text.title, 220), 14, 22);
+}
+function fit(x, s, maxW) { let str = String(s); while (str.length > 3 && x.measureText(str).width > maxW) str = str.slice(0, -2).trimEnd() + '…'; return str; }
 function label(x, text, cx, cy, size = 22) {
   x.font = `bold ${size}px sans-serif`; x.textAlign = 'center'; x.lineWidth = 4; x.strokeStyle = 'rgba(0,0,0,0.6)';
   x.strokeText(text, cx, cy); x.fillStyle = '#fff'; x.fillText(text, cx, cy);
@@ -260,6 +278,7 @@ const cache = new Map(); const TTL = 5 * 60 * 1000;
 // is visibly "the curve went past you and broke".
 function drawCrash(x, f, { crashAt, cashes, r }) {
   const t = f / (FRAMES - 1);
+  x.textBaseline = 'alphabetic';
   const L = 44, T = 26, Rr = W - 22, B = PLAY_BOTTOM - 22;
   // Chart box
   x.fillStyle = 'rgba(255,255,255,0.05)'; x.beginPath(); x.roundRect(L - 8, T - 8, Rr - L + 16, B - T + 16, 10); x.fill();
@@ -289,13 +308,18 @@ function drawCrash(x, f, { crashAt, cashes, r }) {
   x.fillStyle = broke ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)'; x.fill();
   // Markers for every cash-out already passed
   const curM = mAt(climb);
-  for (const c of cashes) {
+  // Each cash-out is a pin with the player's name: "who got out where" is the story.
+  let lastY = -99;
+  for (const { m: c, name } of cashes) {
     if (c > curM || c > crashAt) continue;
     const s = Math.pow((c - 1) / Math.max(1e-6, crashAt - 1), 1 / 1.6);
     const px = L + s * (Rr - L), py = yOf(c);
     x.fillStyle = '#fbbf24'; x.beginPath(); x.arc(px, py, 6, 0, Math.PI * 2); x.fill();
     x.lineWidth = 2; x.strokeStyle = '#0a0f1e'; x.stroke();
-    x.font = 'bold 12px sans-serif'; x.textAlign = 'center'; x.fillStyle = '#fbbf24'; x.fillText(`${c.toFixed(2)}×`, px, py - 10);
+    const ly = Math.abs(py - lastY) < 14 ? lastY - 14 : py - 10; lastY = ly;
+    x.font = 'bold 12px sans-serif'; x.textAlign = 'center'; x.lineWidth = 3; x.strokeStyle = 'rgba(0,0,0,0.7)';
+    const txt = name ? `${name} · ${c.toFixed(2)}×` : `${c.toFixed(2)}×`;
+    x.strokeText(txt, px, ly); x.fillStyle = '#fbbf24'; x.fillText(txt, px, ly);
   }
   // The big number
   const shown = broke ? crashAt : curM;
@@ -309,40 +333,19 @@ function drawCrash(x, f, { crashAt, cashes, r }) {
   }
 }
 
-// ── Race — six cars on six lanes, the winner decided, the run seeded ─────────────────
-// The finish is fixed by the outcome: the winner is the car that reaches the flag, and the
-// others are scaled to end short of it. Along the way every car has its own speed profile
-// from the seed, so two races to the same winner never look alike, and the leader changes
-// hands on the way — the thing a race needs to be worth watching.
-const CAR_COLOURS = ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316'];
-function drawRace(x, f, { winner, pick, r }) {
-  const t = f / (FRAMES - 1);
-  const lanes = 6, laneH = (PLAY_BOTTOM - 30) / lanes, L = 40, Rr = W - 40;
-  // Track
-  x.fillStyle = 'rgba(255,255,255,0.05)'; x.fillRect(L - 20, 12, Rr - L + 40, PLAY_BOTTOM - 20);
-  x.strokeStyle = 'rgba(255,255,255,0.12)'; x.lineWidth = 1;
-  for (let i = 1; i < lanes; i++) { const y = 12 + i * laneH; x.setLineDash([6, 8]); x.beginPath(); x.moveTo(L - 20, y); x.lineTo(Rr + 20, y); x.stroke(); }
-  x.setLineDash([]);
-  // Finish line: a checkered strip
-  for (let i = 0; i < 12; i++) { x.fillStyle = i % 2 ? '#fff' : '#111'; x.fillRect(Rr + 6, 12 + i * ((PLAY_BOTTOM - 20) / 12), 8, (PLAY_BOTTOM - 20) / 12); }
-  // Progress of each car: a seeded speed profile, then the finish forced by the outcome.
-  const eased = easeOut(t);
-  for (let c = 0; c < lanes; c++) {
-    const k1 = r.k[c % 12], k2 = r.k[(c + 5) % 12];
-    // Two sine wobbles so the order shuffles mid-race, then converge on the fixed finish.
-    const wobble = Math.sin(t * Math.PI * (2 + k1 * 2) + k2 * 6) * 0.10 * (1 - t);
-    const finish = c === winner ? 1 : 0.72 + 0.22 * k1;
-    const p = clamp01(eased * finish + wobble * (t < 0.9 ? 1 : 0));
-    const cx = L + p * (Rr - L), cy = 12 + c * laneH + laneH / 2;
-    // The car: body, cabin, wheels, and the player's pick outlined.
-    x.fillStyle = 'rgba(0,0,0,0.35)'; x.beginPath(); x.ellipse(cx + 2, cy + 10, 22, 6, 0, 0, Math.PI * 2); x.fill();
-    x.fillStyle = CAR_COLOURS[c]; x.beginPath(); x.roundRect(cx - 22, cy - 8, 44, 16, 7); x.fill();
-    x.fillStyle = 'rgba(255,255,255,0.75)'; x.beginPath(); x.roundRect(cx - 6, cy - 12, 16, 8, 3); x.fill();
-    x.fillStyle = '#111'; for (const wx of [-13, 11]) { x.beginPath(); x.arc(cx + wx, cy + 8, 4, 0, Math.PI * 2); x.fill(); }
-    if (c === pick) { x.strokeStyle = '#fbbf24'; x.lineWidth = 2.5; x.beginPath(); x.roundRect(cx - 26, cy - 15, 52, 30, 9); x.stroke(); }
-    x.font = 'bold 11px sans-serif'; x.textAlign = 'left'; x.fillStyle = 'rgba(255,255,255,0.55)'; x.fillText(String(c + 1), L - 34, cy + 4);
-  }
-  if (t > 0.92) label(x, `#${winner + 1} WINS`, W / 2, PLAY_BOTTOM - 4, 20);
+// ── Race — a track map, see casino-race.mjs ────────────────────────────────────────────
+// The track is picked by the seed and drawn once per frame (cheap: one polyline); the
+// simulation runs once per clip. The finish is the drawn winner's.
+function raceSetup(p, frames) {
+  const box = { x: 40, y: 30, w: W - 60, h: PLAY_BOTTOM - 36 };
+  p.track = layoutTrack(Math.floor(p.r.k[2] * TRACK_COUNT), box);
+  p.sim = simulateRace({ winner: p.winner, seed: p.seed, frames, pitIn: p.track.pitIn, pitSpan: p.track.pitSpan });
+}
+function drawRace(x, f, p) {
+  drawTrack(x, p.track);
+  drawRaceFrame(x, p.track, p.sim, f, { pick: p.pick, frames: p.frames, W });
+  x.font = 'bold 9px sans-serif'; x.textAlign = 'right'; x.fillStyle = 'rgba(255,255,255,0.35)'; x.fillText(p.track.name.toUpperCase(), W - 14, PLAY_BOTTOM + 4);
+  // The winner is the banner's line (or "YOU WIN" alone at the table): no second label.
 }
 
 // ── Pot — one slice per player, sized by stake, a pointer that settles on the winner ──
@@ -372,43 +375,75 @@ function drawPot(x, f, { winner, stakes, labels, r }) {
   // Hub + pointer
   x.fillStyle = '#0a0f1e'; x.beginPath(); x.arc(cx, cy, 14, 0, Math.PI * 2); x.fill();
   x.fillStyle = '#fbbf24'; x.beginPath(); x.moveTo(cx - 10, cy - R - 12); x.lineTo(cx + 10, cy - R - 12); x.lineTo(cx, cy - R + 8); x.closePath(); x.fill();
-  if (t > 0.9) label(x, `${String(labels[winner] || winner + 1).slice(0, 12)} TAKES THE POT`, W / 2, PLAY_BOTTOM - 2, 18);
+  // The winner's name is the banner's line — see `banner`.
 }
 
 /** Render one play as an animated GIF. `detail` is the same short string the PNG route takes:
  *  slots "cherry lemon bell" (emoji accepted) · coinflip "H"/"T" · dice "1".."6" ·
  *  roulette "17" · wheel "10|2" (landed|target) · plinko "medium|LRLRLLRRLR|bucketIdx". */
-export async function renderCasinoGif({ game, win, detail, amount, seed }) {
-  const key = `${game}|${win}|${detail}|${amount}|${seed}`;
-  const hit = cache.get(key); if (hit && hit.t > Date.now() - TTL) return hit.buf;
-  const [{ createCanvas }, gifencMod] = await Promise.all([import('@napi-rs/canvas'), import('gifenc')]);
-  const { GIFEncoder, quantize, applyPalette } = gifencMod.default || gifencMod;
+/** The per-clip setup shared by the GIF and the frame-PNG debug/test helper below. */
+async function setup({ game, win, detail, amount, seed, text = null }) {
+  const { createCanvas } = await import('@napi-rs/canvas');
   const r = { k: Array.from({ length: 12 }, rng(seed)) };
-  const p = { r };
+  const { frames: NF, delay } = clipOf(game);
+  const p = { r, seed, frames: NF };
   if (game === 'slots') p.reels = (detail || 'cherry lemon bell').split(/\s+/).slice(0, 3).map((s) => SYM_ALIAS[s] || (SLOT_SYMS.includes(s) ? s : 'cherry'));
   else if (game === 'coinflip') p.heads = /H|🪙|heads/i.test(detail || 'H');
   else if (game === 'dice') p.roll = Math.min(6, Math.max(1, parseInt(detail, 10) || 1));
   else if (game === 'roulette') p.pocket = Math.min(36, Math.max(0, parseInt(detail, 10) || 0));
   else if (game === 'wheel') { const [m, tg] = String(detail || '2|2').split('|'); p.mult = Number(m) || 2; p.target = Number(tg) || 2; }
   else if (game === 'plinko') { const [risk, path, b] = String(detail || 'medium||5').split('|'); p.risk = PLINKO_BUCKETS[risk] ? risk : 'medium'; p.path = Array.from({ length: PLINKO_ROWS }, (_, i) => (path[i] === 'R' ? 1 : 0)); p.bucket = Math.min(10, Math.max(0, parseInt(b, 10) || 5)); }
-  else if (game === 'crash') { const [c, list] = String(detail || '2|').split('|'); p.crashAt = Math.max(1, Math.min(10000, Number(c) || 1)); p.cashes = String(list || '').split(',').map(Number).filter((v) => Number.isFinite(v) && v >= 1).slice(0, 8); }
+  else if (game === 'crash') {
+    // "crashAt|name@m,name@m" — or bare multipliers, which draw without a name.
+    const [c, list] = String(detail || '2|').split('|'); p.crashAt = Math.max(1, Math.min(10000, Number(c) || 1));
+    p.cashes = String(list || '').split(',').filter(Boolean).map((s0) => { const [a, b] = s0.includes('@') ? s0.split('@') : ['', s0]; return { name: a.replace(/[^\w\-]/g, '').slice(0, 10), m: Number(b) }; }).filter((v) => Number.isFinite(v.m) && v.m >= 1).slice(0, 8);
+  }
   else if (game === 'race') { const [wnr, pk] = String(detail || '0|0').split('|'); p.winner = Math.min(5, Math.max(0, parseInt(wnr, 10) || 0)); p.pick = pk === '' || pk == null ? -1 : Math.min(5, Math.max(-1, parseInt(pk, 10))); }
   else if (game === 'pot') { const [wnr, st, lb] = String(detail || '0|1,1|A,B').split('|'); p.stakes = String(st || '1').split(',').map((v) => Math.max(0, Number(v) || 0)).slice(0, 8); if (!p.stakes.length) p.stakes = [1]; p.winner = Math.min(p.stakes.length - 1, Math.max(0, parseInt(wnr, 10) || 0)); p.labels = String(lb || '').split(',').slice(0, 8); }
   const draw = { slots: drawSlots, coinflip: drawCoin, dice: drawDice, roulette: drawRoulette, wheel: drawWheel, plinko: drawPlinko, crash: drawCrash, race: drawRace, pot: drawPot }[game];
   if (!draw) throw new Error('unknown game');
+  if (game === 'race') raceSetup(p, NF);
   const c = createCanvas(W, H); const x = c.getContext('2d');
-  const frame = (fi) => { const t = fi / (FRAMES - 1); felt(x, win); draw(x, fi, p); banner(x, win, amount, t); return x.getImageData(0, 0, W, H).data; };
-  const first = frame(0), last = frame(FRAMES - 1);
+  const frame = (fi) => { const t = fi / (NF - 1); felt(x, win); draw(x, fi, p); titleBar(x, text); banner(x, win, amount, t, text); };
+  return { canvas: c, ctx: x, frame, NF, delay, p };
+}
+
+/** Render one play as an animated GIF. `detail` is the same short string the PNG route takes:
+ *  slots "cherry lemon bell" (emoji accepted) · coinflip "H"/"T" · dice "1".."6" ·
+ *  roulette "17" · wheel "10|2" (landed|target) · plinko "medium|LRLRLLRRLR|bucketIdx" ·
+ *  crash "2.31|Alice@1.8,Bob@2.1" · race "winnerIdx|pickIdx" · pot "winnerIdx|stakes|labels".
+ *  `text` ({ title, outcome, winners }) is drawn INTO the frames — the GIF carries the result. */
+export async function renderCasinoGif({ game, win, detail, amount, seed, text = null }) {
+  const key = `${game}|${win}|${detail}|${amount}|${seed}|${text ? [text.title, text.outcome, text.winners].join('|') : ''}`;
+  const hit = cache.get(key); if (hit && hit.t > Date.now() - TTL) return hit.buf;
+  const gifencMod = await import('gifenc');
+  const { GIFEncoder, quantize, applyPalette } = gifencMod.default || gifencMod;
+  const { ctx: x, frame, NF: FRAMES, delay } = await setup({ game, win, detail, amount, seed, text });
+  const grab = (fi) => { frame(fi); return x.getImageData(0, 0, W, H).data; };
+  const first = grab(0), last = grab(FRAMES - 1);
   const comp = new Uint8ClampedArray(first.length);
   for (let i = 0; i < comp.length; i += 8) { comp.set(first.subarray(i, i + 4), i); comp.set(last.subarray(i + 4, i + 8), i + 4); }
   const palette = quantize(comp, 256);
   const gif = GIFEncoder();
   for (let fi = 0; fi < FRAMES; fi++) {
-    const rgba = fi === 0 ? first : fi === FRAMES - 1 ? last : frame(fi);
-    gif.writeFrame(applyPalette(rgba, palette), W, H, { palette, delay: fi === FRAMES - 1 ? 2500 : DELAY, repeat: 0 });
+    const rgba = fi === 0 ? first : fi === FRAMES - 1 ? last : grab(fi);
+    gif.writeFrame(applyPalette(rgba, palette), W, H, { palette, delay: fi === FRAMES - 1 ? 2500 : delay, repeat: 0 });
   }
   gif.finish();
   const buf = Buffer.from(gif.bytes());
   cache.set(key, { buf, t: Date.now() }); if (cache.size > 200) cache.delete(cache.keys().next().value);
   return buf;
+}
+
+/** Single frames as PNG (tests and eyeballing): `indices` are frame numbers, or fractions
+ *  of the clip when < 1. Returns [{ index, png }] plus the clip's frame count and, for the
+ *  race, the simulation (so a test can check the film ends on the drawn winner). */
+export async function renderCasinoFrames(opts, indices = [0, 0.5, 1]) {
+  const { canvas, frame, NF, p } = await setup(opts);
+  const out = [];
+  for (const i of indices) {
+    const fi = Math.min(NF - 1, Math.max(0, i < 1 && i > 0 ? Math.round(i * (NF - 1)) : i === 1 ? NF - 1 : i));
+    frame(fi); out.push({ index: fi, png: await canvas.encode('png') });
+  }
+  return { frames: out, count: NF, sim: p.sim || null };
 }
