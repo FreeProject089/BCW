@@ -8,7 +8,7 @@
 // Guarded by manage_economy like the rest of the economy (grant, reset, deliveries): the
 // bot dashboard's capability does not reach the ledger.
 import { z } from 'zod';
-import { db, requireCap, logAudit } from '../lib/lib.mjs';
+import { db, requireCap, logAudit, botAuth } from '../lib/lib.mjs';
 import { economyStats, normalizeSeason, nextSeasonReset, readSeasonState, writeSeasonState, runSeasonReset, SEASON_EVERY } from '../lib/economy-season.mjs';
 
 const CONFIG_KEY = 'bot.config';
@@ -29,6 +29,13 @@ export default async function economyAdminRoutes(app) {
   };
 
   app.get('/admin/economy/season', { preHandler: requireCap('manage_economy') }, async () => seasonView(await db()));
+
+  // The bot's read: which season it is, when the last reset was, when the next falls — so it
+  // can announce a season's end and show "season N" on its cards. Bot secret, no session.
+  app.get('/bot/economy/season', async (req, reply) => {
+    if (!botAuth(req, reply)) return;
+    return seasonView(await db());
+  });
 
   app.put('/admin/economy/season', { preHandler: requireCap('manage_economy') }, async (req, reply) => {
     const b = z.object({
