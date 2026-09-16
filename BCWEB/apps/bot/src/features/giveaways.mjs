@@ -6,6 +6,12 @@ import { ButtonStyle, MessageFlags } from 'discord.js';
 import * as ui from '../ui.mjs';
 import { config } from '../config.mjs';
 import { api, SITE_URL } from '../api.mjs';
+import { makeT } from '../i18n.mjs';
+import { learnButton } from '../help.mjs';
+
+// Posted by a poller, not by an interaction: no reader, so the label is English like the rest
+// of this card. The help card a press opens is in the presser's own language.
+const T = makeT('en');
 
 async function resolveChannel(client, id) {
   return client.channels.cache.get(id) || await client.channels.fetch(id).catch(() => null);
@@ -34,7 +40,7 @@ export async function pollGiveaways(client) {
         const msg = await ch.send(ui.card({
           title: `${ui.ic('enter')} Giveaway!`,
           body: [`**Prize:** ${gw.prize}`, `**Winners:** ${gw.winnersCount}`, `**Ends:** <t:${endTs}:R> (<t:${endTs}:f>)`, reqLine.trim() || null, '', 'Press **Enter** below to join — one entry per person.'],
-          buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' })],
+          buttons: [ui.btn(`gw:enter:${gw.id}`, 'Enter', ButtonStyle.Primary, { emoji: 'enter' }), learnButton(T, 'giveaway')],
         })).catch((e) => { console.warn('[bot] giveaway post failed', e.message); return null; });
         if (msg) { await api.giveawayPosted(gw.id, msg.id); console.log(`[bot] giveaway ${gw.id} posted in ${gw.channelId}`); }
         continue;

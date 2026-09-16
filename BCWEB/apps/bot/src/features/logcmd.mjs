@@ -9,6 +9,7 @@ import * as ui from '../ui.mjs';
 import { api, SITE_URL } from '../api.mjs';
 import { guildConfig, config } from '../config.mjs';
 import { tr } from '../i18n.mjs';
+import { learnButton } from '../help.mjs';
 import { CATEGORIES, GROUPS, CATEGORY_KEYS, normalizeLogs, resolveRoute, setupLogForum, setupAlertForum, logEvent, _queue } from './logs.mjs';
 import { manualLockdown, stateFor, lockdownActive } from './automod.mjs';
 
@@ -144,7 +145,7 @@ async function logsStatus(i, t) {
     `${t('logs.status.channel')} ${logs.channelId ? `<#${logs.channelId}>` : legacy ? `<#${legacy}> (/config)` : `*${t('cfg.none')}*`}`,
     logs.enabled ? '' : `**${t('logs.status.disabled')}**`,
   ].filter(Boolean);
-  return ui.reply(i, { title: t('logs.title'), body: [...head, '', ...lines], footer: t('logs.status.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=discord`, t('cfg.more'), ButtonStyle.Secondary, { emoji: 'site' })] });
+  return ui.reply(i, { title: t('logs.title'), body: [...head, '', ...lines], footer: t('logs.status.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=discord`, t('cfg.more'), ButtonStyle.Secondary, { emoji: 'site' }), learnButton(t, 'logs')] });
 }
 
 /** /lockdown on|off [minutes] — the raid lockdown, by hand. */

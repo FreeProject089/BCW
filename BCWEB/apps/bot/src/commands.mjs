@@ -8,7 +8,9 @@ import { handleGiveawayButton } from './features/giveaways.mjs';
 import { handleRolePanelInteraction } from './features/rolepanel.mjs';
 import { config, guildBan } from './config.mjs';
 import * as ui from './ui.mjs';
-import { tr } from './i18n.mjs';
+import { tr, BASE } from './i18n.mjs';
+import { backButtons, openOrigin, origin, register as registerScreen, withOrigin } from './nav.mjs';
+import { FEATURES, helpCard, helpIndexCard, learnButton } from './help.mjs';
 import { cmdSetup, onboardingSelect } from './features/onboarding.mjs';
 import { cmdConfig, configComponent } from './features/configure.mjs';
 import { cmdLogs, cmdLockdown, logsAutocomplete } from './features/logcmd.mjs';
@@ -114,6 +116,12 @@ export const commandData = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('setup').setDescription('The bot’s welcome card: link your account, pick its language here, open the dashboard')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
+  // The long explanations the cards have no room for. The choices are named from the English
+  // dictionary because a command definition is registered once for every server, in one
+  // language — the CARD that answers is in the reader's.
+  new SlashCommandBuilder().setName('help').setDescription('What each part of the bot does, explained')
+    .addStringOption((o) => o.setName('topic').setDescription('Jump straight to one feature')
+      .addChoices(...FEATURES.map((f) => ({ name: `${BASE.en[`help.${f.key}.t`]} (${f.cmd})`.slice(0, 100), value: f.key })))),
 ].map((c) => c.toJSON());
 
 export async function handleInteraction(i) {
@@ -154,21 +162,21 @@ export async function handleInteraction(i) {
     if (i.commandName === 'casino') return cmdCasino(i);
     if (i.commandName === 'setup') return cmdSetup(i);
     if (i.commandName === 'config') return cmdConfig(i);
+    if (i.commandName === 'help') return cmdHelp(i, i.options.getString('topic') || '');
     return;
   }
   if (i.isButton() && i.customId.startsWith('gw:enter:')) return handleGiveawayButton(i);
+  // `nav:<origin>` is the one Back button in the bot (see nav.mjs); `help:` is the one
+  // explanation screen (help.mjs). Both come before everything else because both can be
+  // pressed from ANY card, including cards another module built.
+  if (i.isButton() && i.customId.startsWith('nav:')) { const { t } = await tr(i); return openOrigin(i, i.customId.slice(4), t); }
+  if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('help:')) return helpComponent(i);
   if (i.isButton() && i.customId.startsWith('shop:buy:')) return handleShopBuy(i);
-  if (i.isButton() && i.customId.startsWith('shop:page:')) return cmdShop(i, Number(i.customId.split(':')[2]) || 0, true);
+  if (i.isButton() && i.customId.startsWith('shop:page:')) { const [, , page, from] = i.customId.split(':'); return cmdShop(i, Number(page) || 0, true, from || ''); }
   if (i.isButton() && i.customId.startsWith('inv:reveal:')) return invReveal(i);
   if (i.isButton() && i.customId.startsWith('inv:gift:')) return invGiftModal(i);
   if (i.isModalSubmit() && i.customId.startsWith('invm:gift:')) return invGiftSubmit(i);
-  if (i.isButton() && i.customId.startsWith('eco:lb:')) { const seg = i.customId.split(':'); return cmdLeaderboard(i, true, seg[2] === 'refresh' ? seg[3] : seg[2]); }
-  if (i.isButton() && i.customId === 'eco:link') return cmdLink(i);
-  if (i.isButton() && i.customId === 'eco:level') return cmdLevel(i);
-  if (i.isButton() && i.customId === 'eco:shop') return cmdShop(i);
-  if (i.isButton() && i.customId === 'eco:inventory') return cmdInventory(i);
-  if (i.isButton() && i.customId === 'eco:history') return cmdHistory(i, '');
-  if (i.isButton() && i.customId === 'eco:leaderboard') return cmdLeaderboard(i, false, 'server');
+  if (i.isButton() && i.customId.startsWith('eco:')) return ecoComponent(i);
   if (i.isButton() && i.customId.startsWith('casino:again:')) return casinoAgain(i);
   if (i.isStringSelectMenu() && i.customId === 'onb:lang') return onboardingSelect(i);
   // Before the panel catch-all below, which claims every remaining component.
@@ -176,35 +184,101 @@ export async function handleInteraction(i) {
   if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('cas:')) return casinoSetup(i);
   if (i.isModalSubmit() && i.customId.startsWith('casm:')) return casinoModal(i);
   // The live tables (features/casino-live.mjs): join / pick / start / cash out / new round.
-  if (i.isButton() && i.customId.startsWith('cl:')) return liveComponent(i);
+  // A SELECT counts: the race's car picker and the wheel's multiplier picker are `cl:pick`
+  // dropdowns, and while this line said `isButton()` they fell through to the voice panel,
+  // which ignored them — picking a car did nothing at all.
+  if ((i.isButton() || i.isStringSelectMenu()) && i.customId.startsWith('cl:')) return liveComponent(i);
   if (i.isModalSubmit() && i.customId.startsWith('clm:')) return liveModal(i);
   // Before the voice panel's catch-all, which claims every remaining component interaction.
   // It returns false when the custom id is not one of its own, so this stays a filter and
   // not a fork somebody has to keep in sync.
   if (await handleRolePanelInteraction(i)) return;
-  if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) return handlePanelInteraction(i);
+  if (/^(vp:|vps:|vpm:)/.test(i.customId || '')) return handlePanelInteraction(i);
+  // Nothing claimed it. That is a button from a message older than the deploy that renamed
+  // its id: left unanswered it spins and then says "This interaction failed", which reads as
+  // the bot being down. Say what it is instead.
+  if (i.isButton() || i.isAnySelectMenu() || i.isModalSubmit()) {
+    const { t } = await tr(i);
+    console.warn('[bot] unclaimed component:', String(i.customId).slice(0, 80));
+    return ui.line(i, t('nav.stale'), { color: ui.INFO });
+  }
 }
+
+// `eco:<screen>[:<origin>]` — the cross-links every card carries. The origin is where the
+// reader is standing, so the screen that opens can draw a Back button to it (nav.mjs).
+async function ecoComponent(i) {
+  const [, screen, ...rest] = i.customId.split(':');
+  if (screen === 'lb') {
+    // `eco:lb:<scope>[:<origin>]`, or `eco:lb:refresh:<scope>[:<origin>]` — Refresh needs an
+    // id of its own, because Discord refuses a message whose components share one.
+    const refresh = rest[0] === 'refresh';
+    return cmdLeaderboard(i, true, refresh ? rest[1] : rest[0], refresh ? rest[2] || '' : rest[1] || '');
+  }
+  const from = rest[0] || '';
+  if (screen === 'link') return cmdLink(i, from);
+  if (screen === 'level') return cmdLevel(i, from);
+  if (screen === 'shop') return cmdShop(i, 0, false, from);
+  if (screen === 'inventory') return cmdInventory(i, from);
+  if (screen === 'history') return cmdHistory(i, '', from);
+  if (screen === 'leaderboard') return cmdLeaderboard(i, false, 'server', from);
+  const { t } = await tr(i);
+  return ui.line(i, t('nav.stale'), { color: ui.INFO });
+}
+
+// ── Help ─────────────────────────────────────────────────────────────────────
+// One reader of help.mjs for the command, one for the buttons on every other card. Both end
+// in helpCard()/helpIndexCard(), so the two can never say different things.
+async function cmdHelp(i, topic = '') {
+  const { t } = await tr(i);
+  return ui.reply(i, topic ? helpCard(t, topic, { from: origin('help') }) : helpIndexCard(t));
+}
+
+async function helpComponent(i) {
+  const { t } = await tr(i);
+  const [, verb, ...rest] = i.customId.split(':');
+  // `help:more:<feature>` is a LEAF: it answers with a new ephemeral card and leaves the card
+  // it was pressed on untouched behind it — so it needs no Back, and costs that card nothing.
+  if (verb === 'more') return ui.reply(i, helpCard(t, rest[0], { from: origin('help') }));
+  if (verb === 'pick') return ui.reply(i, helpCard(t, i.values?.[0] || '', { from: origin('help') }));
+  return ui.reply(i, helpIndexCard(t, { from: rest[0] || '' }));
+}
+
+// The screens nav can re-open. Registered here because this is where they live; nav.mjs
+// itself imports nothing of theirs, so there is no cycle to unpick.
+registerScreen('help', (i, [key]) => (key ? cmdHelp(i, key) : cmdHelp(i)));
+registerScreen('lvl', (i) => cmdLevel(i));
+registerScreen('shop', (i, [page]) => cmdShop(i, Number(page) || 0));
+registerScreen('inv', (i) => cmdInventory(i));
+registerScreen('hist', (i, [kind]) => cmdHistory(i, kind || ''));
+registerScreen('lb', (i, [scope]) => cmdLeaderboard(i, false, scope || 'server'));
+registerScreen('cas', (i) => casinoMenu(i, unpackCas(['list', 'coinflip', 0, 'red', '', 2, 'medium', i.user.id])));
+// Field by field rather than a spread: unpackCas reads by POSITION, and a token whose empty
+// tail was trimmed would otherwise slide the owner into the risk slot.
+registerScreen('casg', (i, a) => casinoMenu(i, unpackCas(['game', a[0], a[1], a[2], a[3], a[4], a[5], i.user.id])));
+registerScreen('lob', (i) => listLobbies(i));
 
 // ── B-econ: levelling / economy commands ─────────────────────────────────────
 const curLabel = (c) => c?.emoji || c?.name || 'points';
 const n = (x) => Number(x || 0).toLocaleString('en-US');
 // `t` is the reader's translator when the caller has one; without it the English labels
 // stand, so a call site not yet converted still renders.
-const ecoButtons = (except = '', t = null) => {
+// `from` is the origin token of the card these buttons are ON, so whichever screen they open
+// can draw a Back button that returns here (nav.mjs). Empty = no Back on the other side.
+const ecoButtons = (except = '', t = null, from = '') => {
   const L = (k, d) => (t ? t(k) : d);
   return [
-    except !== 'level' && ui.btn('eco:level', L('btn.level', 'My level'), ButtonStyle.Secondary, { emoji: 'level' }),
-    except !== 'shop' && ui.btn('eco:shop', L('btn.shop', 'Shop'), ButtonStyle.Secondary, { emoji: 'shop' }),
-    except !== 'inventory' && ui.btn('eco:inventory', L('btn.inventory', 'Inventory'), ButtonStyle.Secondary, { emoji: 'inventory' }),
-    except !== 'leaderboard' && ui.btn('eco:leaderboard', L('btn.leaderboard', 'Leaderboard'), ButtonStyle.Secondary, { emoji: 'leaderboard' }),
+    except !== 'level' && ui.btn(withOrigin('eco:level', from), L('btn.level', 'My level'), ButtonStyle.Secondary, { emoji: 'level' }),
+    except !== 'shop' && ui.btn(withOrigin('eco:shop', from), L('btn.shop', 'Shop'), ButtonStyle.Secondary, { emoji: 'shop' }),
+    except !== 'inventory' && ui.btn(withOrigin('eco:inventory', from), L('btn.inventory', 'Inventory'), ButtonStyle.Secondary, { emoji: 'inventory' }),
+    except !== 'leaderboard' && ui.btn(withOrigin('eco:leaderboard', from), L('btn.leaderboard', 'Leaderboard'), ButtonStyle.Secondary, { emoji: 'leaderboard' }),
   ];
 };
-const notLinked = async (i) => {
+const notLinked = async (i, from = '') => {
   const { t } = await tr(i);
   return ui.reply(i, {
     title: t('notlinked.title'), color: ui.INFO,
     body: t('notlinked.body'),
-    buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' }), ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' })],
+    buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' }), ui.btn(withOrigin('eco:link', from), t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }), learnButton(t, 'link'), ...backButtons(t, from)],
   });
 };
 
@@ -215,7 +289,8 @@ async function siteAvatar(e, name = 'avatar.png') {
   return png ? { thumb: `attachment://${name}`, files: [ui.attach(png, name)] } : { thumb: null, files: [] };
 }
 
-async function cmdLevel(i) {
+async function cmdLevel(i, from = '') {
+  const here = origin('lvl');
   const [{ t }, e] = await Promise.all([tr(i), api.economyUser(i.user.id)]);
   const cur = curLabel(e.currency);
   const rates = e.rates || {};
@@ -243,7 +318,7 @@ async function cmdLevel(i) {
       body,
       sections: sh ? statsOf(sh.stats) : [],
       footer: rateLine,
-      buttons: [ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }), ui.btn('eco:leaderboard', t('btn.leaderboard'), ButtonStyle.Secondary, { emoji: 'leaderboard' })],
+      buttons: [ui.btn(withOrigin('eco:link', here), t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }), ui.btn(withOrigin('eco:leaderboard', here), t('btn.leaderboard'), ButtonStyle.Secondary, { emoji: 'leaderboard' }), learnButton(t, 'level'), ...backButtons(t, from)],
     });
   }
   const av = await siteAvatar(e);
@@ -259,7 +334,7 @@ async function cmdLevel(i) {
     ],
     sections: statsOf(e.stats),
     footer: rateLine,
-    buttons: [...ecoButtons('level', t), ui.btn('eco:history', t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' }), ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' })],
+    buttons: [...ecoButtons('level', t, here), ui.btn(withOrigin('eco:history', here), t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' }), ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), learnButton(t, 'level'), ...backButtons(t, from)],
   });
 }
 
@@ -301,18 +376,21 @@ const PAGE = 8;
 
 // The shop: one section per item with its own Buy button. Paged eight at a time — a section
 // with a button is two components, and a V2 message holds forty.
-async function cmdShop(i, page = 0, isUpdate = false) {
+async function cmdShop(i, page = 0, isUpdate = false, from = '') {
   const [{ t }, eco, me] = await Promise.all([tr(i), api.economyConfig(), api.economyUser(i.user.id)]);
   const respond = (opts) => (isUpdate ? ui.update(i, opts) : ui.reply(i, opts));
-  if (!eco.enabled) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.off') });
+  if (!eco.enabled) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.off'), buttons: [learnButton(t, 'shop'), ...backButtons(t, from)] });
   const now = Date.now();
   // `onBot !== false`: an admin can hide an item from the Discord shop while keeping it on the
   // site (and vice-versa). Undefined = shown, so existing items are unaffected.
   const items = (Array.isArray(eco.shop) ? eco.shop : []).filter((x) => x.name && x.active !== false && x.onBot !== false && !(x.kind === 'badge' && !x.ref) && !(x.availableUntil && new Date(x.availableUntil).getTime() < now));
-  if (!items.length) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.empty'), buttons: ecoButtons('shop', t) });
+  if (!items.length) return respond({ title: `${ui.icx('shop')}${t('shop.title')}`, body: t('shop.empty'), buttons: [...ecoButtons('shop', t, origin('shop')), learnButton(t, 'shop'), ...backButtons(t, from)] });
   const cur = eco.currencyEmoji || eco.currencyName || 'points';
   const pages = Math.ceil(items.length / PAGE);
   page = Math.max(0, Math.min(pages - 1, page));
+  // The page the reader is on IS the origin: a Buy that lands on page three must come back
+  // to page three, not to the front of the shop.
+  const here = origin('shop', page);
   const slice = items.slice(page * PAGE, page * PAGE + PAGE);
   const balance = me.linked ? Number(me.points || 0) : null;
   return respond({
@@ -325,14 +403,18 @@ async function cmdShop(i, page = 0, isUpdate = false) {
       const extra = [shopKindLabel(x.kind), x.giftable === false || x.kind === 'badge' || x.kind === 'role' ? 'bound to you' : 'giftable', x.codeDays ? `code valid ${x.codeDays} d` : null].filter(Boolean).join(' · ');
       return {
         text: `**${x.name}** — ${n(cost)} ${cur}${tag ? `  ${tag}` : ''}\n-# ${extra}${x.desc ? `\n${x.desc}` : ''}`,
-        button: ui.btn(`shop:buy:${x.id}`, can ? t('btn.buy') : `${n(cost)}`, can ? ButtonStyle.Success : ButtonStyle.Secondary, { disabled: !can, emoji: can ? 'buy' : null }),
+        // The origin comes BEFORE the item id: an item id is opaque text that may itself
+        // contain a colon, so it has to be the last field and swallow the rest.
+        button: ui.btn(`shop:buy:${here}:${x.id}`, can ? t('btn.buy') : `${n(cost)}`, can ? ButtonStyle.Success : ButtonStyle.Secondary, { disabled: !can, emoji: can ? 'buy' : null }),
       };
     }),
     footer: pages > 1 ? t('shop.page', { p: page + 1, t: pages }) : t('shop.footer'),
     buttons: [
-      pages > 1 && ui.btn(`shop:page:${page - 1}`, t('btn.prev'), ButtonStyle.Secondary, { disabled: page === 0 }),
-      pages > 1 && ui.btn(`shop:page:${page + 1}`, t('btn.next'), ButtonStyle.Secondary, { disabled: page >= pages - 1 }),
-      ...ecoButtons('shop', t),
+      pages > 1 && ui.btn(withOrigin(`shop:page:${page - 1}`, from), t('btn.prev'), ButtonStyle.Secondary, { disabled: page === 0 }),
+      pages > 1 && ui.btn(withOrigin(`shop:page:${page + 1}`, from), t('btn.next'), ButtonStyle.Secondary, { disabled: page >= pages - 1 }),
+      ...ecoButtons('shop', t, here),
+      learnButton(t, 'shop'),
+      ...backButtons(t, from),
     ],
   });
 }
@@ -340,7 +422,13 @@ async function cmdShop(i, page = 0, isUpdate = false) {
 // A Buy button was pressed. The API is authoritative — it re-reads the price, checks stock
 // and exclusivity, debits atomically and records the purchase. We only translate the result.
 async function handleShopBuy(i) {
-  const itemId = i.customId.slice('shop:buy:'.length);
+  const { t } = await tr(i);
+  const seg = i.customId.split(':');
+  // Two shapes: `shop:buy:<origin>:<itemId>` now, `shop:buy:<itemId>` on any shop card posted
+  // before this deploy. Reading both is what keeps those cards buying instead of reporting a
+  // missing item — and the item id is last in either, so it may contain colons.
+  const back = seg.length > 3 ? seg[2] : origin('shop');
+  const itemId = (seg.length > 3 ? seg.slice(3) : seg.slice(2)).join(':');
   const r = await api.economyBuy(i.user.id, itemId);
   if (r.ok) {
     const d = r.delivery || {};
@@ -349,7 +437,7 @@ async function handleShopBuy(i) {
     else if (d.revealed === false) lines.push(`${ui.icx('reveal')}Your code is sealed in your inventory — press **Reveal** there when you want it${r.item?.giftable ? ', or **Gift** it unopened to someone else' : ''}.`);
     else if (r.item?.kind === 'role') lines.push(`${ui.icx('role')}An admin will assign your role shortly — it shows as *pending* in your inventory until then.`);
     else lines.push(`${ui.icx('gift')}An admin has been notified to deliver it — *pending* in your inventory until then.`);
-    return ui.reply(i, { title: `${ui.icx('done')}Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn('eco:inventory', 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+    return ui.reply(i, { title: `${ui.icx('done')}Purchase complete`, color: ui.GOOD, body: lines, buttons: [ui.btn(withOrigin('eco:inventory', back), 'Inventory', ButtonStyle.Primary, { emoji: 'inventory' }), ...backButtons(t, back)] });
   }
   if (r.error === 'not_linked') return notLinked(i);
   const why = r.error === 'insufficient' ? `You need **${n(r.cost)}** points — you have ${n(r.points)}.`
@@ -359,16 +447,17 @@ async function handleShopBuy(i) {
     : r.error === 'no_such_item' ? 'That item is gone from the shop.'
     : r.error === 'economy_off' ? 'The economy is currently off.'
     : 'That purchase could not be completed.';
-  return ui.reply(i, { title: `${ui.icx('shop')}Shop`, color: ui.BAD, body: why, buttons: [ui.btn('eco:shop', 'Back to the shop', ButtonStyle.Secondary, { emoji: 'shop' })] });
+  return ui.reply(i, { title: `${ui.icx('shop')}Shop`, color: ui.BAD, body: why, buttons: [...backButtons(t, back), learnButton(t, 'shop')] });
 }
 
 // Everything bought with points, newest first: sealed codes to reveal, giftable items to gift.
-async function cmdInventory(i) {
+async function cmdInventory(i, from = '') {
+  const here = origin('inv');
   const [{ t }, e] = await Promise.all([tr(i), api.economyUser(i.user.id)]);
-  if (!e.linked) return notLinked(i);
+  if (!e.linked) return notLinked(i, from);
   const r = await api.economyPurchases(i.user.id);
   const rows = Array.isArray(r.purchases) ? r.purchases : [];
-  if (!rows.length) return ui.reply(i, { title: `${ui.icx('inventory')}${t('inv.title')}`, body: t('inv.empty'), buttons: ecoButtons('inventory', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.icx('inventory')}${t('inv.title')}`, body: t('inv.empty'), buttons: [...ecoButtons('inventory', t, here), learnButton(t, 'inventory'), ...backButtons(t, from)] });
   const pending = rows.filter((x) => x.status === 'pending').length;
   const sections = rows.slice(0, 10).map((x) => {
     const when = `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d>`;
@@ -386,7 +475,7 @@ async function cmdInventory(i) {
     body: pending ? t('inv.pending', { n: pending }) : t('inv.count', { n: rows.length }),
     sections,
     footer: rows.length > 10 ? t('inv.more', { n: rows.length - 10 }) : t('inv.footer'),
-    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('inventory', t)],
+    buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('inventory', t, here), learnButton(t, 'inventory'), ...backButtons(t, from)],
   });
 }
 
@@ -447,22 +536,24 @@ const KIND_TEXT = { levelup: 'Level-up', grant: 'Staff', purchase: 'Purchase', c
 const KIND_ICON = { levelup: 'levelup', grant: 'staff', purchase: 'purchase', casino: 'casino', gift_out: 'gift', gift_in: 'gift', gift_item_out: 'coin', gift_item_in: 'coin', refund: 'coin' };
 // The emoji comes from the icon catalogue, so an admin's custom emoji reaches the ledger too.
 const kindLabel = (k) => (KIND_TEXT[k] ? `${ui.ic(KIND_ICON[k] || 'coin')} ${KIND_TEXT[k]}` : '');
-async function cmdHistory(i, kind = '') {
+async function cmdHistory(i, kind = '', from = '') {
+  const here = origin('hist', kind);
   const [{ t }, r] = await Promise.all([tr(i), api.economyHistory(i.user.id, kind)]);
-  if (r.linked === false) return notLinked(i);
+  if (r.linked === false) return notLinked(i, from);
   const rows = Array.isArray(r.history) ? r.history : [];
-  if (!rows.length) return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: ecoButtons('', t) });
+  if (!rows.length) return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}`, body: kind ? t('hist.emptyKind') : t('hist.empty'), buttons: [...ecoButtons('', t, here), ...backButtons(t, from)] });
   const lines = rows.slice(0, 20).map((x) => {
     const m = x.meta || {};
     const who = x.kind === 'gift_out' ? ` → ${m.toName || '?'}` : x.kind === 'gift_in' ? ` ← ${m.fromName || '?'}` : x.kind === 'purchase' ? ` · ${m.name || ''}` : x.kind === 'casino' ? ` · ${m.game || ''} ×${m.multiplier ?? '?'}` : x.kind === 'levelup' ? ` · Lv ${m.level}` : '';
     const d = x.delta > 0 ? `**+${n(x.delta)}**` : x.delta < 0 ? `**−${n(-x.delta)}**` : '±0';
     return `<t:${Math.floor(new Date(x.createdAt).getTime() / 1000)}:d> ${kindLabel(x.kind) || x.kind}${who} — ${d} → ${n(x.balance)}`;
   });
-  return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('')] });
+  return ui.reply(i, { title: `${ui.icx('history')}${t('hist.title')}${kind ? ` · ${kindLabel(kind) || kind}` : ''}`, body: lines, footer: t('hist.footer'), buttons: [ui.btn(`${SITE_URL}/dashboard?s=economy`, t('btn.site'), ButtonStyle.Secondary, { emoji: 'site' }), ...ecoButtons('', t, here), ...backButtons(t, from)] });
 }
 
-async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
+async function cmdLeaderboard(i, isUpdate = false, scope = 'server', from = '') {
   const guildId = scope === 'server' && i.guildId ? i.guildId : '';
+  const here = origin('lb', guildId ? 'server' : 'global');
   const [{ t }, r] = await Promise.all([tr(i), api.economyLeaderboard(i.user.id, guildId)]);
   const rows = (r.members || []).slice(0, 10);
   if (!isUpdate) await i.deferReply();
@@ -480,12 +571,13 @@ async function cmdLeaderboard(i, isUpdate = false, scope = 'server') {
     image: png ? 'attachment://leaderboard.png' : null, files: png ? [ui.attach(png, 'leaderboard.png')] : [],
     footer: r.total ? t('lb.footer', { n: n(r.total) }) : null,
     buttons: [
-      ui.btn('eco:lb:server', t('btn.server'), guildId ? ButtonStyle.Primary : ButtonStyle.Secondary, { disabled: !i.guildId }),
-      ui.btn('eco:lb:global', t('btn.global'), guildId ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      ui.btn(withOrigin('eco:lb:server', from), t('btn.server'), guildId ? ButtonStyle.Primary : ButtonStyle.Secondary, { disabled: !i.guildId }),
+      ui.btn(withOrigin('eco:lb:global', from), t('btn.global'), guildId ? ButtonStyle.Secondary : ButtonStyle.Primary),
       // Its own id: it used to reuse the scope button's, and Discord refuses a message whose
       // components share a custom id (COMPONENT_CUSTOM_ID_DUPLICATED) — the whole card failed.
-      ui.btn(`eco:lb:refresh:${guildId ? 'server' : 'global'}`, t('btn.refresh'), ButtonStyle.Secondary, { emoji: 'refresh' }),
-      ui.btn('eco:level', t('btn.level'), ButtonStyle.Secondary, { emoji: 'level' }),
+      ui.btn(withOrigin(`eco:lb:refresh:${guildId ? 'server' : 'global'}`, from), t('btn.refresh'), ButtonStyle.Secondary, { emoji: 'refresh' }),
+      ui.btn(withOrigin('eco:level', here), t('btn.level'), ButtonStyle.Secondary, { emoji: 'level' }),
+      ...backButtons(t, from),
     ],
   });
 }
@@ -572,7 +664,7 @@ async function playCasino(i, opts) {
       : r.error === 'insufficient' ? "You don't have enough points for that bet."
       : r.error === 'bad_bet' ? t('cas.betRange', { a: n(r.min), b: r.max == null ? t('live.noCap') : n(r.max) })
       : 'Could not place that bet.';
-    return ui.reply(i, { title: `${ui.icx('casino')}Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' })] });
+    return ui.reply(i, { title: `${ui.icx('casino')}Casino`, body: msg, color: ui.BAD, buttons: [ui.btn('eco:level', 'My balance', ButtonStyle.Secondary, { emoji: 'level' }), learnButton(t, 'casino')] });
   }
   // The GIF takes a moment to render; a deferred reply keeps Discord from timing the
   // interaction out, and the play is public — the table is the fun part.
@@ -595,6 +687,7 @@ async function playCasino(i, opts) {
   // "Play again" re-runs the same bet with the same options — the custom id carries them (and
   // the player's id, so nobody spends somebody else's points from their button).
   const again = ['casino', 'again', game, bet, opts.betOn || '', opts.num ?? '', opts.target || '', opts.risk || '', i.user.id].join(':');
+  const gamePage = origin('casg', game, bet, opts.betOn || 'red', opts.num ?? '', opts.target || 2, opts.risk || 'medium');
   return ui.editReply(i, {
     // Deliberately NOT green/red: the accent colour would spoil the result before you read it
     // (and it is the whole point of the reveal). One calm neutral for win, push and loss alike.
@@ -603,7 +696,15 @@ async function playCasino(i, opts) {
     thumb: i.user.displayAvatarURL?.({ size: 128 }) || null,
     body: line,
     image: gif ? 'attachment://casino.gif' : null, files,
-    buttons: [ui.btn(again, t('btn.again', { n: n(bet) }), ButtonStyle.Primary, { emoji: 'again' }), ui.btn(`cas:open:${packCas({ ...opts, view: 'game', bet: 0, owner: i.user.id })}`, t('btn.change'), ButtonStyle.Secondary, { emoji: 'casino' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), ui.btn('eco:history', t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' })],
+    buttons: [
+      ui.btn(again, t('btn.again', { n: n(bet) }), ButtonStyle.Primary, { emoji: 'again' }),
+      ui.btn(`cas:open:${packCas({ ...opts, view: 'game', bet: 0, owner: i.user.id })}`, t('btn.change'), ButtonStyle.Secondary, { emoji: 'casino' }),
+      // The balance and the history come back to this game's page rather than leaving the
+      // player on a card with nothing but /casino to type.
+      ui.btn(withOrigin('eco:level', gamePage), t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }),
+      ui.btn(withOrigin('eco:history', gamePage), t('btn.history'), ButtonStyle.Secondary, { emoji: 'history' }),
+      learnButton(t, 'casino'),
+    ],
   });
 }
 
@@ -710,6 +811,7 @@ async function casinoContext(i) {
 /** Page 1: the games as one list (a line each) and an "Open a game" menu — with Previous · Games · Next underneath. */
 async function casinoList(i, st, { update = false } = {}) {
   const { t, min, max, e, cur, balance, enabled } = await casinoContext(i);
+  const here = origin('cas');
   const S = (patch) => packCas({ ...st, ...patch });
   const first = CASINO_GAMES[0].id, last = CASINO_GAMES[CASINO_GAMES.length - 1].id;
   // The live games open a TABLE in the channel rather than a page: there is no bet to pick
@@ -731,10 +833,12 @@ async function casinoList(i, st, { update = false } = {}) {
       // reads eight fields and ignores the ninth.
       ui.btn(`cas:open:${S({ view: 'game', game: last })}:p`, t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
       ui.btn(`cas:open:${S({ view: 'game', game: first })}:n`, t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
-      e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
-      // The live tables' doors: a code typed into a modal, or the list of open tables.
+      e.linked ? ui.btn(withOrigin('eco:level', here), t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn(withOrigin('eco:link', here), t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
+      // The live tables' doors: a code typed into a modal, or the list of open tables. The
+      // list carries this page as its origin, so it is not the dead end it used to be.
       ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'code' }),
-      ui.btn('cl:lobbies', t('live.lobbiesBtn'), ButtonStyle.Secondary, { emoji: 'lobbies' }),
+      ui.btn(`cl:lobbies:${here}`, t('live.lobbiesBtn'), ButtonStyle.Secondary, { emoji: 'lobbies' }),
+      learnButton(t, 'casino'),
     ],
   };
   return update ? ui.update(i, opts) : ui.reply(i, opts);
@@ -765,6 +869,9 @@ async function casinoMenu(i, st, { update = false } = {}) {
     : needsNumber ? t('cas.pickNumber') : null;
 
   const S = (patch) => packCas({ ...st, ...patch });
+  // This page as an origin, so a screen opened from it (the balance, the link card, the open
+  // tables) comes back to THIS game with this bet and these options, not to the games list.
+  const here = origin('casg', st.game, st.bet, st.betOn, st.num ?? '', st.target, st.risk);
   const presets = betPresets(min, max);
   const betSel = casSelect(`cas:bet:${S({})}`, t('cas.bet'), [
     ...presets.map((v) => casOpt(v, `${n(v)} ${cur}`, st.bet !== 'all' && v === st.bet)),
@@ -789,7 +896,8 @@ async function casinoMenu(i, st, { update = false } = {}) {
     ui.btn(`cas:open:${S({ game: prev })}:p`, t('btn.prev'), ButtonStyle.Secondary, { emoji: 'prev' }),
     ui.btn(`cas:list:${S({ view: 'list' })}`, t('btn.games'), ButtonStyle.Secondary, { emoji: 'games' }),
     ui.btn(`cas:open:${S({ game: next })}:n`, t('btn.next'), ButtonStyle.Secondary, { emoji: 'next' }),
-    e.linked ? ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
+    e.linked ? ui.btn(withOrigin('eco:level', here), t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }) : ui.btn(withOrigin('eco:link', here), t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
+    learnButton(t, 'casino'),
   ];
   const opts = {
     title: `${ui.icx(g.id)}${t(`game.${g.id}`)}`,
@@ -967,15 +1075,15 @@ async function cmdVerify(i) {
   });
 }
 
-async function cmdLink(i) {
+async function cmdLink(i, from = '') {
   const { t } = await tr(i);
   try {
     const r = await api.issueLink(i.user.id, i.user.username);
-    if (r.linked) return ui.reply(i, { title: `${ui.icx('link')}${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: ecoButtons('', t) });
+    if (r.linked) return ui.reply(i, { title: `${ui.icx('link')}${t('link.already')}`, color: ui.GOOD, body: t('link.alreadyBody'), buttons: [...ecoButtons('', t), ...backButtons(t, from)] });
     return ui.reply(i, {
       title: `${ui.icx('link')}${t('link.title')}`,
       body: [t('link.body'), `# ${r.code}`, `-# ${t('link.expires')}`],
-      buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' })],
+      buttons: [ui.btn(`${SITE_URL}/profile`, t('link.open'), ButtonStyle.Secondary, { emoji: 'site' }), learnButton(t, 'link'), ...backButtons(t, from)],
     });
   } catch {
     return eReply(i, t('link.fail'), { color: ui.BAD });

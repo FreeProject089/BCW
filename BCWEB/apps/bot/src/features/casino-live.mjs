@@ -34,6 +34,8 @@ import * as ui from '../ui.mjs';
 import { api } from '../api.mjs';
 import { config } from '../config.mjs';
 import { tr, makeT } from '../i18n.mjs';
+import { backButtons } from '../nav.mjs';
+import { learnButton } from '../help.mjs';
 import * as reg from './casino-lobbies.mjs';
 
 export const LIVE_GAMES = ['race', 'pot'];
@@ -140,6 +142,7 @@ function lobbyCard(L) {
     ui.btn(`cl:leave:${L.id}`, t('live.leave'), ButtonStyle.Secondary),
     ui.btn(`cl:vis:${L.id}`, t('live.vis.btn', { v: visLabel(t, L.visibility) }), ButtonStyle.Secondary),
     ui.btn(`cl:cancel:${L.id}`, t('live.cancel'), ButtonStyle.Danger),
+    learnButton(t, 'live'),
   ];
   return {
     title: title(L),
@@ -155,7 +158,7 @@ function runningCard(L, lines) {
 }
 
 function closedCard(L, text) {
-  return { title: title(L), color: 0x6b7280, body: text, buttons: [ui.btn(`cl:new:${L.game}`, L.t('live.again'), ButtonStyle.Primary, { emoji: 'again' })] };
+  return { title: title(L), color: 0x6b7280, body: text, buttons: [ui.btn(`cl:new:${L.game}`, L.t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), learnButton(L.t, 'live')] };
 }
 
 /**
@@ -212,7 +215,10 @@ async function seat(L, i, { bet, pick = null }) {
   if (!e.linked) return { ok: false, why: t('cas.linkFirst') };
   if ((Number(e.points) || 0) < b) return { ok: false, why: t('cas.onlyHave', { n: n(e.points || 0), cur: L.cur }) };
   const prev = L.players.get(i.user.id);
-  L.players.set(i.user.id, { name: nameOf(i), bet: b, pick: pick ?? prev?.pick ?? null, target: target || prev?.target || null, cashed: null, cashedAt: 0 });
+  // `target` used to be read from a variable that does not exist here, which threw a
+  // ReferenceError on EVERY seat: the join modal, and the host's own seat when `/casino`
+  // carried a bet. A returning player's target is the only one there is.
+  L.players.set(i.user.id, { name: nameOf(i), bet: b, pick: pick ?? prev?.pick ?? null, target: prev?.target ?? null, cashed: null, cashedAt: 0 });
   reg.touch(L);
   return { ok: true };
 }
@@ -310,7 +316,7 @@ async function finish(L, plays, { outcome, gifOutcome, detail, amount, links = [
     body: [gif ? null : outcome, line, ...skipped].filter(Boolean),
     image: gif ? 'attachment://table.gif' : null, files,
     footer: t('live.footer', { c: L.code }),
-    buttons: [ui.btn(`cl:new:${L.game}`, t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), ...links],
+    buttons: [ui.btn(`cl:new:${L.game}`, t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), learnButton(t, 'live'), ...links],
   });
 }
 
@@ -402,8 +408,12 @@ export async function joinByCode(i, code) {
   return i.showModal(joinModal(t, L, limits(casino)));
 }
 
-/** `/casino lobbies` — the open tables this reader may see, each with a Join button. */
-export async function listLobbies(i) {
+/**
+ * `/casino lobbies` — the open tables this reader may see, each with a Join button.
+ * `from` is the nav origin of whatever opened it (the casino table's own page, usually), so
+ * this screen is no longer somewhere you arrive and can only leave by typing a command.
+ */
+export async function listLobbies(i, from = '') {
   const { t } = await tr(i);
   const rows = reg.listVisible({ guildId: i.guildId || null }).slice(0, 12);
   const body = rows.length ? t('live.lobbies.intro') : t('live.lobbies.none');
@@ -411,7 +421,7 @@ export async function listLobbies(i) {
     title: `${ui.icx('casino')}${t('live.lobbies.title')}`,
     body,
     sections: rows.map((L) => ({ text: t('live.lobbies.row', { g: `${ui.ic(L.game) || ''} ${t(`game.${L.game}`)}`, c: L.code, n: L.players.size, u: L.hostName, v: visLabel(t, L.visibility) }), button: ui.btn(`cl:join:${L.id}`, t('live.join'), ButtonStyle.Primary) })),
-    buttons: [ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'link' })],
+    buttons: [ui.btn('cl:code', t('live.joinCode'), ButtonStyle.Secondary, { emoji: 'link' }), learnButton(t, 'live'), ...backButtons(t, from)],
   });
 }
 
@@ -422,7 +432,8 @@ export async function liveComponent(i) {
   const lim = limits(casino);
   if (verb === 'new') return openLive(i, id, {});
   if (verb === 'code') return i.showModal(codeModal(t, lim));
-  if (verb === 'lobbies') return listLobbies(i);
+  // `cl:lobbies[:<origin>]` — the third field is where the presser was standing, not a lobby id.
+  if (verb === 'lobbies') return listLobbies(i, id || '');
   const L = reg.getLobby(id);
   if (!L) return ui.line(i, t('live.gone'), { title: `${ui.icx('casino')}${t('cas.title')}` });
   if (verb === 'join') {

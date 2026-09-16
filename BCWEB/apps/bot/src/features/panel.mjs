@@ -8,6 +8,13 @@ import {
 import { temp } from '../store.mjs';
 import { adoptRoom } from './joinToCreate.mjs';
 import * as ui from '../ui.mjs';
+import { makeT } from '../i18n.mjs';
+import { learnButton } from '../help.mjs';
+
+// This panel is drawn without an interaction (a room is created, the panel is posted), so
+// there is no reader whose language to use — like every other label in this file, its button
+// is English. The help CARD it opens is translated: that one is built from the click.
+const T = makeT('en');
 
 const RENAME_COOLDOWN_MS = 12 * 60 * 1000; // 12 minutes
 const REGIONS = [['auto', 'Automatic'], ['us-east', 'US East'], ['us-west', 'US West'], ['europe', 'Europe'], ['rotterdam', 'Rotterdam'], ['singapore', 'Singapore'], ['brazil', 'Brazil'], ['japan', 'Japan']];
@@ -32,6 +39,7 @@ function panel(channel, state) {
       ui.btn('vp:whitelist', 'Whitelist'), ui.btn('vp:kick', 'Kick'), ui.btn('vp:ban', 'Ban'), ui.btn('vp:unban', 'Unban'), ui.btn('vp:unkick', 'Unkick'),
       ui.btn('vp:preset_export', 'Export preset', ButtonStyle.Primary, { emoji: 'export' }), ui.btn('vp:preset_import', 'Import preset', ButtonStyle.Primary, { emoji: 'import' }),
       !present && ui.btn('vp:claim', 'Claim this room', ButtonStyle.Success, { emoji: 'claim' }),
+      learnButton(T, 'voice'),
     ],
     footer: 'Only the owner can use these. Empty rooms are removed automatically.',
   });

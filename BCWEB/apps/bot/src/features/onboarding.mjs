@@ -7,6 +7,7 @@ import * as ui from '../ui.mjs';
 import { api, SITE_URL } from '../api.mjs';
 import { config } from '../config.mjs';
 import { tr, makeT, localeOf, LANGS } from '../i18n.mjs';
+import { learnButton } from '../help.mjs';
 
 function langSelect(t, current) {
   const opts = [new StringSelectMenuOptionBuilder().setValue('auto').setLabel(t('onb.auto')).setDefault(!current || current === 'auto')];
@@ -26,6 +27,11 @@ export function onboardingCard(t, current) {
       ui.btn('eco:link', t('btn.link'), ButtonStyle.Primary, { emoji: 'link' }),
       ui.btn(`${SITE_URL}/dashboard?s=discord`, t('btn.dashboard'), ButtonStyle.Secondary, { emoji: 'site' }),
       ui.btn(`${SITE_URL}/docs`, t('btn.docs'), ButtonStyle.Secondary, { emoji: 'site' }),
+      // The three steps stay three lines. What linking is FOR is one press away instead of a
+      // fourth paragraph, and the whole help index is the button beside it — which is also
+      // how a brand-new server finds out `/help` exists.
+      learnButton(t, 'link'),
+      ui.btn('help:index', t('btn.help'), ButtonStyle.Secondary),
     ],
   };
 }

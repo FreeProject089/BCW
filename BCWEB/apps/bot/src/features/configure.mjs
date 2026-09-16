@@ -29,6 +29,7 @@ import { ButtonStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, Ch
 import * as ui from '../ui.mjs';
 import { api, SITE_URL } from '../api.mjs';
 import { tr } from '../i18n.mjs';
+import { learnButton } from '../help.mjs';
 
 /** Discord's own Manage Server, checked BEFORE calling the API. A pre-filter, not the
  *  authority — the API checks the owner/manager list itself and does not trust this. */
@@ -60,7 +61,11 @@ function configCard(t, state) {
         title: t('cfg.title'),
         body: [t('cfg.body'), '', ...rows],
         buttons: [modeSelect(t, s.memberMode), logSelect(t),
-            ui.btn(`${SITE_URL}/dashboard?s=discord`, t('cfg.more'), ButtonStyle.Secondary, { emoji: 'site' })],
+            ui.btn(`${SITE_URL}/dashboard?s=discord`, t('cfg.more'), ButtonStyle.Secondary, { emoji: 'site' }),
+            // The long version (what each mode actually does, who may change it) as an
+            // ephemeral reply, rather than three more paragraphs on a card that has to stay
+            // readable at a glance.
+            learnButton(t, 'config')],
     };
 }
 
