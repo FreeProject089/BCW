@@ -26,7 +26,8 @@ import { useI18n } from '../i18n.jsx';
 import { Button, EmptyState, Spinner, useDialog, useToast } from '../ui/ui.jsx';
 import CanvasStudio from '../editor/canvas-studio.jsx';
 import ProjectPage, { ShowcaseProjectPage } from './project.jsx';
-import { parseStudioParams, handoffKey, draftKey, withCanvasAt, saveState, studioPath } from '../lib/studio-page.js';
+import { parseStudioParams, handoffKey, draftKey, canvasAt, withCanvasAt, saveState, studioPath } from '../lib/studio-page.js';
+import { Home as HomePage } from './home.jsx';
 
 const readJson = (key) => { try { const raw = sessionStorage.getItem(key); return raw ? JSON.parse(raw) : null; } catch { return null; } };
 const writeJson = (key, v) => { try { sessionStorage.setItem(key, JSON.stringify(v)); } catch { /* quota, private mode */ } };
@@ -34,6 +35,12 @@ const drop = (key) => { try { sessionStorage.removeItem(key); } catch { /* nothi
 
 /** Where the config lives for each kind, and where "Back" goes. */
 async function loadTarget(kind, id) {
+  // The landing page. It has no id of its own — there is one home page — so the route carries
+  // `home` as a placeholder and the config is the site setting the Home page screen edits.
+  if (kind === 'home') {
+    const r = await api.get('/admin/site/home');
+    return { config: r || {}, saveId: 'home', back: '/admin?s=homepage', name: 'Home' };
+  }
   if (kind === 'project') {
     const r = await api.get(`/projects/${encodeURIComponent(id)}`);
     return { config: r.config || {}, saveId: id, back: `/admin?s=projects&key=${encodeURIComponent(id)}`, name: id.toUpperCase() };
@@ -48,6 +55,12 @@ async function loadTarget(kind, id) {
 
 async function saveTarget(kind, saveId, config) {
   if (kind === 'project') return api.put(`/projects/${encodeURIComponent(saveId)}`, { config });
+  // The home config is not nested under a `config` key, and only the parts this screen owns
+  // are sent: `variants` comes back on the GET as a catalogue and is not a setting.
+  if (kind === 'home') {
+    const { variants: _v, ...rest } = config || {};
+    return api.put('/admin/site/home', rest);
+  }
   return api.put(`/admin/showcase/${encodeURIComponent(saveId)}`, { config });
 }
 
@@ -87,8 +100,7 @@ export default function StudioPage() {
         if (!alive) return;
         setTarget(tg);
         if (index != null && Number.isInteger(index)) {
-          const list = Array.isArray(tg.config.canvases) ? tg.config.canvases : [];
-          const base = list[index] || null;
+          const base = canvasAt(tg.config, index, kind);
           const draft = readJson(draftKey(kind, id, index));
           setSavedCanvas(base);
           if (draft && draft.canvas && base && draft.canvas.id === base.id && JSON.stringify(draft.canvas) !== JSON.stringify(base)) {
@@ -124,7 +136,7 @@ export default function StudioPage() {
     if (!target || !canvas || saving) return;
     setSaving(true); setSaveErr(false);
     try {
-      const cfg = withCanvasAt(target.config, index, canvas);
+      const cfg = withCanvasAt(target.config, index, canvas, kind);
       await saveTarget(kind, target.saveId, cfg);
       setTarget((tg) => ({ ...tg, config: cfg }));
       setSavedCanvas(canvas);
@@ -164,8 +176,12 @@ export default function StudioPage() {
   const renderPage = useMemo(() => {
     if (!target || index == null) return null;
     return (cv) => {
-      const config = withCanvasAt(target.config, index, cv);
+      const config = withCanvasAt(target.config, index, cv, kind);
       const tab = `c-${cv?.id || ''}`;
+      // The landing page, with the section being drawn in its place. The same component a
+      // visitor gets, so what is on screen while editing is the page, not an approximation of
+      // it: the header, the neighbouring sections and the real width are all there.
+      if (kind === 'home') return <HomePage draft={config} />;
       if (kind === 'project') return <ProjectPage preview={{ key: id, config, tab }} />;
       // The public page reads `project` the way GET /showcase/:slug shapes it; the admin row
       // carries every one of those fields, with the draft config in place of the saved one.
@@ -190,7 +206,12 @@ export default function StudioPage() {
   }
   if (!target) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
 
-  const list = Array.isArray(target.config.canvases) ? target.config.canvases : [];
+  // What this kind offers to edit. For the home page that is its custom sections, which are
+  // written OR drawn; only a drawn one is a studio page.
+  const list = kind === 'home'
+    ? (Array.isArray(target.config.customSections) ? target.config.customSections : [])
+      .map((sec, i) => ({ id: sec?.id || `s${i}`, title: sec?.title?.en || sec?.title?.fr || '', blocks: sec?.canvas?.blocks || [], drawn: sec?.mode === 'canvas' }))
+    : (Array.isArray(target.config.canvases) ? target.config.canvases : []);
   // No index: a chooser. One row per studio page of this config.
   if (index == null || !canvas) {
     return (
@@ -200,8 +221,8 @@ export default function StudioPage() {
           <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">{t('cst.pick.title', 'Studio pages of {name}').replace('{name}', target.name || id)}</h1>
           <Button size="sm" variant="ghost" onClick={() => navigate(target.back || '/admin')}>{t('common.back', 'Back')}</Button>
         </div>
-        {target.config.studioEnabled !== true && <p className="text-xs text-[var(--muted)] mb-3">{t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}</p>}
-        {!list.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.pick.empty', 'No studio pages yet, add one from the page settings.')}</div>}
+        {kind !== 'home' && target.config.studioEnabled !== true && <p className="text-xs text-[var(--muted)] mb-3">{t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}</p>}
+        {!list.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{kind === 'home' ? t('cst.pick.emptyhome', 'The home page has no sections of its own yet. Add one under Navigation and footer, Home page.') : t('cst.pick.empty', 'No studio pages yet, add one from the page settings.')}</div>}
         <div className="space-y-2">
           {list.map((cv, i) => (
             <Link key={cv?.id || i} to={studioPath(kind, id, i)} className="flex items-center gap-2 rounded-xl border border-[var(--line)] p-3 hover:b-primary">

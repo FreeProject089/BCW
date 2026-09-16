@@ -341,6 +341,13 @@ const homeConfig = (row) => {
     position: c?.position === 'bottom' ? 'bottom' : 'top',
     title: { en: String(c?.title?.en || '').slice(0, 200), fr: String(c?.title?.fr || '').slice(0, 200) },
     body: { en: String(c?.body?.en || '').slice(0, 8000), fr: String(c?.body?.fr || '').slice(0, 8000) },
+    // Written or drawn. This shape is an ALLOWLIST, not a spread, so a field the PUT accepts
+    // and this does not is a field that saves and never comes back: the section would be
+    // stored as drawn and read as written, on the public page as well as in the admin form.
+    mode: c?.mode === 'canvas' ? 'canvas' : 'md',
+    // Only carried when there is one. An empty object on every section would put `canvas: {}`
+    // in the public payload of every site that has never opened the studio.
+    ...(c?.canvas && typeof c.canvas === 'object' ? { canvas: c.canvas } : {}),
   }));
   return { text: v.text || {}, sections, variant, suite, customSections };
 };
@@ -708,14 +715,25 @@ export default async function miscRoutes(app) {
             { message: 'must be a site path (/x) or an http(s) URL' }).default(''),
         })).max(SUITE_MAX).optional(),
       }).optional(),
-      // Admin-authored Markdown blocks. Bounded like the suite: a hand-built list whose bad
-      // input would otherwise land on the public front page.
+      // Admin-authored blocks. Bounded like the suite: a hand-built list whose bad input
+      // would otherwise land on the public front page.
+      //
+      // A section is WRITTEN or DRAWN. `mode: 'canvas'` means the studio's layout is what the
+      // page renders, and `body` is kept either way, so switching back does not throw away
+      // the words. The canvas itself is opaque here, exactly as a project's canvases are on
+      // PUT /projects/:key (`config: z.record(z.any())`): it is the studio's own document
+      // shape, the renderer is the same component that draws it on a project page, and
+      // re-describing it here would give the two a second chance to disagree. What IS
+      // enforced is a size ceiling, because this one lives in a settings row rather than in a
+      // table of its own and an unbounded blob there is a page nobody can load.
       customSections: z.array(z.object({
         id: z.string().min(1).max(60),
         enabled: z.boolean().optional().default(true),
         position: z.enum(['top', 'bottom']).optional().default('top'),
+        mode: z.enum(['md', 'canvas']).optional().default('md'),
         title: z.object({ en: z.string().max(200).optional().default(''), fr: z.string().max(200).optional().default('') }).optional().default({}),
         body: z.object({ en: z.string().max(8000).optional().default(''), fr: z.string().max(8000).optional().default('') }).optional().default({}),
+        canvas: z.record(z.any()).refine((c) => JSON.stringify(c).length <= 300_000, { message: 'canvas too large' }).optional(),
       })).max(40).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
@@ -2234,6 +2252,226 @@ export default async function miscRoutes(app) {
     const p = await db();
     await p.contactMessage.deleteMany({ where: { id: req.params.id } });
     return { ok: true };
+  });
+
+  // ── The contact inbox ────────────────────────────────────────────────────────────────
+  //
+  // What was here before was a LIST: two hundred cards, every body expanded, read-on-hover,
+  // and one action (delete). Nothing said who was dealing with a message, nothing said
+  // whether it had been answered, and the only way to answer was a `mailto:` that left no
+  // trace on the site. A queue you cannot hand to somebody is a queue exactly one person can
+  // work, and it is why "is anyone on this?" was a question people asked out loud.
+  //
+  // The five states are in the schema, beside the column they live in. The rest of the
+  // record — who has it, what was replied, the notes — is in ContactTicket / ContactReply,
+  // and a message nobody has touched has neither, which is what `new` means.
+  //
+  // THE SECURITY RULE, and it is the reason this file is not just a CRUD:
+  //
+  //   A security report's body is the one contact body that can contain a working attack. It
+  //   is never quoted to Discord (forwardContactToDiscord), never carried in the staff alert
+  //   (alertStaffOfSecurityReport), and here it is also kept OUT OF THE LIST: every other
+  //   kind ships a one-line excerpt so the inbox is readable at a glance, a security report
+  //   ships none. Its body exists in exactly one response, /admin/contact/:id/thread, behind
+  //   the same 2FA wall as the rest of the admin surface (requireRole with roles runs
+  //   ensure2fa for every admin-tier role, MOD included). And no reply ever quotes it back —
+  //   see composeReplyMail.
+  const CONTACT_STATES = ['new', 'open', 'waiting', 'resolved', 'spam'];
+  /** Kinds whose body never travels and never appears in a list. */
+  const SECRET_KINDS = ['security'];
+  /** `read` is the vocabulary this column had before there were five states. It meant "a
+   *  human has seen it", which is what `open` means now, so it reads as open rather than
+   *  being migrated: the row is the evidence and we do not rewrite it. */
+  const stateOf = (m) => (m.status === 'read' ? 'open' : CONTACT_STATES.includes(m.status) ? m.status : 'new');
+  const stateWhere = (s) => (s === 'open' ? { status: { in: ['open', 'read'] } } : s === 'new' ? { OR: [{ status: 'new' }, { status: '' }] } : { status: s });
+  const excerptOf = (m) => (SECRET_KINDS.includes(m.kind) ? '' : String(m.body || '').replace(/\s+/g, ' ').trim().slice(0, 200));
+
+  /** The staff a message can be handed to. Anyone who can open this screen. */
+  const assignableStaff = (p) => p.user.findMany({ where: { role: { in: ['MOD', 'ADMIN', 'SUPERADMIN'] } }, select: { id: true, displayName: true, role: true }, orderBy: { displayName: 'asc' }, take: 200 });
+
+  app.get('/admin/contact/inbox', { preHandler: requireRole('MOD', 'ADMIN') }, async (req) => {
+    const p = await db();
+    const q = String(req.query?.q || '').trim();
+    const state = CONTACT_STATES.includes(req.query?.state) ? req.query.state : '';
+    const kind = String(req.query?.kind || '').trim();
+    // '', 'me', 'none', or an id. A queue nobody can filter by owner is a queue where two
+    // people answer the same message.
+    const assignee = String(req.query?.assignee || '').trim();
+
+    let assignedIds = null;
+    if (assignee) {
+      const who = assignee === 'me' ? req.user.uid : assignee;
+      if (assignee === 'none') {
+        const taken = await p.contactTicket.findMany({ where: { NOT: { assigneeId: null } }, select: { messageId: true } });
+        assignedIds = { notIn: taken.map((r) => r.messageId) };
+      } else {
+        const mine = await p.contactTicket.findMany({ where: { assigneeId: who }, select: { messageId: true } });
+        assignedIds = { in: mine.map((r) => r.messageId) };
+      }
+    }
+
+    const where = {
+      ...(state ? stateWhere(state) : {}),
+      ...(kind ? { kind } : {}),
+      ...(assignedIds ? { id: assignedIds } : {}),
+      ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }] } : {}),
+    };
+    const rows = await p.contactMessage.findMany({ where, orderBy: { createdAt: 'desc' }, take: 200, include: { user: { select: { id: true, displayName: true } } } });
+    const ids = rows.map((r) => r.id);
+    const [tickets, replies, staff, counts] = await Promise.all([
+      ids.length ? p.contactTicket.findMany({ where: { messageId: { in: ids } } }) : [],
+      ids.length ? p.contactReply.groupBy({ by: ['messageId', 'kind'], where: { messageId: { in: ids } }, _count: { _all: true } }) : [],
+      assignableStaff(p),
+      // Counted over the WHOLE table, not over the page: a tab that says "3" because three
+      // of the two hundred loaded rows matched is a number that means nothing.
+      Promise.all(CONTACT_STATES.map(async (s) => [s, await p.contactMessage.count({ where: stateWhere(s) })])),
+    ]);
+    const byId = new Map(tickets.map((t) => [t.messageId, t]));
+    const names = new Map(staff.map((s) => [s.id, s.displayName]));
+    const nReplies = new Map(); const nNotes = new Map();
+    for (const r of replies) (r.kind === 'note' ? nNotes : nReplies).set(r.messageId, r._count._all);
+    return {
+      states: CONTACT_STATES,
+      counts: Object.fromEntries(counts),
+      staff: staff.map((s) => ({ id: s.id, displayName: s.displayName, role: s.role })),
+      messages: rows.map((m) => {
+        const tk = byId.get(m.id);
+        return {
+          id: m.id, name: m.name, email: m.email, kind: m.kind, createdAt: m.createdAt,
+          state: stateOf(m), priority: tk?.priority || 'normal',
+          assignee: tk?.assigneeId ? { id: tk.assigneeId, displayName: names.get(tk.assigneeId) || tk.assigneeId } : null,
+          user: m.user ? { id: m.user.id, displayName: m.user.displayName } : null,
+          replyCount: nReplies.get(m.id) || 0, noteCount: nNotes.get(m.id) || 0,
+          firstReplyAt: tk?.firstReplyAt || null,
+          // Withheld for a security report. See the note above.
+          secret: SECRET_KINDS.includes(m.kind), excerpt: excerptOf(m),
+        };
+      }),
+    };
+  });
+
+  app.get('/admin/contact/:id/thread', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const p = await db();
+    const m = await p.contactMessage.findUnique({ where: { id: req.params.id }, include: { user: { select: { id: true, displayName: true } } } });
+    if (!m) return reply.code(404).send({ error: 'not_found' });
+    const [tk, replies, staff] = await Promise.all([
+      p.contactTicket.findUnique({ where: { messageId: m.id } }),
+      p.contactReply.findMany({ where: { messageId: m.id }, orderBy: { createdAt: 'asc' } }),
+      assignableStaff(p),
+    ]);
+    const names = new Map(staff.map((s) => [s.id, s.displayName]));
+    return {
+      message: {
+        id: m.id, name: m.name, email: m.email, kind: m.kind, body: m.body, ip: m.ip,
+        state: stateOf(m), createdAt: m.createdAt, readAt: m.readAt,
+        user: m.user ? { id: m.user.id, displayName: m.user.displayName } : null,
+        secret: SECRET_KINDS.includes(m.kind),
+        priority: tk?.priority || 'normal',
+        assignee: tk?.assigneeId ? { id: tk.assigneeId, displayName: names.get(tk.assigneeId) || tk.assigneeId } : null,
+        firstReplyAt: tk?.firstReplyAt || null, resolvedAt: tk?.resolvedAt || null,
+      },
+      replies: replies.map((r) => ({ id: r.id, kind: r.kind, body: r.body, authorName: r.authorName, authorId: r.authorId, delivered: r.delivered, createdAt: r.createdAt })),
+      staff: staff.map((s) => ({ id: s.id, displayName: s.displayName, role: s.role })),
+      emailEnabled: emailEnabled(),
+    };
+  });
+
+  /** Create the ticket row on first touch. Everything below writes through this. */
+  const touchTicket = (p, messageId, data) => p.contactTicket.upsert({ where: { messageId }, create: { messageId, ...data }, update: data });
+
+  app.patch('/admin/contact/:id', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      state: z.enum(['new', 'open', 'waiting', 'resolved', 'spam']).optional(),
+      priority: z.enum(['low', 'normal', 'high']).optional(),
+      // `null` unassigns. Explicitly nullable, because a schema that only accepts a string
+      // makes "give it back" impossible to express.
+      assigneeId: z.string().min(1).max(64).nullable().optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const m = await p.contactMessage.findUnique({ where: { id: req.params.id } });
+    if (!m) return reply.code(404).send({ error: 'not_found' });
+    const { state, priority, assigneeId } = b.data;
+    if (state) {
+      await p.contactMessage.update({
+        where: { id: m.id },
+        // readAt is the arrival-to-first-look clock the legal queues are chased on, so it is
+        // stamped once and never moved: leaving `new` is the moment it was looked at.
+        data: { status: state, ...(m.readAt || state === 'new' ? {} : { readAt: new Date() }) },
+      });
+    }
+    if (state || priority || assigneeId !== undefined) {
+      await touchTicket(p, m.id, {
+        ...(priority ? { priority } : {}),
+        ...(assigneeId !== undefined ? { assigneeId } : {}),
+        ...(state === 'resolved' ? { resolvedAt: new Date(), resolvedById: req.user.uid } : state ? { resolvedAt: null, resolvedById: null } : {}),
+      });
+    }
+    // Audited, without the body: who moved a legal notice or a security report out of the
+    // queue is exactly the thing somebody asks about six months later.
+    if (state) await logAudit(p, req.user.uid, 'contact.state', `message=${m.id} kind=${m.kind} state=${state}`).catch(() => {});
+    if (assigneeId !== undefined) await logAudit(p, req.user.uid, 'contact.assign', `message=${m.id} to=${assigneeId || 'nobody'}`).catch(() => {});
+    return { ok: true };
+  });
+
+  /**
+   * The mail a reply becomes.
+   *
+   * It carries what the staff member wrote and NOTHING ELSE. No quoted original, no "you
+   * wrote:" block, no subject built out of the message body. That is not politeness, it is
+   * the security rule: a reply to a security report would otherwise mail the report back out
+   * through a channel with no second factor on it, and the sender's own mailbox is not the
+   * threat model — every relay between here and it is.
+   *
+   * Markdown in, markdown out: the staff member writes the same dialect the site writes
+   * everywhere else, mdToEmailHtml renders it for the HTML part, and the source goes in the
+   * text part, where markdown is still the most readable plain text there is.
+   */
+  function composeReplyMail(msg, body) {
+    const subject = `Re: your message to ${new URL(SITE_URL).hostname}`;
+    return {
+      to: msg.email, subject,
+      html: mailShell('We answered your message', mdToEmailHtml(body), { url: `${SITE_URL}/contact`, label: 'Write again' }),
+      text: body,
+    };
+  }
+
+  app.post('/admin/contact/:id/replies', { preHandler: requireRole('MOD', 'ADMIN') }, async (req, reply) => {
+    const b = z.object({
+      kind: z.enum(['reply', 'note']).default('reply'),
+      body: z.string().trim().min(1).max(8000),
+      /** Optional state to move to in the same click. Answering and then forgetting to move
+       *  the message is how a queue fills with things that are actually done. */
+      state: z.enum(['new', 'open', 'waiting', 'resolved', 'spam']).optional(),
+    }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const m = await p.contactMessage.findUnique({ where: { id: req.params.id } });
+    if (!m) return reply.code(404).send({ error: 'not_found' });
+    const me = await p.user.findUnique({ where: { id: req.user.uid }, select: { displayName: true } });
+
+    let delivered = false;
+    if (b.data.kind === 'reply') {
+      if (!emailEnabled()) return reply.code(503).send({ error: 'email_disabled' });
+      try { await sendMail(composeReplyMail(m, b.data.body)); delivered = true; } catch { delivered = false; }
+      if (!delivered) return reply.code(502).send({ error: 'send_failed' });
+    }
+    const row = await p.contactReply.create({ data: { messageId: m.id, authorId: req.user.uid, authorName: me?.displayName || '', kind: b.data.kind, body: b.data.body, delivered } });
+
+    // A reply that names no state moves the message to `waiting`: it is answered, and what
+    // happens next is the sender's move. Answering and leaving it in the queue is how an
+    // inbox fills up with things that are actually done.
+    const state = b.data.state || (b.data.kind === 'reply' ? 'waiting' : null);
+    if (state) await p.contactMessage.update({ where: { id: m.id }, data: { status: state, ...(m.readAt ? {} : { readAt: new Date() }) } });
+    // firstReplyAt is stamped ONCE, by the first real reply, because it is the number the
+    // sender experienced. A note is not an answer and never sets it.
+    const existing = await p.contactTicket.findUnique({ where: { messageId: m.id } });
+    await touchTicket(p, m.id, {
+      ...(b.data.kind === 'reply' && !existing?.firstReplyAt ? { firstReplyAt: new Date() } : {}),
+      ...(state === 'resolved' ? { resolvedAt: new Date(), resolvedById: req.user.uid } : {}),
+    });
+    await logAudit(p, req.user.uid, `contact.${b.data.kind}`, `message=${m.id} kind=${m.kind}`).catch(() => {});
+    return { reply: { id: row.id, kind: row.kind, body: row.body, authorName: row.authorName, authorId: row.authorId, delivered: row.delivered, createdAt: row.createdAt }, state: state || stateOf(m) };
   });
 
   // ── Any logged-in user: minimal account search, for adding a BetterCommunity or

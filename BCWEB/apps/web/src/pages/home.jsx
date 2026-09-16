@@ -2,6 +2,9 @@ import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 // Lazily: the showcase pulls in rrweb the moment a `.bmmreplay` panel is shown, and a
 // visitor to a site with no showcase configured must not pay for any of it.
 const ProjectShowcase = lazy(() => import('../hero/ProjectShowcase.jsx'));
+// Same reasoning for the canvas renderer: it is the studio's whole drawing layer, and a home
+// page with no drawn section of its own must not carry it. Almost no site has one.
+const CanvasView = lazy(() => import('../ui/canvas-view.jsx'));
 import { ErrorBoundary } from '../ui/ErrorBoundary.jsx';
 import { Link } from 'react-router-dom';
 import {
@@ -996,20 +999,31 @@ export function Home({ draft = null }) {
 export function HomeCustomSections({ cfg, position }) {
   const { lang } = useI18n();
   const L = (o) => (lang === 'fr' ? (o?.fr || o?.en) : (o?.en || o?.fr)) || '';
+  // A section is written or DRAWN. A drawn one is a studio canvas, rendered by the same
+  // component that draws a canvas on a project page, and it is deliberately not wrapped in a
+  // Card: the point of drawing a section is to decide what it looks like, and a card around
+  // it would be the page overruling that. The heading still belongs to the section rather
+  // than to the drawing, so it stays outside and stays optional.
+  const drawn = (c) => c.mode === 'canvas' && Array.isArray(c.canvas?.blocks) && c.canvas.blocks.length > 0;
   const list = (cfg?.customSections || [])
     .filter((c) => c.enabled !== false && (c.position || 'top') === position)
-    .filter((c) => (L(c.title) || L(c.body)).trim());
+    .filter((c) => drawn(c) || (L(c.title) || L(c.body)).trim());
   if (!list.length) return null;
   return (
     <>
-      {list.map((c) => (
+      {list.map((c) => (drawn(c) ? (
+        <section key={c.id} className="reveal-on-scroll">
+          {L(c.title) && <h2 className="text-2xl md:text-3xl font-bold mb-3 gradient-text inline-block">{L(c.title)}</h2>}
+          <Suspense fallback={null}><CanvasView canvas={c.canvas} /></Suspense>
+        </section>
+      ) : (
         <section key={c.id} className="reveal-on-scroll">
           <Card className="p-6 md:p-8 max-w-4xl mx-auto reveal-stagger">
             {L(c.title) && <h2 className="text-2xl md:text-3xl font-bold mb-3 gradient-text inline-block">{L(c.title)}</h2>}
             <div className="prose-sm max-w-none text-[var(--muted)] leading-relaxed break-words"><Markdown>{L(c.body)}</Markdown></div>
           </Card>
         </section>
-      ))}
+      )))}
     </>
   );
 }

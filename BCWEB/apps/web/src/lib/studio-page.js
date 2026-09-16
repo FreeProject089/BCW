@@ -3,8 +3,15 @@
 // Pure, tested in test/studio-page.test.mjs. pages/studio.jsx owns the fetch, the save and
 // the navigation; this file is the arithmetic and the naming those lean on.
 
-/** The two things a studio URL can point at. */
-export const STUDIO_KINDS = ['project', 'showcase'];
+/** The three things a studio URL can point at.
+ *
+ *  `home` is the landing page, and it is shaped differently from the other two on purpose. A
+ *  project keeps its drawn pages in `config.canvases`; the home page keeps a list of sections
+ *  an admin wrote, `config.customSections`, of which any one can be drawn instead of written.
+ *  So the index means "the nth custom section" there, and the canvas lives on that section
+ *  rather than in a list of its own. Two shapes, one route, and the difference is confined to
+ *  canvasAt/withCanvasAt below. */
+export const STUDIO_KINDS = ['project', 'showcase', 'home'];
 
 /** `/studio/:kind/:id/:index` — built in one place so the editor and the page cannot disagree. */
 export function studioPath(kind, id, index) {
@@ -26,10 +33,34 @@ export function parseStudioParams(params = {}) {
 export const handoffKey = (kind, id) => `bcw_studio_handoff:${kind}:${id}`;
 export const draftKey = (kind, id, index) => `bcw_studio_draft:${kind}:${id}:${index}`;
 
-/** The config with one canvas replaced. Everything else is untouched — this is the same write
- *  the modal made through `patch(studioAt, next)`, moved out of the editor. */
-export function withCanvasAt(config, index, canvas) {
+/** The canvas a studio URL points at, or null when the index names nothing. */
+export function canvasAt(config, index, kind = 'project') {
   const c = config && typeof config === 'object' ? config : {};
+  if (kind === 'home') {
+    const list = Array.isArray(c.customSections) ? c.customSections : [];
+    const row = index >= 0 && index < list.length ? list[index] : null;
+    return row?.canvas || null;
+  }
+  const list = Array.isArray(c.canvases) ? c.canvases : [];
+  return index >= 0 && index < list.length ? list[index] : null;
+}
+
+/** The config with one canvas replaced. Everything else is untouched — this is the same write
+ *  the modal made through `patch(studioAt, next)`, moved out of the editor.
+ *
+ *  Out-of-range returns the config unchanged rather than appending: an index that names
+ *  nothing is a stale bookmark, and the answer to a stale bookmark is not to create a page. */
+export function withCanvasAt(config, index, canvas, kind = 'project') {
+  const c = config && typeof config === 'object' ? config : {};
+  if (kind === 'home') {
+    const list = Array.isArray(c.customSections) ? c.customSections.slice() : [];
+    if (index < 0 || index >= list.length) return c;
+    // The section keeps everything else it carries: its title, its written body, whether it
+    // is on, where it sits. Drawing a section does not throw away the words in it, so an
+    // admin can switch back.
+    list[index] = { ...list[index], canvas: { ...(list[index].canvas || {}), ...canvas } };
+    return { ...c, customSections: list };
+  }
   const list = Array.isArray(c.canvases) ? c.canvases.slice() : [];
   if (index < 0 || index >= list.length) return c;
   list[index] = { ...list[index], ...canvas };

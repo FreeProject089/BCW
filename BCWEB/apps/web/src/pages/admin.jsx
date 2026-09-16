@@ -67,6 +67,7 @@ import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { RaceConfig } from './admin-race.jsx';
 import { GUIDE, guideEntryForTab } from './admin-guide.jsx';
+import { handoffKey, studioPath } from '../lib/studio-page.js';
 import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
@@ -13148,7 +13149,7 @@ function HomePageEditor() {
   const setC = (i, patch) => setCustom(custom.map((c, n) => (n === i ? { ...c, ...patch } : c)));
   const setCLoc = (i, field, locpatch) => setC(i, { [field]: { ...(custom[i][field] || {}), ...locpatch } });
   const moveC = (i, d) => { const j = i + d; if (j < 0 || j >= custom.length) return; const n = [...custom]; [n[i], n[j]] = [n[j], n[i]]; setCustom(n); };
-  const addC = () => setCustom([...custom, { id: `sec-${Date.now().toString(36)}`, enabled: true, position: 'top', title: { en: '', fr: '' }, body: { en: '', fr: '' } }]);
+  const addC = () => setCustom([...custom, { id: `sec-${Date.now().toString(36)}`, enabled: true, position: 'top', mode: 'md', title: { en: '', fr: '' }, body: { en: '', fr: '' } }]);
 
   const save = async () => {
     setBusy(true);
@@ -13426,7 +13427,7 @@ function HomePageEditor() {
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-[var(--muted)] mb-3">{t('hp.custom.d', 'Your own blocks, written in Markdown, drawn in addition to the built-in ones. Reorder them, switch each on or off, and choose where it sits. An empty FR falls back to EN.')}</p>
+        <p className="text-[11px] text-[var(--muted)] mb-3">{t('hp.custom.d2', 'Your own blocks, in addition to the built-in ones. Write one in Markdown, or draw it in the studio. Reorder them, switch each on or off, and choose where it sits.')}</p>
         <div className="space-y-3">
           {custom.map((c, i) => (
             <div key={i} className="rounded-lg border border-[var(--line)] p-3">
@@ -13446,7 +13447,47 @@ function HomePageEditor() {
                   <button onClick={() => setCustom(custom.filter((_, n) => n !== i))} className="p-1.5 rounded text-error hover:bg-error-bg"><Trash2 size={14} /></button>
                 </div>
               </div>
-              <MarkdownEditor value={(c.body || {})[ctab] || ''} onChange={(v) => setCLoc(i, 'body', { [ctab]: v })} minHeight={140}
+              {/* Written or drawn, and the words survive either way.
+                  A section that is drawn keeps its Markdown: switching to the studio and back
+                  must not be how an afternoon of writing disappears, and an admin who tries
+                  the studio and changes their mind should find the paragraph where they left
+                  it. So `mode` decides what the PAGE renders, and nothing is deleted. */}
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-[11px]">
+                  {[['md', t('hp.custom.md', 'Written'), PenSquare], ['canvas', t('hp.custom.drawn', 'Drawn'), LayoutGrid]].map(([m, label, I]) => (
+                    <button key={m} type="button" onClick={() => setC(i, { mode: m })}
+                      className={`px-2.5 py-1 inline-flex items-center gap-1 ${(c.mode || 'md') === m ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>
+                      <I size={11} /> {label}
+                    </button>
+                  ))}
+                </div>
+                {(c.mode || 'md') === 'canvas' && (
+                  <>
+                    {/* The studio is a page, and it needs the config the form has in memory,
+                        not the one on the server: an admin who has just typed a title and not
+                        saved would otherwise open the studio on yesterday's page. The handoff
+                        is the same sessionStorage channel the project editor uses. */}
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      try {
+                        sessionStorage.setItem(handoffKey('home', 'home'), JSON.stringify({
+                          config: { text: form, sections, variant, suite, customSections: custom },
+                          saveId: 'home', back: '/admin?s=homepage', name: 'Home',
+                        }));
+                      } catch { /* private mode: the studio fetches the saved config instead */ }
+                      window.location.assign(studioPath('home', 'home', i));
+                    }}><LayoutGrid size={13} /> {t('hp.custom.studio', 'Open in the studio')}</Button>
+                    <span className="text-[11px] text-[var(--faint)]">
+                      {(c.canvas?.blocks || []).length
+                        ? t('pce.canvases.n', '{n} block(s)').replace('{n}', String((c.canvas.blocks || []).length))
+                        : t('hp.custom.nodraw', 'Nothing drawn yet')}
+                    </span>
+                  </>
+                )}
+              </div>
+              {/* The editor stays visible in both modes: in `canvas` it is what the section
+                  falls back to, and hiding it would make "Drawn" look like it deleted the
+                  text. */}
+              <MarkdownEditor value={(c.body || {})[ctab] || ''} onChange={(v) => setCLoc(i, 'body', { [ctab]: v })} minHeight={(c.mode || 'md') === 'canvas' ? 80 : 140}
                 placeholder={ctab === 'fr' ? 'Écris la section en **markdown**…' : 'Write the section in **markdown**…'} />
             </div>
           ))}

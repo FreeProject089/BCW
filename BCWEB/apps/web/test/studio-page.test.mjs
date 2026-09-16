@@ -1,8 +1,8 @@
 // The studio route: its URL, its parameters, its draft keys, the config write and zoom steps.
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  studioPath, parseStudioParams, handoffKey, draftKey, withCanvasAt, stepZoom, ZOOM_STEPS, saveState,
+  studioPath, parseStudioParams, handoffKey, draftKey, canvasAt, withCanvasAt, stepZoom, ZOOM_STEPS, saveState, STUDIO_KINDS,
 } from '../src/lib/studio-page.js';
 
 test('the path and the parser agree', () => {
@@ -50,4 +50,64 @@ test('the save state has one word per situation', () => {
   assert.equal(saveState({ dirty: true }), 'dirty');
   assert.equal(saveState({ dirty: true, saving: true }), 'saving');
   assert.equal(saveState({ dirty: true, error: true }), 'error');
+});
+
+// ── The landing page is a third kind, and it is shaped differently ─────────────────────
+//
+// A project keeps its drawn pages in `config.canvases`; the home page keeps a list of
+// sections an admin wrote, of which any one can be drawn instead of written. So `index`
+// means "the nth custom section" there, and the canvas hangs off that section. One route,
+// two shapes, and this is where the difference is allowed to live.
+describe('the home page in the studio', () => {
+  const home = () => ({
+    text: { 'home.hero.t': { en: 'Hi' } },
+    customSections: [
+      { id: 'a', mode: 'md', title: { en: 'Written' }, body: { en: 'the words' } },
+      { id: 'b', mode: 'canvas', title: { en: 'Drawn' }, body: { en: 'the words too' }, canvas: { id: 'cv', blocks: [{ id: 'x' }] } },
+    ],
+  });
+
+  test('home is a studio kind, and an unknown one still falls back to project', () => {
+    assert.ok(STUDIO_KINDS.includes('home'));
+    assert.equal(studioPath('home', 'home', 1), '/studio/home/home/1');
+    assert.equal(studioPath('nonsense', 'x', 0), '/studio/project/x/0');
+  });
+
+  test('the index names a section, not an entry in a canvases list', () => {
+    assert.equal(canvasAt(home(), 1, 'home').id, 'cv');
+    // The written one has no canvas yet: that is null, not an empty canvas, so the studio
+    // knows to start a new one rather than believing it opened an existing empty page.
+    assert.equal(canvasAt(home(), 0, 'home'), null);
+    assert.equal(canvasAt(home(), 5, 'home'), null);
+    assert.equal(canvasAt(home(), -1, 'home'), null);
+  });
+
+  test('saving a drawing keeps everything else the section carries', () => {
+    const next = withCanvasAt(home(), 1, { id: 'cv', blocks: [{ id: 'x' }, { id: 'y' }] }, 'home');
+    const sec = next.customSections[1];
+    assert.equal(sec.canvas.blocks.length, 2);
+    // The words survive. Switching a section to drawn and back must not be how an afternoon
+    // of writing disappears.
+    assert.equal(sec.body.en, 'the words too');
+    assert.equal(sec.title.en, 'Drawn');
+    assert.equal(sec.mode, 'canvas');
+    // And nothing else on the page moved.
+    assert.equal(next.customSections[0].body.en, 'the words');
+    assert.deepEqual(next.text, home().text);
+  });
+
+  test('an index that names nothing writes nothing', () => {
+    // A stale bookmark must not append a section to the front page.
+    const cfg = home();
+    assert.equal(withCanvasAt(cfg, 9, { blocks: [] }, 'home').customSections.length, 2);
+    assert.equal(withCanvasAt(cfg, -1, { blocks: [] }, 'home').customSections.length, 2);
+  });
+
+  test('the project shape is untouched by all of this', () => {
+    const cfg = { canvases: [{ id: 'p1', blocks: [] }] };
+    assert.equal(canvasAt(cfg, 0).id, 'p1');
+    assert.equal(withCanvasAt(cfg, 0, { blocks: [{ id: 'z' }] }).canvases[0].blocks.length, 1);
+    // …and asking for the home shape of a project config finds nothing rather than throwing.
+    assert.equal(canvasAt(cfg, 0, 'home'), null);
+  });
 });
