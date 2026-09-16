@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Radio, Lightbulb, Users, Map as MapIcon, TrendingUp, Tags, Zap, ListOrdered, Route, Filter, Target,
   FileText, Boxes, ShieldCheck, Database, BookOpen, ShieldAlert, SlidersHorizontal, Menu, ArrowLeft, Sun, Moon, Monitor, Package, type LucideIcon,
 } from "lucide-react";
-import { useStore, bcHome, type Theme } from "../lib/store";
+import { useStore, bcHome, isDemo, type Theme } from "../lib/store";
 import { Segmented } from "./ui";
 
 // Nav grouped into bands, so nineteen destinations read as five themes rather than one
@@ -109,7 +109,7 @@ export default function Layout() {
           ))}
         </nav>
         <div className="p-3 border-t border-line text-[11px] text-sub">
-          Approximate geo only · exact erasure
+          {isDemo() ? "Demo · synthetic data only" : "Approximate geo only · exact erasure"}
         </div>
       </aside>
 
@@ -138,13 +138,17 @@ export default function Layout() {
             <button onClick={() => setTheme(THEME_NEXT[theme])} className="btn btn-ghost px-2" title={`Thème : ${THEME_LABEL[theme]}`} aria-label="Theme">
               <ThemeIcon size={15} />
             </button>
-            <input
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              placeholder="Admin key"
-              type="password"
-              className="input py-1.5 w-24 sm:w-40 hidden sm:block"
-            />
+            {/* The demo holds a marker key, not a real one; showing the field would invite
+                someone to type a real key into a page that cannot use it. */}
+            {!isDemo() && (
+              <input
+                value={adminKey}
+                onChange={(e) => setAdminKey(e.target.value)}
+                placeholder="Admin key"
+                type="password"
+                className="input py-1.5 w-24 sm:w-40 hidden sm:block"
+              />
+            )}
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-3 md:p-5">

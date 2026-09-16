@@ -62,6 +62,24 @@ cd server && cargo build && cargo test      # unit tests: gdpr zip, sampling buc
 cd web && npm run build && npm test         # tsc + vite; node --test over the replay decoder
 ```
 
+## Demo mode (`/demo`)
+
+`/demo` shows the whole dashboard filled with synthetic data: `http://telemetry.localhost/demo`,
+or `http://localhost:5180/demo` in dev. It needs no database, no backend and no admin key, and a
+permanent banner says so on every screen so a screenshot can never pass for real telemetry.
+
+- The data is generated in the browser from a fixed seed (`DEMO_SEED` in `web/src/lib/demo-data.ts`),
+  so two loads render the same page and docs screenshots keep matching. Only the date labels move:
+  everything is offset from today's UTC midnight so a long-lived demo never reads as stale.
+- The route is read-only by construction, not by permission: in demo mode `lib/store.tsx` opens no
+  stream, calls no `fetch`, and answers every write with `Demo mode is read-only: nothing is saved.`
+- The auth gate ignores it. `require_viewer` only wraps `/api/*`, so the SPA at `/demo` was never
+  gated server-side; the client-side login screen is skipped because the demo holds no real data
+  to protect. It stays reachable when the real dashboard is locked behind `ADMIN_KEY`.
+
+To change what the demo shows, edit `web/src/lib/demo-data.ts`; change `DEMO_SEED` to reshuffle
+every figure at once.
+
 ## Configuration (`server/.env` standalone, compose in BCWEB)
 
 | Var             | Default                                        | Meaning                                   |

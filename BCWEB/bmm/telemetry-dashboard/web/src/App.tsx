@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { Route, Routes } from "react-router-dom";
-import { StoreProvider, useStats, useStore } from "./lib/store";
+import { isDemo, StoreProvider, useStats, useStore } from "./lib/store";
 import Layout from "./components/Layout";
 
 // Code-split every page so heavy deps (MapLibre, ECharts) load only on demand,
@@ -74,9 +74,24 @@ function Login() {
   );
 }
 
+// Persistent and non-dismissable on purpose: a screenshot of the demo must never be able
+// to pass for real telemetry, so there is no close button and no way to scroll past it.
+function DemoBanner() {
+  return (
+    <div role="status" className="shrink-0 flex items-center justify-center gap-2 flex-wrap px-3 py-1.5 text-xs font-medium bg-warn/15 text-warn border-b border-warn/30">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      </svg>
+      <span>Demo: every figure on this page is synthetic. No real telemetry, no database, nothing can be saved.</span>
+    </div>
+  );
+}
+
 function Shell() {
   const { authError } = useStore();
-  if (authError) {
+  // The demo carries no data of its own to protect, so it is never sent to the login
+  // screen: it is reachable even when the real dashboard is locked behind the admin key.
+  if (authError && !isDemo()) {
     return (
       <div className="h-full bg-bg text-ink">
         <Login />
@@ -114,7 +129,16 @@ function Shell() {
 export default function App() {
   return (
     <StoreProvider>
-      <Shell />
+      {isDemo() ? (
+        <div className="h-full flex flex-col">
+          <DemoBanner />
+          <div className="flex-1 min-h-0">
+            <Shell />
+          </div>
+        </div>
+      ) : (
+        <Shell />
+      )}
     </StoreProvider>
   );
 }

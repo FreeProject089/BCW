@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useStats } from "../lib/store";
-import { Card, Empty } from "../components/ui";
+import { Card, Empty, LearnMore } from "../components/ui";
 
 // "Where is it?" — inferred from the destination id, so it's automatic (no
 // per-item maintenance). Pure prefix/keyword classifier over BMM's id scheme.
@@ -86,10 +86,8 @@ export default function Docs() {
   return (
     <div className="space-y-4">
       <Card title="Documentation — où se trouve quoi dans BMM">
-        <p className="text-xs text-sub mb-3">
-          Chaque page, onglet, modal, diagramme et guide que BMM expose, listé automatiquement (les clients BMM
-          envoient leur propre catalogue). Le nom vient de l'app ; la colonne « Où » est déduite de l'identifiant.
-        </p>
+        <p className="text-xs text-sub">Chaque page, onglet, modal, diagramme et guide que BMM expose, listé automatiquement.</p>
+        <LearnMore label="En savoir plus" className="mb-3">Ce sont les clients BMM qui envoient leur propre catalogue, donc rien n'est à maintenir ici : une nouvelle destination apparaît dès qu'un client à jour remonte. Le nom vient de l'app ; la colonne « Où » est déduite de l'identifiant.</LearnMore>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}

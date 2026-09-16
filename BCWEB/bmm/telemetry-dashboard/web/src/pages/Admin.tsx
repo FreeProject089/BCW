@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useStore, apiPost, apiGet } from "../lib/store";
+import { useStore, apiPost, apiGet, isDemo } from "../lib/store";
 import { Card, Kpi, Empty } from "../components/ui";
 import { fmtDateTime, nf } from "../lib/format";
 
@@ -55,6 +55,8 @@ function UserPacketSearch({ adminKey }: { adminKey: string }) {
 
   const downloadSelected = () => {
     if (!sel.size) return;
+    // This one builds a URL instead of going through apiGet, so it needs its own guard.
+    if (isDemo()) { setMsg("Demo mode is read-only: nothing is downloaded."); return; }
     const ids = [...sel].join(",");
     const url = `/api/admin/user-packets/download?packet_ids=${encodeURIComponent(ids)}&admin_key=${encodeURIComponent(adminKey)}`;
     const a = document.createElement("a");
@@ -163,10 +165,11 @@ export default function Admin() {
 
   const load = useCallback(async () => {
     if (!adminKey) { setRows(null); return; }
-    const r = await fetch("/api/admin/deletions", { headers: { "X-Admin-Key": adminKey } });
-    if (r.status === 401) { setErr("Invalid admin key."); setRows(null); return; }
+    // apiGet, not a bare fetch: it carries the BC SSO token as well as the admin key, and
+    // it is the single place the demo intercepts so this page never reaches the database.
+    const j = await apiGet("/api/admin/deletions");
+    if (j?.error) { setErr("Invalid admin key."); setRows(null); return; }
     setErr("");
-    const j = await r.json();
     setRows(j.deletions || []);
   }, [adminKey]);
 

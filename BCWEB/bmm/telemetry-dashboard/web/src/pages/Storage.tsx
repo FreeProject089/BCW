@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "../lib/store";
-import { Card, Empty } from "../components/ui";
+import { Card, Empty, LearnMore } from "../components/ui";
 import { fmtDateTime, nf } from "../lib/format";
 
 const fmtBytes = (b?: number) => {
@@ -129,10 +129,11 @@ function StorageLimitWidget({ usedBytes, limitMb, limitBytes, usedPct, barColor,
           </div>
         )}
 
-        <div className="text-[11px] text-sub">
-          Quand la limite est dépassée, les événements les plus anciens sont supprimés automatiquement toutes les heures.
-          Minimum 128 MB. Défaut : 5 120 MB (5 GB).
-        </div>
+        <div className="text-[11px] text-sub">Au-delà de la limite, les événements les plus anciens sont supprimés automatiquement.</div>
+        <LearnMore label="En savoir plus">
+          <p>La purge passe toutes les heures et retire les paquets les plus anciens jusqu'à repasser sous la limite.</p>
+          <p>Minimum 128 MB, défaut 5 120 MB (5 GB). Chaque changement de limite est journalisé.</p>
+        </LearnMore>
       </div>
     </Card>
   );
@@ -278,7 +279,8 @@ export default function Storage() {
             ref={fileRef} type="file" accept="application/json" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importBackup(f); e.target.value = ""; }}
           />
-          <span className="text-[11px] text-sub">L'import est additif (les clés existantes sont conservées). Chaque export / import est journalisé (IP + empreinte).</span>
+          <span className="text-[11px] text-sub">L'import est additif : les clés existantes sont conservées.</span>
+          <LearnMore label="En savoir plus" className="basis-full">Chaque export et chaque import est écrit dans le journal d'audit avec l'IP et l'empreinte du navigateur qui l'a lancé. Rien n'est écrasé : une ligne déjà présente est ignorée, jamais remplacée.</LearnMore>
         </div>
       </Card>
 
@@ -358,7 +360,8 @@ export default function Storage() {
           </button>
           <input ref={recapFileRef} type="file" accept="application/json" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) importRecap(f); e.target.value = ""; }} />
-          <span className="text-[11px] text-sub">Léger, à la demande. Non-anonyme par défaut. Chaque export / import est journalisé.</span>
+          <span className="text-[11px] text-sub">Un résumé mensuel léger, généré à la demande.</span>
+          <LearnMore label="En savoir plus" className="basis-full">Le recap est non-anonyme par défaut : coche « Anonymiser » pour retirer les identifiants avant de le sortir de la machine. Chaque génération, export et import est journalisé.</LearnMore>
         </div>
         {(() => { const rows = recaps.filter((r: any) => !qv("recaps") || has(r.month, qv("recaps")) || has(r.source, qv("recaps"))); return rows.length ? (
           <div className="overflow-x-auto">

@@ -1,6 +1,22 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { Stats } from "./types";
 
+// ── Demo mode ───────────────────────────────────────────────────────────────
+// /demo shows the dashboard fully populated with synthetic data. The switch is read from
+// the URL once, at module load, because every request helper below has to know: in demo
+// mode NOTHING in this file opens a socket, calls fetch or writes localStorage. That is
+// the guarantee, and it is enforced here rather than per page so a new page cannot leak
+// past it. The banner and the auth bypass live in App.tsx; this is the data side.
+const DEMO_PREFIX = "/demo";
+const demoMode = typeof location !== "undefined" && (location.pathname === DEMO_PREFIX || location.pathname.startsWith(DEMO_PREFIX + "/"));
+/** True when the page is the synthetic tour rather than real telemetry. */
+export const isDemo = () => demoMode;
+/** Router basename, so every existing absolute <Link to="/live"> stays inside the demo. */
+export const routerBase = () => (demoMode ? DEMO_PREFIX : undefined);
+// The dataset is imported dynamically and only from the demo path: imported statically it
+// hoists into the entry chunk and every real visitor pays for data they will never see.
+const demoModule = () => import("./demo-data");
+
 export type ViewMode = "simple" | "advanced";
 export type Theme = "dark" | "light" | "system";
 
@@ -86,6 +102,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const pollRef = useRef<number | null>(null);
 
   const setAdminKey = (k: string) => {
+    if (demoMode) return; // the demo must not leave anything behind in this browser
     localStorage.setItem("bmm_admin_key", k);
     setAdminKeyState(k);
   };
@@ -100,7 +117,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
   useEffect(() => { applyTheme(theme); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Demo: build the payload once from the lazily-loaded generator. Gate already shows the
+  // spinner while stats is null, so there is nothing else to coordinate.
   useEffect(() => {
+    if (!demoMode) return;
+    let on = true;
+    demoModule().then((m) => on && setStats(m.buildDemoStats()));
+    return () => { on = false; };
+  }, []);
+
+  useEffect(() => {
+    if (demoMode) return; // no stream, no polling, no database
     let closed = false;
     const clearPoll = () => {
       if (pollRef.current) {
@@ -182,15 +209,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [adminKey]);
 
-  return <Ctx.Provider value={{ stats, connected, authError, adminKey, setAdminKey, viewMode, setViewMode, theme, setTheme }}>{children}</Ctx.Provider>;
+  // The admin-gated panels key off a non-empty admin key; the demo hands them a marker so
+  // the tour reaches them. It is never sent anywhere: every helper below short-circuits.
+  const effectiveKey = demoMode ? "demo" : adminKey;
+  return <Ctx.Provider value={{ stats, connected: demoMode ? true : connected, authError: demoMode ? false : authError, adminKey: effectiveKey, setAdminKey, viewMode, setViewMode, theme, setTheme }}>{children}</Ctx.Provider>;
 }
 
 // ── REST helpers (drill-downs + admin writes) — all carry the viewer key ────
+/** POSTs that only read. Everything else is a write, and the demo answers it with this. */
+const DEMO_READS = new Set(["/api/funnel", "/api/journeys"]);
+const DEMO_WRITE_REFUSAL = "Demo mode is read-only: nothing is saved.";
+
 export async function apiGet<T = any>(url: string): Promise<T> {
+  if (demoMode) return (await demoModule()).demoApiGet(url) as T;
   const r = await fetch(url, { headers: authHeaders() });
   return r.json();
 }
 export async function apiPost<T = any>(url: string, body: any, adminKey?: string): Promise<T> {
+  // A POST is either a read dressed as a POST (funnel, journeys) or a write. The demo
+  // answers the first kind and refuses the second; either way nothing leaves the page.
+  if (demoMode) {
+    const { demoApiPost } = await demoModule();
+    return { ...demoApiPost(url, body), ...(DEMO_READS.has(url) ? {} : { error: DEMO_WRITE_REFUSAL }) } as T;
+  }
   const r = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(), ...(adminKey ? { "X-Admin-Key": adminKey } : {}) },
@@ -199,12 +240,14 @@ export async function apiPost<T = any>(url: string, body: any, adminKey?: string
   return r.json();
 }
 export async function apiDelete<T = any>(url: string, adminKey?: string): Promise<T> {
+  if (demoMode) return { error: DEMO_WRITE_REFUSAL } as T;
   const r = await fetch(url, { method: "DELETE", headers: { ...authHeaders(), ...(adminKey ? { "X-Admin-Key": adminKey } : {}) } });
   return r.json();
 }
 
 /** Fetch a binary (the GDPR zip) with the viewer headers and hand it to the browser. */
 export async function apiDownload(url: string, filename: string): Promise<boolean> {
+  if (demoMode) return false;
   const r = await fetch(url, { headers: authHeaders() });
   if (!r.ok) return false;
   const blob = await r.blob();

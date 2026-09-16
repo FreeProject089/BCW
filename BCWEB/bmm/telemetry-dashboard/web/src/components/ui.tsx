@@ -58,6 +58,26 @@ export function EmptyState({ icon: Icon, title, children, action }: { icon?: Luc
   );
 }
 
+/** Folds the rest of an explanation behind one line, so a panel says what it is and the
+ *  detail is one click away instead of four sentences deep.
+ *
+ *  A native <details> on purpose: keyboard, screen readers, find-in-page and printing all
+ *  work with no JavaScript, and the closed height is exactly one line whatever the body
+ *  holds, which is what keeps a grid of cards aligned. */
+export function LearnMore({ label = "Learn more", children, className = "" }: { label?: string; children: ReactNode; className?: string }) {
+  return (
+    <details className={`learn-more ${className}`}>
+      <summary>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        {label}
+      </summary>
+      <div className="learn-more-body">{children}</div>
+    </details>
+  );
+}
+
 /** Page title band: title, one-line context, actions on the right. Wraps on a phone. */
 export function PageHeader({ icon: Icon, title, sub, right }: { icon?: LucideIcon; title: ReactNode; sub?: ReactNode; right?: ReactNode }) {
   return (

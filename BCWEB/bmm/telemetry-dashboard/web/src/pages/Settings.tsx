@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal, Save, RefreshCw, Percent, Clock, Database, Info } from "lucide-react";
 import { apiGet, apiPost, bcHome } from "../lib/store";
-import { Card, PageHeader, Button, Input, Bar, Skeleton, EmptyState, Badge } from "../components/ui";
+import { Card, PageHeader, Button, Input, Bar, Skeleton, EmptyState, Badge, LearnMore } from "../components/ui";
 
 // Runtime settings of the collector: retention, the erasure review delay, the storage cap
 // and SAMPLING. They live in the service's `meta` table (not in .env), so a change applies
@@ -94,12 +94,15 @@ export default function Settings() {
               <p className="text-xs text-sub mt-3">Usage and per-table sizes are on the <a className="text-brand" href="/storage">Storage</a> screen.</p>
             </Card>
             <Card title={<span className="inline-flex items-center gap-2"><Info size={14} className="text-brand" /> How sampling works</span>}>
-              <ul className="text-xs text-sub space-y-1.5 list-disc pl-4">
-                <li>The decision is <b className="text-ink">per install, not per event</b>: fnv1a-32 of <code className="font-mono">creator_id:kind</code> modulo 10 000 against the percentage. An install is fully in or fully out of a kind, so its data stays coherent over time.</li>
-                <li>The <b className="text-ink">total cap</b> is applied first: an install outside it sends nothing at all. Each kind is then sampled inside that population.</li>
-                <li>The document rides in every <code className="font-mono">/batch</code> answer and on <code className="font-mono">GET /config</code>; BMM stores it and skips excluded events before they are even queued. The server applies the same rule on ingest, so an old client is trimmed to the same population.</li>
-                <li>Sampling never touches what is already stored, GDPR requests or the session-end beacon (trimmed server-side).</li>
-              </ul>
+              <p className="text-xs text-sub">The decision is <b className="text-ink">per install, not per event</b>, so an install is fully in or fully out of a kind and its data stays coherent over time.</p>
+              <LearnMore className="mt-2">
+                <ul className="list-disc pl-4 space-y-1.5">
+                  <li>The rule is fnv1a-32 of <code className="font-mono">creator_id:kind</code> modulo 10 000 against the percentage.</li>
+                  <li>The <b className="text-ink">total cap</b> is applied first: an install outside it sends nothing at all. Each kind is then sampled inside that population.</li>
+                  <li>The document rides in every <code className="font-mono">/batch</code> answer and on <code className="font-mono">GET /config</code>; BMM stores it and skips excluded events before they are even queued. The server applies the same rule on ingest, so an old client is trimmed to the same population.</li>
+                  <li>Sampling never touches what is already stored, GDPR requests or the session-end beacon (trimmed server-side).</li>
+                </ul>
+              </LearnMore>
             </Card>
           </div>
 
@@ -111,12 +114,14 @@ export default function Settings() {
                   <PctRow key={k.key} label={k.label} desc={k.desc} value={draft.sampling[k.key] ?? 100} onChange={(v) => setPct(k.key, v)} eff={effective(k.key)} />
                 ))}
               </div>
-              <p className="text-[11px] text-sub">Effective share = total cap × kind. A kind at 0% stops that element for everyone without touching the rest.</p>
+              <p className="text-[11px] text-sub">Effective share = total cap × kind.</p>
+              <LearnMore label="What 0% does">A kind at 0% stops that element for everyone without touching the rest.</LearnMore>
             </div>
           </Card>
         </div>
       )}
-      <p className="text-xs text-sub">Also editable from <a className="text-brand" href={bcHome() + "/admin"} target="_blank" rel="noreferrer">BetterCommunity › Admin › Hosting settings</a>. Every change is written to the audit log.</p>
+      <p className="text-xs text-sub">Also editable from <a className="text-brand" href={bcHome() + "/admin"} target="_blank" rel="noreferrer">BetterCommunity › Admin › Hosting settings</a>.</p>
+      <LearnMore label="Where changes are recorded">Every change to these values is written to the audit log with the IP and the browser fingerprint that made it, whichever panel it came from.</LearnMore>
     </div>
   );
 }

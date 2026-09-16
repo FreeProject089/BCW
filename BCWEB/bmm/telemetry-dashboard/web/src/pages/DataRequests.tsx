@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ShieldAlert, Download, Play, XCircle, RefreshCw, Search, Plus, UserCheck, UserX, Mail, Inbox, Trash2, FileArchive } from "lucide-react";
 import { useStore, apiGet, apiPost, apiDownload } from "../lib/store";
-import { Card, Kpi, Empty, EmptyState, PageHeader, Button, Input, Badge, Table, TableSkeleton, Segmented, Drawer, SectionTitle } from "../components/ui";
+import { Card, Kpi, Empty, EmptyState, PageHeader, Button, Input, Badge, Table, TableSkeleton, Segmented, Drawer, SectionTitle, LearnMore } from "../components/ui";
 import { fmtDateTime, nf } from "../lib/format";
 
 // Data requests: the GDPR queue (export | delete, from BMM, BCWEB or this dashboard) and the
@@ -159,7 +159,8 @@ function PacketDeletions() {
   const pending = (rows || []).filter((d) => d.status === "pending").length;
   return (
     <Card title={<span className="inline-flex items-center gap-2">Packet deletions {pending > 0 && <Badge tone="warn">{pending} pending</Badge>}</span>} right={<Button size="sm" variant="ghost" icon={RefreshCw} onClick={load}>Refresh</Button>}>
-      <p className="text-xs text-sub mb-3">Filed from BMM (Settings › Privacy) for one upload batch at a time. Pending ones auto-erase once the review delay has passed.</p>
+      <p className="text-xs text-sub">Filed from BMM (Settings › Privacy) for one upload batch at a time.</p>
+      <LearnMore className="mb-3">A pending request erases itself once the review delay has passed, so the queue drains without an admin. Approving here only makes it happen now; rejecting keeps the batch and tells the person when a recipient is known.</LearnMore>
       {rows == null ? <TableSkeleton rows={3} cols={5} /> : rows.length === 0 ? <Empty icon={Inbox}>No packet deletion requests.</Empty> : (
         <Table maxHeight={420}>
           <thead><tr><th className="th">Packet</th><th className="th">Requested</th><th className="th">Auto-erase at</th><th className="th">Status</th><th className="th text-right">Actions</th></tr></thead>
@@ -329,7 +330,8 @@ export default function DataRequests() {
                 <pre className="text-[11px] font-mono bg-panel2 border border-line rounded-lg p-3 overflow-auto max-h-80">{JSON.stringify(sel.result, null, 2)}</pre>
               </div>
             )}
-            <p className="text-xs text-sub">Every export and erasure is written to the audit log (Storage › Audit). An erased identity leaves only its hashed tag in this queue.</p>
+            <p className="text-xs text-sub">Every export and erasure is written to the audit log (Storage › Audit).</p>
+            <LearnMore>An erased identity leaves only its hashed tag in this queue: the creator id is replaced by an <code className="font-mono">erased:</code> marker, so the request stays auditable without the person staying identifiable.</LearnMore>
           </div>
         )}
       </Drawer>

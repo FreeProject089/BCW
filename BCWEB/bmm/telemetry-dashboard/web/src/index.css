@@ -120,6 +120,26 @@ body {
   .skeleton {
     @apply rounded-md bg-panel2 animate-pulse;
   }
+  /* <LearnMore>: a one-line affordance that never shifts the panel's closed height.
+     The marker is dropped on every engine (list-style covers Firefox, the pseudo-element
+     covers WebKit) so the only chevron is ours, and it turns when the body opens. */
+  .learn-more > summary {
+    @apply inline-flex items-center gap-1.5 cursor-pointer select-none text-[11px] text-sub hover:text-brand transition-colors;
+    list-style: none;
+  }
+  .learn-more > summary::-webkit-details-marker {
+    display: none;
+  }
+  .learn-more > summary > svg {
+    transition: transform 0.15s;
+  }
+  .learn-more[open] > summary > svg {
+    transform: rotate(90deg);
+  }
+  /* Space, not a rule: a border here would read as a second card edge inside the card. */
+  .learn-more-body {
+    @apply mt-2 text-xs text-sub leading-relaxed space-y-1.5;
+  }
 }
 
 ::-webkit-scrollbar {
