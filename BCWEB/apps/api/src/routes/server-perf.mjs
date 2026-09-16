@@ -373,8 +373,31 @@ export default async function serverPerfRoutes(app) {
   app.get('/admin/server/alerts', { preHandler: requireRole('ADMIN') }, async (req) => {
     const p = await db();
     const take = Math.min(Number(req.query?.take) || 100, 300);
-    const alerts = await p.serverAlertLog.findMany({ orderBy: { createdAt: 'desc' }, take });
-    return { alerts };
+    // Ongoing first, then by how bad, then by when. Sorting on `createdAt` alone is what made
+    // this list unworkable: the row that needs somebody tonight sat wherever it happened to
+    // land among forty that did not. Postgres orders NULLS FIRST on DESC, and a NULL
+    // resolvedAt IS "still happening", so that is exactly the wanted order.
+    const alerts = await p.serverAlertLog.findMany({
+      orderBy: [{ resolvedAt: 'desc' }, { createdAt: 'desc' }],
+      take,
+    });
+    const rank = { critical: 0, warning: 1, info: 2 };
+    alerts.sort((a, b) => {
+      const ao = a.resolvedAt ? 1 : 0, bo = b.resolvedAt ? 1 : 0;
+      if (ao !== bo) return ao - bo;
+      const ar = rank[a.severity] ?? 1, br = rank[b.severity] ?? 1;
+      if (ar !== br) return ar - br;
+      return b.createdAt - a.createdAt;
+    });
+    // The counts the screen needs are counted here rather than derived from `alerts`, which
+    // is one page of them: a badge saying "2 ongoing" computed from the first hundred rows
+    // is wrong exactly when it matters, on a busy day.
+    const [ongoing, criticalOngoing, unacked] = await Promise.all([
+      p.serverAlertLog.count({ where: { resolvedAt: null } }),
+      p.serverAlertLog.count({ where: { resolvedAt: null, severity: 'critical' } }),
+      p.serverAlertLog.count({ where: { ackAt: null } }),
+    ]);
+    return { alerts, counts: { ongoing, criticalOngoing, unacked } };
   });
 
   // Manual "sample now" — handy right after changing alert thresholds/config, and

@@ -336,13 +336,63 @@ function flushRequestStats() {
 }
 
 const ALERT_DEBOUNCE_MS = 30 * 60 * 1000; // don't re-alert the SAME message more than every 30 min
-async function maybeAlert(p, kind, message) {
+
+/**
+ * How bad, per kind.
+ *
+ * Every alert used to reach the admin screen as the same red triangle, so a list of forty
+ * had no order beyond "recent" and the one row that needed somebody tonight was somewhere in
+ * the middle. The split is deliberately coarse, because three levels people act on beat five
+ * they argue about:
+ *   critical  something is failing now, or will within hours: the disk, a dependency, a
+ *             capacity promise the disk cannot back.
+ *   warning   a threshold was crossed and there is time.
+ *   info      worth knowing, no action implied.
+ * A kind that is not listed is a warning, which is the old behaviour.
+ */
+export const ALERT_SEVERITY = {
+  disk: 'critical',
+  service_down: 'critical',
+  capacity_oversold: 'critical',
+  cpu: 'warning',
+  mem: 'warning',
+  capacity: 'warning',
+  storage: 'warning',
+  telemetry_storage: 'warning',
+  errors: 'warning',
+  web_vitals: 'info',
+};
+export const severityOf = (kind) => ALERT_SEVERITY[kind] || 'warning';
+
+async function maybeAlert(p, kind, message, { key = null, severity = null } = {}) {
   // Debounce on kind + message (not kind alone): a persistent "Object storage is
   // unreachable" no longer spams, but a DIFFERENT dependency failing the same tick
   // still alerts instead of being swallowed by the first one's cooldown.
   const recent = await p.serverAlertLog.findFirst({ where: { kind, message }, orderBy: { createdAt: 'desc' } });
   if (recent && Date.now() - recent.createdAt.getTime() < ALERT_DEBOUNCE_MS) return null;
-  return p.serverAlertLog.create({ data: { kind, message } });
+  return p.serverAlertLog.create({ data: { kind, message, key, severity: severity || severityOf(kind) } });
+}
+
+/**
+ * Close the alerts whose condition is no longer true.
+ *
+ * `ackAt` says a human looked; it does not say the machine is well, and conflating the two is
+ * why the list could not be worked through. This is the other half: on every tick, the checks
+ * that RAN report which conditions they still see, and any open alert belonging to one of
+ * those checks and not in that list is resolved.
+ *
+ * `families` is the important argument. Only the checks that completed this tick are allowed
+ * to close anything — a check that threw has no opinion, and silently marking "the database
+ * is unreachable" as resolved because the code asking the question crashed is the worst
+ * possible failure mode for a monitor.
+ */
+async function resolveClearedAlerts(p, families, stillTrue) {
+  if (!families.length) return 0;
+  const mine = families.flatMap((f) => [{ key: f }, { key: { startsWith: `${f}:` } }]);
+  const where = { resolvedAt: null, OR: mine };
+  if (stillTrue.length) where.NOT = { key: { in: stillTrue } };
+  const r = await p.serverAlertLog.updateMany({ where, data: { resolvedAt: new Date() } });
+  return r?.count || 0;
 }
 
 // Network throughput from /proc/net/dev (Linux container): sum rx/tx bytes across real
@@ -415,7 +465,7 @@ async function vitalsAlerts(p, t) {
     if (e.all < t.vitalsMinSamples) continue;
     const pct = (100 * e.poor) / e.all;
     if (pct >= t.vitalsPoorPct) {
-      out.push({ kind: 'web_vitals', message: `${metric}: ${pct.toFixed(0)}% of the last ${e.all} samples rated "poor" (threshold ${t.vitalsPoorPct}%).` });
+      out.push({ kind: 'web_vitals', key: `web_vitals:${metric}`, message: `${metric}: ${pct.toFixed(0)}% of the last ${e.all} samples rated "poor" (threshold ${t.vitalsPoorPct}%).` });
     }
   }
   return out;
@@ -439,7 +489,7 @@ async function storageAlerts(p, t) {
     const used = Number(agg?._sum?.storageUsedBytes || 0);
     const pct = (100 * used) / cap;
     if (pct >= t.storagePct) {
-      out.push({ kind: 'storage', message: `Storage pool "${g.name}" is ${pct.toFixed(0)}% full (${(used / 1e9).toFixed(1)} of ${(cap / 1e9).toFixed(1)} GB).` });
+      out.push({ kind: 'storage', key: `storage:${g.id}`, message: `Storage pool "${g.name}" is ${pct.toFixed(0)}% full (${(used / 1e9).toFixed(1)} of ${(cap / 1e9).toFixed(1)} GB).` });
     }
   }
   return out;
@@ -477,6 +527,7 @@ export function capacityVerdict(cap, t) {
     if (pct >= t.capacityPct || freeGB <= t.capacityFreeGB) {
       out.push({
         kind: 'capacity',
+        key: 'capacity',
         message: `Server capacity: ${pct.toFixed(0)}% allocated (${allocated.toFixed(1)} of ${usable.toFixed(1)} GB usable, ${freeGB.toFixed(1)} GB left). Thresholds: ${t.capacityPct}% or ${t.capacityFreeGB} GB.`,
       });
     }
@@ -497,6 +548,7 @@ export function capacityVerdict(cap, t) {
   if (diskTotal > 0 && usable > diskTotal) {
     out.push({
       kind: 'capacity_oversold',
+      key: 'capacity_oversold',
       message: `Declared capacity exceeds the disk: ${usable.toFixed(0)} GB offered on a ${diskTotal.toFixed(0)} GB volume (${diskFree.toFixed(0)} GB free). Lower hosting.totalCapacityGB, or the platform will accept storage it cannot provide.`,
     });
   } else if (diskFree > 0 && usable - allocated > diskFree) {
@@ -504,6 +556,7 @@ export function capacityVerdict(cap, t) {
     // hosting has grown into the space — backups, logs, the database itself.
     out.push({
       kind: 'capacity_oversold',
+      key: 'capacity_oversold',
       message: `${(usable - allocated).toFixed(0)} GB is still on sale but only ${diskFree.toFixed(0)} GB is free on disk. Something outside hosting is using the volume.`,
     });
   }
@@ -519,6 +572,7 @@ export function capacityVerdict(cap, t) {
     if (pct >= t.telemetryPct || freeGB <= t.telemetryFreeGB) {
       out.push({
         kind: 'telemetry_storage',
+        key: 'telemetry_storage',
         message: `BMM telemetry storage: ${pct.toFixed(0)}% used (${u.toFixed(2)} of ${limit.toFixed(1)} GB, ${freeGB.toFixed(2)} GB left). Thresholds: ${t.telemetryPct}% or ${t.telemetryFreeGB} GB.`,
       });
     }
@@ -536,7 +590,7 @@ async function errorAlerts(p, t) {
   for (const source of ['server', 'client', 'bot']) {
     const n = await p.errorEvent.count({ where: { source, createdAt: { gte: since } } }).catch(() => 0);
     if (n >= t.errorBurst) {
-      out.push({ kind: 'errors', message: `${n} new ${source} error(s) in the last 10 minutes (threshold ${t.errorBurst}).` });
+      out.push({ kind: 'errors', key: `errors:${source}`, message: `${n} new ${source} error(s) in the last 10 minutes (threshold ${t.errorBurst}).` });
     }
   }
   // A NEW kind of failure — a server or bot error message not seen in the last week — is an
@@ -550,7 +604,10 @@ async function errorAlerts(p, t) {
       WHERE e."createdAt" >= ${since} AND e.source IN ('server', 'bot')
         AND NOT EXISTS (SELECT 1 FROM "ErrorEvent" o WHERE o.source = e.source AND o.message = e.message AND o."createdAt" < ${since} AND o."createdAt" >= ${week})
       GROUP BY e.source, e.message LIMIT 5`;
-    for (const r of fresh || []) out.push({ kind: 'errors', message: `New ${r.source === 'bot' ? 'Discord bot' : 'server'} error: ${String(r.message).slice(0, 160)}` });
+    // No key, deliberately: "a kind of error nobody had seen before appeared" is an EVENT,
+    // not a condition, and a condition is the only thing that can still be true an hour later.
+    // Given a key it would sit in the ongoing list until something unrelated cleared it.
+    for (const r of fresh || []) out.push({ kind: 'errors', severity: 'info', message: `New ${r.source === 'bot' ? 'Discord bot' : 'server'} error: ${String(r.message).slice(0, 160)}` });
   } catch { /* the alert is a convenience; the page still lists the error */ }
   return out;
 }
@@ -613,24 +670,51 @@ export async function sampleAndAlert(p, log) {
 
     const t = await thresholds(p);
     const alerts = [];
-    if (cpuPct > t.cpuPct) alerts.push(await maybeAlert(p, 'cpu', `CPU usage at ${cpuPct.toFixed(0)}% (>${t.cpuPct}%).`));
-    if (memPct > t.memPct) alerts.push(await maybeAlert(p, 'mem', `Memory usage at ${memPct.toFixed(0)}% (>${t.memPct}%).`));
-    if (diskPct > t.diskPct) alerts.push(await maybeAlert(p, 'disk', `Disk usage at ${diskPct.toFixed(0)}% (>${t.diskPct}%).`));
+    // What is true RIGHT NOW, by condition key, and which checks were in a position to
+    // answer. Both are needed to close an alert honestly: "not in the list" only means
+    // "over" if the check that would have listed it actually ran (see resolveClearedAlerts).
+    const stillTrue = [];
+    const ran = ['cpu', 'mem', 'disk'];
+    if (cpuPct > t.cpuPct) { stillTrue.push('cpu'); alerts.push(await maybeAlert(p, 'cpu', `CPU usage at ${cpuPct.toFixed(0)}% (>${t.cpuPct}%).`, { key: 'cpu' })); }
+    if (memPct > t.memPct) { stillTrue.push('mem'); alerts.push(await maybeAlert(p, 'mem', `Memory usage at ${memPct.toFixed(0)}% (>${t.memPct}%).`, { key: 'mem' })); }
+    if (diskPct > t.diskPct) { stillTrue.push('disk'); alerts.push(await maybeAlert(p, 'disk', `Disk usage at ${diskPct.toFixed(0)}% (>${t.diskPct}%).`, { key: 'disk' })); }
     // The non-machine signals. Each returns a list, and each is wrapped: a failure to
     // COUNT errors must never stop the CPU alert from firing, which is the one that says
     // the box is about to fall over.
+    const FAMILIES = {
+      vitalsAlerts: ['web_vitals'],
+      storageAlerts: ['storage'],
+      capacityAlerts: ['capacity', 'capacity_oversold', 'telemetry_storage'],
+      errorAlerts: ['errors'],
+    };
     for (const fn of [vitalsAlerts, storageAlerts, capacityAlerts, errorAlerts]) {
       try {
-        for (const a of await fn(p, t)) alerts.push(await maybeAlert(p, a.kind, a.message));
+        const found = await fn(p, t);
+        // Only a check that RETURNED gets to close its own family's alerts.
+        ran.push(...(FAMILIES[fn.name] || []));
+        for (const a of found) {
+          if (a.key) stillTrue.push(a.key);
+          alerts.push(await maybeAlert(p, a.kind, a.message, { key: a.key || null, severity: a.severity || null }));
+        }
       } catch (e) { log?.warn?.({ e: String(e?.message || e) }, `monitor: ${fn.name} failed`); }
     }
     // Startup grace: right after the stack boots, dependencies (esp. the Discord
     // bot, whose heartbeat is only "fresh" ~2 min after IT starts) haven't had
     // time to report in — alerting immediately was a guaranteed false positive.
     const inGrace = process.uptime() < 240; // 4 min
+    // During the grace window nothing is asserted either way: a dependency that has not had
+    // time to report in is not "down", and it is not "recovered" either.
+    if (!inGrace) ran.push('service_down');
     for (const [key, ok] of Object.entries(deps)) {
-      if (ok === false && !inGrace) alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`));
+      if (ok === false && !inGrace) {
+        stillTrue.push(`service_down:${key}`);
+        alerts.push(await maybeAlert(p, 'service_down', `${DEP_LABELS[key] || key} is unreachable.`, { key: `service_down:${key}` }));
+      }
     }
+    // Everything that was open and is no longer true, closed in one statement. Failing here
+    // must not lose the alerts that just fired, so it is wrapped like the checks above.
+    try { await resolveClearedAlerts(p, ran, stillTrue); }
+    catch (e) { log?.warn?.({ e: String(e?.message || e) }, 'monitor: resolving cleared alerts failed'); }
     // Outage history is kept separately from the alert log, because they answer different
     // questions: the log says "it broke" (once per debounce window), this says "it was down
     // from X to Y". Only recorded outside the grace window on the way DOWN — a dependency

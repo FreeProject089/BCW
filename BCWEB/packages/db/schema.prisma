@@ -1908,10 +1908,28 @@ model ServerAlertLog {
   // history for ever and be ignored within a week.
   ackAt     DateTime?
   ackById   String?
+  // How bad, decided where the alert is RAISED rather than by the colour of a badge in the
+  // admin screen. "Disk is 94 % full" and "a third of page loads were slow" were the same
+  // red triangle, so the list had no order beyond "recent", and the one row that needed
+  // somebody tonight was somewhere in the middle of forty that did not.
+  //   critical  something is failing now, or will within hours
+  //   warning   a threshold was crossed, it is not on fire
+  //   info      worth knowing, no action implied
+  severity  String    @default("warning")
+  // The CONDITION, as opposed to this particular sighting of it: `cpu`, `disk`,
+  // `service_down:db`. It is what makes "still happening" answerable — the monitor closes
+  // every open alert whose key is not among the conditions true on the current tick.
+  key       String?
+  // Null while the condition is still true. An alert list where a two-week-old incident that
+  // fixed itself looks exactly like the outage happening right now is a list nobody can act
+  // on, and acknowledging is not the same thing: `ackAt` says a human saw it, `resolvedAt`
+  // says the machine is fine again.
+  resolvedAt DateTime?
   createdAt DateTime  @default(now())
 
   @@index([createdAt])
   @@index([ackAt])
+  @@index([key, resolvedAt])
 }
 
 /// One row per period a dependency was unreachable — opened the first tick it fails and

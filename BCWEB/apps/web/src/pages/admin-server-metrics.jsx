@@ -47,7 +47,7 @@ export function PerfDailyMetrics() {
     { key: 'disk', label: t('st.m.disk', 'Disk'), unit: '%', warn: 90 },
     { key: 'latencyMs', label: t('st.m.lat', 'Latency'), unit: ' ms', warn: null },
   ];
-  const chartLabels = { avg: t('st.m.avg', 'avg'), min: t('st.m.min', 'min'), peak: t('st.m.peak', 'peak'), warn: t('st.m.warnat', 'warn at') };
+  const chartLabels = { avg: t('st.m.avg', 'avg'), min: t('st.m.min', 'min'), peak: t('st.m.peak', 'peak'), warn: t('st.m.warnat', 'warn at'), gaps: t('st.m.gaps', '{n} day(s) with no reading') };
 
   return (
     <Card className="p-4">
