@@ -18,10 +18,24 @@
 // it to. A log row does not say "Default", it says where the next event actually lands; a
 // rule does not hide "maxMessages" behind "Advanced", it says "more than 6 messages in 5
 // seconds" with 6 and 5 as the fields you type in.
-import { useEffect, useState } from 'react';
-import { ChevronDown, Plus, X, Trash2, Send, ArrowRight, ShieldOff } from 'lucide-react';
+//
+// WHY THE AUTOMOD BLOCK IS A MASTER/DETAIL AND NOT A LIST: eleven rules, each with a
+// threshold sentence, an action, three per-rule parameters and its own exemption lists. As one
+// expanded list that is a page you scroll past rather than read, and the answer an owner
+// actually wants — "which rules bite, and what do they cost?" — was the one thing not on
+// screen. The left column answers exactly that (state, effective action, the parameters as
+// glyphs) for all eleven at once; the right column is where you change one. On a phone there
+// is no room for two columns, so the detail opens under the row it belongs to.
+//
+// WHY THE LOG BLOCK LEADS WITH DESTINATIONS: routing is a map from 23 categories onto a
+// handful of channels, and the interesting direction is the one you cannot read off the
+// controls — which channel receives what. `byDestination` inverts the resolved routes, so the
+// top of the screen is that map, and the table below is where you edit it.
+import { useMemo, useState } from 'react';
+import { ChevronDown, Plus, Trash2, Send, ArrowRight, ShieldOff, Mail, Eye, Ban, Clock, UserMinus, ScrollText, FileX, MessageSquareOff } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
-import { Input, Select, Field, Button } from '../ui/ui.jsx';
+import { Input, Select, Field, Button, Explain } from '../ui/ui.jsx';
+import { SP, Panel, Rows, Eyebrow, Check, ToggleChip, Dot, NumField, Chips } from '../ui/discord-kit.jsx';
 import { ChannelPicker, PickerList, ChannelTag, CHANNEL_TYPES, channelOf } from './discord-pickers.jsx';
 
 // The vocabulary and the pure rules live in lib/discord-config.js (testable without a DOM);
@@ -33,58 +47,16 @@ export { AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES,
 // Private helpers the editors need from that module's own idiom.
 const FIELD = (rule, k) => RULE_FIELDS[rule].find((f) => f.k === k);
 const LADDER_TIMED = ['timeout', 'quarantine'];
+// The two families the left column is split into: a rule watches messages, or it watches the
+// door. They are not interchangeable — a join rule has no message to delete — so they are not
+// shown as one list.
+const MESSAGE_RULES = AUTOMOD_RULES.filter((r) => !JOIN_RULES.includes(r));
+// One glyph per action, so the list column says what a rule costs without a sentence.
+const ACTION_ICON = { log: ScrollText, delete: MessageSquareOff, warn: FileX, timeout: Clock, kick: UserMinus, ban: Ban, quarantine: Clock };
+const SEVERE = ['kick', 'ban'];
 
-// ── Small controls ────────────────────────────────────────────────────────────────────────
-// A number that commits on blur / Enter and only forwards a valid value while typing, so a
-// field can be cleared and retyped without the draft ever holding an empty string.
-function NumField({ value, onCommit, f, className = '' }) {
-  const [txt, setTxt] = useState(String(value ?? ''));
-  useEffect(() => { setTxt(String(value ?? '')); }, [value]);
-  const commit = () => { const v = clamp(txt, f, value); onCommit(v); setTxt(String(v)); };
-  return (
-    <Input type="number" min={f.min} max={f.max} step={f.step ?? (f.int ? 1 : 0.1)} value={txt} className={`!py-0.5 !px-1.5 text-xs tabular-nums !w-14 text-center ${className}`}
-      onChange={(e) => { setTxt(e.target.value); const n = Number(e.target.value); if (e.target.value !== '' && Number.isFinite(n) && n >= f.min && n <= f.max) onCommit(f.int ? Math.round(n) : n); }}
-      onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
-  );
-}
-
-// Free-text chips (patterns, domains, file types). Ids get a real picker instead — see
-// discord-pickers.jsx — so this stays what it is: a list of words.
-function Chips({ items, onChange, placeholder, max = 100 }) {
-  const { t } = useI18n();
-  const [draft, setDraft] = useState('');
-  const list = Array.isArray(items) ? items : [];
-  const add = (raw) => {
-    const v = String(raw || '').trim();
-    if (!v || list.includes(v) || list.length >= max) return;
-    onChange([...list, v]); setDraft('');
-  };
-  return (
-    <div className="space-y-1.5">
-      {list.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {list.map((v) => (
-            <span key={v} className="inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
-              {v}
-              <button type="button" onClick={() => onChange(list.filter((x) => x !== v))} className="text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><X size={11} /></button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-1.5">
-        <Input className="!py-1 text-xs" value={draft} placeholder={placeholder}
-          onChange={(e) => setDraft(e.target.value.slice(0, 200))}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(draft); } }} />
-        <Button size="sm" variant="ghost" onClick={() => add(draft)} title={t('common.add', 'Add')}><Plus size={13} /></Button>
-      </div>
-    </div>
-  );
-}
-
-const Check = ({ checked, onChange, children, className = '' }) => (
-  <label className={`flex items-center gap-1.5 text-xs cursor-pointer select-none ${className}`}>
-    <input type="checkbox" checked={!!checked} onChange={(e) => onChange(e.target.checked)} /> {children}
-  </label>
+const num = (name, r, setRule, k, extra) => (
+  <NumField key={k} value={r[k]} f={FIELD(name, k)} clamp={clamp} onCommit={(n) => setRule({ [k]: n })} {...extra} />
 );
 
 // ── Labels (literal keys, so i18n:check sees every one) ───────────────────────────────────
@@ -168,83 +140,86 @@ const Sentence = ({ children, className = '' }) => (
 
 function CatchSentence({ name, r, setRule, LB }) {
   const { t } = useI18n();
-  const num = (k, cls) => <NumField key={k} value={r[k]} f={FIELD(name, k)} onCommit={(n) => setRule({ [k]: n })} className={cls} />;
+  const n = (k, extra) => num(name, r, setRule, k, extra);
   switch (name) {
     case 'spam': return (
       <Sentence>
-        {t('amod.s.spam1', 'More than')} {num('maxMessages')} {t('amod.s.spam2', 'messages in')} {num('windowSec')} {t('amod.s.sec', 'seconds,')}
-        {t('amod.s.spam3', 'or the same message')} {num('maxRepeats')} {t('amod.s.spam4', 'times within')} {num('repeatWindowSec')} {t('amod.s.sec2', 'seconds.')}
+        {t('amod.s.spam1', 'More than')} {n('maxMessages')} {t('amod.s.spam2', 'messages in')} {n('windowSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.spam3', 'or the same message')} {n('maxRepeats')} {t('amod.s.spam4', 'times within')} {n('repeatWindowSec')} {t('amod.s.sec2', 'seconds.')}
       </Sentence>
     );
     case 'mentions': return (
-      <Sentence>
-        {t('amod.s.men1', 'One message pinging more than')} {num('maxUsers')} {t('amod.s.men2', 'members or')} {num('maxRoles')} {t('amod.s.men3', 'roles.')}
-        <Check checked={!r.everyone} onChange={(on) => setRule({ everyone: !on })} className="!text-[11.5px]">{t('amod.s.men4', 'Also catch @everyone and @here')}</Check>
-      </Sentence>
+      <div className={SP.tight}>
+        <Sentence>{t('amod.s.men1', 'One message pinging more than')} {n('maxUsers')} {t('amod.s.men2', 'members or')} {n('maxRoles')} {t('amod.s.men3', 'roles.')}</Sentence>
+        <Check checked={!r.everyone} onChange={(on) => setRule({ everyone: !on })}>{t('amod.s.men4', 'Also catch @everyone and @here')}</Check>
+      </div>
     );
     case 'invites': return (
-      <div className="space-y-1.5">
+      <div className={SP.tight}>
         <Sentence>{t('amod.s.inv', 'An invite link to another Discord server. Your own server is always allowed.')}</Sentence>
-        <div className="grid sm:grid-cols-2 gap-2">
-          <Field label={LB.field.allowGuilds}><Chips items={r.allowGuilds} onChange={(l) => setRule({ allowGuilds: l })} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
-          <Field label={LB.field.allowCodes}><Chips items={r.allowCodes} onChange={(l) => setRule({ allowCodes: l })} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
+        <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
+          <Field label={LB.field.allowGuilds}><Chips items={r.allowGuilds} onChange={(l) => setRule({ allowGuilds: l })} ariaLabel={LB.field.allowGuilds} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
+          <Field label={LB.field.allowCodes}><Chips items={r.allowCodes} onChange={(l) => setRule({ allowCodes: l })} ariaLabel={LB.field.allowCodes} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
         </div>
       </div>
     );
     case 'links': return (
-      <div className="space-y-1.5">
+      <div className={SP.tight}>
         <Sentence>{r.allowDomains.length ? t('amod.s.link1', 'A link to any domain outside the list below.') : t('amod.s.link0', 'Any link at all: the allowed list is empty.')}</Sentence>
-        <Field label={LB.field.allowDomains}><Chips items={r.allowDomains} onChange={(l) => setRule({ allowDomains: l })} max={200} placeholder={t('amod.s.link.ph', 'example.com')} /></Field>
+        <Field label={LB.field.allowDomains}><Chips items={r.allowDomains} onChange={(l) => setRule({ allowDomains: l })} max={200} ariaLabel={LB.field.allowDomains} placeholder={t('amod.s.link.ph', 'example.com')} /></Field>
       </div>
     );
     case 'words': return (
-      <div className="space-y-1.5">
-        <Sentence>{t('amod.s.words', 'A message matching one of these patterns. A plain word matches that whole word; pre* and *mid* are wildcards; /regex/i is the regex as written.')}</Sentence>
-        <Field label={LB.field.patterns}><Chips items={r.patterns} onChange={(l) => setRule({ patterns: l })} max={500} placeholder={t('amod.s.words.ph', 'word, pre*, /regex/i')} /></Field>
+      <div className={SP.tight}>
+        <Sentence>{t('amod.s.words0', 'A message matching one of these patterns.')}</Sentence>
+        <Field label={LB.field.patterns}><Chips items={r.patterns} onChange={(l) => setRule({ patterns: l })} max={500} ariaLabel={LB.field.patterns} placeholder={t('amod.s.words.ph', 'word, pre*, /regex/i')} /></Field>
+        <Explain summary={t('amod.s.words.sum', 'Three kinds of pattern.')}>
+          <p>{t('amod.s.words', 'A message matching one of these patterns. A plain word matches that whole word; pre* and *mid* are wildcards; /regex/i is the regex as written.')}</p>
+        </Explain>
       </div>
     );
     case 'caps': return (
       <Sentence>
-        {t('amod.s.caps1', 'A message of at least')} {num('minLetters')} {t('amod.s.caps2', 'letters that is')}
-        <NumField value={Math.round(r.ratio * 100)} f={{ min: 0, max: 100, int: true }} onCommit={(n) => setRule({ ratio: Math.round(n) / 100 })} />
+        {t('amod.s.caps1', 'A message of at least')} {n('minLetters')} {t('amod.s.caps2', 'letters that is')}
+        <NumField value={Math.round(r.ratio * 100)} f={{ min: 0, max: 100, int: true }} clamp={clamp} ariaLabel={t('amod.f.ratio', 'Share of capitals (0-1)')} onCommit={(v) => setRule({ ratio: Math.round(v) / 100 })} />
         {t('amod.s.caps3', '% upper-case or more.')}
       </Sentence>
     );
     case 'zalgo': return (
       <Sentence>
-        {t('amod.s.zal1', 'Text carrying')} {num('maxCombining')} {t('amod.s.zal2', 'combining marks or more, or where they are')}
-        <NumField value={Math.round(r.maxRatio * 100)} f={{ min: 0, max: 100, int: true }} onCommit={(n) => setRule({ maxRatio: Math.round(n) / 100 })} />
+        {t('amod.s.zal1', 'Text carrying')} {n('maxCombining')} {t('amod.s.zal2', 'combining marks or more, or where they are')}
+        <NumField value={Math.round(r.maxRatio * 100)} f={{ min: 0, max: 100, int: true }} clamp={clamp} ariaLabel={t('amod.f.maxRatio', 'Max share of combining marks (0-1)')} onCommit={(v) => setRule({ maxRatio: Math.round(v) / 100 })} />
         {t('amod.s.zal3', '% of the characters.')}
       </Sentence>
     );
     case 'attachments': return (
-      <div className="space-y-1.5">
+      <div className={SP.tight}>
         <Sentence>{r.allowTypes.length ? t('amod.s.att1', 'Any attached file whose type is not in the allowed list.') : t('amod.s.att0', 'An attached file of one of the blocked types.')}</Sentence>
-        <div className="grid sm:grid-cols-2 gap-2">
-          <Field label={LB.field.blockTypes}><Chips items={r.blockTypes} onChange={(l) => setRule({ blockTypes: l })} placeholder={t('amod.s.att.ph', 'exe')} /></Field>
-          <Field label={LB.field.allowTypes}><Chips items={r.allowTypes} onChange={(l) => setRule({ allowTypes: l })} placeholder={t('amod.s.att.ph2', 'png')} /></Field>
+        <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
+          <Field label={LB.field.blockTypes}><Chips items={r.blockTypes} onChange={(l) => setRule({ blockTypes: l })} ariaLabel={LB.field.blockTypes} placeholder={t('amod.s.att.ph', 'exe')} /></Field>
+          <Field label={LB.field.allowTypes}><Chips items={r.allowTypes} onChange={(l) => setRule({ allowTypes: l })} ariaLabel={LB.field.allowTypes} placeholder={t('amod.s.att.ph2', 'png')} /></Field>
         </div>
       </div>
     );
     case 'accountAge': return (
-      <Sentence>{t('amod.s.age1', 'Someone joining with an account less than')} {num('minDays')} {t('amod.s.age2', 'days old.')}</Sentence>
+      <Sentence>{t('amod.s.age1', 'Someone joining with an account less than')} {n('minDays')} {t('amod.s.age2', 'days old.')}</Sentence>
     );
     case 'selfbot': return (
       <Sentence>
-        {t('amod.s.self1', 'One member posting across')} {num('channelsPerWindow')} {t('amod.s.self2', 'channels within')} {num('windowSec')} {t('amod.s.sec', 'seconds,')}
-        {t('amod.s.self3', 'the same text in two channels within')} {num('identicalAcrossSec')} {t('amod.s.sec', 'seconds,')}
-        {t('amod.s.self4', 'or more than')} {num('maxPerMinute')} {t('amod.s.self5', 'messages a minute.')}
+        {t('amod.s.self1', 'One member posting across')} {n('channelsPerWindow')} {t('amod.s.self2', 'channels within')} {n('windowSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.self3', 'the same text in two channels within')} {n('identicalAcrossSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.self4', 'or more than')} {n('maxPerMinute')} {t('amod.s.self5', 'messages a minute.')}
       </Sentence>
     );
     case 'raid': return (
-      <div className="space-y-1">
+      <div className={SP.tight}>
         <Sentence>
-          {num('joins')} {t('amod.s.raid1', 'joins within')} {num('windowSec')} {t('amod.s.raid2', 'seconds locks the server down for')} {num('lockdownMin')} {t('amod.s.raid3', 'minutes.')}
+          {n('joins')} {t('amod.s.raid1', 'joins within')} {n('windowSec')} {t('amod.s.raid2', 'seconds locks the server down for')} {n('lockdownMin')} {t('amod.s.raid3', 'minutes.')}
         </Sentence>
-        <Sentence>
-          <Check checked={r.raiseVerification} onChange={(on) => setRule({ raiseVerification: on })} className="!text-[11.5px]">{t('amod.s.raid4', 'Raise the verification level while it lasts')}</Check>
-          <Check checked={r.alert} onChange={(on) => setRule({ alert: on })} className="!text-[11.5px] ms-3">{t('amod.s.raid5', 'Mark the log entry as an alert')}</Check>
-        </Sentence>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          <Check checked={r.raiseVerification} onChange={(on) => setRule({ raiseVerification: on })}>{t('amod.s.raid4', 'Raise the verification level while it lasts')}</Check>
+          <Check checked={r.alert} onChange={(on) => setRule({ alert: on })}>{t('amod.s.raid5', 'Mark the log entry as an alert')}</Check>
+        </div>
       </div>
     );
     default: return null;
@@ -252,11 +227,11 @@ function CatchSentence({ name, r, setRule, LB }) {
 }
 
 /** What the rule does once it fires, in one sentence, from the action and its parameters. */
-function EffectSentence({ name, r, setRule, LB }) {
+function EffectSentence({ name, r, setRule }) {
   const { t } = useI18n();
   const join = JOIN_RULES.includes(name);
   const act = r.logOnly ? 'log' : r.action;
-  const mins = <NumField value={r.timeoutMin} f={FIELD(name, 'timeoutMin')} onCommit={(n) => setRule({ timeoutMin: n })} />;
+  const mins = <NumField value={r.timeoutMin} f={FIELD(name, 'timeoutMin')} clamp={clamp} ariaLabel={t('amod.f.timeoutMin', 'Timeout (minutes)')} onCommit={(n) => setRule({ timeoutMin: n })} />;
   const del = !join && act !== 'log' && r.deleteMessage;
   const what = () => {
     if (act === 'log') return t('amod.e.log', 'nothing is carried out: it is only recorded.');
@@ -282,6 +257,95 @@ function EffectSentence({ name, r, setRule, LB }) {
 }
 
 /**
+ * One row of the rule column: state, name, what it costs, and the parameters as glyphs.
+ *
+ * It is a summary that has to be TRUE at a glance, so it shows the EFFECTIVE action —
+ * watch-only downgrades a ban to a log entry in the bot, and a list that still said "Ban"
+ * would be the most expensive lie on the page.
+ */
+function RuleRow({ name, r, selected, onSelect, LB }) {
+  const { t } = useI18n();
+  const act = r.logOnly ? 'log' : r.action;
+  const I = ACTION_ICON[act] || ScrollText;
+  const badges = [
+    !JOIN_RULES.includes(name) && act !== 'log' && r.deleteMessage && [MessageSquareOff, t('amod.p.del', 'Delete the message')],
+    r.dm && [Mail, t('amod.p.dm', 'Tell the member by DM')],
+    r.logOnly && [Eye, t('amod.p.watch', 'Watch only, carry nothing out')],
+  ].filter(Boolean);
+  const exCount = JOIN_RULES.includes(name) ? 0 : r.exempt.roles.length + r.exempt.channels.length;
+  return (
+    <button type="button" onClick={onSelect} aria-current={selected ? 'true' : undefined}
+      className={`w-full text-start ${SP.row} flex items-center gap-2 transition ${selected ? 'panel' : 'hover:bg-[var(--surface-2)]'}`}>
+      <Dot tone={!r.enabled ? 'off' : r.logOnly ? 'watch' : 'on'} />
+      <span className={`flex-1 min-w-0 truncate text-[12.5px] ${r.enabled ? 'font-medium text-[var(--text)]' : 'text-[var(--faint)]'}`} title={LB.name[name]}>{LB.name[name]}</span>
+      {exCount > 0 && <span className="text-[10px] text-[var(--faint)] shrink-0 tabular-nums" title={t('amod.p.exn', 'Exceptions ({n})').replace('{n}', exCount)}>-{exCount}</span>}
+      {badges.map(([B, label]) => <B key={label} size={11} className="text-[var(--faint)] shrink-0" aria-label={label} />)}
+      {r.enabled && (
+        <span className={`inline-flex items-center gap-1 text-[10.5px] px-1.5 py-0.5 rounded-md border shrink-0 ${SEVERE.includes(act) ? 'tint-error b-error text-error' : act === 'log' ? 'border-[var(--line)] text-[var(--muted)]' : 'tint-warning b-warning text-warning'}`}>
+          <I size={10} /> {LB.action[act]}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/** The detail pane: everything one rule is, in the order you decide it. */
+function RuleDetail({ name, r, setRule, LB, roles, channels }) {
+  const { t } = useI18n();
+  const join = JOIN_RULES.includes(name);
+  const acts = actionsFor(name);
+  return (
+    <div className={SP.stack}>
+      <div className="flex items-center gap-3 flex-wrap">
+        <Check checked={r.enabled} onChange={(on) => setRule({ enabled: on })} className="!text-sm">
+          <span className="font-semibold text-[var(--text)]">{LB.name[name]}</span>
+        </Check>
+        <span className="flex-1" />
+        <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => setRule({ action: e.target.value })} aria-label={t('amod.action', 'Action')}>
+          {acts.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
+        </Select>
+      </div>
+
+      {r.enabled ? (<>
+        <div className={SP.tight}>
+          <Eyebrow>{t('amod.d.catch', 'What it catches')}</Eyebrow>
+          <CatchSentence name={name} r={r} setRule={setRule} LB={LB} />
+        </div>
+
+        <div className={SP.tight}>
+          <Eyebrow>{t('amod.d.then', 'What happens then')}</Eyebrow>
+          <EffectSentence name={name} r={r} setRule={setRule} />
+          <div className="flex flex-wrap gap-1.5">
+            {!join && (
+              <ToggleChip on={r.deleteMessage} disabled={r.action === 'log'} onChange={(on) => setRule({ deleteMessage: on })} icon={MessageSquareOff}
+                title={r.action === 'log' ? t('amod.p.del.na', 'Log only never deletes anything.') : undefined}>{t('amod.p.del', 'Delete the message')}</ToggleChip>
+            )}
+            <ToggleChip on={r.dm} onChange={(on) => setRule({ dm: on })} icon={Mail}>{t('amod.p.dm', 'Tell the member by DM')}</ToggleChip>
+            <ToggleChip on={r.logOnly} onChange={(on) => setRule({ logOnly: on })} icon={Eye} tone="warning">{t('amod.p.watch', 'Watch only, carry nothing out')}</ToggleChip>
+          </div>
+        </div>
+
+        {!join && (
+          <div className={SP.tight}>
+            <Eyebrow>{t('amod.d.except', 'Exceptions, on top of the list at the bottom')}</Eyebrow>
+            <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
+              <Field label={t('amod.p.exroles', 'Roles this rule ignores')}>
+                <PickerList kind="role" items={r.exempt.roles} roles={roles} onChange={(l) => setRule({ exempt: { ...r.exempt, roles: l } })} />
+              </Field>
+              <Field label={t('amod.p.exchans', 'Channels this rule ignores')}>
+                <PickerList kind="channel" items={r.exempt.channels} channels={channels} types={CHANNEL_TYPES.postable} onChange={(l) => setRule({ exempt: { ...r.exempt, channels: l } })} />
+              </Field>
+            </div>
+          </div>
+        )}
+      </>) : (
+        <p className="text-[11.5px] text-[var(--faint)]">{t('amod.d.off', 'This rule is off: nothing here is checked, and its settings are kept for when you turn it back on.')}</p>
+      )}
+    </div>
+  );
+}
+
+/**
  * `value` is a normalised automod object (normAutomod), `onChange` gets the next one.
  * `roles` / `channels` are the bot's live lists for the pickers. `memberSearch(q)` feeds the
  * member picker. `hideEnable` when the host card already carries the on/off switch.
@@ -290,81 +354,63 @@ export function AutomodEditor({ value, onChange, roles, channels, memberSearch, 
   const { t } = useI18n();
   const LB = useAutomodLabels();
   const v = value || normAutomod(null);
-  const [open, setOpen] = useState({});   // rule → its exceptions panel is open
+  const [sel, setSel] = useState(AUTOMOD_RULES[0]);
   const set = (patch) => onChange({ ...v, ...patch });
   const setEx = (patch) => set({ exempt: { ...v.exempt, ...patch } });
   const setRule = (name, patch) => set({ rules: { ...v.rules, [name]: { ...v.rules[name], ...patch } } });
-  return (
-    <div className="space-y-4">
-      {!hideEnable && (
-        <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="text-sm font-medium">{t('amod.enabled', 'Automod on')}</Check>
-      )}
-      <p className="text-[11.5px] text-[var(--muted)]">{t('amod.h2', 'Every rule is checked on each message, or on each join. When several fire at once only the most severe one is carried out, never both.')}</p>
+  const live = AUTOMOD_RULES.filter((n) => v.rules[n].enabled).length;
+  const watching = AUTOMOD_RULES.filter((n) => v.rules[n].enabled && v.rules[n].logOnly).length;
 
-      {/* The rules */}
-      <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
-        {AUTOMOD_RULES.map((name) => {
-          const r = v.rules[name];
-          const join = JOIN_RULES.includes(name);
-          const acts = actionsFor(name);
-          const isOpen = !!open[name];
-          const exCount = join ? 0 : (r.exempt.roles.length + r.exempt.channels.length);
-          return (
-            <div key={name} className={`p-3 ${r.enabled ? '' : 'opacity-60'}`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Check checked={r.enabled} onChange={(on) => setRule(name, { enabled: on })} className="min-w-[120px]">
-                  <span className="text-sm font-medium text-[var(--text)]">{LB.name[name]}</span>
-                </Check>
-                <span className="flex-1" />
-                <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => setRule(name, { action: e.target.value })} aria-label={t('amod.action', 'Action')}>
-                  {acts.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
-                </Select>
-              </div>
-              {r.enabled && (
-                <div className="mt-2 ps-6 space-y-2">
-                  <CatchSentence name={name} r={r} setRule={(p) => setRule(name, p)} LB={LB} />
-                  <EffectSentence name={name} r={r} setRule={(p) => setRule(name, p)} LB={LB} />
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    {!join && r.action !== 'log' && (
-                      <Check checked={r.deleteMessage} onChange={(on) => setRule(name, { deleteMessage: on })}>{t('amod.p.del', 'Delete the message')}</Check>
-                    )}
-                    <Check checked={r.dm} onChange={(on) => setRule(name, { dm: on })}>{t('amod.p.dm', 'Tell the member by DM')}</Check>
-                    <Check checked={r.logOnly} onChange={(on) => setRule(name, { logOnly: on })}>{t('amod.p.watch', 'Watch only, carry nothing out')}</Check>
-                    {!join && (
-                      <button type="button" onClick={() => setOpen((s) => ({ ...s, [name]: !isOpen }))} aria-expanded={isOpen}
-                        className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-[var(--text)]">
-                        {exCount ? t('amod.p.exn', 'Exceptions ({n})').replace('{n}', exCount) : t('amod.p.ex', 'Exceptions')}
-                        <ChevronDown size={11} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                      </button>
-                    )}
-                  </div>
-                  {!join && isOpen && (
-                    <div className="grid sm:grid-cols-2 gap-2.5 pt-1">
-                      <Field label={t('amod.p.exroles', 'Roles this rule ignores')}>
-                        <PickerList kind="role" items={r.exempt.roles} roles={roles} onChange={(l) => setRule(name, { exempt: { ...r.exempt, roles: l } })} />
-                      </Field>
-                      <Field label={t('amod.p.exchans', 'Channels this rule ignores')}>
-                        <PickerList kind="channel" items={r.exempt.channels} channels={channels} types={CHANNEL_TYPES.postable} onChange={(l) => setRule(name, { exempt: { ...r.exempt, channels: l } })} />
-                      </Field>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
+  const detail = (name) => (
+    <RuleDetail name={name} r={v.rules[name]} setRule={(p) => setRule(name, p)} LB={LB} roles={roles} channels={channels} />
+  );
+  const column = (names) => names.map((name) => (
+    <div key={name}>
+      <RuleRow name={name} r={v.rules[name]} selected={sel === name} onSelect={() => setSel(sel === name ? '' : name)} LB={LB} />
+      {/* Phone: the detail belongs under the row you tapped. Desktop has a column for it. */}
+      {sel === name && <div className={`md:hidden ${SP.card} border-t border-[var(--line)] panel`}>{detail(name)}</div>}
+    </div>
+  ));
+
+  return (
+    <div className={SP.page}>
+      {!hideEnable && (
+        <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="!text-sm font-medium">{t('amod.enabled', 'Automod on')}</Check>
+      )}
+
+      {/* What the whole block is, in one line. The rest of it is folded: an owner who has read
+          it once should not have to scroll past it every time. */}
+      <div className="text-[11.5px] text-[var(--muted)]">
+        {t('amod.sum', '{n} rules on, {w} of them watching only.').replace('{n}', live).replace('{w}', watching)}
+        <Explain className="mt-1" summary={t('amod.sum.s', 'Each rule is checked on every message, or every join.')}>
+          <p>{t('amod.h2', 'Every rule is checked on each message, or on each join. When several fire at once only the most severe one is carried out, never both.')}</p>
+          <p>{t('amod.h3', 'Watch-only keeps a rule firing and logging while carrying nothing out, which is how you try a rule for a week before letting it bite. A rule that is off is not checked at all.')}</p>
+        </Explain>
+      </div>
+
+      {/* The rules: pick one on the left, decide it on the right. */}
+      <div className="grid md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)] gap-3 md:gap-4 items-start">
+        <Rows>
+          <div className={`${SP.row} !py-1.5`}><Eyebrow>{t('amod.fam.msg', 'On every message')}</Eyebrow></div>
+          {column(MESSAGE_RULES)}
+          <div className={`${SP.row} !py-1.5`}><Eyebrow>{t('amod.fam.join', 'At the door')}</Eyebrow></div>
+          {column(JOIN_RULES)}
+        </Rows>
+        <Panel className="hidden md:block">
+          {sel ? detail(sel) : <p className="text-[11.5px] text-[var(--faint)]">{t('amod.pick', 'Pick a rule on the left.')}</p>}
+        </Panel>
       </div>
 
       {/* Exemptions that apply to every rule */}
-      <div className="rounded-xl border border-[var(--line)] p-3 space-y-2.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('amod.ex2', 'No rule applies to')}</div>
+      <Panel className={SP.stack}>
+        <Eyebrow>{t('amod.ex2', 'No rule applies to')}</Eyebrow>
         <Check checked={v.exempt.moderators} onChange={(on) => setEx({ moderators: on })}>{t('amod.ex.mods', 'Moderators (Manage Messages / Manage Server / Administrator)')}</Check>
-        <div className="grid sm:grid-cols-3 gap-3">
+        <div className={`grid sm:grid-cols-3 ${SP.grid}`}>
           <Field label={t('amod.ex.roles', 'Roles')}><PickerList kind="role" items={v.exempt.roles} roles={roles} onChange={(l) => setEx({ roles: l })} /></Field>
           <Field label={t('amod.ex.channels', 'Channels')}><PickerList kind="channel" items={v.exempt.channels} channels={channels} types={CHANNEL_TYPES.postable} onChange={(l) => setEx({ channels: l })} /></Field>
           <Field label={t('amod.ex.users2', 'Members')}><PickerList kind="user" items={v.exempt.users} search={memberSearch} onChange={(l) => setEx({ users: l })} /></Field>
         </div>
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -384,30 +430,37 @@ export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange })
   const upd = (i, patch) => set(rows.map((x, k) => (k === i ? { ...x, ...patch } : x)));
   const nextCount = () => Math.min(1000, (rows.length ? Math.max(...rows.map((r) => r.count)) : 0) + 2);
   return (
-    <div className="space-y-2.5">
-      <p className="text-[11.5px] text-[var(--muted)]">{t('wl.h', 'A warning on its own does nothing. These steps say what the Nth one costs. Only the step whose number the member has just reached fires, never the ones below it, and never twice.')}</p>
-      <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
-        {rows.length === 0 && <div className="px-3 py-2.5 text-[11px] text-[var(--faint)]">{t('wl.none', 'No step: a warning never turns into anything else.')}</div>}
-        {rows.map((r, i) => (
-          <div key={i} className="px-3 py-2 flex items-center gap-2 flex-wrap text-[11.5px] text-[var(--muted)]">
-            <span>{t('wl.at', 'At')}</span>
-            <NumField value={r.count} f={{ min: 1, max: 1000, int: true }} onCommit={(n) => upd(i, { count: n })} />
-            <span>{t('wl.warnings', 'warnings,')}</span>
-            <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => upd(i, { action: e.target.value })} aria-label={t('wl.action', 'What happens')}>
-              {LADDER_ACTIONS.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
-            </Select>
-            {LADDER_TIMED.includes(r.action) && (<>
-              <span>{t('wl.for', 'for')}</span>
-              <NumField value={r.minutes} f={{ min: 1, max: 40320, int: true }} onCommit={(n) => upd(i, { minutes: n })} />
-              <span>{t('wl.min', 'minutes')}</span>
-            </>)}
-            {['log', 'delete', 'warn'].includes(r.action) && <span className="text-[var(--faint)]">{t('wl.noop', 'nothing is carried out: the step is written down and inert.')}</span>}
-            <span className="flex-1" />
-            <button type="button" onClick={() => set(rows.filter((_, k) => k !== i))} className="text-[var(--faint)] hover:text-error shrink-0" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
-          </div>
-        ))}
-      </div>
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className={SP.stack}>
+      <Explain summary={t('wl.h.sum', 'A warning on its own does nothing: these steps say what the Nth one costs.')}>
+        <p>{t('wl.h', 'A warning on its own does nothing. These steps say what the Nth one costs. Only the step whose number the member has just reached fires, never the ones below it, and never twice.')}</p>
+      </Explain>
+      <Rows>
+        {rows.length === 0 && <div className={`${SP.row} text-[11px] text-[var(--faint)]`}>{t('wl.none', 'No step: a warning never turns into anything else.')}</div>}
+        {rows.map((r, i) => {
+          const I = ACTION_ICON[r.action] || ScrollText;
+          const inert = ['log', 'delete', 'warn'].includes(r.action);
+          return (
+            <div key={i} className={`${SP.row} flex items-center gap-2 flex-wrap text-[11.5px] text-[var(--muted)]`}>
+              <I size={12} className={`shrink-0 ${inert ? 'text-[var(--faint)]' : SEVERE.includes(r.action) ? 'text-error' : 'text-warning'}`} />
+              <span>{t('wl.at', 'At')}</span>
+              <NumField value={r.count} f={{ min: 1, max: 1000, int: true }} clamp={clamp} ariaLabel={t('wl.warnings', 'warnings,')} onCommit={(n) => upd(i, { count: n })} />
+              <span>{t('wl.warnings', 'warnings,')}</span>
+              <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => upd(i, { action: e.target.value })} aria-label={t('wl.action', 'What happens')}>
+                {LADDER_ACTIONS.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
+              </Select>
+              {LADDER_TIMED.includes(r.action) && (<>
+                <span>{t('wl.for', 'for')}</span>
+                <NumField value={r.minutes} f={{ min: 1, max: 40320, int: true }} clamp={clamp} ariaLabel={t('wl.min', 'minutes')} onCommit={(n) => upd(i, { minutes: n })} />
+                <span>{t('wl.min', 'minutes')}</span>
+              </>)}
+              {inert && <span className="text-[var(--faint)]">{t('wl.noop', 'nothing is carried out: the step is written down and inert.')}</span>}
+              <span className="flex-1" />
+              <button type="button" onClick={() => set(rows.filter((_, k) => k !== i))} className="text-[var(--faint)] hover:text-error shrink-0" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
+            </div>
+          );
+        })}
+      </Rows>
+      <div className="flex items-center gap-3 flex-wrap">
         {rows.length < 20 && (
           <Button size="sm" variant="ghost" onClick={() => set([...rows, { count: nextCount(), action: 'timeout', minutes: 60 }])}>
             <Plus size={13} /> {t('wl.add', 'Add a step')}
@@ -416,7 +469,7 @@ export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange })
         {onDecayChange && (
           <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--muted)] ms-auto">
             {t('wl.decay', 'A warning counts for')}
-            <NumField value={decayHours} f={{ min: 0, max: 8760, int: true }} onCommit={onDecayChange} className="!w-16" />
+            <NumField value={decayHours} f={{ min: 0, max: 8760, int: true }} clamp={clamp} ariaLabel={t('wl.decayh', 'hours')} onCommit={onDecayChange} className="!w-16" />
             {decayHours === 0 ? t('wl.decay0', 'hours: 0 means for ever') : t('wl.decayh', 'hours')}
           </span>
         )}
@@ -432,7 +485,7 @@ export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange })
  * Module scope on purpose. Declared inside LogsEditor it would be a new component type on
  * every render, which unmounts and remounts the tag input after each keystroke.
  */
-function RouteRow({ k, label, sub, ctx }) {
+function RouteRow({ k, label, count, sub, ctx }) {
   const { t } = useI18n();
   const { v, channels, legacyChannelId, describe, setMode, setRoute, routeOf, resolve, onTest, testing, test } = ctx;
   const r = routeOf(k);
@@ -441,15 +494,21 @@ function RouteRow({ k, label, sub, ctx }) {
   // ends at, so the list never offers the bare word "default".
   const inherited = describe(resolveLogRoute({ ...v, routes: Object.fromEntries(Object.entries(v.routes).filter(([x]) => x !== k)) }, k, { legacyChannelId }));
   const here = describe(resolve(k));
+  const own = m !== 'default';
   return (
-    <div className={`py-1.5 ${sub ? 'ps-6' : ''}`}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className={`min-w-[130px] ${sub ? 'text-xs text-[var(--muted)]' : 'text-sm font-medium'}`}>{label}</span>
-        <span className="inline-flex items-center gap-1 text-[11px] min-w-0 flex-1">
+    <div className={`${SP.row} ${sub ? 'ps-8 sm:ps-10 !py-1.5' : ''}`}>
+      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+        <span className={`min-w-0 sm:w-44 ${sub ? 'text-[11.5px] text-[var(--muted)]' : 'text-[12.5px] font-medium'}`}>
+          <span className="truncate block" title={typeof label === 'string' ? label : undefined}>{label}</span>
+          {count ? <span className="text-[10px] font-normal text-[var(--faint)]">{t('lg.catn', '{n} kinds of event').replace('{n}', count)}</span> : null}
+        </span>
+        {/* Where it lands right now. Faint when it is inherited, solid when this row decides it,
+            so an overridden row is visible without reading the select beside it. */}
+        <span className={`inline-flex items-center gap-1 text-[11px] min-w-0 flex-1 sm:w-48 ${own ? 'text-[var(--text)]' : 'text-[var(--muted)]'}`}>
           <ArrowRight size={11} className="text-[var(--faint)] shrink-0" />
           {here.node}
         </span>
-        <Select className="!w-auto !py-1 text-xs" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
+        <Select className="!w-auto !py-1 text-xs shrink-0" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
           <option value="default">{sub ? t('lg.m.group2', 'Same as its group ({d})').replace('{d}', inherited.short) : t('lg.m.default2', 'The default ({d})').replace('{d}', inherited.short)}</option>
           <option value="off">{t('lg.m.off2', 'Nowhere')}</option>
           <option value="channel">{t('lg.m.channel', 'A text channel')}</option>
@@ -463,10 +522,10 @@ function RouteRow({ k, label, sub, ctx }) {
         )}
       </div>
       {(m === 'channel' || m === 'forum') && (
-        <div className="flex items-center gap-2 flex-wrap mt-1 sm:ps-[138px]">
+        <div className="flex items-center gap-2 flex-wrap mt-2 sm:ps-[12.25rem]">
           <span className="w-52"><ChannelPicker channels={channels} types={m === 'forum' ? CHANNEL_TYPES.forum : CHANNEL_TYPES.postable} value={r?.id} onChange={(id) => setRoute(k, { ...r, id })} /></span>
           {m === 'forum' && (
-            <Input className="!py-1 text-xs w-44" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph2', 'Tag names, comma separated')}
+            <Input className="!py-1 text-xs w-44" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph2', 'Tag names, comma separated')} aria-label={t('lg.tags.ph2', 'Tag names, comma separated')}
               onChange={(e) => setRoute(k, { ...r, tags: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 5) })} />
           )}
         </div>
@@ -503,6 +562,25 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
     setRoute(k, { kind: m, id: cur && cur.kind !== 'off' ? cur.id : '', tags: cur?.tags || [] });
   };
   const resolve = (k) => resolveLogRoute(v, k, { legacyChannelId });
+
+  // THE MAP, READ THE OTHER WAY ROUND. The controls answer "where does this category go?" one
+  // row at a time; the question an owner actually opens this screen with is "what is going to
+  // land in #mod-log?". Every one of the 23 categories is resolved and bucketed by the place
+  // it ends at, so nothing here can disagree with the table below: both call resolveLogRoute.
+  const byDestination = useMemo(() => {
+    const buckets = new Map();
+    for (const k of LOG_CATEGORY_KEYS) {
+      const r = resolveLogRoute(v, k, { legacyChannelId });
+      const id = r.kind === 'off' ? 'off' : `${r.kind}:${r.id}:${(r.tags || []).join(',')}`;
+      if (!buckets.has(id)) buckets.set(id, { route: r, cats: [] });
+      buckets.get(id).cats.push(k);
+    }
+    // Somewhere before nowhere, then the biggest bucket first: the line that matters most is
+    // the one carrying the most events.
+    return [...buckets.values()].sort((a, b) => (a.route.kind === 'off') - (b.route.kind === 'off') || b.cats.length - a.cats.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(v), legacyChannelId]);
+
   const test = async (k) => {
     if (!onTest) return;
     setTesting(k);
@@ -512,13 +590,27 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
   const row = { v, channels, legacyChannelId, describe, setMode, setRoute, routeOf, resolve, onTest, testing, test };
 
   return (
-    <div className="space-y-4">
-      {!hideEnable && <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="text-sm font-medium">{t('lg.enabled', 'Logs on')}</Check>}
+    <div className={SP.page}>
+      {!hideEnable && <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="!text-sm font-medium">{t('lg.enabled', 'Logs on')}</Check>}
+
+      {/* Where everything lands right now, one line per destination. */}
+      <Panel className={SP.stack}>
+        <Eyebrow>{t('lg.map', 'What lands where, right now')}</Eyebrow>
+        <div className={SP.tight}>
+          {byDestination.map(({ route, cats }) => (
+            <div key={`${route.kind}:${route.id}:${route.from}`} className="flex items-baseline gap-2 flex-wrap text-[11.5px]">
+              <span className="inline-flex items-center gap-1 min-w-0 sm:w-48 shrink-0">{describe(route).node}</span>
+              <span className="text-[var(--faint)] shrink-0 tabular-nums">{t('lg.mapn', '{n} of 23').replace('{n}', cats.length)}</span>
+              <span className="text-[var(--muted)] min-w-0 flex-1">{[...new Set(cats.map((k) => LB.group[LOG_CATEGORIES[k]]))].join(' · ')}</span>
+            </div>
+          ))}
+        </div>
+      </Panel>
 
       {/* The screen's default destination: what every row below falls back to. */}
-      <div className="rounded-xl border border-[var(--line)] p-3 space-y-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('lg.def', 'By default, everything goes to')}</div>
-        <div className="grid sm:grid-cols-2 gap-3">
+      <Panel className={SP.stack}>
+        <Eyebrow>{t('lg.def', 'By default, everything goes to')}</Eyebrow>
+        <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
           <Field label={t('lg.forum', 'Log forum')} hint={t('lg.forum.h3', 'One post per category, tagged with its group. Used first when it is set.')}>
             <ChannelPicker channels={channels} types={CHANNEL_TYPES.forum} value={v.forumId} onChange={(id) => set({ forumId: id })} />
           </Field>
@@ -532,35 +624,38 @@ export function LogsEditor({ value, onChange, channels, legacyChannelId = '', on
             </Select>
           </Field>
           <Field label={t('lg.reaction', 'Reaction on every post')} hint={t('lg.reaction.h2', 'Empty uses the icon set. Else a unicode emoji or <:name:id>.')}>
-            <Input className="!py-1 text-xs" value={v.reaction} onChange={(e) => set({ reaction: e.target.value.slice(0, 64) })} placeholder="<:name:id>" />
+            <Input className="!py-1 text-xs" value={v.reaction} onChange={(e) => set({ reaction: e.target.value.slice(0, 64) })} placeholder="<:name:id>" aria-label={t('lg.reaction', 'Reaction on every post')} />
           </Field>
         </div>
         <Check checked={v.pinSummary} onChange={(on) => set({ pinSummary: on })}>{t('lg.pin', 'Pin each post’s first message (what the post is for)')}</Check>
-      </div>
+      </Panel>
 
-      {/* The routing table. One sentence states the rule; every row states its answer. */}
-      <div>
-        <p className="text-[11.5px] text-[var(--muted)] mb-2">{t('lg.rule', 'A category goes where its group goes, and a group goes to the default above, unless you route it somewhere of its own. Each row already says where its next event will land.')}</p>
-        <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] px-3">
+      {/* The routing table. Every row states its own answer; the rule behind it is folded. */}
+      <div className={SP.tight}>
+        <Explain summary={t('lg.rule.sum', 'A category follows its group, and a group follows the default above.')}>
+          <p>{t('lg.rule', 'A category goes where its group goes, and a group goes to the default above, unless you route it somewhere of its own. Each row already says where its next event will land.')}</p>
+        </Explain>
+        <Rows>
           {LOG_GROUPS.map((g) => {
             const cats = LOG_CATEGORY_KEYS.filter((k) => LOG_CATEGORIES[k] === g);
             const isOpen = !!openGroups[g];
             const own = cats.filter((k) => routeOf(k)).length;
             return (
               <div key={g}>
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => setOpenGroups((s) => ({ ...s, [g]: !isOpen }))} className="p-1 -ms-1 text-[var(--faint)] hover:text-[var(--text)]" aria-expanded={isOpen} title={t('lg.cats', 'Categories')}>
+                <div className="flex items-start">
+                  <button type="button" onClick={() => setOpenGroups((s) => ({ ...s, [g]: !isOpen }))} className="p-2 sm:ps-3 text-[var(--faint)] hover:text-[var(--text)] shrink-0" aria-expanded={isOpen} title={t('lg.cats', 'Categories')}>
                     <ChevronDown size={13} className={`transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                   </button>
-                  <div className="flex-1 min-w-0">
-                    <RouteRow k={g} ctx={row} label={<>{LB.group[g]}{own ? <span className="text-[10px] font-normal text-[var(--faint)]"> · {t('lg.own', '{n} routed on their own').replace('{n}', own)}</span> : null}</>} />
+                  <div className="flex-1 min-w-0 -ms-2">
+                    <RouteRow k={g} ctx={row} count={cats.length}
+                      label={<>{LB.group[g]}{own ? <span className="text-[10px] font-normal text-[var(--faint)]"> · {t('lg.own', '{n} routed on their own').replace('{n}', own)}</span> : null}</>} />
                   </div>
                 </div>
-                {isOpen && <div className="pb-1.5">{cats.map((k) => <RouteRow key={k} k={k} ctx={row} label={LB.cat[k]} sub />)}</div>}
+                {isOpen && <div className="pb-2">{cats.map((k) => <RouteRow key={k} k={k} ctx={row} label={LB.cat[k]} sub />)}</div>}
               </div>
             );
           })}
-        </div>
+        </Rows>
       </div>
     </div>
   );

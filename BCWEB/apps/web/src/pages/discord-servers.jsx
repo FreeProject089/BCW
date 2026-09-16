@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { MessageSquare, Server, Shield, Database, Users, Check, ScrollText, Sparkles, Image as ImageIcon, AlertTriangle, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, CreditCard, ShieldAlert } from 'lucide-react';
+import { MessageSquare, Server, Shield, Database, Users, Check, ScrollText, Sparkles, Mic, Plus, Trash2, Ban, Clock, UserMinus, Newspaper, ShieldAlert } from 'lucide-react';
 import { AutomodEditor, LogsEditor, WarnLadderEditor, normAutomod, normLadder, normLogs, logsForSave, ladderForSave } from './discord-automod.jsx';
+import { WelcomeEditor, normWelcome } from './discord-welcome.jsx';
 import { ChannelPicker, RolePicker, CHANNEL_TYPES } from './discord-pickers.jsx';
 import { DiscordIcon } from '../ui/brand.jsx';
+import { SP, Panel, Head, Eyebrow } from '../ui/discord-kit.jsx';
 import { api, uploadImage } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput } from '../ui/ui.jsx';
+import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDialog, Textarea, Select, ColorInput, Explain } from '../ui/ui.jsx';
 
 // B10 — the user-facing copy of the per-server Discord dashboard. A logged-in user who owns
 // (or holds Manage-Server on) a Discord server the bot is in configures it here: no admin
@@ -14,19 +16,9 @@ import { Card, Button, Badge, Input, Field, Spinner, EmptyState, useToast, useDi
 // budget is. Backed by /me/discord/guilds (ownership re-checked server-side on every call).
 
 
-// Welcome banner background presets (mirrors the admin editor's palette).
-const WBG = [['dark', '#0e0c09'], ['midnight', '#0a0f1e'], ['plum', '#140a1e'], ['forest', '#08160f'], ['rose', '#1a0a12'], ['slate', '#0f1115']];
-// Normalise a stored welcome object to the exact editable shape, so dirty-checking is a plain
-// JSON compare and every field is always a defined primitive.
-const normWelcome = (w = {}) => ({
-  enabled: !!w.enabled,
-  channelId: w.channelId || '',
-  joinMessage: w.joinMessage || '',
-  leaveMessage: w.leaveMessage || '',
-  gifBg: WBG.some(([k]) => k === w.gifBg) ? w.gifBg : 'dark',
-  bgImage: w.bgImage || '',
-});
-const isMediaPath = (s) => /^\/api\/media\/[A-Za-z0-9._/-]+$/.test(s);
+// The welcome/bye shape, its background palette and its editor all live in
+// discord-welcome.jsx — it is the one section whose editor has a rendering of its own output,
+// and normWelcome has to sit beside the preview that reads it.
 // Join-to-create: an enable flag + a list of lobby voice channels.
 const normJtc = (j = {}) => ({
   enabled: !!j.enabled,
@@ -127,7 +119,7 @@ function GuildMembers({ guildId }) {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ds.mem.search', 'Search a member…')} className="flex-1" />
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{data.total}</span>
       </div>
-      <p className="text-[11px] text-[var(--faint)] mb-2">{t('ds.mem.h', 'What the bot stored, refreshed every 30 minutes: who they are, their level and badges on the site if they linked an account, and their roles here. Open a row to hand out or take a role; moderation sits behind the shield.')}</p>
+      <Explain className="text-[11px] mb-2" summary={t('ds.mem.sum', 'What the bot stored, refreshed every 30 minutes.')}><p>{t('ds.mem.h', 'What the bot stored, refreshed every 30 minutes: who they are, their level and badges on the site if they linked an account, and their roles here. Open a row to hand out or take a role; moderation sits behind the shield.')}</p></Explain>
       {data.members.length === 0 ? <div className="text-[11px] text-[var(--faint)] py-2">{t('ds.mem.none', 'No members stored yet.')}</div> : (
         <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
           {data.members.map((m) => {
@@ -135,7 +127,7 @@ function GuildMembers({ guildId }) {
             const L = m.linked;
             return (
             <div key={m.discordId} className="text-xs">
-              <div className="px-3 py-2 flex items-center gap-2.5">
+              <div className={`${SP.row} !py-2 flex items-center gap-2.5`}>
                 {m.avatar ? <img src={m.avatar} alt="" className="w-7 h-7 rounded-full shrink-0" /> : <span className="w-7 h-7 rounded-full bg-[var(--surface-2)] shrink-0" />}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -155,7 +147,7 @@ function GuildMembers({ guildId }) {
                 </div>
               </div>
               {isOpen && (
-                <div className="px-3 pb-2.5 flex flex-wrap items-center gap-2 panel">
+                <div className={`${SP.row} !pt-0 flex flex-wrap items-center gap-2 panel`}>
                   {roles.length > 0 ? (<>
                     <select className="text-[11px] rounded-lg border border-[var(--line)] bg-[var(--bg-solid)] px-2 py-1" value={pick} onChange={(e) => setPick(e.target.value)}>
                       <option value="">{t('ds.mem.role.add', 'Add a role…')}</option>
@@ -210,6 +202,8 @@ function GuildConfig({ guildId, onSaved }) {
   const modDirty = JSON.stringify(draft.mod) !== JSON.stringify(normMod(data.moderation));
   const logsDirty = JSON.stringify(draft.logs) !== JSON.stringify(normLogs(data.logRouting));
   const dirty = (draft.logChannelId || '') !== (g.logChannelId || '') || draft.storeLogs !== g.storeLogs || welcomeDirty || jtcDirty || gatingDirty || blogDirty || rpDirty || modDirty || logsDirty;
+  // The welcome editor owns its own shape now; this is here for the uploader below, which is
+  // the host's network call and lands its result straight in the draft.
   const setW = (patch) => setDraft((d) => ({ ...d, welcome: { ...d.welcome, ...patch } }));
   const setJ = (patch) => setDraft((d) => ({ ...d, jtc: { ...d.jtc, ...patch } }));
   // Buy the custom-banner unlock for THIS server. The server decides whether it is on sale,
@@ -290,23 +284,17 @@ function GuildConfig({ guildId, onSaved }) {
     { id: 'blog', icon: Newspaper, label: t('ds.sec.blog', 'Announcements'), sub: t('ds.sec.blog.s', 'Which blogs are posted to which channel.'), dirty: blogDirty },
     { id: 'members', icon: Users, label: t('ds.sec.members', 'Members'), sub: t('ds.sec.members.s', 'Everyone the bot has stored for this server.'), dirty: false },
   ];
+  // One heading per section, in the same place every time (ui/discord-kit.jsx), so the page
+  // reads as one page rather than a pile of cards that each restate their own name.
   const here = SECTIONS.find((x) => x.id === section) || SECTIONS[0];
-  // One heading per section, in the same place every time, so the page reads as one page
-  // rather than a pile of cards that each restate their own name.
-  const Head = ({ title, sub }) => (
-    <div className="mb-3">
-      <h3 className="text-sm font-semibold text-[var(--text)]">{title}</h3>
-      {sub && <p className="text-[11.5px] text-[var(--muted)] mt-0.5">{sub}</p>}
-    </div>
-  );
   return (
-    <div>
+    <div className={SP.page}>
       {/* Server hero — the same idiom as the admin bot dashboard: identity tile with a live
           dot, what you are here, then stat tiles. One card that says "this server, this bot,
           this state" before any control. */}
-      <div className="rounded-xl border border-[#5865F2]/30 overflow-hidden mb-4 panel-quiet">
+      <div className="rounded-xl border border-[#5865F2]/30 overflow-hidden panel-quiet">
         <div className="h-1 bg-gradient-to-r from-[#5865F2] via-[#5865F2]/60 to-transparent" />
-        <div className="px-4 py-3.5 flex items-center gap-4 flex-wrap">
+        <div className={`${SP.card} flex items-center gap-4 flex-wrap`}>
           <div className="flex items-center gap-3 min-w-0">
             <span className="relative grid place-items-center w-12 h-12 rounded-xl bg-[#5865F2]/15 border border-[#5865F2]/30 shrink-0 overflow-hidden">
               {data.icon || g.icon ? <img src={data.icon || g.icon} alt="" className="w-full h-full object-cover" /> : <Server size={22} className="text-[#5865F2]" />}
@@ -334,7 +322,7 @@ function GuildConfig({ guildId, onSaved }) {
       </div>
 
       {/* Section nav — pick one area instead of scrolling the whole config. */}
-      <div className="relative mb-4">
+      <div className="relative">
         <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-[var(--bg-solid)] to-transparent z-10 rounded-l-xl md:hidden" />
         <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-[var(--bg-solid)] to-transparent z-10 rounded-r-xl md:hidden" />
       <div className="flex gap-1 overflow-x-auto md:overflow-visible md:flex-wrap no-scrollbar p-1 rounded-xl border border-[var(--line)] panel snap-x snap-mandatory md:snap-none">
@@ -351,20 +339,17 @@ function GuildConfig({ guildId, onSaved }) {
       {/* Automod + the warn ladder. The editors are shared with the admin's bot tab so the
           two doors save one shape. */}
       {section === 'automod' && (
-        <div className="space-y-5">
-          <div>
-            <Head title={here.label} sub={here.sub} />
-            <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+        <div className={SP.page}>
+          <Head title={here.label} sub={here.sub} right={
+            <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none shrink-0" title={t('ds.automod.modon.h2', 'Off, neither automod nor /warn does anything here.')}>
               <input type="checkbox" checked={draft.mod.enabled} onChange={(e) => setDraft((d) => ({ ...d, mod: { ...d.mod, enabled: e.target.checked } }))} />
               <Shield size={15} className="text-[var(--accent-ink)]" /> {t('ds.automod.modon', 'Moderation on for this server')}
-            </label>
-            <p className="text-[11.5px] text-[var(--muted)] ps-6 mt-0.5">{t('ds.automod.modon.h2', 'Off, neither automod nor /warn does anything here.')}</p>
-          </div>
+            </label>} />
           {draft.mod.enabled && <>
             <AutomodEditor value={draft.mod.automod} onChange={(v) => setDraft((d) => ({ ...d, mod: { ...d.mod, automod: v } }))}
               roles={data.roles} channels={data.channels} memberSearch={memberSearch} />
-            <div>
-              <h4 className="text-sm font-semibold text-[var(--text)] mb-2">{t('ds.ladder', 'The warn ladder')}</h4>
+            <div className={SP.stack}>
+              <Head title={t('ds.ladder', 'The warn ladder')} sub={t('ds.ladder.s', 'What the Nth warning costs, whether it came from a rule above or from /warn.')} />
               <WarnLadderEditor value={draft.mod.ladder} onChange={(v) => setDraft((d) => ({ ...d, mod: { ...d.mod, ladder: v } }))}
                 decayHours={draft.mod.automod.warnDecayHours}
                 onDecayChange={(n) => setDraft((d) => ({ ...d, mod: { ...d.mod, automod: { ...d.mod.automod, warnDecayHours: n } } }))} />
@@ -376,29 +361,30 @@ function GuildConfig({ guildId, onSaved }) {
       {/* Logs — the moderation log channel and the routing table are one question ("where does
           what happens get written down?") and are answered in one place. */}
       {section === 'logs' && (
-        <div className="space-y-5">
-          <div>
-            <Head title={here.label} sub={here.sub} />
-            <div className="space-y-2">
-              <Field label={t('ds.logchannel2', 'Moderation log channel')} hint={t('ds.logchannel.h3', 'Bans, kicks, timeouts and warnings are posted here. It is also the last fallback for every category below.')}>
-                <span className="inline-block w-full sm:w-72"><ChannelPicker channels={data.channels} value={draft.logChannelId} onChange={(v) => setDraft({ ...draft, logChannelId: v })} /></span>
-              </Field>
-              <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-                <input type="checkbox" checked={draft.storeLogs} onChange={(e) => setDraft({ ...draft, storeLogs: e.target.checked })} />
-                <span>{t('ds.storelogs', 'Also keep a copy of moderation logs here')}</span>
-              </label>
-              <p className="text-[11.5px] text-[var(--muted)] -mt-1 ps-6">{t('ds.storelogs.h3', 'Off, actions are posted to Discord only. On, a searchable copy is kept on the site, which needs the channel above.')}</p>
-            </div>
-          </div>
+        <div className={SP.page}>
+          <Head title={here.label} sub={here.sub} />
+          <Panel className={SP.stack}>
+            <Eyebrow>{t('ds.logchannel.eb', 'Moderation, and the last fallback')}</Eyebrow>
+            <Field label={t('ds.logchannel2', 'Moderation log channel')} hint={t('ds.logchannel.h3', 'Bans, kicks, timeouts and warnings are posted here. It is also the last fallback for every category below.')}>
+              <span className="inline-block w-full sm:w-72"><ChannelPicker channels={data.channels} value={draft.logChannelId} onChange={(v) => setDraft({ ...draft, logChannelId: v })} /></span>
+            </Field>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={draft.storeLogs} onChange={(e) => setDraft({ ...draft, storeLogs: e.target.checked })} />
+              <span>{t('ds.storelogs', 'Also keep a copy of moderation logs here')}</span>
+            </label>
+            <Explain summary={t('ds.storelogs.sum', 'A copy on the site is searchable; Discord alone is not.')}>
+              <p>{t('ds.storelogs.h3', 'Off, actions are posted to Discord only. On, a searchable copy is kept on the site, which needs the channel above.')}</p>
+            </Explain>
+          </Panel>
           <LogsEditor value={draft.logs} onChange={(v) => setDraft((d) => ({ ...d, logs: v }))} channels={data.channels}
             legacyChannelId={g.logChannelId || ''} onTest={logsDirty || logChanDirty ? undefined : testLogRoute} />
           {(logsDirty || logChanDirty) && <p className="text-[11.5px] text-warning">{t('ds.logs.testdirty', 'Save first: a test entry is sent through what the bot has, not through what is on screen.')}</p>}
           {data.logs?.length > 0 && (
-            <div>
-              <h4 className="text-sm font-semibold text-[var(--text)] mb-2">{t('ds.recentlogs', 'Recent moderation')}</h4>
+            <div className={SP.tight}>
+              <Eyebrow>{t('ds.recentlogs', 'Recent moderation')}</Eyebrow>
               <div className="rounded-xl border border-[var(--line)] max-h-56 overflow-y-auto divide-y divide-[var(--line)]">
                 {data.logs.map((l) => (
-                  <div key={l.id} className="px-3 py-2 flex items-baseline gap-2 text-xs">
+                  <div key={l.id} className={`${SP.row} !py-2 flex items-baseline gap-2 text-xs`}>
                     <Badge tone="blue">{l.action}</Badge>
                     <span className="truncate flex-1 text-[var(--muted)]" title={l.reason || l.targetTag || l.targetId}>{l.reason || l.targetTag || l.targetId}</span>
                     <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(l.createdAt).toLocaleDateString()}</span>
@@ -409,100 +395,35 @@ function GuildConfig({ guildId, onSaved }) {
           )}
         </div>
       )}
-
-      {/* Welcome / bye — owner-editable per-server banner & messages (was admin-only). */}
+      {/* Welcome / bye. The editor and its Discord preview live in discord-welcome.jsx: it is
+          the one section that renders its own output, and the preview has to sit next to the
+          shape it reads. */}
       {section === 'welcome' && (
-      <div className="mb-4">
-        <Head title={here.label} sub={here.sub} />
-        <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
-          <input type="checkbox" checked={draft.welcome.enabled} onChange={(e) => setW({ enabled: e.target.checked })} />
-          {t('ds.wc.on', 'Post a banner when someone joins or leaves')}
-        </label>
-        {draft.welcome.enabled && (
-          <div className="space-y-3 mt-3">
-            <Field label={t('ds.wc.channel', 'Channel ID')} hint={t('ds.wc.channel.h', 'Where the banner is posted. Right-click a Discord channel → Copy Channel ID (Developer Mode on).')}>
-              <ChannelPicker channels={data.channels} value={draft.welcome.channelId} onChange={(v) => setW({ channelId: v })} />
-            </Field>
-            <Field label={t('ds.wc.join', 'Join message')} hint="{user} {username} {servername} {joinnumber} {joindate}">
-              <Input value={draft.welcome.joinMessage} onChange={(e) => setW({ joinMessage: e.target.value.slice(0, 500) })} placeholder={t('ds.wc.join.ph', 'Welcome {user} to {servername}!')} />
-            </Field>
-            <Field label={t('ds.wc.leave', 'Leave message')}>
-              <Input value={draft.welcome.leaveMessage} onChange={(e) => setW({ leaveMessage: e.target.value.slice(0, 500) })} placeholder={t('ds.wc.leave.ph', '{username} has left.')} />
-            </Field>
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('ds.wc.bg', 'Banner background')}</div>
-              <div className="flex flex-wrap gap-1.5">
-                {WBG.map(([k, col]) => (
-                  <button key={k} type="button" onClick={() => setW({ gifBg: k })} title={k}
-                    className={`w-8 h-8 rounded-lg border-2 transition ${draft.welcome.gifBg === k ? 'border-[var(--primary)] scale-105' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`} style={{ background: col }} />
-                ))}
-              </div>
-              {(() => {
-                const bp = data.bannerPolicy || { allowed: true, paid: false, unlocked: false, priceCents: 0 };
-                const price = `${((bp.priceCents || 0) / 100).toFixed(2)}`;
-                // Off: the admin does not offer custom banners. Paid & not unlocked: a one-time
-                // purchase gate (keeping any existing image, but no new upload). Free / unlocked:
-                // the normal uploader. A custom banner is always at most one — replacing it drops
-                // the previous file server-side.
-                if (!bp.allowed) {
-                  return (
-                    <div className="mt-2.5 rounded-lg border border-[var(--line)] panel p-3 text-[12px] text-[var(--muted)] flex items-center gap-2">
-                      <AlertTriangle size={13} className="text-[var(--faint)] shrink-0" /> {t('ds.wc.bg.off', 'Custom banner backgrounds are turned off for this bot. The colour presets above are available to everyone.')}
-                    </div>
-                  );
-                }
-                if (bp.paid && !bp.unlocked) {
-                  return (
-                    <div className="mt-2.5 rounded-lg border b-primary bg-[var(--primary)]/[0.05] p-3">
-                      <div className="text-[12.5px] font-semibold flex items-center gap-1.5"><ImageIcon size={13} className="text-[var(--accent-ink)]" /> {t('ds.wc.bg.paidt', 'Custom banner, a one-time upgrade')}</div>
-                      {/* This used to end at "ask an admin to unlock it for your server" — a
-                          price with no till. It is a purchase now; the unlock is written by the
-                          Stripe webhook, so an abandoned checkout grants nothing. */}
-                      <p className="text-[11.5px] text-[var(--muted)] mt-1">{t('ds.wc.bg.paid2', 'A custom welcome banner for this server is a one-time upgrade ({p}). It stays unlocked for this server afterwards.').replace('{p}', price)}</p>
-                      <Button size="sm" variant="primary" className="mt-2.5" disabled={buyingBanner} onClick={buyBanner}>
-                        {buyingBanner ? <Spinner /> : <><CreditCard size={13} /> {t('ds.wc.bg.buy', 'Unlock for {p}').replace('{p}', price)}</>}
-                      </Button>
-                    </div>
-                  );
-                }
-                return (
-                  <Field className="mt-2.5" label={t('ds.wc.bgimg', 'Custom background (optional)')}
-                    hint={t('ds.wc.bgimg.h3', 'Replaces the colour. One image per server — uploading a new one removes the old. Stored on the site (a /api/media/… link) so it can be reviewed and removed.')}>
-                    {bp.paid && bp.unlocked && <div className="text-[11px] text-[var(--success)] mb-1.5 inline-flex items-center gap-1"><Check size={11} /> {t('ds.wc.bg.unlocked', 'Unlocked for this server')}</div>}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Button size="sm" variant="ghost" onClick={pickWelcomeBg}><ImageIcon size={13} /> {t('ds.wc.bgimg.upload', 'Upload')}</Button>
-                      <Input className="flex-1 min-w-[140px]" value={draft.welcome.bgImage} onChange={(e) => setW({ bgImage: e.target.value.slice(0, 300) })} placeholder="/api/media/blog/…" />
-                      {draft.welcome.bgImage && <button type="button" onClick={() => setW({ bgImage: '' })} className="px-1.5 rounded-lg text-error hover:bg-error-bg shrink-0" title={t('common.remove', 'Remove')}>×</button>}
-                    </div>
-                    {draft.welcome.bgImage && !isMediaPath(draft.welcome.bgImage) && (
-                      <div className="text-[11px] text-warning flex items-center gap-1 mt-1"><AlertTriangle size={11} /> {t('ds.wc.bgimg.bad', 'Not an uploaded-media link, it must start with /api/media/. The colour will be used instead.')}</div>
-                    )}
-                  </Field>
-                );
-              })()}
-            </div>
-          </div>
-        )}
-      </div>
+        <div className={SP.page}>
+          <Head title={here.label} sub={here.sub} />
+          <WelcomeEditor value={draft.welcome} onChange={(v) => setDraft((d) => ({ ...d, welcome: v }))}
+            channels={data.channels} guild={g} bannerPolicy={data.bannerPolicy}
+            onBuyBanner={buyBanner} buying={buyingBanner} onUpload={pickWelcomeBg} />
+        </div>
       )}
 
       {/* Join-to-create voice — owner-editable per-server (was admin-only). */}
       {section === 'voice' && (
-      <div className="mb-4">
+      <div className={SP.page}>
         <Head title={here.label} sub={here.sub} />
-        <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
+        <label className="flex items-center gap-2 text-sm font-medium cursor-pointer select-none">
           <input type="checkbox" checked={draft.jtc.enabled} onChange={(e) => setJ({ enabled: e.target.checked })} />
           {t('ds.jtc.on', 'Joining a lobby spawns a personal voice room')}
         </label>
         {draft.jtc.enabled && (
-          <div className="space-y-2 mt-3">
+          <div className={SP.stack}>
             {draft.jtc.lobbies.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.jtc.none', 'No lobbies yet, add one. Joining that voice channel spawns a temp room in its category.')}</div>}
             {draft.jtc.lobbies.map((lb, i) => (
-              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+              <div key={i} className={`rounded-xl border border-[var(--line)] ${SP.card} ${SP.tight} relative`}>
                 <button type="button" onClick={() => setJ({ lobbies: draft.jtc.lobbies.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ds.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</div>
+                <Eyebrow>{t('ds.jtc.lobbyn', 'Lobby {n}').replace('{n}', i + 1)}</Eyebrow>
                 <ChannelPicker channels={data.channels} types={CHANNEL_TYPES.voice} value={lb.lobbyChannelId} placeholder={t('ds.jtc.lobbych', 'Lobby voice channel ID')} onChange={(v) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, lobbyChannelId: v } : x) })} />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className={`grid grid-cols-1 sm:grid-cols-2 ${SP.grid}`}>
                   <ChannelPicker channels={data.channels} types={CHANNEL_TYPES.category} value={lb.categoryId} placeholder={t('ds.jtc.catid', 'Category ID (auto if empty)')} onChange={(v) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, categoryId: v } : x) })} />
                   <Input value={lb.tempCategoryName} onChange={(e) => setJ({ lobbies: draft.jtc.lobbies.map((x, k) => k === i ? { ...x, tempCategoryName: e.target.value.slice(0, 100) } : x) })} placeholder={t('ds.jtc.tempcat', 'Temp category name')} />
                 </div>
@@ -517,23 +438,22 @@ function GuildConfig({ guildId, onSaved }) {
       {/* Roles: what the bot hands out by itself, and the panels members pick from. Two ways
           of getting a role, so one section rather than two tabs apart. */}
       {section === 'roles' && (
-      <div className="mb-4">
+      <div className={SP.page}>
         <Head title={here.label} sub={here.sub} />
-        <h4 className="text-sm font-semibold text-[var(--text)] mb-1">{t('ds.gate2', 'Given automatically')}</h4>
-        <label className="flex items-center gap-2.5 text-sm cursor-pointer select-none">
+        <Head title={t('ds.gate2', 'Given automatically')} sub={t('ds.gate.h2', 'Each rule grants one role. Re-checked every few minutes; a member can run /refreshroles to sync at once.')} />
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
           <input type="checkbox" checked={draft.gating.enabled} onChange={(e) => setG({ enabled: e.target.checked })} />
           {t('ds.gate.on', 'Grant roles to members who meet a rule below')}
         </label>
-        <p className="text-[11.5px] text-[var(--muted)] ps-6 mt-0.5">{t('ds.gate.h2', 'Each rule grants one role. Re-checked every few minutes; a member can run /refreshroles to sync at once.')}</p>
         {draft.gating.enabled && (
-          <div className="space-y-2 mt-3">
+          <div className={SP.stack}>
             {draft.gating.rules.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.gate.none', 'No role rules yet, add one to start gating.')}</div>}
             {draft.gating.rules.map((r, i) => {
               const updRule = (patch) => setG({ rules: draft.gating.rules.map((x, k) => k === i ? { ...x, ...patch } : x) });
               return (
-                <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+                <div key={i} className={`rounded-xl border border-[var(--line)] ${SP.card} ${SP.tight} relative`}>
                   <button type="button" onClick={() => setG({ rules: draft.gating.rules.filter((_, k) => k !== i) })} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pe-6">
+                  <div className={`grid grid-cols-1 sm:grid-cols-2 ${SP.grid} pe-6`}>
                     <Field label={t('ds.gate.roleid', 'Role ID')}><RolePicker roles={data.roles} value={r.roleId} onChange={(v) => updRule({ roleId: v })} /></Field>
                     <Field label={t('ds.gate.label', 'Label (for messages)')}><Input value={r.label} onChange={(e) => updRule({ label: e.target.value.slice(0, 60) })} placeholder={t('ds.gate.labelph', 'Verified / Creator…')} /></Field>
                   </div>
@@ -554,19 +474,18 @@ function GuildConfig({ guildId, onSaved }) {
       {/* Rule & role panels — owner-editable for THIS server. A posted message with role buttons
           or a dropdown; roles are entered by id (like every other id here). */}
       {section === 'roles' && (
-      <div className="mb-4 pt-4 border-t border-[var(--line)]">
-        <h4 className="text-sm font-semibold text-[var(--text)]">{t('ds.rp2', 'Picked by the member')}</h4>
-        <p className="text-[11.5px] text-[var(--muted)] mt-0.5">{t('ds.rp.h2', 'A posted message with self-assign buttons or a dropdown. Saving publishes it; the bot edits it in place afterwards.')}</p>
-        <div className="space-y-2 mt-3">
+      <div className={`${SP.page} pt-4 border-t border-[var(--line)]`}>
+        <Head title={t('ds.rp2', 'Picked by the member')} sub={t('ds.rp.h2', 'A posted message with self-assign buttons or a dropdown. Saving publishes it; the bot edits it in place afterwards.')} />
+        <div className={SP.stack}>
           {draft.rp.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.rp.none', 'No panels yet, add one.')}</div>}
           {draft.rp.map((pnl, i) => {
             const setP = (patch) => setRp(draft.rp.map((x, k) => k === i ? { ...x, ...patch } : x));
             const setRole = (ri, patch) => setP({ roles: pnl.roles.map((x, k) => k === ri ? { ...x, ...patch } : x) });
             return (
-              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+              <div key={i} className={`rounded-xl border border-[var(--line)] ${SP.card} ${SP.tight} relative`}>
                 <button type="button" onClick={() => setRp(draft.rp.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] pe-6">{pnl.title || t('ds.rp.untitled', '(untitled panel)')} · {pnl.roles.length} {t('ds.rp.roles', 'roles')}</div>
-                <div className="grid sm:grid-cols-2 gap-2">
+                <Eyebrow className="pe-6">{pnl.title || t('ds.rp.untitled', '(untitled panel)')} · {pnl.roles.length} {t('ds.rp.roles', 'roles')}</Eyebrow>
+                <div className={`grid sm:grid-cols-2 ${SP.grid}`}>
                   <ChannelPicker channels={data.channels} value={pnl.channelId} onChange={(v) => setP({ channelId: v })} placeholder={t('ds.rp.chan2', 'Where to post it')} />
                   <Input value={pnl.title} onChange={(e) => setP({ title: e.target.value.slice(0, 256) })} placeholder={t('ds.rp.title', 'Title')} />
                 </div>
@@ -602,9 +521,9 @@ function GuildConfig({ guildId, onSaved }) {
       {/* Blog announcements — owner-editable routes for THIS server only. Each posts the chosen
           blogs to a channel. A route with no channel is dropped on save. */}
       {section === 'blog' && (
-      <div className="mb-4">
+      <div className={SP.page}>
         <Head title={here.label} sub={here.sub} />
-        <div className="space-y-2 mt-3">
+        <div className={SP.stack}>
           {draft.blog.routes.length === 0 && <div className="text-[11px] text-[var(--faint)]">{t('ds.blog.none', 'No routes yet, add one to announce blog posts in your server.')}</div>}
           {draft.blog.routes.map((r, i) => {
             const toggleSrc = (key) => {
@@ -615,9 +534,9 @@ function GuildConfig({ guildId, onSaved }) {
               setB(draft.blog.routes.map((x, k) => k === i ? { ...x, sources: nextS } : x));
             };
             return (
-              <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
+              <div key={i} className={`rounded-xl border border-[var(--line)] ${SP.card} ${SP.tight} relative`}>
                 <button type="button" onClick={() => setB(draft.blog.routes.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><Trash2 size={13} /></button>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ds.blog.routen', 'Channel {n}').replace('{n}', i + 1)}</div>
+                <Eyebrow>{t('ds.blog.routen', 'Channel {n}').replace('{n}', i + 1)}</Eyebrow>
                 <ChannelPicker channels={data.channels} value={r.channelId} onChange={(v) => setB(draft.blog.routes.map((x, k) => k === i ? { ...x, channelId: v } : x))} placeholder={t('ds.blog.chan2', 'Where to post them')} />
                 <div className="flex flex-wrap gap-1.5 pe-6">
                   {BLOG_SRC.map(([key, label]) => {
@@ -639,19 +558,19 @@ function GuildConfig({ guildId, onSaved }) {
       {/* The guild's stored roster — only in pool mode (the only mode that stores members), and
           only your own server's members, never another's. */}
       {section === 'members' && (
-        <div className="mb-4">
+        <div className={SP.page}>
           <Head title={here.label} sub={here.sub} />
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${SP.grid}`}>
             {[[(g.memberCount ?? 0).toLocaleString(), t('ds.pool.members', 'members in the server')], [(g.storedMembers ?? 0).toLocaleString(), t('ds.pool.stored', 'stored here')], [g.lastScanAt ? new Date(g.lastScanAt).toLocaleString() : t('ds.pool.pending', 'on next scan'), t('ds.pool.last', 'last refresh')]].map(([v, l]) => (
-              <div key={l} className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate" title={v}>{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
+              <div key={l} className={`rounded-xl border border-[var(--line)] ${SP.row}`}><div className="text-sm font-semibold tabular-nums truncate" title={v}>{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
             ))}
           </div>
-          <p className="text-[11.5px] text-[var(--muted)] mb-3">{t('ds.mdb.s2', 'The bot stores every member of every server it is in: name, avatar, join date, roles, last activity, refreshed every 30 minutes. Members who linked a BetterCommunity account are always kept. When the site-wide cap is reached, members inactive for {d} days may be dropped, and come back on their next message.').replace('{d}', data.globalStorage?.inactiveDays || 30)}</p>
+          <Explain summary={t('ds.mdb.sum', 'Refreshed every 30 minutes, and kept for good once a member links an account.')}><p>{t('ds.mdb.s2', 'The bot stores every member of every server it is in: name, avatar, join date, roles, last activity, refreshed every 30 minutes. Members who linked a BetterCommunity account are always kept. When the site-wide cap is reached, members inactive for {d} days may be dropped, and come back on their next message.').replace('{d}', data.globalStorage?.inactiveDays || 30)}</p></Explain>
           <GuildMembers guildId={guildId} />
         </div>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 flex-wrap pt-1">
         <Button variant="primary" disabled={busy || !dirty || needsChannel} onClick={save}>{busy ? <Spinner /> : <><Check size={15} /> {t('common.save', 'Save')}</>}</Button>
         {needsChannel && <span className="text-[11px] text-warning">{t('ds.needchannel', 'Set a log channel first.')}</span>}
       </div>
