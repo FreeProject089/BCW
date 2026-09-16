@@ -114,5 +114,5 @@ export interface Stats {
   benchmarks_recent: any[];
   benchmarks_ops: any[];
   users: UserRow[];
-  privacy: { retention_days: number; delete_delay_h: number; pending_deletions: number };
+  privacy: { retention_days: number; delete_delay_h: number; pending_deletions: number; pending_requests: number };
 }

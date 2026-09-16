@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
-import { db, requireRole, logAudit } from '../lib/lib.mjs';
+import { db, requireRole, logAudit, safeEqual, clientIp } from '../lib/lib.mjs';
 import { boundedSet } from '../lib/boundedmap.mjs';
+import { sendMail, mailShell, emailEnabled, escapeHtml } from '../lib/mail.mjs';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
 const ADMIN_TIER = ['MOD', 'ADMIN', 'SUPERADMIN'];
@@ -139,5 +140,136 @@ export default async function telemetryRoutes(app) {
     if (!target) return reply.code(404).send({ error: 'not_found' });
     await logAudit(p, req.user.uid, 'telemetry-access.grant', `${b.data.granted ? 'Granted' : 'Revoked'} telemetry access for ${target.displayName}`);
     return { ok: true };
+  });
+
+  // ── Server-to-server (the telemetry service): GDPR identity + notification ──
+  // The telemetry payload carries NO account id: an install is only its creator id (the
+  // hex of its ed25519 public key). Which account that id is linked to is OUR knowledge
+  // (CreatorLink), so the telemetry service asks here when a person requests their data
+  // or its erasure, and hands the mail back here so the address never leaves BCWEB.
+  // Same shared secret as /link/lookup (LINK_LOOKUP_SECRET = the service's BC_LINK_SECRET).
+  const linkSecretOk = (req, reply) => {
+    const secret = process.env.LINK_LOOKUP_SECRET || process.env.JWT_SECRET;
+    if (!secret || !safeEqual(req.headers['x-link-secret'] || '', secret)) { reply.code(401).send({ error: 'unauthorized' }); return false; }
+    return true;
+  };
+
+  // GET /internal/telemetry/identity?creatorId= → { linked, userId, email, displayName,
+  // locale, creatorIds } — creatorIds is every id linked to the same account (one
+  // account may pair several installs; a request for one covers all of them).
+  app.get('/internal/telemetry/identity', async (req, reply) => {
+    if (!linkSecretOk(req, reply)) return;
+    const q = z.object({ creatorId: z.string().min(1).max(200) }).safeParse(req.query || {});
+    if (!q.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const link = await p.creatorLink.findUnique({
+      where: { creatorId: q.data.creatorId },
+      include: { user: { select: { id: true, email: true, displayName: true, locale: true, creatorLinks: { select: { creatorId: true } } } } },
+    }).catch(() => null);
+    if (!link?.user) return { linked: false };
+    return {
+      linked: true,
+      userId: link.user.id,
+      email: link.user.email,
+      displayName: link.user.displayName,
+      locale: link.user.locale || null,
+      creatorIds: link.user.creatorLinks.map((l) => l.creatorId),
+    };
+  });
+
+  // POST /internal/telemetry/notify — send the GDPR confirmation mail.
+  // Body: { kind: export|delete, outcome: done|rejected, requestId, creatorId, creatorIds?,
+  //         to: { userId } | { email }, counts?, erased?, attachment?: { filename, base64 }, tooLarge? }
+  // `to.userId` is resolved to the account's CURRENT address here; `to.email` is the
+  // address an unlinked install typed. Answers { ok, sent } — ok:false with a reason when
+  // mail is off, so the telemetry side records "not notified" instead of guessing.
+  app.post('/internal/telemetry/notify', { bodyLimit: 20 * 1024 * 1024 }, async (req, reply) => {
+    if (!linkSecretOk(req, reply)) return;
+    const b = z.object({
+      kind: z.enum(['export', 'delete']),
+      outcome: z.enum(['done', 'rejected']).default('done'),
+      requestId: z.number().int().optional(),
+      creatorId: z.string().max(200),
+      creatorIds: z.array(z.string().max(200)).max(50).optional(),
+      to: z.union([z.object({ userId: z.string().min(1) }), z.object({ email: z.string().email().max(254) })]),
+      counts: z.record(z.number()).optional(),
+      erased: z.record(z.number()).optional(),
+      attachment: z.object({ filename: z.string().max(120).regex(/^[\w.-]+\.zip$/), base64: z.string().max(18 * 1024 * 1024) }).optional(),
+      tooLarge: z.boolean().optional(),
+    }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const d = b.data;
+    let to = d.to.email || null;
+    let locale = null;
+    if (d.to.userId) {
+      const p = await db();
+      const u = await p.user.findUnique({ where: { id: d.to.userId }, select: { email: true, locale: true } }).catch(() => null);
+      if (!u?.email) return reply.code(404).send({ ok: false, reason: 'account_not_found' });
+      to = u.email; locale = u.locale;
+    }
+    if (!emailEnabled()) return { ok: false, reason: 'email_disabled' };
+    const fr = String(locale || '').toLowerCase().startsWith('fr');
+    const site = (process.env.SITE_URL || 'http://localhost:5176').replace(/\/+$/, '');
+    const short = escapeHtml(d.creatorId.slice(0, 12)) + '…';
+    const rows = (obj) => Object.entries(obj || {}).filter(([, v]) => Number(v) > 0).map(([k, v]) => `<li>${escapeHtml(k)}: ${Number(v)}</li>`).join('');
+    let subject, title, body;
+    if (d.outcome === 'rejected') {
+      subject = fr ? 'BMM telemetry — demande non traitée' : 'BMM telemetry — request not processed';
+      title = fr ? 'Votre demande n’a pas pu être traitée' : 'Your request could not be processed';
+      body = fr
+        ? `<p>Votre demande (${d.kind === 'delete' ? 'effacement' : 'export'}) concernant l’installation BMM <code>${short}</code> a été refusée par un administrateur. Si vous pensez qu’il s’agit d’une erreur, répondez à ce message.</p>`
+        : `<p>Your ${d.kind === 'delete' ? 'erasure' : 'export'} request for the BMM install <code>${short}</code> was declined by an administrator. If you believe this is a mistake, reply to this message.</p>`;
+    } else if (d.kind === 'delete') {
+      subject = fr ? 'BMM telemetry — vos données ont été effacées' : 'BMM telemetry — your data has been erased';
+      title = fr ? 'Effacement effectué' : 'Erasure completed';
+      const list = rows(d.erased);
+      body = fr
+        ? `<p>Toutes les données de télémétrie liées à l’installation BMM <code>${short}</code>${(d.creatorIds || []).length > 1 ? ` (et ${d.creatorIds.length - 1} autre(s) installation(s) liée(s) à votre compte)` : ''} ont été supprimées de notre collecteur.</p>${list ? `<p>Lignes supprimées :</p><ul>${list}</ul>` : ''}<p>Seule une trace anonymisée de cette demande est conservée (journal d’audit).</p>`
+        : `<p>Every telemetry row tied to the BMM install <code>${short}</code>${(d.creatorIds || []).length > 1 ? ` (and ${d.creatorIds.length - 1} other install(s) linked to your account)` : ''} has been deleted from our collector.</p>${list ? `<p>Rows removed:</p><ul>${list}</ul>` : ''}<p>Only an anonymised trace of this request is kept (audit log).</p>`;
+    } else {
+      subject = fr ? 'BMM telemetry — votre export de données' : 'BMM telemetry — your data export';
+      title = fr ? 'Votre export est prêt' : 'Your export is ready';
+      const list = rows(d.counts);
+      const attached = d.attachment ? (fr ? '<p>Le paquet (zip : un JSON par table, vos replays, un README) est joint à ce message.</p>' : '<p>The package (zip: one JSON per table, your replays, a README) is attached to this message.</p>')
+        : (fr ? '<p>Le paquet est trop volumineux pour être joint ; un administrateur vous le transmettra par un autre canal.</p>' : '<p>The package is too large to attach; an administrator will hand it to you through another channel.</p>');
+      body = fr
+        ? `<p>Voici les données de télémétrie que nous détenons pour l’installation BMM <code>${short}</code>.</p>${list ? `<ul>${list}</ul>` : ''}${attached}`
+        : `<p>Here is the telemetry data we hold for the BMM install <code>${short}</code>.</p>${list ? `<ul>${list}</ul>` : ''}${attached}`;
+    }
+    const attachments = d.attachment ? [{ filename: d.attachment.filename, content: Buffer.from(d.attachment.base64, 'base64'), contentType: 'application/zip' }] : undefined;
+    const text = `${title}\n\n${body.replace(/<[^>]+>/g, '')}\n\n${site}/legal/privacy`;
+    try {
+      await sendMail({ to, mailId: `telemetry-${d.kind}`, subject, html: mailShell(title, body, { url: `${site}/legal/privacy`, label: fr ? 'Politique de confidentialité' : 'Privacy policy' }, { mailId: `telemetry-${d.kind}` }), text, attachments });
+      return { ok: true, sent: true };
+    } catch (e) {
+      return { ok: false, reason: String(e?.message || e) };
+    }
+  });
+
+  // ── Website side (logged in): file a GDPR request for one of MY creator ids ──
+  // Proxies to the telemetry service with the public ingest key and source=bcweb. The
+  // creator id must be linked to the caller's account — that is the proof; the service
+  // then mails the account's address, so no e-mail is typed here.
+  const teleBase = () => (process.env.TELEMETRY_INTERNAL_URL || '').replace(/\/+$/, '');
+  app.post('/me/telemetry/data-request', { preHandler: requireRole(), config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
+    const b = z.object({ creatorId: z.string().min(1).max(200), kind: z.enum(['export', 'delete']) }).safeParse(req.body || {});
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    if (!teleBase()) return reply.code(503).send({ error: 'telemetry_not_configured' });
+    const p = await db();
+    const mine = await p.creatorLink.findFirst({ where: { creatorId: b.data.creatorId, userId: req.user.uid }, select: { id: true } });
+    if (!mine) return reply.code(403).send({ error: 'not_your_creator_id' });
+    try {
+      const r = await fetch(`${teleBase()}/data-request`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: process.env.TELEMETRY_API_KEY || '', creator_id: b.data.creatorId, kind: b.data.kind, source: 'bcweb' }),
+        signal: AbortSignal.timeout(8000),
+      });
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok) return reply.code(502).send({ error: 'telemetry_error', status: r.status, detail: out?.error });
+      await logAudit(p, req.user.uid, 'telemetry.data_request', `${b.data.kind} for creator ${b.data.creatorId.slice(0, 12)}…`, clientIp(req)).catch(() => {});
+      return { ok: true, id: out.id, duplicate: !!out.duplicate, kind: b.data.kind };
+    } catch (e) {
+      return reply.code(502).send({ error: 'telemetry_unreachable', detail: String(e?.message || e) });
+    }
   });
 }

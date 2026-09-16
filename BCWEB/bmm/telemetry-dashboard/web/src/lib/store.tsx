@@ -2,6 +2,14 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { Stats } from "./types";
 
 export type ViewMode = "simple" | "advanced";
+export type Theme = "dark" | "light" | "system";
+
+/** Apply a theme choice to <html data-theme>; "system" removes the stamp (CSS follows the OS). */
+export function applyTheme(t: Theme) {
+  const el = document.documentElement;
+  if (t === "system") el.removeAttribute("data-theme");
+  else el.setAttribute("data-theme", t);
+}
 
 interface StoreValue {
   stats: Stats | null;
@@ -11,6 +19,8 @@ interface StoreValue {
   setAdminKey: (k: string) => void;
   viewMode: ViewMode;
   setViewMode: (m: ViewMode) => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
 }
 
 const Ctx = createContext<StoreValue>(null as any);
@@ -68,6 +78,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState(false);
   const [adminKey, setAdminKeyState] = useState(() => localStorage.getItem("bmm_admin_key") || "");
   const [viewMode, setViewModeState] = useState<ViewMode>(() => (localStorage.getItem("bmm_view_mode") === "advanced" ? "advanced" : "simple"));
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const v = localStorage.getItem("bmm_theme");
+    return v === "light" || v === "system" ? v : "dark";
+  });
   const esRef = useRef<EventSource | null>(null);
   const pollRef = useRef<number | null>(null);
 
@@ -79,6 +93,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("bmm_view_mode", m);
     setViewModeState(m);
   };
+  const setTheme = (t: Theme) => {
+    localStorage.setItem("bmm_theme", t);
+    setThemeState(t);
+    applyTheme(t);
+  };
+  useEffect(() => { applyTheme(theme); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let closed = false;
@@ -162,7 +182,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [adminKey]);
 
-  return <Ctx.Provider value={{ stats, connected, authError, adminKey, setAdminKey, viewMode, setViewMode }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ stats, connected, authError, adminKey, setAdminKey, viewMode, setViewMode, theme, setTheme }}>{children}</Ctx.Provider>;
 }
 
 // ── REST helpers (drill-downs + admin writes) — all carry the viewer key ────
@@ -181,4 +201,23 @@ export async function apiPost<T = any>(url: string, body: any, adminKey?: string
 export async function apiDelete<T = any>(url: string, adminKey?: string): Promise<T> {
   const r = await fetch(url, { method: "DELETE", headers: { ...authHeaders(), ...(adminKey ? { "X-Admin-Key": adminKey } : {}) } });
   return r.json();
+}
+
+/** Fetch a binary (the GDPR zip) with the viewer headers and hand it to the browser. */
+export async function apiDownload(url: string, filename: string): Promise<boolean> {
+  const r = await fetch(url, { headers: authHeaders() });
+  if (!r.ok) return false;
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  return true;
+}
+/** The current theme as resolved on <html> (for canvases that cannot read CSS vars). */
+export function resolvedTheme(): "dark" | "light" {
+  const t = document.documentElement.getAttribute("data-theme");
+  if (t === "light" || t === "dark") return t;
+  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }

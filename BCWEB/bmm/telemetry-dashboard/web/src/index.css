@@ -2,9 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* Theme tokens as RGB channel triplets (see tailwind.config.js). Dark is the default; the
+   header toggle stamps data-theme on <html>, and "system" follows prefers-color-scheme. */
+:root,
+:root[data-theme="dark"] {
   color-scheme: dark;
+  --c-bg: 11 13 16;
+  --c-panel: 19 22 27;
+  --c-panel2: 24 28 34;
+  --c-line: 36 42 51;
+  --c-ink: 232 234 237;
+  --c-sub: 154 163 173;
+  --c-brand: 91 140 255;
+  --c-good: 55 211 153;
+  --c-warn: 244 183 64;
+  --c-bad: 240 99 99;
+  --scrollbar: #2a313b;
 }
+:root[data-theme="light"] {
+  color-scheme: light;
+  --c-bg: 246 247 249;
+  --c-panel: 255 255 255;
+  --c-panel2: 241 243 246;
+  --c-line: 222 226 232;
+  --c-ink: 22 26 32;
+  --c-sub: 96 106 118;
+  --c-brand: 51 102 232;
+  --c-good: 22 163 108;
+  --c-warn: 202 138 4;
+  --c-bad: 220 66 66;
+  --scrollbar: #c9ced6;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --c-bg: 246 247 249;
+    --c-panel: 255 255 255;
+    --c-panel2: 241 243 246;
+    --c-line: 222 226 232;
+    --c-ink: 22 26 32;
+    --c-sub: 96 106 118;
+    --c-brand: 51 102 232;
+    --c-good: 22 163 108;
+    --c-warn: 202 138 4;
+    --c-bad: 220 66 66;
+    --scrollbar: #c9ced6;
+  }
+}
+
 html,
 body,
 #root {
@@ -12,38 +57,68 @@ body,
 }
 body {
   margin: 0;
-  background: theme("colors.bg");
-  color: theme("colors.ink");
+  background: rgb(var(--c-bg));
+  color: rgb(var(--c-ink));
   font-family: theme("fontFamily.sans");
   -webkit-font-smoothing: antialiased;
 }
 
 @layer components {
   .card {
-    @apply border border-line rounded-xl;
-    background: linear-gradient(180deg, theme("colors.panel2") 0%, theme("colors.panel") 60%);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    @apply border border-line rounded-xl bg-panel;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
   }
   .kpi {
     @apply card px-4 py-3 transition-colors;
   }
   .kpi:hover {
-    border-color: color-mix(in srgb, theme("colors.brand") 40%, theme("colors.line"));
+    border-color: rgb(var(--c-brand) / 0.45);
   }
   .pill {
-    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs;
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs whitespace-nowrap;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-panel2 px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-brand/60 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply bg-brand border-brand text-white hover:bg-brand/90;
+  }
+  .btn-danger {
+    @apply bg-bad/15 border-bad/30 text-bad hover:bg-bad/25;
+  }
+  .btn-ghost {
+    @apply bg-transparent border-transparent text-sub hover:text-ink hover:bg-panel2;
+  }
+  .input {
+    @apply bg-panel2 border border-line rounded-lg px-3 py-1.5 text-sm text-ink placeholder:text-sub/70 focus:outline-none focus:border-brand;
   }
   .navlink {
     @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sub hover:text-ink hover:bg-panel2 transition-colors text-sm;
   }
   .navlink-active {
-    @apply bg-panel2 text-ink;
+    @apply bg-brand/10 text-ink;
+    box-shadow: inset 2px 0 0 rgb(var(--c-brand));
   }
   .th {
-    @apply text-left text-[11px] uppercase tracking-wide text-sub font-medium px-3 py-2;
+    @apply text-left text-[11px] uppercase tracking-wide text-sub font-medium px-3 py-2 bg-panel;
   }
   .td {
-    @apply px-3 py-2 text-sm border-t border-line/60;
+    @apply px-3 py-2 text-sm border-t border-line/60 align-middle;
+  }
+  /* Sticky-header table: the wrapper scrolls, the header stays. */
+  .table-wrap {
+    @apply overflow-auto rounded-lg border border-line/60;
+    max-height: min(70vh, 720px);
+  }
+  .table-wrap table {
+    @apply w-full text-sm;
+  }
+  .table-wrap thead th {
+    @apply sticky top-0 z-10;
+    box-shadow: inset 0 -1px 0 rgb(var(--c-line));
+  }
+  .skeleton {
+    @apply rounded-md bg-panel2 animate-pulse;
   }
 }
 
@@ -52,6 +127,15 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a313b;
+  background: var(--scrollbar);
   border-radius: 6px;
+}
+
+/* rrweb: the wrapper is positioned by the player (scaled to fit); never let its default
+   inline sizing overflow the stage. */
+.replayer-wrapper {
+  float: none !important;
+}
+.replayer-mouse-tail {
+  pointer-events: none;
 }

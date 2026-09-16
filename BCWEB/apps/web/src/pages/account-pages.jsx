@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BadgeCheck, Lock, Cookie, Palette, Shield, CheckCircle2, XCircle, Eye, Globe, Mail, Orbit, Package, Server, ShieldCheck, Sliders, Sparkles, Users, Undo2, LogOut, AlertTriangle } from 'lucide-react';
-import { Button, Card, PageHeader, Select, Spinner, useToast } from '../ui/ui.jsx';
+import { Button, Card, PageHeader, Select, Spinner, useToast, useDialog } from '../ui/ui.jsx';
 import { fxPref, setFxPref, prefersReducedMotion } from '../lib/fx-pref.js';
 import { useI18n } from '../i18n.jsx';
 import { useTheme } from '../ui/theme.jsx';
@@ -10,6 +10,62 @@ import { api } from '../lib/api.js';
 import { getGlassPrefs, setGlassPrefs, getOrbTransitionPref, setOrbTransitionPref, getUndoDisabled, setUndoDisabled, getLogoutConfirm, setLogoutConfirm, getForceConfirm, setForceConfirm, getHero3dDisabled, setHero3dDisabled } from '../lib/prefs.js';
 import { getConsent, setConsent } from '../lib/consent.js';
 import { SKIP_KEY } from '../ui/IntroContext.jsx';
+
+/* ──────────────  BMM telemetry: my data (GDPR export / erasure)  ────────────── */
+// Only for a signed-in account with at least one linked BMM install (creator id). The
+// request is filed with the telemetry service on the account's behalf: the proof is the
+// link itself, and the confirmation (with the export attached) goes to the account's
+// e-mail, so nothing is typed here. Unlinked installs file from BMM (Settings > Privacy)
+// with an address instead.
+function TelemetryRequests({ Row }) {
+  const { t } = useI18n();
+  const toast = useToast();
+  const dialog = useDialog();
+  const { user } = useAuth();
+  const [links, setLinks] = useState(null);
+  const [busy, setBusy] = useState('');
+  useEffect(() => {
+    if (!user) { setLinks([]); return; }
+    let on = true;
+    api.get('/me/creator-links').then((r) => { if (on) setLinks(r?.links || []); }).catch(() => { if (on) setLinks([]); });
+    return () => { on = false; };
+  }, [user]);
+  if (!user || !links || links.length === 0) return null;
+  const file = async (creatorId, kind) => {
+    const short = creatorId.slice(0, 12) + '…';
+    if (kind === 'delete' && !await dialog.confirm({
+      title: t('set.tele.del.t', 'Erase telemetry for this install?'),
+      message: t('set.tele.del.m', 'Every telemetry row tied to {id} (and to any other install linked to your account) is deleted after the review delay. This cannot be undone. You will get an e-mail when it is done.').replace('{id}', short),
+      okLabel: t('set.tele.del.ok', 'Request erasure'),
+    })) return;
+    setBusy(`${kind}:${creatorId}`);
+    try {
+      const r = await api.post('/me/telemetry/data-request', { creatorId, kind });
+      if (r?.duplicate) toast.success(t('set.tele.dup', 'A request of this kind is already pending for this install.'));
+      else toast.success(kind === 'delete'
+        ? t('set.tele.del.sent', 'Erasure requested — you will be e-mailed once it is done.')
+        : t('set.tele.exp.sent', 'Export requested — the package is e-mailed to your account address.'));
+    } catch (e) {
+      const code = e?.data?.error || e?.error;
+      toast.error(code === 'telemetry_not_configured' || code === 'telemetry_unreachable'
+        ? t('set.tele.off', 'The telemetry service is not reachable right now. Try again later.')
+        : t('set.tele.fail', 'The request could not be filed.'));
+    } finally { setBusy(''); }
+  };
+  return (
+    <Row icon={Package} title={t('set.tele', 'BMM telemetry — my data')} desc={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
+      <div className="flex flex-col gap-1.5 items-end">
+        {links.map((l) => (
+          <div key={l.id} className="flex items-center gap-1.5">
+            <span className="font-mono text-[11px] text-[var(--muted)]" title={l.creatorId}>{l.displayName || l.creatorId.slice(0, 10) + '…'}</span>
+            <Button size="sm" variant="ghost" loading={busy === `export:${l.creatorId}`} disabled={!!busy} onClick={() => file(l.creatorId, 'export')}>{t('set.tele.export', 'Export')}</Button>
+            <Button size="sm" variant="danger" loading={busy === `delete:${l.creatorId}`} disabled={!!busy} onClick={() => file(l.creatorId, 'delete')}>{t('set.tele.erase', 'Erase')}</Button>
+          </div>
+        ))}
+      </div>
+    </Row>
+  );
+}
 
 /* ─────────────────────────  Settings  ───────────────────────── */
 // Device-local preferences (nothing account-bound): appearance, language, the
@@ -134,6 +190,7 @@ export function Settings() {
           <Row icon={Cookie} title={t('set.cookies', 'Analytics cookies')} desc={t('set.cookies.d', 'Essential keeps you signed in; All also enables privacy-friendly, first-party page analytics.')}>
             <Select value={consent} onChange={(e) => setCookie(e.target.value)} className="!w-auto"><option value="essential">{t('set.essential', 'Essential only')}</option><option value="all">{t('set.all', 'Accept all')}</option></Select>
           </Row>
+          <TelemetryRequests Row={Row} />
           <div className="pt-3 text-xs text-[var(--muted)]">
             {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
           </div>

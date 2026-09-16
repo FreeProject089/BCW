@@ -390,6 +390,51 @@ pub async fn set_meta(pool: &PgPool, key: &str, value: &str) {
         .bind(key).bind(value).execute(pool).await;
 }
 
+/// The sampling document (`meta.sampling`), normalised; the defaults when unset.
+pub async fn get_sampling(pool: &PgPool) -> Value {
+    let raw: Option<(Option<String>,)> = sqlx::query_as("SELECT value FROM meta WHERE key='sampling'")
+        .fetch_optional(pool).await.ok().flatten();
+    match raw.and_then(|r| r.0).and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
+        Some(v) => crate::sampling::normalize(&v),
+        None => crate::sampling::default_sampling(),
+    }
+}
+pub async fn set_sampling(pool: &PgPool, doc: &Value) {
+    set_meta(pool, "sampling", &doc.to_string()).await;
+}
+
+/// Packets matching a creator id (exact) or a packet-id prefix, with size + deletion state.
+pub async fn user_packets(pool: &PgPool, needle: &str) -> Vec<Value> {
+    let needle = needle.trim();
+    if needle.is_empty() { return Vec::new(); }
+    let like = format!("{}%", needle.replace('%', "").replace('_', ""));
+    let rows: Vec<(String, String, i64, i64, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT packet_id, COALESCE(MAX(distinct_id),''), COUNT(*), COALESCE(SUM(pg_column_size(props)),0)::bigint, MIN(ts_ms), MAX(ts_ms)
+         FROM events WHERE packet_id IS NOT NULL AND packet_id <> '' AND (distinct_id = $1 OR packet_id LIKE $2)
+         GROUP BY packet_id ORDER BY MAX(ts_ms) DESC LIMIT 300",
+    ).bind(needle).bind(&like).fetch_all(pool).await.unwrap_or_default();
+    let mut out = Vec::new();
+    for (pid, did, n, bytes, first, last) in rows {
+        let del = deletion_row(pool, &pid).await;
+        out.push(json!({ "packet_id": pid, "distinct_id": did, "events": n, "bytes": bytes, "first_event": first, "last_event": last, "deletion": del }));
+    }
+    out
+}
+/// Raw rows of the given packets (events + benchmarks; replays as decoded streams).
+pub async fn packets_dump(pool: &PgPool, ids: &[String]) -> Value {
+    if ids.is_empty() { return json!({ "packets": [], "events": [], "benchmarks": [] }); }
+    let ev: Option<(Option<Value>,)> = sqlx::query_as("SELECT to_jsonb(array_agg(x ORDER BY x.ts_ms)) FROM events x WHERE packet_id = ANY($1)")
+        .bind(ids).fetch_optional(pool).await.ok().flatten();
+    let bm: Option<(Option<Value>,)> = sqlx::query_as("SELECT to_jsonb(array_agg(x ORDER BY x.ts_ms)) FROM benchmarks x WHERE packet_id = ANY($1)")
+        .bind(ids).fetch_optional(pool).await.ok().flatten();
+    json!({
+        "packets": ids,
+        "exported_at": now_ms(),
+        "events": ev.and_then(|r| r.0).unwrap_or_else(|| json!([])),
+        "benchmarks": bm.and_then(|r| r.0).unwrap_or_else(|| json!([])),
+    })
+}
+
 /// Total on-disk size of the database (bytes).
 pub async fn db_size_bytes(pool: &PgPool) -> i64 {
     sqlx::query_as::<_, (Option<i64>,)>("SELECT pg_database_size(current_database())")
@@ -750,24 +795,76 @@ pub async fn request_deletion(pool: &PgPool, pid: &str, delay_h: i64) -> Value {
     json!({ "packet_id": pid, "requested_at": requested, "scheduled_at": scheduled, "status": "pending" })
 }
 
-// ── GDPR data-access requests ─────────────────────────────────────────────────
-pub async fn insert_data_request(pool: &PgPool, creator_id: &str, email: &str) -> Value {
-    let row: Result<(i64,), _> = sqlx::query_as(
-        "INSERT INTO data_requests(creator_id,email) VALUES($1,$2) RETURNING id")
-        .bind(creator_id).bind(email).fetch_one(pool).await;
-    json!({ "id": row.map(|r| r.0).unwrap_or(0) })
+// ── GDPR data requests (export | delete) ──────────────────────────────────────
+// One row per request. `email` is the typed address for an UNLINKED install; a request
+// for a linked account carries `account_id` instead and BCWEB resolves the address at
+// notification time (we never store it — `account_email` is kept only when BCWEB chose
+// to return it, for the admin screen). `result` is what processing did (row counts,
+// mail outcome), `status` walks pending → done | rejected | failed.
+const DATA_REQUEST_COLS: &str = "id, creator_id, kind, source, email, account_id, account_email, note, status, result,     (EXTRACT(EPOCH FROM created_at)*1000)::bigint, (EXTRACT(EPOCH FROM decided_at)*1000)::bigint,     (EXTRACT(EPOCH FROM notified_at)*1000)::bigint, processed_by";
+type DataRequestRow = (i64, String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, String, Value, i64, Option<i64>, Option<i64>, Option<String>);
+fn data_request_json(r: DataRequestRow) -> Value {
+    json!({
+        "id": r.0, "creator_id": r.1, "kind": r.2, "source": r.3, "email": r.4, "account_id": r.5,
+        "account_email": r.6, "note": r.7, "status": r.8, "result": r.9, "created_ms": r.10,
+        "decided_ms": r.11, "notified_ms": r.12, "processed_by": r.13,
+    })
 }
-pub async fn list_data_requests(pool: &PgPool) -> Value {
-    let rows: Vec<(i64, String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, creator_id, email, status, (EXTRACT(EPOCH FROM created_at)*1000)::bigint \
-         FROM data_requests ORDER BY created_at DESC LIMIT 200")
+
+pub struct NewDataRequest<'a> {
+    pub creator_id: &'a str,
+    pub kind: &'a str,
+    pub source: &'a str,
+    pub email: Option<&'a str>,
+    pub account_id: Option<&'a str>,
+    pub account_email: Option<&'a str>,
+    pub note: Option<&'a str>,
+}
+pub async fn insert_data_request(pool: &PgPool, r: &NewDataRequest<'_>) -> i64 {
+    let row: Result<(i64,), _> = sqlx::query_as(
+        "INSERT INTO data_requests(creator_id,kind,source,email,account_id,account_email,note) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id")
+        .bind(r.creator_id).bind(r.kind).bind(r.source).bind(r.email).bind(r.account_id).bind(r.account_email).bind(r.note)
+        .fetch_one(pool).await;
+    row.map(|r| r.0).unwrap_or(0)
+}
+/// An open request of the same kind for the same identity — filing twice must not
+/// queue two erasures (or mail two packages).
+pub async fn open_data_request(pool: &PgPool, creator_id: &str, kind: &str) -> Option<i64> {
+    sqlx::query_as::<_, (i64,)>("SELECT id FROM data_requests WHERE creator_id=$1 AND kind=$2 AND status='pending' ORDER BY id DESC LIMIT 1")
+        .bind(creator_id).bind(kind).fetch_optional(pool).await.ok().flatten().map(|r| r.0)
+}
+pub async fn list_data_requests(pool: &PgPool) -> Vec<Value> {
+    let rows: Vec<DataRequestRow> = sqlx::query_as(&format!("SELECT {DATA_REQUEST_COLS} FROM data_requests ORDER BY (status='pending') DESC, created_at DESC LIMIT 300"))
         .fetch_all(pool).await.unwrap_or_default();
-    json!(rows.iter().map(|r| json!({
-        "id": r.0, "creator_id": r.1, "email": r.2, "status": r.3, "created_ms": r.4
-    })).collect::<Vec<_>>())
+    rows.into_iter().map(data_request_json).collect()
+}
+pub async fn get_data_request(pool: &PgPool, id: i64) -> Option<Value> {
+    let row: Option<DataRequestRow> = sqlx::query_as(&format!("SELECT {DATA_REQUEST_COLS} FROM data_requests WHERE id=$1"))
+        .bind(id).fetch_optional(pool).await.ok().flatten();
+    row.map(data_request_json)
+}
+pub async fn pending_data_request_count(pool: &PgPool) -> i64 {
+    sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM data_requests WHERE status='pending'")
+        .fetch_one(pool).await.map(|r| r.0).unwrap_or(0)
+}
+/// Deletion requests due for automatic processing: pending, filed at least `delay_h` ago
+/// (the same review delay packet deletions get). Export requests never wait.
+pub async fn due_data_requests(pool: &PgPool, delay_h: i64) -> Vec<Value> {
+    let rows: Vec<DataRequestRow> = sqlx::query_as(&format!(
+        "SELECT {DATA_REQUEST_COLS} FROM data_requests WHERE status='pending' AND          (kind='export' OR created_at <= now() - ($1::bigint * interval '1 hour')) ORDER BY id ASC LIMIT 20"))
+        .bind(delay_h).fetch_all(pool).await.unwrap_or_default();
+    rows.into_iter().map(data_request_json).collect()
+}
+/// Close a request: status + what happened. `account_email` is dropped on close so an
+/// address never outlives the request that needed it.
+pub async fn close_data_request(pool: &PgPool, id: i64, status: &str, result: &Value, by: &str, notified: bool) -> bool {
+    sqlx::query(
+        "UPDATE data_requests SET status=$2, result=$3, processed_by=$4, decided_at=now(),          notified_at = CASE WHEN $5 THEN now() ELSE notified_at END, account_email=NULL WHERE id=$1")
+        .bind(id).bind(status).bind(result).bind(by).bind(notified)
+        .execute(pool).await.map(|r| r.rows_affected() > 0).unwrap_or(false)
 }
 pub async fn decide_data_request(pool: &PgPool, id: i64, status: &str) -> bool {
-    sqlx::query("UPDATE data_requests SET status=$2, decided_at=now() WHERE id=$1")
+    sqlx::query("UPDATE data_requests SET status=$2, decided_at=now() WHERE id=$1 AND status='pending'")
         .bind(id).bind(status).execute(pool).await.map(|r| r.rows_affected() > 0).unwrap_or(false)
 }
 pub async fn decide_deletion(pool: &PgPool, pid: &str, action: &str, by: &str) -> Option<Value> {

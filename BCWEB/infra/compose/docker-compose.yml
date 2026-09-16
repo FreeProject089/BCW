@@ -163,6 +163,10 @@ services:
       # match the telemetry service's ADMIN_KEY (same TELEMETRY_ADMIN_KEY var below).
       TELEMETRY_INTERNAL_URL: ${TELEMETRY_INTERNAL_URL:-http://telemetry:8900}
       TELEMETRY_ADMIN_KEY: ${TELEMETRY_ADMIN_KEY:-change-me-admin}
+      # The PUBLIC ingest key, so a signed-in user can file a GDPR export / erasure request
+      # for one of their linked BMM installs from Settings (POST /me/telemetry/data-request
+      # → the service's /data-request). Same value the telemetry service gets as API_KEY.
+      TELEMETRY_API_KEY: ${TELEMETRY_API_KEY:-bmm_pk_a8bc7a0dba3faca94dd497aab3c4a5e8d56f13fb}
       DISCORD_CONTACT_WEBHOOK: ${DISCORD_CONTACT_WEBHOOK:-}
       # Operator knobs. Compose must forward these or setting them in .env does NOTHING in
       # Docker — the container simply never sees them and the code falls back to its default.

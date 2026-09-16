@@ -23,6 +23,8 @@ const Bmm = lazy(() => import("./pages/Bmm"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Storage = lazy(() => import("./pages/Storage"));
 const Docs = lazy(() => import("./pages/Docs"));
+const DataRequests = lazy(() => import("./pages/DataRequests"));
+const Settings = lazy(() => import("./pages/Settings"));
 
 function Spinner({ label }: { label: string }) {
   return (
@@ -102,6 +104,8 @@ function Shell() {
           <Route path="admin" element={<Gate><Admin /></Gate>} />
           <Route path="storage" element={<Gate><Storage /></Gate>} />
           <Route path="docs" element={<Gate><Docs /></Gate>} />
+          <Route path="data-requests" element={<Gate><DataRequests /></Gate>} />
+          <Route path="settings" element={<Gate><Settings /></Gate>} />
         </Route>
       </Routes>
   );

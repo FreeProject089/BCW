@@ -814,6 +814,9 @@ pub async fn compute_stats(pool: &PgPool, cfg: &Config) -> Value {
         "1d": db::timeseries(pool, 86_400_000, 30).await,  // last 30d
     });
     let pending = db::pending_deletion_count(pool).await;
+    let pending_requests = db::pending_data_request_count(pool).await;
+    let retention_days = db::get_meta_i64(pool, "retention_days", cfg.retention_days).await;
+    let delete_delay_h = db::get_meta_i64(pool, "delete_delay_h", cfg.delete_delay_h).await;
 
     let users_out: Vec<Value> = {
         let mut v: Vec<Value> = uarr
@@ -894,7 +897,7 @@ pub async fn compute_stats(pool: &PgPool, cfg: &Config) -> Value {
         "live": live, "live_count": live_count,
         "benchmarks_recent": benchmarks_recent, "benchmarks_ops": benchmarks_ops,
         "users": users_out,
-        "privacy": { "retention_days": cfg.retention_days, "delete_delay_h": cfg.delete_delay_h, "pending_deletions": pending },
+        "privacy": { "retention_days": retention_days, "delete_delay_h": delete_delay_h, "pending_deletions": pending, "pending_requests": pending_requests },
         "updated": now,
     })
 }

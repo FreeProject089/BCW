@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "../lib/store";
 import { Card, Empty } from "../components/ui";
@@ -154,7 +155,7 @@ export default function Storage() {
     apiGet("/api/admin/storage").then(setData).catch(() => setData({ tables: [], replays: [], packets: [] }));
     apiGet("/api/admin/audit").then((r) => setAudit(r.audit || [])).catch(() => setAudit([]));
     apiGet("/api/admin/recaps").then((r) => setRecaps(r.recaps || [])).catch(() => setRecaps([]));
-    apiGet("/api/admin/data-requests").then((r) => setDataReqs(Array.isArray(r) ? r : [])).catch(() => setDataReqs([]));
+    apiGet("/api/admin/data-requests").then((r) => setDataReqs(Array.isArray(r) ? r : Array.isArray(r?.requests) ? r.requests : [])).catch(() => setDataReqs([]));
   }, []);
   const decideDataReq = async (id: number, status: string) => {
     try { await apiPost("/api/admin/data-request/decide", { id, status }); } catch { /* */ }
@@ -409,20 +410,21 @@ export default function Storage() {
         ) : <Empty>Aucune action enregistrée.</Empty>; })()}
       </Section>
 
-      {/* ── GDPR data-access requests (review + e-mail the export manually) ── */}
-      <Card title={`Demandes d'accès aux données · ${dataReqs.filter((r) => r.status === "pending").length}`}>
+      {/* ── GDPR data requests — the full queue (file, process, download) lives on /data-requests ── */}
+      <Card title={`Demandes RGPD (export / effacement) · ${dataReqs.filter((r) => r.status === "pending").length} en attente`} right={<Link to="/data-requests" className="text-xs text-brand">Ouvrir la file complète →</Link>}>
         {dataReqs.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr>
-                <th className="th">Créé</th><th className="th">E-mail</th><th className="th">Creator ID</th>
+                <th className="th">Créé</th><th className="th">Type</th><th className="th">Destinataire</th><th className="th">Creator ID</th>
                 <th className="th">État</th><th className="th text-right">Actions</th>
               </tr></thead>
               <tbody>
                 {dataReqs.map((r: any) => (
                   <tr key={r.id} className="hover:bg-panel2">
                     <td className="td text-sub whitespace-nowrap">{fmtDateTime(r.created_ms)}</td>
-                    <td className="td font-mono text-xs">{r.email}</td>
+                    <td className="td text-xs">{r.kind === "delete" ? "effacement" : "export"}</td>
+                    <td className="td font-mono text-xs">{r.account_id ? "compte lié" : r.email || "—"}</td>
                     <td className="td font-mono text-xs text-sub" title={r.creator_id}>{(r.creator_id || "").slice(0, 16)}…</td>
                     <td className="td">{r.status === "pending"
                       ? <span className="pill bg-brand/20 text-brand">en attente</span>
@@ -431,7 +433,7 @@ export default function Storage() {
                         : <span className="pill bg-bad/20 text-bad">rejeté</span>}</td>
                     <td className="td text-right whitespace-nowrap">
                       {r.status === "pending" && <>
-                        <button onClick={() => decideDataReq(r.id, "done")} className="pill bg-good/20 text-good mr-1">Marquer envoyé</button>
+                        <button onClick={() => decideDataReq(r.id, "done")} className="pill bg-good/20 text-good mr-1">{r.kind === "delete" ? "Effacer maintenant" : "Traiter (envoyer)"}</button>
                         <button onClick={() => decideDataReq(r.id, "rejected")} className="pill bg-bad/20 text-bad">Rejeter</button>
                       </>}
                     </td>

@@ -2,9 +2,12 @@
 //! Data persists in Postgres, so a server restart keeps every past event.
 #![recursion_limit = "512"]
 
+mod bc;
 mod config;
 mod db;
+mod gdpr;
 mod geo;
+mod sampling;
 mod state;
 mod stats;
 
@@ -85,7 +88,16 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/admin/recap/get", get(admin_recap_get))
         .route("/api/admin/recap/import", post(admin_recap_import))
         .route("/api/admin/data-requests", get(admin_data_requests))
+        .route("/api/admin/data-request", post(admin_data_request_create))
         .route("/api/admin/data-request/decide", post(admin_data_request_decide))
+        .route("/api/admin/data-request/process", post(admin_data_request_process))
+        .route("/api/admin/gdpr/identity", get(admin_gdpr_identity))
+        .route("/api/admin/gdpr/export", get(admin_gdpr_export))
+        .route("/api/admin/user-packets", get(admin_user_packets))
+        .route("/api/admin/user-packets/delete", post(admin_user_packets_delete))
+        .route("/api/admin/user-packets/download", get(admin_user_packets_download))
+        .route("/api/admin/config", get(admin_config_get).post(admin_config_set))
+        .route("/api/admin/sampling", get(admin_sampling_get).post(admin_sampling_set))
         .route_layer(axum::middleware::from_fn_with_state(st.clone(), require_viewer));
 
     // Public routes: ingest (public api_key) + client-facing helpers + the SPA
@@ -96,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/capture/", post(ingest_handler))
         .route("/delete-request", post(delete_request))
         .route("/data-request", post(data_request))
+        .route("/config", get(client_config))
         .route("/api/packet-status", get(packet_status))
         .fallback(static_or_spa);
 
@@ -169,7 +182,8 @@ fn spawn_loops(st: Shared) {
             loop {
                 iv.tick().await;
                 db::run_due_deletions(&st.pool).await;
-                db::purge_retention(&st.pool, st.cfg.retention_days).await;
+                let days = db::get_meta_i64(&st.pool, "retention_days", st.cfg.retention_days).await;
+                db::purge_retention(&st.pool, days).await;
                 db::sweep_crashes(&st.pool, 180_000).await;
                 db::compact_replays(&st.pool).await; // merge closed sessions' chunks
             }
@@ -204,10 +218,28 @@ fn spawn_loops(st: Shared) {
             }
         });
     }
+    // GDPR data requests: exports are processed as soon as they are filed, deletions
+    // once the review delay has passed (an admin can also process either one now).
+    {
+        let st = st.clone();
+        tokio::spawn(async move {
+            let mut iv = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                iv.tick().await;
+                let delay = db::get_meta_i64(&st.pool, "delete_delay_h", st.cfg.delete_delay_h).await;
+                for r in db::due_data_requests(&st.pool, delay).await {
+                    if let Some(id) = r.get("id").and_then(Value::as_i64) {
+                        process_data_request(&st, id, "auto", "", "").await;
+                    }
+                }
+            }
+        });
+    }
     // run due deletions + purge once at boot
     tokio::spawn(async move {
         db::run_due_deletions(&st.pool).await;
-        db::purge_retention(&st.pool, st.cfg.retention_days).await;
+        let days = db::get_meta_i64(&st.pool, "retention_days", st.cfg.retention_days).await;
+        db::purge_retention(&st.pool, days).await;
     });
 }
 
@@ -323,6 +355,14 @@ async fn ingest_handler(
     if batch.len() > st.cfg.max_batch {
         return (StatusCode::PAYLOAD_TOO_LARGE, Json(json!({ "error": "batch too large", "max": st.cfg.max_batch })));
     }
+    // Server-side sampling: the same deterministic rule the client applies, so an old
+    // client that ignores the document is trimmed to the same population.
+    let sampling = db::get_sampling(&st.pool).await;
+    let batch: Vec<Value> = batch.into_iter().filter(|ev| {
+        let id = ev.get("distinct_id").and_then(Value::as_str).unwrap_or("");
+        let name = ev.get("event").and_then(Value::as_str).unwrap_or("");
+        sampling::allowed(&sampling, id, sampling::kind_of(name))
+    }).collect();
     let n = batch.len();
     for ev in &batch {
         db::ingest(&st, ev, &pid, true).await;
@@ -340,7 +380,18 @@ async fn ingest_handler(
         }
     }
     st.dirty.store(true, Ordering::Relaxed);
-    (StatusCode::OK, Json(json!({ "status": 1, "received": n, "packet_id": pid })))
+    (StatusCode::OK, Json(json!({ "status": 1, "received": n, "packet_id": pid, "sampling": sampling })))
+}
+
+/// Client handshake: the sampling document (and the retention terms, for the privacy
+/// screen) for a client that holds the public ingest key. Exposes no collected data.
+async fn client_config(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> (StatusCode, Json<Value>) {
+    if !ok_key(&st.cfg, q.get("api_key").map(String::as_str)) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "bad key" })));
+    }
+    let days = db::get_meta_i64(&st.pool, "retention_days", st.cfg.retention_days).await;
+    let delay = db::get_meta_i64(&st.pool, "delete_delay_h", st.cfg.delete_delay_h).await;
+    (StatusCode::OK, Json(json!({ "sampling": db::get_sampling(&st.pool).await, "retention_days": days, "delete_delay_h": delay })))
 }
 
 // Best source IP for the request: first X-Forwarded-For hop (ngrok/proxy), then
@@ -385,31 +436,296 @@ async fn delete_request(State(st): State<Shared>, Json(body): Json<Value>) -> (S
     (StatusCode::OK, Json(json!({ "status": 1, "scheduled_at": row["scheduled_at"], "delay_hours": st.cfg.delete_delay_h })))
 }
 
-// Public: a user files a GDPR data-access request (admin reviews + e-mails manually).
+// ── GDPR data requests ─────────────────────────────────────────────────────────
+// A request is (creator id, kind). The identity behind the creator id is asked to BCWEB
+// at filing time (so the screen shows the linked account) and again at processing time
+// (so the mail goes to the account's CURRENT address, which we never store).
+async fn file_data_request(st: &Shared, creator: &str, kind: &str, source: &str, email: Option<&str>, note: Option<&str>) -> Result<Value, (StatusCode, Json<Value>)> {
+    if creator.is_empty() || creator.len() > 200 {
+        return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "creator_id required" }))));
+    }
+    let kind = if kind == "delete" { "delete" } else { "export" };
+    let identity = bc::lookup_identity(&st.cfg, creator).await;
+    let linked = identity.get("linked").and_then(Value::as_bool).unwrap_or(false);
+    let email = email.map(str::trim).filter(|e| !e.is_empty());
+    // Linked account: the address is the account's, never a typed one (a typed address on
+    // a linked install would let anyone redirect someone else's export). Unlinked: an
+    // address is the only way to answer, so it is required.
+    let email = if linked { None } else {
+        match email {
+            Some(e) if e.contains('@') && e.len() >= 5 && e.len() <= 254 => Some(e),
+            _ => return Err((StatusCode::BAD_REQUEST, Json(json!({ "error": "email required for an unlinked install", "linked": false })))),
+        }
+    };
+    if let Some(open) = db::open_data_request(&st.pool, creator, kind).await {
+        return Ok(json!({ "status": 1, "id": open, "duplicate": true, "linked": linked }));
+    }
+    let id = db::insert_data_request(&st.pool, &db::NewDataRequest {
+        creator_id: creator, kind, source, email,
+        account_id: identity.get("userId").and_then(Value::as_str),
+        account_email: identity.get("email").and_then(Value::as_str),
+        note,
+    }).await;
+    db::audit(&st.pool, "data_request_create", &format!("#{id} {kind}"), "", "", json!({ "source": source, "creator_id": creator, "linked": linked })).await;
+    st.dirty.store(true, Ordering::Relaxed);
+    Ok(json!({ "status": 1, "id": id, "linked": linked, "kind": kind }))
+}
+
+// Public: a BMM install (or BCWEB on behalf of a signed-in user) files a request.
 async fn data_request(State(st): State<Shared>, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
     if !ok_key(&st.cfg, body.get("api_key").and_then(Value::as_str)) {
         return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "bad key" })));
     }
     let creator = body.get("creator_id").and_then(Value::as_str).unwrap_or("").to_string();
-    let email = match body.get("email").and_then(Value::as_str) {
-        Some(e) if e.contains('@') && e.len() >= 5 => e.to_string(),
-        _ => return (StatusCode::BAD_REQUEST, Json(json!({ "error": "missing/invalid email" }))),
-    };
-    let row = db::insert_data_request(&st.pool, &creator, &email).await;
-    (StatusCode::OK, Json(json!({ "status": 1, "id": row["id"] })))
+    let kind = body.get("kind").and_then(Value::as_str).unwrap_or("export");
+    let source = match body.get("source").and_then(Value::as_str) { Some("bcweb") => "bcweb", _ => "bmm" };
+    match file_data_request(&st, &creator, kind, source, body.get("email").and_then(Value::as_str), None).await {
+        Ok(v) => (StatusCode::OK, Json(v)),
+        Err(e) => e,
+    }
 }
 
-// Admin: list pending data-access requests.
+// Admin: the queue (pending first).
 async fn admin_data_requests(State(st): State<Shared>) -> Json<Value> {
-    Json(db::list_data_requests(&st.pool).await)
+    let delay = db::get_meta_i64(&st.pool, "delete_delay_h", st.cfg.delete_delay_h).await;
+    Json(json!({ "requests": db::list_data_requests(&st.pool).await, "delete_delay_h": delay, "bc_configured": !st.cfg.bc_api_url.is_empty() }))
 }
-// Admin: mark a data-access request done/rejected.
-async fn admin_data_request_decide(State(st): State<Shared>, Json(body): Json<Value>) -> (StatusCode, Json<Value>) {
+// Admin: file a request from the dashboard (on behalf of a person who wrote in).
+async fn admin_data_request_create(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let creator = body.get("creator_id").and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let kind = body.get("kind").and_then(Value::as_str).unwrap_or("export");
+    let note = body.get("note").and_then(Value::as_str).map(|n| n.chars().take(500).collect::<String>());
+    let res = file_data_request(&st, &creator, kind, "dashboard", body.get("email").and_then(Value::as_str), note.as_deref()).await;
+    if let Ok(v) = &res {
+        let (ip, fp) = admin_identity(&headers, addr);
+        db::audit(&st.pool, "data_request_create", &format!("#{} {kind}", v["id"]), &ip, &fp, json!({ "source": "dashboard" })).await;
+    }
+    match res { Ok(v) => (StatusCode::OK, Json(v)), Err(e) => e }
+}
+// Admin: reject a pending request (nothing is exported or erased; the person is told).
+async fn admin_data_request_decide(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
     let id = body.get("id").and_then(Value::as_i64).unwrap_or(0);
-    let status = body.get("status").and_then(Value::as_str).unwrap_or("done");
-    let status = if status == "rejected" { "rejected" } else { "done" };
-    let ok = db::decide_data_request(&st.pool, id, status).await;
+    let status = body.get("status").and_then(Value::as_str).unwrap_or("rejected");
+    let (ip, fp) = admin_identity(&headers, addr);
+    if status == "done" {
+        // legacy button: process for real instead of just flipping the flag
+        let out = process_data_request(&st, id, "dashboard", &ip, &fp).await;
+        return (StatusCode::OK, Json(out));
+    }
+    let ok = db::decide_data_request(&st.pool, id, "rejected").await;
+    if ok {
+        db::audit(&st.pool, "data_request_reject", &format!("#{id}"), &ip, &fp, json!({})).await;
+        if let Some(r) = db::get_data_request(&st.pool, id).await {
+            let to = notify_target(&r);
+            if !to.is_null() {
+                let res = bc::notify(&st.cfg, json!({ "kind": r["kind"], "outcome": "rejected", "requestId": id, "creatorId": r["creator_id"], "to": to })).await;
+                let _ = db::close_data_request(&st.pool, id, "rejected", &json!({ "mail": res }), "dashboard", true).await;
+            }
+        }
+        st.dirty.store(true, Ordering::Relaxed);
+    }
     (StatusCode::OK, Json(json!({ "ok": ok })))
+}
+// Admin: process a pending request now (export → mail the package; delete → erase now).
+async fn admin_data_request_process(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let id = body.get("id").and_then(Value::as_i64).unwrap_or(0);
+    let (ip, fp) = admin_identity(&headers, addr);
+    let out = process_data_request(&st, id, "dashboard", &ip, &fp).await;
+    let code = if out.get("error").is_some() { StatusCode::BAD_REQUEST } else { StatusCode::OK };
+    (code, Json(out))
+}
+
+/// Where the confirmation goes: the linked account (BCWEB resolves the address) or the
+/// typed address. Null when neither is known (the request is closed without a mail and
+/// the screen says so).
+fn notify_target(r: &Value) -> Value {
+    if let Some(uid) = r.get("account_id").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return json!({ "userId": uid });
+    }
+    if let Some(e) = r.get("email").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        return json!({ "email": e });
+    }
+    Value::Null
+}
+
+/// Attach the package to the mail when it fits; above that the mail says an admin will
+/// hand it over and the dashboard keeps the download button.
+const MAIL_ATTACHMENT_MAX: usize = 12 * 1024 * 1024;
+
+/// The one path every processing goes through (admin button, legacy "done" button, the
+/// auto loop). Idempotent on status: a request that is not pending is left alone.
+async fn process_data_request(st: &Shared, id: i64, by: &str, ip: &str, fp: &str) -> Value {
+    let Some(r) = db::get_data_request(&st.pool, id).await else { return json!({ "error": "not found" }) };
+    if r["status"].as_str() != Some("pending") { return json!({ "error": "not pending", "status": r["status"] }); }
+    let creator = r["creator_id"].as_str().unwrap_or("").to_string();
+    let kind = r["kind"].as_str().unwrap_or("export").to_string();
+    // Re-resolve the identity now: the link may have changed since filing, and every
+    // linked install is covered by one request.
+    let identity = bc::lookup_identity(&st.cfg, &creator).await;
+    let ids = bc::identity_ids(&creator, &identity);
+    let linked = identity.get("linked").and_then(Value::as_bool).unwrap_or(false);
+    // A request filed for an unlinked install that got linked since goes to the account
+    // (and vice versa the typed address is kept: the person proved nothing else).
+    let mut target = notify_target(&r);
+    if linked {
+        if let Some(uid) = identity.get("userId").and_then(Value::as_str) { target = json!({ "userId": uid }); }
+    }
+    let mut result = serde_json::Map::new();
+    result.insert("creator_ids".into(), json!(ids));
+    result.insert("linked".into(), json!(linked));
+    let mut mail_payload = json!({ "kind": kind, "outcome": "done", "requestId": id, "creatorId": creator, "creatorIds": ids, "to": target });
+    if kind == "delete" {
+        let erased = gdpr::erase_identity(&st.pool, &ids).await;
+        db::audit(&st.pool, "gdpr_erase", &creator, ip, fp, json!({ "request": id, "by": by, "erased": erased, "ids": ids.len() })).await;
+        mail_payload["erased"] = erased.clone();
+        result.insert("erased".into(), erased);
+    } else {
+        let doc = gdpr::export_identity(&st.pool, &ids).await;
+        let zip = gdpr::build_zip(&doc, Some(&identity));
+        db::audit(&st.pool, "gdpr_export", &creator, ip, fp, json!({ "request": id, "by": by, "counts": doc["counts"], "bytes": zip.len() })).await;
+        result.insert("counts".into(), doc["counts"].clone());
+        result.insert("bytes".into(), json!(zip.len()));
+        mail_payload["counts"] = doc["counts"].clone();
+        if zip.len() <= MAIL_ATTACHMENT_MAX {
+            use base64::Engine;
+            mail_payload["attachment"] = json!({ "filename": format!("bmm-telemetry-export-{}.zip", gdpr::short_id(&creator)), "base64": base64::engine::general_purpose::STANDARD.encode(&zip) });
+            result.insert("attached".into(), json!(true));
+        } else {
+            mail_payload["tooLarge"] = json!(true);
+            result.insert("attached".into(), json!(false));
+        }
+    }
+    let notified = if target.is_null() {
+        result.insert("mail".into(), json!({ "ok": false, "reason": "no recipient (unlinked install, no address)" }));
+        false
+    } else {
+        let res = bc::notify(&st.cfg, mail_payload).await;
+        let ok = res.get("ok").and_then(Value::as_bool).unwrap_or(false);
+        result.insert("mail".into(), res);
+        ok
+    };
+    let result = Value::Object(result);
+    db::close_data_request(&st.pool, id, "done", &result, by, notified).await;
+    st.dirty.store(true, Ordering::Relaxed);
+    json!({ "ok": true, "id": id, "kind": kind, "result": result })
+}
+
+// Admin: what BCWEB knows about a creator id (linked account or not) — for the screen.
+async fn admin_gdpr_identity(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let id = q.get("creator_id").cloned().unwrap_or_default();
+    if id.is_empty() { return Json(json!({ "error": "creator_id required" })); }
+    let identity = bc::lookup_identity(&st.cfg, &id).await;
+    let ids = bc::identity_ids(&id, &identity);
+    Json(json!({ "creator_id": id, "identity": identity, "creator_ids": ids, "bc_configured": !st.cfg.bc_api_url.is_empty() }))
+}
+// Admin: download one person's package now (zip). Audited like every export.
+async fn admin_gdpr_export(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Response {
+    let id = q.get("creator_id").cloned().unwrap_or_default();
+    if id.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "creator_id required" }))).into_response();
+    }
+    let identity = bc::lookup_identity(&st.cfg, &id).await;
+    let ids = bc::identity_ids(&id, &identity);
+    let doc = gdpr::export_identity(&st.pool, &ids).await;
+    let zip = gdpr::build_zip(&doc, Some(&identity));
+    let (ip, fp) = admin_identity(&headers, addr);
+    db::audit(&st.pool, "gdpr_export", &id, &ip, &fp, json!({ "by": "dashboard-download", "counts": doc["counts"], "bytes": zip.len() })).await;
+    let name = format!("attachment; filename=\"bmm-telemetry-export-{}.zip\"", gdpr::short_id(&id));
+    ([(header::CONTENT_TYPE, "application/zip".to_string()), (header::CONTENT_DISPOSITION, name)], zip).into_response()
+}
+
+// ── Admin: packets of one user (the Admin screen's search) ────────────────────
+async fn admin_user_packets(State(st): State<Shared>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let needle = q.get("q").cloned().unwrap_or_default();
+    Json(json!({ "packets": db::user_packets(&st.pool, &needle).await }))
+}
+fn packet_ids_of(body: &Value) -> Vec<String> {
+    body.get("packet_ids").and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(String::from).filter(|s| !s.is_empty()).take(500).collect())
+        .unwrap_or_default()
+}
+async fn admin_user_packets_delete(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    let ids = packet_ids_of(&body);
+    let mut n = 0u64;
+    let (ip, fp) = admin_identity(&headers, addr);
+    for pid in &ids {
+        n += db::erase_packet(&st.pool, pid).await;
+        db::audit(&st.pool, "packet_delete", pid, &ip, &fp, json!({ "batch": ids.len() })).await;
+    }
+    st.dirty.store(true, Ordering::Relaxed);
+    Json(json!({ "ok": true, "deleted_events": n, "packets": ids.len() }))
+}
+async fn admin_user_packets_download(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Query(q): Query<HashMap<String, String>>,
+) -> Json<Value> {
+    let ids: Vec<String> = q.get("packet_ids").map(|s| s.split(',').map(str::trim).filter(|x| !x.is_empty()).map(String::from).take(500).collect()).unwrap_or_default();
+    let (ip, fp) = admin_identity(&headers, addr);
+    db::audit(&st.pool, "packet_download", &ids.join(","), &ip, &fp, json!({ "packets": ids.len() })).await;
+    Json(db::packets_dump(&st.pool, &ids).await)
+}
+
+// ── Admin: runtime config (what BCWEB's Hosting settings panel edits) ─────────
+async fn config_doc(st: &Shared) -> Value {
+    json!({
+        "storageLimitMb": db::get_meta_i64(&st.pool, "storage_limit_mb", st.cfg.soft_db_mb).await,
+        "retentionDays": db::get_meta_i64(&st.pool, "retention_days", st.cfg.retention_days).await,
+        "deleteDelayH": db::get_meta_i64(&st.pool, "delete_delay_h", st.cfg.delete_delay_h).await,
+        "sampling": db::get_sampling(&st.pool).await,
+    })
+}
+async fn admin_config_get(State(st): State<Shared>) -> Json<Value> {
+    Json(json!({ "config": config_doc(&st).await }))
+}
+async fn admin_config_set(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    if let Some(mb) = body.get("storageLimitMb").and_then(Value::as_i64) {
+        db::set_meta(&st.pool, "storage_limit_mb", &mb.max(128).to_string()).await;
+    }
+    if let Some(d) = body.get("retentionDays").and_then(Value::as_i64) {
+        db::set_meta(&st.pool, "retention_days", &d.clamp(1, 3650).to_string()).await;
+    }
+    if let Some(h) = body.get("deleteDelayH").and_then(Value::as_i64) {
+        db::set_meta(&st.pool, "delete_delay_h", &h.clamp(0, 720).to_string()).await;
+    }
+    if let Some(sm) = body.get("sampling") {
+        db::set_sampling(&st.pool, &sampling::normalize(sm)).await;
+    }
+    let (ip, fp) = admin_identity(&headers, addr);
+    db::audit(&st.pool, "config_set", "runtime", &ip, &fp, body.clone()).await;
+    st.dirty.store(true, Ordering::Relaxed);
+    Json(json!({ "ok": true, "config": config_doc(&st).await }))
+}
+async fn admin_sampling_get(State(st): State<Shared>) -> Json<Value> {
+    Json(json!({ "sampling": db::get_sampling(&st.pool).await, "kinds": sampling::KINDS }))
+}
+async fn admin_sampling_set(
+    State(st): State<Shared>, headers: HeaderMap, ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    let doc = sampling::normalize(body.get("sampling").unwrap_or(&body));
+    db::set_sampling(&st.pool, &doc).await;
+    let (ip, fp) = admin_identity(&headers, addr);
+    db::audit(&st.pool, "sampling_set", "sampling", &ip, &fp, doc.clone()).await;
+    st.dirty.store(true, Ordering::Relaxed);
+    Json(json!({ "ok": true, "sampling": doc }))
 }
 
 async fn get_stats(State(st): State<Shared>) -> Json<Value> {

@@ -10,6 +10,8 @@ export default defineConfig({
       "/api": "http://localhost:8900",
       "/batch": "http://localhost:8900",
       "/delete-request": "http://localhost:8900",
+      "/data-request": "http://localhost:8900",
+      "/config": "http://localhost:8900",
     },
   },
   build: { outDir: "dist", chunkSizeWarningLimit: 1500 },

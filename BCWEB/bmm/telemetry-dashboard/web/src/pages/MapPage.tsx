@@ -3,30 +3,39 @@ import { Link, useNavigate } from "react-router-dom";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { createRoot, type Root } from "react-dom/client";
-import { useStats, apiGet } from "../lib/store";
-import { Drawer } from "../components/ui";
+import { Map as MapIcon, Play, Pause, Globe2, Square } from "lucide-react";
+import { useStats, useStore, apiGet, resolvedTheme } from "../lib/store";
+import { Drawer, PageHeader, Segmented, Badge } from "../components/ui";
 import { ProfileAvatar, Flag } from "../components/visuals";
 import { fmtDateTime, dur, nf } from "../lib/format";
 
-// Light raster basemap (CARTO Voyager) — no API key, looks like the Rybbit map.
-const STYLE: any = {
+// Basemap: OpenStreetMap raster tiles, no API key. Light = the standard OSM tiles from the
+// OSMF servers (their usage policy asks for attribution — kept visible — and light use,
+// which an admin dashboard is). Dark = CARTO's "dark matter", drawn from the same OSM data
+// and also key-free; OSM itself publishes no dark style. The style follows the dashboard
+// theme and is swapped in place when the toggle changes.
+const TILES = {
+  light: { url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png", attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors' },
+  dark: { url: "https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png", attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>' },
+};
+const styleFor = (theme: "dark" | "light"): any => ({
   version: 8,
   glyphs: "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf",
-  sources: {
-    base: {
-      type: "raster",
-      tiles: ["https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png"],
-      tileSize: 256,
-      attribution: "© OpenStreetMap © CARTO",
-    },
-  },
+  sources: { base: { type: "raster", tiles: [TILES[theme].url], tileSize: 256, maxzoom: 19, attribution: TILES[theme].attribution } },
   layers: [{ id: "base", type: "raster", source: "base" }],
-};
+});
+
+// User points are clustered by MapLibre itself (a GeoJSON source with `cluster: true`):
+// a hundred installs in one city read as one bubble with a count, not a hundred avatars
+// on top of each other. Zooming into a cluster expands it; a single point opens the user.
+const CLUSTER_SRC = "users";
+const CLUSTER_LAYERS = ["users-cluster", "users-cluster-count", "users-point"];
 
 type Tab = "chrono" | "points" | "pays";
 
 export default function MapPage() {
   const s = useStats()!;
+  const { theme } = useStore();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"2d" | "globe">("globe");
   const [tab, setTab] = useState<Tab>("points");
@@ -38,11 +47,13 @@ export default function MapPage() {
   const markersRef = useRef<{ m: maplibregl.Marker; root: Root; start?: number; end?: number }[]>([]);
   const [t, setT] = useState(0);        // timeline scrub position (ms)
   const [playing, setPlaying] = useState(false);
+  const [styleReady, setStyleReady] = useState(0);
 
   const users = s.map?.users || [];
   const repos = s.map?.repos || [];
   const total = users.length + repos.length;
   const maxC = Math.max(1, ...(s.geo || []).map((g: any) => g.count));
+  const resolved = useMemo(() => resolvedTheme(), [theme]);
 
   const ccOf = (id: string) => s.users.find((u) => u.creator_id === id)?.cc;
 
@@ -70,15 +81,14 @@ export default function MapPage() {
     for (const e of timeline) { lo = Math.min(lo, e.start); hi = Math.max(hi, e.end); }
     return [lo, hi];
   }, [timeline]);
-  // active sessions at the scrub time (or all recent when t not set)
   const activeAtT = useMemo(() => timeline.filter((e: any) => t >= e.start && t <= e.end), [timeline, t]);
 
   // recent sessions for the live panel
   useEffect(() => {
-    const load = () => apiGet("/api/sessions").then((r) => setSessions(r.sessions || []));
+    const load = () => apiGet("/api/sessions").then((r) => setSessions(r.sessions || [])).catch(() => {});
     load();
-    const t = setInterval(load, 8000);
-    return () => clearInterval(t);
+    const iv = setInterval(load, 8000);
+    return () => clearInterval(iv);
   }, []);
 
   // create the map once
@@ -87,7 +97,7 @@ export default function MapPage() {
     let mounted = true;
     const map = new maplibregl.Map({
       container: boxRef.current,
-      style: STYLE,
+      style: styleFor(resolved),
       center: [10, 35],
       zoom: 1.4,
       attributionControl: false,
@@ -96,30 +106,11 @@ export default function MapPage() {
     });
     mapRef.current = map;
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-    // Silence WebGL worker errors that fire after unmount
-    map.on("error", () => { });
-    map.on("load", () => {
-      if (!mounted) return;
-      try { map.setProjection({ type: mode === "globe" ? "globe" : "mercator" } as any); } catch { }
-      // country choropleth source (local, offline-safe)
-      fetch("/world.json").then((r) => r.json()).then((geo) => {
-        if (!mounted) return;
-        try {
-          if (!map.getSource("countries")) {
-            map.addSource("countries", { type: "geojson", data: geo });
-            map.addLayer({
-              id: "country-fill",
-              type: "fill",
-              source: "countries",
-              layout: { visibility: "none" },
-              paint: { "fill-color": "rgba(91,140,255,0.05)", "fill-outline-color": "rgba(255,255,255,0.15)" },
-            });
-          }
-          applyChoropleth();
-        } catch { }
-      }).catch(() => { });
-      try { rebuildMarkers(); } catch { }
-    });
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
+    map.on("error", () => { }); // WebGL worker errors after unmount
+    const onStyle = () => { if (mounted) setStyleReady((n) => n + 1); };
+    map.on("load", onStyle);
+    map.on("style.load", onStyle);
     return () => {
       mounted = false;
       markersRef.current.forEach((x) => { try { x.root.unmount(); } catch { } try { x.m.remove(); } catch { } });
@@ -130,6 +121,35 @@ export default function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // theme → swap the basemap (setStyle drops our layers; `style.load` re-adds them)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    try { map.setStyle(styleFor(resolved)); } catch { }
+  }, [resolved]);
+
+  // every time a style is (re)loaded: projection, country layer, cluster source, markers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReady) return;
+    try { map.setProjection({ type: mode === "globe" ? "globe" : "mercator" } as any); } catch { }
+    ensureClusterLayers();
+    fetch("/world.json").then((r) => r.json()).then((geo) => {
+      const m = mapRef.current;
+      if (!m || m !== map) return;
+      try {
+        if (!m.getSource("countries")) {
+          m.addSource("countries", { type: "geojson", data: geo });
+          m.addLayer({ id: "country-fill", type: "fill", source: "countries", layout: { visibility: "none" }, paint: { "fill-color": "rgba(91,140,255,0.05)", "fill-outline-color": resolved === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)" } }, CLUSTER_LAYERS[0]);
+        }
+        applyChoropleth();
+      } catch { }
+    }).catch(() => { });
+    try { rebuildMarkers(); } catch { }
+    try { applyClusters(); } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [styleReady]);
+
   // projection toggle
   useEffect(() => {
     const map = mapRef.current;
@@ -138,18 +158,66 @@ export default function MapPage() {
     }
   }, [mode]);
 
-  // avatar markers for located users (limited for performance). In "chrono"
-  // mode the user markers come from the session timeline (each carries start/end)
-  // so scrubbing can light up who was connected when.
+  // ── Clusters (Coordonnées tab) ───────────────────────────────────────────────
+  const ensureClusterLayers = () => {
+    const map = mapRef.current;
+    if (!map || map.getSource(CLUSTER_SRC)) return;
+    map.addSource(CLUSTER_SRC, { type: "geojson", data: { type: "FeatureCollection", features: [] }, cluster: true, clusterMaxZoom: 9, clusterRadius: 42 });
+    map.addLayer({
+      id: "users-cluster", type: "circle", source: CLUSTER_SRC, filter: ["has", "point_count"],
+      paint: {
+        "circle-color": ["step", ["get", "point_count"], "#5b8cff", 10, "#37d399", 50, "#f4b740"],
+        "circle-radius": ["step", ["get", "point_count"], 16, 10, 22, 50, 30],
+        "circle-stroke-width": 2, "circle-stroke-color": "rgba(255,255,255,0.55)", "circle-opacity": 0.85,
+      },
+    });
+    map.addLayer({
+      id: "users-cluster-count", type: "symbol", source: CLUSTER_SRC, filter: ["has", "point_count"],
+      layout: { "text-field": ["get", "point_count_abbreviated"], "text-size": 12, "text-font": ["Open Sans Bold", "Noto Sans Bold"] },
+      paint: { "text-color": "#0b0d10" },
+    });
+    map.addLayer({
+      id: "users-point", type: "circle", source: CLUSTER_SRC, filter: ["!", ["has", "point_count"]],
+      paint: { "circle-color": "#5b8cff", "circle-radius": 7, "circle-stroke-width": 2, "circle-stroke-color": "#ffffff" },
+    });
+    map.on("click", "users-cluster", async (e) => {
+      const f = map.queryRenderedFeatures(e.point, { layers: ["users-cluster"] })[0];
+      if (!f) return;
+      const src = map.getSource(CLUSTER_SRC) as maplibregl.GeoJSONSource;
+      try {
+        const zoom = await src.getClusterExpansionZoom(f.properties?.cluster_id);
+        map.easeTo({ center: (f.geometry as any).coordinates, zoom: Math.min(zoom, 12) });
+      } catch { }
+    });
+    map.on("click", "users-point", (e) => {
+      const f = map.queryRenderedFeatures(e.point, { layers: ["users-point"] })[0];
+      const id = f?.properties?.creator_id;
+      if (id) navigate(`/users/${encodeURIComponent(id)}`);
+    });
+    for (const l of ["users-cluster", "users-point"]) {
+      map.on("mouseenter", l, () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", l, () => { map.getCanvas().style.cursor = ""; });
+    }
+  };
+  const applyClusters = () => {
+    const map = mapRef.current;
+    if (!map || !map.getSource(CLUSTER_SRC)) return;
+    const features = tab === "points"
+      ? users.filter((u: any) => u.lon != null && u.lat != null).map((u: any) => ({ type: "Feature", properties: { creator_id: u.creator_id, country: u.country || "" }, geometry: { type: "Point", coordinates: [u.lon, u.lat] } }))
+      : [];
+    (map.getSource(CLUSTER_SRC) as maplibregl.GeoJSONSource).setData({ type: "FeatureCollection", features } as any);
+    for (const l of CLUSTER_LAYERS) if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", tab === "points" ? "visible" : "none");
+  };
+
+  // ── Markers: repos always; users only on the timeline tab (each carries start/end) ──
   const rebuildMarkers = () => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     markersRef.current.forEach((x) => { try { x.root.unmount(); } catch { } try { x.m.remove(); } catch { } });
     markersRef.current = [];
-    const userPts =
-      tab === "chrono"
-        ? timeline.slice(0, 300).map((e: any) => ({ kind: "user", creator_id: e.did, lat: e.lat, lon: e.lon, country: e.country, start: e.start, end: e.end }))
-        : users.slice(0, 200).map((u: any) => ({ ...u, kind: "user" }));
+    const userPts = tab === "chrono"
+      ? timeline.slice(0, 300).map((e: any) => ({ kind: "user", creator_id: e.did, lat: e.lat, lon: e.lon, country: e.country, start: e.start, end: e.end }))
+      : [];
     const pts = [...userPts, ...repos.map((r: any) => ({ ...r, kind: "repo" }))];
     for (const p of pts) {
       if (p.lon == null || p.lat == null) continue;
@@ -162,7 +230,6 @@ export default function MapPage() {
         const root = createRoot(el);
         root.render(
           p.kind === "user" ? (
-            // SAME avatar seed (creator_id) as everywhere else → matches the user's pfp
             <div className="rounded-full ring-2 ring-white/40 shadow" style={{ width: 30, height: 30, overflow: "hidden" }}>
               <ProfileAvatar name={p.creator_id || p.country || "anon"} size={30} />
             </div>
@@ -173,13 +240,8 @@ export default function MapPage() {
           )
         );
         el.addEventListener("click", () => {
-          if (p.kind === "user" && p.creator_id) {
-            navigate(`/users/${encodeURIComponent(p.creator_id)}`);
-          } else if (p.kind === "repo") {
-            // open the matching repo.json entry (full host details)
-            const full = (s.repos || []).find((r: any) => r.host === p.host) || p;
-            setRepoSel(full);
-          }
+          if (p.kind === "user" && p.creator_id) navigate(`/users/${encodeURIComponent(p.creator_id)}`);
+          else if (p.kind === "repo") setRepoSel((s.repos || []).find((r: any) => r.host === p.host) || p);
         });
         const m = new maplibregl.Marker({ element: el }).setLngLat([p.lon, p.lat]).addTo(map);
         markersRef.current.push({ m, root, start: p.start, end: p.end });
@@ -191,7 +253,7 @@ export default function MapPage() {
   // dim timeline markers that aren't active at the current scrub time
   const applyTimelineVis = () => {
     for (const x of markersRef.current) {
-      if (x.start == null) continue; // repos / static markers stay visible
+      if (x.start == null) continue;
       const active = t >= x.start && t <= (x.end ?? x.start);
       const el = x.m.getElement();
       el.style.opacity = active ? "1" : "0.10";
@@ -206,15 +268,16 @@ export default function MapPage() {
     if (!map || !map.getLayer("country-fill")) return;
     if (tab === "pays") {
       const geos = s.geo || [];
+      const base = resolved === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)";
       if (geos.length === 0) {
-        map.setPaintProperty("country-fill", "fill-color", "rgba(255,255,255,0.02)");
+        map.setPaintProperty("country-fill", "fill-color", base);
       } else {
         const expr: any[] = ["match", ["get", "name"]];
         for (const g of geos) {
           const a = Math.max(0.15, Math.min(0.85, g.count / maxC));
           expr.push(g.country, `rgba(55,211,153,${a})`);
         }
-        expr.push("rgba(255,255,255,0.02)");
+        expr.push(base);
         map.setPaintProperty("country-fill", "fill-color", expr as any);
       }
       map.setLayoutProperty("country-fill", "visibility", "visible");
@@ -228,23 +291,19 @@ export default function MapPage() {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
     try { rebuildMarkers(); } catch { }
+    try { applyClusters(); } catch { }
     try { applyChoropleth(); } catch { }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, s.updated, sessions]);
 
-  // entering Chronologie (or new range) → jump scrub to the most recent moment
   useEffect(() => {
     if (tab === "chrono" && tRange[1] > 0) setT(tRange[1]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tRange[0], tRange[1]]);
-
-  // scrubbing → light up the markers active at t (no marker rebuild)
   useEffect(() => {
     if (tab === "chrono") applyTimelineVis();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, tab]);
-
-  // play: sweep the scrub across the range and loop
   useEffect(() => {
     if (!playing || tab !== "chrono" || tRange[1] <= tRange[0]) return;
     const span = tRange[1] - tRange[0];
@@ -254,38 +313,30 @@ export default function MapPage() {
     return () => clearInterval(id);
   }, [playing, tab, tRange[0], tRange[1]]);
 
-  const TABS: { k: Tab; label: string }[] = useMemo(() => [
-    { k: "chrono", label: "Chronologie" },
-    { k: "points", label: "Coordonnées" },
-    { k: "pays", label: "Pays" },
-  ], []);
-
   return (
     <div className="relative">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Geography</h2>
-          <span className="text-xs text-sub">approximate only — never precise · {users.length} users · {repos.length} repos</span>
-        </div>
-        <div className="flex gap-1">
-          {TABS.map((tb) => (
-            <button key={tb.k} onClick={() => setTab(tb.k)} className={`pill ${tab === tb.k ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>{tb.label}</button>
-          ))}
-          <span className="w-px bg-line mx-1" />
-          <button onClick={() => setMode("2d")} className={`pill ${mode === "2d" ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>2D</button>
-          <button onClick={() => setMode("globe")} className={`pill ${mode === "globe" ? "bg-brand text-white" : "bg-panel2 text-sub"}`}>3D globe</button>
-        </div>
-      </div>
+      <PageHeader
+        icon={MapIcon}
+        title="Geography"
+        sub={<>approximate only, never precise · {nf(users.length)} users · {nf(repos.length)} repos · <span className="text-sub/80">OpenStreetMap tiles, {resolved} basemap</span></>}
+        right={<>
+          <Segmented value={tab} onChange={setTab} options={[{ key: "chrono", label: "Timeline" }, { key: "points", label: "Points" }, { key: "pays", label: "Countries" }]} />
+          <Segmented value={mode} onChange={setMode} options={[{ key: "2d", label: <span className="inline-flex items-center gap-1"><Square size={11} /> 2D</span> }, { key: "globe", label: <span className="inline-flex items-center gap-1"><Globe2 size={11} /> Globe</span> }]} />
+        </>}
+      />
 
       <div className="relative card overflow-hidden h-[60vh] md:h-[620px]">
         <div ref={boxRef} style={{ position: "absolute", inset: 0 }} />
         {total === 0 && (
-          <div className="absolute inset-x-0 bottom-3 text-center text-xs text-sub pointer-events-none">
+          <div className="absolute inset-x-0 bottom-10 text-center text-xs text-sub pointer-events-none px-4">
             No located users yet — locations resolve server-side from each client's IP once users opt in.
           </div>
         )}
-        {/* sessions panel — in Chronologie it lists who was connected at the scrub time */}
-        <div className="absolute right-3 bottom-3 w-72 max-h-[55%] overflow-y-auto card bg-panel/90 backdrop-blur p-2">
+        {tab === "points" && users.length > 0 && (
+          <div className="absolute left-3 top-3 hidden sm:block"><Badge tone="brand">clustered · click a bubble to zoom in</Badge></div>
+        )}
+        {/* sessions panel — on the timeline it lists who was connected at the scrub time */}
+        <div className="absolute right-3 top-3 sm:top-auto sm:bottom-12 w-56 sm:w-72 max-h-[45%] overflow-y-auto card bg-panel/90 backdrop-blur p-2">
           <div className="text-[11px] uppercase tracking-wide text-sub px-1 pb-1">
             {tab === "chrono" ? `Connected · ${activeAtT.length}` : "Sessions"}
           </div>
@@ -303,16 +354,12 @@ export default function MapPage() {
           )}
         </div>
 
-        {/* Timeline scrubber (Chronologie) */}
+        {/* Timeline scrubber */}
         {tab === "chrono" && timeline.length > 0 && (
-          <div className="absolute left-3 right-80 bottom-3 card bg-panel/90 backdrop-blur px-3 py-2 flex items-center gap-3">
+          <div className="absolute left-3 right-3 sm:right-80 bottom-12 card bg-panel/90 backdrop-blur px-3 py-2 flex items-center gap-3">
             <button onClick={() => setPlaying((p) => !p)} className="pill bg-brand text-white shrink-0 flex items-center gap-1.5" aria-label={playing ? "Pause" : "Play"}>
-              {playing ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l11-7z" /></svg>
-              )}
-              {playing ? "Pause" : "Play"}
+              {playing ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+              <span className="hidden sm:inline">{playing ? "Pause" : "Play"}</span>
             </button>
             <input
               type="range"
@@ -323,7 +370,7 @@ export default function MapPage() {
               onChange={(e) => { setPlaying(false); setT(+e.target.value); }}
               className="flex-1 accent-brand"
             />
-            <span className="text-xs text-sub shrink-0 tabular-nums">{t ? fmtDateTime(t) : "—"}</span>
+            <span className="text-xs text-sub shrink-0 tabular-nums hidden sm:inline">{t ? fmtDateTime(t) : "—"}</span>
           </div>
         )}
       </div>

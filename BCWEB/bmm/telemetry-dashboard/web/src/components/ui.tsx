@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Inbox, type LucideIcon } from "lucide-react";
 
 export function Card({ title, right, children, className = "" }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -34,8 +35,103 @@ export function StatusDot({ status }: { status: string }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${STATUS_COLOR[status] || "bg-sub"}`} />;
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="text-sm text-sub py-8 text-center">{children}</div>;
+/** Empty state: an icon, a line, an optional action. `Empty` is the compact form every
+ *  page already uses; `EmptyState` is the full-height version for a whole screen. */
+export function Empty({ children, icon: Icon }: { children: ReactNode; icon?: LucideIcon }) {
+  const I = Icon || Inbox;
+  return (
+    <div className="text-sm text-sub py-8 text-center flex flex-col items-center gap-2">
+      <I size={20} className="text-sub/60" />
+      <div>{children}</div>
+    </div>
+  );
+}
+export function EmptyState({ icon: Icon, title, children, action }: { icon?: LucideIcon; title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+  const I = Icon || Inbox;
+  return (
+    <div className="card p-10 text-center flex flex-col items-center gap-3">
+      <span className="grid place-items-center w-12 h-12 rounded-2xl bg-panel2 border border-line"><I size={22} className="text-sub" /></span>
+      <div className="font-medium">{title}</div>
+      {children && <div className="text-sm text-sub max-w-md">{children}</div>}
+      {action}
+    </div>
+  );
+}
+
+/** Page title band: title, one-line context, actions on the right. Wraps on a phone. */
+export function PageHeader({ icon: Icon, title, sub, right }: { icon?: LucideIcon; title: ReactNode; sub?: ReactNode; right?: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+      <div className="flex items-center gap-3 min-w-0">
+        {Icon && <span className="grid place-items-center w-9 h-9 rounded-xl bg-brand/10 border border-brand/20 shrink-0"><Icon size={17} className="text-brand" /></span>}
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold leading-tight truncate">{title}</h1>
+          {sub && <div className="text-xs text-sub mt-0.5">{sub}</div>}
+        </div>
+      </div>
+      {right && <div className="flex items-center gap-2 flex-wrap">{right}</div>}
+    </div>
+  );
+}
+
+/** Buttons: one look everywhere. */
+export function Button({ variant = "default", size = "md", className = "", icon: Icon, children, ...p }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "default" | "primary" | "danger" | "ghost"; size?: "sm" | "md"; icon?: LucideIcon }) {
+  const v = variant === "primary" ? "btn-primary" : variant === "danger" ? "btn-danger" : variant === "ghost" ? "btn-ghost" : "";
+  return (
+    <button className={`btn ${v} ${size === "sm" ? "px-2 py-1 text-[11px]" : ""} ${className}`} {...p}>
+      {Icon && <Icon size={size === "sm" ? 12 : 14} />}
+      {children}
+    </button>
+  );
+}
+export function Input(p: React.InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...p} className={`input ${p.className || ""}`} />;
+}
+
+/** Status / kind chip. */
+const TONES: Record<string, string> = {
+  brand: "bg-brand/15 text-brand", good: "bg-good/15 text-good", warn: "bg-warn/15 text-warn", bad: "bg-bad/15 text-bad", sub: "bg-panel2 text-sub",
+};
+export function Badge({ tone = "sub", children, className = "" }: { tone?: keyof typeof TONES | string; children: ReactNode; className?: string }) {
+  return <span className={`pill font-medium ${TONES[tone] || TONES.sub} ${className}`}>{children}</span>;
+}
+
+/** Sticky-header table. Pass the <table> markup as children; the wrapper scrolls in
+ *  both axes so a wide table never widens the page. */
+export function Table({ children, className = "", maxHeight }: { children: ReactNode; className?: string; maxHeight?: number | string }) {
+  return (
+    <div className={`table-wrap ${className}`} style={maxHeight != null ? { maxHeight } : undefined}>
+      <table>{children}</table>
+    </div>
+  );
+}
+
+/** Loading placeholders. */
+export function Skeleton({ className = "", lines = 1 }: { className?: string; lines?: number }) {
+  if (lines <= 1) return <div className={`skeleton h-4 ${className}`} />;
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {Array.from({ length: lines }).map((_, i) => <div key={i} className="skeleton h-4" style={{ width: `${100 - (i % 3) * 18}%` }} />)}
+    </div>
+  );
+}
+export function TableSkeleton({ rows = 6, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <div className="space-y-2 py-1">
+      {Array.from({ length: rows }).map((_, r) => (
+        <div key={r} className="flex gap-3">
+          {Array.from({ length: cols }).map((_, c) => <div key={c} className="skeleton h-5 flex-1" style={{ opacity: 1 - r * 0.1 }} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
+export function CardSkeleton({ n = 4 }: { n?: number }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {Array.from({ length: n }).map((_, i) => <div key={i} className="kpi"><div className="skeleton h-3 w-20" /><div className="skeleton h-7 w-16 mt-2" /></div>)}
+    </div>
+  );
 }
 
 // Slide-over drawer. Its open state lives in the page, so live data refreshes
