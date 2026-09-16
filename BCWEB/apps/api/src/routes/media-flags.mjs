@@ -34,8 +34,25 @@ export default async function mediaFlagRoutes(app) {
     const ownerIds = [...new Set(rows.flatMap((f) => [f.hash.ownerId, f.match.ownerId]).filter(Boolean))];
     const users = ownerIds.length ? await p.user.findMany({ where: { id: { in: ownerIds } }, select: { id: true, displayName: true, status: true } }) : [];
     const owners = new Map(users.map((u) => [u.id, u]));
+    // How many OTHER pictures each of these accounts is currently flagged over.
+    //
+    // This is the fact that decides most of these cases and the queue did not carry it: one
+    // flag between two accounts is usually a stock image or the same person twice, and the
+    // same account appearing on eight pending flags is the thing worth acting on. Counted in
+    // one query rather than one per owner, because a page holds up to eighty of them, and a
+    // flag involves an account through either side of the pair.
+    const ownerFlags = {};
+    if (ownerIds.length) {
+      const rowsByOwner = await p.$queryRaw`
+        SELECT o AS "ownerId", COUNT(*)::int AS n FROM (
+          SELECT h."ownerId" AS o FROM "MediaFlag" f JOIN "MediaHash" h ON h.id = f."hashId" WHERE f.status = 'pending'
+          UNION ALL
+          SELECT m."ownerId" AS o FROM "MediaFlag" f JOIN "MediaHash" m ON m.id = f."matchId" WHERE f.status = 'pending'
+        ) x WHERE o IS NOT NULL GROUP BY o`.catch(() => []);
+      for (const r of rowsByOwner || []) if (ownerIds.includes(r.ownerId)) ownerFlags[r.ownerId] = Number(r.n);
+    }
     return {
-      total, page, pageSize: PAGE,
+      total, page, pageSize: PAGE, ownerFlags,
       flags: rows.map((f) => ({ id: f.id, distance: f.distance, reason: f.reason, status: f.status, note: f.note, resolvedById: f.resolvedById, resolvedAt: f.resolvedAt, createdAt: f.createdAt, hash: serHash(f.hash, owners), match: serHash(f.match, owners) })),
     };
   });
