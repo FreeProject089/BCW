@@ -130,5 +130,10 @@ export function setCanonical(pathname) {
     el.setAttribute('rel', 'canonical');
     document.head.appendChild(el);
   }
-  el.setAttribute('href', window.location.origin + (pathname || window.location.pathname));
+  // Normalised, not copied. The edge already 308s `/faq/` to `/faq`, but a client-side
+  // navigation never touches the edge, and a canonical that keeps whatever slash the URL
+  // happened to carry is how one page ends up claiming two addresses. The root keeps its
+  // slash, because there it is the path.
+  const path = String(pathname || window.location.pathname) || '/';
+  el.setAttribute('href', window.location.origin + (path.length > 1 ? path.replace(/\/+$/, '') : path));
 }

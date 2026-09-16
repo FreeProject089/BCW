@@ -66,9 +66,23 @@ async function pageOverride(clean, lang) {
   } catch { return null; }   // a bad row must never take the unfurl down
 }
 
+/**
+ * The one spelling of a path.
+ *
+ * `/faq` and `/faq/` were both served, with identical HTML, and the canonical link was
+ * written from whatever the visitor happened to ask for, so every route on the site existed
+ * twice as far as a crawler is concerned. The edge now 308s the slashed form away, but a
+ * client-side navigation never touches the edge, so the rule is also applied where the
+ * canonical is decided. The root keeps its slash, because there it IS the path.
+ */
+export function canonicalPath(path) {
+  const raw = String(path || '/').split('?')[0].split('#')[0] || '/';
+  return raw.length > 1 ? raw.replace(/\/+$/, '') || '/' : raw;
+}
+
 export async function metaForPath(path, lang = 'en') {
   const site = SITE();
-  const clean = String(path || '/').split('?')[0].split('#')[0];
+  const clean = canonicalPath(path);
   const url = site + clean;
   const fallback = {
     title: 'BetterCommunity — The home for all Better* projects',

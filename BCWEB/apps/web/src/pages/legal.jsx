@@ -519,10 +519,17 @@ export function Legal({ page: fixed }) {
         <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{lang === 'fr' ? 'Document' : 'Document'}</span>
         <DocSwitcher options={tabs} current={page} label={d.title} className="min-w-0 w-full sm:w-auto" />
       </div>
-      {/* plain-language summary */}
-      <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent print:border print:bg-none">
+      {/* The plain-language summary.
+          It used to be painted with a full-strength accent gradient fading to transparent,
+          which put muted grey text on solid orange at one end and on the page at the other:
+          the same sentence changed contrast across its own width, and the card read as an
+          advert rather than as the human-readable version of the document. A quiet tint and
+          an accent rule on the leading edge say "this is the summary" without competing
+          with the text it summarises, and it survives the Translucent surfaces setting
+          because `.tint-primary` is a painted rule rather than an alpha on a variable. */}
+      <Card className="p-4 mb-6 flex items-start gap-3 tint-primary border-l-[3px] border-l-[var(--primary)] print:border print:bg-none">
         <d.icon size={18} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
-        <div className="text-sm text-[var(--muted)]">{summary}</div>
+        <div className="text-sm text-[var(--text)]">{summary}</div>
       </Card>
       {/* On a phone the contents were `hidden md:block` — which is to say, absent. A
           thirty-two-section policy with no way to jump is a document you scroll past, so the

@@ -115,6 +115,36 @@
 		respond 404
 	}
 
+	# -- One URL per page --
+	# `/faq` and `/faq/` both answered 200 with byte-identical HTML, and the SPA writes its
+	# canonical link from the path it was served at, so every route on the site existed twice
+	# as far as a crawler is concerned. That is duplicate content on the whole tree, and it
+	# also splits analytics and makes every shared link a coin flip.
+	#
+	# 308 rather than 301: it keeps the method and body, so a POST that arrives with a stray
+	# slash still works instead of silently turning into a GET.
+	#
+	# Two matchers because Caddy has no "append the query only if there is one": with a single
+	# rule every redirect ends in a bare `?`. The first handles the URLs that carry a query,
+	# the second the ones that do not. `^(/.+)/$` never matches the root, which must keep its
+	# slash.
+	#
+	# /api and /hosting are exempt. Under /hosting a trailing slash is not noise, it is a
+	# directory listing of a hosted repo and means something different from the file beside
+	# it; the API answers both spellings itself (ignoreTrailingSlash in server.mjs), which is
+	# the right fix for a programmatic client that should not have to follow a redirect.
+	@tslash_q {
+		path_regexp tslash ^(/.+)/$
+		not path /api/* /hosting/* /og/*
+		expression {query} != ""
+	}
+	redir @tslash_q {re.tslash.1}?{query} 308
+	@tslash {
+		path_regexp tslash2 ^(/.+)/$
+		not path /api/* /hosting/* /og/*
+	}
+	redir @tslash {re.tslash2.1} 308
+
 	# The API's own /og/* assets (e.g. the composed /og/profile/<id>.png card image) — served
 	# DIRECTLY by the API for everyone, never through the unfurl rewrite below. Must come before
 	# @unfurl so a crawler fetching the image gets the PNG, not the meta-tag HTML shell.

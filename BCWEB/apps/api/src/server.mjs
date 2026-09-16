@@ -141,6 +141,13 @@ if (isProduction(process.env)) {
 // The price of running before routing is that it cannot await, which is why domains.mjs keeps
 // the verified ones in a map refreshed on a timer and invalidated on every write.
 const app = Fastify({
+  // `/api/health` answered 200 and `/api/health/` answered 404, which is a trap rather than a
+  // rule: no client thinks of a trailing slash as a different endpoint, and the ones that
+  // build URLs by joining segments produce it by accident. One route, both spellings. The
+  // edge redirects the SPA's own paths to the slashless form (see infra/caddy/Caddyfile) but
+  // deliberately does NOT redirect /api: a programmatic client should get its answer, not a
+  // 308 it may or may not follow with its body intact.
+  ignoreTrailingSlash: true,
   rewriteUrl(req) {
     const host = String(req.headers.host || '');
     // Ours, or nothing we know: leave it exactly as it is, which is every request in practice.
