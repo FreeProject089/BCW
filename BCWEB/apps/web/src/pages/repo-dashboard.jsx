@@ -435,7 +435,7 @@ function FilesTab({ r, reload }) {
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-2 shrink-0"><Files size={13} /> {files.length} {t('rd.files', 'file(s)')} · {fmtSize(totalBytes)}</span>
           <div className="flex-1 min-w-[140px] relative">
             <input className="input !py-1.5 !text-xs !ps-7 w-full" placeholder={t('rd.filesearch', 'Filter by name…')} value={q} onChange={(e) => setQ(e.target.value)} />
-            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           </div>
           <select className="input !py-1.5 !text-xs !w-auto" value={sort} onChange={(e) => setSort(e.target.value)}>
             <option value="name">{t('rd.sort.name', 'Name')}</option>

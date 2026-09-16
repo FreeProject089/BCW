@@ -130,7 +130,7 @@ function PromoCodeField({ months, onChange }) {
   return (
     <div>
       <div className="relative">
-        <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+        <Ticket size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
         <Input className="!ps-8" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t('hosting.promo.ph', 'Promo code (optional)')} />
         {checking && <Spinner className="absolute right-3 top-1/2 -translate-y-1/2" />}
       </div>

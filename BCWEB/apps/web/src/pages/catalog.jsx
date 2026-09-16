@@ -58,7 +58,7 @@ export function Catalog() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[220px] max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" placeholder={t('cat.search', 'Search mods, plugins, themes & presets…')} defaultValue={q} onKeyDown={(e) => e.key === 'Enter' && set('q', e.target.value)} />
           </div>
           {/* Kinds are project-scoped. PRESET is BOTH a BSM audio preset and a BMM scheduler

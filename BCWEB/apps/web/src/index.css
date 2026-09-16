@@ -398,6 +398,15 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
      frosted variant lives under [data-surface-glass] below. */
   [data-theme="dark"] .input { background: #1c1913; border-color: rgba(255,255,255,0.12); }
   [data-theme="dark"] .input:hover { background: #221e17; }
+  /* On a touch device a field smaller than 16px makes iOS Safari ZOOM the page the moment
+     it gets focus, and it does not zoom back out. Every search box on the site did this:
+     tap the magnifier, the layout jumps, and the rest of the screen is now off to the side.
+     It reads as "the search bar is broken on mobile", and it is not the search bar, it is
+     this line. 16px only where a coarse pointer says it matters, so the desktop density is
+     unchanged. */
+  @media (pointer: coarse) {
+    .input, textarea.input, select.input { font-size: 16px; }
+  }
   .input::placeholder { color: var(--faint); }
   .input:focus { border-color: var(--ring); box-shadow: 0 0 0 3px rgba(249,115,22,0.16); }
   textarea.input { resize: vertical; min-height: 84px; }
@@ -1185,3 +1194,132 @@ label:has(> input[type="radio"]) {
 .explain-body { margin-top: 8px; color: var(--muted); line-height: 1.6; }
 .explain-body > * + * { margin-top: 8px; }
 @media (prefers-reduced-motion: reduce) { .explain-chev { transition: none; } }
+
+/* ── The studio, rebuilt: one-row top bar, a dock, and a phone that gets one panel at a time ──
+   Appended as one block (see editor/canvas-studio.jsx and editor/studio-dock.jsx for the WHY
+   of each piece). Nothing above this line is changed; where a rule below repeats a selector
+   from the original studio block it is deliberately the later, winning one.
+
+   The top bar. It used to wrap, and the document group inside it was `flex: 1 1 0%` — a basis
+   of 0 contributes nothing to where a wrapping row breaks, so every button packed onto line
+   one and the document name was handed what was left, which at a 480-700px pane was between
+   0 and 5 pixels. The nowrap save-state label then spilled out of that collapsed box and ran
+   under the undo and redo icons, and once the controls did wrap the bar grew from 42px to
+   108px on a phone. So: the bar does not wrap, the document group has a real basis and clips
+   its own overflow, and the clusters that no longer fit move into a menu instead of onto a
+   second line. */
+.cst-topbar { flex-wrap: nowrap; flex-shrink: 0; }
+.cst-topbar-id { display: flex; align-items: center; gap: 8px; flex: 1 1 8rem; min-width: 0; overflow: hidden; }
+.cst-topbar-tools { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.cst-topbar-sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+.cst-topbar-pop { position: relative; display: inline-flex; }
+@media (max-width: 399px) { .cst-hide-narrow { display: none; } }
+
+/* A popover from the top bar. Opaque on purpose: a translucent one lands its text on the
+   board behind it, which is whatever the author happens to be building. */
+.cst-menu {
+  position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 60;
+  min-width: 15rem; max-width: min(92vw, 22rem); padding: 6px;
+  background: var(--bg-solid); border: 1px solid var(--line-strong); border-radius: 12px;
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.45);
+  font-size: 12px; color: var(--text);
+}
+.cst-menu-h { padding: 4px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
+.cst-menu-sep { height: 1px; background: var(--line); margin: 4px 0; }
+.cst-menu-row { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 8px; }
+.cst-menu-row:hover { background: var(--surface-2); }
+.cst-menu-item { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 8px; border-radius: 8px; text-align: start; color: var(--muted); }
+.cst-menu-item:hover { background: var(--surface-2); color: var(--text); }
+.cst-menu-note { padding: 6px 8px 2px; font-size: 10.5px; color: var(--faint); }
+
+/* The dock. Three zones around the board: left and right run the full height, the bottom one
+   sits under the board only, the way a console does. An empty zone is 0 wide — the point of
+   being able to close a panel is getting its width back. */
+@media (min-width: 1024px) {
+  .cst-page-body[data-dock="1"] {
+    grid-template-columns: var(--cst-left, 0px) minmax(0, 1fr) var(--cst-right, 0px);
+    grid-template-rows: minmax(0, 1fr) var(--cst-bottom, 0px);
+  }
+  .cst-page-body[data-dock="1"] > .cst-left { grid-column: 1; grid-row: 1 / span 2; }
+  .cst-page-body[data-dock="1"] > .cst-center { grid-column: 2; grid-row: 1; }
+  .cst-page-body[data-dock="1"] > .cst-bottom { grid-column: 2; grid-row: 2; }
+  .cst-page-body[data-dock="1"] > .cst-right { grid-column: 3; grid-row: 1 / span 2; }
+}
+.cst-bottom { min-height: 0; overflow: auto; background: var(--bg-solid); border-top: 1px solid var(--line); }
+.cst-dock-zone { display: flex; flex-direction: column; }
+/* Each panel is wrapped with its drop slot; the wrapper must not become a flex box of its own
+   or the panel inside stops filling the zone. */
+.cst-dock-zone > div { display: contents; }
+.cst-dock-reopen { padding: 6px; font-size: 11px; color: var(--muted); }
+.cst-dock-panel { display: flex; flex-direction: column; min-height: 0; }
+.cst-dock-panel.is-dragging { opacity: .45; }
+.cst-dock-head {
+  display: flex; align-items: center; gap: 4px; padding: 4px 6px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--faint); background: var(--surface-2); border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 1;
+}
+.cst-dock-body { padding: 8px; min-height: 0; }
+.cst-dock-body > * { margin-top: 0 !important; }
+.cst-dock-btn, .cst-dock-fold { display: inline-flex; padding: 3px; border-radius: 6px; color: var(--faint); }
+.cst-dock-btn:hover, .cst-dock-fold:hover { background: var(--bg-solid); color: var(--text); }
+.cst-dock-btn.is-on { color: var(--accent-ink); }
+/* A handle rather than the whole title bar: a bar that drags on any press makes the buttons
+   beside it feel broken, because a 3px wobble during a click starts a drag instead. */
+.cst-dock-grip { display: inline-flex; padding: 3px; cursor: grab; color: var(--faint); touch-action: none; }
+.cst-dock-grip:active { cursor: grabbing; }
+/* The gaps a panel can be dropped into. Invisible until something is being dragged, and then
+   only the one under the pointer lights up — a zone full of highlighted seams says nothing. */
+.cst-dock-slot { height: 4px; border-radius: 2px; }
+.cst-dock-slot.is-over { background: var(--primary); }
+.cst-dock-empty {
+  margin: 8px; padding: 18px 8px; text-align: center; font-size: 11px; color: var(--faint);
+  border: 1px dashed var(--line-strong); border-radius: 12px;
+}
+.cst-dock-ghost {
+  position: fixed; z-index: 70; pointer-events: none;
+  padding: 4px 10px; font-size: 11px; border-radius: 8px;
+  background: var(--bg-solid); border: 1px solid var(--primary); color: var(--text);
+}
+/* Against the BODY, not inside a zone: the zones scroll, and a resizer that scrolls away with
+   the panel it resizes is a resizer you cannot find. */
+.cst-dock-resizer { position: absolute; z-index: 3; touch-action: none; }
+.cst-dock-resizer:hover, .cst-dock-resizer:focus-visible { background: color-mix(in srgb, var(--primary) 55%, transparent); outline: none; }
+.cst-dock-resizer-left { top: 0; bottom: 0; left: var(--cst-left, 0px); width: 9px; margin-left: -4px; cursor: col-resize; }
+.cst-dock-resizer-right { top: 0; bottom: 0; right: var(--cst-right, 0px); width: 9px; margin-right: -4px; cursor: col-resize; }
+.cst-dock-resizer-bottom { bottom: var(--cst-bottom, 0px); left: var(--cst-left, 0px); right: var(--cst-right, 0px); height: 9px; margin-bottom: -4px; cursor: row-resize; }
+@media (max-width: 1023.98px) { .cst-dock-resizer { display: none; } }
+
+/* The phone. One panel at a time, over the LOWER part of the board so the block being edited
+   is still visible, and the board keeps the full width whatever is open. */
+.cst-mobile-pane {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 2;
+  display: flex; flex-direction: column; max-height: 68%;
+  background: var(--bg-solid); border-top: 1px solid var(--line-strong);
+  border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px -12px rgba(0, 0, 0, 0.35);
+}
+.cst-mobile-head {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--faint); border-bottom: 1px solid var(--line); flex-shrink: 0;
+}
+.cst-mobile-body { min-height: 0; overflow: auto; padding: 8px; }
+.cst-mobile-body > * { margin-top: 0 !important; }
+/* Six 48px targets do not fit across a 375px screen. Squeezing them would put a control out
+   of a thumb reach; scrolling the row keeps every one of them hittable and none of them off
+   the page. */
+.cst-tabs { flex-shrink: 0; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; }
+.cst-tabs::-webkit-scrollbar { display: none; }
+.cst-tabs button { flex: 0 0 auto; padding-inline: 14px; scroll-snap-align: start; }
+/* The board own toolbar, on a narrow screen: one scrolling row instead of four wrapped ones,
+   for the same reason as the tab row above it. */
+.cst-strip { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.cst-strip::-webkit-scrollbar { display: none; }
+.cst-strip > * { flex: 0 0 auto; }
+
+/* A key cap in the shortcut sheet. */
+.cst-kbd {
+  display: inline-block; padding: 1px 6px; font-size: 11px; font-family: inherit;
+  border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 6px;
+  background: var(--surface-2); color: var(--text); white-space: nowrap;
+}

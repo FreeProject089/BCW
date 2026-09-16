@@ -50,7 +50,7 @@ export default function Faq() {
       <PageHeader icon={HelpCircle} title={t('faq.title', 'FAQ')}
         actions={canEdit && <Link to="/admin?s=faq" className="btn btn-sm"><Settings2 size={15} /> {t('faq.manage', 'Manage')}</Link>} />
 
-      <div className="relative mb-6"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+      <div className="relative mb-6"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
         <Input className="!ps-10" placeholder={t('faq.searchph', 'Search the FAQ…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
 
       {loading ? <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>

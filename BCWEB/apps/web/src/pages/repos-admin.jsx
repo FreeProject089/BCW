@@ -190,7 +190,7 @@ export function AdminPools() {
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--accent-ink)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
         <div className="flex items-center gap-2">
-          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
+          <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Button size="sm" variant="primary" onClick={grant}><HardDrive size={13} /> {t('apools.grantbtn', 'Grant a pool')}</Button>
         </div>
       </div>
@@ -293,7 +293,7 @@ export function AdminRepos() {
       {/* Search + tier/status filters — the admin list can get long. */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <input className="input !ps-9" placeholder={t('arp.search', 'Search by name, owner, repo ID or tag…')} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
         </div>

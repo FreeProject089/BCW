@@ -109,7 +109,7 @@ function AdminMyoRequests() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">
-        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" placeholder={t('amyo.search', 'Search name / user / email…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setApplied({ q, status })} /></div>
+        <div className="relative flex-1 min-w-[200px]"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-9" placeholder={t('amyo.search', 'Search name / user / email…')} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setApplied({ q, status })} /></div>
         <Dropdown value={status} onChange={setStatus} options={[{ value: '', label: t('amyo.allstatus', 'All statuses') }, ...MYO_STATUSES.map((s) => ({ value: s, label: s }))]} />
         <Button variant="primary" onClick={() => setApplied({ q, status })}><Search size={15} /> {t('common.search', 'Search')}</Button>
       </div>

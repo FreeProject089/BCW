@@ -109,7 +109,7 @@ export function ReposPage() {
       {/* search + filters */}
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
           <input className="input !ps-9" placeholder={t('repos.search', 'Search repos, tags, authors…')} value={q} onChange={(e) => setQ(e.target.value)} />
           {q && <button onClick={() => setQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] hover:text-[var(--text)]"><X size={15} /></button>}
         </div>
@@ -796,7 +796,7 @@ export function MyRepos() {
       )}
       {repos.length > 3 && (
         <div className="flex flex-wrap gap-2 mb-3">
-          <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+          <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('repos.search', 'Search by name, description or ID…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Dropdown size="sm" value={typeF} onChange={setTypeF} options={[
             { value: 'all', label: t('repos.f.type.all', 'All types') }, { value: 'hosted', label: t('repos.hosted', 'Hosted') },
@@ -1485,7 +1485,7 @@ export function Billing() {
             <h2 className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('bill.subs', 'Active hosting')}</h2>
             {hostedRepos.length > 3 && (
               <div className="flex gap-2">
-                <div className="relative w-40 sm:w-52"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                <div className="relative w-40 sm:w-52"><Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
                   <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('bill.search', 'Search hosting…')} value={hq} onChange={(e) => setHq(e.target.value)} /></div>
                 <Select className="!w-auto !py-1.5 !text-sm" value={hStatus} onChange={(e) => setHStatus(e.target.value)}>
                   <option value="all">{t('repos.f.all', 'All')}</option><option value="online">{t('repos.online', 'Online')}</option><option value="suspended">Suspended</option></Select>

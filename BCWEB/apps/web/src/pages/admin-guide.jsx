@@ -794,7 +794,7 @@ export default function AdminGuide() {
       <div className="lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-6 lg:items-start">
         <div className="lg:sticky lg:top-4 mb-4 lg:mb-0">
           <div className="relative mb-3">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
             <Input className="!ps-9" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('ag.search', 'Search the guide…')} />
           </div>
           {/* The index. A horizontal chip rail on phones, a vertical list on desktop. */}
@@ -1073,7 +1073,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
       {part === 'builtin' && (
         <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5 lg:items-start">
           <div className="mb-4 lg:mb-0">
-            <div className="relative mb-2"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 !text-sm" value={bq} onChange={(e) => setBq(e.target.value)} placeholder={t('ag.edit.find', 'Find an entry…')} /></div>
+            <div className="relative mb-2"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" /><Input className="!ps-8 !py-1.5 !text-sm" value={bq} onChange={(e) => setBq(e.target.value)} placeholder={t('ag.edit.find', 'Find an entry…')} /></div>
             <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:max-h-[62vh] lg:overflow-y-auto no-scrollbar">
               {shown.map((it) => { const Icon = it.icon; const on = sel === it.id; const ed = isEdited(it.id); const hid = !!ov[it.id]?.hidden; return (
                 <button key={it.id} type="button" onClick={() => setSel(it.id)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
