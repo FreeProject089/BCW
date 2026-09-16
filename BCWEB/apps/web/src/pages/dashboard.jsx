@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   Boxes, Server, Rocket, Download, ArrowRight, Search, Upload, Bell, CheckCircle2, XCircle, Clock, Package, ShieldCheck, Inbox, TrendingUp, Lock, LayoutDashboard, Trash2, PenSquare, Star, Bell as BellIcon, CheckCheck, Receipt, Copy, Globe, BadgeCheck, Send, MessageSquare, Files, RefreshCw, X, ChevronDown, AlertTriangle, Ticket, Gift, Info, Save, Users, Sliders, BarChart3, HardDriveDownload, FileJson, Sparkles, Mic, ShoppingBag, Backpack, Coins, HardDrive, Zap, Users as UsersIcon } from 'lucide-react';
-import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
+import { Button, Card, Badge, Input, Textarea, Select, Field, EmptyState, Explain, Spinner, Modal, useDialog, useToast, copyText, SkeletonCard } from '../ui/ui.jsx';
 import { api, uploadPayload } from '../lib/api.js';
 import { onNotifsChanged, applyNotifChange, markNotifRead, markAllNotifsRead, deleteNotif, deleteAllNotifs } from '../lib/notifs.js';
 import { useAuth } from './auth.jsx';
@@ -45,9 +45,10 @@ export { NOTIF, NOTIF_FALLBACK };
 // nothing until the economy is enabled and they've earned some XP (so it never shows an empty
 // "Level 0" to someone who has never used Discord).
 //
-// Laid out as one card in three parts: the level (ring + progress), the balance with the two
-// doors it opens (shop, inventory), and where the XP came from as three tiles — a shape you
-// read in a glance, not a paragraph of numbers on one line.
+// Two numbers a person came to read (the level, the balance), one bar saying where the XP came
+// from, and the two doors that spend it. Everything that merely EXPLAINS the system — the per
+// source rates, the arithmetic behind each share — is folded into the Explain at the foot, so
+// the card is the same height whether or not you have read it before.
 function EconomyWidget({ onOpenShop }) {
   const { t } = useI18n();
   const [d, setD] = useState(null);
@@ -72,35 +73,32 @@ function EconomyWidget({ onOpenShop }) {
   const share = (x) => (total > 0 ? Math.round((x.xp / total) * 100) : 0);
   const ring = `conic-gradient(var(--primary) ${pct * 3.6}deg, var(--surface-2) 0)`;
   return (
-    <Card className="p-0 overflow-hidden mb-6">
-      {/* Below md the three columns stack, and the card was three tall blocks: level, then XP,
-          then a balance row with the two buttons beside it — long enough on a phone that the
-          shop buttons fell under the fold. The level and the balance are both one number and a
-          caption, so on a phone they share the top row and the buttons get their own full-width
-          one. Nothing is hidden that was not already hidden; the card is just shorter. */}
-      <div className="p-4 sm:p-5 grid gap-4 sm:gap-5 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center">
+    <Card className="p-4 sm:p-5">
+      {/* The level and the balance share one row at EVERY width. They are the same shape — a
+          number under a caption — and putting them on separate rows on a phone pushed the two
+          buttons below the fold, which is the only reason anybody opens this card. */}
+      <div className="grid gap-4 sm:gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] md:items-center">
         <div className="flex items-center gap-3 sm:gap-4">
-          <div className="relative w-16 h-16 md:w-[76px] md:h-[76px] rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={`${pct}%`}>
-            <div className="w-[52px] h-[52px] md:w-[62px] md:h-[62px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
-              <span className="text-xl md:text-2xl font-extrabold tabular-nums leading-none">{d.level}</span>
+          <div className="relative w-16 h-16 rounded-full grid place-items-center shrink-0" style={{ background: ring }} title={t('eco.w.ring', '{n}% of the way to the next level').replace('{n}', pct)}>
+            <div className="w-[52px] h-[52px] rounded-full bg-[var(--bg-solid)] grid place-items-center">
+              <span className="text-xl font-extrabold tabular-nums leading-none">{d.level}</span>
             </div>
           </div>
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.level.k', 'Discord level')}</div>
             <div className="text-lg font-bold leading-tight">{t('eco.w.level', 'Level {n}').replace('{n}', d.level)}</div>
             <div className="text-[11px] text-[var(--faint)] tabular-nums mt-0.5">{(d.xpThisLevel || 0).toLocaleString()} / {(d.xpForNext || 0).toLocaleString()} XP · {pct}%</div>
           </div>
-          {/* The balance rides along on the top row on phones; on md it lives in its own column. */}
-          <div className="md:hidden text-end shrink-0">
+          <div className="ms-auto text-end shrink-0">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
             <div className="text-xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={16} className="text-[var(--accent-ink)]" /> {(d.points || 0).toLocaleString()}</div>
-            <div className="text-[10px] text-[var(--faint)]">{cur}</div>
+            <div className="text-[10px] text-[var(--faint)] truncate" title={cur}>{cur}</div>
           </div>
         </div>
 
-        {/* One bar, three colours: where the XP came from, in proportion. A row of three
+        {/* One bar, three colours, and a legend that is one line per source. A row of three
             tiles was breaking its own labels in half at the widths this column really has. */}
-        <div className="min-w-0 md:border-x md:border-[var(--line)] md:px-5">
+        <div className="min-w-0 md:ps-5 md:border-s md:border-[var(--line)]">
           <div className="flex items-center justify-between gap-2 text-[11px] mb-1.5">
             <span className="uppercase tracking-wider text-[var(--faint)]">{t('eco.w.src.title', 'Where your XP comes from')}</span>
             <span className="tabular-nums text-[var(--muted)]">{total.toLocaleString()} XP</span>
@@ -108,45 +106,37 @@ function EconomyWidget({ onOpenShop }) {
           <div className="flex h-2.5 rounded-full overflow-hidden bg-[var(--surface-2)]" role="img" aria-label={src.map((x) => `${x.label} ${share(x)}%`).join(', ')}>
             {src.map((x) => (share(x) > 0 ? <div key={x.key} style={{ width: `${share(x)}%`, background: x.color }} title={`${x.label} · ${share(x)}%`} /> : null))}
           </div>
-          {/* The detailed per-source tiles are secondary — hidden on phones to keep the card
-              light there (the proportion bar above already tells the story); shown from sm up. */}
-          <div className="hidden sm:grid grid-cols-3 gap-2 mt-2.5">
+          <div className="mt-2 space-y-1">
             {src.map((x) => (
-              <div key={x.key} className="min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
-                <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] min-w-0">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.color }} /><x.Icon size={12} className="shrink-0" /><span className="truncate" title={x.label}>{x.label}</span>
-                </div>
-                <div className="text-sm font-semibold tabular-nums leading-tight mt-0.5">{x.count} <span className="text-[10px] font-normal text-[var(--faint)]">· {share(x)}%</span></div>
-                <div className="text-[10px] text-[var(--faint)] truncate" title={x.rate}>{x.rate}</div>
+              <div key={x.key} className="flex items-center gap-2 text-[11px] min-w-0">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.color }} />
+                <x.Icon size={12} className="shrink-0 text-[var(--faint)]" />
+                <span className="truncate text-[var(--muted)]" title={x.label}>{x.label}</span>
+                <span className="ms-auto tabular-nums shrink-0" title={x.count}>{x.count}</span>
+                <span className="tabular-nums text-[var(--faint)] w-9 text-end shrink-0">{share(x)}%</span>
               </div>
             ))}
           </div>
-          {/* On phones, one compact legend line stands in for the tiles above. */}
-          <div className="flex sm:hidden items-center gap-3 mt-2 text-[11px] text-[var(--muted)] flex-wrap">
-            {src.map((x) => (
-              <span key={x.key} className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: x.color }} />{x.label} {share(x)}%</span>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 md:items-end">
-          <div className="hidden md:block text-end">
-            <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
-            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--accent-ink)]" /> {(d.points || 0).toLocaleString()} <span className="text-xs font-medium text-[var(--muted)]">{cur}</span></div>
-          </div>
-          {/* Two equal full-width buttons on a phone — 44px tall targets side by side beat two
-              small ones squeezed next to a number. */}
-          <div className="grid grid-cols-2 gap-2 md:flex md:items-center">
-            <Button size="sm" variant="primary" className="justify-center !min-h-[40px] md:!min-h-0" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={14} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[10px] opacity-80"> · {d.shopItems}</span> : null}</Button>
-            <Button size="sm" className="justify-center !min-h-[40px] md:!min-h-0" onClick={() => onOpenShop?.('inventory')}><Backpack size={14} /> {t('eco.w.inv', 'Inventory')}{d.pendingDeliveries ? <Badge tone="amber" className="ms-1">{d.pendingDeliveries}</Badge> : null}</Button>
-          </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 flex-wrap px-4 sm:px-5 py-2.5 border-t border-[var(--line)] panel-quiet text-[11px] text-[var(--muted)]">
-        {/* The explainer is for a first visit, not for every visit, and on a phone it was three
-            lines of prose under a card that is otherwise numbers. Kept from sm up. */}
-        <span className="hidden sm:inline">{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</span>
-        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
+
+      {/* Two equal full-width buttons: 44px targets side by side beat two small ones squeezed
+          next to a number, and they are the point of the card. */}
+      <div className="grid grid-cols-2 gap-2 mt-4">
+        <Button variant="primary" className="justify-center" onClick={() => onOpenShop?.('shop')}><ShoppingBag size={15} /> {t('eco.w.shop', 'Shop')}{d.shopItems ? <span className="text-[11px] opacity-80"> · {d.shopItems}</span> : null}</Button>
+        <Button className="justify-center" onClick={() => onOpenShop?.('inventory')}><Backpack size={15} /> {t('eco.w.inv', 'Inventory')}{d.pendingDeliveries ? <Badge tone="amber" className="ms-1">{d.pendingDeliveries}</Badge> : null}</Button>
+      </div>
+
+      <div className="mt-4 pt-3 border-t border-[var(--line)] flex items-start justify-between gap-4 flex-wrap text-[11px]">
+        <Explain className="text-[11px] min-w-0 flex-1" summary={t('eco.w.how.s', 'XP comes from being active on Discord.')}>
+          <p>{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</p>
+          <ul className="space-y-0.5">
+            {src.map((x) => (
+              <li key={x.key} className="tabular-nums">{x.label}: {x.count} · {x.rate} · {x.xp.toLocaleString()} XP</li>
+            ))}
+          </ul>
+        </Explain>
+        <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0 text-[var(--muted)]" title={t('eco.w.pub.h', 'Show these stats on your public profile (your level is always public).')}>
           <input type="checkbox" className="accent-[var(--primary)]" checked={stats.public !== false} onChange={toggleStats} /> {t('eco.w.pub', 'Stats public')}
         </label>
       </div>
@@ -162,16 +152,38 @@ const SHOP_KIND = {
   badge: { Icon: BadgeCheck, tone: 'text-amber-400' }, pool: { Icon: HardDrive, tone: 'text-[var(--accent-ink)]' }, boost: { Icon: Zap, tone: 'text-[var(--accent-ink)]' },
   hosting: { Icon: Server, tone: 'text-[var(--accent-ink)]' }, promo: { Icon: Ticket, tone: 'text-emerald-400' }, role: { Icon: Users, tone: 'text-[#5865F2]' }, custom: { Icon: Gift, tone: 'text-[var(--accent-ink)]' },
 };
+const HIST_PAGE = 25;   // one screenful of ledger rows; "Load more" fetches the next 25
 function EconomyShop({ view = 'shop', onView }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [d, setD] = useState(null);
+  // The history is paged, not loaded whole: an account that has played the casino for a
+  // month has thousands of ledger rows, and every one of them was being fetched and rendered
+  // to fill a panel you read the top ten lines of. `histTotal` is what the SERVER counted, so
+  // the number beside the heading stays the true size of the history and does not creep up
+  // one page at a time as you press "Load more".
   const [hist, setHist] = useState(null);
+  const [histTotal, setHistTotal] = useState(0);
+  const [histMore, setHistMore] = useState(false);
+  const [histBusy, setHistBusy] = useState(false);
   const [busy, setBusy] = useState('');
   const [giftTo, setGiftTo] = useState(''); const [giftPts, setGiftPts] = useState(''); const [giftNote, setGiftNote] = useState('');
   const load = () => api.get('/me/economy/shop').then(setD).catch(() => setD({ enabled: false, items: [], purchases: [] }));
-  const loadHist = () => api.get('/me/economy/history').then((r) => setHist(r.history || [])).catch(() => setHist([]));
+  const loadHist = async (skip = 0) => {
+    setHistBusy(true);
+    try {
+      const r = await api.get(`/me/economy/history?take=${HIST_PAGE}&skip=${skip}`);
+      const rows = r.history || [];
+      setHist((prev) => (skip > 0 ? [...(prev || []), ...rows] : rows));
+      setHistTotal(Number(r.total) || (skip > 0 ? histTotal : rows.length));
+      setHistMore(!!r.more);
+    } catch { setHist((prev) => prev || []); setHistMore(false); }
+    finally { setHistBusy(false); }
+  };
   useEffect(() => { load(); }, []);
-  useEffect(() => { if (view === 'history' && hist === null) loadHist(); /* eslint-disable-next-line */ }, [view]);
+  // Depends on `hist` as well as `view`: sending points clears it back to null to mean "this
+  // is stale", and with `view` alone that reset never triggered a refetch while the tab was
+  // already open. The failure path sets [] rather than null, so a broken request cannot loop.
+  useEffect(() => { if (view === 'history' && hist === null && !histBusy) loadHist(0); /* eslint-disable-next-line */ }, [view, hist]);
   if (!d) return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}</div>;
   const cur = d.currency?.name || 'points';
   const kindLabel = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
@@ -216,7 +228,7 @@ function EconomyShop({ view = 'shop', onView }) {
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] panel">
-          {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length], ['history', t('eco.tab.hist', 'History'), Clock, null]].map(([id, label, I, n]) => (
+          {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length], ['history', t('eco.tab.hist', 'History'), Clock, hist ? histTotal : null]].map(([id, label, I, n]) => (
             <button key={id} type="button" onClick={() => onView?.(id)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
               <I size={14} className={view === id ? 'text-[var(--accent-ink)]' : ''} /> {label} {n != null && <span className="text-[11px] text-[var(--faint)]">{n}</span>}
             </button>
@@ -303,22 +315,33 @@ function EconomyShop({ view = 'shop', onView }) {
             </Card>
           )}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold flex items-center gap-2"><Clock size={15} className="text-[var(--accent-ink)]" /> {t('eco.hist.title', 'Point history')}</div>
-              <button type="button" onClick={loadHist} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RefreshCw size={12} /> {t('common.refresh', 'Refresh')}</button>
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <div className="text-sm font-semibold flex items-center gap-2">
+                <Clock size={15} className="text-[var(--accent-ink)]" /> {t('eco.hist.title', 'Point history')}
+                {/* The count is the server's total, not hist.length: the list below is one page. */}
+                {hist?.length ? <Badge tone="">{histTotal.toLocaleString()}</Badge> : null}
+              </div>
+              <button type="button" onClick={() => loadHist(0)} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RefreshCw size={12} /> {t('common.refresh', 'Refresh')}</button>
             </div>
-            {hist === null ? <SkeletonCard /> : !hist.length ? <EmptyState icon={Clock} title={t('eco.hist.empty.t', 'Nothing yet')} sub={t('eco.hist.empty.s', 'Earn, buy, play or gift and it shows up here.')} /> : (
+            {hist === null ? <SkeletonCard /> : !hist.length ? <EmptyState icon={Clock} title={t('eco.hist.empty.t', 'Nothing yet')} sub={t('eco.hist.empty.s', 'Earn, buy, play or gift and it shows up here.')} /> : (<>
               <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
                 {hist.map((h) => { const m = h.meta || {}; const detail = h.kind === 'purchase' ? m.name : h.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : h.kind === 'gift_out' ? `→ ${m.toName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'gift_in' ? `← ${m.fromName || ''}${m.note ? ` “${m.note}”` : ''}` : h.kind === 'levelup' ? `Lv ${m.level}` : m.name || m.reason || ''; return (
                   <div key={h.id} className="px-3 py-2 flex items-center gap-3 text-xs">
                     <span className="text-[var(--faint)] tabular-nums shrink-0 w-32">{new Date(h.createdAt).toLocaleString()}</span>
-                    <span className="flex-1 min-w-0 truncate"><span className="font-medium">{LK[h.kind] || h.kind}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</span>
+                    <span className="flex-1 min-w-0 truncate" title={detail ? `${LK[h.kind] || h.kind} · ${detail}` : (LK[h.kind] || h.kind)}><span className="font-medium">{LK[h.kind] || h.kind}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</span>
                     <span className={`tabular-nums font-semibold shrink-0 ${h.delta > 0 ? 'text-success' : h.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{h.delta > 0 ? '+' : ''}{h.delta.toLocaleString()}</span>
                     <span className="tabular-nums text-[var(--faint)] shrink-0 w-20 text-end">{h.balance.toLocaleString()}</span>
                   </div>
                 ); })}
               </div>
-            )}
+              {/* An explicit button, not infinite scroll: this panel sits above the rest of the
+                  tab, and a list that grows as you scroll past it never lets you reach what is
+                  under it. */}
+              <div className="flex items-center justify-center gap-3 mt-3 text-xs text-[var(--muted)]">
+                <span className="tabular-nums">{t('eco.hist.count', '{n} of {total}').replace('{n}', hist.length.toLocaleString()).replace('{total}', histTotal.toLocaleString())}</span>
+                {histMore && <Button size="sm" disabled={histBusy} onClick={() => loadHist(hist.length)}>{histBusy ? <Spinner /> : <ChevronDown size={14} />} {t('common.loadmore', 'Load more')}</Button>}
+              </div>
+            </>)}
           </div>
         </div>
       )}
@@ -380,22 +403,25 @@ function NotificationsPanel() {
     try { await deleteNotif(n.id); } catch { reload(); }
   };
   const clearAll = async () => {
-    if (!(await dialog.confirm({ title: 'Clear all notifications', message: 'This permanently deletes all of your notifications. Continue?', okLabel: 'Clear all', danger: true }))) return;
+    if (!(await dialog.confirm({ title: t('dash.notif.clear.t', 'Clear all notifications'), message: t('dash.notif.clear.m', 'This permanently deletes all of your notifications. Continue?'), okLabel: t('dsh.clearall', 'Clear all'), danger: true }))) return;
     setItems([]);
     try { await deleteAllNotifs(); } catch { reload(); }
   };
   const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; if (s < 60) return 'now'; if (s < 3600) return `${Math.floor(s / 60)}m`; if (s < 86400) return `${Math.floor(s / 3600)}h`; return `${Math.floor(s / 86400)}d`; };
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Notifications {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
-        <div className="flex items-center gap-3">
+      {/* The three controls wrap onto their own line below the heading on a phone rather than
+          squeezing a 3-word button into 60px. `gap-2` on both axes so a wrapped row does not
+          sit flush against the one above it. */}
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> {t('dash.notif.title', 'Notifications')} {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
+        <div className="flex items-center gap-2 flex-wrap ms-auto">
           {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--accent-ink)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> {t('dash.notif.markAll', 'Mark all read')}</button>}
           {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-error hover:border-error transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={clearAll}><Trash2 size={13} /> {t('dsh.clearall', "Clear all")}</button>}
           {/* The way out to the centre, which is the only place the per-category switches
               live. This card can mark and delete; it cannot say "stop sending me this". */}
           <Link to="/notifications" className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--primary)] text-white hover:opacity-90 transition shadow-sm" style={{ background: 'var(--primary)' }}>
-            <Sliders size={13} /> Notification centre
+            <Sliders size={13} /> {t('dash.notif.centre', 'Notification centre')}
           </Link>
         </div>
       </div>
@@ -441,17 +467,13 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
   const done = steps.filter((s) => s.done).length;
   const pct = Math.round((done / steps.length) * 100);
   return (
-    <Card className="p-5 mb-6">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('gs.title', 'Getting started')}</div>
-        </div>
+    <Card className="p-4 sm:p-5">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="font-semibold flex items-center gap-2 min-w-0"><Rocket size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={t('gs.title', 'Getting started')}>{t('gs.title', 'Getting started')}</span></div>
+        <span className="ms-auto text-xs font-semibold tabular-nums text-[var(--muted)] shrink-0">{done}/{steps.length}</span>
         <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
       </div>
-      <div className="flex items-center gap-3 mb-4">
-        <div className="progress-track flex-1"><div className="progress-fill is-done pop-in" style={{ width: `${pct}%` }} /></div>
-        <span className="text-xs font-semibold tabular-nums text-[var(--muted)] shrink-0">{done}/{steps.length}</span>
-      </div>
+      <div className="progress-track mb-3"><div className="progress-fill is-done pop-in" style={{ width: `${pct}%` }} /></div>
       <div className="space-y-1">
         {steps.map((st) => {
           const inner = (
@@ -478,16 +500,22 @@ function TwoFactorNudge() {
   if (!user || user.totpEnabled || dismissed) return null;
   const hide = () => { setDismissed(true); try { localStorage.setItem(TWOFA_NUDGE_KEY, '1'); } catch {} };
   return (
-    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent border-[var(--ring)]">
-      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--accent-ink)]" /></span>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
-        <div className="text-xs text-[var(--muted)] mt-0.5">{t('twofa.nudge.d', 'A single leaked password could cost you your repos, submissions and payment history. Add a second factor — about a minute, and you stay in control.')}</div>
+    // A gradient and a border, not a translucent alpha on a variable: `tint-warning` is the
+    // real class and it keeps working under the Translucent-surfaces setting.
+    <Card className="p-4 tint-warning b-warning">
+      <div className="flex items-start gap-3">
+        <span className="grid place-items-center w-10 h-10 rounded-xl panel border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--accent-ink)]" /></span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
+          {/* The reason is one tap away, not three lines under every dashboard. */}
+          <Explain className="text-xs mt-0.5" summary={t('twofa.nudge.s', 'A second factor takes about a minute.')}>
+            {t('twofa.nudge.d', 'A single leaked password could cost you your repos, submissions and payment history. Add a second factor: about a minute, and you stay in control.')}
+          </Explain>
+        </div>
+        <button onClick={hide} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('twofa.nudge.later', 'Maybe later')}><X size={16} /></button>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        <Link to="/profile?setup2fa=1"><Button size="sm" variant="primary"><ShieldCheck size={14} /> {t('twofa.nudge.setup', 'Set up')}</Button></Link>
-        <button onClick={hide} className="text-[var(--faint)] hover:text-[var(--text)] p-1" title={t('twofa.nudge.later', 'Maybe later')}><X size={16} /></button>
-      </div>
+      {/* Full width on a phone, where a button beside a two-line title had nowhere to go. */}
+      <Link to="/profile?setup2fa=1" className="block mt-3 sm:inline-block sm:mt-2"><Button size="sm" variant="primary" className="w-full sm:w-auto justify-center"><ShieldCheck size={14} /> {t('twofa.nudge.setup', 'Set up')}</Button></Link>
     </Card>
   );
 }
@@ -728,7 +756,7 @@ function MyPurchases({ refreshKey = 0 }) {
   // alone in front of the screen.
   const secretOf = (d) => (d && typeof d === 'object' ? (d.key || d.content || '') : '');
   return (
-    <Card className="p-4 mb-6">
+    <Card className="p-4">
       <div className="flex items-center gap-2 mb-3">
         <ShoppingBag size={15} className="text-[var(--accent-ink)]" />
         <span className="font-medium text-sm">{t('mkme.title', 'What you bought')}</span>
@@ -744,7 +772,7 @@ function MyPurchases({ refreshKey = 0 }) {
           // from an empty row, so it says so and says what to do.
           const failed = r.delivery && typeof r.delivery === 'object' ? r.delivery.error : '';
           return (
-            <div key={r.id} className="rounded-lg bg-[var(--surface-2)] px-3 py-2.5">
+            <div key={r.id} className="rounded-lg panel px-3 py-2.5">
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{r.name || t('mkme.unnamed', 'Product')}</div>
@@ -784,15 +812,52 @@ function MyPurchases({ refreshKey = 0 }) {
 // three were a breakdown of the other two), a shortcut row, an economy card and the
 // notifications, in an order that answered no question. The headings are the fix — you
 // cannot leave a block unnamed and still pretend it has one job.
-function OverviewSection({ icon: Icon, title, sub, children }) {
+// The section owns its heading and NOTHING else. It carries no margin of its own: the overview
+// wraps every block in one `space-y-*`, because per-card margins are how a page ends up with
+// 24px between two blocks and 32px between the next two for no reason anybody can name.
+// `aside` is an optional control that belongs to the heading, on the same line, end-aligned.
+function OverviewSection({ icon: Icon, title, aside, children }) {
   return (
-    <section className="mb-8">
-      <h2 className={`font-semibold flex items-center gap-2 ${sub ? 'mb-1' : 'mb-3'}`}>
-        <Icon size={16} className="text-[var(--accent-ink)]" /> {title}
-      </h2>
-      {sub && <p className="text-xs text-[var(--muted)] mb-3">{sub}</p>}
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <h2 className="font-semibold flex items-center gap-2 min-w-0">
+          <Icon size={16} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={title}>{title}</span>
+        </h2>
+        {aside ? <div className="ms-auto shrink-0">{aside}</div> : null}
+      </div>
       {children}
     </section>
+  );
+}
+
+// Everything that is WAITING on this person, as one row of chips: an item still in review, an
+// unanswered poll, a message with no reply, a purchase an admin has not handed out. Each chip
+// is a link to the tab that clears it.
+//
+// It renders nothing at all when nothing is pending, which is most days — a heading over "you
+// have nothing to do" is worse than no heading. The counts come from fetches the page already
+// makes for the sidebar badges, so this costs no extra request.
+function WaitingOnYou({ pending, pollsOpen, threadsUnread, deliveries }) {
+  const { t } = useI18n();
+  const chips = [
+    pending > 0 && { key: 'items', to: '/dashboard?s=items', icon: Clock, label: t('dash.wait.review', '{n} waiting for review').replace('{n}', pending) },
+    pollsOpen > 0 && { key: 'polls', to: '/dashboard?s=polls', icon: BarChart3, label: t('dash.wait.polls', '{n} poll(s) to answer').replace('{n}', pollsOpen) },
+    threadsUnread > 0 && { key: 'threads', to: '/dashboard?s=reports', icon: MessageSquare, label: t('dash.wait.threads', '{n} unanswered message(s)').replace('{n}', threadsUnread) },
+    deliveries > 0 && { key: 'eco', to: '/dashboard?s=economy', icon: Backpack, label: t('dash.wait.deliveries', '{n} purchase(s) to be handed out').replace('{n}', deliveries) },
+  ].filter(Boolean);
+  if (!chips.length) return null;
+  return (
+    <OverviewSection icon={Bell} title={t('dash.sec.wait', 'Waiting on you')}>
+      <div className="flex flex-wrap gap-2">
+        {chips.map((c) => (
+          <Link key={c.key} to={c.to} className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm tint-warning b-warning border press">
+            <c.icon size={14} className="text-[var(--accent-ink)] shrink-0" />
+            <span className="min-w-0 truncate" title={c.label}>{c.label}</span>
+            <ArrowRight size={13} className="text-[var(--faint)] shrink-0" />
+          </Link>
+        ))}
+      </div>
+    </OverviewSection>
   );
 }
 
@@ -853,19 +918,27 @@ export function Dashboard() {
   const published = list.filter((i) => i.status === 'PUBLISHED').length;
   const pending = list.filter((i) => i.status === 'PENDING').length;
   const featured = rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length;
+  // A card with a zero on it is an empty state, and an empty state that does not say what the
+  // thing is and where the button is is just a zero. So each card carries a second shape: at
+  // zero it stops linking to a list of nothing and links to the page that FILLS it, with the
+  // sentence that says what "items" or "repos" even are.
   const owned = [
     {
-      icon: Package, label: t('dash.items', 'Items'), value: list.length, to: '/dashboard?s=items',
+      icon: Package, label: t('dash.items', 'Items'), value: list.length,
+      to: list.length ? '/dashboard?s=items' : '/submit',
       detail: list.length
         ? t('dash.own.items', '{p} published, {n} waiting for review').replace('{p}', published).replace('{n}', pending)
         : t('dash.own.items0', 'Apps, plugins, themes and presets you submit'),
+      cta: t('sub.title', 'Submit content'),
       warn: pending > 0,
     },
     {
-      icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length, to: '/dashboard?s=repos',
+      icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length,
+      to: rlist.length ? '/dashboard?s=repos' : '/hosting#plans',
       detail: rlist.length
         ? (featured ? t('dash.own.repos', '{n} featured right now').replace('{n}', featured) : t('dash.own.repos0', 'None featured right now'))
         : t('dash.own.repos1', 'Where BMM users download your files from'),
+      cta: t('dash.hostrepo', 'Host a repo'),
     },
   ];
   // How many polls are still waiting on this person, for the sidebar badge. `.catch` because
@@ -919,25 +992,27 @@ export function Dashboard() {
       <SideDash icon={LayoutDashboard} title={t('dash.hi', 'Hi, {name}').replace('{name}', user?.displayName || 'there')} subtitle={t('dash.sub', 'Manage your content, repos and billing.')} tabs={tabs}
         headerActions={<Link to="/submit"><Button variant="primary"><Upload size={16} /> {t('sub.title', 'Submit content')}</Button></Link>}>
         {(s) => (<>
-          {s === 'overview' && <>
-            {/* A transfer offer is a DECISION waiting on this person, and it lived only on the
-                profile page — reachable from the e-mail's link and from nowhere anybody goes.
+          {/* The overview, in the order somebody actually reads it:
+              ① what is waiting on them, ② what just happened, ③ what they own, ④ what they can
+              start, ⑤ the record (Discord level, purchases). Anything that is merely true comes
+              after everything that needs a decision.
+
+              The spacing is ONE rule for the whole tab — `space-y-6`, or `space-y-8` from sm up
+              — instead of an mb-6 here and an mb-8 there. It also means a block that renders
+              null (the transfers card on any ordinary day, the waiting rail when nothing is
+              pending) leaves no gap behind it, which a wrapping <div className="mb-6"> would. */}
+          {s === 'overview' && <div className="space-y-6 sm:space-y-8">
+            {/* A pending ownership transfer is a DECISION with a deadline, and it lived only on
+                the profile page: reachable from the e-mail's link and from nowhere anybody goes.
                 Somebody who missed the mail had no way to discover it before it expired.
 
                 The same component the profile renders, not a second copy: accepting moves real
                 ownership, and two renderings of that would eventually disagree about what the
-                button does. It hides itself when nothing is pending, so this costs an ordinary
-                dashboard nothing. */}
-            {/* The spacing is a PROP, not a wrapper. Every other block on this tab carries
-                its own mb-6/mb-8 and this one carried nothing, so on the dashboard it sat
-                flush against the checklist below it. A wrapping <div className="mb-6"> would
-                have left 24px of empty margin on the (common) days the card renders null. */}
-            {/* ── 1. What is waiting on this person ───────────────────────────────
-                A pending ownership transfer is a DECISION with a deadline, the checklist is
-                the way in, and the notifications are everything else. They go first, above
-                anything that is merely true. Each of the first two hides itself when it has
-                nothing to say, so on an ordinary day this section IS the notifications. */}
-            <TransfersCard className="mb-6" />
+                button does. It hides itself when nothing is pending. */}
+            <TransfersCard />
+
+            <WaitingOnYou pending={pending} pollsOpen={pollsOpen} threadsUnread={threadsUnread} deliveries={ecoMe?.pendingDeliveries || 0} />
+
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {
@@ -946,57 +1021,63 @@ export function Dashboard() {
                 ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => nav('/submit')} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
                 : <TwoFactorNudge />;
             })()}
+
             {/* NotificationsPanel writes its own heading (it needs the unread badge and the
                 mark-all / clear / centre controls beside it), so it is not wrapped. */}
-            <div className="mb-8"><NotificationsPanel /></div>
+            <NotificationsPanel />
 
-            {/* ── 2. What they own ─────────────────────────────────────────────── */}
-            <OverviewSection icon={Boxes} title={t('dash.sec.own', 'What you own')} sub={t('dash.sec.own.s', 'Open one to manage it.')}>
-              <div className="grid grid-cols-2 gap-4">
+            <OverviewSection icon={Boxes} title={t('dash.sec.own', 'What you own')}>
+              {/* One column on a phone. Two 3xl numbers side by side at 360px left the caption
+                  under each of them breaking every second word; the row shape (number, label,
+                  then the detail sentence with the full width to itself) reads at any size and
+                  still pairs up from sm. */}
+              <div className="grid gap-3 sm:grid-cols-2">
                 {owned.map((o) => (
-                  <Link key={o.label} to={o.to} className="card card-hover p-5 block">
-                    <div className="flex items-center justify-between gap-2">
-                      <o.icon size={18} className="text-[var(--accent-ink)]" />
-                      <ArrowRight size={14} className="text-[var(--faint)]" />
+                  <Link key={o.label} to={o.to} className="card card-hover p-4 flex items-center gap-4">
+                    <span className="grid place-items-center w-11 h-11 rounded-xl panel shrink-0"><o.icon size={18} className="text-[var(--accent-ink)]" /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-bold tabular-nums leading-none">{o.value}</span>
+                        <span className="text-sm font-medium truncate" title={o.label}>{o.label}</span>
+                      </div>
+                      <div className={`text-[11px] mt-1 ${o.warn ? 'text-warning' : 'text-[var(--muted)]'}`}>{o.detail}</div>
+                      {/* At zero the card IS the empty state, so it names its own button
+                          rather than pointing at a list with nothing in it. */}
+                      {!o.value && <div className="text-[11px] mt-1 text-[var(--accent-ink)] font-medium inline-flex items-center gap-1">{o.cta} <ArrowRight size={12} /></div>}
                     </div>
-                    <div className="text-3xl font-bold mt-3 tabular-nums">{o.value}</div>
-                    <div className="text-xs font-medium mt-0.5">{o.label}</div>
-                    <div className={`text-[11px] mt-1 ${o.warn ? 'text-warning' : 'text-[var(--muted)]'}`}>{o.detail}</div>
+                    {!!o.value && <ArrowRight size={15} className="text-[var(--faint)] shrink-0" />}
                   </Link>
                 ))}
               </div>
             </OverviewSection>
 
-            {/* ── 3. Shortcuts ─────────────────────────────────────────────────── */}
             <OverviewSection icon={Zap} title={t('dash.sec.do', 'Start something')}>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {actions.map((a) => (
-                  <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-start flex items-center gap-2.5">
+                  <Link key={a.label} to={a.to} className="card card-hover p-4 flex items-center gap-2.5">
                     <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 shrink-0"><a.icon size={16} className="text-white" /></span>
                     <span className="text-sm font-medium min-w-0">{a.label}</span>
-                  </button>
+                  </Link>
                 ))}
               </div>
             </OverviewSection>
 
-            {/* ── 4. The quiet numbers ─────────────────────────────────────────────
-                A record, not a task: what Discord has earned you and what you have bought.
-                Both hide themselves when there is nothing.
-
+            {/* The record, not a task: what Discord has earned and what has been bought.
                 The condition below is EconomyWidget's own, re-evaluated on the copy of
                 /me/economy this page already holds. An OverviewSection renders its heading
                 unconditionally, so wrapping a self-hiding child in one is exactly how you end
                 up with a title over nothing. */}
             {!!ecoMe?.enabled && !(ecoMe.level === 0 && ecoMe.xp === 0) && (
-              <OverviewSection icon={Coins} title={t('dash.sec.eco', 'Your Discord level')} sub={t('dash.sec.eco.s', 'Earned by being active on the servers the bot is in.')}>
+              <OverviewSection icon={Coins} title={t('dash.sec.eco', 'Your Discord level')}
+                aside={<Link to="/dashboard?s=economy" className="text-xs text-[var(--accent-ink)] inline-flex items-center gap-1">{t('dash.sec.eco.a', 'Shop')} <ArrowRight size={12} /></Link>}>
                 <EconomyWidget onOpenShop={(v) => { setEcoView(v); nav('/dashboard?s=economy'); }} />
               </OverviewSection>
             )}
+
             {/* MyPurchases titles its own card and renders null when there is nothing bought,
                 so it needs no heading from here. */}
             <MyPurchases refreshKey={purchasesKey} />
-          </>}
-
+          </div>}
           {s === 'items' && <div>
             <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold flex items-center gap-2"><Package size={16} /> {t('dash.myitems', 'My items')}</h2>
@@ -1004,7 +1085,7 @@ export function Dashboard() {
             </div>
             {list.length > 3 && (
               <div className="flex flex-wrap gap-2 mb-3">
-                <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
+                <div className="relative flex-1 min-w-[160px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)] pointer-events-none" />
                   <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('dash.search', 'Search my items…')} value={itemQ} onChange={(e) => setItemQ(e.target.value)} /></div>
                 <Select className="!w-auto !py-1.5 !text-sm" value={itemKind} onChange={(e) => setItemKind(e.target.value)}>
                   <option value="all">{t('dash.allkinds', 'All kinds')}</option><option value="APP">APP</option><option value="PLUGIN">PLUGIN</option><option value="THEME">THEME</option><option value="PRESET">PRESET</option></Select>

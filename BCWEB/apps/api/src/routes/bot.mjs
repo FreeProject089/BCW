@@ -2250,10 +2250,28 @@ export default async function botRoutes(app) {
     return r;
   });
   // Every point movement of mine — purchases, casino, gifts, grants.
+  //
+  // Paginated by offset (`skip`), not by cursor: the ledger is append-only at the HEAD and the
+  // dashboard reads it newest-first, so the rows behind the offset do not shift while someone
+  // pages through them. `total` is counted separately and is the TRUE number of rows, so the
+  // header keeps saying how much history exists rather than how much has been fetched.
   app.get('/me/economy/history', { preHandler: requireRole() }, async (req) => {
     const p = await db();
     const kind = String(req.query?.kind || '').slice(0, 30) || null;
-    return { history: await listLedger(p, req.user.uid, { kind, take: Math.min(500, Number(req.query?.take) || 200) }) };
+    const take = Math.min(200, Math.max(1, Number(req.query?.take) || 200));
+    const skip = Math.max(0, Number(req.query?.skip) || 0);
+    const where = { userId: req.user.uid, ...(kind ? { kind } : {}) };
+    // take + 1 answers "is there another page" without a second round trip, and without
+    // trusting `total` — which is counted against a list that may have grown in between.
+    const [rows, total] = await Promise.all([
+      p.economyLedger.findMany({ where, orderBy: { createdAt: 'desc' }, skip, take: take + 1 }),
+      p.economyLedger.count({ where }),
+    ]);
+    const page = rows.slice(0, take);
+    return {
+      history: page.map((r) => ({ id: r.id, kind: r.kind, delta: r.delta, balance: r.balance, ref: r.ref, meta: r.meta || null, createdAt: r.createdAt })),
+      total, more: rows.length > take, nextSkip: skip + page.length,
+    };
   });
   // Admin: the whole ledger, searchable by member, filterable by kind.
   app.get('/admin/economy/history', { preHandler: requireCap('manage_economy') }, async (req) => {
