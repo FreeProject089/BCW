@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ChevronRight, FileCode2, Play, Pause, SkipBack, SkipForward, Search, X, ExternalLink } from 'lucide-react';
 import { highlightCode } from '../pages/pages.jsx';
+import { Button } from './ui.jsx';
 
 /** A file's language, from its extension. Prism needs telling; the snapshot does not carry it.
  *  An unknown extension falls through to plain text rather than to a guess — mis-highlighted
@@ -185,9 +186,17 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                 </div>
             )}
             {needle && !shown.length && (
-                <p className="text-[12px] text-[var(--muted)] py-3">
-                    {t('cf.none', 'No flow matches that, the search reads flow names, function names and file paths.')}
-                </p>
+                <div className="py-4 text-center">
+                    <div className="text-[13px] font-semibold break-words">{t('cf.none.t', 'No flow matches “{q}”').replace('{q}', q)}</div>
+                    <p className="text-[12px] text-[var(--muted)] mt-1 mx-auto max-w-sm">
+                        {t('cf.none', 'The search reads flow names, function names and file paths, nothing inside the code itself.')}
+                    </p>
+                    <div className="mt-3 flex justify-center">
+                        <Button size="sm" variant="primary" onClick={() => setQ('')}>
+                            <X size={13} /> {t('cf.none.a', 'Clear the search')}
+                        </Button>
+                    </div>
+                </div>
             )}
             <div className="space-y-2">
                 {/* The background lives on the ROW, not on the button's hover state. It had
@@ -201,7 +210,7 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
                         <button onClick={() => openFlow(i)}
                             className="w-full text-start px-3 py-2 flex items-center gap-2 hover:bg-[var(--surface-2)]">
                             <ChevronRight size={13} className={`transition-transform ${open === i ? 'rotate-90' : ''}`} />
-                            <span className="text-[13px] font-medium truncate">{f.label}</span>
+                            <span className="text-[13px] font-medium truncate" title={f.label}>{f.label}</span>
                             <span className="text-[11px] text-[var(--faint)] ms-auto shrink-0">
                                 {KIND_LABEL[f.kind] || f.kind} · {f.steps.length} {t('cf.steps', 'steps')}
                             </span>

@@ -410,7 +410,7 @@ function CommitImport({ slug }) {
         <div className="mt-3 space-y-2">
           <p className="text-[12px] text-[var(--muted)]">{t('pce.ci.desc', 'GitHub’s statistics only cover the default branch and a rolling year, and nothing at all for a private repo. Run this in the repository and import the file — the Activity tab then reads the whole history (per day, per author, per year). Releases still come from GitHub.')}</p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] truncate">{cmd}</code>
+            <code className="flex-1 min-w-0 text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] truncate" title={cmd}>{cmd}</code>
             <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard?.writeText(cmd); toast.success(t('common.copied', 'Copied.')); }}>{t('common.copy', 'Copy')}</Button>
           </div>
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 items-start">
@@ -1039,7 +1039,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       {isShowcase && (
         <Section icon={ScrollText} title={t('pce.bloglimits', "Blog limits")} desc="Cap this page's own blog. New articles are refused once a limit is reached. Leave 0 for no limit.">
           <div className="grid sm:grid-cols-2 gap-3">
-            <Field label={t('pce.maxarticles', "Max articles")} hint="Maximum number of blog posts on this page.">
+            <Field label={t('pce.maxarticles', "Max articles")}>
               <Input type="number" min={0} value={c.blogMaxPosts ?? ''} onChange={(e) => set({ blogMaxPosts: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })} placeholder="0 = unlimited" />
             </Field>
             <Field label={t('pce.maxsize', "Max total size (KB)")} hint="Combined size of every article body (EN + FR).">

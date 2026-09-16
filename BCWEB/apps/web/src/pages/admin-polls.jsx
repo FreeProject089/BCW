@@ -614,7 +614,7 @@ function PollStats({ pollId, onClose }) {
       {(d.byOption || []).map((o) => (
         <div key={o.id} className="mb-2">
           <div className="flex items-baseline gap-2 text-[13px]">
-            <span className="flex-1 truncate">{o.label}</span>
+            <span className="flex-1 truncate" title={o.label}>{o.label}</span>
             <span className="tabular-nums text-[var(--muted)]">{o.total}</span>
           </div>
           {/* Two segments, one bar: the signed-in part is the solid number and reads first. */}
@@ -659,8 +659,8 @@ function PollStats({ pollId, onClose }) {
           <div className="max-h-48 overflow-y-auto divide-y divide-[var(--line)]">
             {d.recent.map((r, i) => (
               <div key={i} className="py-1 flex items-center gap-2 text-[12px]">
-                <span className="truncate flex-1">{r.user.displayName}</span>
-                <span className="text-[var(--muted)] truncate">{r.option}</span>
+                <span className="truncate flex-1" title={r.user.displayName}>{r.user.displayName}</span>
+                <span className="text-[var(--muted)] truncate" title={r.option}>{r.option}</span>
                 <span className="text-[10px] text-[var(--faint)]">{new Date(r.at).toLocaleDateString()}</span>
               </div>
             ))}
@@ -717,7 +717,8 @@ export function AdminPolls() {
         <Button size="sm" variant="primary" className="ms-auto" onClick={() => setEditor(emptyDraft())}><Plus size={13} /> {t('apoll.new', 'New poll')}</Button>
       </div>
 
-      {!polls.length ? <EmptyState icon={BarChart3} title={t('apoll.none', 'No poll yet.')} sub={t('apoll.none.s', 'Ask something, a two-option question gets more answers than a survey.')} /> : (
+      {!polls.length ? <EmptyState icon={BarChart3} title={t('apoll.none', 'No poll yet.')} sub={t('apoll.none.s', 'Ask something, a two-option question gets more answers than a survey.')}
+        action={editor ? null : { label: t('apoll.new', 'New poll'), icon: Plus, onClick: () => setEditor(emptyDraft()) }} /> : (
         <div className="space-y-3">
           {polls.map((poll) => (
             <Card key={poll.id} className="p-4">
@@ -730,7 +731,7 @@ export function AdminPolls() {
                       className={`shrink-0 transition ${poll.pinned ? 'text-[var(--primary-2)]' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>
                       <Pin size={12} className={poll.pinned ? '' : 'opacity-50'} />
                     </button>
-                    <span className="truncate">{poll.question}</span>
+                    <span className="truncate" title={poll.question}>{poll.question}</span>
                     <Badge tone={poll.status === 'open' ? 'green' : poll.status === 'draft' ? '' : 'amber'}>
                       {t(`apoll.st.${poll.status}`, poll.status)}
                     </Badge>

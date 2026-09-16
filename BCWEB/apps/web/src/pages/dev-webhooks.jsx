@@ -13,7 +13,7 @@ import { Card, Button, Input, Badge, Field, Spinner, EmptyState, useToast, useDi
 
 const STATUS = { ok: { tone: 'green', icon: CheckCircle2 }, failed: { tone: 'red', icon: XCircle }, pending: { tone: 'amber', icon: Clock } };
 
-function Deliveries({ id }) {
+function Deliveries({ id, onTest }) {
   const { t } = useI18n(); const toast = useToast();
   const [rows, setRows] = useState(null);
   const [open, setOpen] = useState(null);
@@ -31,7 +31,19 @@ function Deliveries({ id }) {
   };
 
   if (!rows) return <div className="p-3"><Spinner /></div>;
-  if (!rows.length) return <p className="text-[12px] text-[var(--muted)] p-3">{t('wh.nodel', 'Nothing sent yet.')}</p>;
+  // "Nothing sent yet." left the developer with no way to tell a quiet endpoint from a
+  // broken one. The test delivery is the answer to both, and it is the button we already have.
+  if (!rows.length) {
+    return (
+      <div className="p-4 text-center">
+        <div className="text-[13px] font-semibold">{t('wh.nodel', 'No deliveries yet')}</div>
+        <div className="text-[12px] text-[var(--muted)] mt-1 mx-auto max-w-sm">{t('wh.nodel.s', 'Nothing you subscribed to has happened since this endpoint was added. A test delivery proves the address and the signature without waiting for one.')}</div>
+        {onTest && <div className="mt-3 flex justify-center">
+          <Button size="sm" variant="primary" onClick={onTest}><Send size={13} /> {t('wh.test', 'Send a test')}</Button>
+        </div>}
+      </div>
+    );
+  }
 
   return (
     <div className="divide-y divide-[var(--line)]">
@@ -211,7 +223,7 @@ export default function WebhooksPanel() {
                   <Button size="sm" variant="ghost" onClick={() => remove(w)}><Trash2 size={12} className="text-error" /></Button>
                 </div>
               </div>
-              {openId === w.id && <div className="border-t border-[var(--line)] panel"><Deliveries id={w.id} /></div>}
+              {openId === w.id && <div className="border-t border-[var(--line)] panel"><Deliveries id={w.id} onTest={() => test(w)} /></div>}
             </div>
           ))}
         </div>

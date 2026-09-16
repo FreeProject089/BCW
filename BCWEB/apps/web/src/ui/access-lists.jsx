@@ -13,6 +13,7 @@ import { Button, Input, Spinner } from './ui.jsx';
 // moving these here instead.
 
 export function ChipList({ label, items, onAdd, onRemove, placeholder }) {
+  const { t } = useI18n();
   const [v, setV] = useState('');
   const add = () => { const x = v.trim(); if (x) { onAdd(x); setV(''); } };
   return (
@@ -22,7 +23,7 @@ export function ChipList({ label, items, onAdd, onRemove, placeholder }) {
       <div className="flex flex-wrap gap-1.5 mt-2">
         {items.length ? items.map((x) => (
           <span key={x} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">{x}<button onClick={() => onRemove(x)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button></span>
-        )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
+        )) : <span className="text-xs text-[var(--faint)]">{t('acl.empty', 'Nothing added yet. Type one in the box above and press the + button.')}</span>}
       </div>
     </div>
   );
@@ -61,7 +62,7 @@ export function AccountChipList({ label, items, onAdd, onRemove, placeholder }) 
                 {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
-          )) : <div className="text-xs text-[var(--faint)] px-1">{t('repos.acct.none', 'No accounts found.')}</div>}
+          )) : <div className="text-xs text-[var(--faint)] px-1">{t('repos.acct.none', 'No account matches that. The search reads a creator id, a Discord id, a Discord username or a display name.')}</div>}
         </div>
       )}
       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -70,7 +71,7 @@ export function AccountChipList({ label, items, onAdd, onRemove, placeholder }) 
             <Users size={10} className="text-[var(--faint)]" /> {a.type === 'discord' ? 'Discord: ' : ''}{a.label || a.id}
             <button onClick={() => onRemove(a)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>
-        )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
+        )) : <span className="text-xs text-[var(--faint)]">{t('acl.empty', 'Nothing added yet. Type one in the box above and press the + button.')}</span>}
       </div>
     </div>
   );
@@ -154,7 +155,7 @@ export function PubkeyList({ items, onAdd, onRemove }) {
             <span className="truncate break-all">{keyLabel(x)}</span>
             <button onClick={() => onRemove(x)} className="shrink-0 text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>
-        )) : <span className="text-xs text-[var(--faint)]">{'—'}</span>}
+        )) : <span className="text-xs text-[var(--faint)]">{t('acl.keys.empty', 'No key added yet. Paste a public key above and press the + button.')}</span>}
       </div>
     </div>
   );

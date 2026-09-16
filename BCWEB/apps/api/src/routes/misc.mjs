@@ -47,17 +47,45 @@ const GiB = 1024 ** 3;
 async function forwardContactToDiscord(msg) {
   const url = process.env.DISCORD_CONTACT_WEBHOOK;
   if (!url) return;
+  // A security report is announced, never quoted. Its body is the one kind of contact
+  // message that can contain a working attack: the way in, the account it worked on, the
+  // data it reached. A Discord channel is readable by everyone in it, is searchable, and is
+  // not where that belongs; the dashboard, behind the admin's second factor, is. Same
+  // reasoning as the legal notices further down, which are not routed to a general channel
+  // because they name their sender.
+  const secret = msg.kind === 'security';
   await fetch(url, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ embeds: [{
-      title: 'New contact message', color: 0xf59e0b,
-      fields: [
-        { name: 'From', value: `${msg.name} (${msg.email})`.slice(0, 256) },
-        { name: 'Message', value: msg.body.slice(0, 1000) },
-      ],
+      title: secret ? 'New security report' : 'New contact message', color: secret ? 0xef4444 : 0xf59e0b,
+      fields: secret
+        ? [{ name: 'Read it in the dashboard', value: 'Admin, then Moderation, then Messages. The report is not repeated here.' }]
+        : [
+          { name: 'From', value: `${msg.name} (${msg.email})`.slice(0, 256) },
+          { name: 'Message', value: msg.body.slice(0, 1000) },
+        ],
       timestamp: new Date().toISOString(),
     }] }),
   });
+}
+
+/**
+ * A security report wakes somebody.
+ *
+ * Every other kind waits in the inbox until a human opens it, which is right for a billing
+ * question and wrong for "your site is leaking X": the value of that message is highest in
+ * the first hour. It goes to every admin as a `security_alert`, a kind that falls in the
+ * locked notification category, so nobody can have muted it. The notice carries WHO wrote
+ * and WHERE to read it, never the report itself.
+ */
+async function alertStaffOfSecurityReport(p, msg) {
+  const staff = await p.user.findMany({ where: { role: { in: ['ADMIN', 'SUPERADMIN'] } }, select: { id: true } });
+  const from = String(msg.name || msg.email || 'somebody').slice(0, 60);
+  await Promise.all(staff.map((s) => notify(
+    p, s.id, 'security_alert',
+    `A security report arrived from ${from}. Read it in the dashboard, under Messages.`,
+    { bodyFr: `Un signalement de sécurité est arrivé de ${from}. À lire dans le tableau de bord, sous Messages.`, href: '/admin?s=messages' },
+  ).catch(() => {})));
 }
 
 // Public homepage counters — real DB counts, cached 60s so the landing page
@@ -1524,7 +1552,8 @@ export default async function miscRoutes(app) {
     if (dailyCount >= (userId ? 5 : 3)) return reply.code(429).send({ error: 'daily_limit' });
     const msg = await p.contactMessage.create({ data: { name: b.data.name, email: b.data.email, body, kind, ip, userId } });
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
-    announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in — see below
+    announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in, see below
+    if (kind === 'security') alertStaffOfSecurityReport(p, msg).catch(() => {});
     return reply.code(201).send({ ok: true });
   });
 

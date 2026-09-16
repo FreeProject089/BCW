@@ -152,7 +152,9 @@ export function ItemDetail() {
   const { data, loading, err } = useAsync(() => api.get(`/catalog/${slug}${kq}`), [slug, kq]);
   const [warn, setWarn] = useState(false);
   if (loading) return <Loading />;
-  if (err) return <EmptyState icon={XCircle} title={t('item.notfound', 'Not found')} />;
+  if (err) return <EmptyState icon={XCircle} title={t('item.notfound', 'Not found')}
+    sub={t('item.notfound.s', 'This item is not in the catalogue. It may have been removed, or the share link may be missing the part after ?k=.')}
+    action={{ label: t('item.notfound.a', 'Browse the catalogue'), to: '/catalog', icon: Boxes }} />;
   const it = data.item; const I = KIND_ICON[it.kind] || Package;
   const v = it.kind === 'PLUGIN' ? it.meta?.validation : null; // { valid, reason, sha256, files }
   const doDownload = async () => { try { const { url } = await api.get(`/catalog/${slug}/download${kq}`); window.open(url, '_blank'); } catch { toast.error(t('cat.dlfail', 'Download failed.')); } };

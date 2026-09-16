@@ -427,7 +427,7 @@ export function Admin() {
                   ].filter(Boolean)} />
                 </div>
               </Card>); })}
-          </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s', 'Nothing waiting for review.')} />)}
+          </div> : <EmptyState icon={CheckCircle2} title={t('mod.empty.t', 'Queue is empty')} sub={t('mod.empty.s2', 'Nothing is waiting for review. Submissions land here the moment somebody sends one.')} />)}
           {review && <SubmissionReview sub={review} onClose={() => setReview(null)} onApprove={() => { approve(review); setReview(null); }} onReject={() => { reject(review); setReview(null); }} reload={subs.reload} />}
         </div>}
         {s === 'needs' && <AdminNeedsAttention data={pending.data} loading={pending.loading} onReload={pending.reload} />}
@@ -673,7 +673,7 @@ function AdminCatalogCreator() {
         {deeplink && (
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3">
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center gap-1"><Link2 size={11} /> {t('cc.deeplink', 'BMM deeplink')}</div>
-            <div className="flex items-center gap-2"><code className="text-xs text-[var(--muted)] truncate flex-1">{deeplink}</code><Button size="sm" onClick={copy}><Copy size={13} /></Button></div>
+            <div className="flex items-center gap-2"><code className="text-xs text-[var(--muted)] truncate flex-1" title={deeplink}>{deeplink}</code><Button size="sm" onClick={copy}><Copy size={13} /></Button></div>
           </div>
         )}
         <div className="flex justify-end"><Button variant="primary" disabled={busy} onClick={submit}>{busy ? <Spinner /> : <><BadgeCheck size={15} /> {t('cc.publish', 'Publish official')}</>}</Button></div>
@@ -695,12 +695,12 @@ function AdminCatalogCreator() {
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium truncate">{it.name}</span>
+                      <span className="font-medium truncate" title={it.name}>{it.name}</span>
                       {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
                       {it.status === 'HIDDEN' && <Badge tone="">{t('cc.hidden', 'hidden')}</Badge>}
                       {it.meta?.validation?.valid === false && <Badge tone="red">{t('cc.invalid', 'invalid')}</Badge>}
                     </div>
-                    {it.description && <p className="text-xs text-[var(--muted)] truncate">{it.description}</p>}
+                    {it.description && <p className="text-xs text-[var(--muted)] truncate" title={it.description}>{it.description}</p>}
                   </div>
                   <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.updatedAt)}</span>
                   <button onClick={() => startEdit(it)} title={t('common.edit', 'Edit')}
@@ -804,11 +804,11 @@ function AdminUsers() {
             <button key={u.id} onClick={() => setDetail(u.id)} className="w-full text-start card card-hover p-4 flex items-center gap-3">
               <Avatar user={u} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={u.displayName}>{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email} · {t('au.since', 'since')} {since(u.createdAt)}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 font-mono truncate flex items-center gap-2">
                   {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--primary-2)]"><Fingerprint size={11} /> {u.bcId}</span>}
-                  <span className="truncate">{u.id}</span>
+                  <span className="truncate" title={u.id}>{u.id}</span>
                 </div>
                 {u.discord && (
                   <div className="text-xs mt-0.5 flex items-center gap-1.5 truncate text-[#5865F2]">
@@ -826,7 +826,9 @@ function AdminUsers() {
             </button>
           ))}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(q, true)}>{busy ? <Spinner /> : t('au.loadmore', 'Load more')}</Button></div>}
-        </div> : <EmptyState icon={XCircle} title={t('au.none.t', 'No users found')} sub={t('au.none.s', 'Try a different id, name, email or creator id.')} />}
+        </div> : <EmptyState icon={XCircle} title={t('au.none.t', 'No users found')}
+          sub={q || activeFilters ? t('au.none.s3', 'The term and the filters above exclude every account. Clearing them lists everyone.') : t('au.none.s', 'Try a different id, name, email or creator id.')}
+          action={q || activeFilters ? { label: t('au.none.clear', 'Clear the search and filters'), icon: X, onClick: () => { const next = { role: '', status: '', twofa: '', closed: '', linked: '', days: '', sort: 'new' }; setQ(''); setF(next); load('', false, next); } } : null} />}
       {detail && <UserDetailModal id={detail} onClose={() => setDetail(null)} />}
     </div>
   );
@@ -996,7 +998,7 @@ function AdminExpenses({ mrrCents }) {
                 <Badge tone={e.recurring === 'none' ? undefined : 'primary'}>
                   {e.recurring === 'monthly' ? t('ex.r.monthly', 'per month') : e.recurring === 'yearly' ? t('ex.r.yearly', 'per year') : t('ex.r.none', 'one-off')}
                 </Badge>
-                <span className="font-medium truncate">{e.label}</span>
+                <span className="font-medium truncate" title={e.label}>{e.label}</span>
                 <span className="text-[var(--faint)] shrink-0">{t(`ex.cat.${e.category}`, e.category)}</span>
                 {ended && <Badge tone="amber">{t('ex.ended', 'ended')}</Badge>}
                 <span className="ms-auto tabular-nums shrink-0">{money(e.amountCents)} {e.currency}</span>
@@ -1044,7 +1046,9 @@ function AdminPlanUsers() {
   // customer's detail straight away.
   useEffect(() => { const u = sp.get('user'); if (u) setDetail(u); /* eslint-disable-next-line */ }, []);
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-  const emptyCopy = [t(`pu.empty.${tab}.t`, ''), t(`pu.empty.${tab}.s`, '')];
+  // A real fallback, not an empty string: the three tabs each have their own pair of keys,
+  // and a fourth tab added later would otherwise render an empty state with no title at all.
+  const emptyCopy = [t(`pu.empty.${tab}.t`, 'No customer here'), t(`pu.empty.${tab}.s`, 'Nobody is in this tab yet.')];
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Customers & revenue')}</h2>
@@ -1115,7 +1119,7 @@ function AdminPlanUsers() {
                     like a link (hover:underline) while being unreachable by keyboard — no
                     focus, no Enter (WCAG 2.1.1 / 4.1.2). */}
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-start hover:underline hover:text-[var(--primary-2)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
-                <div className="text-xs text-[var(--faint)] truncate">{u.email}</div>
+                <div className="text-xs text-[var(--faint)] truncate" title={u.email}>{u.email}</div>
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
                 <div className="text-xs text-end shrink-0">
@@ -1131,7 +1135,7 @@ function AdminPlanUsers() {
                 {u.active.map((a, i) => {
                   // Back-compat: tolerate a plain-string entry (old API shape).
                   if (typeof a === 'string') return (
-                    <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><span className="truncate">{a}</span></div>
+                    <div key={i} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><span className="truncate" title={a}>{a}</span></div>
                   );
                   const TypeIcon = a.type === 'subscription' ? RefreshCw : a.type === 'boost' ? Star : a.type === 'catalog' ? Package : Server;
                   const money = (c, cur) => { const C = (cur || 'usd').toUpperCase(); const s = C === 'USD' ? '$' : C === 'EUR' ? '€' : C === 'GBP' ? '£' : ''; return s ? `${s}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${C}`; };
@@ -1147,7 +1151,7 @@ function AdminPlanUsers() {
                       <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-success' : 'text-[var(--primary-2)]'}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{a.name || a.label}</span>
+                          <span className="font-medium truncate" title={a.name || a.label}>{a.name || a.label}</span>
                           <Badge tone={a.paid ? 'green' : ''}>{a.paid ? t('pu.d.paid', 'paid') : t('pu.d.free', 'free')}</Badge>
                           {a.repoId && <a href={`/repo/${a.repoId}`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] hover:underline text-xs inline-flex items-center gap-0.5">{t('pu.d.open', 'open')} <ArrowUpRight size={11} /></a>}
                         </div>
@@ -1175,7 +1179,9 @@ function AdminPlanUsers() {
           </Card>
           ); })}
         {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('pu.loadmore', 'Load more')}</Button></div>}
-      </div> : <EmptyState icon={tab === 'paying' ? CreditCard : tab === 'free' ? Gift : Archive} title={emptyCopy[0]} sub={emptyCopy[1]} />}
+      </div> : <EmptyState icon={tab === 'paying' ? CreditCard : tab === 'free' ? Gift : Archive} title={emptyCopy[0]}
+        sub={qApplied ? t('pu.empty.filtered', 'No customer in this tab matches the search above.') : emptyCopy[1]}
+        action={qApplied ? { label: t('pu.empty.clear', 'Clear the search'), icon: X, onClick: () => { setQ(''); setQApplied(''); } } : null} />}
       {detail && <UserDetailModal id={detail} onClose={() => setDetail(null)} />}
     </div>
   );
@@ -1315,7 +1321,7 @@ function SiteBansCard() {
             <div className="space-y-1 max-h-48 overflow-auto">
               {live.map((b) => (
                 <div key={b.ip} className="flex items-center gap-2 text-xs rounded-lg bg-[var(--surface-2)] px-2 py-1">
-                  <code className="font-mono flex-1 min-w-0 truncate">{b.ip}</code>
+                  <code className="font-mono flex-1 min-w-0 truncate" title={b.ip}>{b.ip}</code>
                   <span className="text-[var(--faint)]">{b.reason}</span>
                   <span className="text-[var(--faint)] tabular-nums">{Math.max(0, Math.round((b.until - Date.now()) / 60000))} min</span>
                   <button type="button" onClick={() => lift(b.ip)} className="text-[var(--primary-2)] hover:underline">{t('bans.lift', 'Lift')}</button>
@@ -1664,7 +1670,9 @@ function AdminSecurity() {
             </div>
           ))}
         </div>
-      </Card> : <EmptyState icon={Lock} title={attempts.length ? t('sec.nomatch', 'No matches') : t('sec.none.logins', 'No login attempts in this range')} />)}
+      </Card> : <EmptyState icon={Lock} title={attempts.length ? t('sec.nomatch', 'No matches') : t('sec.none.logins', 'No login attempts in this range')}
+        sub={attempts.length ? t('sec.nomatch.logins.s', 'The outcome filter and the search box hide every attempt recorded in this range.') : t('sec.none.logins.s', 'Nobody tried to sign in during the window selected above. Widen it to look further back.')}
+        action={attempts.length ? { label: t('sec.nomatch.clear', 'Show every attempt'), icon: X, onClick: () => { setLoginFilter('all'); setQ(''); } } : null} />)}
 
       {tab === 'audit' && (
         <Card className="p-3 mb-3">
@@ -1798,7 +1806,9 @@ function AdminSecurity() {
             </div>
           </div>
         )}
-      </> : <EmptyState icon={Shield} title={filtersOn ? t('sec.nomatch', 'No matches') : t('sec.none.audit', 'No audit entries in this range')} />)}
+      </> : <EmptyState icon={Shield} title={filtersOn ? t('sec.nomatch', 'No matches') : t('sec.none.audit', 'No audit entries in this range')}
+        sub={filtersOn ? t('sec.nomatch.audit.s', 'The dates, action, actor or search above exclude every entry.') : t('sec.none.audit.s', 'No staff action was recorded in the window selected above.')}
+        action={filtersOn ? { label: t('sec.f.clearall', 'Clear the filters'), icon: X, onClick: clearFilters } : null} />)}
 
       <AuditDetail id={openId} onClose={() => setOpenId(null)} onPickActor={(id) => { setTab('audit'); setActorId(id); }} />
     </div>
@@ -1933,9 +1943,9 @@ function AlertThresholds() {
   useEffect(() => { if (data.data?.thresholds) setForm(data.data.thresholds); }, [data.data]);
 
   const FIELDS = [
-    { k: 'cpuPct', label: t('sp.th.cpu', 'CPU %'), hint: t('sp.th.cpu.h', 'Alert above this usage.') },
-    { k: 'memPct', label: t('sp.th.mem', 'Memory %'), hint: t('sp.th.mem.h', 'Alert above this usage.') },
-    { k: 'diskPct', label: t('sp.th.disk', 'Disk %'), hint: t('sp.th.disk.h', 'Alert above this usage.') },
+    { k: 'cpuPct', label: t('sp.th.cpu', 'CPU %') },
+    { k: 'memPct', label: t('sp.th.mem', 'Memory %') },
+    { k: 'diskPct', label: t('sp.th.disk', 'Disk %') },
     { k: 'storagePct', label: t('sp.th.storage', 'Storage pool %'), hint: t('sp.th.storage.h', 'Warn while a hosting pool still has room to act.') },
     { k: 'vitalsPoorPct', label: t('sp.th.vitals', 'Web Vitals poor %'), hint: t('sp.th.vitals.h', 'Share of "poor" samples on a metric, over the last hour.') },
     { k: 'vitalsMinSamples', label: t('sp.th.vitalsmin', 'Web Vitals min samples'), hint: t('sp.th.vitalsmin.h', 'Below this, two bad loads would fire it.') },
@@ -2500,7 +2510,7 @@ function AdminServerPerf() {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                 {rows.map(([k, label, c]) => (
-                  <div key={k} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c }} /><span className="text-[var(--muted)] truncate">{label}</span><span className="ms-auto tabular-nums font-medium">{Math.round(((bw[k] || 0) / total) * 100)}%</span></div>
+                  <div key={k} className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: c }} /><span className="text-[var(--muted)] truncate" title={label}>{label}</span><span className="ms-auto tabular-nums font-medium">{Math.round(((bw[k] || 0) / total) * 100)}%</span></div>
                 ))}
               </div>
               <p className="text-[11px] text-[var(--faint)] mt-2.5">{t('sp.bw.note', 'Counted from response sizes since the API last restarted. Telemetry runs as a separate service, so it isn’t included here.')}</p>
@@ -2791,7 +2801,7 @@ function AdminServerPerf() {
         </button>
         {sec.outages && (outages.loading && !outages.data ? <Loading /> : !mergedOutages.length ? (
           <EmptyState icon={CheckCircle2} title={t('sp.out.none', 'No outage recorded')}
-            sub={t('sp.out.nonesub2', 'Nothing has been unreachable, and the server has not stopped reporting, in the window kept. Both are measured by the same 10-minute check that raises the alerts — anything shorter than one interval is invisible to it.')} />
+            sub={t('sp.out.nonesub3', 'Nothing has been unreachable, and the server has not stopped reporting, in the window kept. Both are measured by the same 10-minute check, so an outage shorter than 10 minutes is invisible to it.')} />
         ) : (<>
           {/* Happening NOW, said before the history. Somebody who opens this page during an
               incident is not browsing — they want what is down, since when, and whether it
@@ -3128,7 +3138,7 @@ function FileManager() {
                 <div key={`${row.path}-${row.hash}`} className="flex items-center gap-3 py-2">
                   <FileText size={14} className="text-[var(--faint)] shrink-0" />
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-mono truncate">{row.path}</div>
+                    <div className="text-sm font-mono truncate" title={row.path}>{row.path}</div>
                     <div className="text-[11px] text-[var(--faint)]">
                       {t('fm.trash.when', 'deleted {d}').replace('{d}', new Date(row.at).toLocaleString())} · {row.hash.slice(0, 8)}
                     </div>
@@ -3154,7 +3164,7 @@ function FileManager() {
             {entries.length ? entries.map((e) => (
               <div key={e.name} className="flex items-center gap-2 py-1.5 text-sm group">
                 <button onClick={() => openEntry(e)} className="flex-1 min-w-0 text-start flex items-center gap-2 hover:text-[var(--primary-2)]">
-                  {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />} <span className="truncate">{e.name}</span>
+                  {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />} <span className="truncate" title={e.name}>{e.name}</span>
                 </button>
                 {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{(e.size / 1024).toFixed(1)} KB</span>}
                 <span className="hidden group-hover:flex items-center gap-2 shrink-0">
@@ -3174,7 +3184,7 @@ function FileManager() {
             <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
               {history.items.map((h) => (
                 <div key={h.hash} className="flex items-center gap-2.5 py-2 text-sm">
-                  <div className="flex-1 min-w-0"><div className="truncate">{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
+                  <div className="flex-1 min-w-0"><div className="truncate" title={h.message}>{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
                   {/* Download the version instead of restoring it — the safe half of
                       "what did this file look like before", with nothing written to the
                       live server. */}
@@ -3254,7 +3264,7 @@ function DbViewer() {
             <div className="max-h-80 overflow-auto scroll-thin space-y-0.5">
               {visibleTables.map((t) => (
                 <button key={t.name} onClick={() => openTable(t.name)} className={`w-full text-start px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 ${active === t.name ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
-                  <span className="truncate">{t.name}</span><span className="text-[var(--faint)] shrink-0">{t.approxRows}</span>
+                  <span className="truncate" title={t.name}>{t.name}</span><span className="text-[var(--faint)] shrink-0">{t.approxRows}</span>
                 </button>
               ))}
               {!visibleTables.length && <div className="text-xs text-[var(--faint)] py-3 text-center">{t('fm.nomatches', 'No matches.')}</div>}
@@ -3342,7 +3352,7 @@ function DbViewer() {
                 <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
                   {rowHistory.items.map((h) => (
                     <div key={h.hash} className="flex items-center gap-2.5 py-2 text-sm">
-                      <div className="flex-1 min-w-0"><div className="truncate">{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
+                      <div className="flex-1 min-w-0"><div className="truncate" title={h.message}>{h.message}</div><div className="text-[11px] text-[var(--faint)]">{new Date(h.at).toLocaleString()} · <code className="font-mono">{h.hash.slice(0, 8)}</code></div></div>
                       <Button size="sm" onClick={async () => {
                         if (!(await doubleConfirm(dialog, { title: t('dbv.restorerow', 'Restore this row'), message: t('dbv.restorerowconfirm', 'Overwrite {t} (pk={pk}) with this backed-up version? Sensitive columns are never restored. The current row is backed up first.').replace('{t}', rowHistory.table).replace('{pk}', rowHistory.pk), okLabel: t('fm.restorebtn', 'Restore') }))) return;
                         try { const r = await api.post(`/server/db/backups/${h.hash}/restore`, { table: rowHistory.table, pk: rowHistory.pk, confirmToken: 'CONFIRM' }); toast.success(t('dbv.rowrestored', 'Restored {n} column(s){s}.').replace('{n}', r.restored.length).replace('{s}', r.skipped.length ? t('dbv.skipped', ', skipped {k}').replace('{k}', r.skipped.length) : '')); setRowHistory(null); setCell(null); openTable(active, page, sort); }
@@ -3406,7 +3416,8 @@ function AdminServerAdvanced() {
   if (!me2fa.data?.canControlServer) return <EmptyState icon={AlertTriangle} title={t('asa.notauth', 'Not authorized')}
     sub={me?.role === 'SUPERADMIN'
       ? t('asa.notauthself', 'Server control is granted separately from your role, so it is never implicit — not even for a SUPERADMIN. Grant it to yourself in the Access & permissions tab.')
-      : t('asa.notauthsub', 'A SUPERADMIN must grant you server-control access from the Access & permissions tab first.')} />;
+      : t('asa.notauthsub', 'A SUPERADMIN must grant you server-control access from the Access & permissions tab first.')}
+    action={me?.role === 'SUPERADMIN' ? { label: t('asa.notauth.go', 'Open Roles & permissions'), icon: Shield, to: '/admin?s=access' } : null} />;
 
   return (
     <div>
@@ -3771,7 +3782,7 @@ function BundleBrowser({ readDir, readFile }) {
             <button key={e.name} onClick={() => open(e)} disabled={!e.isDir && !readFile}
               className="w-full text-start px-2.5 py-1.5 flex items-center gap-2 text-[12px] hover:bg-[var(--surface-2)] disabled:hover:bg-transparent disabled:cursor-default">
               {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />}
-              <span className="truncate flex-1">{e.name}</span>
+              <span className="truncate flex-1" title={e.name}>{e.name}</span>
               {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtBytes(e.size)}</span>}
             </button>
           ))}
@@ -3834,7 +3845,7 @@ function ImportPreview({ file, b64, kind, onClose, onImported }) {
             </p>
           </div>
           <div className="grid sm:grid-cols-2 gap-2 text-[12px]">
-            <div className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-[var(--faint)] text-[11px]">{t('snap.pre.file', 'File')}</div><div className="truncate">{file?.name}</div></div>
+            <div className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-[var(--faint)] text-[11px]">{t('snap.pre.file', 'File')}</div><div className="truncate" title={file?.name}>{file?.name}</div></div>
             <div className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-[var(--faint)] text-[11px]">{t('snap.c.size', 'On disk')}</div><div>{fmtBytes(d.bytes || file?.size || 0)}</div></div>
           </div>
           {!!(d.commits || []).length && (
@@ -3844,7 +3855,7 @@ function ImportPreview({ file, b64, kind, onClose, onImported }) {
                 {d.commits.map((c) => (
                   <div key={c.hash} className="px-2.5 py-1.5 flex items-baseline gap-2 text-[12px]">
                     <code className="font-mono text-[10px] text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
-                    <span className="truncate flex-1">{c.message}</span>
+                    <span className="truncate flex-1" title={c.message}>{c.message}</span>
                     <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleDateString()}</span>
                   </div>
                 ))}
@@ -3953,7 +3964,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
               {(d.commits || []).map((c) => (
                 <div key={c.hash} className="px-2.5 py-1.5 flex items-baseline gap-2 text-[12px]">
                   <code className="font-mono text-[10px] text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
-                  <span className="truncate flex-1">{c.message}</span>
+                  <span className="truncate flex-1" title={c.message}>{c.message}</span>
                   <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleDateString()}</span>
                 </div>
               ))}
@@ -4412,7 +4423,7 @@ function BackupManager() {
                 <div key={p.k} className="min-w-0">
                   <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]">
                     <span className={`w-2 h-2 rounded-full shrink-0 ${p.cls}`} />
-                    <span className="truncate">{p.label}</span>
+                    <span className="truncate" title={p.label}>{p.label}</span>
                   </div>
                   <div className="text-sm tabular-nums ps-3.5">
                     {fmtBytes(p.bytes)}
@@ -4509,7 +4520,7 @@ function BackupManager() {
                   : contents[k].map((c) => (
                     <div key={c.hash} className="px-3 py-1.5 border-t border-[var(--line)] flex items-baseline gap-2">
                       <code className="text-[10px] font-mono text-[var(--faint)] shrink-0">{c.hash.slice(0, 8)}</code>
-                      <span className="text-xs truncate flex-1">{c.message}</span>
+                      <span className="text-xs truncate flex-1" title={c.message}>{c.message}</span>
                       <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(c.at).toLocaleString()}</span>
                     </div>
                   ))}
@@ -4774,7 +4785,7 @@ function AdminAccess({ isSuperAdmin }) {
           {results.map((u) => (
             <button key={u.id} onClick={() => pick(u)} className={`w-full text-start card p-3 flex items-center gap-3 ${picked?.id === u.id ? 'border-[var(--primary)]' : ''}`}>
               <Avatar user={u} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate">{u.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={u.displayName}>{u.displayName}</span> <Badge tone={roleTone(u.role)}>{u.role}</Badge>{u.canControlServer && <Badge tone="red"><Server size={9} /> {t('acc.server', 'server')}</Badge>}{u.canViewTelemetry && <Badge tone="primary"><TrendingUp size={9} /> {t('acc.telemetry', 'telemetry')}</Badge>}{u.permissions?.length > 0 && !['ADMIN', 'SUPERADMIN'].includes(u.role) && <Badge tone="amber"><Shield size={9} /> {t('acc.perms.count', '{n} perms').replace('{n}', u.permissions.length)}</Badge>}</div><div className="text-xs text-[var(--faint)] truncate" title={u.email}>{u.email}</div></div>
             </button>
           ))}
         </div> : <div className="text-sm text-[var(--faint)]">{t('acc.nousers', 'No users found.')}</div>)}
@@ -4782,7 +4793,7 @@ function AdminAccess({ isSuperAdmin }) {
 
       {picked && (
         <Card className="p-5 space-y-5">
-          <div className="flex items-center gap-3"><Avatar user={picked} size={40} /><div className="min-w-0"><div className="font-semibold flex items-center gap-2">{picked.displayName} <Badge tone={roleTone(picked.role)}>{picked.role}</Badge></div><div className="text-xs text-[var(--faint)] truncate">{picked.email}</div></div></div>
+          <div className="flex items-center gap-3"><Avatar user={picked} size={40} /><div className="min-w-0"><div className="font-semibold flex items-center gap-2">{picked.displayName} <Badge tone={roleTone(picked.role)}>{picked.role}</Badge></div><div className="text-xs text-[var(--faint)] truncate" title={picked.email}>{picked.email}</div></div></div>
 
           {isSuperAdmin && (
             <div className="pt-4 border-t border-[var(--line)]">
@@ -4922,7 +4933,7 @@ function AdminAccess({ isSuperAdmin }) {
           {allProjGrants.map((g) => (
             <Card key={g.id} className="p-3 flex items-center gap-3">
               <Avatar user={g.user} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate" title={g.user?.email}>{g.user?.email}</div></div>
               <Badge tone="primary">{projScopeLabel(g)}</Badge>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeProject(g)}><Trash2 size={13} /></Button>
             </Card>
@@ -4937,7 +4948,7 @@ function AdminAccess({ isSuperAdmin }) {
           {allGrants.map((g) => (
             <Card key={g.id} className="p-3 flex items-center gap-3">
               <Avatar user={g.user} size={32} />
-              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate">{g.user?.email}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate">{g.user?.displayName || t('acc.deleted', '(deleted)')}</div><div className="text-xs text-[var(--faint)] truncate" title={g.user?.email}>{g.user?.email}</div></div>
               <Badge tone="primary">{scopeLabel(g)}</Badge>
               <Button size="sm" variant="ghost" className="!text-error" onClick={() => revoke(g)}><Trash2 size={13} /></Button>
             </Card>
@@ -5026,7 +5037,8 @@ function RoleManager({ roles }) {
             <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(r)}><Trash2 size={13} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={ShieldCheck} title={t('rm.none.t', 'No custom roles yet')} sub={t('rm.none.s', 'Create one to bundle capabilities and hand them out in a click.')} />}
+      </div> : <EmptyState icon={ShieldCheck} title={t('rm.none.t', 'No custom roles yet')} sub={t('rm.none.s', 'Create one to bundle capabilities and hand them out in a click.')}
+        action={{ label: t('rm.new', 'New role'), icon: Plus, onClick: () => open(null) }} />}
 
       {editing && (
         <Modal open onClose={close} title={editing.id ? t('rm.edit', 'Edit role') : t('rm.create', 'Create role')}>
@@ -5308,8 +5320,8 @@ function AdminAnnouncements() {
             <Card key={a.id} className="p-4 flex items-center gap-3">
               <Badge tone={ANN_TONE[a.tone] || 'primary'}><TIcon size={11} /> {a.tone}</Badge>
               <div className="flex-1 min-w-0">
-                <div className="font-medium truncate">{a.title}</div>
-                {a.body && <div className="text-xs text-[var(--muted)] truncate">{a.body}</div>}
+                <div className="font-medium truncate" title={a.title}>{a.title}</div>
+                {a.body && <div className="text-xs text-[var(--muted)] truncate" title={a.body}>{a.body}</div>}
                 {a.linkUrl && <div className="text-xs text-[var(--primary-2)] truncate flex items-center gap-1"><Link2 size={11} /> {a.linkUrl}</div>}
               </div>
               <Badge tone={a.active ? 'green' : ''}>{a.active ? t('ann.active', 'active') : t('ann.inactive', 'inactive')}</Badge>
@@ -5319,7 +5331,7 @@ function AdminAnnouncements() {
             </Card>
             );
           })}
-        </div> : <EmptyState icon={BellIcon} title={t('ann.none', 'No announcements yet')} />}
+        </div> : <EmptyState icon={BellIcon} title={t('ann.none', 'No announcements yet')} sub={t('ann.none.s', 'Nothing has been published. Anything you publish above is listed here so it can be deactivated or removed.')} />}
       </div>
     </div>
   );
@@ -5457,7 +5469,7 @@ function AdminNewsletter() {
             {shown.length ? shown.map((s) => (
               <label key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-[var(--surface-2)]">
                 <input type="checkbox" checked={picked.has(s.email)} onChange={() => toggle(s.email)} />
-                <span className="flex-1 min-w-0 truncate">{s.email}</span>
+                <span className="flex-1 min-w-0 truncate" title={s.email}>{s.email}</span>
                 <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
               </label>
             )) : <div className="px-3 py-6 text-center text-sm text-[var(--faint)]">{t('nl.pick.none', 'No matching active subscribers.')}</div>}
@@ -5507,7 +5519,7 @@ function AdminNewsletter() {
           {loading ? <Loading /> : subscribers.length ? <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] max-h-80 overflow-y-auto">
             {subscribers.map((s) => (
               <div key={s.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                <span className="flex-1 min-w-0 truncate">{s.email}</span>
+                <span className="flex-1 min-w-0 truncate" title={s.email}>{s.email}</span>
                 <Badge tone={s.status === 'active' ? 'green' : s.status === 'pending' ? 'amber' : ''}>{s.status}</Badge>
                 <Badge tone="">{s.locale?.toUpperCase() || 'EN'}</Badge>
                 <button onClick={() => removeSub(s)} title={t('nl.rm.ok', 'Remove')} className="shrink-0 p-1 rounded-md text-[var(--faint)] hover:text-error hover:bg-[var(--surface-2)] transition"><Trash2 size={14} /></button>
@@ -5587,7 +5599,7 @@ function AdminFaq() {
         {items.map((it) => (
           <Card key={it.id} className="p-4 flex items-center gap-3">
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate">{it.question}</div>
+              <div className="font-medium truncate" title={it.question}>{it.question}</div>
               <div className="text-xs text-[var(--faint)] flex items-center gap-2 mt-0.5"><Badge>{it.category}</Badge>{!it.published && <Badge tone="amber">{t('faq.draft', 'draft')}</Badge>}</div>
             </div>
             <button onClick={() => toggle(it)} title={it.published ? t('faqa.hide', 'Unpublish') : t('faqa.show', 'Publish')} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]">{it.published ? <Eye size={16} /> : <EyeOff size={16} />}</button>
@@ -5938,14 +5950,14 @@ function UserExtras({ userId }) {
                     {(state.data.signInLinks || []).map((l) => (
                       <div key={l.provider + l.providerAccountId} className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
                         <span className="capitalize">{l.provider}</span>
-                        <span className="text-[var(--muted)] truncate flex-1">{l.username || l.providerAccountId}</span>
+                        <span className="text-[var(--muted)] truncate flex-1" title={l.username || l.providerAccountId}>{l.username || l.providerAccountId}</span>
                         <span className="text-[10px] text-[var(--faint)]">{new Date(l.linkedAt).toLocaleDateString()}</span>
                       </div>
                     ))}
                     {state.data.discord && (
                       <div className="flex items-center gap-2 text-[13px] px-2 py-1 rounded bg-[var(--surface-2)]">
                         <span>Discord</span>
-                        <span className="text-[var(--muted)] truncate flex-1">{state.data.discord.username || state.data.discord.discordId}</span>
+                        <span className="text-[var(--muted)] truncate flex-1" title={state.data.discord.username || state.data.discord.discordId}>{state.data.discord.username || state.data.discord.discordId}</span>
                         <span className="text-[10px] text-[var(--faint)]">{new Date(state.data.discord.linkedAt).toLocaleDateString()}</span>
                       </div>
                     )}
@@ -5991,8 +6003,8 @@ function UserExtras({ userId }) {
                 <div className="space-y-1 max-h-52 overflow-y-auto">
                   {state.data.votes.map((v) => (
                     <div key={v.id} className="text-[12px] flex items-center gap-2">
-                      <span className="truncate flex-1">{v.poll.question}</span>
-                      <span className="text-[var(--muted)] truncate shrink-0">{v.option.label}</span>
+                      <span className="truncate flex-1" title={v.poll.question}>{v.poll.question}</span>
+                      <span className="text-[var(--muted)] truncate shrink-0" title={v.option.label}>{v.option.label}</span>
                       <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(v.createdAt).toLocaleDateString()}</span>
                     </div>
                   ))}
@@ -6799,7 +6811,7 @@ function UserDetailModal({ id, onClose }) {
               <div key={o.provider} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
                 <span className="font-medium">{nm}</span>
-                {o.username && <code className="text-xs text-[var(--faint)] truncate">{o.username}</code>}
+                {o.username && <code className="text-xs text-[var(--faint)] truncate" title={o.username}>{o.username}</code>}
                 <button type="button" onClick={() => unlink('oauth', o.provider, nm)} className="ms-auto shrink-0 text-[11px] text-[var(--faint)] hover:text-error inline-flex items-center gap-1"><X size={12} /> {t('ud.unlink.c', 'Unlink')}</button>
               </div>
             ); })}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nooauth', 'No sign-in provider linked (e-mail + password only).')}</div>}
@@ -6833,18 +6845,18 @@ function UserDetailModal({ id, onClose }) {
           {tab === 'content' && (<>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
-            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
+            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
 
           {listed.length > 0 && <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
-            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
+            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
           </div>}
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
-            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate">{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
+            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={it.name}>{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
           </>)}
@@ -6873,7 +6885,7 @@ function UserDetailModal({ id, onClose }) {
             {u.payments?.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.payments.map((pay) => (
               <div key={pay.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
                 <Receipt size={13} className="text-success shrink-0" />
-                <span className="flex-1 truncate">{pay.description}</span>
+                <span className="flex-1 truncate" title={pay.description}>{pay.description}</span>
                 <span className="text-success font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
               </div>
@@ -7020,7 +7032,7 @@ function PluginContentModal({ item, onClose }) {
             {(data.files || []).map((fl) => (
               <div key={fl.path} className="group flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
                 {fl.ok ? <CheckCircle2 size={14} className="text-success shrink-0" /> : <XCircle size={14} className="text-error shrink-0" />}
-                <span className="flex-1 truncate font-mono text-xs">{fl.path}</span>
+                <span className="flex-1 truncate font-mono text-xs" title={fl.path}>{fl.path}</span>
                 <span className="text-xs text-[var(--faint)]">{kb(fl.size)} KB</span>
                 <button onClick={() => dlFile(fl.path)} title={t('pcm.dlfile', 'Download this file')} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Download size={13} /></button>
               </div>
@@ -7214,7 +7226,7 @@ function AdminHistory() {
                   <div key={i} className="px-3 py-1.5 border-b border-[var(--line)] last:border-0 flex items-baseline gap-2 text-xs">
                     <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-16 shrink-0">{e.source}</span>
                     <span className="font-medium shrink-0">{e.action}</span>
-                    <span className="text-[var(--muted)] truncate flex-1">{e.detail}</span>
+                    <span className="text-[var(--muted)] truncate flex-1" title={e.detail}>{e.detail}</span>
                     <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(e.at).toLocaleString()}</span>
                   </div>
                 ))}
@@ -7239,7 +7251,7 @@ function AdminHistory() {
                 <span className="w-28 shrink-0 tabular-nums">
                   {r.days > 0 ? t('hist.ret.days', '{n} days').replace('{n}', String(r.days)) : t('hist.ret.keep', 'kept')}
                 </span>
-                <span className="text-[var(--faint)] truncate flex-1">{r.where}</span>
+                <span className="text-[var(--faint)] truncate flex-1" title={r.where}>{r.where}</span>
                 {/* Editable in place, for a SUPERADMIN, and only where a setting genuinely
                     owns the window. Writing goes to THAT setting — there is still no
                     "history retention" of our own that could disagree with analytics or with
@@ -7278,7 +7290,10 @@ function AdminHistory() {
 
       {loading && !entries.length ? <Loading /> : !entries.length ? (
         <EmptyState icon={History} title={t('hist.none.t', 'Nothing in this window')}
-          sub={t('hist.none.s', 'Try a longer window or fewer filters, the range is a window, not the whole history.')} />
+          sub={qApplied || sources.length ? t('hist.none.s3', 'The search and the source chips above exclude every row in this window.') : t('hist.none.s', 'Try a longer window or fewer filters, the range is a window, not the whole history.')}
+          action={qApplied || sources.length
+            ? { label: t('hist.none.clear', 'Clear the search and the sources'), icon: X, onClick: () => { setQ(''); setQApplied(''); setSources([]); } }
+            : days < 365 ? { label: t('hist.none.widen', 'Look back a year'), icon: Clock, onClick: () => { setTake(60); setDays(365); } } : null} />
       ) : (
         <>
           <Card className="p-0 overflow-hidden">
@@ -7543,7 +7558,7 @@ function MailGallery({ t }) {
                   {mine.map((s) => (
                     <button key={s.id} type="button" onClick={() => setPick(s.id)}
                       className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${pick === s.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
-                      <span className="flex-1 min-w-0 truncate">{s.label}</span>
+                      <span className="flex-1 min-w-0 truncate" title={s.label}>{s.label}</span>
                       {/* Which mails an edit would actually reach. Without this the list looks
                           uniform and the difference is only discovered after typing. */}
                       {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}
@@ -7671,8 +7686,8 @@ function UserPicker({ picked, setPicked }) {
           {hits.map((u) => (
             <button key={u.id} type="button" onClick={() => add(u)}
               className="w-full text-start px-3 py-2 hover:bg-[var(--surface-2)] transition flex items-center gap-2">
-              <span className="text-sm truncate">{u.displayName || u.email}</span>
-              <span className="text-[11px] text-[var(--faint)] truncate ms-auto">{u.email}</span>
+              <span className="text-sm truncate" title={u.displayName || u.email}>{u.displayName || u.email}</span>
+              <span className="text-[11px] text-[var(--faint)] truncate ms-auto" title={u.email}>{u.email}</span>
             </button>
           ))}
         </div>
@@ -7983,7 +7998,7 @@ function AdminMail() {
                 email an author never thinks to check. */}
             <div className="rounded-t-xl border border-[var(--line)] border-b-0 px-3 py-2 panel">
               <div className="text-sm font-medium truncate">{subject || t('adm.mail.nosubject', '(no subject)')}</div>
-              <div className="text-xs text-[var(--faint)] truncate">{preview.preheader || '—'}</div>
+              <div className="text-xs text-[var(--faint)] truncate" title={preview.preheader || '—'}>{preview.preheader || '—'}</div>
             </div>
             {/* The backdrop follows the pinned scheme too, or a dark email floats on a
                 white page and reads as broken rather than as dark. */}
@@ -8089,7 +8104,7 @@ function AdminTransfers() {
                     <span className="text-[11px] uppercase tracking-wide text-[var(--faint)]">
                       {r.kind === 'repo' ? t('adt.repo', 'repo') : t('adt.item', 'item')}
                     </span>
-                    <span className="font-medium text-sm truncate">{r.targetName}</span>
+                    <span className="font-medium text-sm truncate" title={r.targetName}>{r.targetName}</span>
                   </div>
                   <div className="text-[12px] text-[var(--muted)] mt-1 flex items-center gap-1.5 flex-wrap">
                     <span>{r.from.displayName}</span>
@@ -8400,7 +8415,8 @@ function AdminHostingPlans() {
         </Card>
       )}
 
-      {!plans.length ? <EmptyState icon={HardDrive} title={t('adm.plans.none', 'No plans')} sub={t('adm.plans.nonesub', 'Nothing is on sale, the pricing page will be empty.')} /> : (
+      {!plans.length ? <EmptyState icon={HardDrive} title={t('adm.plans.none', 'No plans')} sub={t('adm.plans.nonesub', 'Nothing is on sale, the pricing page will be empty.')}
+        action={draft ? null : { label: t('adm.plans.new', 'New plan'), icon: Plus, onClick: () => { setDraft({ ...blank }); setOriginal(null); setEffective(''); } }} /> : (
         <Card className="p-0 overflow-hidden">
           {plans.map((pl) => (
             <div key={pl.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[var(--line)] last:border-0 ${pl.active ? '' : 'opacity-60'}`}>
@@ -8772,7 +8788,9 @@ function AdminAssets() {
               )}
             </div>
 
-            {!lib.length ? <EmptyState icon={Search} title={t('assets.nomatch', 'Nothing matches')} /> : (
+            {!lib.length ? <EmptyState icon={Search} title={t('assets.nomatch', 'Nothing matches')}
+              sub={t('assets.nomatch.s', 'The search box and the kind filter above exclude every uploaded file.')}
+              action={{ label: t('assets.nomatch.clear', 'Clear the search and the filter'), icon: X, onClick: () => { setQ(''); setFilter(''); } }} /> : (
               <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))' }}>
                 {lib.map((a) => {
                   const I = MEDIA_ICON[a.media] || Package;
@@ -8789,7 +8807,7 @@ function AdminAssets() {
                       </button>
                       <div className="p-2.5">
                         <div className="text-[13px] font-medium truncate" title={a.label || a.key}>{a.label || a.key}</div>
-                        <div className="text-[10.5px] text-[var(--faint)] font-mono truncate">{a.key}</div>
+                        <div className="text-[10.5px] text-[var(--faint)] font-mono truncate" title={a.key}>{a.key}</div>
                         <div className="text-[10.5px] text-[var(--muted)] mt-0.5">{assetSize(a.size)}</div>
                         <AssetStats asset={a} onChange={setAsset} />
                         <div className="flex items-center gap-1 mt-2">
@@ -9505,7 +9523,7 @@ function AdminProjects() {
                 options={showcase.map((s) => ({ value: `sc:${s.id}`, label: s.name, icon: scIcon(s) }))} />
             ) : showcase.map((s) => (
               <button key={s.id} onClick={() => setActive(`sc:${s.id}`)} className={chip(active === `sc:${s.id}`)}>
-                {scIcon(s)} <span className="truncate max-w-[160px]">{s.name}</span>
+                {scIcon(s)} <span className="truncate max-w-[160px]" title={s.name}>{s.name}</span>
               </button>
             ))}
           </div>
@@ -9962,7 +9980,7 @@ function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
               const n = sections.filter((x) => x.doc === p.key).length;
               return (
                 <div key={p.id} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-2">
-                  <span className="text-[13px] font-medium truncate flex-1 min-w-0">{p.label}</span>
+                  <span className="text-[13px] font-medium truncate flex-1 min-w-0" title={p.label}>{p.label}</span>
                   <span className="text-[11px] font-mono text-[var(--faint)] shrink-0">{p.key}</span>
                   <Select className="!w-[130px] !text-xs shrink-0" value={p.categoryId || ''}
                     onChange={(e) => call(() => api.put(`/admin/legal/pages/${p.id}`, { categoryId: e.target.value || null }), t('common.saved', 'Saved.'))}>
@@ -10020,7 +10038,7 @@ function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
             {!cats.length && <p className="text-[12px] text-[var(--muted)]">{t('al.mng.nocats', 'No headings. Every document is listed together, which is right until there is more than one project.')}</p>}
             {cats.map((c) => (
               <div key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-2">
-                <span className="text-[13px] font-medium truncate flex-1 min-w-0">{c.label}</span>
+                <span className="text-[13px] font-medium truncate flex-1 min-w-0" title={c.label}>{c.label}</span>
                 <span className="text-[11px] font-mono text-[var(--faint)] shrink-0">#{c.key}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{pages.filter((p) => p.categoryId === c.id).length}</span>
                 {/* Deleting a heading leaves its documents alone — they become uncategorised.
@@ -10288,7 +10306,7 @@ function AdminLegal() {
                 <button type="button" onClick={() => (openId === sec.id ? setOpenId(null) : open(sec))}
                   className="w-full flex items-center gap-2 p-3 text-start">
                   <span className="font-mono text-[10px] text-[var(--faint)] tabular-nums w-6 shrink-0">{String(sec.order + 1).padStart(2, '0')}</span>
-                  <span className="font-medium text-sm flex-1 min-w-0 truncate">{sec.title}</span>
+                  <span className="font-medium text-sm flex-1 min-w-0 truncate" title={sec.title}>{sec.title}</span>
                   {/* A section with no French text falls back to English on a French page,
                       silently. Said here rather than discovered by a French reader. */}
                   {!sec.bodyFr && <Badge tone="amber">{t('al.nofr', 'no FR')}</Badge>}
@@ -10420,7 +10438,8 @@ function AdminMessages() {
             : filter === 'legal' ? t('am.none.legal', 'No legal notices')
               : t('am.none.filtered', 'Nothing in this category')}
           sub={filter === 'all' ? t('am.none.s', 'Contact-form submissions will appear here.')
-            : t('am.none.s2', '{n} message(s) in other categories.').replace('{n}', all.length)} />
+            : t('am.none.s2', '{n} message(s) in other categories.').replace('{n}', all.length)}
+          action={filter === 'all' ? null : { label: t('am.none.showall', 'Show every message'), icon: X, onClick: () => setFilter('all') }} />
       )}
     </div>
   );
@@ -10504,7 +10523,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
     <Modal open onClose={onClose} title={t('sr.title', 'Review: {n}').replace('{n}', it.name)} icon={Eye} width="max-w-2xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button><Button onClick={onReject}><XCircle size={15} /> {t('sr.reject', 'Reject')}</Button><Button variant="primary" onClick={onApprove}><CheckCircle2 size={15} /> {t('sr.approve', 'Approve')}</Button></>}>
       <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm mb-4">
-        {rows.map(([k, v]) => <div key={k} className="min-w-0"><span className="text-[var(--faint)] text-xs">{k}</span><div className="font-medium truncate">{v}</div></div>)}
+        {rows.map(([k, v]) => <div key={k} className="min-w-0"><span className="text-[var(--faint)] text-xs">{k}</span><div className="font-medium truncate" title={v}>{v}</div></div>)}
       </div>
       {it.description && <div className="mb-4"><div className="text-xs text-[var(--faint)] uppercase font-semibold mb-1">{t('cc.description', 'Description')}</div><p className="text-sm text-[var(--muted)] whitespace-pre-wrap">{it.description}</p></div>}
       {it.tags?.length > 0 && <div className="flex flex-wrap gap-1.5 mb-4">{it.tags.map((tg) => <Badge key={tg}><Tag size={10} /> {tg}</Badge>)}</div>}
@@ -10599,7 +10618,7 @@ function AdminKofi() {
         <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--primary-2)]" /> {t('kf.title', 'Ko-fi donor rewards')}</div>
         <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('kf.sub', "A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {off}% hosting discount code (valid on {min}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.").replace('{off}', data?.percentOff ?? 25).replace('{min}', data?.minMonths ?? 12) }} />
         <div className="flex items-center gap-2 mb-3 text-xs">
-          <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate">{data?.webhookUrl}</code>
+          <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate" title={data?.webhookUrl}>{data?.webhookUrl}</code>
           <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
         </div>
         {data?.fromEnv ? (
@@ -10747,7 +10766,7 @@ function AdminPromo() {
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {f.assignedTokens.map((tok) => { const [ty, ...rest] = tok.split(':'); const val = rest.join(':'); return (
                   <span key={tok} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-                    <span className="text-[10px] font-bold uppercase text-[var(--primary-2)]">{ty}</span><span className="font-mono truncate max-w-[14rem]">{val}</span>
+                    <span className="text-[10px] font-bold uppercase text-[var(--primary-2)]">{ty}</span><span className="font-mono truncate max-w-[14rem]" title={val}>{val}</span>
                     <button type="button" onClick={() => removeToken(tok)} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>
                   </span>
                 ); })}
@@ -10779,7 +10798,7 @@ function AdminPromo() {
                       <div key={r.id} className="flex items-center gap-2.5 text-sm">
                         <Users size={13} className="text-[var(--faint)] shrink-0" />
                         <span className="font-medium">{r.user?.displayName}</span>
-                        <span className="text-xs text-[var(--faint)] truncate">{r.user?.email}</span>
+                        <span className="text-xs text-[var(--faint)] truncate" title={r.user?.email}>{r.user?.email}</span>
                         <span className="text-xs text-[var(--muted)] flex-1 truncate">· {r.detail}</span>
                         <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(r.createdAt).toLocaleString()}</span>
                       </div>
@@ -11200,7 +11219,7 @@ function StatTile({ n, label, tone = '' }) {
   return (
     <div className="rounded-lg border border-[var(--line)] px-3 py-2 min-w-0">
       <div className={`text-lg font-semibold tabular-nums leading-none ${tone}`}>{n}</div>
-      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mt-1 truncate">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mt-1 truncate" title={label}>{label}</div>
     </div>
   );
 }
@@ -12278,9 +12297,9 @@ function AnnounceComposer({ guildList = [] }) {
             className="w-full text-start flex items-center gap-2 py-1 text-[11px] border-b border-[var(--line)] last:border-0 hover:bg-[var(--surface-2)] rounded px-1 -mx-1"
           >
             <Badge tone={a.status === 'sent' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
-            <span className="flex-1 min-w-0 truncate">{a.title}</span>
+            <span className="flex-1 min-w-0 truncate" title={a.title}>{a.title}</span>
             <span className="text-[var(--faint)] shrink-0">{a.kind}{a.format && a.format !== 'embed' ? ` · ${a.format}` : ''}</span>
-            {a.error && <span className="text-error truncate max-w-[40%]">{a.error}</span>}
+            {a.error && <span className="text-error truncate max-w-[40%]" title={a.error}>{a.error}</span>}
             <ChevronRight size={12} className="shrink-0 text-[var(--faint)]" />
           </button>
         ))}
@@ -13747,8 +13766,8 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
       {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
         : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-white">{initial}</span>}
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium truncate">{name}</div>
-        {sub && <div className="text-[10px] text-[var(--faint)] truncate">{sub}</div>}
+        <div className="text-sm font-medium truncate" title={name}>{name}</div>
+        {sub && <div className="text-[10px] text-[var(--faint)] truncate" title={sub}>{sub}</div>}
       </div>
       {dot && <span className="w-2 h-2 rounded-full bg-success shrink-0" title={t('adm2.customcfg', "Custom config")} />}
     </button>
@@ -13968,7 +13987,7 @@ function MemberDatabaseCard({ cfg, set }) {
               return (
                 <div key={g.guildId} className="flex items-center gap-2.5 px-3 py-1.5 text-xs">
                   {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-full shrink-0" /> : <span className="w-6 h-6 rounded-full bg-[var(--surface-2)] shrink-0" />}
-                  <span className="flex-1 min-w-0 truncate font-medium">{g.name || g.guildId}</span>
+                  <span className="flex-1 min-w-0 truncate font-medium" title={g.name || g.guildId}>{g.name || g.guildId}</span>
                   <span className="tabular-nums text-[var(--muted)]" title={t('db.mdb.cov', 'stored / members on the server')}>{g.stored.toLocaleString()} / {(g.memberCount || 0).toLocaleString()}</span>
                   <span className={`tabular-nums w-10 text-end ${cov >= 95 ? 'text-success' : cov >= 60 ? 'text-[var(--muted)]' : 'text-warning'}`}>{Math.round(cov)}%</span>
                   <span className="w-24 h-1 rounded-full bg-[var(--surface-2)] overflow-hidden hidden sm:block"><span className={`block h-full ${cov >= 95 ? 'bg-success' : 'bg-[var(--primary)]'}`} style={{ width: `${cov}%` }} /></span>
@@ -14174,7 +14193,7 @@ function Fold({ title, summary, children, defaultOpen = false }) {
         className="w-full flex items-center gap-2 py-2.5 text-start group">
         <ChevronDown size={14} className={`shrink-0 text-[var(--faint)] transition-transform ${on ? 'rotate-180' : ''}`} />
         <span className="text-[12.5px] font-medium group-hover:text-[var(--text)] transition-colors">{title}</span>
-        {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]">{summary}</span> : null}
+        {!on && summary ? <span className="ms-auto text-[11px] text-[var(--faint)] truncate max-w-[55%]" title={summary}>{summary}</span> : null}
       </button>
       {on && <div className="pb-3">{children}</div>}
     </div>
@@ -14348,7 +14367,7 @@ function BotGiveawaysCard() {
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <Field label={t('gw.prize', 'Prize')} hint={t('gw.prize.h', 'What entrants read on the post. The preset fills it; change it to whatever reads best.')}><Input value={f.prize} onChange={(e) => setF({ ...f, prize: e.target.value })} placeholder={t('gw.prize.ph', 'e.g. 1 month of hosting')} /></Field>
             <Field label={t('gw.audience', 'Where to enter')}><Dropdown className="w-full" value={f.audience} onChange={(v) => setF({ ...f, audience: v })} options={[{ value: 'discord', label: t('gw.aud.discord', 'Discord') }, { value: 'site', label: t('gw.aud.site', 'The site (bettercommunity.ch/giveaways)') }, { value: 'both', label: t('gw.aud.both', 'Both') }]} /></Field>
-            {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')} hint={t('db.f.chanid', 'Channel ID')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
+            {f.audience !== 'site' && <Field label={t('gw.channel', 'Channel id')}><Input value={f.channelId} onChange={(e) => setF({ ...f, channelId: e.target.value })} placeholder="123456789012345678" /></Field>}
             <Field label={t('gw.duration2', 'Runs for')}>
               {GW_DURATIONS.some(([m]) => m === Number(f.durationMinutes))
                 ? <Dropdown className="w-full" value={String(f.durationMinutes)}
@@ -15129,8 +15148,8 @@ function AdminBot() {
                   <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={!!it.exclusive} onChange={(e) => upd(i, { exclusive: e.target.checked })} /> {t('db.eco.exclusive', 'One per account')}</label>
                   <label className={`flex items-center gap-1.5 ${bound ? 'opacity-50' : 'cursor-pointer'}`}><input type="checkbox" disabled={bound} checked={!bound && it.giftable !== false} onChange={(e) => upd(i, { giftable: e.target.checked })} /> {t('db.eco.giftable', 'Giftable')}</label>
                   <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={it.active !== false} onChange={(e) => upd(i, { active: e.target.checked })} /> {t('db.eco.listed', 'Listed')}</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('db.eco.onbot.h', 'Show this item in the Discord /shop')}><input type="checkbox" checked={it.onBot !== false} onChange={(e) => upd(i, { onBot: e.target.checked })} /> {t('db.eco.onbot', 'Discord /shop')}</label>
-                  <label className="flex items-center gap-1.5 cursor-pointer" title={t('db.eco.onsite.h', 'Show this item in the site Boutique')}><input type="checkbox" checked={it.onSite !== false} onChange={(e) => upd(i, { onSite: e.target.checked })} /> {t('db.eco.onsite', 'Site shop')}</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={it.onBot !== false} onChange={(e) => upd(i, { onBot: e.target.checked })} /> {t('db.eco.onbot', 'Discord /shop')}</label>
+                  <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={it.onSite !== false} onChange={(e) => upd(i, { onSite: e.target.checked })} /> {t('db.eco.onsite', 'Site shop')}</label>
                 </div>
               </div>
               {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Pick the badge, the item is hidden until then.')}</p>}
@@ -15588,7 +15607,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button type="button" onClick={() => setPicking(ic.key)} className="min-w-0 flex-1 inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:bg-[var(--surface-2)]" title={t('db.eco.icons.glyph', 'Choose the glyph')}>
-                    <IconGlyph name={m.icon || ic.icon} size={13} /><span className="truncate">{m.icon || ic.icon}</span>
+                    <IconGlyph name={m.icon || ic.icon} size={13} /><span className="truncate" title={m.icon || ic.icon}>{m.icon || ic.icon}</span>
                   </button>
                   <div className="shrink-0"><ColorInput value={m.color || ic.color} onChange={(v) => onStyle(`${ic.key}.color`, v)} title={t('db.eco.icons.color', 'Tile colour')} /></div>
                 </div>
@@ -15731,7 +15750,7 @@ function BotMemberModal({ member, guildRoles, onClose }) {
                 <div key={a.id} className="flex items-center gap-2 text-[12px] px-2.5 py-1.5 rounded-lg bg-[var(--surface-2)]">
                   <Badge tone={a.status === 'done' ? 'green' : a.status === 'failed' ? 'red' : 'amber'}>{a.status}</Badge>
                   <span className="font-medium">{a.kind}</span>
-                  <span className="text-[var(--faint)] truncate flex-1">{a.error || a.reason || ''}</span>
+                  <span className="text-[var(--faint)] truncate flex-1" title={a.error || a.reason || ''}>{a.error || a.reason || ''}</span>
                   <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleDateString()}</span>
                 </div>
               ))}
@@ -15891,7 +15910,7 @@ function AdminBotMembers() {
                 {m.avatar ? <img src={m.avatar} alt="" className="w-10 h-10 rounded-full shrink-0" /> : <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] grid place-items-center shrink-0"><DiscordIcon size={16} className="text-[#5865F2]" /></div>}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-medium truncate">{m.username || m.discordId}</span>
+                    <span className="font-medium truncate" title={m.username || m.discordId}>{m.username || m.discordId}</span>
                     {m.linkedUser
                       ? <Badge tone="green" className="shrink-0"><CheckCircle2 size={11} /> {m.linkedUser.displayName}</Badge>
                       : <span className="shrink-0 text-[11px] text-[var(--faint)] inline-flex items-center gap-1"><XCircle size={11} /> {t('bm.notlinked', 'Not linked')}</span>}
@@ -15947,7 +15966,9 @@ function AdminBotMembers() {
           })}
           {hasMore && <div className="text-center pt-1"><Button variant="ghost" disabled={busy} onClick={() => load(true)}>{busy ? <Spinner /> : t('bm.loadmore', 'Load more')}</Button></div>}
           {modal && <BotMemberModal member={modal} guildRoles={guildRoles} onClose={() => { setModal(null); load(false); }} />}
-        </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')} sub={link ? t('bm.trother', 'Try another filter.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")} />}
+        </div> : <EmptyState icon={Users} title={link === 'linked' ? t('bm.none.linked', 'No linked members') : link === 'unlinked' ? t('bm.none.unlinked', 'No unlinked members') : t('bm.none', 'No members tracked yet')}
+          sub={link ? t('bm.none.filtered', 'The link filter above excludes every member the bot has scanned.') : t('bm.none.sub', "They'll appear here once the bot scans the server (on startup).")}
+          action={link ? { label: t('bm.none.clear', 'Show every member'), icon: X, onClick: () => setLink('') } : null} />}
       </>}
     </div>
   );
@@ -16024,7 +16045,7 @@ function EconomyLedger({ currency }) {
             <div key={m.userId} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2">
               <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary text-[var(--primary-2)] text-xs font-bold shrink-0">{m.level}</span>
               <div className="flex-1 min-w-0">
-                <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--primary-2)] block">{m.displayName}</Link>
+                <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--primary-2)] block" title={m.displayName}>{m.displayName}</Link>
                 <div className="text-[11px] text-[var(--faint)] tabular-nums">{m.xp.toLocaleString()} XP · {m.messages} msg · {m.reactions} react · {fmtH(m.voiceSeconds)}</div>
               </div>
               <span className="text-sm font-semibold tabular-nums shrink-0">{(m.points || 0).toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{currency}</span></span>
@@ -16056,7 +16077,7 @@ function LedgerRow({ row }) {
   return (
     <div className="py-2.5 first:pt-0 last:pb-0">
       <div className="flex items-center justify-between gap-2 text-sm mb-1">
-        <span className="flex items-center gap-2 text-[var(--muted)] min-w-0"><I size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate">{row.label}</span></span>
+        <span className="flex items-center gap-2 text-[var(--muted)] min-w-0"><I size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate" title={row.label}>{row.label}</span></span>
         <span className="text-xs font-medium tabular-nums shrink-0">
           {row.usedBytes != null ? fmtBytes(row.usedBytes) : (row.count != null ? `${row.count}` : '—')}
           {hasBar && <span className="text-[var(--faint)]"> / {fmtBytes(row.allocatedBytes)}</span>}
@@ -16286,7 +16307,7 @@ function AdminStorage() {
           )}
         </div>
         {pending ? ((pendItems.length + pendRepos.length) ? <div className="space-y-1.5 max-h-72 overflow-auto">
-          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate">{i.name}</span><span className="text-xs text-error">{t('as.in', 'in')} {fmtRemaining(i.deleteAt)}</span></div>; })}
+          {pendItems.map((i) => { const I = KIND_ICON[i.kind] || Package; return <div key={i.id} className="flex items-center gap-2 text-sm"><I size={14} className="text-[var(--faint)] shrink-0" /><Badge>{i.kind}</Badge><span className="flex-1 truncate" title={i.name}>{i.name}</span><span className="text-xs text-error">{t('as.in', 'in')} {fmtRemaining(i.deleteAt)}</span></div>; })}
           {pendRepos.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm"><Server size={14} className="text-[var(--faint)] shrink-0" /><Badge>{t('as.repo', 'repo')}</Badge><span className="flex-1 truncate">{r.name} <span className="text-[var(--faint)]">· {r.owner}</span></span><span className="text-xs text-error">{t('as.in', 'in')} {fmtRemaining(r.deleteAt)}</span><Button size="sm" variant="ghost" onClick={() => cancelRepoDeletion(r)}>{t('su.cancel', 'Cancel')}</Button></div>)}
         </div> : <div className="text-sm text-[var(--muted)]">{t('as.nopendmatch', 'No pending deletions match your search.')}</div>) : <div className="text-sm text-[var(--muted)]">{t('as.nothingdel', 'Nothing scheduled for deletion.')}</div>}
       </Card>
@@ -16697,11 +16718,11 @@ function SessionEventRow({ e, idx, t }) {
       </span>
       <div className="flex-1 min-w-0 flex items-baseline gap-1.5">
         {isPage ? (
-          <span className="font-mono text-[var(--muted)] truncate">{e.path}</span>
+          <span className="font-mono text-[var(--muted)] truncate" title={e.path}>{e.path}</span>
         ) : (
           <>
             <span className="text-[var(--faint)] shrink-0">{verb}</span>
-            {e.label && <span className="font-medium text-[var(--text)] truncate">{e.label}</span>}
+            {e.label && <span className="font-medium text-[var(--text)] truncate" title={e.label}>{e.label}</span>}
             <span className="font-mono text-[10px] text-[var(--faint)] truncate">· {e.path}</span>
           </>
         )}
@@ -16730,8 +16751,8 @@ function SessionRow({ s }) {
         <div className="flex-1 min-w-0">
           <div className="text-sm truncate flex items-center gap-1.5">
             <span className="font-medium">{nick}</span>
-            <span className="font-mono text-xs text-[var(--faint)] truncate">{s.entry}</span>
-            {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--faint)] truncate">{s.exit}</span></>}
+            <span className="font-mono text-xs text-[var(--faint)] truncate" title={s.entry}>{s.entry}</span>
+            {s.exit !== s.entry && <><ArrowRight size={11} className="text-[var(--faint)] shrink-0" /><span className="font-mono text-xs text-[var(--faint)] truncate" title={s.exit}>{s.exit}</span></>}
           </div>
           <div className="text-[11px] text-[var(--faint)] truncate">{geo || t('an.unknown', 'Unknown')} · {refHost(s.ref)}</div>
         </div>
@@ -17122,7 +17143,7 @@ function TrendKpi({ label, value, sub, tone, big }) {
   const col = dir > 0 ? 'text-info' : dir < 0 ? 'text-error' : 'text-[var(--muted)]';
   return (
     <Card className="p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] truncate">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] truncate" title={label}>{label}</div>
       <div className={`mt-1 font-semibold flex items-center gap-1.5 ${big ? 'text-2xl' : `text-xl ${col}`}`}>
         {!big && <I size={15} className={`shrink-0 ${dir < 0 ? 'rotate-90' : ''}`} />}{value}
       </div>
@@ -17568,7 +17589,8 @@ function AdminGoals() {
             </div>}
           </Card>
         ))}
-      </div> : <EmptyState icon={Target} title={t('goal.none', 'No goals yet')} sub={t('goal.none.s', 'Add your first conversion goal above.')} />}
+      </div> : <EmptyState icon={Target} title={t('goal.none', 'No goals yet')} sub={t('goal.none.s2', 'Nothing is being tracked as a conversion, so this page has no rate to report.')}
+        action={formOpen ? null : { label: t('goal.addbtn', 'Add goal'), icon: Plus, onClick: () => { reset(); setFormOpen(true); } }} />}
       {data?.totalVisitors != null && <p className="text-[11px] text-[var(--faint)] mt-3">{t('goal.denom', 'Conversion rate is out of {n} unique visitors in this window.').replace('{n}', data.totalVisitors)}</p>}
     </div>
   );
@@ -18131,13 +18153,14 @@ function ReplaysPanel() {
       {loading ? <div className="py-8 text-center"><Spinner /></div>
         : !rows.length ? <EmptyState icon={PlayCircle} title={t('an.rep.none', 'No recording yet')}
           sub={cfg.enabled ? t('an.rep.none.on', 'Recording is on, the first one appears when a sampled visitor leaves the page.')
-            : t('an.rep.none.off', 'Recording is off. Nothing is being collected.')} />
+            : t('an.rep.none.off', 'Recording is off. Nothing is being collected.')}
+          action={cfg.enabled ? null : { label: t('an.rep.none.turnon', 'Turn recording on'), icon: PlayCircle, disabled: busy === 'cfg', onClick: () => save({ ...cfg, enabled: true }) }} />
         : (
           <Card className="divide-y divide-[var(--line)]">
             {rows.map((r) => (
               <div key={r.id} className="px-3 py-2 flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{r.path}</div>
+                  <div className="text-sm truncate" title={r.path}>{r.path}</div>
                   <div className="text-[11px] text-[var(--faint)] truncate">
                     {new Date(r.createdAt).toLocaleString()} · {Math.round((r.durationMs || 0) / 1000)}s · {r.eventCount} ev · {fmtBytes(r.bytes || 0)}
                     {r.device ? ` · ${r.device}` : ''}{r.browser ? ` · ${r.browser}` : ''}{r.country ? ` · ${r.country}` : ''}
@@ -18260,7 +18283,7 @@ function AdminAnalytics() {
             <div className="space-y-2.5">
               {top.length ? top.map((tp) => (
                 <div key={tp.path} className="flex items-center gap-3 text-sm">
-                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0">{tp.path}</span>
+                  <span className="text-[var(--muted)] truncate w-28 sm:w-40 shrink-0" title={tp.path}>{tp.path}</span>
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${(tp.count / maxTop) * 100}%` }} /></div>
                   <span className="w-10 text-end font-medium">{tp.count}</span>
                 </div>
@@ -18578,7 +18601,7 @@ function AlertRow({ a }) {
       <button onClick={() => setOpen((v) => !v)} className="w-full p-3 flex items-center gap-3 text-start hover:bg-[var(--surface-2)] transition">
         <AlertTriangle size={15} className={`${info.tone} shrink-0`} />
         <Badge tone={info.tone.includes('red') ? 'red' : 'amber'} className="shrink-0">{info.label}</Badge>
-        <span className="flex-1 min-w-0 text-[var(--muted)] truncate">{a.message}</span>
+        <span className="flex-1 min-w-0 text-[var(--muted)] truncate" title={a.message}>{a.message}</span>
         {a.count > 1 && <Badge className="shrink-0 tabular-nums">×{a.count}</Badge>}
         <button onClick={copy} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('common.copy', 'Copy')}><Copy size={13} /></button>
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{ago}</span>
@@ -18741,7 +18764,7 @@ function AdminShowcase() {
                 : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0">
-                  <span className="truncate min-w-0">{pr.name}</span>
+                  <span className="truncate min-w-0" title={pr.name}>{pr.name}</span>
                   <span className="text-xs text-[var(--faint)] font-normal truncate min-w-0">/project/{pr.slug}</span>
                   <Badge tone={pr.published ? 'green' : ''}>{pr.published ? t('sh.published', 'published') : t('sh.hidden', 'hidden')}</Badge>
                   {announcing && <Badge tone="primary"><Megaphone size={10} /> {t('sh.countdown', 'counting down')}</Badge>}
@@ -18765,7 +18788,9 @@ function AdminShowcase() {
           </Card>
           );
         })}
-      </div> : <EmptyState icon={Sparkles} title={t('sh.empty', 'No projects yet')} sub={t('sh.emptysub', 'Add your first featured project.')} />}
+      </div> : <EmptyState icon={Sparkles} title={t('sh.empty', 'No projects yet')}
+        sub={canManage ? t('sh.emptysub2', 'The public /projects page stays empty until one is added here.') : t('sh.emptysub.grantee', 'No project has been granted to you yet. An admin adds them.')}
+        action={canManage ? { label: t('sh.new', 'New project'), icon: Plus, onClick: () => setEditing('new') } : null} />}
       {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} canManage={canManage} onClose={() => setEditing(null)} onDone={reload} />}
       {scheduling && (
         <ScheduleUpdateModal title={t('sh.schedmodal', 'Schedule an update: {name}').replace('{name}', scheduling.name)} includeNameShort existing={scheduling}
@@ -18958,7 +18983,7 @@ function UnfurlPreview({ plat, title, desc, img, host, noImgHint }) {
     <div className="w-full max-w-[440px] overflow-hidden" style={{ background: '#fff', border: '1px solid #dddfe2', borderRadius: 8 }}>
       <Img />
       <div className="px-3 py-2.5" style={{ background: '#f2f3f5', borderTop: '1px solid #dddfe2' }}>
-        <div className="text-[11px] uppercase tracking-wide truncate" style={{ color: '#606770' }}>{host}</div>
+        <div className="text-[11px] uppercase tracking-wide truncate" style={{ color: '#606770' }} title={host}>{host}</div>
         <div className="text-[15px] font-semibold leading-tight mt-1 line-clamp-2" style={{ color: '#1d2129' }}>{title}</div>
         <div className="text-[13px] mt-1 line-clamp-1" style={{ color: '#606770' }}>{desc}</div>
       </div>
@@ -18969,8 +18994,8 @@ function UnfurlPreview({ plat, title, desc, img, host, noImgHint }) {
         <div className="flex items-center gap-2 mb-1">
           <div className="w-6 h-6 rounded-full grid place-items-center text-[11px] font-bold text-white shrink-0" style={{ background: '#f97316' }}>{(title || 'B').slice(0, 1)}</div>
           <div className="min-w-0">
-            <div className="text-[14px] leading-none truncate" style={{ color: '#202124' }}>{title}</div>
-            <div className="text-[12px] leading-tight truncate" style={{ color: '#4d5156' }}>{url}</div>
+            <div className="text-[14px] leading-none truncate" style={{ color: '#202124' }} title={title}>{title}</div>
+            <div className="text-[12px] leading-tight truncate" style={{ color: '#4d5156' }} title={url}>{url}</div>
           </div>
         </div>
         <div className="text-[20px] leading-snug hover:underline cursor-default line-clamp-1" style={{ color: '#1a0dab' }}>{title}</div>
@@ -19066,8 +19091,8 @@ function SeoHealthCard() {
   };
   const Snippet = ({ m }) => m ? (
     <div className="rounded-lg bg-[var(--bg-solid)] border border-[var(--line)] p-3 min-w-0">
-      <div className="text-[11px] text-[var(--faint)] truncate">{m.url}</div>
-      <div className="text-[15px] text-[#1a0dab] dark:text-[#8ab4f8] font-medium truncate">{m.title}</div>
+      <div className="text-[11px] text-[var(--faint)] truncate" title={m.url}>{m.url}</div>
+      <div className="text-[15px] text-[#1a0dab] dark:text-[#8ab4f8] font-medium truncate" title={m.title}>{m.title}</div>
       <div className="text-xs text-[var(--muted)] line-clamp-2">{m.description}</div>
       <div className="text-[10px] text-[var(--faint)] mt-1 flex gap-2 flex-wrap"><span>{m.type}</span>{m.noindex && <span className="text-warning">noindex</span>}{Array.isArray(m.jsonLd) && m.jsonLd.length ? <span>JSON-LD: {m.jsonLd.map((x) => x['@type']).join(', ')}</span> : null}</div>
     </div>
@@ -19100,7 +19125,7 @@ function SeoHealthCard() {
                 <code className="shrink-0 w-24 text-[var(--primary-2)] truncate" title={p.path}>{p.path}</code>
                 {p.missing ? <span className="text-error">{t('seoh.unreach', 'resolver unreachable')}</span> : (
                   <div className="min-w-0 flex-1">
-                    <div className="font-medium truncate">{p.title}</div>
+                    <div className="font-medium truncate" title={p.title}>{p.title}</div>
                     <div className="text-[var(--muted)] line-clamp-1">{p.description}</div>
                     {p.issues.length ? <div className="text-[11px] text-warning mt-0.5">⚠ {p.issues.join(' · ')}</div> : null}
                   </div>
@@ -19305,7 +19330,7 @@ function SitemapCard() {
                         <div className="ps-5 space-y-0.5 max-h-56 overflow-auto">
                           {list.map((path) => (
                             <div key={path} className="flex items-center gap-2 text-[11px] group">
-                              <code className={`flex-1 truncate font-mono ${excluded.has(path) ? 'line-through text-[var(--faint)]' : 'text-[var(--muted)]'}`}>{path}</code>
+                              <code className={`flex-1 truncate font-mono ${excluded.has(path) ? 'line-through text-[var(--faint)]' : 'text-[var(--muted)]'}`} title={path}>{path}</code>
                               <button type="button" onClick={() => toggleExclude(path)}
                                 className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[10px] px-1.5 py-0.5 rounded border border-[var(--line)] hover:border-[var(--line-strong)] shrink-0">
                                 {excluded.has(path) ? t('sm.reinclude', 'put back') : t('sm.excludeone', 'leave out')}
@@ -19839,13 +19864,13 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
                     if (n.kind === 'primary') return (
                       <div key={i} className="flex-1 flex flex-col items-center justify-start">
                         <span className="-mt-4 grid place-items-center w-9 h-9 rounded-full text-white shadow ring-4 ring-[var(--bg)]" style={{ background: 'var(--primary)' }}><NavPvIcon name={n.icon} size={16} /></span>
-                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px] text-[var(--muted)]">{lbl}</span>}
+                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px] text-[var(--muted)]" title={lbl}>{lbl}</span>}
                       </div>
                     );
                     return (
                       <div key={i} className="flex-1 flex flex-col items-center justify-center py-1 text-[var(--muted)]">
                         {showI && <span className="grid place-items-center w-8 h-6 relative"><NavPvIcon name={n.home ? 'home' : n.icon} size={16} />{n.kind === 'dropup' && <ChevronUp size={9} className="absolute -top-1 right-0" />}</span>}
-                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]">{lbl}</span>}
+                        {showT && <span className="text-[9px] leading-none mt-0.5 truncate max-w-[52px]" title={lbl}>{lbl}</span>}
                       </div>
                     );
                   })}
@@ -19911,7 +19936,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
               {!textOnly && <Sparkles size={15} />}{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
             </button>
             {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
-              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate">{p.name}</span></div>)}
+              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate" title={p.name}>{p.name}</span></div>)}
               {/* The same tail the real topbar appends, so the cap is visible while it is
                   being chosen rather than after saving. */}
               <div className="flex items-center gap-2.5 p-2 rounded-xl border-t border-[var(--line)] mt-1 pt-2">
@@ -20107,7 +20132,7 @@ function AdminNav() {
   const IconSelect = ({ value, onChange }) => (
     <button type="button" onClick={() => setIconPick({ onChange })} title={t('nav.icon', 'Icon')}
       className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-[var(--line)] hover:border-[var(--primary-2)] text-sm">
-      <NavPvIcon name={value} size={15} /> <span className="text-[var(--faint)] font-mono truncate max-w-[80px]">{value || 'icon'}</span>
+      <NavPvIcon name={value} size={15} /> <span className="text-[var(--faint)] font-mono truncate max-w-[80px]" title={value || 'icon'}>{value || 'icon'}</span>
     </button>
   );
   const validCount = buildClean().items.length;
@@ -20192,7 +20217,6 @@ function AdminNav() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="min-w-0">
               <div className="font-medium text-sm">{t('nav.downbar.display', 'Show on each button')}</div>
-              <div className="text-xs text-[var(--faint)]">{t('nav.downbar.display.d', 'Icons only, text only, or both.')}</div>
             </div>
             <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
               {[['both', t('nav.downbar.both', 'Both')], ['icon', t('nav.downbar.icononly', 'Icons')], ['text', t('nav.downbar.textonly', 'Text')]].map(([v, lbl]) =>
@@ -20310,7 +20334,10 @@ function AdminNav() {
       )}
 
       {panel === 'menu' && (items.length === 0 ? (
-        <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s', 'Add a link or a dropdown group, or start from the built-in navigation.')} />
+        <EmptyState icon={Navigation} title={t('nav.none.t', 'No items yet')} sub={t('nav.none.s2', 'The topbar falls back to the built-in navigation until you add an item here.')}
+          action={{ label: t('nav.addlink', 'Add link'), icon: Plus, onClick: () => addItem('link') }}>
+          <Button onClick={() => addItem('group')}><Plus size={15} /> {t('nav.addgroup', 'Add dropdown')}</Button>
+        </EmptyState>
       ) : <div className="space-y-3">
         {items.map((it, i) => (
           <Card key={i} ref={(el) => { itemRefs.current[i] = el; }}
@@ -20329,7 +20356,7 @@ function AdminNav() {
               {/* The label + target, so a folded card still says which item it is. */}
               <button type="button" onClick={() => toggleFold(i)} className="min-w-0 flex items-center gap-1.5 text-start hover:opacity-80">
                 <span className="text-sm font-medium truncate">{(lang === 'fr' ? it.labelFr : it.label) || it.label || t('nav.item.untitled', 'Untitled')}</span>
-                {it.type === 'link' && it.to && <code className="text-[10px] text-[var(--faint)] truncate hidden sm:inline">{it.to}</code>}
+                {it.type === 'link' && it.to && <code className="text-[10px] text-[var(--faint)] truncate hidden sm:inline" title={it.to}>{it.to}</code>}
               </button>
               <div className="flex-1" />
               <button className="nav-icon-btn p-1.5 rounded-lg border border-[var(--line)] text-[var(--muted)] disabled:opacity-30" disabled={i === 0} onClick={() => moveItem(i, -1)} title={t('nav.up', 'Move up')}><ChevronDown size={14} className="rotate-180" /></button>
@@ -20569,7 +20596,7 @@ export function OwnerCatalogs() {
                 container, and next to a flex-1 sibling that container IS its content, so it
                 would measure "everything fits" at every width and never fold. */}
             <div className="min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.name}</span> <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={c.name}>{c.name}</span> <Badge tone={tone(c.status)}>{c.status}</Badge><Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
               <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap mt-0.5">
                 <span>{c.itemCount} {t('cc.items', 'items')}</span>
                 <span className="flex items-center gap-1"><Download size={11} /> {c.downloads ?? 0}</span>
@@ -20609,7 +20636,8 @@ export function OwnerCatalogs() {
             {accessId === c.id && <OwnerCatalogAccess catalog={c} onChange={reload} />}
           </Card>
         ))}
-      </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')} />}
+      </div> : <EmptyState icon={Boxes} title={t('mycat.none.t', 'No catalogs yet')} sub={t('mycat.none.s', 'Host your own catalog of plugins, themes or apps.')}
+        action={{ label: t('oc.new', 'New catalog'), icon: Plus, to: '/submit' }} />}
     </div>
   );
 }
@@ -20663,7 +20691,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
         {items.length > 0 && <div className="space-y-1 mb-2">
           {items.map((it) => (
             <div key={it.id} className="flex items-center gap-2 text-sm py-1">
-              <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate">{it.name}</span>
+              <Badge tone="">{it.kind}</Badge><span className="flex-1 min-w-0 truncate" title={it.name}>{it.name}</span>
               {it.payloadKey && <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span>}
               <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Download size={11} /> {it.downloads ?? 0}</span>
               <button onClick={() => rm(it)} className="text-[var(--faint)] hover:text-error"><X size={13} /></button>
@@ -20677,7 +20705,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
           <Badge tone="primary" title={t('oc.it.kindfixed', 'This catalog serves one type; every item uses it.')}>{KIND_LABEL[itemKind] || itemKind}</Badge>
           <Input className="flex-1 min-w-[120px]" placeholder={t('sub.name', 'Name')} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
           {!file && <Input className="flex-1 min-w-[160px]" placeholder="https://…/download" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} />}
-          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]">{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-error"><X size={12} /></button></span>}
+          {file && <span className="text-xs text-[var(--muted)] flex items-center gap-1 min-w-0"><Upload size={12} /> <span className="truncate max-w-[160px]" title={file.name}>{file.name}</span> ({fmtBytes(file.size)}) <button onClick={() => { setFile(null); if (fileRef.current) fileRef.current.value = ''; }} className="hover:text-error"><X size={12} /></button></span>}
           <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} title={t('oc.it.upload', 'Upload a file to your pool instead of linking a URL')}><Upload size={13} /> {t('oc.it.uploadbtn', 'Upload')}</Button>
           <Button size="sm" variant="default" onClick={add} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t('oc.additem', 'Add')}</Button>
@@ -20747,7 +20775,7 @@ function AdminCatalogs() {
           <Card key={c.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
               {/* Line 1: name + a couple of defining tags (status lives in the dropdown). */}
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.name}</span> <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={c.name}>{c.name}</span> <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
               {/* Line 2: WHO — owner (→ profile) + one BMM creator id (copy) + a compact count. */}
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2.5 flex-wrap mt-0.5">
                 <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
@@ -20817,7 +20845,7 @@ function AdminCatalogExamine({ catalog, onClose }) {
           <div key={it.id} className="border border-[var(--line)] rounded-lg p-2.5">
             <div className="flex items-center gap-2 flex-wrap text-sm">
               <Badge tone="">{it.kind}</Badge>
-              <span className="flex-1 min-w-0 truncate font-medium">{it.name}</span>
+              <span className="flex-1 min-w-0 truncate font-medium" title={it.name}>{it.name}</span>
               <span className="text-[11px] text-[var(--faint)]">v{it.version}</span>
               {it.payloadKey ? <span className="text-[11px] text-[var(--faint)] flex items-center gap-1"><HardDrive size={11} /> {fmtBytes(it.payloadSize)}</span> : it.downloadUrl && <a href={it.downloadUrl} target="_blank" rel="noreferrer" className="text-[11px] underline text-[var(--muted)] truncate max-w-[180px]">{t('cc.ex.exturl', 'external URL')}</a>}
               {it.payloadKey && <><Button size="sm" variant="ghost" onClick={() => doInspect(it)}><FileText size={12} /> {t('cc.ex.inspect', 'Inspect')}</Button><Button size="sm" variant="ghost" onClick={() => dl(it)}><Download size={12} /></Button></>}
@@ -20888,7 +20916,7 @@ function AdminBadges() {
           <Card key={b.id} className="p-3 flex items-center gap-3 flex-wrap">
             <span className="grid place-items-center w-9 h-9 rounded-lg shrink-0" style={{ background: `color-mix(in srgb, ${b.color} 16%, transparent)` }}><BadgeIcon badge={b} size={18} /></span>
             <div className="flex-1 min-w-0">
-              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{b.name}</span> {!b.active && <Badge tone="">{t('ab.inactive', 'inactive')}</Badge>}<Badge tone={b.grant === 'easter_egg' ? 'amber' : b.grant === 'auto' ? 'info' : ''}>{b.grant}{b.trigger ? `:${b.trigger}` : ''}</Badge></div>
+              <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={b.name}>{b.name}</span> {!b.active && <Badge tone="">{t('ab.inactive', 'inactive')}</Badge>}<Badge tone={b.grant === 'easter_egg' ? 'amber' : b.grant === 'auto' ? 'info' : ''}>{b.grant}{b.trigger ? `:${b.trigger}` : ''}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate">{b.description || '—'} · {b.holders} {t('ab.holders', 'holders')}</div>
             </div>
             <Button size="sm" variant="ghost" onClick={() => setHoldersOf(b)}><Users size={13} /> {t('ab.grant', 'Grant')}</Button>
@@ -20896,7 +20924,8 @@ function AdminBadges() {
             <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(b)}><Trash2 size={13} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge, verified, developer, content creator…')} />}
+      </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge, verified, developer, content creator…')}
+        action={{ label: t('ab.new', 'New badge'), icon: Plus, onClick: () => setEdit({ ...BADGE_BLANK }) }} />}
 
       {edit && <Modal open onClose={() => setEdit(null)} title={edit.id ? t('ab.edit', 'Edit badge') : t('ab.new', 'New badge')} icon={BadgeCheck} width="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setEdit(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></>}>
@@ -20911,7 +20940,7 @@ function AdminBadges() {
             <Field label={edit.iconType === 'image' ? t('ab.iconurl', 'Image URL / data URI') : t('ab.iconname2', 'Icon')}>
               {edit.iconType === 'image'
                 ? <Input value={edit.icon} onChange={(e) => setEdit({ ...edit, icon: e.target.value })} placeholder="https://…/icon.svg" />
-                : <Button variant="default" className="!w-full !justify-start" onClick={() => setIconPick(true)}><Sparkles size={14} /> {t('ab.pickicon', 'Pick an icon')} <span className="text-[var(--faint)] font-mono ms-1 truncate">{edit.icon}</span></Button>}
+                : <Button variant="default" className="!w-full !justify-start" onClick={() => setIconPick(true)}><Sparkles size={14} /> {t('ab.pickicon', 'Pick an icon')} <span className="text-[var(--faint)] font-mono ms-1 truncate" title={edit.icon}>{edit.icon}</span></Button>}
             </Field>
           </div>
           {edit.iconType !== 'image' && <p className="text-[11px] text-[var(--faint)] -mt-1">{t('ab.pickhint', 'Search every Lucide icon + every Simple Icons brand (YouTube, Twitch, Steam, GitHub…).')}</p>}
@@ -21049,7 +21078,8 @@ export function MyReports() {
             </div>
           </Card></button>
         ); })}
-      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog, or start one here.')}><Button variant="primary" onClick={() => setNewOpen(true)}><Plus size={15} /> {t('mr.new2', 'New report / contact')}</Button></EmptyState>}
+      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog, or start one here.')}
+        action={{ label: t('mr.new2', 'New report / contact'), icon: Plus, onClick: () => setNewOpen(true) }} />}
       {openId && <ReportThreadModal id={openId} admin={false} onClose={() => { setOpenId(null); reload(); }} />}
       {newOpen && <ReportModal targetType="general" targetId="" targetLabel="" onClose={() => { setNewOpen(false); reload(); }} />}
     </div>
@@ -21167,7 +21197,7 @@ function ReportPeoplePanel({ report, onChange }) {
         {report.invites?.length > 0 && <div className="space-y-1 mb-2">
           {report.invites.map((iv) => (
             <div key={iv.id} className="flex items-center gap-2 text-xs">
-              <span className="flex-1 min-w-0 truncate font-mono">{iv.url}</span>
+              <span className="flex-1 min-w-0 truncate font-mono" title={iv.url}>{iv.url}</span>
               <span className="text-[var(--faint)] shrink-0">{iv.maxUses === 0 ? '∞' : `${iv.uses}/${iv.maxUses}`}{iv.targetType !== 'any' ? ` · ${iv.targetType}` : ''}</span>
               <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /></button>
               <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
@@ -21215,7 +21245,9 @@ function AdminReports() {
             </div>
           </Card></button>
         ); })}
-      </div> : <EmptyState icon={Inbox} title={t('ar.none.t', 'Nothing here')} sub={t('ar.none.s', 'No reports with this status.')} />}
+      </div> : <EmptyState icon={Inbox} title={status === 'open' ? t('ar.none.open.t', 'Nothing waiting') : t('ar.none.t', 'Nothing here')}
+        sub={status === 'open' ? t('ar.none.open.s', 'Every report has been answered and archived or closed. New ones arrive here on their own.') : t('ar.none.s', 'No reports with this status.')}
+        action={status === 'open' ? null : { label: t('ar.none.goopen', 'Back to the open queue'), icon: Inbox, onClick: () => setStatus('open') }} />}
       {openId && <ReportThreadModal id={openId} admin onClose={() => { setOpenId(null); reload(); }} />}
       {cfgOpen && <AdminReportsConfig onClose={() => setCfgOpen(false)} />}
     </div>
@@ -21260,7 +21292,9 @@ function AdminRights() {
               </div>
             </Card></button>
           ); })}
-        </div> : <EmptyState icon={Scale} title={t('ar.none.t', 'Nothing here')} sub={t('rn.adm.none', 'No notices with this status.')} />}
+        </div> : <EmptyState icon={Scale} title={status === 'open' ? t('rn.adm.none.open.t', 'Nothing waiting') : t('ar.none.t', 'Nothing here')}
+          sub={status === 'open' ? t('rn.adm.none.open.s', 'No rights claim is waiting for a decision. New ones, and registry matches, arrive here on their own.') : t('rn.adm.none', 'No notices with this status.')}
+          action={status === 'open' ? null : { label: t('rn.adm.goopen', 'Back to the open queue'), icon: Scale, onClick: () => setStatus('open') }} />}
         {openId && <RightsNoticeModal id={openId} onClose={() => { setOpenId(null); reload(); }} />}
       </>)}
       {tab === 'works' && <ProtectedWorks />}
@@ -21440,7 +21474,8 @@ function ProtectedWorks() {
             <Button size="sm" variant="ghost" className="!text-error" onClick={async () => { if (!window.confirm(t('rn.w.del.q', 'Remove this work from the registry?'))) return; await api.del(`/admin/rights/works/${w.id}`); reload(); }}><Trash2 size={14} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={Shield} title={t('rn.w.none.t', 'No registered works')} sub={t('rn.w.none.s', 'Take a notice down with "register the work" ticked, or add one here.')} />}
+      </div> : <EmptyState icon={Shield} title={t('rn.w.none.t', 'No registered works')} sub={t('rn.w.none.s', 'Take a notice down with "register the work" ticked, or add one here.')}
+        action={draft ? null : { label: t('rn.w.add', 'Register a work'), icon: Plus, onClick: () => setDraft(blank) }} />}
     </div>
   );
 }
@@ -21585,8 +21620,8 @@ function AdminNeedsAttention({ data, loading, onReload }) {
                   <Link to={it.to} className="flex items-start gap-3 min-w-0 flex-1">
                     <Badge tone="">{NEEDS_QUEUES.find((q) => q.key === it.queue)?.chip(t) || it.queue}</Badge>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{it.title}</div>
-                      {it.sub && <div className="text-xs text-[var(--muted)] truncate">{it.sub}</div>}
+                      <div className="text-sm font-medium truncate" title={it.title}>{it.title}</div>
+                      {it.sub && <div className="text-xs text-[var(--muted)] truncate" title={it.sub}>{it.sub}</div>}
                     </div>
                   </Link>
                   <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtAgo(it.at)}</span>
@@ -22302,8 +22337,8 @@ function AdminSiteTheme() {
                 </span>
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-medium truncate">{p.name}</span>
-                <span className="block text-[11px] text-[var(--faint)] truncate">{p.sub}</span>
+                <span className="block text-sm font-medium truncate" title={p.name}>{p.name}</span>
+                <span className="block text-[11px] text-[var(--faint)] truncate" title={p.sub}>{p.sub}</span>
               </span>
             </button>
           ))}
@@ -22679,7 +22714,7 @@ function EconomyStatsCard() {
             [t('db.eco.st.xp', 'XP'), fmt(T.xp)], [t('db.eco.st.avgLevel', 'Avg level'), T.avgLevel], [t('db.eco.st.maxLevel', 'Top level'), T.maxLevel],
             [t('db.eco.st.messages', 'Messages'), fmt(T.messages)], [t('db.eco.st.voice', 'Voice hours'), fmt(T.voiceHours)]].map(([l, v]) => (
             <div key={l} className="rounded-lg border border-[var(--line)] px-2.5 py-2">
-              <div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)] truncate">{l}</div>
+              <div className="text-[10.5px] uppercase tracking-wider text-[var(--faint)] truncate" title={l}>{l}</div>
               <div className="text-[17px] font-bold tabular-nums leading-tight">{v}</div>
             </div>
           ))}
@@ -22735,7 +22770,7 @@ function FlowChart({ label, series, field }) {
   return (
     <div className="rounded-lg border border-[var(--line)] p-2.5 min-w-0">
       <div className="flex items-baseline justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] truncate">{label}</div>
+        <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] truncate" title={label}>{label}</div>
         <div className="text-[13px] font-semibold tabular-nums">{total}</div>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-16 mt-1 cursor-crosshair" onMouseMove={onMove} onMouseLeave={() => setHover(null)} role="img" aria-label={`${label}: ${total}`}>
@@ -23027,7 +23062,7 @@ function ProjectMarginCard({ data, targets, onSaved }) {
             const cur = map[pg.scope];
             return (
               <div key={pg.scope} className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
+                <span className="text-sm flex-1 min-w-[8rem] truncate" title={pg.label}>{pg.label}</span>
                 <Input type="number" min="0" max="100" step="0.01" className="!w-28"
                   defaultValue={cur == null ? '' : Number(cur) / 100}
                   placeholder={pct(defBp)}
@@ -23126,13 +23161,13 @@ function ProjectPayoutCard({ pages, onChanged }) {
             const state = !sel ? 'none' : sel.chargesEnabled ? 'ready' : sel.disabledReason ? 'disabled' : 'onboarding';
             return (
               <div key={pg.scope} className="flex items-start gap-2 flex-wrap border-t border-[var(--line)] pt-2">
-                <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
+                <span className="text-sm flex-1 min-w-[8rem] truncate" title={pg.label}>{pg.label}</span>
                 <div className="flex-1 min-w-[12rem] text-[11px]">
                   {state === 'none' && <span className="text-[var(--warning)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected, the platform keeps every sale')}</span>}
                   {state === 'onboarding' && <span className="text-[var(--muted)] flex items-center gap-1"><Loader2 size={11} /> {t('mkadm.po.pending', 'Stripe has not enabled it yet, sales still go to the platform')}</span>}
                   {state === 'ready' && <span className="text-[var(--success)] flex items-center gap-1"><CheckCircle2 size={11} /> {t('mkadm.po.ready', 'Paid out at the moment of sale')}</span>}
                   {state === 'disabled' && <span className="text-[var(--error)] flex items-center gap-1"><AlertTriangle size={11} /> {sel.disabledReason}</span>}
-                  {sel && <div className="text-[var(--faint)] font-mono mt-0.5 truncate">{sel.stripeAccountId}</div>}
+                  {sel && <div className="text-[var(--faint)] font-mono mt-0.5 truncate" title={sel.stripeAccountId}>{sel.stripeAccountId}</div>}
                 </div>
                 <div className="flex items-center gap-1">
                   <Button size="sm" variant={sel ? 'ghost' : 'primary'} disabled={working} onClick={() => onboard(pg.scope)}>
@@ -23535,7 +23570,9 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
               </div>
               );
             })}
-            {!keys.length && <EmptyState icon={Languages} title={t('lc.nokeys', 'No matching strings')} />}
+            {!keys.length && <EmptyState icon={Languages} title={t('lc.nokeys', 'No matching strings')}
+              sub={t('lc.nokeys.s', 'The search box, the scope and the untranslated-only tick together exclude every string.')}
+              action={{ label: t('lc.nokeys.clear', 'Show every string'), icon: X, onClick: () => { setQ(''); setUntransOnly(false); setScope('all'); } }} />}
             {matching.length > limit && (
               <div className="pt-1 text-center">
                 <Button variant="ghost" onClick={() => setLimit((n) => n + 120)}>

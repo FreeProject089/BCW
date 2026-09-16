@@ -240,7 +240,19 @@ export default function CommandPalette() {
           <kbd className="text-[10px] text-[var(--faint)] border border-[var(--line)] rounded px-1.5 py-0.5">ESC</kbd>
         </div>
         <div ref={listRef} className="max-h-[54vh] overflow-auto py-1.5">
-          {items.length === 0 && <div className="px-4 py-6 text-sm text-[var(--faint)] text-center">{t('cmdk.none', 'No matches')}</div>}
+          {/* "No matches" alone leaves the typed text on screen with nothing to do about it.
+              The list is empty because THIS query excluded everything, so say which query and
+              put the way back to the full list one press away. No Card here on purpose: the
+              palette is a popup on --bg-solid, and a Card surface can be translucent. */}
+          {items.length === 0 && (
+            <div className="px-4 py-8 text-center">
+              <div className="text-sm font-semibold break-words">{t('cmdk.none', 'No match for “{q}”').replace('{q}', q)}</div>
+              <div className="text-[12.5px] text-[var(--muted)] mt-1 mx-auto max-w-sm">{t('cmdk.none.s', 'This searches page names, their keywords and the manual. Fewer words usually find more.')}</div>
+              <div className="mt-3 flex justify-center">
+                <button type="button" onClick={() => setQ('')} className="btn btn-primary btn-sm">{t('cmdk.none.a', 'Clear the search')}</button>
+              </div>
+            </div>
+          )}
           {items.map((it, i) => (
             <div key={`${it.kind}:${it.to || it.label}:${i}`}>
             {/* A header when the kind changes. The rows carried only a small icon and a right-
@@ -254,7 +266,7 @@ export default function CommandPalette() {
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${i === active ? 'bg-[var(--surface-2)]' : ''}`}>
               <span className="text-[var(--primary-2)] shrink-0">{icon(it.kind)}</span>
               <span className="flex-1 min-w-0">
-                <span className="block text-sm text-[var(--text)] truncate">{it.label}</span>
+                <span className="block text-sm text-[var(--text)] truncate" title={it.label}>{it.label}</span>
                 {it.kind === 'doc' && it.section && <span className="block text-[11px] text-[var(--faint)] truncate flex items-center gap-1"><Hash size={10} /> {it.section}</span>}
               </span>
               {i === active && <CornerDownLeft size={13} className="text-[var(--faint)] shrink-0" />}

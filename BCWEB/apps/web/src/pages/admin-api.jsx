@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical, Undo2, Gauge } from 'lucide-react';
+import { KeyRound, Search, Activity, AlertTriangle, Ban, Sliders, RefreshCw, FlaskConical, Undo2, Gauge, X } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { Card, Button, Input, Select, Badge, Field, EmptyState, Spinner, useToast, useDialog } from '../ui/ui.jsx';
@@ -162,7 +162,7 @@ function SandboxView() {
           <div className="space-y-1">
             {d.endpoints.map((e) => (
               <div key={e.endpoint} className="flex items-center gap-2 text-[13px] py-1 border-b border-[var(--line)] last:border-0">
-                <code className="font-mono text-[12px] min-w-0 flex-1 truncate">{e.endpoint}</code>
+                <code className="font-mono text-[12px] min-w-0 flex-1 truncate" title={e.endpoint}>{e.endpoint}</code>
                 {e.refused > 0 && <Badge tone="amber">{t('aapi.sb.nrefused', '{n} refused').replace('{n}', String(e.refused))}</Badge>}
                 <span className="tabular-nums text-[var(--muted)]">{e.calls}</span>
               </div>
@@ -177,7 +177,7 @@ function SandboxView() {
           <div className="space-y-1">
             {d.explorers.map((e) => (
               <div key={e.userId} className="flex items-center gap-2 text-[13px] py-1 border-b border-[var(--line)] last:border-0">
-                <span className="min-w-0 flex-1 truncate">{e.user?.displayName || e.user?.email || e.userId}</span>
+                <span className="min-w-0 flex-1 truncate" title={e.user?.displayName || e.user?.email || e.userId}>{e.user?.displayName || e.user?.email || e.userId}</span>
                 <span className="text-[11px] text-[var(--faint)]">{t('aapi.sb.nend', '{n} endpoints').replace('{n}', String(e.endpoints))}</span>
                 {e.refused > 0 && <Badge tone="amber">{e.refused}</Badge>}
                 <span className="tabular-nums text-[var(--muted)]">{e.calls}</span>
@@ -373,7 +373,9 @@ function KeysTable() {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('aapi.search', 'Label, prefix, owner name or email')} />
         <Button type="submit"><Search size={14} /></Button>
       </form>
-      {loading ? <Spinner /> : !keys.length ? <EmptyState icon={KeyRound} title={t('aapi.nokeys', 'No keys.')} /> : (
+      {loading ? <Spinner /> : !keys.length ? <EmptyState icon={KeyRound} title={term ? t('aapi.nokeys.nomatch', 'No key matches') : t('aapi.nokeys', 'No keys.')}
+        sub={term ? t('aapi.nokeys.s2', 'The search above excludes every key. Keys are created by their owner from /dev, never from here.') : t('aapi.nokeys.s', 'Nobody has created an API key yet. Owners create their own from /dev, this list is for revoking them.')}
+        action={term ? { label: t('aapi.nokeys.clear', 'Clear the search'), icon: X, onClick: () => { setQ(''); setTerm(''); } } : null} /> : (
         <div className="divide-y divide-[var(--line)]">
           {keys.map((k) => (
             <div key={k.id} className="py-2.5 flex items-center gap-3">
@@ -450,13 +452,14 @@ function RequestsTable() {
         <Input className="flex-1 min-w-[12rem]" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t('aapi.req.path', 'Path contains…')} />
         <Button type="submit"><Search size={14} /></Button>
       </form>
-      {loading ? <Spinner /> : !rows.length ? <EmptyState icon={Activity} title={t('aapi.req.none', 'Nothing in the sample.')} sub={t('aapi.req.none.s', 'Either nothing matched, or the sample rate is set low.')} /> : (
+      {loading ? <Spinner /> : !rows.length ? <EmptyState icon={Activity} title={t('aapi.req.none', 'Nothing in the sample.')} sub={t('aapi.req.none.s', 'Either nothing matched, or the sample rate is set low.')}
+        action={applied.status || applied.path ? { label: t('aapi.req.clear', 'Clear the filters'), icon: X, onClick: () => { setStatus(''); setPath(''); setApplied({ status: '', path: '' }); } } : null} /> : (
         <div className="max-h-[32rem] overflow-y-auto divide-y divide-[var(--line)]">
           {rows.map((r) => (
             <div key={r.id} className="py-1.5 flex items-center gap-2 text-[12px]">
               <Badge tone={statusTone(r.status)}>{r.status || '—'}</Badge>
               <code className="font-mono text-[11px] text-[var(--muted)] shrink-0">{r.method}</code>
-              <span className="truncate flex-1 font-mono text-[11px]">{r.path}</span>
+              <span className="truncate flex-1 font-mono text-[11px]" title={r.path}>{r.path}</span>
               <span className="text-[10px] text-[var(--faint)] shrink-0 tabular-nums">{fmtMs(r.ms)}</span>
               <span className="text-[10px] text-[var(--faint)] shrink-0 truncate max-w-[10rem]">
                 {r.key ? `${r.key.label || t('aapi.untitled', 'Untitled key')}` : t('aapi.keygone', 'key gone')}

@@ -198,7 +198,7 @@ export function MyoPage() {
                     className={`card p-3 flex items-center gap-3 hover:border-[var(--primary)] ${r.userUnread ? 'border-[var(--primary)]' : ''}`}>
                     <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><K size={16} /></span>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{r.name}</div>
+                      <div className="font-medium truncate" title={r.name}>{r.name}</div>
                       <div className="text-xs text-[var(--faint)]">{new Date(r.createdAt).toLocaleDateString()}</div>
                     </div>
                     {/* A word, not a dot. A coloured circle is only legible to somebody who
@@ -283,7 +283,8 @@ export function MyoConversation({ id, admin = false }) {
   };
 
   if (loading) return <div className="py-16 grid place-items-center"><Spinner /></div>;
-  if (!r) return <EmptyState icon={AlertTriangle} title={t('myo.notfound', 'Request not found')} sub={t('myo.notfound.s', "It may have been removed, or you don't have access.")} />;
+  if (!r) return <EmptyState icon={AlertTriangle} title={t('myo.notfound', 'Request not found')} sub={t('myo.notfound.s', "It may have been removed, or you don't have access.")}
+    action={{ label: t('myo.notfound.a', 'Start a new request'), to: '/myo', icon: Sparkles }} />;
   const K = kindMeta(r.productKind).icon;
   const viewerIsStaff = data.viewerIsStaff;
 
@@ -500,7 +501,7 @@ function DeliverForm({ requestId, onDone }) {
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('myo.d.file', 'File')}</div>
-          {file ? <div className="flex items-center gap-2 text-sm"><FileText size={14} /> <span className="truncate flex-1">{file.name}</span><button onClick={() => setFile(null)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button></div>
+          {file ? <div className="flex items-center gap-2 text-sm"><FileText size={14} /> <span className="truncate flex-1" title={file.name}>{file.name}</span><button onClick={() => setFile(null)} className="text-[var(--faint)] hover:text-error"><X size={14} /></button></div>
             : <label className="btn btn-sm cursor-pointer inline-flex"><input type="file" className="hidden" onChange={pick} />{uploading ? <Spinner /> : <><Download size={13} className="rotate-180" /> {t('myo.d.upload', 'Upload deliverable')}</>}</label>}
         </div>
         <Field label={t('myo.d.link', 'or external link')}><Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://…" /></Field>

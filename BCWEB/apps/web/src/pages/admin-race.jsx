@@ -244,7 +244,7 @@ export function RaceConfig({ eco, set, Switch }) {
                 <div key={c.id} className="rounded-md border border-[var(--line)] p-1.5 space-y-1">
                   <CircuitDrawing circuit={c} width={180} height={90} thumb />
                   <div className="flex items-center justify-between gap-1">
-                    <span className="truncate text-[11px]">{c.name}</span>
+                    <span className="truncate text-[11px]" title={c.name}>{c.name}</span>
                     <button type="button" className="text-[var(--faint)] hover:text-[var(--error)]" onClick={() => setR('circuits', circuits.filter((x) => x.id !== c.id))} aria-label={t('common.remove', 'Remove')} title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
                   </div>
                 </div>

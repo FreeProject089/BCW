@@ -49,7 +49,8 @@ export default function PublicProfile() {
     };
     const st = STATES[kind] || { icon: UserX, title: t('pp.404.t', 'Profile not found'), sub: t('pp.404.s', "This user doesn't exist or is no longer available.") };
     return <div className="max-w-3xl mx-auto px-4 py-16">
-      <EmptyState icon={st.icon} title={st.title} sub={st.sub} />
+      <EmptyState icon={st.icon} title={st.title} sub={st.sub}
+        action={{ label: t('pp.err.a', 'Find members'), to: '/users', icon: Search }} />
     </div>;
   }
   const u = data.profile;
@@ -81,7 +82,7 @@ export default function PublicProfile() {
           <Avatar variant={av.variant} seed={av.seed || u.id} colors={av.colors} image={av.image} size={88} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold truncate">{u.displayName}</h1>
+              <h1 className="text-2xl font-bold truncate" title={u.displayName}>{u.displayName}</h1>
               <Badges badges={u.badges} size={17} />
               {u.role !== 'USER' && <Badge tone={roleTone(u.role)}>{u.role}</Badge>}
               {u.economy?.level > 0 && <Badge tone="primary"><Sparkles size={11} /> {t('pp.level', 'Level {n}').replace('{n}', u.economy.level)}</Badge>}
@@ -147,8 +148,8 @@ export default function PublicProfile() {
           {u.repos.length ? <div className="space-y-1.5">
             {u.repos.map((r) => (
               <Link key={r.id} to={`/repo/${r.id}`} className="block rounded-lg p-2 hover:bg-[var(--surface-2)]">
-                <div className="text-sm font-medium truncate">{r.name}</div>
-                {r.description && <div className="text-xs text-[var(--faint)] truncate">{r.description}</div>}
+                <div className="text-sm font-medium truncate" title={r.name}>{r.name}</div>
+                {r.description && <div className="text-xs text-[var(--faint)] truncate" title={r.description}>{r.description}</div>}
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-1 mt-0.5"><Star size={11} /> {r.favorites}</div>
               </Link>
             ))}
@@ -159,7 +160,7 @@ export default function PublicProfile() {
           {u.catalogs.length ? <div className="space-y-1.5">
             {u.catalogs.map((c) => (
               <Link key={c.slug} to={`/c/${c.slug}`} className="block rounded-lg p-2 hover:bg-[var(--surface-2)]">
-                <div className="text-sm font-medium truncate">{c.name}</div>
+                <div className="text-sm font-medium truncate" title={c.name}>{c.name}</div>
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-2 mt-0.5"><span>{c.items} {t('cc.items', 'items')}</span><span className="flex items-center gap-1"><Download size={11} /> {c.downloads}</span></div>
               </Link>
             ))}
@@ -189,13 +190,15 @@ export function UserSearch() {
             <Link key={u.id} to={`/u/${u.id}`}><Card className="p-3 flex items-center gap-3 card-hover">
               <Avatar variant={av.variant} seed={av.seed || u.id} colors={av.colors} image={av.image} size={40} />
               <div className="flex-1 min-w-0">
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{u.displayName}</span> <Badges badges={u.badges} size={14} /></div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={u.displayName}>{u.displayName}</span> <Badges badges={u.badges} size={14} /></div>
                 {u.private && <div className="text-[11px] text-[var(--faint)] flex items-center gap-1"><Lock size={10} /> {t('pp.privatebadge', 'private')}</div>}
               </div>
               {u.role !== 'USER' && <Badge tone={roleTone(u.role)}>{u.role}</Badge>}
             </Card></Link>
           ); })}
-        </div> : <EmptyState icon={UserX} title={t('us.none.t', 'No members found')} sub={t('us.none.s', 'Try a different name.')} />}
+        </div> : <EmptyState icon={UserX} title={t('us.none.t', 'No members found')}
+          sub={t('us.none.s2', 'No member matches that name or id. A private profile is still found by its exact BC id.')}
+          action={{ label: t('us.none.a', 'Clear the search'), onClick: () => setQ(''), icon: Search }} />}
     </div>
   );
 }

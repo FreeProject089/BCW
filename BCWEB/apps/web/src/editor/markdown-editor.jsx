@@ -357,7 +357,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
               snippetGroups={localizeSnippetGroups(SNIPPET_GROUPS, uiLang)}
               labels={{ edit: t('lp.edit', 'Edit this block'), done: t('common.done', 'Done'), insert: t('lp.insert', 'Insert here'),
                 remove: t('lp.remove', 'Remove this block'), empty: t('lp.empty', 'Nothing yet. Unlock to write something.'),
-                search: t('bmdc.search', 'Search blocks…'), noMatch: t('bmdc.nomatch', 'No block matches.') }} />
+                search: t('bmdc.search', 'Search blocks…'), noMatch: t('bmdc.nomatch', 'No block matches that. Clear the search to see them all.') }} />
           </div>
         : mode === 'visual'
           ? <div className="max-h-[52vh] overflow-auto p-2"><BmdBlockCanvas value={value || ''} onChange={onChange}
@@ -365,7 +365,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
               pickIcon={pickIconForCanvas}
               labels={{
                 insert: t('bmdc.insert', 'Insert a block'), search: t('bmdc.search', 'Search blocks…'),
-                noMatch: t('bmdc.nomatch', 'No block matches.'), count: t('bmdc.count', '{n} block(s)'),
+                noMatch: t('bmdc.nomatch', 'No block matches that. Clear the search to see them all.'), count: t('bmdc.count', '{n} block(s)'),
                 preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
                 up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
                 title: t('bmdc.title', 'Title'), icon: t('bmdc.icon', 'Icon'), noIcon: t('bmdc.noicon', 'Pick an icon'),

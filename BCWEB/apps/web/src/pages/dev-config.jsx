@@ -342,7 +342,7 @@ function OAuthAppsPanel() {
                     {c.verified ? <Badge tone="green">{t('dev.verified', 'reviewed')}</Badge> : <Badge tone="amber">{t('dev.unverified', 'not reviewed')}</Badge>}
                     {!c.confidential && <Badge>{t('dev.publicclient', 'public client (PKCE)')}</Badge>}
                   </div>
-                  <div className="text-[11px] text-[var(--faint)] font-mono truncate">{c.id}</div>
+                  <div className="text-[11px] text-[var(--faint)] font-mono truncate" title={c.id}>{c.id}</div>
                   <div className="text-[11px] text-[var(--faint)]">{t('dev.users', '{n} connected').replace('{n}', String(c.users || 0))}</div>
                   <ScopeChips scopes={c.scopes} descriptions={SCOPE_HELP} />
                 </div>

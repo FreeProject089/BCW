@@ -172,7 +172,11 @@ function AdminMyoRequests() {
         })}
       </div> : <EmptyState icon={scope === 'archived' ? Archive : Inbox}
         title={scope === 'archived' ? t('amyo.noarch.t', 'Nothing archived') : t('amyo.none.t', 'No requests yet')}
-        sub={scope === 'archived' ? t('amyo.noarch.s', 'Finished requests you archive end up here.') : t('amyo.none.s', 'Paid consultations will show up here.')} />}
+        sub={applied.q || applied.status ? t('amyo.none.filtered', 'The search and the status filter above exclude every request in this tab.')
+          : scope === 'archived' ? t('amyo.noarch.s', 'Finished requests you archive end up here.') : t('amyo.none.s', 'Paid consultations will show up here.')}
+        action={applied.q || applied.status
+          ? { label: t('amyo.none.clear', 'Clear the search and the status'), icon: X, onClick: () => { setQ(''); setStatus(''); setApplied({ q: '', status: '' }); } }
+          : scope === 'archived' ? { label: t('amyo.noarch.go', 'Back to the open requests'), icon: Inbox, onClick: () => setScope(TABS[0][0]) } : null} />}
     </div>
   );
 }
@@ -199,7 +203,8 @@ function AdminMyoProducts() {
             <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(p)}><Trash2 size={13} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={Package} title={t('amyo.p.none', 'No catalog products')} sub={t('amyo.p.nonesub', 'The 3 base options (bot / app / website) always show; add products to customise them or offer more.')} />}
+      </div> : <EmptyState icon={Package} title={t('amyo.p.none', 'No catalog products')} sub={t('amyo.p.nonesub', 'The 3 base options (bot / app / website) always show; add products to customise them or offer more.')}
+        action={{ label: t('amyo.p.new', 'New product'), icon: Plus, onClick: () => setEditing({}) }} />}
       {editing && <MyoProductModal product={editing.id ? editing : null} onClose={() => setEditing(null)} onDone={reload} />}
     </div>
   );

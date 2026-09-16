@@ -42,7 +42,9 @@ export function ThreadView({ load, post, actions, back }) {
   const { t } = useI18n(); const toast = useToast();
   const { data, loading, reload } = useAsync(load, [load]);
   if (loading && !data) return <div className="py-8 text-center"><Spinner /></div>;
-  if (!data) return <EmptyState icon={MessageSquare} title={t('th.gone', 'This conversation is not available.')} />;
+  if (!data) return <EmptyState icon={MessageSquare} title={t('th.gone.t', 'Conversation not available')}
+    sub={t('th.gone.s', 'It may have been closed and removed, or the link you followed may have expired.')}
+    action={{ label: t('th.gone.a', 'Your messages'), to: '/dashboard?s=reports', icon: Inbox }} />;
   const { thread: th, side } = data;
   const send = async (body) => {
     try { await post(body); await reload(); return true; }
@@ -122,7 +124,7 @@ export function MyThreads() {
                 <button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2.5 flex items-center gap-3 hover:panel rounded-lg px-2 -mx-2">
                   <span className="text-lg shrink-0" aria-hidden>{KIND_ICON[th.kind] || '✉️'}</span>
                   <span className="min-w-0 flex-1">
-                    <span className={`block truncate ${unread ? 'font-semibold' : ''}`}>{th.subject}</span>
+                    <span className={`block truncate ${unread ? 'font-semibold' : ''}`} title={th.subject}>{th.subject}</span>
                     <span className="block text-[12px] text-[var(--muted)] truncate">{th.targetLabel} · {box === 'inbox' ? (th.sender?.displayName || th.senderName || t('th.anon', 'an anonymous sender')) : (th.ownerTeam?.name || th.ownerUser?.displayName || '—')}</span>
                   </span>
                   {unread && <span className="w-2 h-2 rounded-full bg-[var(--primary)] shrink-0" />}

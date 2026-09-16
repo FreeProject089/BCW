@@ -60,7 +60,8 @@ export function AdminReactions() {
               title={t('adm.react.off', 'No post accepts reactions yet.')}
               sub={t('adm.react.offsub', 'Reactions are off by default on every post. Turn them on, and pick which emoji, in the post editor, under Reactions.')} />
           ) : (
-            <EmptyState icon={Heart} title={t('adm.react.none', 'No reactions in this window.')} />
+            <EmptyState icon={Heart} title={t('adm.react.none', 'No reactions in this window.')}
+              sub={t('adm.react.none.s', 'Posts do accept reactions, nobody has left one inside the range selected above.')} />
           )
         ) : (
           <div className="divide-y divide-[var(--line)]">
@@ -72,10 +73,10 @@ export function AdminReactions() {
                       endpoint was written; the row simply never used it. */}
                   {b.slug ? (
                     <Link to={`/blog/${b.slug}`} className="text-sm truncate hover:underline flex items-center gap-1 group">
-                      <span className="truncate">{b.title}</span>
+                      <span className="truncate" title={b.title}>{b.title}</span>
                       <ArrowUpRight size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition" />
                     </Link>
-                  ) : <div className="text-sm truncate">{b.title}</div>}
+                  ) : <div className="text-sm truncate" title={b.title}>{b.title}</div>}
                   {b.projectKey && <div className="text-[11px] text-[var(--faint)]">{b.projectKey}</div>}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -101,14 +102,15 @@ export function AdminReactions() {
           {t('adm.react.docssub', 'Worst-rated first, and only pages with at least five votes are ranked as a problem — one unhappy reader is not a signal. Running totals, not affected by the window above.')}
         </p>
         {!docs.length ? (
-          <EmptyState icon={MessageSquare} title={t('adm.react.nodocs', 'Nobody has rated a docs page yet.')} />
+          <EmptyState icon={MessageSquare} title={t('adm.react.nodocs', 'Nobody has rated a docs page yet.')}
+            sub={t('adm.react.nodocs.s', 'The yes/no question at the foot of every docs page feeds this list. It counts from the first vote, not from a window.')} />
         ) : (
           <div className="divide-y divide-[var(--line)]">
             {docs.map((x) => (
               <div key={x.slug} className="py-2 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <Link to={`/docs/${x.slug}`} className="text-sm truncate hover:underline flex items-center gap-1 group">
-                    <span className="truncate">{x.title}</span>
+                    <span className="truncate" title={x.title}>{x.title}</span>
                     <ArrowUpRight size={12} className="shrink-0 opacity-0 group-hover:opacity-100 transition" />
                   </Link>
                   <div className="text-[11px] text-[var(--faint)]">{x.category} · {x.slug}</div>

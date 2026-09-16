@@ -205,7 +205,7 @@ function RedeemPromoModal({ code, promo, onClose }) {
               <button key={r.id} type="button" onClick={() => setRepoId(r.id)}
                 className={`w-full text-start px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <HardDrive size={14} className={repoId === r.id ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
-                <span className="flex-1 truncate">{r.name}</span>
+                <span className="flex-1 truncate" title={r.name}>{r.name}</span>
                 {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--primary)]" />}
               </button>
             ))}
@@ -1092,7 +1092,7 @@ function PoolDiagram() {
           {seg.map((sg) => (
             <div key={sg.label} className="flex items-center gap-2.5 text-[13px]">
               <i className="inline-block w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ background: sg.bg }} aria-hidden />
-              <span className="flex-1 min-w-0 truncate text-[var(--muted)]">{sg.label}</span>
+              <span className="flex-1 min-w-0 truncate text-[var(--muted)]" title={sg.label}>{sg.label}</span>
               <span className="tabular-nums font-medium">{sg.gb} {t('hosting.gbshort', 'GB')}</span>
             </div>
           ))}

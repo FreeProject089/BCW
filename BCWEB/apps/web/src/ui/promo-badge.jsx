@@ -53,7 +53,7 @@ export default function PromoBadge() {
   const inner = (
     <>
       <Tag size={14} className="shrink-0 opacity-90" />
-      <span className="truncate">{msg}</span>
+      <span className="truncate" title={msg}>{msg}</span>
       <span className="shrink-0 rounded-full bg-white/25 px-2 py-0.5 text-[12px] font-bold tabular-nums">−{c.percentOff}%</span>
       {left && <span className="shrink-0 hidden sm:inline opacity-90 tabular-nums">· {left}</span>}
       {link && <ArrowUpRight size={14} className="shrink-0 opacity-90" />}

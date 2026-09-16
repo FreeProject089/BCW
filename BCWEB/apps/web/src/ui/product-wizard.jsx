@@ -230,7 +230,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
               <Input value={draft.name} onChange={(e) => set('name', e.target.value)} aria-invalid={!!err('name')} autoFocus />
               <Err msg={err('name')} />
             </Field>
-            <Field label={t('mkadm.f.project2', 'Sold on which page')} hint={t('mkadm.f.project2.h', 'Where the product appears. A product with no page is a product nobody can find.')}>
+            <Field label={t('mkadm.f.project2', 'Sold on which page')} hint={t('mkadm.f.project2.h', 'A product with no page is a product nobody can find.')}>
               <Select value={targetOf(draft)} onChange={(e) => setTarget(e.target.value)} aria-invalid={!!err('target')}>
                 <option value="">{t('mkadm.f.pick', '— pick a page —')}</option>
                 {targets.filter((x) => x.group === 'project').length > 0 && (

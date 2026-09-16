@@ -61,7 +61,7 @@ export function ProductRows({ products = [], style = 'rows' }) {
             {p.logo ? <AppLogo name={p.logo} size={22} /> : <p.icon size={20} className="text-[var(--primary-2)]" />}
             <span className="min-w-0">
               <span className="block font-semibold text-sm">{p.name}</span>
-              <span className="block text-[12px] text-[var(--muted)] truncate">{p.desc}</span>
+              <span className="block text-[12px] text-[var(--muted)] truncate" title={p.desc}>{p.desc}</span>
             </span>
             <ArrowRight size={16} className="ms-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--primary)] transition-colors" />
           </Link>
@@ -107,7 +107,7 @@ export function NewsGrid({ posts = [], limit = 3, heading = true, compact = fals
           {posts.slice(0, limit).map((p) => (
             <li key={p.id}>
               <Link to={`/blog/${p.slug || p.id}`} className="flex items-baseline gap-3 py-2.5 hover:text-[var(--primary-2)] transition-colors">
-                <span className="text-sm font-medium min-w-0 truncate">{p.title}</span>
+                <span className="text-sm font-medium min-w-0 truncate" title={p.title}>{p.title}</span>
                 {p.publishedAt && (
                   <span className="ms-auto shrink-0 text-[11px] text-[var(--faint)] tabular-nums">
                     {new Date(p.publishedAt).toLocaleDateString()}
@@ -244,7 +244,7 @@ export function OffersCard({ myo, limit = 3 }) {
       <ul className="space-y-2">
         {offers.map((o) => (
           <li key={o.id} className="flex items-center gap-2 text-[12px]">
-            <span className="min-w-0 truncate">{o.name}</span>
+            <span className="min-w-0 truncate" title={o.name}>{o.name}</span>
             {o.priceCents != null && <Badge className="ms-auto shrink-0">{(o.priceCents / 100).toFixed(0)} €</Badge>}
           </li>
         ))}

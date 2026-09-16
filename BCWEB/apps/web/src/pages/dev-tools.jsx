@@ -808,7 +808,7 @@ export default function DevTools() {
         <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
           className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
           <Wrench size={16} className="text-[var(--primary-2)] shrink-0" />
-          <span className="flex-1 text-start truncate">{current?.label}</span>
+          <span className="flex-1 text-start truncate" title={current?.label}>{current?.label}</span>
           <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{currentIdx + 1}/{ALL_TOOLS.length}</span>
           <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
         </button>
@@ -830,7 +830,7 @@ export default function DevTools() {
                 {hits.length ? hits.map((tl) => (
                   <button key={tl.id} onClick={() => pick(tl.id)}
                     className="w-full text-start px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
-                    <span className="truncate">{tl.label}</span>
+                    <span className="truncate" title={tl.label}>{tl.label}</span>
                     <span className="text-[10px] text-[var(--faint)] truncate ms-auto">{t(tl.group.k, tl.group.label)}</span>
                   </button>
                 )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{t('dvt.nohit', 'No tool by that name.')}</div>}
@@ -844,7 +844,7 @@ export default function DevTools() {
                     className={`w-full text-start px-2 py-1.5 rounded-lg text-[13px] flex items-center gap-2 ${
                       active === tl.id ? 'bg-[var(--surface-2)] text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'
                     }`}>
-                    <span className="truncate">{tl.label}</span>
+                    <span className="truncate" title={tl.label}>{tl.label}</span>
                     {/* Said on the picker, not after the tap — same rule as the rail. */}
                     {tl.needsAuth && !user && <span className="text-[10px] text-[var(--faint)] ms-auto shrink-0">{t('dvt.needsAcc', 'needs an account')}</span>}
                   </button>

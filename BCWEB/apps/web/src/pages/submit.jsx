@@ -174,7 +174,7 @@ function OfficialSubmit({ onBack }) {
               <label key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-[var(--line)] cursor-pointer">
                 <input type="checkbox" checked={e._skip !== true} onChange={(ev) => setBulk((b) => ({ entries: b.entries.map((x, j) => j === i ? { ...x, _skip: !ev.target.checked } : x) }))} />
                 <Badge tone="">{kindLabel(e.kind, projectKey)}</Badge>
-                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL, will be skipped')}</div>{e.kind === 'APP' && e.meta.download_url && !e.meta.sha256 && (<div className="text-[11px] text-[var(--warning,#f59e0b)]">{t('sub2.nosha', 'no checksum: BMM will warn before installing this one')}</div>)}</div>
+                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate" title={e.name}>{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL, will be skipped')}</div>{e.kind === 'APP' && e.meta.download_url && !e.meta.sha256 && (<div className="text-[11px] text-[var(--warning,#f59e0b)]">{t('sub2.nosha', 'no checksum: BMM will warn before installing this one')}</div>)}</div>
               </label>
             ))}
           </div>
@@ -343,7 +343,7 @@ function HostCatalog({ onBack }) {
       : true);
   const kindText = kindLabel(String(form.kind).toUpperCase(), 'bmm');
   const rawCount = rawJson ? (rawJson.plugins || rawJson.themes || rawJson.apps || rawJson.presets || rawJson[DOCUMENT_KIND_FIELD[String(form.kind).toUpperCase()]] || []).length : 0;
-  const rowSum = (label, value) => (<div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-[var(--line)] last:border-0"><span className="text-[var(--faint)]">{label}</span><span className="font-medium text-end min-w-0 truncate">{value}</span></div>);
+  const rowSum = (label, value) => (<div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-[var(--line)] last:border-0"><span className="text-[var(--faint)]">{label}</span><span className="font-medium text-end min-w-0 truncate" title={value}>{value}</span></div>);
   return (
     <div className="space-y-4">
       <button onClick={onBack} className="text-sm text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ArrowLeft size={14} /> {t('common.back', 'Back')}</button>

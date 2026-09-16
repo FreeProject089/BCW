@@ -76,7 +76,7 @@ function PickerPopover({ items, value, onPick, onClose, anchor, footer, searchPl
           <button key={o.id} type="button" role="option" aria-selected={o.id === value} onClick={() => onPick(o.id)}
             className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-start transition-colors ${o.id === value ? 'bg-[var(--surface-2)] font-medium' : 'hover:bg-[var(--surface-2)]'}`}>
             {o.icon}
-            <span className="flex-1 truncate">{o.label}</span>
+            <span className="flex-1 truncate" title={o.label}>{o.label}</span>
             {o.sub && <span className="text-[10px] text-[var(--faint)] shrink-0">{o.sub}</span>}
           </button>
         ))}
@@ -123,7 +123,7 @@ export const RoleTag = ({ role, id, size = 11 }) => {
   return (
     <span className="inline-flex items-center gap-1 min-w-0" style={col ? { color: col } : undefined}>
       <AtSign size={size} className="shrink-0 opacity-80" />
-      <span className="truncate">{role?.name || id}</span>
+      <span className="truncate" title={role?.name || id}>{role?.name || id}</span>
     </span>
   );
 };
@@ -152,7 +152,7 @@ export function RolePicker({ roles, value, onChange, placeholder, allowNone = tr
 export const ChannelTag = ({ channel, id, size = 11 }) => (
   <span className="inline-flex items-center gap-1 min-w-0">
     <ChannelGlyph type={channel?.type ?? 0} size={size} className="shrink-0 text-[var(--faint)]" />
-    <span className="truncate">{channel?.name || id}</span>
+    <span className="truncate" title={channel?.name || id}>{channel?.name || id}</span>
   </span>
 );
 
@@ -250,7 +250,7 @@ function MemberPickerInner({ q, setQ, items, value, onChange, label, placeholder
           {items.map((o) => (
             <button key={o.id} type="button" role="option" aria-selected={o.id === value} onClick={() => { setOpen(false); onChange(o.id); }}
               className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-start transition-colors ${o.id === value ? 'bg-[var(--surface-2)] font-medium' : 'hover:bg-[var(--surface-2)]'}`}>
-              {o.icon}<span className="flex-1 truncate">{o.label}</span>
+              {o.icon}<span className="flex-1 truncate" title={o.label}>{o.label}</span>
               {o.sub && <span className="text-[10px] text-[var(--faint)] shrink-0">{o.sub}</span>}
             </button>
           ))}

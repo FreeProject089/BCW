@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Gavel, Search, RefreshCw, Send, Undo2, Scale, AlertTriangle, Ban, Clock, FileText, ExternalLink,
-  Pencil, Archive, ArchiveRestore, RotateCcw, Paperclip, Trash2 } from 'lucide-react';
+  Pencil, Archive, ArchiveRestore, RotateCcw, Paperclip, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -103,7 +103,7 @@ export function Evidence({ s, onChanged }) {
           {s.attachments.map((a) => (
             <li key={a.id} className="flex items-center gap-2 text-[12px] min-w-0">
               <Badge tone="">{a.kind}</Badge>
-              <button className="underline truncate text-start min-w-0" onClick={() => open(a)}>{a.name}</button>
+              <button className="underline truncate text-start min-w-0" onClick={() => open(a)} title={a.name}>{a.name}</button>
               {a.bytes > 0 && <span className="text-[var(--faint)] shrink-0">{fmtBytes(a.bytes)}</span>}
               {a.note && <span className="text-[var(--faint)] truncate">— {a.note}</span>}
               <button className="ms-auto shrink-0 text-[var(--faint)] hover:text-[var(--error)]" title={t('common.delete', 'Delete')} onClick={() => remove(a)}>
@@ -373,7 +373,8 @@ export function AdminSanctions() {
 
       {loading && !data ? <Loading /> : !list.length ? (
         <EmptyState icon={Gavel} title={t('sanc.none', 'Nothing here')}
-          sub={t('sanc.none.s', 'No decision matches this filter. With no filter at all, an empty list means nobody has been sanctioned yet.')} />
+          sub={term || status || kind ? t('sanc.none.s2', 'No decision matches the search, the status or the kind set above.') : t('sanc.none.s3', 'Nobody has been sanctioned. Sanctions are issued from the account and content screens, never from here.')}
+          action={term || status || kind ? { label: t('sanc.none.clear', 'Clear the search and the filters'), icon: X, onClick: () => { setQ(''); setTerm(''); setStatus(''); setKind(''); } } : null} />
       ) : (
         <Card className="p-0 overflow-hidden">
           {list.map((s) => <Row key={s.id} s={s} onLift={lift} onResend={resend} onAnswer={answer}

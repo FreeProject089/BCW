@@ -126,7 +126,7 @@ function Dashboard({ data, reload }) {
             <div className="w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold truncate">{r.name}</h1>
+                <h1 className="text-xl font-bold truncate" title={r.name}>{r.name}</h1>
                 {/* Explicit status + trust-tier so they're identifiable at a glance. */}
                 {(() => { const st = repoStatusMeta(r, t); return st && <Badge tone={st.tone}>● {st.label}</Badge>; })()}
                 {(() => { const cat = repoCategoryMeta(r.category, t, true); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
@@ -205,7 +205,7 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, c
         <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-[var(--surface-2)]" style={{ paddingLeft: `${16 + depth * 16}px` }}>
           <ChevronDown size={13} className={`shrink-0 transition-transform text-[var(--faint)] ${open ? '' : '-rotate-90'}`} />
           <Files size={14} className="text-[var(--primary-2)] shrink-0" />
-          <span className="font-medium truncate">{name}</span>
+          <span className="font-medium truncate" title={name}>{name}</span>
           <span className="text-[11px] text-[var(--faint)] shrink-0">{node.files.length + [...node.dirs.values()].reduce((a, d) => a + d.files.length, 0)}</span>
         </button>
       )}
@@ -588,7 +588,7 @@ function UsersTab({ r }) {
             <div key={c.ip + (c.accessKey || '')} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               <div className={`w-2 h-2 rounded-full shrink-0 ${c.banned ? 'bg-error' : (Date.now() - new Date(c.lastSeen) < 6e5 ? 'bg-success' : 'bg-[var(--line-strong)]')}`} />
               <div className="flex-1 min-w-0">
-                <div className="font-mono text-xs flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{c.ip}</span>{c.accessKey && <Badge><Hash size={9} /> {c.accessKey.slice(0, 10)}</Badge>}{c.account && <Badge tone="primary"><Users size={9} /> {c.account.label}</Badge>}{c.banned && <Badge tone="red"><Ban size={9} /> {t('rd.bannedbadge', 'Banned')}</Badge>}</div>
+                <div className="font-mono text-xs flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={c.ip}>{c.ip}</span>{c.accessKey && <Badge><Hash size={9} /> {c.accessKey.slice(0, 10)}</Badge>}{c.account && <Badge tone="primary"><Users size={9} /> {c.account.label}</Badge>}{c.banned && <Badge tone="red"><Ban size={9} /> {t('rd.bannedbadge', 'Banned')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{t('rd.lastseen', 'last seen')} {timeAgo(c.lastSeen, t)} · {c.downloads} {t('rd.dl', 'dl')} · {c.connects} {t('rd.conn', 'conn')}</div>
               </div>
               {c.banned
@@ -608,7 +608,7 @@ function UsersTab({ r }) {
                 {e.kind === 'download' ? <Download size={13} className="text-[var(--primary-2)] shrink-0" /> : <Radio size={13} className="text-success shrink-0" />}
                 <span className="font-mono text-xs text-[var(--muted)] shrink-0">{e.ip}</span>
                 <span className="text-[var(--faint)]">{e.kind === 'download' ? t('rd.downloaded', 'downloaded') : t('rd.connected2', 'connected')}</span>
-                {e.kind === 'download' && <span className="font-mono text-xs truncate flex-1">{e.path}</span>}
+                {e.kind === 'download' && <span className="font-mono text-xs truncate flex-1" title={e.path}>{e.path}</span>}
                 <span className="text-[11px] text-[var(--faint)] shrink-0 ms-auto">{timeAgo(e.createdAt, t)}</span>
               </div>
             ))}
@@ -946,7 +946,7 @@ function AgentTab({ r }) {
         <Card className="p-5" style={{ borderColor: 'var(--ring)' }}>
           <div className="font-semibold text-sm">{t('rd.agent.new', 'Copy this now, it is not shown again')}</div>
           <div className="mt-2 flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate text-[12.5px] bg-[var(--surface-2)] border border-[var(--line)] rounded-lg px-3 py-2">{token}</code>
+            <code className="flex-1 min-w-0 truncate text-[12.5px] bg-[var(--surface-2)] border border-[var(--line)] rounded-lg px-3 py-2" title={token}>{token}</code>
             <Button size="sm" variant="secondary" onClick={() => { copyText(token); toast.success(t('common.copied', 'Copied.')); }}><Copy size={14} /></Button>
           </div>
           <div className="text-xs text-[var(--muted)] mt-3">{t('rd.agent.snip', 'A heartbeat is one call. Put this on a timer on your server:')}</div>
@@ -997,7 +997,7 @@ function AgentTab({ r }) {
               [t('rd.agent.f.sha', 'Manifest'), agent.manifestSha ? `${agent.manifestSha.slice(0, 12)}…` : '—'],
             ].map(([k, v]) => (
               <div key={k} className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-1.5">
-                <dt className="text-[var(--muted)]">{k}</dt><dd className="font-medium truncate">{v}</dd>
+                <dt className="text-[var(--muted)]">{k}</dt><dd className="font-medium truncate" title={v}>{v}</dd>
               </div>
             ))}
           </dl>

@@ -86,11 +86,17 @@ export default function HistoryModal({ base, onClose, onRestore }) {
                 </div>
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1" title={r.editor}>
                   {r.editorUser ? <Avatar user={r.editorUser} size={16} /> : <UserIcon size={12} />}
-                  <span className="truncate">{r.editor}</span>
+                  <span className="truncate" title={r.editor}>{r.editor}</span>
                 </div>
                 <div className="text-[11px] text-[var(--faint)] flex items-center gap-1 mt-0.5"><Clock size={10} /> {fmt(r.createdAt)}</div>
               </button>
-            )) : <EmptyState icon={History} title={t('hm.nohistory', 'No history yet')} sub={t('hm.nohistorysub', 'Snapshots appear here after each save.')} />}
+            )) : (
+              // No action: the thing that fills this list is saving the page, and the editor
+              // that does it is behind this dialog. Offering "Close" as the primary button
+              // would dress up "there is nothing to do here" as a task.
+              <EmptyState icon={History} title={t('hm.nohistory', 'No saved versions')}
+                sub={t('hm.nohistorysub', 'A snapshot is kept every time this page is saved, so the first one appears after your next save.')} />
+            )}
         </div>
         <div className="min-w-0 border-t sm:border-t-0 sm:border-s border-[var(--line)] pt-4 sm:pt-0 sm:ps-4 max-h-[52vh] sm:max-h-[56vh] overflow-auto scroll-thin">
           {loading ? <div className="grid place-items-center py-10"><Spinner /></div>

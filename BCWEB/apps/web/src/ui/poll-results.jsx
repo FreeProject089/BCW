@@ -104,7 +104,7 @@ export function QuestionResults({ questions, completion, myChoices = {}, texts =
       {questions.map((q) => (
         <div key={q.id}>
           <div className="flex items-baseline gap-2">
-            <span className="text-[13px] font-medium flex-1 min-w-0 truncate">{q.label}</span>
+            <span className="text-[13px] font-medium flex-1 min-w-0 truncate" title={q.label}>{q.label}</span>
             <span className="text-[11px] text-[var(--faint)]">{t(`apq.kind.${q.kind}`, q.kind)} · {q.voters}</span>
           </div>
           {q.tally && <QTally rows={q.tally} mine={myChoices[q.id] || []} />}
@@ -117,7 +117,7 @@ export function QuestionResults({ questions, completion, myChoices = {}, texts =
               {q.grid.map((row) => (
                 <div key={row.row}>
                   <div className="text-[12px] text-[var(--muted)] flex items-baseline gap-2">
-                    <span className="flex-1 min-w-0 truncate">{row.label}</span>
+                    <span className="flex-1 min-w-0 truncate" title={row.label}>{row.label}</span>
                     <span className="text-[11px] text-[var(--faint)] tabular-nums">{row.voters}</span>
                   </div>
                   <QTally rows={row.tally} />
@@ -174,7 +174,7 @@ export function QuestionResults({ questions, completion, myChoices = {}, texts =
               {q.ranking.map((r, i) => (
                 <li key={r.id} className="flex items-baseline gap-2 text-[12px]">
                   <span className="w-4 text-[var(--faint)] tabular-nums">{i + 1}</span>
-                  <span className="flex-1 min-w-0 truncate">{r.label}</span>
+                  <span className="flex-1 min-w-0 truncate" title={r.label}>{r.label}</span>
                   {/* `averageRank`, not `avg`. The field has been called averageRank in
                       poll-stats.mjs since it was written; this component read `avg`, so every
                       public ranking question rendered "avg NaN" — undefined times 100, rounded.

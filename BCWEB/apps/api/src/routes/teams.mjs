@@ -145,7 +145,10 @@ export default async function teamRoutes(app) {
     };
   });
   app.post('/me/teams/:id/invites', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
-    const b = z.object({ role: z.enum(['admin', 'member']).default('member'), days: z.number().int().min(0).max(365).nullable().optional(), maxUses: z.number().int().min(1).max(500).nullable().optional() }).safeParse(req.body || {});
+    // No `maxUses`: the column exists and `inviteUsable` still honours a row that carries
+    // one, but nothing offers it any more, and an input the product does not expose is a
+    // way to put a team's link in a state its owner cannot see or undo from the page.
+    const b = z.object({ role: z.enum(['admin', 'member']).default('member'), days: z.number().int().min(0).max(365).nullable().optional() }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
@@ -155,7 +158,7 @@ export default async function teamRoutes(app) {
     // a database and the page always gets an error string it can turn into a sentence.
     const plan = invitePlanFor(open, b.data.days, policy);
     if (plan.error) return reply.code(409).send(plan);
-    const r = await p.teamInvite.create({ data: { token: crypto.randomBytes(18).toString('base64url'), teamId: got.t.id, role: b.data.role, createdBy: req.user.uid, expiresAt: plan.expiresAt, maxUses: b.data.maxUses || null } });
+    const r = await p.teamInvite.create({ data: { token: crypto.randomBytes(18).toString('base64url'), teamId: got.t.id, role: b.data.role, createdBy: req.user.uid, expiresAt: plan.expiresAt } });
     await logAudit(p, req.user.uid, 'team.invite.link', `team=${got.t.id} role=${r.role} ${plan.permanent ? 'permanent' : `${plan.days}d`}`).catch(() => {});
     return reply.code(201).send({ invite: serInvite(r) });
   });

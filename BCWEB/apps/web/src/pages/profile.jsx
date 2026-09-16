@@ -542,7 +542,7 @@ export function TransfersCard({ className = '' }) {
             {past.map((tr) => (
               <div key={tr.id} className="text-[12px] text-[var(--muted)]">
                 <div className="flex items-center gap-2">
-                  <span className="truncate flex-1">{tr.targetName}</span>
+                  <span className="truncate flex-1" title={tr.targetName}>{tr.targetName}</span>
                   <Badge tone={trTone(tr.status)}>{t(`tr.st.${tr.status}`, tr.status)}</Badge>
                 </div>
                 {/* The reason is the whole point of having asked for one: a decline that
@@ -891,7 +891,7 @@ function SessionsCard() {
                     ? <><span aria-hidden="true">{flag(sess.country)}</span><MapPin size={11} /><span className="truncate">{place(sess)}</span></>
                     : <><Globe size={11} /><span>{t('prof.sess.unknownPlace', 'Location unknown')}</span></>}
                 </div>
-                <div className="text-[11px] font-mono text-[var(--faint)] truncate">{sess.ip || '-'}</div>
+                <div className="text-[11px] font-mono text-[var(--faint)] truncate" title={sess.ip || '-'}>{sess.ip || '-'}</div>
               </div>
               <div className="text-[11px] text-[var(--faint)] text-end shrink-0">
                 <div>{t('prof.sess.active', 'Active')} {ago(sess.lastSeenAt)}</div>
@@ -1212,7 +1212,7 @@ function CreatorLinks() {
           <div className="text-sm font-semibold flex items-center gap-1.5"><KeyRound size={14} /> {t('cl.keyTitle', 'Your BMM notifications key')}</div>
           <div className="text-xs text-[var(--faint)] leading-relaxed">{t('cl.keyDesc', 'Paste this into BMM under Settings → Identity & API to see your BetterCommunity notifications there. It is shown once and cannot be recovered — only revoked and replaced.')}</div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 min-w-0 truncate text-xs font-mono px-2 py-1.5 rounded-lg bg-[var(--surface)]">{notifKey}</code>
+            <code className="flex-1 min-w-0 truncate text-xs font-mono px-2 py-1.5 rounded-lg bg-[var(--surface)]" title={notifKey}>{notifKey}</code>
             <Button size="sm" onClick={() => { copyText(notifKey); toast.success(t('cl.keyCopied', 'Key copied.')); }}><Copy size={13} /> {t('common.copy', 'Copy')}</Button>
           </div>
           <Button size="sm" variant="ghost" onClick={() => setNotifKey('')}>{t('cl.keyDone', 'I have saved it')}</Button>
@@ -1284,7 +1284,7 @@ function DiscordLinks() {
         {visible.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
             <BadgeCheck size={15} className="text-success shrink-0" />
-            <div className="flex-1 min-w-0"><div className="text-xs truncate">{l.username || l.discordId}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}</div></div>
+            <div className="flex-1 min-w-0"><div className="text-xs truncate" title={l.username || l.discordId}>{l.username || l.discordId}</div><div className="text-[11px] text-[var(--faint)]">{t('cl.linked', 'linked')} {fdate(l.linkedAt)}</div></div>
             <button onClick={() => unlink(l)} className="text-[var(--faint)] hover:text-error" title={t('cl.unlink', 'Unlink')}><Trash2 size={14} /></button>
           </div>
         ))}
@@ -1423,7 +1423,6 @@ function SocialConnections() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('sc.title', 'Social accounts')}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('sc.desc2', 'Link accounts and toggle which appear on your public profile.')}</p>
       <div className="space-y-2">
         {configured.map(([k, Ico, label, color, kind]) => { const c = linked[k]; return (
           <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
@@ -1431,7 +1430,7 @@ function SocialConnections() {
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} style={{ color }} /></span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{label}</div>
-                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block">{c.handle}</a>
+                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block" title={c.handle}>{c.handle}</a>
                   : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
               </div>
               {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-error p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>

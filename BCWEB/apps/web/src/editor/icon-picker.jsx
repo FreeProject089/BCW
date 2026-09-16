@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Search, X } from 'lucide-react';
 import PHOSPHOR_NAMES from './phosphor-names.json';
 import { ICON_NAMES, IconGlyph, appIconKeys, appIconLabel } from '../ui/md.jsx';
+import { Button } from '../ui/ui.jsx';
 
 // The names come from the kit's registry — the bundled four plus whatever an admin added
 // under Site theme → App icons — so a new project shows up here without a code change.
@@ -78,6 +79,8 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
   // Inserted as `ph:<name>`; a weight is a prefix the author adds by hand (`ph-bold:<name>`).
   const phHits = useMemo(() => (nq ? PHOSPHOR_NAMES.filter((n) => n.includes(nq)) : PHOSPHOR_NAMES).slice(0, MAX_SHOWN), [nq]);
   const simpleHits = useMemo(() => (nq ? simple.filter((s) => s.slug.includes(nq) || s.title.toLowerCase().includes(nq)) : simple).slice(0, MAX_SHOWN / 2), [simple, nq]);
+  const projectHits = useMemo(() => appIconKeys().filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)), [nq]);
+  const nothingAnywhere = !!nq && !projectHits.length && !lucideHits.length && !phHits.length && !simpleHits.length;
 
   // Portal to <body>: the picker is often opened from inside a modal whose card uses a
   // transform (anim-pop) for its entrance. A CSS transform makes it the containing block
@@ -95,8 +98,19 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${lucide.length + PHOSPHOR_NAMES.length + simple.length} icons…`} className="flex-1 bg-transparent border-0 outline-none text-sm text-[var(--text)]" />
         </div>
         <div className="p-3 overflow-auto">
+          {/* Every catalogue empty at once is a search result, not an empty picker: say which
+              search excluded them and put the way out on screen. Three separate "no match"
+              lines under three headings said the same thing three times and offered nothing. */}
+          {nothingAnywhere ? (
+            <div className="text-center py-10 px-4">
+              <Search size={28} className="mx-auto text-[var(--faint)] mb-3" />
+              <div className="font-semibold break-words">{t('ip.none.t', 'No icon matches “{q}”').replace('{q}', q)}</div>
+              <div className="text-sm text-[var(--muted)] mt-1 mx-auto max-w-sm">{t('ip.none.s', 'The search reads icon names only, so a word for what the icon means rarely finds it. Try the object instead: “trash”, “bell”, “arrow”.')}</div>
+              <div className="mt-4"><Button variant="primary" onClick={() => setQ('')}><X size={15} /> {t('ip.none.a', 'Clear the search')}</Button></div>
+            </div>
+          ) : (<>
           {/* Our own project logos — usable in the topbar, blog, docs, faq. */}
-          {(() => { const pj = appIconKeys().filter((k) => !nq || k.includes(nq) || PROJECT_LABEL[k]?.toLowerCase().includes(nq)); return pj.length > 0 && <>
+          {(() => { const pj = projectHits; return pj.length > 0 && <>
             <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mb-1.5">{t('ip.ourprojects', "Better* projects")}</div>
             <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5 mb-4">
               {pj.map((k) => (
@@ -115,7 +129,7 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
                 {ICON_NAMES.includes(name) ? <IconGlyph name={name} size={17} /> : <LucideCdnIcon name={name} size={17} />}
               </button>
             ))}
-            {!lucideHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">No lucide icon matches “{q}”.</div>}
+            {!lucideHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">{t('ip.lu.none', 'No Lucide icon matches “{q}”.').replace('{q}', q)}</div>}
           </div>
           <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--faint)] mt-4 mb-1.5">Phosphor {nq && `· ${phHits.length}${phHits.length === MAX_SHOWN ? '+' : ''}`} <span className="normal-case font-normal tracking-normal">· {t('ip.ph.weights', 'ph-bold: / ph-fill: / ph-duotone: for other weights')}</span></div>
           <div className="grid grid-cols-7 sm:grid-cols-9 gap-1.5">
@@ -135,8 +149,9 @@ export default function IconPicker({ onPick, onClose, title = 'Pick an icon' }) 
                 <img src={`https://cdn.simpleicons.org/${slug}`} width={17} height={17} alt={st} loading="lazy" />
               </button>
             ))}
-            {!simpleHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">No brand matches “{q}”.</div>}
+            {!simpleHits.length && <div className="col-span-full text-center text-sm text-[var(--faint)] py-4">{t('ip.si.none', 'No brand matches “{q}”.').replace('{q}', q)}</div>}
           </div>
+          </>)}
         </div>
       </div>
     </div>,

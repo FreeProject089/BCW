@@ -463,7 +463,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
           <button type="button" onClick={() => toggleSection(sec.heading)} aria-expanded={!isFolded}
             className="flex items-center gap-1 w-full px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] transition-colors first:pt-1">
             <ChevronDown size={12} className={`transition-transform duration-200 ${isFolded ? '-rotate-90' : ''}`} />
-            <span className="truncate">{sec.heading}</span>
+            <span className="truncate" title={sec.heading}>{sec.heading}</span>
             {isFolded && holdsActive && (
               <span className="ms-1 w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0"
                     title={tr('sd.holdsactive', 'The page you are on is in this section')} />
@@ -479,7 +479,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
   const renderTab = (tb, big) => (
     <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)} title={tb.badge && tb.badgeTitle ? tb.badgeTitle : undefined}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-start w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
-      <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate">{tb.label}</span>
+      <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate" title={tb.label}>{tb.label}</span>
       {(() => {
         const n = (tb.badge || 0) + leafOf(tb).reduce((a, lf) => a + (lf === tb ? 0 : (lf.badge || 0)), 0);
         if (!n) return null;
@@ -525,8 +525,8 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
                         <button key={lf.id} onClick={() => set(lf.id)}
                           className="w-full text-start px-2 py-1.5 rounded-lg text-[13px] hover:bg-[var(--surface-2)] flex items-center gap-2">
                           <lf.parent.icon size={13} className="text-[var(--faint)] shrink-0" />
-                          <span className="truncate">{lf.label}</span>
-                          {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ms-auto">{lf.parent.label}</span>}
+                          <span className="truncate" title={lf.label}>{lf.label}</span>
+                          {lf.parent.label !== lf.label && <span className="text-[10px] text-[var(--faint)] truncate ms-auto" title={lf.parent.label}>{lf.parent.label}</span>}
                         </button>
                       )) : <div className="px-2 py-1.5 text-[12px] text-[var(--faint)]">{tr('sd.nohit', 'Nothing by that name.')}</div>}
                       {remoteSearch && q.length >= 2 && (
@@ -538,8 +538,8 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
                                 <div className="px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{tr(`sd.remote.${g.kind}`, g.label)}</div>
                                 {g.items.map((it) => (
                                   <button key={it.id} onClick={() => openHref(it.href)} className="w-full text-start px-2 py-1 rounded-lg text-[12px] hover:bg-[var(--surface-2)]">
-                                    <div className="truncate">{it.title}</div>
-                                    {it.sub && <div className="text-[10px] text-[var(--faint)] truncate">{it.sub}</div>}
+                                    <div className="truncate" title={it.title}>{it.title}</div>
+                                    {it.sub && <div className="text-[10px] text-[var(--faint)] truncate" title={it.sub}>{it.sub}</div>}
                                   </button>
                                 ))}
                               </div>
@@ -562,7 +562,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
         <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
           className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
           {current?.icon && <current.icon size={16} className="text-[var(--primary-2)]" />}
-          <span className="flex-1 text-start truncate">{current?.label}</span>
+          <span className="flex-1 text-start truncate" title={current?.label}>{current?.label}</span>
           <span className="text-[11px] text-[var(--faint)] tabular-nums">{idx + 1}/{realTabs.length}</span>
           <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
         </button>

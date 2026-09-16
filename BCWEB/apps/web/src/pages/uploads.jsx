@@ -141,7 +141,7 @@ export function UploadProvider({ children }) {
                         : j.status === 'cancelled' ? <Ban size={14} className="text-[var(--faint)] shrink-0" />
                         : j.failed ? <AlertTriangle size={14} className="text-warning shrink-0" />
                         : <CheckCircle2 size={14} className="text-success shrink-0" />}
-                      <span className="text-sm font-medium flex-1 truncate">{j.repoName}</span>
+                      <span className="text-sm font-medium flex-1 truncate" title={j.repoName}>{j.repoName}</span>
                       {uploading
                         ? <button onClick={() => cancel(j.id)} className="text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-error hover:border-error-border flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>
                         : <button onClick={() => dismiss(j.id)} className="text-[var(--faint)] hover:text-[var(--text)]"><X size={13} /></button>}

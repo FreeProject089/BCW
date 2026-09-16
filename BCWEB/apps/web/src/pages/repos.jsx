@@ -143,7 +143,9 @@ export function ReposPage() {
         : !repos.length ? <EmptyState icon={Server} title={t('repos.empty.t', 'No repos listed yet')}
           sub={t('repos.empty.s2', 'This is the public list of verified Server-Repos, and nobody has listed one yet.')}
           action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }} />
-        : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />
+        : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')}
+          sub={t('repos.nomatch.s2', 'No listed repo matches the search and the filters you have on.')}
+          action={{ label: t('repos.nomatch.a', 'Clear the filters'), icon: X, onClick: () => { setQ(''); setTag(''); setHostedOnly(false); setOnlineOnly(false); setFavOnly(false); setCat('all'); } }} />
         : (
           <>
             <div className="text-xs text-[var(--faint)] mb-2">{filtered.length} {filtered.length === 1 ? t('repos.one', 'repo') : t('repos.many', 'repos')}</div>
@@ -153,7 +155,7 @@ export function ReposPage() {
                 return (
                   <Card key={r.id} hover className={`p-5 ${r.featured ? 'border-[var(--ring)]' : ''}`} style={r.featured ? { boxShadow: '0 0 0 1px var(--primary), 0 16px 40px -18px var(--primary-glow)' } : undefined}>
                     <div className="flex items-center justify-between gap-2">
-                      <div className="font-semibold flex items-center gap-2 min-w-0"><GitBranch size={16} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate">{r.name}</span></div>
+                      <div className="font-semibold flex items-center gap-2 min-w-0"><GitBranch size={16} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate" title={r.name}>{r.name}</span></div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         {(() => { const cat = repoCategoryMeta(r.category, t); return cat && <Badge tone={cat.tone}><cat.Icon size={11} /> {cat.label}</Badge>; })()}
                         {r.featured && <Badge tone="amber"><Star size={11} /> {t('repos.featured', 'Featured')}</Badge>}
@@ -512,7 +514,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                 <HardDrive size={15} style={{ color: accent }} />
               </ColorInput>
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
+                <div className="font-medium text-sm flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={g.name}>{g.name}</span> {g.freePlan && <Badge tone="">{t('pools.free', 'free')}</Badge>}</div>
                 <div className="text-[11px] text-[var(--faint)]">{gb(g.usedBytes)} / {gb(g.poolBytes)} GB {t('pools.used', 'used')} · {gb(free)} GB {t('pools.freespace', 'free')}</div>
               </div>
               <Button size="sm" variant="primary" onClick={() => onAddRepo(g)}><Plus size={13} /> {t('repos.addrepo', 'Add repo')}</Button>
@@ -530,12 +532,12 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {g.repos?.map((r) => (
                   <Link key={r.id} to={`/repo/${r.id}`} className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-[var(--primary-2)]">
-                    <Server size={11} className="text-[var(--primary-2)]" /> <span className="truncate max-w-[140px]">{r.name}</span> <span className="text-[var(--faint)]">{gb(r.quotaBytes)}G</span>
+                    <Server size={11} className="text-[var(--primary-2)]" /> <span className="truncate max-w-[140px]" title={r.name}>{r.name}</span> <span className="text-[var(--faint)]">{gb(r.quotaBytes)}G</span>
                   </Link>
                 ))}
                 {g.catalogs?.map((c) => (
                   <a key={c.id} href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[11px] rounded-lg px-2 py-1 border border-[var(--line)] bg-[var(--surface-2)] hover:border-info">
-                    <Boxes size={11} className="text-info" /> <span className="truncate max-w-[140px]">{c.name}</span> <span className="text-[var(--faint)]">{gb(c.quotaBytes)}G</span>
+                    <Boxes size={11} className="text-info" /> <span className="truncate max-w-[140px]" title={c.name}>{c.name}</span> <span className="text-[var(--faint)]">{gb(c.quotaBytes)}G</span>
                   </a>
                 ))}
               </div>
@@ -912,7 +914,9 @@ export function MyRepos() {
               ); })()}
             </Card>
           ))}
-        </div> : <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />)
+        </div> : <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')}
+          sub={t('repos.nomatch.s3', 'None of your repos matches what you typed.')}
+          action={{ label: t('repos.nomatch.a2', 'Clear the search'), icon: X, onClick: () => setQ('') }} />)
         : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')}
           sub={t('repos.mine.empty.s2', 'A Server-Repo is where BMM users download your files from, and you do not have one yet.')}
           action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }}
@@ -965,7 +969,7 @@ export function MyRepos() {
               <button key={r.id} onClick={() => moveContentTo(moveFrom.from, r)}
                 className="card p-3 w-full text-start flex items-center gap-3 hover:border-[var(--primary)]">
                 <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><Server size={16} /></span>
-                <span className="flex-1 min-w-0"><span className="block font-medium truncate">{r.name}</span></span>
+                <span className="flex-1 min-w-0"><span className="block font-medium truncate" title={r.name}>{r.name}</span></span>
               </button>
             ))}
           </div>
@@ -1185,7 +1189,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
   return (
     <Modal open onClose={onClose} title={t('repos.addwhat.title', 'Add a repo')} icon={Plus} width="max-w-3xl"
       footer={<Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>}>
-      <p className="text-sm text-[var(--muted)] -mt-1 mb-5">{t('repos.addwhat.sub2', 'Two different things, and it is worth knowing which one you want. Only the first needs a pool.')}</p>
+      <p className="text-sm text-[var(--muted)] -mt-1 mb-5">{t('repos.addwhat.sub3', 'Only the first needs a storage pool.')}</p>
       <div className="grid md:grid-cols-2 gap-5 items-stretch">
 
         {/* Hosted here */}
@@ -1200,7 +1204,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
                   <button key={g.id} type="button" onClick={() => onPool(g)}
                     className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-start hover:border-[var(--ring)] transition-colors">
                     <Boxes size={14} className="text-[var(--primary-2)] shrink-0" />
-                    <span className="font-medium text-[13.5px] flex-1 truncate">{g.name}</span>
+                    <span className="font-medium text-[13.5px] flex-1 truncate" title={g.name}>{g.name}</span>
                     <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{fmtSize(g.poolBytes - g.usedBytes)} {t('repos.addwhat.left', 'left')}</span>
                     <ArrowRight size={14} className="text-[var(--faint)] shrink-0" />
                   </button>
@@ -1403,7 +1407,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
     <div className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm border-t border-[var(--line)] first:border-t-0">
       <Server size={15} className="text-[var(--primary-2)] shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{repo.name}</span> <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && (canceling ? <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge> : <Badge tone="green"><RefreshCw size={9} /> {t('bill.ah.auto', 'auto-renew')}</Badge>)}</div>
+        <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={repo.name}>{repo.name}</span> <Badge tone={repo.status === 'SUSPENDED' ? 'red' : repo.status === 'ONLINE' ? 'green' : ''}>{repo.status}</Badge>{hasSub && (canceling ? <Badge tone="amber">{t('bill.sub.canceling', 'canceling')}</Badge> : <Badge tone="green"><RefreshCw size={9} /> {t('bill.ah.auto', 'auto-renew')}</Badge>)}</div>
         <div className="text-xs text-[var(--faint)]">{gb(repo.storageQuotaBytes)} GB · {(repo.uploadLimitKbps / 1024).toFixed(1)} Mbps</div>
       </div>
       {periodEnd && (
@@ -1593,7 +1597,7 @@ export function Billing() {
         : payments.length ? <Card className="overflow-hidden p-0">
           {payments.map((pay, i) => (
             <div key={pay.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i ? 'border-t border-[var(--line)]' : ''}`}>
-              <div className="flex-1 min-w-0"><div className="font-medium truncate">{pay.description}</div><div className="text-xs text-[var(--faint)]">{new Date(pay.createdAt).toLocaleString()}</div></div>
+              <div className="flex-1 min-w-0"><div className="font-medium truncate" title={pay.description}>{pay.description}</div><div className="text-xs text-[var(--faint)]">{new Date(pay.createdAt).toLocaleString()}</div></div>
               <Badge tone={pay.status === 'paid' ? 'green' : ''}>{pay.status}</Badge>
               <span className="font-semibold w-16 text-end">${(pay.amountCents / 100).toFixed(2)}</span>
               <Button size="sm" onClick={() => setInvoice(pay.id)}><Receipt size={13} /> {t('bill.invoice', 'Invoice')}</Button>
@@ -1868,7 +1872,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
           {files.length ? files.map((f) => (
             <div key={f.id} className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
               {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)]" /> : <FileText size={15} className="text-[var(--faint)]" />}
-              <span className="flex-1 truncate font-mono text-xs">{f.path}</span>
+              <span className="flex-1 truncate font-mono text-xs" title={f.path}>{f.path}</span>
               {f.sha256 && <span className="hidden md:inline text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}>{f.sha256.slice(0, 10)}…</span>}
               <span className="text-xs text-[var(--faint)]">{fmtSize(f.size)}</span>
               {admin && <button className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('repos.download', 'Download')} onClick={() => dl(f)}><Download size={14} /></button>}

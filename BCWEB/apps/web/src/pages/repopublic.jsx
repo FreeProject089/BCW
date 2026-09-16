@@ -175,7 +175,8 @@ export default function RepoPublicPage() {
       <PageHeader icon={Server} title={t('rpub.title', 'Server repo')} />
       <EmptyState icon={ShieldAlert}
         title={t('rp.gone.t', 'Repo not found')}
-        sub={t('rp.gone.s', 'It may have been removed, unlisted, or the share link is invalid.')} />
+        sub={t('rp.gone.s', 'It may have been removed, unlisted, or the share link is invalid.')}
+        action={{ label: t('rp.gone.a', 'Browse repos'), to: '/repos', icon: Server }} />
     </div>
   );
 
@@ -225,7 +226,9 @@ export default function RepoPublicPage() {
           </div>
         </Card>
       ) : (
-        <EmptyState icon={Server} title={t('rp.nofeed.t', 'No manifest yet')} sub={t('rp.nofeed.s', 'This repo has no published repo.json to import into BMM yet.')} />
+        <EmptyState icon={Server} title={t('rp.nofeed.t', 'No manifest yet')} sub={t('rp.nofeed.s', 'This repo has no published repo.json to import into BMM yet.')}
+          action={{ label: t('rp.gone.a', 'Browse repos'), to: '/repos', icon: Server }}
+          hint={t('rp.nofeed.h', 'Only the owner can publish one, from the repo dashboard.')} />
       )}
 
       <RepoContents id={id} k={k} />

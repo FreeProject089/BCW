@@ -850,8 +850,8 @@ export function Home({ draft = null }) {
                     <div className="flex items-center gap-3 mt-4 pt-4 border-t border-[var(--line)]">
                       <Avatar image={av.image} variant={av.variant || 'beam'} seed={av.seed || rv.author} colors={av.colors} size={38} />
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate">{rv.author}</div>
-                        {rv.role && <div className="text-xs text-[var(--faint)] truncate">{rv.role}</div>}
+                        <div className="text-sm font-semibold truncate" title={rv.author}>{rv.author}</div>
+                        {rv.role && <div className="text-xs text-[var(--faint)] truncate" title={rv.role}>{rv.role}</div>}
                       </div>
                     </div>
                   </Card>

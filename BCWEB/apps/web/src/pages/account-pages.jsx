@@ -311,7 +311,7 @@ export function Authorize() {
           {(info.scopes || []).map((s) => { const [I, label, sub] = SCOPE_META[s] || [CheckCircle2, s, '']; return (
             <li key={s} className="flex items-center gap-3 px-3.5 py-2.5">
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={16} /></span>
-              <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate">{sub}</div>}</div>
+              <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate" title={sub}>{sub}</div>}</div>
               <CheckCircle2 size={16} className="text-success ms-auto shrink-0" />
             </li>
           ); })}

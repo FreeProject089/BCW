@@ -181,7 +181,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
               <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => { setOpen(false); fireDl(); }}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors">
                 <span className={`shrink-0 ${isPrimary ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
-                <span className="min-w-0 flex-1 truncate">{d.label}</span>
+                <span className="min-w-0 flex-1 truncate" title={d.label}>{d.label}</span>
                 {/* A dot, not the word "default": the label is often already long, and the
                     row used to end in an all-caps English word in the French UI. */}
                 {isPrimary && <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: 'var(--primary)' }}
@@ -335,8 +335,11 @@ export default function ProjectPage({ preview = null }) {
   const market = useFetch(() => api.get(`/marketplace/products?projectKey=${encodeURIComponent(key)}`).catch(() => ({ products: [] })), [key]);
   const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
-  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
+  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
+    action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
+  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
+    sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
+    action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   const c = data.config;
   const hasCatalog = key === 'bmm' || key === 'bsm';
   // A page of one's own, on the fixed projects too. These were showcase-only, which meant the
@@ -496,7 +499,7 @@ function AppPreview({ pkey, replayUrl }) {
               {mods.map(([name, cat, on]) => (
                 <div key={name} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: '#15171e', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div className="w-7 h-7 rounded-md grid place-items-center text-xs font-bold" style={{ background: 'linear-gradient(135deg,#f97316,#f59e0b)', color: '#fff' }}>{name[0]}</div>
-                  <div className="flex-1 min-w-0"><div className="text-xs font-medium truncate">{name}</div><div className="text-[10px]" style={{ color: '#6f685d' }}>{cat}</div></div>
+                  <div className="flex-1 min-w-0"><div className="text-xs font-medium truncate" title={name}>{name}</div><div className="text-[10px]" style={{ color: '#6f685d' }}>{cat}</div></div>
                   <div className="w-8 h-4 rounded-full relative" style={{ background: on ? '#f59e0b' : '#2a2d36' }}><div className="w-3 h-3 rounded-full bg-white absolute top-0.5" style={{ left: on ? 18 : 3 }} /></div>
                 </div>
               ))}
@@ -569,7 +572,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
     <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="text-2xl font-extrabold tabular-nums">{value}</div>
       <div className="text-xs text-[var(--muted)] mt-0.5">{label}</div>
-      {sub ? <div className="text-[11px] text-[var(--faint)] mt-0.5 truncate">{sub}</div> : null}
+      {sub ? <div className="text-[11px] text-[var(--faint)] mt-0.5 truncate" title={sub}>{sub}</div> : null}
     </div>
   );
 
@@ -655,7 +658,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
                   {c.avatar
                     ? <img src={c.avatar} alt="" loading="lazy" className="w-7 h-7 rounded-full shrink-0 border border-[var(--line)] bg-[var(--surface-2)]" />
                     : <span className="w-7 h-7 rounded-full shrink-0 grid place-items-center bg-[var(--surface-2)] border border-[var(--line)] text-[11px] font-semibold text-[var(--muted)]">{String(c.name || '?').slice(0, 1).toUpperCase()}</span>}
-                  <Name {...nameProps} className={`w-28 sm:w-32 shrink-0 truncate text-sm ${c.url ? 'hover:text-[var(--primary-2)] hover:underline' : ''}`}>{c.name}</Name>
+                  <Name {...nameProps} className={`w-28 sm:w-32 shrink-0 truncate text-sm ${c.url ? 'hover:text-[var(--primary-2)] hover:underline' : ''}`} title={c.name}>{c.name}</Name>
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
                   </div>
@@ -881,7 +884,9 @@ function Releases({ pkey, releasesUrl }) {
   }, [active]);
 
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-8"><Spinner /> {t('common.loading')}</div>;
-  if (err || !allFiles.length) return <EmptyState icon={ScrollText} title={t('proj.releases')} sub="Configure a GitHub source in the admin dashboard." />;
+  if (err || !allFiles.length) return <EmptyState icon={ScrollText} title={t('proj.rel.none.t', 'No release notes yet')}
+    sub={t('proj.rel.none.s', 'Release notes are read from the project’s GitHub repository, and none have been published there yet.')}
+    hint={t('proj.rel.none.h', 'The GitHub source is set by the project’s admins.')} />;
 
   const groups = {};
   for (const f of files) (groups[f.dir || 'Latest'] ||= []).push(f);
@@ -905,7 +910,7 @@ function Releases({ pkey, releasesUrl }) {
             <Card key={dir} className="p-0 overflow-hidden">
               <button onClick={() => toggle(dir)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--surface-2)] transition text-start">
                 <FolderGit2 size={14} className="text-[var(--primary-2)] shrink-0" />
-                <span className="font-medium text-sm truncate">{dir}</span>
+                <span className="font-medium text-sm truncate" title={dir}>{dir}</span>
                 <Badge>{groups[dir].length}</Badge>
                 <ChevronDown size={16} className={`ms-auto shrink-0 text-[var(--faint)] transition-transform ${gclosed ? '-rotate-90' : ''}`} />
               </button>
@@ -914,7 +919,7 @@ function Releases({ pkey, releasesUrl }) {
                   {groups[dir].map((f) => { const I = noteIcon(f.name); return (
                     <button key={f.path} onClick={() => setActive(f)} className="group w-full flex items-center gap-3 px-4 py-3 text-start hover:bg-[var(--surface-2)] transition">
                       <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--bg-solid)] transition shrink-0"><I size={16} className="text-[var(--primary-2)]" /></span>
-                      <span className="flex-1 min-w-0 text-sm font-medium truncate">{f.name}</span>
+                      <span className="flex-1 min-w-0 text-sm font-medium truncate" title={f.name}>{f.name}</span>
                       <span className="text-xs text-[var(--muted)] flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">{lang === 'fr' ? 'Lire' : 'Read'} <ChevronRight size={13} /></span>
                     </button>
                   ); })}
@@ -1010,7 +1015,9 @@ function Community({ c, communityUrl }) {
   const cats = {};
   for (const p of people) { (cats[p.category || 'contributors'] ||= []).push(p); }
   const ordered = Object.entries(cats).sort((a, b) => (CAT_META[a[0]]?.order ?? 9) - (CAT_META[b[0]]?.order ?? 9));
-  if (!people.length && !messages.length) return <EmptyState icon={Users} title={t('proj.nocontrib')} sub="Configure contributorsUrl & messages in the admin dashboard." />;
+  if (!people.length && !messages.length) return <EmptyState icon={Users} title={t('proj.nocontrib')}
+    sub={t('proj.nocontrib.s', 'The people credited on this project are listed here, and none have been published yet.')}
+    hint={t('proj.nocontrib.h', 'The contributor list is set by the project’s admins.')} />;
   return (
     <div className="space-y-10">
       <MessageTicker messages={messages} />
@@ -1023,7 +1030,7 @@ function Community({ c, communityUrl }) {
                 <div className="flex items-center gap-3">
                   {p.pfp ? <img src={p.pfp} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--line)] transition-transform duration-200 group-hover:scale-110 group-hover:border-[var(--primary)]" />
                     : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
-                  <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--primary-2)] transition-colors">{p.name}</div><div className="text-xs text-[var(--primary-2)]">{p.role}</div></div>
+                  <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--primary-2)] transition-colors" title={p.name}>{p.name}</div><div className="text-xs text-[var(--primary-2)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
                 {p.links && <div className="flex gap-2 mt-3">{Object.entries(p.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink }; return <a key={k} href={v} target="_blank" rel="noreferrer" className="text-[var(--muted)] hover:text-[var(--primary-2)]"><m.icon size={16} /></a>; })}</div>}
@@ -1060,7 +1067,9 @@ function Legal({ c }) {
     ].filter(Boolean);
   // The license summary card only applies to the legacy object shape.
   const legacyLicense = obj.license;
-  if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')} sub={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
+  if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')}
+    sub={t('proj.legal.none.s', 'The licence, terms, privacy policy and README for this project appear here, and none have been published yet.')}
+    hint={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
   return (
     <div className="max-w-2xl">
       {legacyLicense && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent">
@@ -1309,7 +1318,8 @@ export function OtherProjects() {
               </Link>
             ))}
           </div>
-        ) : <EmptyState icon={Boxes} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')} />}
+        ) : <EmptyState icon={Boxes} title={t('proj.list.none', 'No projects yet')} sub={t('proj.list.noneSub', 'Featured projects will appear here.')}
+          action={{ label: t('proj.list.none.a', 'Browse the catalogue'), to: '/catalog', icon: Boxes }} />}
       <RequestListing />
     </div>
   );
@@ -1320,8 +1330,7 @@ function ShowcaseCommunity({ cfg, c, slug }) {
   if (cfg.community?.url) return (
     <Card className="p-8 text-center">
       <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
-      <div className="font-semibold mb-1">Community</div>
-      <p className="text-sm text-[var(--muted)] mb-4 max-w-md mx-auto">{t('proj.joinCommunity', 'Join the community for this project.')}</p>
+      <div className="font-semibold mb-4">{t('proj.community')}</div>
       <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> {t('prj.opencommunity', "Open community")}</Button></a>
     </Card>
   );
@@ -1331,7 +1340,9 @@ function ShowcaseCommunity({ cfg, c, slug }) {
 function ShowcaseLegal({ legal, lang }) {
   const { t } = useI18n();
   const pick = (v) => (v && typeof v === 'object' && !Array.isArray(v)) ? (v[lang] ?? v.en ?? Object.values(v)[0]) : v;
-  if (!legal.length) return <EmptyState icon={ShieldCheck} title={t('prj.nothinghere', "Nothing here")} sub="Legal cards are set in the admin dashboard." />;
+  if (!legal.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')}
+    sub={t('proj.legal.none.s', 'The licence, terms, privacy policy and README for this project appear here, and none have been published yet.')}
+    hint={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
   return (
     <div className="grid sm:grid-cols-2 gap-3 max-w-3xl">
       {legal.map((card, i) => {
@@ -1371,8 +1382,11 @@ export function ShowcaseProjectPage({ preview = null }) {
     : Promise.resolve({ products: [] })), [scId]);
   const marketProducts = market.data?.products || [];
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading')}</div>;
-  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")} />;
-  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')} />;
+  if (err?.status === 403) return <EmptyState icon={ShieldCheck} title={t('proj.notAvailable', 'Not available')} sub={t('proj.noAccess', "You don't have access to this page.")}
+    action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
+  if (err) return <EmptyState icon={Boxes} title={t('proj.notFound', 'Project not found')}
+    sub={t('proj.notFound.s2', 'This address does not match any project, it may have been renamed or removed.')}
+    action={{ label: t('proj.err.a', 'See the projects'), to: '/projects', icon: Boxes }} />;
   // Full-takeover countdown (no page behind it).
   if (data.announcement && !data.project) return <AnnouncementTeaser announcement={data.announcement} onReveal={refetch} />;
   const proj = data.project; const cfg = proj.config || {}; const T = cfg.tabs || {};
@@ -1476,7 +1490,9 @@ function ProjectBlogTab({ project, page }) {
   const pick = (p) => (lang === 'fr' ? { title: p.titleFr || p.title, excerpt: p.excerptFr || p.excerpt } : { title: p.title, excerpt: p.excerpt });
   const fmt = (d) => (d ? new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '');
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-8"><Spinner /> {t('common.loading')}</div>;
-  if (!posts.length) return <EmptyState icon={Newspaper} title={t('proj.noposts')} />;
+  if (!posts.length) return <EmptyState icon={Newspaper} title={t('proj.noposts')}
+    sub={t('proj.noposts.s', 'Posts written about this project appear here, and there are none yet.')}
+    action={{ label: t('proj.noposts.a', 'Read the blog'), to: '/blog', icon: Newspaper }} />;
   return (
     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
       {posts.map((p) => { const v = pick(p); return (
@@ -1585,7 +1601,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
             {d ? (
               <div className="mt-auto rounded-lg border b-success bg-[var(--success)]/[0.06] p-2.5">
                 <div className="text-[11px] font-semibold text-[var(--success)] uppercase tracking-wide mb-1">{t('mk.yours', 'Yours')}</div>
-                {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate">{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
+                {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate" title={d.key}>{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
                 {d.content && <div className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{d.content}</div>}
                 {d.role && <div className="text-xs text-[var(--muted)]">{t('mk.role', 'A Discord role will be granted shortly.')}</div>}
                 {/* A file is fetched through the purchase, not linked from the product: the URL

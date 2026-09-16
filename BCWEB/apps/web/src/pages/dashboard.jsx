@@ -114,10 +114,10 @@ function EconomyWidget({ onOpenShop }) {
             {src.map((x) => (
               <div key={x.key} className="min-w-0" title={`${x.xp.toLocaleString()} XP · ${x.rate}`}>
                 <div className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] min-w-0">
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.color }} /><x.Icon size={12} className="shrink-0" /><span className="truncate">{x.label}</span>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.color }} /><x.Icon size={12} className="shrink-0" /><span className="truncate" title={x.label}>{x.label}</span>
                 </div>
                 <div className="text-sm font-semibold tabular-nums leading-tight mt-0.5">{x.count} <span className="text-[10px] font-normal text-[var(--faint)]">· {share(x)}%</span></div>
-                <div className="text-[10px] text-[var(--faint)] truncate">{x.rate}</div>
+                <div className="text-[10px] text-[var(--faint)] truncate" title={x.rate}>{x.rate}</div>
               </div>
             ))}
           </div>
@@ -238,7 +238,7 @@ function EconomyShop({ view = 'shop', onView }) {
                   <div className="flex items-start gap-3">
                     <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><K.Icon size={18} className={K.tone} /></span>
                     <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{it.name}</div>
+                      <div className="font-medium truncate" title={it.name}>{it.name}</div>
                       <div className="text-[11px] text-[var(--faint)]">{kindLabel(it.kind)}{it.gb ? ` · ${it.gb} GB` : ''}{it.days ? ` · ${it.days} d` : ''}{it.kind === 'hosting' && it.months ? ` · ${it.months} mo` : ''}{it.fulfil !== 'site' ? ` · ${t('eco.k.byadmin', 'handed out by an admin')}` : ''}</div>
                     </div>
                   </div>
@@ -278,7 +278,7 @@ function EconomyShop({ view = 'shop', onView }) {
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
-                    {dl.content && <button type="button" onClick={() => { copyText(dl.content); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary max-w-[16rem]" title={t('eco.inv.copycontent', 'Copy the prize')}><Gift size={12} className="text-emerald-400 shrink-0" /> <span className="truncate">{dl.content}</span> <Copy size={11} className="opacity-60 shrink-0" /></button>}
+                    {dl.content && <button type="button" onClick={() => { copyText(dl.content); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary max-w-[16rem]" title={t('eco.inv.copycontent', 'Copy the prize')}><Gift size={12} className="text-emerald-400 shrink-0" /> <span className="truncate" title={dl.content}>{dl.content}</span> <Copy size={11} className="opacity-60 shrink-0" /></button>}
                     {p.canReveal && <Button size="sm" variant="primary" disabled={busy === p.id} onClick={() => reveal(p)} title={t('eco.reveal.h', 'Mints the code now, for you. A revealed item that is not giftable stays yours.')}>{busy === p.id ? <Spinner /> : <><Ticket size={13} /> {t('eco.reveal', 'Reveal')}</>}</Button>}
                     {p.canGift && <Button size="sm" disabled={busy === p.id} onClick={() => giftItem(p)}><Gift size={13} /> {t('eco.giftitem.ok', 'Gift')}</Button>}
                   </div>
@@ -445,7 +445,6 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('gs.title', 'Getting started')}</div>
-          <div className="text-xs text-[var(--muted)] mt-0.5">{t('gs.sub', "You're already {pct}% set up, finish the last steps to get the most out of it.").replace('{pct}', pct)}</div>
         </div>
         <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
       </div>
@@ -684,7 +683,7 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
                 <div className="mt-2 space-y-1">
                   {lines.map((l, i) => (
                     <div key={i} className="flex items-center justify-between gap-3 text-[13px]">
-                      <span className="truncate text-[var(--muted)]">{l.description}</span>
+                      <span className="truncate text-[var(--muted)]" title={l.description}>{l.description}</span>
                       <span className="tabular-nums shrink-0 text-[var(--faint)]">{money2(l.amountCents)}</span>
                     </div>
                   ))}
@@ -1018,7 +1017,7 @@ export function Dashboard() {
                 <Card key={it.id} className="p-4 flex items-center gap-3">
                   <I size={18} className="text-[var(--primary-2)] shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{it.name}</div>
+                    <div className="font-medium truncate" title={it.name}>{it.name}</div>
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap">
                       <span>{it.kind} · v{it.version}</span>
                       {it.payloadKey && !it.meta?.download_url && <span className="text-[var(--primary-2)]">· {t('dash.hostedhere', 'hosted here')}</span>}
@@ -1210,7 +1209,7 @@ function MyData() {
             {data.items.map((it) => (
               <div key={it.id} className="px-3 py-2 flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm truncate">{it.name}</div>
+                  <div className="text-sm truncate" title={it.name}>{it.name}</div>
                   <div className="text-[11px] text-[var(--faint)]">
                     {it.status} · {it.hasFile ? fmtBytes(it.bytes) : t('data.nofile', 'no uploaded file')}
                   </div>
@@ -1325,7 +1324,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     <Modal open={open} onClose={onClose} title={t('ie.title', 'View / edit item')} icon={PenSquare} width="max-w-lg" footer={footer}>
       <div className="flex items-center gap-3 mb-4">
         <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
-        <div className="min-w-0"><div className="font-semibold truncate">{item.name}</div>
+        <div className="min-w-0"><div className="font-semibold truncate" title={item.name}>{item.name}</div>
           <div className="text-xs text-[var(--faint)] flex items-center gap-2"><Badge tone={statusTone(item.status)}>{item.status}</Badge>{item.kind}
             {(item.payloadKey || item.meta?.download_url) && <button onClick={viewPayload} className="text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={11} /> payload</button>}</div></div>
       </div>
@@ -1456,7 +1455,7 @@ function MyPolls() {
             {answered.map((a) => (
               <div key={a.pollId} className="px-4 py-2.5 flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-success shrink-0" />
-                <Link to={`/polls/${a.pollId}`} className="text-sm truncate hover:underline flex-1 min-w-0">{a.poll.question}</Link>
+                <Link to={`/polls/${a.pollId}`} className="text-sm truncate hover:underline flex-1 min-w-0" title={a.poll.question}>{a.poll.question}</Link>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.at).toLocaleDateString()}</span>
               </div>
             ))}
@@ -1465,8 +1464,8 @@ function MyPolls() {
             {votes.slice(0, 20).map((v) => (
               <div key={v.id} className="px-4 py-2.5 flex items-center gap-2">
                 <CheckCircle2 size={14} className="text-success shrink-0" />
-                <Link to={`/polls/${v.poll?.id}`} className="text-sm truncate hover:underline flex-1 min-w-0">{v.poll?.question}</Link>
-                <span className="text-[11px] text-[var(--faint)] shrink-0 truncate max-w-[40%]">{v.option?.label}</span>
+                <Link to={`/polls/${v.poll?.id}`} className="text-sm truncate hover:underline flex-1 min-w-0" title={v.poll?.question}>{v.poll?.question}</Link>
+                <span className="text-[11px] text-[var(--faint)] shrink-0 truncate max-w-[40%]" title={v.option?.label}>{v.option?.label}</span>
               </div>
             ))}
           </Card>
@@ -1502,7 +1501,7 @@ function Starred() {
         {rows.map((r) => (
           <Card key={r.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
-              <Link to={r.url} className="font-medium hover:text-[var(--primary)] truncate block">{r.name}</Link>
+              <Link to={r.url} className="font-medium hover:text-[var(--primary)] truncate block" title={r.name}>{r.name}</Link>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap mt-0.5">
                 {r.author && <span className="inline-flex items-center gap-1"><Users size={11} /> {r.author}</span>}
                 {kind === 'catalog' && <span>{r.itemCount} {t('cc.items', 'items')}</span>}
@@ -1520,7 +1519,7 @@ function Starred() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Star size={16} className="text-[var(--primary-2)]" /> {t('star.title', 'Starred')}</h2>
-      <p className="text-xs text-[var(--muted)] mb-4">{t('star.sub', 'Repos and catalogs you starred. Unstar from the item’s own page.')}</p>
+      <p className="text-xs text-[var(--muted)] mb-4">{t('star.sub2', 'Unstar from the item’s own page.')}</p>
       <Section icon={Server} title={t('star.repos', 'Server repos')} rows={repos} kind="repo" />
       <Section icon={Boxes} title={t('star.catalogs', 'Community catalogs')} rows={catalogs} kind="catalog" />
     </div>

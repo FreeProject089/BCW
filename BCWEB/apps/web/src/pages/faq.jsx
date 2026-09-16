@@ -72,7 +72,14 @@ export default function Faq() {
             </section>
           ))}
         </div>
-        : <EmptyState icon={HelpCircle} title={q ? t('faq.nomatch', 'No matching questions') : t('faq.none', 'No questions yet')} sub={q ? t('faq.nomatch.s', 'Try a different search.') : (canEdit ? t('faq.none.admin', 'Add the first one from Admin → FAQ.') : t('faq.none.s', 'Check back soon.'))} />}
+        : <EmptyState icon={HelpCircle}
+          title={q ? t('faq.nomatch', 'No matching questions') : t('faq.none', 'No questions yet')}
+          sub={q ? t('faq.nomatch.s2', 'Nothing in the questions or the answers matches what you typed.') : t('faq.none.s2', 'Answers to the questions people ask most are collected here, and none have been written yet.')}
+          action={q
+            ? { label: t('faq.nomatch.a', 'Clear the search'), onClick: () => setQ(''), icon: Search }
+            : canEdit
+              ? { label: t('faq.manage', 'Manage'), to: '/admin?s=faq', icon: Settings2 }
+              : { label: t('faq.none.a', 'Read the docs'), to: '/docs', icon: HelpCircle }} />}
     </div>
   );
 }

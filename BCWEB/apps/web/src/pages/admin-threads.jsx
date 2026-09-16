@@ -95,11 +95,16 @@ export function AdminThreads() {
           </div>
         </div>
         <p className="text-[12px] text-[var(--muted)] mb-2">{t('adm.th.desc', 'Conversations between a visitor and the user or team behind a repo, a catalogue or a profile. Staff moderate; they do not answer for the owners.')}</p>
-        {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !rows.length ? <EmptyState icon={MessageSquare} title={t('adm.th.empty', 'Nothing here.')} /> : (
+        {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !rows.length ? <EmptyState icon={MessageSquare}
+          title={status === 'flagged' ? t('adm.th.empty.flagged', 'Nothing flagged') : t('adm.th.empty', 'Nothing here.')}
+          sub={status === 'flagged' ? t('adm.th.empty.flagged.s', 'No conversation has been reported for moderation. Switch to All to read the rest.')
+            : q ? t('adm.th.empty.q', 'The search above excludes every conversation with this status.')
+              : t('adm.th.empty.s', 'No conversation has this status yet.')}
+          action={status === 'flagged' || q ? { label: t('adm.th.showall', 'Show every conversation'), icon: MessageSquare, onClick: () => { setStatus(''); setQ(''); } } : null} /> : (
           <ul className="divide-y divide-[var(--line)]">
             {rows.map((th) => (
               <li key={th.id}><button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2 px-2 -mx-2 rounded-lg hover:panel flex items-center gap-3 text-sm">
-                <span className="min-w-0 flex-1"><span className="block truncate font-medium">{th.subject}</span><span className="block text-[12px] text-[var(--muted)] truncate">{th.kind} · {th.targetLabel} · {th.sender?.displayName || th.senderEmail || th.senderName || '—'} → {th.ownerTeam?.name || th.ownerUser?.displayName || '—'}</span></span>
+                <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={th.subject}>{th.subject}</span><span className="block text-[12px] text-[var(--muted)] truncate">{th.kind} · {th.targetLabel} · {th.sender?.displayName || th.senderEmail || th.senderName || '—'} → {th.ownerTeam?.name || th.ownerUser?.displayName || '—'}</span></span>
                 {th.staffFlag === 'flagged' && <Flag size={12} className="text-warning shrink-0" />}
                 <Badge tone={th.status === 'open' ? 'success' : th.status === 'blocked' ? 'error' : ''}>{th.status}</Badge>
                 <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{when(th.lastActivityAt)}</span>

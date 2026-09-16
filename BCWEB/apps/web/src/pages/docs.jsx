@@ -170,7 +170,7 @@ export default function Docs() {
           return (
             <div key={node.path} className={depth === 0 ? 'mb-3' : 'mt-1.5'}>
               <button onClick={() => toggleCat(node.path)} className={`w-full flex items-center gap-1 px-1 mb-1 font-bold uppercase tracking-wide hover:text-[var(--muted)] ${head}`}>
-                <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-start truncate">{node.name}</span>
+                <ChevronRight size={12} className={`transition-transform shrink-0 ${isCollapsed ? '' : 'rotate-90'}`} /> <span className="flex-1 text-start truncate" title={node.name}>{node.name}</span>
                 <span className="text-[10px] font-semibold tabular-nums text-[var(--faint)] bg-[var(--surface-2)] rounded-full px-1.5 py-px">{node.count}</span>
               </button>
               {!isCollapsed && (
@@ -444,7 +444,7 @@ function SearchPalette({ onClose, onPick }) {
       <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
       <div className="min-w-0 flex-1 self-center ps-3">
         <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
-        <div className="text-[11px] text-[var(--faint)] truncate">{r.title}</div>
+        <div className="text-[11px] text-[var(--faint)] truncate" title={r.title}>{r.title}</div>
       </div>
       {i === active && <CornerDownLeft size={14} className="self-center text-[var(--faint)] shrink-0" />}
     </button>

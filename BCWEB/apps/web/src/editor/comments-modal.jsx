@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
 import { useToast, Button, Spinner, Modal, EmptyState, Input, Textarea, Select } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -93,6 +93,14 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
   const [history, setHistory] = useState(null); // { id, revisions } — a comment's edit history
   const [collapsed, setCollapsed] = useState(() => new Set()); // root ids whose thread is folded
   const sections = useMemo(() => extractSections(body), [body]);
+  // The empty state's action is the composer at the bottom of this same dialog: there is no
+  // other button to offer, and "start the discussion below" without a way to get there is a
+  // direction, not an action. Focusing its textarea also scrolls it into view.
+  const composerRef = useRef(null);
+  const focusComposer = () => {
+    const ta = composerRef.current?.querySelector('textarea');
+    if (ta) { ta.focus(); ta.scrollIntoView({ block: 'nearest' }); }
+  };
   const toggleCollapse = (id) => setCollapsed((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const openHistory = async (id) => {
@@ -171,7 +179,13 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
             </div>
           )}
           <div className="space-y-3 max-h-[58vh] overflow-y-auto scroll-thin pe-1">
-            {roots.length === 0 && <EmptyState icon={MessageSquare} title={t('cm.none', 'No comments yet')} sub={canWrite ? t('cm.start', 'Start the discussion below.') : t('cm.nothing', 'Nothing here yet.')} />}
+            {roots.length === 0 && (
+              <EmptyState icon={MessageSquare} title={t('cm.none', 'No comments on this page')}
+                sub={canWrite
+                  ? t('cm.start', 'Nobody has raised anything here yet. A comment can be pinned to a section, and anyone who can edit the page will see it.')
+                  : t('cm.nothing', 'Nobody has raised anything here yet, and this page is read-only for you.')}
+                action={canWrite ? { label: t('cm.write', 'Write the first comment'), icon: Send, onClick: focusComposer } : undefined} />
+            )}
             {roots.map((c) => {
               const isCol = collapsed.has(c.id);
               const replies = repliesOf(c.id);
@@ -207,7 +221,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
         </>
       )}
       {canWrite && (
-        <div className="mt-4 pt-3 border-t border-[var(--line)]">
+        <div className="mt-4 pt-3 border-t border-[var(--line)]" ref={composerRef}>
           {/* Link to a section — pick from the content's headings (or type a custom pin).
               Much simpler than remembering the exact heading text. */}
           <div className="flex items-center gap-2 mb-1.5">
@@ -249,7 +263,10 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
                   </div>
                 ))}
               </div>
-            ) : <EmptyState icon={History} title={t('cm.nohistory', "No history")} sub="This comment hasn't been edited." />}
+            ) : (
+              <EmptyState icon={History} title={t('cm.nohistory', 'No earlier versions')}
+                sub={t('cm.nohistory.s', 'This comment is still exactly as it was posted. A version is kept here every time somebody edits it.')} />
+            )}
         </Modal>
       )}
 

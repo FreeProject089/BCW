@@ -142,7 +142,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
           <p className="text-sm text-[var(--muted)] mt-1.5">{t('auth.link.sub', 'A BetterCommunity account already uses {e}. Confirm it is yours and {p} becomes one more way to sign in, nothing else changes.').replace('{e}', info.email).replace('{p}', label)}</p>
         </div>
         <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 text-sm flex items-center gap-2.5 mb-4">
-          <Ico size={16} /><span className="font-medium">{info.username || label}</span><span className="text-[var(--faint)]">→</span><span className="text-[var(--muted)] truncate">{info.displayName}</span>
+          <Ico size={16} /><span className="font-medium">{info.username || label}</span><span className="text-[var(--faint)]">→</span><span className="text-[var(--muted)] truncate" title={info.displayName}>{info.displayName}</span>
         </div>
         <form onSubmit={confirm} className="space-y-3">
           {method === 'password'

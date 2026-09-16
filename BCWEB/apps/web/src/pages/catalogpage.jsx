@@ -110,7 +110,7 @@ export default function CommunityCatalogPage() {
               <div key={it.id} className="p-3 flex items-start gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium truncate">{it.name}</span>
+                    <span className="font-medium truncate" title={it.name}>{it.name}</span>
                     {it.version && <span className="text-[11px] font-mono text-[var(--faint)]">v{it.version}</span>}
                   </div>
                   {it.description && <p className="text-xs text-[var(--muted)] mt-0.5 line-clamp-2">{it.description}</p>}

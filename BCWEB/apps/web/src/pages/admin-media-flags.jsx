@@ -110,7 +110,9 @@ export function AdminMediaFlags() {
       <p className="text-[12px] text-[var(--muted)]">{t('adm.mf.desc', 'A picture that looks like — or is byte-for-byte — one another account uploaded earlier. Clear it when it is a false positive or the same person on two accounts; mark it acted on once you have handled the account or the content.')}</p>
       {showCfg && <Settings stats={stats.data} onSaved={() => { stats.reload(); list.reload(); }} />}
       {list.loading && !list.data ? <div className="py-6 text-center"><Spinner /></div>
-        : !flags.length ? <EmptyState icon={Check} title={t('adm.mf.empty.t', 'Nothing flagged')} sub={t('adm.mf.empty.s', 'No picture in this state looks like another account’s.')} />
+        : !flags.length ? <EmptyState icon={Check} title={t('adm.mf.empty.t', 'Nothing flagged')}
+          sub={status === 'pending' ? t('adm.mf.empty.s2', 'No picture is waiting on you. Detection keeps running, a new lookalike lands here on its own.') : t('adm.mf.empty.s', 'No picture in this state looks like another account’s.')}
+          action={status === 'pending' ? null : { label: t('adm.mf.gopending', 'Back to what is pending'), icon: Check, onClick: () => { setStatus('pending'); setPage(0); } }} />
         : <div className="space-y-3">
           {flags.map((f) => (
             <Card key={f.id} className="p-3 space-y-2">

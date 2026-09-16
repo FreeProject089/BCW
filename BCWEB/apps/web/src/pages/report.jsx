@@ -46,7 +46,7 @@ function TargetCard({ t, target, onChange, onRemove }) {
       <div className="flex items-start gap-2">
         <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] shrink-0"><Icon size={15} className="text-[var(--primary-2)]" /></span>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm truncate">{target.label || target.url}</div>
+          <div className="font-medium text-sm truncate" title={target.label || target.url}>{target.label || target.url}</div>
           <div className="text-[11px] text-[var(--faint)] truncate">{t(`rn.t.${target.type}`, target.type)}{target.url ? ` · ${target.url}` : ''}</div>
         </div>
         <button type="button" onClick={onRemove} className="p-1 rounded hover:bg-[var(--surface-2)]" aria-label={t('common.remove', 'Remove')}><X size={14} /></button>
@@ -62,7 +62,7 @@ function TargetCard({ t, target, onChange, onRemove }) {
             {shown.slice(0, 300).map((x) => (
               <label key={x.key} className="flex items-center gap-2 px-2 py-1 text-xs cursor-pointer hover:bg-[var(--surface-2)]">
                 <input type="checkbox" checked={picked.has(x.key)} onChange={() => toggle(x.key)} />
-                <span className="flex-1 min-w-0 truncate font-mono">{x.label}</span>
+                <span className="flex-1 min-w-0 truncate font-mono" title={x.label}>{x.label}</span>
                 {x.sub && <span className="text-[var(--faint)] tabular-nums">{x.sub}</span>}
               </label>
             ))}

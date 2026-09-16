@@ -316,7 +316,7 @@ export function TwoFactor() {
             {history.map((h) => (
               <div key={h.id} className="flex items-center gap-3 py-1.5 text-sm">
                 <span className="font-mono font-semibold tabular-nums">{h.code}</span>
-                <span className="flex-1 min-w-0 truncate text-[var(--muted)]">{h.label}</span>
+                <span className="flex-1 min-w-0 truncate text-[var(--muted)]" title={h.label}>{h.label}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(h.at).toLocaleString()}</span>
               </div>
             ))}
@@ -330,8 +330,8 @@ export function TwoFactor() {
           <Card key={a.id} className="p-4">
             <div className="flex items-start gap-2">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{a.issuer || a.label}</div>
-                {a.issuer && a.label && <div className="text-xs text-[var(--faint)] truncate">{a.label}</div>}
+                <div className="font-semibold truncate" title={a.issuer || a.label}>{a.issuer || a.label}</div>
+                {a.issuer && a.label && <div className="text-xs text-[var(--faint)] truncate" title={a.label}>{a.label}</div>}
               </div>
               <button onClick={() => del(a)} className="text-[var(--faint)] hover:text-error shrink-0" title={t('tfa.del.ok', 'Remove')}><Trash2 size={14} /></button>
             </div>

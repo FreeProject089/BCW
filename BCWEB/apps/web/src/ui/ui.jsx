@@ -332,7 +332,7 @@ export function Dropdown({ value, options, onChange, className = '', size, place
           {options.map((o) => (
             <button key={String(o.value)} type="button" role="option" aria-selected={String(o.value) === String(value)} onClick={() => { setOpen(false); btnRef.current?.focus?.(); if (String(o.value) !== String(value)) onChange(o.value); }}
               className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-start transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
-              {o.icon}<span className="flex-1 truncate">{o.label}</span>
+              {o.icon}<span className="flex-1 truncate" title={o.label}>{o.label}</span>
               {String(o.value) === String(value) && <Check size={14} className="text-[var(--primary-2)]" />}
             </button>
           ))}
@@ -502,10 +502,15 @@ export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
     </Button>
   ) : null;
   return (
-    <Card className="p-12 text-center">
+    // p-12 at 400px left ~270px of usable width: a two-word button wrapped mid-label and a
+    // long title pushed the card wider than the viewport. The padding is the thing that
+    // gives, not the content — `break-words` covers the unbreakable id or URL a title
+    // sometimes carries, and the sentence is capped so it does not run edge to edge on a
+    // wide screen.
+    <Card className="p-6 sm:p-12 text-center">
       {Icon && <Icon size={32} className="mx-auto text-[var(--faint)] mb-3" />}
-      <div className="font-semibold">{title}</div>
-      {sub && <div className="text-sm text-[var(--muted)] mt-1">{sub}</div>}
+      <div className="font-semibold break-words">{title}</div>
+      {sub && <div className="text-sm text-[var(--muted)] mt-1 mx-auto max-w-sm break-words">{sub}</div>}
       {/* Center the action row explicitly: the card's `text-center` only centers inline
           content, so a caller passing a flex row (two buttons side by side) got them
           left-aligned under centered text. */}
@@ -515,7 +520,7 @@ export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
           {children}
         </div>
       )}
-      {hint && <div className="text-xs text-[var(--faint)] mt-3">{hint}</div>}
+      {hint && <div className="text-xs text-[var(--faint)] mt-3 mx-auto max-w-sm break-words">{hint}</div>}
     </Card>
   );
 }
@@ -573,7 +578,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
         className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)', outline: 'none' }}>
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
           {Icon && <Icon size={18} className="text-[var(--primary-2)]" />}
-          <div id={titleId} className="font-semibold flex-1 min-w-0 truncate">{title}</div>
+          <div id={titleId} className="font-semibold flex-1 min-w-0 truncate" title={title}>{title}</div>
           <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label={t('common.close2', "Close")}><X size={16} /></button>
         </div>
         <div className="px-5 py-4 overflow-auto">{children}</div>

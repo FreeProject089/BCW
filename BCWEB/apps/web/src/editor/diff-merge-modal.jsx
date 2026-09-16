@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useI18n } from '../i18n.jsx';
-import { Modal, Button } from '../ui/ui.jsx';
+import { Modal, Button, EmptyState } from '../ui/ui.jsx';
 import { merge3Hunks, assembleHunks, lineStat } from '../lib/merge3.js';
 import { GitMerge, Check, ChevronDown, ChevronRight, User as UserIcon, Users } from 'lucide-react';
 
@@ -60,6 +60,14 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
         </div>
       )}
 
+      {/* Both sides can turn out identical (the other editor saved the same text, or undid
+          their change before we got here). The resolver then has nothing to show, and an
+          empty bordered box reads as a failure to load. The way out is the footer's own
+          Apply, which is already enabled because there is nothing left to resolve. */}
+      {hunks.length === 0 ? (
+        <EmptyState icon={Check} title={t('dm.nothing', 'Nothing to merge')}
+          sub={t('dm.nothing.s', 'The two versions are identical, so there is no conflict left to settle. Apply closes this and keeps the text as it stands.')} />
+      ) : (
       <div className="rounded-xl border border-[var(--line)] overflow-hidden divide-y divide-[var(--line)] max-h-[60vh] overflow-y-auto">
         {hunks.map((h, i) => {
           if (h.type === 'common') {
@@ -107,6 +115,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
           );
         })}
       </div>
+      )}
     </Modal>
   );
 }

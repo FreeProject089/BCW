@@ -6,7 +6,8 @@
 // side by side. A per-item button would ask the same question once per item, with the count
 // repeated on each and no way to compare.
 import { useEffect, useState } from 'react';
-import { Rocket, Boxes, Server, CheckCircle2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Rocket, Boxes, Server, CheckCircle2, Plus } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useToast, Button, Card, Badge, Spinner } from './ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -65,14 +66,20 @@ export default function BoostCredits() {
       {data.available > 0 && (
         <div className="mt-4 flex flex-col gap-2">
           {targets.length === 0 && (
-            <div className="text-[12.5px] text-[var(--faint)]">{t('boost.notargets', 'Nothing to boost yet, a repo or a catalogue has to exist first.')}</div>
+            <div className="text-center py-3">
+              <div className="text-[13px] font-semibold">{t('boost.notargets', 'Nothing to boost yet')}</div>
+              <div className="text-[12.5px] text-[var(--muted)] mt-1">{t('boost.notargets.s', 'A boost is spent on a repository or a catalogue of yours, and you do not have one yet. Your boosts wait until you do.')}</div>
+              <div className="mt-3 flex justify-center">
+                <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('boost.notargets.a', 'Publish something')}</Button></Link>
+              </div>
+            </div>
           )}
           {targets.map((x) => (
             <div key={`${x.kind}-${x.id}`} className="flex items-center gap-2.5 rounded-lg border border-[var(--line)] px-3 py-2.5">
               {x.kind === 'repo'
                 ? <Server size={14} className="text-[var(--primary-2)] shrink-0" />
                 : <Boxes size={14} className="text-[var(--primary-2)] shrink-0" />}
-              <span className="flex-1 min-w-0 truncate text-[13.5px]">{x.name}</span>
+              <span className="flex-1 min-w-0 truncate text-[13.5px]" title={x.name}>{x.name}</span>
               {x.featured && (
                 <span className="text-[11px] text-success flex items-center gap-1 shrink-0">
                   <CheckCircle2 size={12} /> {t('boost.until', 'until {d}').replace('{d}', new Date(x.featuredUntil).toLocaleDateString())}

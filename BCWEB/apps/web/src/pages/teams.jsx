@@ -122,7 +122,7 @@ function TeamDetail({ team, reload }) {
         <ul className="space-y-1">
           {items.map((it) => {
             const on = it.teamId === team.id;
-            return <li key={it.id} className="flex items-center gap-2 text-[13px]"><span className="flex-1 min-w-0 truncate">{it.name}</span>{it.teamId && !on && <span className="text-[11px] text-[var(--faint)]">{t('tm.otherteam', 'another team')}</span>}<Button size="sm" variant={on ? 'primary' : 'ghost'} disabled={it.ownerId && it.ownerId !== user?.id} onClick={() => attach(kind, it.id, !on)}>{on ? <><Check size={12} /> {t('tm.inteam', 'In the team')}</> : <><Plus size={12} /> {t('tm.attach', 'Attach')}</>}</Button></li>;
+            return <li key={it.id} className="flex items-center gap-2 text-[13px]"><span className="flex-1 min-w-0 truncate" title={it.name}>{it.name}</span>{it.teamId && !on && <span className="text-[11px] text-[var(--faint)]">{t('tm.otherteam', 'another team')}</span>}<Button size="sm" variant={on ? 'primary' : 'ghost'} disabled={it.ownerId && it.ownerId !== user?.id} onClick={() => attach(kind, it.id, !on)}>{on ? <><Check size={12} /> {t('tm.inteam', 'In the team')}</> : <><Plus size={12} /> {t('tm.attach', 'Attach')}</>}</Button></li>;
           })}
         </ul>
       )}
@@ -155,7 +155,7 @@ function TeamDetail({ team, reload }) {
         <ul className="divide-y divide-[var(--line)]">
           {members.map((m) => (
             <li key={m.id} className="py-2 flex items-center gap-2 text-sm">
-              <Link to={`/u/${m.id}`} className="font-medium hover:text-[var(--primary-2)] truncate">{m.displayName}</Link>
+              <Link to={`/u/${m.id}`} className="font-medium hover:text-[var(--primary-2)] truncate" title={m.displayName}>{m.displayName}</Link>
               <Badge>{m.role === 'owner' ? <><Crown size={10} /> {t('tm.role.owner', 'owner')}</> : t(ROLE_KEY[m.role], m.role)}</Badge>
               <span className="flex-1" />
               {isOwner && m.role !== 'owner' && <>
@@ -297,7 +297,12 @@ export function MyTeams() {
           {invited.map((tm) => <div key={tm.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{tm.name}</span><Button size="sm" variant="primary" onClick={() => answer(tm, 'accept')}><Check size={12} /> {t('tm.accept', 'Join')}</Button><Button size="sm" variant="ghost" onClick={() => answer(tm, 'decline')}><X size={12} /></Button></div>)}
         </div>
       )}
-      {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !active.length ? <EmptyState icon={Users} title={t('tm.empty', 'You are not in a team yet.')} /> : (
+      {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !active.length ? <EmptyState icon={Users} title={t('tm.empty2', 'No team yet')}
+          sub={t('tm.empty.s', 'A team shares repos, catalogues and storage pools between several people, and you are not in one.')}
+          action={{ label: t('tm.create', 'Create a team'), onClick: () => setCreating(true), icon: Plus, disabled: atLimit }}
+          hint={atLimit
+            ? t('tm.empty.h', 'Every team slot on your account is used. Buy one more with the button above.')
+            : t('tm.empty.h2', 'An owner can also invite you, and the invitation shows up here.')} /> : (
         <ul className="grid sm:grid-cols-2 gap-2">
           {active.map((tm) => (
             <li key={tm.id}>
@@ -324,7 +329,9 @@ export default function TeamPage() {
   const { data, loading } = useAsync(() => api.get(`/teams/${encodeURIComponent(slug)}`), [slug]);
   if (loading && !data) return <div className="py-16 text-center"><Spinner /></div>;
   const tm = data?.team;
-  if (!tm) return <div className="max-w-3xl mx-auto px-4 py-16"><EmptyState icon={Users} title={t('tm.notfound.page', 'No such team.')} /></div>;
+  if (!tm) return <div className="max-w-3xl mx-auto px-4 py-16"><EmptyState icon={Users} title={t('tm.notfound.t', 'Team not found')}
+    sub={t('tm.notfound.s', 'This address does not match any team, it may have been renamed or removed.')}
+    action={{ label: t('tm.notfound.a', 'Your teams'), to: '/dashboard?s=teams', icon: Users }} /></div>;
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
       <div className="flex items-start gap-3 flex-wrap">
@@ -369,7 +376,9 @@ export function TeamJoin() {
     finally { setBusy(false); }
   };
   if (loading && !data) return <div className="py-16 text-center"><Spinner /></div>;
-  if (error || !data) return <div className="max-w-md mx-auto py-16"><EmptyState icon={Users} title={t('tm.join.none', 'This invitation does not exist.')} /></div>;
+  if (error || !data) return <div className="max-w-md mx-auto py-16"><EmptyState icon={Users} title={t('tm.join.none.t', 'Invitation not found')}
+    sub={t('tm.join.none.s', 'The link may have expired, been used already, or been cancelled by the team owner.')}
+    action={{ label: t('tm.notfound.a', 'Your teams'), to: '/dashboard?s=teams', icon: Users }} /></div>;
   return (
     <div className="max-w-md mx-auto py-12">
       <Card className="p-5 space-y-3 text-center">

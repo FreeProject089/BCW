@@ -80,7 +80,10 @@ export default function HistoryTimeline({ url }) {
 
   if (events === null) return <Card className="p-5 flex justify-center"><Spinner /></Card>;
   if (!events.length) {
-    return <EmptyState icon={History} title={t('hist.empty.t', 'Nothing yet')} sub={t('hist.empty.s', 'Changes appear here as they are made, what changed, when, and by whom.')} />;
+    // Shared by several dashboards, so there is no one button that fills it — the action is
+    // whatever the surrounding page does, and this component cannot know it. Name the thing
+    // and say what will land here instead of guessing.
+    return <EmptyState icon={History} title={t('hist.empty.t', 'No changes recorded')} sub={t('hist.empty.s', 'Nothing has been changed here yet. Every edit is logged from now on: what changed, when, and by whom.')} />;
   }
 
   return (

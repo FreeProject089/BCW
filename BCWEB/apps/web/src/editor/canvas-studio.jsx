@@ -602,7 +602,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       </div>
     </div>
   );
-  const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, remove }} />;
+  const stackList = <StackList {...{ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }} />;
   const previewEl = preview ? (
     <PreviewSurface key={previewKey} t={t} preview={preview} canvas={canvas} renderPage={renderPage} onReplay={() => setPreviewKey((k) => k + 1)} />
   ) : null;
@@ -721,7 +721,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
             canvas would just be a smaller canvas. */}
         <div className={`lg:static lg:mt-0 ${sel ? 'sticky bottom-0 z-20 mt-2 max-h-[46vh] overflow-auto rounded-t-2xl border-t lg:border-t-0 border-[var(--line-strong)] lg:rounded-t-none lg:max-h-none lg:overflow-visible lg:shadow-none shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.35)]' : 'mt-2'}`}
           style={sel ? { background: 'var(--bg-solid)' } : undefined}>
-          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit }} />}
+          {layersOpen && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} />}
           {inspector}
         </div>
       </div>
@@ -733,7 +733,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
  * The reading-order list a phone edits — the blocks as a column, each row painted by the same
  * component the public page uses, with move / hide / delete controls sized for a thumb.
  */
-function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove }) {
+function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove, add }) {
   const order = phoneOrder(canvas.blocks);
   /**
    * Reorder the PHONE stack, and nothing else.
@@ -784,7 +784,17 @@ function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove }) {
             <div className="rounded-lg overflow-hidden pointer-events-none"><CanvasBlock b={b} stacked /></div>
           </div>
         ))}
-        {!order.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.stack.empty', 'Nothing on this page yet, add a block above.')}</div>}
+        {/* "add a block above" pointed at a toolbar that is not always on screen in this
+            mode. The button is the instruction. */}
+        {!order.length && (
+          <div className="text-center py-8 px-4 rounded-xl border border-dashed border-[var(--line)]">
+            <div className="text-[13px] font-semibold">{t('cst.stack.empty', 'No blocks on this page')}</div>
+            <div className="text-xs text-[var(--muted)] mt-1">{t('cst.stack.empty.s', 'This is the order a phone reads the page in, so it fills up as you add blocks.')}</div>
+            <div className="mt-3 flex justify-center">
+              <Button size="sm" variant="primary" onClick={() => add('text')}><Type size={14} /> {t('cst.empty.add', 'Add a text block')}</Button>
+            </div>
+          </div>
+        )}
       </div>
       {/* A block left out of the phone version is still on the board, and the only place
           that fact can be seen is here — on the board it looks exactly like every other
@@ -879,7 +889,7 @@ function LeftPane({ t, leftTab, setLeftTab, add, addShape, components, insertCom
         {[['blocks', Blocks, t('cst.pane.blocks', 'Blocks')], ['layers', LayoutList, t('cst.layers', 'Layers')], ['components', Puzzle, t('cst.cmp', 'Components')]].map(([k, Icon, label]) => (
           <button key={k} type="button" onClick={() => setLeftTab(k)} aria-pressed={leftTab === k}
             className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-1.5 ${leftTab === k ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Icon size={12} /> <span className="truncate">{label}</span>
+            <Icon size={12} /> <span className="truncate" title={label}>{label}</span>
           </button>
         ))}
       </div>
@@ -899,7 +909,7 @@ function LeftPane({ t, leftTab, setLeftTab, add, addShape, components, insertCom
           </div>
         </div>
       )}
-      {leftTab === 'layers' && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit }} />}
+      {leftTab === 'layers' && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} />}
       {leftTab === 'components' && <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} />}
     </div>
   );
@@ -910,13 +920,20 @@ function ComponentsPanel({ t, components, insertComponent, deleteComponent }) {
   return (
     <div className="space-y-2">
       <p className="text-[11px] text-[var(--muted)]">{t('cst.cmp.h', 'Select blocks on the board and choose “Save as component” to keep them here. Inserting places a copy; copies stay linked until you detach them.')}</p>
-      {!components.length && <div className="text-xs text-[var(--faint)] text-center py-6 rounded-xl border border-dashed border-[var(--line)]">{t('cst.cmp.empty', 'No saved components yet.')}</div>}
+      {/* The action is a selection on the board, not a button that can live here — so the
+          sentence names it rather than pretending there is something to press. */}
+      {!components.length && (
+        <div className="text-center py-6 px-3 rounded-xl border border-dashed border-[var(--line)]">
+          <div className="text-[13px] font-semibold">{t('cst.cmp.empty', 'No saved components')}</div>
+          <div className="text-xs text-[var(--muted)] mt-1">{t('cst.cmp.empty.s', 'Select blocks on the board, then use “Save as component” to keep that group here for every page you edit.')}</div>
+        </div>
+      )}
       <div className="space-y-1.5">
         {components.map((c) => (
           <div key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-1.5">
             <span className="w-10 h-10 shrink-0 rounded-md bg-[var(--surface-2)] overflow-hidden" aria-hidden dangerouslySetInnerHTML={{ __html: thumbnailSvg(c.blocks, 40) }} />
             <span className="flex-1 min-w-0">
-              <span className="block text-xs font-medium truncate">{c.name}</span>
+              <span className="block text-xs font-medium truncate" title={c.name}>{c.name}</span>
               <span className="block text-[10px] text-[var(--faint)] tabular-nums">{t('pce.canvases.n', '{n} block(s)').replace('{n}', c.blocks.length)} · {c.w}×{c.h}</span>
             </span>
             <Button size="sm" variant="ghost" className="!px-2" onClick={() => insertComponent(c)} title={t('cst.cmp.insert', 'Insert a copy')} aria-label={t('cst.cmp.insert', 'Insert a copy')}><Plus size={14} /></Button>
@@ -991,7 +1008,7 @@ function EmptyBoard({ t, onAdd, onOpenBlocks }) {
  * and the two arrows. The one place a hidden block can be found again, and the one place a
  * block under three others can be selected without moving them.
  */
-function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit }) {
+function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add }) {
   const rows = paintOrder(view.blocks).slice().reverse();
   return (
     <div className="mb-3 rounded-xl border border-[var(--line)] p-2">
@@ -999,7 +1016,14 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit }) {
         <LayoutList size={12} /> {t('cst.layers', 'Layers')}
         <span className="ms-auto tabular-nums font-normal">{rows.length}</span>
       </div>
-      {!rows.length && <div className="text-xs text-[var(--faint)] py-2 text-center">{t('cst.layers.empty', 'Nothing on this page yet.')}</div>}
+      {!rows.length && (
+        <div className="py-3 text-center">
+          <div className="text-xs text-[var(--muted)]">{t('cst.layers.empty', 'No blocks yet, so there is no paint order to show.')}</div>
+          {add && <div className="mt-2 flex justify-center">
+            <Button size="sm" variant="primary" onClick={() => add('text')}><Type size={14} /> {t('cst.empty.add', 'Add a text block')}</Button>
+          </div>}
+        </div>
+      )}
       <div className="max-h-56 overflow-auto space-y-0.5">
         {rows.map((b, i) => {
           const on = selIds.includes(b.id);
@@ -1216,7 +1240,7 @@ function PagePanel({ t, canvas, emit, add, onClose }) {
   return (
     <Modal open onClose={onClose} title={t('cst.page', 'Page')} icon={Layers} width="max-w-2xl">
       <div className="space-y-3">
-        <Field label={t('cst.bg.page', 'Page background')} hint={t('cst.bg.page.h', 'A colour, a gradient, or nothing for the site background.')}><Input value={bg} onChange={(e) => setBg(e.target.value)} placeholder="linear-gradient(…) · #fafafa · var(--surface-2)" /></Field>
+        <Field label={t('cst.bg.page', 'Page background')} hint={t('cst.bg.page.h', 'Empty follows the site background.')}><Input value={bg} onChange={(e) => setBg(e.target.value)} placeholder="linear-gradient(…) · #fafafa · var(--surface-2)" /></Field>
         <Field label={t('cst.css', 'Custom CSS (scoped to this page)')} hint={t('cst.css.h', 'Every selector is confined to this page. @import, external url(), expression() and behaviour are refused. Tailwind utilities work only if the site\u2019s build already contains them — prefer plain CSS here.')}>
           <Textarea rows={10} value={css} onChange={(e) => setCss(e.target.value)} className="font-mono text-[12px]" spellCheck={false} placeholder={'.hero { letter-spacing: .02em }\n@media (max-width: 640px) { .cv-shell { border-radius: 8px } }'} />
         </Field>
@@ -1475,7 +1499,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
         <p className="text-[11px] text-[var(--muted)]">{t('cst.embed.allow', 'Only YouTube and Spotify embed links can be framed, the same list the rest of the site uses. Anything else is shown as a link instead.')}</p>
       </>)}
       {sel.kind === 'replay' && (
-        <Field label={t('cst.replay.src', '.bmmreplay URL')} hint={t('cst.replay.h', 'A recording of the app, played by the same player the docs and the blog use.')}>
+        <Field label={t('cst.replay.src', '.bmmreplay URL')} hint={t('cst.replay.h', 'A recording of the app, played by the docs and blog player.')}>
           <Input value={p.src || ''} onChange={(e) => setProp('src', e.target.value)} placeholder="/uploads/demo.bmmreplay" />
         </Field>
       )}

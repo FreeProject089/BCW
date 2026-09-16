@@ -114,9 +114,9 @@ export default function DomainPanel({ kind, id }) {
             [d.record.type, d.record.name, d.record.value],
           ].map(([type, name, value]) => (
             <div key={type + name} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3">
-              <div className="flex items-center gap-2 text-[11px] text-[var(--faint)] mb-1"><span className="font-bold">{type}</span><span className="truncate">{name}</span></div>
+              <div className="flex items-center gap-2 text-[11px] text-[var(--faint)] mb-1"><span className="font-bold">{type}</span><span className="truncate" title={name}>{name}</span></div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 min-w-0 truncate text-[12px]">{value}</code>
+                <code className="flex-1 min-w-0 truncate text-[12px]" title={value}>{value}</code>
                 <button type="button" className="text-[var(--muted)] hover:text-[var(--text)] shrink-0"
                   onClick={() => { copyText(value); toast.success(t('common.copied', 'Copied.')); }} aria-label={t('common.copy', 'Copy')}><Copy size={13} /></button>
               </div>

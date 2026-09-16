@@ -139,7 +139,7 @@ function GuildMembers({ guildId }) {
                 {m.avatar ? <img src={m.avatar} alt="" className="w-7 h-7 rounded-full shrink-0" /> : <span className="w-7 h-7 rounded-full bg-[var(--surface-2)] shrink-0" />}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="truncate font-medium">{m.nickname || m.username || m.discordId}</span>
+                    <span className="truncate font-medium" title={m.nickname || m.username || m.discordId}>{m.nickname || m.username || m.discordId}</span>
                     {L ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)] tabular-nums shrink-0" title={`${L.displayName} · ${L.points.toLocaleString()} pts`}><Sparkles size={9} /> Lv {L.level}</span> : <span className="text-[10px] text-[var(--faint)] shrink-0">{t('ds.mem.unlinked', 'not linked')}</span>}
                     {L?.badges?.length > 0 && <span className="hidden sm:inline-flex items-center gap-1 shrink-0">{L.badges.slice(0, 4).map((b) => <span key={b.name} className="text-[9px] px-1 py-0.5 rounded border" style={{ borderColor: `${b.color}66`, color: b.color }} title={b.name}>{b.name}</span>)}</span>}
                   </div>
@@ -312,7 +312,7 @@ function GuildConfig({ guildId, onSaved }) {
               {data.icon || g.icon ? <img src={data.icon || g.icon} alt="" className="w-full h-full object-cover" /> : <Server size={22} className="text-[#5865F2]" />}
             </span>
             <div className="min-w-0">
-              <div className="font-bold text-base leading-tight flex items-center gap-2 flex-wrap"><span className="truncate">{g.name || guildId}</span> <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
+              <div className="font-bold text-base leading-tight flex items-center gap-2 flex-wrap"><span className="truncate" title={g.name || guildId}>{g.name || guildId}</span> <Badge tone={g.role === 'owner' ? 'primary' : 'blue'}>{g.role === 'owner' ? t('ds.owner', 'Owner') : t('ds.manager', 'Manager')}</Badge></div>
               <div className="text-xs text-[var(--muted)] mt-0.5">
                 {g.lastScanAt ? t('ds.hero.scan', 'Last refreshed {d}').replace('{d}', new Date(g.lastScanAt).toLocaleString()) : t('ds.pool.pending', 'on next scan')}
               </div>
@@ -400,7 +400,7 @@ function GuildConfig({ guildId, onSaved }) {
                 {data.logs.map((l) => (
                   <div key={l.id} className="px-3 py-2 flex items-baseline gap-2 text-xs">
                     <Badge tone="blue">{l.action}</Badge>
-                    <span className="truncate flex-1 text-[var(--muted)]">{l.reason || l.targetTag || l.targetId}</span>
+                    <span className="truncate flex-1 text-[var(--muted)]" title={l.reason || l.targetTag || l.targetId}>{l.reason || l.targetTag || l.targetId}</span>
                     <span className="text-[10px] text-[var(--faint)] shrink-0">{new Date(l.createdAt).toLocaleDateString()}</span>
                   </div>
                 ))}
@@ -643,7 +643,7 @@ function GuildConfig({ guildId, onSaved }) {
           <Head title={here.label} sub={here.sub} />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
             {[[(g.memberCount ?? 0).toLocaleString(), t('ds.pool.members', 'members in the server')], [(g.storedMembers ?? 0).toLocaleString(), t('ds.pool.stored', 'stored here')], [g.lastScanAt ? new Date(g.lastScanAt).toLocaleString() : t('ds.pool.pending', 'on next scan'), t('ds.pool.last', 'last refresh')]].map(([v, l]) => (
-              <div key={l} className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate">{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
+              <div key={l} className="rounded-lg border border-[var(--line)] px-2.5 py-2"><div className="text-sm font-semibold tabular-nums truncate" title={v}>{v}</div><div className="text-[10px] text-[var(--faint)]">{l}</div></div>
             ))}
           </div>
           <p className="text-[11.5px] text-[var(--muted)] mb-3">{t('ds.mdb.s2', 'The bot stores every member of every server it is in: name, avatar, join date, roles, last activity, refreshed every 30 minutes. Members who linked a BetterCommunity account are always kept. When the site-wide cap is reached, members inactive for {d} days may be dropped, and come back on their next message.').replace('{d}', data.globalStorage?.inactiveDays || 30)}</p>
@@ -735,7 +735,7 @@ export function MyDiscordServers() {
               className={`text-start rounded-xl border px-3 py-2.5 shrink-0 md:shrink w-56 md:w-auto transition ${sel === g.guildId ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:b-primary'}`}>
               <div className="text-sm font-medium truncate flex items-center gap-2">
                 {g.icon ? <img src={g.icon} alt="" className="w-6 h-6 rounded-lg shrink-0 object-cover" /> : <span className="grid place-items-center w-6 h-6 rounded-lg bg-[#5865F2]/15 shrink-0"><Server size={12} className="text-[#5865F2]" /></span>}
-                <span className="truncate">{g.name || g.guildId}</span>
+                <span className="truncate" title={g.name || g.guildId}>{g.name || g.guildId}</span>
               </div>
               <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-2">
                 <span>{(g.memberCount ?? 0).toLocaleString()} {t('ds.membersshort', 'members')}</span>

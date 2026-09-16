@@ -388,8 +388,8 @@ export default function EventEffect() {
         ? <img src={flagUrl(ev.countryCode)} alt="" width={32} height={24} className="shrink-0 rounded-[3px] object-cover ring-1 ring-[var(--line-strong)]" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
         : <BadgeIcon size={24} className="shrink-0 text-[var(--primary-2)]" />}
       <div className="min-w-0 flex-1">
-        {title && <div className="font-bold gradient-text text-base sm:text-lg leading-tight truncate">{title}</div>}
-        {message && <div className="text-xs sm:text-sm text-[var(--muted)] truncate">{message}</div>}
+        {title && <div className="font-bold gradient-text text-base sm:text-lg leading-tight truncate" title={title}>{title}</div>}
+        {message && <div className="text-xs sm:text-sm text-[var(--muted)] truncate" title={message}>{message}</div>}
       </div>
       {link && <ArrowRight size={16} className="shrink-0 text-[var(--faint)]" />}
     </>

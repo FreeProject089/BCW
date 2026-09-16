@@ -193,7 +193,9 @@ export function BlogPostPage() {
   const sectionComments = useSectionComments(postId ? `/blog/${postId}` : '', !!postId);
   useSectionCommentPills(articleRef, sectionComments, () => setShowComments(true), [sectionComments, data?.post?.body, lang]);
   if (loading) return <div className="flex items-center gap-2 text-[var(--muted)] py-10"><Spinner /> {t('common.loading', 'Loading…')}</div>;
-  if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')} />;
+  if (!data?.post) return <EmptyState icon={Newspaper} title={t('blog.notfound', 'Post not found')}
+    sub={t('blog.notfound.s', 'This address does not match any post, it may have been unpublished or renamed.')}
+    action={{ label: t('blog.notfound.a', 'All posts'), to: '/blog', icon: Newspaper }} />;
   const p = data.post; const v = pickLang(p, lang);
   const authors = [p.author, ...(p.coAuthors || [])].filter(Boolean);
   const react = async (type) => {
