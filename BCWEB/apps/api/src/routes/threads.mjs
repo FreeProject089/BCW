@@ -25,6 +25,28 @@ import { teamIdsOf, managerIdsOf, isStaff } from '../lib/teams.mjs';
 
 const KINDS = ['repo', 'catalog', 'user', 'team'];
 const CONFIG_KEY = 'threads.config';
+
+/**
+ * Member-to-member conversations, and the two switches that govern them.
+ *
+ * A `user`-kind thread is the only one addressed to a PERSON rather than to something they
+ * published. A repo, a catalogue and a team are things somebody put on the site and owe a
+ * contact channel for; a profile is not. So this block governs `user` threads only, and the
+ * other three kinds are unaffected by every value in it.
+ *
+ *   enabled          the site switch. A CEILING — see directMessaging().
+ *   maxOpen          how many conversations one sender may have OPEN toward members at once.
+ *                    0 = no cap, the house idiom. Archived and closed ones do not count, so
+ *                    the cap is a limit on live conversations, not a lifetime quota.
+ *   autoArchiveDays  an open conversation nobody has touched for this long is archived. It
+ *                    is not deleted and either side can reopen it. 0 = never.
+ *   whenOff          the fate of a conversation that is already open when the site switch is
+ *                    turned off. 'freeze' (default): both sides keep READING it, nobody can
+ *                    write. 'keep': existing conversations stay writable and only new ones
+ *                    are refused. Both are read-time rules, so flipping the switch back
+ *                    restores exactly what was there — nothing is rewritten either way.
+ */
+const MEMBER_DIRECT_DEFAULTS = { enabled: true, maxOpen: 5, autoArchiveDays: 30, whenOff: 'freeze' };
 const DEFAULTS = {
   enabled: true,
   userPerHour: 6, userPerDay: 20,
@@ -33,11 +55,58 @@ const DEFAULTS = {
   maxBody: 4000,
   blockedEmails: [],
   blockedUserIds: [],
+  memberDirect: MEMBER_DIRECT_DEFAULTS,
 };
 
 async function config(p) {
   const row = await p.adminSetting.findUnique({ where: { key: CONFIG_KEY } }).catch(() => null);
-  return { ...DEFAULTS, ...(row?.value && typeof row.value === 'object' ? row.value : {}) };
+  const stored = row?.value && typeof row.value === 'object' ? row.value : {};
+  // Merged one level down on purpose: a stored config written before memberDirect existed,
+  // or one that saved a single field of it, must not lose the other three to a shallow
+  // spread. That is the shape that turns a default of 5 into `undefined` and a cap into no
+  // cap at all, silently.
+  return { ...DEFAULTS, ...stored, memberDirect: { ...MEMBER_DIRECT_DEFAULTS, ...(stored.memberDirect && typeof stored.memberDirect === 'object' ? stored.memberDirect : {}) } };
+}
+
+/**
+ * May a member-to-member conversation be opened, and may an existing one be answered?
+ *
+ * THE PRECEDENCE, written once, here, because a rule written twice diverges:
+ *
+ *   · The SITE switch is a ceiling. `memberDirect.enabled === false` means no new
+ *     conversation with a member, whatever anybody's own settings say. Nobody can opt back
+ *     in above it.
+ *   · The MEMBER preference is a floor. Within what the site allows, a member who set
+ *     `acceptsDirect = false` receives nothing. It only ever subtracts: it cannot grant what
+ *     the site refused, and it never stops them writing to somebody else.
+ *   · A conversation already OPEN when either switch goes off is frozen, not deleted and not
+ *     hidden. Both sides keep reading it. Writing is what stops.
+ *
+ * The one asymmetry: when the SITE is off and `whenOff === 'keep'`, replies keep working on
+ * threads that already exist. That is the admin's explicit choice and it is the only way a
+ * switch-off does not strand half-finished conversations. A member's own refusal is never
+ * softened that way — they asked to be left alone.
+ *
+ * Returns `{ openNew, reply, why }`. `why` is the error code the client turns into a
+ * sentence; '' when nothing is barred.
+ */
+async function directMessaging(p, cfg, ownerId) {
+  const md = cfg.memberDirect || MEMBER_DIRECT_DEFAULTS;
+  if (md.enabled === false) return { openNew: false, reply: md.whenOff === 'keep', why: 'messaging_off_site' };
+  if (!ownerId) return { openNew: true, reply: true, why: '' };
+  const pref = await p.userMessagingPref.findUnique({ where: { userId: ownerId } }).catch(() => null);
+  if (pref && pref.acceptsDirect === false) return { openNew: false, reply: false, why: 'messaging_off_member' };
+  return { openNew: true, reply: true, why: '' };
+}
+
+/** Idle open conversations with members, archived in one statement. Lazy rather than a
+ *  sweeper: the only place it matters is a list somebody is looking at, and a cron job for
+ *  a rule this cheap is a second thing to keep running. */
+async function autoArchive(p, cfg) {
+  const days = Number(cfg.memberDirect?.autoArchiveDays || 0);
+  if (!days) return;
+  const cutoff = new Date(Date.now() - days * 864e5);
+  await p.contactThread.updateMany({ where: { kind: 'user', status: 'open', lastActivityAt: { lt: cutoff } }, data: { status: 'archived' } }).catch(() => {});
 }
 
 const site = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
@@ -120,6 +189,17 @@ export default async function threadRoutes(app) {
     const target = await resolveTarget(p, b.data.kind, b.data.targetId);
     if (!target) return reply.code(404).send({ error: 'not_found' });
     if (uid && target.ownerId === uid) return reply.code(400).send({ error: 'yourself' });
+    // Member-to-member, refused SERVER-SIDE. The button is hidden in the UI too, but a
+    // hidden button is a decoration: this is the rule.
+    if (target.kind === 'user') {
+      const gate = await directMessaging(p, cfg, target.ownerId);
+      if (!gate.openNew) return reply.code(403).send({ error: gate.why });
+      const cap = Number(cfg.memberDirect?.maxOpen || 0);
+      if (cap > 0 && uid) {
+        const open = await p.contactThread.count({ where: { senderId: uid, kind: 'user', status: 'open' } });
+        if (open >= cap) return reply.code(429).send({ error: 'too_many_open', limit: cap });
+      }
+    }
     // Counted in the database: a process restart must not reopen the tap.
     const ip = String(clientIp(req) || '').slice(0, 64);
     const hour = new Date(Date.now() - 3600e3), day = new Date(Date.now() - 864e5);
@@ -160,6 +240,7 @@ export default async function threadRoutes(app) {
 
   app.get('/me/threads', { preHandler: requireRole() }, async (req) => {
     const p = await db();
+    await autoArchive(p, await config(p));
     const box = req.query?.box === 'sent' ? 'sent' : 'inbox';
     const where = box === 'sent' ? { senderId: req.user.uid } : await mine(p, req);
     const rows = await p.contactThread.findMany({ where, include: INCLUDE, orderBy: { lastActivityAt: 'desc' }, take: 200 });
@@ -172,7 +253,11 @@ export default async function threadRoutes(app) {
     const got = await participant(p, req, reply, req.params.id); if (!got) return;
     if (got.side === 'owner' && got.t.ownerUnread) await p.contactThread.update({ where: { id: got.t.id }, data: { ownerUnread: false } });
     if (got.side === 'sender' && got.t.senderUnread) await p.contactThread.update({ where: { id: got.t.id }, data: { senderUnread: false } });
-    return { thread: serThread(got.t, { withMessages: true, staff: isStaff(req.user) }), side: got.side };
+    // A frozen conversation looks exactly like an open one until you press Send, and a reply
+    // box that accepts text and then refuses it is worse than no reply box. So the read tells
+    // the client what the write is going to decide, with the same function.
+    const gate = got.t.kind === 'user' ? await directMessaging(p, await config(p), got.t.ownerUserId) : { reply: true, why: '' };
+    return { thread: serThread(got.t, { withMessages: true, staff: isStaff(req.user) }), side: got.side, canWrite: gate.reply, frozen: gate.reply ? '' : gate.why };
   });
 
   const post = async (p, t, { authorId, side, body }) => {
@@ -189,6 +274,12 @@ export default async function threadRoutes(app) {
     if (cfg.blockedUserIds.includes(req.user.uid)) return reply.code(403).send({ error: 'blocked' });
     const got = await participant(p, req, reply, req.params.id); if (!got) return;
     if (got.t.status !== 'open') return reply.code(409).send({ error: got.t.status });
+    // A frozen conversation is readable and unwritable. Staff are exempt: moderation has to
+    // keep working on a conversation the participants can no longer add to.
+    if (got.t.kind === 'user' && got.side !== 'staff') {
+      const gate = await directMessaging(p, cfg, got.t.ownerUserId);
+      if (!gate.reply) return reply.code(403).send({ error: gate.why });
+    }
     const m = await post(p, got.t, { authorId: req.user.uid, side: got.side, body: b.data.body });
     if (got.side === 'owner' || got.side === 'staff') {
       if (got.t.senderId) notify(p, got.t.senderId, 'thread', `Reply about “${got.t.targetLabel}”: ${got.t.subject}`, { href: `/dashboard?s=reports&thread=${got.t.id}` }).catch(() => {});
@@ -208,6 +299,39 @@ export default async function threadRoutes(app) {
   app.post('/me/threads/:id/close', { preHandler: requireRole() }, setState('close', { status: 'closed' }));
   app.post('/me/threads/:id/reopen', { preHandler: requireRole() }, setState('reopen', { status: 'open' }));
   app.post('/me/threads/:id/flag', { preHandler: requireRole() }, setState('flag', { staffFlag: 'flagged' }));
+  // Archived is a fourth status alongside open / closed / blocked, and the difference from
+  // closed is who chose it: closed is a decision, archived is the passage of time. Reopen
+  // takes both back to open, so nothing here is one-way.
+  app.post('/me/threads/:id/archive', { preHandler: requireRole() }, setState('archive', { status: 'archived' }));
+
+  // ── the member's own switch ────────────────────────────────────────────────────────────
+  //
+  // Lives here rather than on PATCH /me because it is read on exactly one path, and because
+  // the answer is useless without the SITE's ceiling beside it: "you accept conversations"
+  // and "the site allows them" are two different facts and a settings screen that shows only
+  // the first one lies by omission the day an admin switches the feature off.
+  app.get('/me/messaging', { preHandler: requireRole() }, async (req) => {
+    const p = await db();
+    const cfg = await config(p);
+    const pref = await p.userMessagingPref.findUnique({ where: { userId: req.user.uid } }).catch(() => null);
+    const md = cfg.memberDirect || MEMBER_DIRECT_DEFAULTS;
+    const openCount = await p.contactThread.count({ where: { senderId: req.user.uid, kind: 'user', status: 'open' } });
+    return {
+      acceptsDirect: pref ? pref.acceptsDirect !== false : true,
+      site: { enabled: md.enabled !== false, maxOpen: Number(md.maxOpen || 0), autoArchiveDays: Number(md.autoArchiveDays || 0), whenOff: md.whenOff === 'keep' ? 'keep' : 'freeze' },
+      openCount,
+    };
+  });
+
+  app.put('/me/messaging', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ acceptsDirect: z.boolean() }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    await p.userMessagingPref.upsert({ where: { userId: req.user.uid }, create: { userId: req.user.uid, acceptsDirect: b.data.acceptsDirect }, update: { acceptsDirect: b.data.acceptsDirect } });
+    // Nothing is rewritten. Conversations already open are frozen by the read-time rule in
+    // directMessaging(), which is what makes switching back on a no-op rather than a repair.
+    return { acceptsDirect: b.data.acceptsDirect };
+  });
 
   // ── the anonymous sender, by token ─────────────────────────────────────────────────────
   app.get('/threads/t/:token', { config: { rateLimit: { max: 60, timeWindow: '10 minutes' } } }, async (req, reply) => {
@@ -215,7 +339,8 @@ export default async function threadRoutes(app) {
     const t = await p.contactThread.findUnique({ where: { accessToken: req.params.token }, include: INCLUDE_FULL });
     if (!t) return reply.code(404).send({ error: 'not_found' });
     if (t.senderUnread) await p.contactThread.update({ where: { id: t.id }, data: { senderUnread: false } });
-    return { thread: serThread(t, { withMessages: true, anon: true }), side: 'sender' };
+    const gate = t.kind === 'user' ? await directMessaging(p, await config(p), t.ownerUserId) : { reply: true, why: '' };
+    return { thread: serThread(t, { withMessages: true, anon: true }), side: 'sender', canWrite: gate.reply, frozen: gate.reply ? '' : gate.why };
   });
 
   app.post('/threads/t/:token/messages', { config: { rateLimit: { max: 10, timeWindow: '1 hour' } } }, async (req, reply) => {
@@ -227,6 +352,10 @@ export default async function threadRoutes(app) {
     if (!t) return reply.code(404).send({ error: 'not_found' });
     if (t.status !== 'open') return reply.code(409).send({ error: t.status });
     if (t.senderEmail && cfg.blockedEmails.includes(t.senderEmail)) return reply.code(403).send({ error: 'blocked' });
+    if (t.kind === 'user') {
+      const gate = await directMessaging(p, cfg, t.ownerUserId);
+      if (!gate.reply) return reply.code(403).send({ error: gate.why });
+    }
     const m = await post(p, t, { authorId: null, side: 'sender', body: b.data.body });
     await tellManagers(p, t, `Reply on “${t.targetLabel}”: ${t.subject}`, `/dashboard?s=reports&thread=${t.id}`);
     return { message: serMsg(m) };
@@ -294,10 +423,19 @@ export default async function threadRoutes(app) {
       messagesPerHour: z.number().int().min(1).max(1000).optional(), maxBody: z.number().int().min(200).max(20000).optional(),
       blockedEmails: z.array(z.string().trim().email().max(254)).max(2000).optional(),
       blockedUserIds: z.array(z.string().min(1).max(64)).max(2000).optional(),
+      // Declared explicitly, because zod strips what it does not name: leave this out and
+      // the admin's save returns 200 and writes nothing.
+      memberDirect: z.object({
+        enabled: z.boolean().optional(),
+        maxOpen: z.number().int().min(0).max(1000).optional(),
+        autoArchiveDays: z.number().int().min(0).max(3650).optional(),
+        whenOff: z.enum(['freeze', 'keep']).optional(),
+      }).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
-    const cfg = { ...(await config(p)), ...b.data };
+    const prev = await config(p);
+    const cfg = { ...prev, ...b.data, memberDirect: { ...prev.memberDirect, ...(b.data.memberDirect || {}) } };
     if (cfg.blockedEmails) cfg.blockedEmails = cfg.blockedEmails.map((e) => e.toLowerCase());
     await p.adminSetting.upsert({ where: { key: CONFIG_KEY }, create: { key: CONFIG_KEY, value: cfg }, update: { value: cfg } });
     return { config: cfg };

@@ -2,7 +2,7 @@
 // anonymous sender reaches by the link in their e-mail (/messages/t/:token).
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { MessageSquare, Inbox, Send, Lock, Flag, RotateCcw, ArrowLeft, Users } from 'lucide-react';
+import { MessageSquare, Inbox, Send, Lock, Flag, RotateCcw, ArrowLeft, Users, Archive } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -46,6 +46,11 @@ export function ThreadView({ load, post, actions, back }) {
     sub={t('th.gone.s', 'It may have been closed and removed, or the link you followed may have expired.')}
     action={{ label: t('th.gone.a', 'Your messages'), to: '/dashboard?s=reports', icon: Inbox }} />;
   const { thread: th, side } = data;
+  // Two different reasons a reply box is not there, and they are not the same sentence.
+  // CLOSED is a decision somebody took on this conversation. FROZEN is a switch somewhere
+  // else: the site's, or the other person's. Saying "closed" for both sends people looking
+  // for a Reopen button that would not help them.
+  const frozen = data.canWrite === false && th.status === 'open';
   const send = async (body) => {
     try { await post(body); await reload(); return true; }
     catch (x) { const e = x.data?.error; toast.error(e === 'closed' ? t('th.closed', 'This conversation is closed.') : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.') : e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.') : t('common.failed', 'Failed.')); return false; }
@@ -59,12 +64,22 @@ export function ThreadView({ load, post, actions, back }) {
           <div className="font-semibold truncate">{KIND_ICON[th.kind] || ''} {th.subject}</div>
           <div className="text-[12px] text-[var(--muted)]">{t('th.about', 'About')} <b className="text-[var(--text)]">{th.targetLabel}</b> · {t('th.between', 'between')} {th.sender?.displayName || th.senderName || t('th.anon', 'an anonymous sender')} {t('th.and', 'and')} {who}</div>
         </div>
-        <Badge tone={th.status === 'open' ? 'success' : th.status === 'blocked' ? 'error' : ''}>{th.status === 'open' ? t('th.st.open', 'open') : th.status === 'closed' ? t('th.st.closed', 'closed') : t('th.st.blocked', 'blocked')}</Badge>
+        <Badge tone={th.status === 'open' ? (frozen ? '' : 'success') : th.status === 'blocked' ? 'error' : ''}>{frozen ? t('th.st.frozen', 'frozen') : th.status === 'open' ? t('th.st.open', 'open') : th.status === 'closed' ? t('th.st.closed', 'closed') : th.status === 'archived' ? t('th.st.archived', 'archived') : t('th.st.blocked', 'blocked')}</Badge>
       </div>
       <div className="space-y-2 max-h-[55vh] overflow-auto pr-1">
         {th.messages.map((m) => <Bubble key={m.id} m={m} me={side} />)}
       </div>
-      {th.status === 'open' ? <Composer onSend={send} /> : <p className="text-[12px] text-[var(--faint)] flex items-center gap-1"><Lock size={12} /> {th.status === 'closed' ? t('th.closed', 'This conversation is closed.') : t('th.blockedline', 'This sender was blocked by staff.')}</p>}
+      {th.status === 'open' && !frozen ? <Composer onSend={send} /> : (
+        <p className="text-[12px] text-[var(--faint)] flex items-start gap-1"><Lock size={12} className="mt-0.5 shrink-0" /> <span>
+          {frozen
+            ? (data.frozen === 'messaging_off_member'
+              ? t('th.frozen.member', 'This member no longer accepts conversations. Nobody can add to this one, and nothing was deleted.')
+              : t('th.frozen.site', 'Conversations between members are switched off on this site. Nobody can add to this one, and nothing was deleted.'))
+            : th.status === 'closed' ? t('th.closed', 'This conversation is closed.')
+              : th.status === 'archived' ? t('th.archivedline', 'This conversation was archived after a long silence. Reopen it to answer.')
+                : t('th.blockedline', 'This sender was blocked by staff.')}
+        </span></p>
+      )}
       {actions && <div className="flex gap-2 flex-wrap pt-1 border-t border-[var(--line)]">{actions(th, reload)}</div>}
     </Card>
   );
@@ -86,8 +101,13 @@ export function MyThreads() {
         post={(body) => api.post(`/me/threads/${open}/messages`, { body })}
         actions={(th, r) => (<>
           {th.status === 'open'
-            ? <Button size="sm" variant="ghost" onClick={async () => { if (!await dialog.confirm({ title: t('th.close.q', 'Close this conversation?'), message: t('th.close.m', 'Nobody can answer a closed conversation. You can reopen it.') })) return; await api.post(`/me/threads/${th.id}/close`); r(); }}><Lock size={13} /> {t('th.close', 'Close')}</Button>
-            : th.status === 'closed' && <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/me/threads/${th.id}/reopen`); r(); }}><RotateCcw size={13} /> {t('th.reopen', 'Reopen')}</Button>}
+            ? <>
+              <Button size="sm" variant="ghost" onClick={async () => { if (!await dialog.confirm({ title: t('th.close.q', 'Close this conversation?'), message: t('th.close.m', 'Nobody can answer a closed conversation. You can reopen it.') })) return; await api.post(`/me/threads/${th.id}/close`); r(); }}><Lock size={13} /> {t('th.close', 'Close')}</Button>
+              {/* Archive is not close. Close is a decision; archive is "put it away", and it
+                  frees a slot against the site's limit on open conversations. */}
+              <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/me/threads/${th.id}/archive`); r(); }}><Archive size={13} /> {t('th.archive', 'Archive')}</Button>
+            </>
+            : (th.status === 'closed' || th.status === 'archived') && <Button size="sm" variant="ghost" onClick={async () => { await api.post(`/me/threads/${th.id}/reopen`); r(); }}><RotateCcw size={13} /> {t('th.reopen', 'Reopen')}</Button>}
           <Button size="sm" variant="ghost" className="!text-error" onClick={async () => { if (!await dialog.confirm({ title: t('th.flag.q', 'Report this conversation to staff?'), message: t('th.flag.m', 'Staff will read it and may hide messages or block the sender.') })) return; await api.post(`/me/threads/${th.id}/flag`); toast.success(t('th.flagged', 'Reported to staff.')); }}><Flag size={13} /> {t('th.flag', 'Report to staff')}</Button>
         </>)} />
     );

@@ -1,11 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import BoringAvatar from 'boring-avatars';
 import QRCode from 'qrcode';
-import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight, Plus } from 'lucide-react';
+import { User, Shield, ShieldCheck, Mail, CalendarDays, Shuffle, KeyRound, Check, Palette, Sparkles, ImagePlus, Trash2, FileArchive, Link2, BadgeCheck, Lock, Download, Eye, EyeOff, Settings as SettingsIcon, ArrowRight, Plus, MessageSquare } from 'lucide-react';
 import { api, uploadImage } from '../lib/api.js';
 import { useAuth } from './auth.jsx';
 import { useI18n } from '../i18n.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, copyText, ColorInput } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, Spinner, Explain, copyText, ColorInput } from '../ui/ui.jsx';
 import { DiscordIcon, KofiIcon, YoutubeIcon, GithubIcon, GoogleIcon } from '../ui/brand.jsx';
 import Avatar, { VARIANTS, PALETTES, avatarOf } from '../ui/Avatar.jsx';
 import { Badges } from '../ui/Badges.jsx';
@@ -27,6 +27,59 @@ const PROFILE_TABS = [
 
 function SectionLabel({ icon: Ico, children }) {
   return <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]"><Ico size={13} className="text-[var(--accent-ink)]" /> {children}</div>;
+}
+
+/**
+ * Do you accept conversations from other members?
+ *
+ * The switch is yours and the ceiling is not. Two facts, and a card that showed only the
+ * first would lie by omission the day an admin switches member messaging off site-wide: you
+ * would read "yes, I accept them" and receive nothing, with nothing on the screen to explain
+ * it. So the site's state is shown beside yours, and when the site says no, yours is
+ * disabled rather than hidden — a control you cannot find is a control you assume is broken.
+ *
+ * What it does NOT cover, deliberately: messages about a repo, a catalogue or a team you
+ * manage. Those are about something you published, which still owes a way to be reached.
+ * This is about being written to as a person.
+ */
+function MessagingCard() {
+  const { t } = useI18n(); const toast = useToast();
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { api.get('/me/messaging').then(setSt).catch(() => setSt(null)); }, []);
+  if (!st) return null;
+  const siteOff = !st.site.enabled;
+  const save = async (v) => {
+    setBusy(true);
+    try { await api.put('/me/messaging', { acceptsDirect: v }); setSt({ ...st, acceptsDirect: v }); toast.success(t('prof.saved', 'Saved')); }
+    catch { toast.error(t('prof.failed', 'Failed')); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Card className="p-5 space-y-3 mt-4">
+      <div className="text-sm font-semibold flex items-center gap-2"><MessageSquare size={15} className="text-[var(--accent-ink)]" /> {t('prof.dm.title', 'Messages from members')}</div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={st.acceptsDirect && !siteOff} disabled={siteOff || busy} onChange={(e) => save(e.target.checked)} />
+        {t('prof.dm.accept', 'Let members start a conversation with me')}
+      </label>
+      {siteOff && (
+        <p className="text-[12px] text-[var(--muted)]">
+          {st.site.whenOff === 'keep'
+            ? t('prof.dm.siteoff.keep', 'The site has closed new conversations between members. The ones already open still work.')
+            : t('prof.dm.siteoff', 'The site has switched off conversations between members, so this setting has no effect for now. Nothing was deleted.')}
+        </p>
+      )}
+      <Explain summary={t('prof.dm.lead', 'Turning this off freezes conversations, it never deletes them.')} className="text-[12px]">
+        {t('prof.dm.body', 'People you are already talking to keep the conversation and can still read it; nobody can add to it while this is off, and turning it back on restores it exactly as it was. It does not stop you writing to other people, and it does not affect messages about a repo, a catalogue or a team you manage, which are about something you published rather than about you.')}
+      </Explain>
+      {(st.site.maxOpen > 0 || st.site.autoArchiveDays > 0) && (
+        <p className="text-[11px] text-[var(--faint)]">
+          {st.site.maxOpen > 0 && <>{t('prof.dm.cap', 'You have {n} of {max} conversations open.').replace('{n}', st.openCount).replace('{max}', st.site.maxOpen)} </>}
+          {st.site.autoArchiveDays > 0 && t('prof.dm.arch', 'A conversation nobody has touched for {d} days is archived, and either side can reopen it.').replace('{d}', st.site.autoArchiveDays)}
+        </p>
+      )}
+    </Card>
+  );
 }
 
 export default function Profile() {
@@ -225,6 +278,10 @@ export default function Profile() {
             </div>
             <div className="flex items-center gap-3"><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('prof.saveprivacy', 'Save privacy')}</Button></div>
           </Card>
+
+          {/* Who may write to you. Saves on its own, because it is one checkbox and a Save
+              button beside a checkbox is a button people forget to press. */}
+          <MessagingCard />
 
           {/* Badges earned — shown next to your name across the site. */}
           {user.badges?.length > 0 && <Card className="p-5 mt-4">

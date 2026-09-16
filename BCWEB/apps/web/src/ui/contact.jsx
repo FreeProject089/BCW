@@ -54,6 +54,11 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
         : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.')
         : e === 'not_found' ? t('cm.gone', 'This cannot be contacted any more.')
         : e === 'disabled' ? t('cm.disabled', 'Messaging is switched off for now.')
+        // The three refusals that are member-to-member specific. Each one says WHOSE
+        // decision it was, because "not available" sends people to support to ask why.
+        : e === 'messaging_off_site' ? t('cm.dm.site', 'Conversations between members are switched off on this site.')
+        : e === 'messaging_off_member' ? t('cm.dm.member', 'This member does not accept conversations.')
+        : e === 'too_many_open' ? t('cm.dm.cap', 'You already have as many open conversations as the site allows. Close or archive one first.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
