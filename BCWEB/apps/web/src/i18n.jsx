@@ -6730,6 +6730,7 @@ const DICT = {
     'pu.empty.archived.t': 'Rien d’archivé', 'pu.empty.archived.s': 'Aucune durée expirée ou boost terminé pour le moment.',
 
     // ── Admin : journal de sécurité ──
+    'log.today': 'Aujourd’hui', 'log.yesterday': 'Hier', 'sec.noactor': 'système',
     'sec.title': 'Journal de sécurité',
     'sec.desc': 'Tentatives de connexion (succès/échec, IP) et le journal d’audit des actions admin.',
     'sec.attempts': 'Tentatives', 'sec.failedn': 'Échecs', 'sec.uniqueips': 'IP uniques', 'sec.suspicious': 'IP suspectes',

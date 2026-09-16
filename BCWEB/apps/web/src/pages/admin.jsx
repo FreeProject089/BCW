@@ -1466,6 +1466,54 @@ function AuditDetail({ id, onClose, onPickActor }) {
 // The quick ranges, and the two that are not ranges: a custom window, and the whole log.
 const AUDIT_QUICK = [['24', '24h'], ['168', '7d'], ['720', '30d'], ['8760', '1y']];
 
+/**
+ * A day, as a heading.
+ *
+ * Two hundred rows of "16/09/2026 21:04:11" is a list with no shape: every row is the same
+ * width of the same grey, the date repeats a hundred times, and finding "what happened on
+ * Tuesday" means reading. Grouping by day costs one sticky line per day and turns scrolling
+ * into navigation. The heading is sticky rather than inline because the question it answers,
+ * "which day am I looking at", is asked in the middle of a group, not at its top.
+ */
+function DayHeading({ at, count }) {
+  const { t } = useI18n();
+  const d = new Date(at);
+  const today = new Date();
+  const same = (a, b) => a.toDateString() === b.toDateString();
+  const yest = new Date(today.getTime() - 864e5);
+  const label = same(d, today) ? t('log.today', 'Today') : same(d, yest) ? t('log.yesterday', 'Yesterday')
+    : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+  return (
+    <div className="sticky top-0 z-10 px-4 py-1.5 bg-[var(--bg-solid)] border-b border-[var(--line)] flex items-center gap-2">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{label}</span>
+      {count != null && <span className="text-[11px] text-[var(--faint)] tabular-nums">· {count}</span>}
+    </div>
+  );
+}
+
+/** Rows, cut into days. Returns [{ day, at, rows }] in the order it was given. */
+function byDay(rows, at = (r) => r.createdAt) {
+  const out = [];
+  for (const r of rows) {
+    const key = new Date(at(r)).toDateString();
+    const last = out[out.length - 1];
+    if (last && last.day === key) last.rows.push(r);
+    else out.push({ day: key, at: at(r), rows: [r] });
+  }
+  return out;
+}
+
+/** The clock time, with the full stamp one hover away. A date inside a day group is noise. */
+function LogTime({ at }) {
+  const d = new Date(at);
+  return (
+    <time dateTime={d.toISOString()} title={d.toLocaleString()}
+      className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">
+      {d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+    </time>
+  );
+}
+
 function AdminSecurity() {
   const { t } = useI18n();
   const toast = useToast();
@@ -1666,15 +1714,34 @@ function AdminSecurity() {
       )}
 
       {tab === 'logins' && (logins.loading ? <Loading /> : filteredAttempts.length ? <Card className="p-0 overflow-hidden">
-        <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
-          {filteredAttempts.map((a) => (
-            <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              {a.success ? <CheckCircle2 size={15} className="text-success shrink-0" /> : <XCircle size={15} className="text-error shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--accent-ink)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ms-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
-                <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--accent-ink)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
+        <div className="max-h-[65vh] overflow-auto">
+          {byDay(filteredAttempts).map((g) => (
+            <div key={g.day}>
+              <DayHeading at={g.at} count={g.rows.length} />
+              <div className="divide-y divide-[var(--line)]">
+                {g.rows.map((a) => (
+                  <div key={a.id} className="flex items-start gap-3 px-4 py-2.5 text-sm">
+                    {a.success ? <CheckCircle2 size={15} className="text-success shrink-0 mt-0.5" /> : <XCircle size={15} className="text-error shrink-0 mt-0.5" />}
+                    <div className="flex-1 min-w-0">
+                      {/* The address wraps rather than truncating: an email is the thing you
+                          came to read, and half of one identifies nobody. */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--accent-ink)] break-all text-start">{a.email}</button>
+                        {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>}
+                        {suspiciousIps.has(a.ip) && <Badge tone="red">{t('sec.bruteforce', 'Brute-force?')}</Badge>}
+                      </div>
+                      <div className="text-[11px] text-[var(--faint)] font-mono flex items-center gap-1.5 flex-wrap">
+                        <button onClick={() => setQ(a.ip)} className="hover:text-[var(--accent-ink)]">{a.ip}</button>
+                        {a.reason ? <span>· {a.reason}</span> : null}
+                        {/* On a phone the time rides with the detail line instead of
+                            competing with the address for the same 360px. */}
+                        <span className="sm:hidden">· <LogTime at={a.createdAt} /></span>
+                      </div>
+                    </div>
+                    <span className="hidden sm:block"><LogTime at={a.createdAt} /></span>
+                  </div>
+                ))}
               </div>
-              <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
             </div>
           ))}
         </div>
@@ -1792,15 +1859,33 @@ function AdminSecurity() {
 
       {tab === 'audit' && (audit.loading ? <Loading /> : entries.length ? <>
         <Card className="p-0 overflow-hidden">
-          <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
-            {entries.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--surface-2)] transition">
-                <Shield size={15} className="text-[var(--accent-ink)] shrink-0" />
-                <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-start">
-                  <div className="truncate"><span className="font-medium">{e.actor?.displayName || '—'}</span> <span className="text-[var(--muted)] font-mono text-[12px]">{e.action}</span>{e.detail && <span className="text-[var(--faint)]"> · {e.detail}</span>}</div>
-                  <div className="text-[11px] text-[var(--faint)] font-mono">{e.ip || '—'}</div>
-                </button>
-                <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(e.createdAt).toLocaleString()}</span>
+          <div className="max-h-[65vh] overflow-auto">
+            {byDay(entries).map((g) => (
+              <div key={g.day}>
+                <DayHeading at={g.at} count={g.rows.length} />
+                <div className="divide-y divide-[var(--line)]">
+                  {g.rows.map((e) => (
+                    <div key={e.id} className="flex items-start gap-3 px-4 py-2.5 text-sm hover:bg-[var(--surface-2)] transition">
+                      <Shield size={15} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
+                      <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-start">
+                        {/* Who and what on one line, the detail on its own. The three used to
+                            share a single truncated line, so on anything narrower than a
+                            laptop the detail, which is the part that says what was actually
+                            done, was the part that got cut. */}
+                        <div className="flex items-baseline gap-1.5 flex-wrap">
+                          <span className="font-medium">{e.actor?.displayName || t('sec.noactor', 'system')}</span>
+                          <span className="text-[var(--muted)] font-mono text-[12px]">{e.action}</span>
+                        </div>
+                        {e.detail && <div className="text-[12px] text-[var(--faint)] break-words">{e.detail}</div>}
+                        <div className="text-[11px] text-[var(--faint)] font-mono flex items-center gap-1.5 flex-wrap">
+                          <span>{e.ip || '—'}</span>
+                          <span className="sm:hidden">· <LogTime at={e.createdAt} /></span>
+                        </div>
+                      </button>
+                      <span className="hidden sm:block"><LogTime at={e.createdAt} /></span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
