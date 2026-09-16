@@ -274,7 +274,7 @@ function gifPath(L, { won, detail, amount, outcome, winners }) {
  * Settle every seat with the API and post ONE result: the GIF (title, outcome and winners
  * drawn in) with a short line under it — never "you win" to a whole table.
  */
-async function finish(L, plays, { outcome, gifOutcome, detail, amount }) {
+async function finish(L, plays, { outcome, gifOutcome, detail, amount, links = [] }) {
   reg.setState(L, 'done');
   const t = L.t;
   const pot = isPot(L);
@@ -310,20 +310,25 @@ async function finish(L, plays, { outcome, gifOutcome, detail, amount }) {
     body: [gif ? null : outcome, line, ...skipped].filter(Boolean),
     image: gif ? 'attachment://table.gif' : null, files,
     footer: t('live.footer', { c: L.code }),
-    buttons: [ui.btn(`cl:new:${L.game}`, t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' })],
+    buttons: [ui.btn(`cl:new:${L.game}`, t('live.again'), ButtonStyle.Primary, { emoji: 'again' }), ui.btn('eco:level', t('btn.balance'), ButtonStyle.Secondary, { emoji: 'level' }), ...links],
   });
 }
 
+// The race film is a Paddock-Manager simulation, run fast: the result card says so and links it.
+const PADDOCK_URL = 'https://github.com/coco-1er/Paddock-Manager';
+
 async function runRace(L) {
   const t = L.t;
+  const { casino } = await liveConfig();
+  const laps = Math.min(12, Math.max(1, Math.floor(Number(casino.race?.laps)) || 3));
   // The winner is drawn uniformly HERE; the GIF's simulation is told and ends on it.
   const winner = Math.min(5, Math.floor(rnd() * 6));
-  await redraw(L, runningCard(L, [t('live.race.go'), '', playersBlock(t, L)]));
+  await redraw(L, runningCard(L, [t('live.race.go'), t('live.race.laps', { n: laps }), '', playersBlock(t, L)]));
   await sleep(1500);
   const plays = [...L.players.entries()].map(([id, p]) => ({ discordId: id, bet: p.bet, multiplier: Number(p.pick) === winner ? 6 : 0, note: `car${Number(p.pick) + 1}` }));
   const host = L.players.get(L.hostId);
   const car = `${ui.icx(CARS[winner])}${t(`live.race.car.${winner}`)}`;
-  await finish(L, plays, { outcome: t('live.race.won', { c: car }), gifOutcome: t('live.gif.race', { c: `${TAGS[winner]} · ${t(`live.race.car.${winner}`)}` }), detail: `${winner}|${L.players.size === 1 && host ? host.pick ?? '' : ''}`, amount: n(plays.reduce((a, p) => a + (p.multiplier ? p.bet * 5 : -p.bet), 0)) });
+  await finish(L, plays, { outcome: `${t('live.race.won', { c: car })}\n-# ${t('live.race.sim')}`, gifOutcome: t('live.gif.race', { c: `${TAGS[winner]} · ${t(`live.race.car.${winner}`)}` }), detail: `${winner}|${L.players.size === 1 && host ? host.pick ?? '' : ''}`, amount: n(plays.reduce((a, p) => a + (p.multiplier ? p.bet * 5 : -p.bet), 0)), links: [ui.btn(PADDOCK_URL, 'Paddock-Manager', ButtonStyle.Link, { emoji: 'race' })] });
 }
 
 async function runPot(L) {

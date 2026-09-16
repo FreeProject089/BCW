@@ -10,6 +10,7 @@
 // human ever lands here they bounce straight to the app.
 import { db } from '../lib/lib.mjs';
 import { renderCasinoGif } from '../lib/casino-gif.mjs';
+import { getBotConfig } from './bot.mjs';
 import { loadAvatarImage, loadBadgeIcon } from '../lib/avatar-image.mjs';
 
 const SITE = () => (process.env.SITE_URL || 'https://bettercommunity.ch').replace(/\/+$/, '');
@@ -354,7 +355,9 @@ export default async function ogRoutes(app) {
     if (/.gif$/i.test(outcome)) {
       try {
         const seed = (parseInt(String(req.query?.s || ''), 10) || Date.now()) >>> 0;
-        const buf = await renderCasinoGif({ game, win, detail, amount, seed, text });
+        // The race draws the admin's circuit / laps / colours; the other games need nothing.
+        const race = game === 'race' ? ((await getBotConfig(await db()).catch(() => null))?.economy?.casino?.race || null) : null;
+        const buf = await renderCasinoGif({ game, win, detail, amount, seed, text, race });
         reply.header('content-type', 'image/gif'); reply.header('cache-control', 'public, max-age=300');
         return reply.send(buf);
       } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino gif failed, serving still'); }

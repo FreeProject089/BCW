@@ -19,6 +19,7 @@ export const LANGS = ['en', 'fr', 'de', 'es'];
 
 export const BASE = {
   en: {
+    'live.race.laps': '{n} lap(s) — Paddock-Manager simulation, accelerated', 'live.race.sim': 'Simulated with Paddock-Manager (accelerated, realistic settings).',
     'btn.prev': 'Previous', 'btn.next': 'Next', 'live.race.pickCar': 'Pick your car', 'live.wheel.pickMult': 'Pick a multiplier', 'cas.pickGame': 'Open a game…', 'cas.liveTag': 'live table',
     // Logging (/logs) + lockdown + seasons
     'logs.title': 'Bot logs',
@@ -104,7 +105,7 @@ export const BASE = {
     'game.pot': 'The pot',
     'game.race.d': 'Six cars, pick yours — 6× if it wins. Live, in the channel',
     'game.pot.d': 'Everyone stakes, one takes it all, odds ∝ stake. Live, 2+ players',
-    'game.race.how': 'Six cars, one lap. Pick a car; if it crosses the line first you are paid **6×**.',
+    'game.race.how': 'Six cars, a few laps on a circuit. Pick a car; if it crosses the line first you are paid **6×**.',
     'game.pot.how': 'Everyone puts in what they like. **One** player takes the whole pot, drawn in proportion to stake — the more you put in, the likelier it is you. Two players minimum, no maximum.',
     'live.openTable': 'Open a table',
     'live.multiBtn': 'Multi',
@@ -204,6 +205,7 @@ export const BASE = {
     'live.lobbiesBtn': 'Open tables',
   },
   fr: {
+    'live.race.laps': '{n} tour(s) — simulation Paddock-Manager, accélérée', 'live.race.sim': 'Simulé avec Paddock-Manager (accéléré, réglages réalistes).',
     'btn.prev': 'Précédent', 'btn.next': 'Suivant', 'live.race.pickCar': 'Choisis ta voiture', 'live.wheel.pickMult': 'Choisis un multiplicateur', 'cas.pickGame': 'Ouvrir un jeu…', 'cas.liveTag': 'table en direct',
     // Journaux (/logs) + lockdown + saisons
     'logs.title': 'Journaux du bot',
@@ -389,6 +391,7 @@ export const BASE = {
     'live.lobbiesBtn': 'Tables ouvertes',
   },
   de: {
+    'live.race.laps': '{n} Runde(n) — Paddock-Manager-Simulation, beschleunigt', 'live.race.sim': 'Simuliert mit Paddock-Manager (beschleunigt, realistische Einstellungen).',
     'btn.prev': 'Zurück', 'btn.next': 'Weiter', 'live.race.pickCar': 'Wähle dein Auto', 'live.wheel.pickMult': 'Multiplikator wählen', 'cas.pickGame': 'Ein Spiel öffnen…', 'cas.liveTag': 'Live-Tisch',
     // Protokolle (/logs) + Lockdown + Saisons
     'logs.title': 'Bot-Protokolle',
@@ -574,6 +577,7 @@ export const BASE = {
     'live.lobbiesBtn': 'Offene Tische',
   },
   es: {
+    'live.race.laps': '{n} vuelta(s) — simulación Paddock-Manager, acelerada', 'live.race.sim': 'Simulado con Paddock-Manager (acelerado, ajustes realistas).',
     'btn.prev': 'Anterior', 'btn.next': 'Siguiente', 'live.race.pickCar': 'Elige tu coche', 'live.wheel.pickMult': 'Elige un multiplicador', 'cas.pickGame': 'Abrir un juego…', 'cas.liveTag': 'mesa en directo',
     // Registros (/logs) + bloqueo + temporadas
     'logs.title': 'Registros del bot',

@@ -24,7 +24,7 @@
 export const CAR_TAGS = ['RED', 'BLU', 'GRN', 'YEL', 'PUR', 'ORA'];
 export const CAR_COLOURS = ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316'];
 const SECTOR_COLOURS = ['#ef4444', '#3b82f6', '#facc15']; // S1 red · S2 blue · S3 yellow, like a timing screen
-export const LAPS = 3;
+export const LAPS = 3; // the default; the admin's `economy.casino.race.laps` overrides it per race
 
 // ── tracks: control points in a unit box, smoothed to a dense polyline ─────────────────
 // Each track: a closed loop of control points (x, y in 0..1), the fraction of the lap where
@@ -35,7 +35,75 @@ const TRACKS = [
   { name: 'Riviera', pts: [[0.04, 0.62], [0.42, 0.62], [0.36, 0.44], [0.30, 0.30], [0.14, 0.24], [0.16, 0.10], [0.42, 0.08], [0.60, 0.16], [0.70, 0.30], [0.90, 0.32], [0.96, 0.52], [0.86, 0.66], [0.70, 0.70], [0.54, 0.80], [0.26, 0.86], [0.08, 0.80]], sectors: [0.34, 0.66], pit: [0.015, 0.13] },
   { name: 'Speedring', pts: [[0.06, 0.72], [0.64, 0.72], [0.72, 0.60], [0.86, 0.62], [0.94, 0.42], [0.86, 0.18], [0.66, 0.10], [0.50, 0.24], [0.38, 0.10], [0.14, 0.12], [0.06, 0.30], [0.16, 0.48], [0.06, 0.58]], sectors: [0.36, 0.70], pit: [0.015, 0.15] },
   { name: 'Hairpin Park', pts: [[0.06, 0.80], [0.46, 0.80], [0.46, 0.64], [0.36, 0.50], [0.48, 0.36], [0.72, 0.40], [0.80, 0.24], [0.92, 0.20], [0.94, 0.42], [0.84, 0.56], [0.90, 0.70], [0.76, 0.86], [0.56, 0.90], [0.30, 0.92], [0.10, 0.90]], sectors: [0.30, 0.64], pit: [0.015, 0.14] },
+  { name: 'Lakeside', pts: [[0.05, 0.55], [0.40, 0.55], [0.52, 0.42], [0.44, 0.26], [0.22, 0.20], [0.14, 0.08], [0.36, 0.06], [0.58, 0.14], [0.78, 0.10], [0.94, 0.24], [0.92, 0.46], [0.80, 0.58], [0.88, 0.76], [0.70, 0.90], [0.44, 0.86], [0.24, 0.92], [0.06, 0.78]], sectors: [0.33, 0.68], pit: [0.015, 0.13] },
+  { name: 'Monza Nord', pts: [[0.06, 0.66], [0.70, 0.66], [0.86, 0.58], [0.94, 0.40], [0.86, 0.20], [0.66, 0.12], [0.50, 0.18], [0.44, 0.34], [0.30, 0.36], [0.20, 0.22], [0.08, 0.28], [0.06, 0.48]], sectors: [0.40, 0.72], pit: [0.015, 0.16] },
+  { name: 'Serpentine', pts: [[0.06, 0.86], [0.36, 0.86], [0.40, 0.70], [0.26, 0.62], [0.30, 0.46], [0.50, 0.44], [0.56, 0.30], [0.42, 0.16], [0.60, 0.06], [0.82, 0.12], [0.92, 0.30], [0.80, 0.44], [0.92, 0.62], [0.80, 0.80], [0.60, 0.92], [0.30, 0.94], [0.10, 0.94]], sectors: [0.30, 0.66], pit: [0.015, 0.13] },
 ];
+
+/**
+ * A circuit an admin imported (the Paddock-Manager export, or a hand-written one):
+ *   { name, points: [[x, y], …] in 0..1 (≥ 6, a closed loop), sectors?: [a, b], pit?: [in, span] }
+ * Anything malformed is refused (null) rather than drawn wrong: the renderer never trusts a
+ * setting it did not write. `pts`/`points` are both accepted.
+ */
+export function normalizeCircuit(c) {
+  if (!c || typeof c !== 'object') return null;
+  const src = Array.isArray(c.points) ? c.points : Array.isArray(c.pts) ? c.pts : null;
+  if (!src || src.length < 6 || src.length > 64) return null;
+  const pts = [];
+  for (const p of src) {
+    if (!Array.isArray(p) || p.length < 2) return null;
+    const x = Number(p[0]), y = Number(p[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    pts.push([Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))]);
+  }
+  const sec = Array.isArray(c.sectors) && c.sectors.length === 2 ? c.sectors.map(Number) : [0.34, 0.66];
+  const sectors = sec.every((v) => Number.isFinite(v)) && sec[0] > 0.05 && sec[1] > sec[0] + 0.05 && sec[1] < 0.95 ? sec : [0.34, 0.66];
+  const pt = Array.isArray(c.pit) && c.pit.length === 2 ? c.pit.map(Number) : [0.015, 0.13];
+  const pit = pt.every((v) => Number.isFinite(v)) && pt[0] >= 0 && pt[1] > pt[0] && pt[1] < 0.3 ? pt : [0.015, 0.13];
+  const name = String(c.name || 'Custom').replace(/[^\w \-'.]/g, '').slice(0, 24) || 'Custom';
+  return { name, pts, sectors, pit, id: String(c.id || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 32) };
+}
+
+/**
+ * A circuit nobody drew: 10–14 control points around a loop with a jittered radius and a
+ * slow wobble, so it reads as a track (straights and a few real corners) rather than a
+ * blob. Deterministic in the seed — the same race renders the same circuit on every mirror.
+ */
+export function generateCircuit(seed) {
+  const r = rng(seed);
+  const n = 10 + Math.floor(r() * 5);
+  const wob = 1 + Math.floor(r() * 3);
+  const ph = r() * 6.28;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const rad = 0.34 + 0.10 * Math.sin(a * wob + ph) + (r() - 0.5) * 0.10;
+    pts.push([0.5 + Math.cos(a) * rad * 1.15, 0.52 + Math.sin(a) * rad * 0.92]);
+  }
+  // The start/finish straight is the segment from point 0 to point 1: pull point 1 level
+  // with point 0 so the pit lane sits on a straight, as the built-ins have it.
+  pts[1][1] = pts[0][1];
+  const names = ['Nova', 'Delta', 'Orbit', 'Vector', 'Prism', 'Zephyr', 'Cascade', 'Meridian'];
+  return { name: `${names[Math.floor(r() * names.length)]} ${1 + Math.floor(r() * 9)}`, pts: pts.map(([x, y]) => [Math.min(0.97, Math.max(0.03, x)), Math.min(0.96, Math.max(0.04, y))]), sectors: [0.34, 0.67], pit: [0.015, 0.13], id: 'random' };
+}
+
+/**
+ * Which circuit a race runs on, from the admin's settings:
+ *   circuit: 'random'   → a fresh generated one per race (the seed's)
+ *            'builtin'  → one of the built-in tracks, by the seed
+ *            '<id>'     → that built-in (by name) or imported circuit (by id), fixed
+ *   circuits: the imported list (normalizeCircuit each)
+ */
+export function pickCircuit(settings = {}, seed = 1) {
+  const custom = (Array.isArray(settings.circuits) ? settings.circuits : []).map(normalizeCircuit).filter(Boolean);
+  const choice = String(settings.circuit || 'builtin');
+  if (choice === 'random') return generateCircuit(seed);
+  const all = [...TRACKS.map((t) => ({ ...t, id: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') })), ...custom];
+  if (choice === 'builtin' || choice === 'any') { const r = rng(seed); return all[Math.floor(r() * all.length)]; }
+  return all.find((t) => t.id === choice || t.name === choice) || all[Math.abs(seed) % all.length];
+}
+export const BUILTIN_CIRCUITS = () => TRACKS.map((t) => ({ id: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: t.name }));
 
 /** Catmull-Rom through a closed set of points, sampled into N evenly spaced points. */
 function smoothLoop(pts, N = 480) {
@@ -67,7 +135,8 @@ function smoothLoop(pts, N = 480) {
 
 /** A track laid out in a pixel box: the dense loop, the pit lane, sectors, start line. */
 export function layoutTrack(index, box) {
-  const T = TRACKS[((index % TRACKS.length) + TRACKS.length) % TRACKS.length];
+  // A number picks a built-in; an object (from pickCircuit / normalizeCircuit) is used as is.
+  const T = typeof index === 'object' && index ? index : TRACKS[((index % TRACKS.length) + TRACKS.length) % TRACKS.length];
   const { x, y, w, h } = box;
   const loop = smoothLoop(T.pts).map(([px, py]) => [x + px * w, y + py * h]);
   const N = loop.length;
@@ -101,22 +170,25 @@ const clamp01 = (t) => Math.min(1, Math.max(0, t));
  * Run the race. Returns per-frame progress (in laps, 0..LAPS) for each car, plus the events
  * and per-frame state the drawer needs. `winner` is the car that must cross the line first.
  */
-export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pitSpan = 0.13 }) {
+export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pitSpan = 0.13, laps = LAPS, equalStats = true, incidents = true, pitStops = true, colours = CAR_COLOURS }) {
   const r = rng(seed);
+  const LAPS_ = Math.min(12, Math.max(1, Math.floor(laps) || LAPS));
   const w = Math.min(cars - 1, Math.max(0, winner | 0));
   const FIN = Math.round(frames * 0.86);          // the winner crosses the line here
   const BLEND = Math.round(frames * 0.5);         // the finish starts bending here
-  const basePace = LAPS / FIN;                    // laps per frame for a clean car
-  const pace = Array.from({ length: cars }, () => basePace * (1 + (r() - 0.5) * 0.08));
+  const basePace = LAPS_ / FIN;                   // laps per frame for a clean car
+  // Equal cars: every seat has the same machine and the race is the driver's (the draw's).
+  // Otherwise each car gets a fixed ±4 % — the "realistic" Paddock-Manager grid.
+  const pace = Array.from({ length: cars }, () => basePace * (equalStats ? 1 : 1 + (r() - 0.5) * 0.08));
   pace[w] *= 1.015; // a nudge, not a fix: the bend below does the rest
   // Pit plans: about half the field stops once, at the start of lap 2 or 3 (crossing the
   // line into the pit lane, never on the last lap's end). The stop is the pit stretch of
   // that lap: from pitIn to pitIn + pitSpan, along the start/finish straight.
-  const pitLap = Array.from({ length: cars }, () => (r() < 0.55 ? 1 + Math.floor(r() * (LAPS - 1)) : -1));
+  const pitLap = Array.from({ length: cars }, () => (pitStops && LAPS_ > 1 && r() < 0.55 ? 1 + Math.floor(r() * (LAPS_ - 1)) : -1));
   const pitWindow = (c) => (pitLap[c] < 0 ? null : [pitLap[c] + pitIn, pitLap[c] + pitIn + pitSpan]);
   // One incident in roughly half the races, never the winner.
-  const crashCar = r() < 0.5 ? [...Array(cars).keys()].filter((c) => c !== w)[Math.floor(r() * (cars - 1))] : -1;
-  const crashAt = crashCar >= 0 ? 0.6 + r() * (LAPS - 1.4) : Infinity;   // in laps
+  const crashCar = incidents && r() < 0.5 ? [...Array(cars).keys()].filter((c) => c !== w)[Math.floor(r() * (cars - 1))] : -1;
+  const crashAt = crashCar >= 0 ? Math.min(LAPS_ - 0.3, 0.6 + r() * Math.max(0.1, LAPS_ - 1.4)) : Infinity;   // in laps
 
   const P = Array.from({ length: cars }, () => new Float64Array(frames));
   const state = new Array(frames).fill(null).map(() => ({ sc: false, leader: 0 }));
@@ -158,9 +230,9 @@ export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pi
     state[f] = { sc, leader };
   }
   // ── the bend: the drawn winner crosses first at FIN; the rest end short, in their own order ─
-  const wScale = LAPS / Math.max(1e-6, P[w][FIN]);
+  const wScale = LAPS_ / Math.max(1e-6, P[w][FIN]);
   const others = [...Array(cars).keys()].filter((c) => c !== w && c !== crashCar).sort((a, b) => P[b][FIN] - P[a][FIN]);
-  const cap = new Map(others.map((c, i) => [c, LAPS - 0.04 - i * 0.03]));
+  const cap = new Map(others.map((c, i) => [c, LAPS_ - 0.04 - i * 0.03]));
   for (let c = 0; c < cars; c++) {
     if (c === crashCar) continue;
     const scale = c === w ? wScale : Math.min(1.08, Math.max(0.9, cap.get(c) / Math.max(1e-6, P[c][FIN])));
@@ -169,7 +241,7 @@ export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pi
       P[c][f] *= 1 + (scale - 1) * (k * k * (3 - 2 * k));
     }
     for (let f = 1; f < frames; f++) P[c][f] = Math.max(P[c][f - 1], P[c][f]);
-    if (c === w) { for (let f = FIN; f < frames; f++) P[c][f] = Math.max(LAPS, P[c][f]); }
+    if (c === w) { for (let f = FIN; f < frames; f++) P[c][f] = Math.max(LAPS_, P[c][f]); }
     else {
       // Short of the line until the winner has crossed, then they roll on and finish too.
       for (let f = 0; f <= FIN; f++) P[c][f] = Math.min(P[c][f], cap.get(c));
@@ -181,11 +253,12 @@ export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pi
   let prevLead = order(0)[0];
   for (let f = 1; f < frames; f++) {
     const o = order(f);
-    if (o[0] !== prevLead && !state[f].sc && P[o[0]][f] > 0.2 && P[o[0]][f] < LAPS) events.push({ f, kind: 'overtake', car: o[0], on: prevLead });
+    if (o[0] !== prevLead && !state[f].sc && P[o[0]][f] > 0.2 && P[o[0]][f] < LAPS_) events.push({ f, kind: 'overtake', car: o[0], on: prevLead });
     prevLead = o[0];
   }
   const finalOrder = order(frames - 1);
-  return { P, events: events.sort((a, b) => a.f - b.f), state, winner: w, crashCar, crashFrame, pitLap, pitWindow, finish: FIN, finalOrder };
+  const cols = Array.isArray(colours) && colours.length >= cars ? colours.map((c, i) => (/^#[0-9a-f]{6}$/i.test(String(c)) ? String(c) : CAR_COLOURS[i])) : CAR_COLOURS;
+  return { P, events: events.sort((a, b) => a.f - b.f), state, winner: w, crashCar, crashFrame, pitLap, pitWindow, finish: FIN, finalOrder, laps: LAPS_, colours: cols };
 }
 
 // ── drawing ────────────────────────────────────────────────────────────────────────────
@@ -229,6 +302,8 @@ export function carPoint(T, sim, c, f) {
 /** One frame of the race over an already-drawn track. `t` is 0..1 through the clip. */
 export function drawRaceFrame(x, T, sim, f, { pick = -1, frames, W }) {
   const cars = sim.P.length;
+  const LAPS = sim.laps || 3;
+  const CAR_COLOURS = sim.colours || ['#ef4444', '#3b82f6', '#22c55e', '#facc15', '#a855f7', '#f97316'];
   const order = [...Array(cars).keys()].sort((a, b) => sim.P[b][f] - sim.P[a][f]);
   // Cars, back-markers first so the leader draws on top.
   for (const c of [...order].reverse()) {

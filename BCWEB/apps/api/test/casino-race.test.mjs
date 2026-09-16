@@ -51,3 +51,42 @@ describe('simulateRace', () => {
     }
   });
 });
+
+// ── the admin's circuits: built-in, generated, imported; laps and equal cars as parameters ──
+describe('circuits and race settings', async () => {
+  const { pickCircuit, normalizeCircuit, generateCircuit, BUILTIN_CIRCUITS } = await import('../src/lib/casino-race.mjs');
+  test('a malformed import is refused, a good one normalised', () => {
+    assert.equal(normalizeCircuit(null), null);
+    assert.equal(normalizeCircuit({ name: 'x', points: [[0, 0], [1, 1]] }), null);
+    assert.equal(normalizeCircuit({ points: [[0, 0], [1, 1], ['a', 0], [0, 1], [0.5, 0.5], [0.2, 0.2]] }), null);
+    const c = normalizeCircuit({ name: 'Spa <b>', points: [[0.1, 0.6], [0.4, 0.6], [0.5, 0.3], [0.8, 0.2], [0.9, 0.5], [1.4, 0.8]], sectors: [0.9, 0.2], pit: [0.5, 0.1] });
+    assert.equal(c.name, 'Spa b');
+    assert.deepEqual(c.pts[5], [1, 0.8]);
+    assert.deepEqual(c.sectors, [0.34, 0.66]); // nonsense sectors → the default
+    assert.deepEqual(c.pit, [0.015, 0.13]);
+  });
+  test('the choice: random is seeded, builtin is one of the six, an id is fixed', () => {
+    const a = pickCircuit({ circuit: 'random' }, 42), b = pickCircuit({ circuit: 'random' }, 42), c = pickCircuit({ circuit: 'random' }, 43);
+    assert.deepEqual(a.pts, b.pts); assert.notDeepEqual(a.pts, c.pts);
+    assert.ok(a.pts.length >= 10 && a.pts.every(([x, y]) => x > 0 && x < 1 && y > 0 && y < 1));
+    assert.equal(a.pts[1][1], a.pts[0][1]); // a straight from point 0 to 1
+    assert.equal(BUILTIN_CIRCUITS().length, 6);
+    assert.ok(BUILTIN_CIRCUITS().some((t) => t.id === pickCircuit({ circuit: 'builtin' }, 7).id));
+    assert.equal(pickCircuit({ circuit: 'monza-nord' }, 1).name, 'Monza Nord');
+    const imported = pickCircuit({ circuit: 'my-track', circuits: [{ id: 'my-track', name: 'Mine', points: [[0.1, 0.6], [0.4, 0.6], [0.5, 0.3], [0.8, 0.2], [0.9, 0.5], [0.6, 0.8]] }] }, 1);
+    assert.equal(imported.name, 'Mine');
+    assert.equal(pickCircuit({ circuit: 'nope' }, 1).name.length > 0, true); // unknown id → still a circuit
+  });
+  test('laps and equal cars are honoured; every generated circuit lays out', () => {
+    for (const laps of [1, 5, 12]) {
+      const sim = simulateRace({ winner: 2, seed: 9, frames: 96, laps });
+      assert.equal(sim.laps, laps);
+      assert.ok(sim.P[2][sim.finish] >= laps);
+      for (let c = 0; c < 6; c++) if (c !== 2) assert.ok(sim.P[c][sim.finish] < laps);
+    }
+    const eq = simulateRace({ winner: 0, seed: 3, frames: 96, equalStats: true, incidents: false, pitStops: false });
+    assert.equal(eq.crashCar, -1); assert.ok(eq.pitLap.every((l) => l < 0));
+    assert.equal(simulateRace({ winner: 0, seed: 3, frames: 96, colours: ['#111111', 'bad', '#222222', '#333333', '#444444', '#555555'] }).colours[1], '#3b82f6');
+    for (let s = 1; s < 30; s++) { const T = layoutTrack(generateCircuit(s), { x: 0, y: 0, w: 400, h: 200 }); assert.equal(T.loop.length, 480); assert.ok(T.pit.length === 19); }
+  });
+});
