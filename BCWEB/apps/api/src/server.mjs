@@ -76,6 +76,7 @@ import feedbackRoutes from './routes/feedback.mjs';
 import rightsRoutes from './routes/rights.mjs';
 import economyAdminRoutes from './routes/economy-admin.mjs';
 import teamRoutes from './routes/teams.mjs';
+import taskRoutes from './routes/tasks.mjs';
 import threadRoutes from './routes/threads.mjs';
 import botEmojiRoutes from './routes/bot-emoji.mjs';
 import mediaFlagRoutes from './routes/media-flags.mjs';
@@ -419,6 +420,7 @@ await app.register(reportRoutes); // user reports + support threads + admin mode
 await app.register(feedbackRoutes); // feedback & crash centre (per-project inbox for BMM and friends)
 await app.register(economyAdminRoutes); // economy statistics + seasons (manage_economy)
 await app.register(teamRoutes); // teams that manage repos / catalogues / pools together
+await app.register(taskRoutes); // the staff task board: staff teams, a chief each, dispatch
 await app.register(threadRoutes); // contact threads: reaching the user or team behind a repo, a catalogue, a profile
 await app.register(botEmojiRoutes); // the bot fetches its icon set and uploads it as application emojis
 await app.register(mediaFlagRoutes); // perceptual-hash flags: pictures that look like another account's

@@ -4461,3 +4461,196 @@ model TeamInvite {
 
   @@index([teamId])
 }
+
+// ── Staff task board: teams of admins/moderators, and the work handed to them ───────────
+//
+// WHY THIS IS NOT THE `Team` MODEL ABOVE
+//
+// `Team` is customer-facing: an account owns it, it carries a contact address, it holds
+// repos, catalogues and hosting pools, an account may own only three of them and buys more
+// with `User.extraTeamSlots`. Hanging staff dispatch on it would mean every paying
+// customer's team appears in the admin dispatcher, and that "chief" and "owner" — one a
+// work role, the other a billing role — become the same column. They are different things
+// that happen to share a word, so they are different tables.
+//
+// WHY THE USER IDS ARE BARE STRINGS
+//
+// `chiefId`, `assigneeId`, `creatorId`, `actorId` and `StaffTeamMember.userId` are ids
+// without a relation, the same shape `ExpiringFile.ownerId` and `MediaFlag.resolvedById`
+// already use. A Prisma relation needs a back-reference field on `User`, and `User` is the
+// most-edited model in this schema; five more relation fields on it is five more merge
+// conflicts for one screen. The cost is that a deleted account leaves rows pointing at
+// nothing: the API resolves the ids it needs in one `findMany` and renders a missing one as
+// an unknown account rather than failing, and closed tasks KEEP the id of whoever did the
+// work, because history that rewrites itself when somebody leaves is not history.
+//
+// Relations BETWEEN these four models are real, with the cascades spelled out: dissolving a
+// team must not delete its tasks (they go back to the unassigned pool, hence SetNull), while
+// deleting a task must take its own history with it.
+model StaffTeam {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  description String    @default("")
+  /// Exactly one chief, and it is a column rather than a role on the membership row so the
+  /// "exactly one" is a fact the database holds rather than an invariant three routes have
+  /// to remember. The chief is also always a member row; the API writes both together.
+  chiefId     String
+  createdById String?
+  /// Archived rather than deleted keeps a finished team's task history readable.
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members StaffTeamMember[]
+  tasks   AdminTask[]
+
+  @@index([chiefId])
+}
+
+model StaffTeamMember {
+  team      StaffTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamId    String
+  userId    String
+  addedById String?
+  createdAt DateTime  @default(now())
+
+  @@id([teamId, userId])
+  @@index([userId])
+}
+
+model AdminTask {
+  id         String     @id @default(cuid())
+  title      String
+  /// Markdown, rendered by the site's own renderer (ui/md.jsx → @bettercommunity/bmd).
+  body       String     @default("")
+  /// todo | in_progress | blocked | done | cancelled — see TASK_STATES in lib/tasks.mjs.
+  state      String     @default("todo")
+  /// low | normal | high | urgent
+  priority   String     @default("normal")
+  /// Null = the task belongs to no team; only an admin can dispatch it.
+  team       StaffTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  teamId     String?
+  /// Null = in the team's pool, waiting for the chief to hand it to somebody.
+  assigneeId String?
+  creatorId  String
+  dueAt      DateTime?
+  closedAt   DateTime?
+  closedById String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  events AdminTaskEvent[]
+
+  @@index([state, priority, dueAt])
+  @@index([assigneeId, state])
+  @@index([teamId, state])
+}
+
+/// What happened to a task, append-only. Nothing here is ever updated or deleted except
+/// with the task itself: the point of the row is that it says what it said at the time.
+model AdminTaskEvent {
+  id        String    @id @default(cuid())
+  task      AdminTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  actorId   String?
+  /// created | assigned | released | state | priority | due | team | note | reopened
+  kind      String
+  fromValue String?
+  toValue   String?
+  note      String    @default("")
+  createdAt DateTime  @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// ── The contact inbox: what staff DID with a contact message ─────────────────────────
+//
+// `ContactMessage` is what the sender wrote, and it is never rewritten. Everything a staff
+// member adds afterwards lives here, in two sidecar models rather than in new columns, for
+// one reason: the message row is the evidence. A data-export request and a rights notice
+// both carry a legal clock, and "when did it arrive" must not share a row with "who is on
+// it now", which changes several times a day.
+//
+// The STATE is the exception and stays on the message, in the `status` column that already
+// existed, because it is the one thing every list query filters and sorts by. Its vocabulary
+// is now five values instead of two:
+//
+//   new       nobody has looked at it. The default a message is created with.
+//   open      a human has taken it. Legacy rows say `read`, which reads as `open`.
+//   waiting   answered, the ball is with the sender. Not on us, not finished.
+//   resolved  done. Out of the inbox, still countable.
+//   spam      junk. Out of every default view, kept so the sender stays blockable.
+//
+// Neither model carries a Prisma relation to User or to ContactMessage. `assigneeId` is an
+// id we look up when we need a name, exactly like AdminTask.assigneeId above: a relation
+// would mean adding a back-reference field to User, and this file is appended to by several
+// people at once.
+model ContactTicket {
+  id String @id @default(cuid())
+  /// The ContactMessage this is about. One ticket per message, created the first time
+  /// somebody acts on it — an untouched message has no row, which is what `new` means.
+  messageId    String    @unique
+  assigneeId   String?
+  /// low | normal | high. Orthogonal to the kind: a billing question can be urgent and a
+  /// security report can be a duplicate somebody already fixed.
+  priority     String    @default("normal")
+  /// When the first REPLY went out, not the first time it was opened. It is the number the
+  /// sender experienced, so it is the only one worth keeping.
+  firstReplyAt DateTime?
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([assigneeId])
+  @@index([priority])
+}
+
+/// One thing a staff member wrote about a message: an answer that was e-mailed to the
+/// sender, or a note nobody outside the dashboard ever sees.
+///
+/// `kind` is the whole security surface of this model. A `note` never leaves; a `reply` is
+/// sent as mail. Neither one ever quotes the original body — see composeReplyMail in
+/// misc.mjs for why that matters for a security report.
+model ContactReply {
+  id        String   @id @default(cuid())
+  messageId String
+  authorId  String?
+  /// The author's display name AT THE TIME. Denormalised on purpose: a reply that survives
+  /// the account that wrote it should still say who wrote it.
+  authorName String  @default("")
+  /// reply | note
+  kind      String   @default("reply")
+  /// Markdown, the same dialect the rest of the site writes. Rendered with B.MD in the
+  /// dashboard and with mdToEmailHtml on its way out.
+  body      String
+  /// Whether the mail actually went. False for a note, and false for a reply written while
+  /// e-mail is switched off for this deployment.
+  delivered Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([messageId, createdAt])
+}
+
+/// Whether a member accepts conversations other members open with them.
+///
+/// Its own table rather than a column on User, for the same append-only reason as above, and
+/// because it is read on exactly one path (opening a `user`-kind ContactThread) rather than
+/// on every /me.
+///
+/// The precedence is the point, and it is written once, in threads.mjs `directMessaging()`:
+/// the site switch is a CEILING and this is a FLOOR. A member can refuse conversations the
+/// site allows; a member cannot grant conversations the site has switched off. A row only
+/// ever subtracts.
+model UserMessagingPref {
+  /// The member. No relation field: see the note above ContactTicket.
+  userId        String   @id
+  /// false = nobody may open a new conversation with them, and the ones already open are
+  /// frozen rather than deleted. Default true, so an account that never visits the setting
+  /// behaves exactly as it did before this existed.
+  acceptsDirect Boolean  @default(true)
+  updatedAt     DateTime @updatedAt
+
+  @@index([acceptsDirect])
+}
