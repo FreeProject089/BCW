@@ -66,7 +66,7 @@ import { AdminSanctions, ContentSanctionForm, Evidence } from './admin-sanctions
 import AdminStatusPage from './admin-statuspage.jsx';
 import { AdminPolls } from './admin-polls.jsx';
 import { RaceConfig } from './admin-race.jsx';
-import { GUIDE } from './admin-guide.jsx';
+import { GUIDE, guideEntryForTab } from './admin-guide.jsx';
 import { ADMIN_SCREENS_REF } from '../lib/admin-screens-ref.js';
 import { AdminReactions } from './admin-reactions.jsx';
 import AdminGuide from './admin-guide.jsx';
@@ -354,6 +354,13 @@ export function Admin() {
     <SideDash icon={ShieldCheck} title={t('adm.title', 'Admin')} subtitle={t('adm.subtitle', 'Moderation, catalogs, hosting, analytics and settings.')} tabs={tabs}
       searchKeywords={ADMIN_SEARCH_KEYWORDS} remoteSearch={(q) => api.get(`/admin/search?q=${encodeURIComponent(q)}`)}>
       {(s) => (<>
+        {/* The guide, from wherever you are.
+            It was a tab in the sidebar and nothing else: two "Learn more" links existed on
+            the whole site, both pointing at hosting settings, so the manual was something you
+            had to remember to go and read. One line here puts it on every screen, pointing at
+            the entry that documents THIS one, and guideEntryForTab is checked against the tab
+            list by check-guide-coverage.mjs so it cannot quietly point nowhere. */}
+        <GuideLink tab={s} />
         {s === 'homepage' && <><SceneEditor /><ShowcaseEditor /><HomePageEditor /></>}
         {s === 'languages' && <><LanguagesCard /><BotI18nCard /></>}
         {s === 'moderation' && <div>
@@ -18607,6 +18614,29 @@ function AnnouncementSection({ value, onChange }) {
 // the complete message, and the exact + relative time). The stored alert is just
 // { kind, message, createdAt }, so "detail" = the human-readable expansion of that.
 // i18n keys per alert kind — resolved in AlertRow (a module const can't call the hook).
+/**
+ * "Where is this written down?", answered on the screen you are on.
+ *
+ * Deliberately quiet: a line of text at the top, not a card and not a banner. It is there for
+ * the visit where somebody does not know what a control does, and it must not cost anything
+ * on the hundred visits where they do. It disappears on the guide itself, and on a screen the
+ * guide has decided not to cover.
+ */
+function GuideLink({ tab }) {
+  const { t } = useI18n();
+  const entry = tab === 'guide' ? null : guideEntryForTab(tab);
+  if (!entry) return null;
+  return (
+    <div className="mb-3 -mt-1">
+      <Link to={`?s=guide&g=${entry}`} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--muted)] hover:text-[var(--accent-ink)]">
+        <BookOpen size={12} />
+        {t('adm.guidelink', 'How this screen works, in the guide')}
+        <ChevronRight size={11} />
+      </Link>
+    </div>
+  );
+}
+
 const ALERT_KIND = {
   cpu: { l: 'sp.al.cpu', lf: 'High CPU', d: 'sp.al.cpu.d', df: 'CPU usage crossed the alert threshold (>90%).' },
   mem: { l: 'sp.al.mem', lf: 'High memory', d: 'sp.al.mem.d', df: 'Memory usage crossed the alert threshold (>90%).' },

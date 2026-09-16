@@ -15,7 +15,7 @@ import {
   RotateCcw,
   BookOpen, Search, BellIcon, Inbox, Users, Shield, Settings2, Boxes, Newspaper, BadgeCheck,
   Server, CreditCard, Rocket, Megaphone, Sparkles, Wand2, KeyRound, MessageSquare, Cpu,
-  TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive,
+  TrendingUp, Sliders, Navigation, Palette, Lock, History, Scale, Gavel, HardDrive, Languages,
   Pencil, Plus, Trash2, Save, ChevronUp, ChevronDown, X, FileText, ChevronsDownUp, ChevronsUpDown, Info, AlertTriangle,
 } from 'lucide-react';
 import { Bug as BugIcon } from 'lucide-react';
@@ -254,6 +254,14 @@ export const GUIDE = [
           { en: 'The mobile bottom bar can be icon-only / text-only / both, and can hold a custom set of up to five buttons instead of auto-deriving from the nav.', fr: 'La barre du bas mobile peut être icônes seules / texte seul / les deux, et peut contenir un jeu personnalisé jusqu’à cinq boutons au lieu de dériver automatiquement de la nav.' },
           { en: 'The i18n editor edits every string live (FR, EN and any added language) and can add languages — including right-to-left ones.', fr: 'L’éditeur i18n édite chaque texte en direct (FR, EN et toute langue ajoutée) et peut ajouter des langues — y compris de droite à gauche.' },
         ]),
+      G('languages', Languages, 'Languages', 'Langues',
+        'Every string on the site, editable live in French, English and any language you add. A language is a layer over the shipped dictionary: you translate what matters and the rest falls back to English rather than showing a key. Right-to-left languages carry their direction, which the page applies to its whole layout.',
+        'Chaque texte du site, modifiable en direct en français, en anglais et dans toute langue ajoutée. Une langue est une couche par-dessus le dictionnaire livré : tu traduis ce qui compte et le reste retombe sur l’anglais plutôt que d’afficher une clé. Les langues qui s’écrivent de droite à gauche portent leur sens, que la page applique à toute sa mise en page.',
+        [
+          { en: 'It is the one screen in this group a TRANSLATOR can reach without being an admin: the translate_site capability exists for exactly this.', fr: 'C’est le seul écran de ce groupe qu’un TRADUCTEUR peut atteindre sans être admin : la capacité translate_site existe pour ça.' },
+          { en: 'The Discord bot has its own dictionary beside this one, in the same screen, because the bot speaks in a channel rather than on a page.', fr: 'Le bot Discord a son propre dictionnaire à côté, dans le même écran, parce que le bot parle dans un salon et non sur une page.' },
+          { en: 'A string edited here beats the shipped one for everybody, at once. There is no publish step, so read it before you save it.', fr: 'Un texte modifié ici l’emporte sur celui livré, pour tout le monde, tout de suite. Il n’y a pas d’étape de publication : relis avant d’enregistrer.' },
+        ]),
       G('sitetheme', Palette, 'Site theme', 'Thème du site',
         'The accent every visitor sees, in light and dark. Presets, the accent gradient, per-mode page colours, a full token catalogue, glow-geometry editor, a live preview, and export/import of a whole look. SUPERADMIN only.',
         'L’accent que chaque visiteur voit, en clair et sombre. Presets, dégradé d’accent, couleurs de page par mode, un catalogue de tokens complet, éditeur de géométrie des halos, un aperçu en direct, et export/import d’un thème entier. SUPERADMIN uniquement.',
@@ -264,6 +272,54 @@ export const GUIDE = [
     ],
   },
 ];
+
+/**
+ * Which admin screens each entry documents.
+ *
+ * The guide was written as prose about the dashboard and then left to drift: a reader on a
+ * screen had no way to reach the page about it (two "Learn more" links existed on the whole
+ * site, both pointing at hosting settings), and nothing noticed when a screen was added and
+ * the guide was not. Naming the tabs here fixes both ends. `guideEntryForTab` is what every
+ * admin screen's Guide link resolves through, and check-guide-coverage.mjs fails when a tab
+ * has no entry or an entry names a tab that no longer exists.
+ *
+ * A guide entry covers a GROUP of screens on purpose: "Moderation" is one thing to read, and
+ * splitting it into seven pages, one per sub-tab, would be a worse manual.
+ */
+export const GUIDE_TABS = {
+  needs: ['needs'],
+  moderation: ['moderation', 'reports', 'rights', 'lookalikes', 'messages', 'legal', 'sanctions'],
+  feedback: ['feedback'],
+  users: ['users', 'planusers'],
+  access: ['access'],
+  security: ['security', 'history'],
+  projects: ['projects', 'showcase', 'marketplace'],
+  catalogs: ['catalogs', 'commcatalogs', 'assets'],
+  editorial: ['announcements', 'faq', 'newsletter', 'mail', 'reviews', 'polls', 'reactions'],
+  badges: ['badges'],
+  repos: ['repos', 'pools', 'transfers'],
+  plans: ['plans', 'payments', 'hosting'],
+  promotions: ['promotions'],
+  events: ['events'],
+  myo: ['myo'],
+  kofi: ['kofi', 'charity'],
+  sso: ['sso'],
+  api: ['api'],
+  bot: ['bot'],
+  serverperf: ['serverperf', 'storage', 'statuspage', 'serveradv'],
+  analytics: ['analytics', 'goals', 'errors'],
+  settings: ['settings'],
+  navui: ['navui', 'footer', 'homepage'],
+  languages: ['languages'],
+  sitetheme: ['sitetheme'],
+  // `hostingsettings` and `economy` document a group of SETTINGS rather than a tab of their
+  // own, which is why they carry no screen here and are reached by the pointers beside those
+  // settings instead.
+};
+
+const TAB_TO_ENTRY = new Map(Object.entries(GUIDE_TABS).flatMap(([id, tabs]) => tabs.map((tab) => [tab, id])));
+/** The guide entry that documents an admin tab, or null when there deliberately is none. */
+export const guideEntryForTab = (tab) => TAB_TO_ENTRY.get(tab) || null;
 
 // Per-screen depth, beyond the summary + bullet points: a numbered "how to" and the rules and
 // traps that bite. Keyed by the entry id above. This is where the explanations that used to
