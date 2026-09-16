@@ -1581,16 +1581,29 @@ export default async function miscRoutes(app) {
       const cur = docs[r.doc].updatedAt;
       if (!cur || r.updatedAt > cur) docs[r.doc].updatedAt = r.updatedAt;
     }
+    // An optional document with no PUBLISHED page row is not on: its sections never leave
+    // the server either. Without this the endpoint would still hand out the text of a
+    // document the site has not adopted, and the only thing hiding it would be the menu.
+    for (const k of OPTIONAL_DOCS) if (!pages.some((x) => x.key === k)) delete docs[k];
     // `pages` is the MENU and `docs` is the TEXT. They are separate because a built-in page
     // may have no rows at all — its text comes from the web bundle — and a page list built
     // from `docs` would drop exactly those, which is every page on a fresh install.
-    return { docs, pages, categories };
+    // `optional` says which keys follow that rule, so the client can hide a bundled text it
+    // holds a copy of rather than reading the absence of a row as "the API is old".
+    return { docs, pages, categories, optional: OPTIONAL_DOCS };
   }));
 
   // The five that ship with the app. Not the list of what exists — the list of what has a
   // compiled-in fallback in the web bundle, which is a different and much smaller claim. It
   // is what `revert` may hand back to, and what may not be deleted.
   const BUILTIN_DOCS = ['privacy', 'terms', 'cookies', 'about', 'refunds', 'submissions', 'dpa'];
+  // OPTIONAL documents: shipped in the bundle, but OFF until somebody publishes them. The
+  // Data Processing Addendum is a contract a deployment chooses to offer — it is not true of
+  // every site that runs this code, and a policy page that claims a contract nobody signed is
+  // worse than no page. The others are not optional: a service cannot decide to have no
+  // privacy policy. "Published" is the whole switch — one rule, the same one the documents
+  // manager already toggles — and it governs the MENU and the TEXT alike (see below).
+  const OPTIONAL_DOCS = ['dpa'];
   const DOC_LABEL = {
     privacy: 'Privacy Policy', terms: 'Terms of Service', cookies: 'Cookie Policy',
     about: 'About', refunds: 'Payments & Refunds', submissions: 'Submission Terms', dpa: 'Data Processing Addendum',
@@ -1666,7 +1679,15 @@ export default async function miscRoutes(app) {
       orderBy: { publishedAt: 'desc' },
       select: { id: true, doc: true, version: true, note: true, publishedAt: true },
     });
-    return { pending: versions };
+    // A document that was switched off stops asking for agreement. Otherwise turning the
+    // addendum off would leave every account with a banner demanding they accept a page the
+    // site no longer shows, and no way to read what they were agreeing to.
+    const offDocs = new Set();
+    for (const k of OPTIONAL_DOCS) {
+      const row = await p.legalPage.findUnique({ where: { key: k }, select: { published: true } }).catch(() => null);
+      if (!row?.published) offDocs.add(k);
+    }
+    return { pending: versions.filter((v) => !offDocs.has(v.doc)) };
   });
 
   app.post('/me/legal-accept', { preHandler: requireRole() }, async (req) => {
@@ -1693,7 +1714,7 @@ export default async function miscRoutes(app) {
       p.legalPage.findMany({ orderBy: [{ order: 'asc' }, { label: 'asc' }] }),
       p.legalCategory.findMany({ orderBy: [{ order: 'asc' }, { label: 'asc' }] }),
     ]);
-    return { sections, docs: pages.map((x) => x.key), pages, categories, builtIn: BUILTIN_DOCS };
+    return { sections, docs: pages.map((x) => x.key), pages, categories, builtIn: BUILTIN_DOCS, optional: OPTIONAL_DOCS };
   });
 
   // Import a document's built-in defaults. The client posts them, because the defaults live

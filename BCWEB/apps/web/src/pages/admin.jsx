@@ -10184,6 +10184,40 @@ function AdminLegal() {
           <Sliders size={13} /> {manage ? t('al.mng.hide', 'Done') : t('al.mng', 'Documents & headings')}
         </Button>
       </div>
+      {/* Optional documents: shipped with the app, offered only if this deployment says so.
+          The switch is the page's `published` flag — the same one the documents manager
+          toggles — so there is one answer to "is the addendum part of our terms", and it is
+          the answer the site, the API and the acceptance banner all read. */}
+      {(data?.optional || []).map((k) => {
+        const row = PAGES.find((x) => x.key === k) || null;
+        const on = !!row?.published;
+        const flip = async () => {
+          setBusy(true);
+          try {
+            // No row yet (a deployment that never ran the seed): creating the page IS
+            // turning it on, which is why this is one switch and not "create, then publish".
+            if (row) await api.put(`/admin/legal/pages/${row.id}`, { published: !on });
+            else await api.post('/admin/legal/pages', { key: k, label: 'Data Processing Addendum', labelFr: 'Accord de traitement des données', icon: 'file-signature' });
+            await reload();
+            toast.success(on ? t('al.opt.off.ok', 'Switched off — the page is gone from the site.') : t('al.opt.on.ok', 'Published — the page is live.'));
+          } catch { toast.error(t('common.failed', 'Failed.')); }
+          finally { setBusy(false); }
+        };
+        return (
+          <div key={k} className="rounded-xl border border-[var(--line)] p-3 mb-3 flex items-start gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">{t(`al.opt.${k}`, 'Data Processing Addendum')}</div>
+              <p className="text-[11.5px] text-[var(--muted)] leading-snug mt-0.5">
+                {t(`al.opt.${k}.d`, 'Optional. The Article 28 contract for the cases where a user is the controller and we merely process for them — hosted repos, a marketplace’s buyers, teams, the Discord bot’s logs. Off by default: offer it only if you mean to be bound by it. While it is off the page is not reachable, it is not listed, the privacy policy does not point at it, and nobody is asked to accept it.')}
+              </p>
+            </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer shrink-0">
+              <BotSwitch checked={on} onChange={flip} disabled={busy} />
+              <span>{on ? t('al.opt.on', 'Offered') : t('al.opt.off', 'Not offered')}</span>
+            </label>
+          </div>
+        );
+      })}
 
       {manage && <LegalPagesManager pages={PAGES} cats={CATS} builtIn={BUILTIN} sections={all} onChanged={reload} />}
 
