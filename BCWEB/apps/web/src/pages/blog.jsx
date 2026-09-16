@@ -28,7 +28,8 @@ import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
 import DiffMergeModal from '../editor/diff-merge-modal.jsx';
 import CommentsModal from '../editor/comments-modal.jsx';
-import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, Modal, SkeletonGrid, ColorInput } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Card, Badge, Input, Textarea, Select, Field, PageHeader, EmptyState, Spinner, SkeletonGrid, ColorInput, Explain } from '../ui/ui.jsx';
+import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
 import BmdEditor from '@bettercommunity/bmd-editor';
 
 // Pick the reader's language version of a post. EN is the base (always present);
@@ -282,6 +283,14 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('en'); // en (base) | fr (optional)
   const [collab, setCollab] = useState(''); // pending co-author email input
+  // Validation messages belong beside the field they are about. As toasts they appeared at
+  // the far corner of the screen, said "title and content are required" without saying which
+  // of the two language tabs was missing one, and were gone four seconds later.
+  const [errors, setErrors] = useState({});
+  // Bumped once this editor has finished seeding itself from the server, so the unsaved-work
+  // guard compares against the loaded post and not against the blank form it mounted with.
+  const [seed, setSeed] = useState(0);
+  const dirty = useDirtyForm(f, seed);
   // Concurrent-edit tracking: the version + body this editor loaded, so a colliding
   // save can 3-way merge against them (git-style). `merge` holds the banner state.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
@@ -311,10 +320,10 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         titleFr: fp.titleFr ?? s.titleFr, excerptFr: fp.excerptFr ?? s.excerptFr, bodyFr: fp.bodyFr ?? s.bodyFr,
         reactionsEnabled: !!fp.reactionsEnabled, reactionTypes: fp.reactionTypes || s.reactionTypes }));
         setNlSent(fp.newsletterSentAt || null);
-        baseRef.current = { version: fp.version ?? null, body: fp.body || '', bodyFr: fp.bodyFr || '' }; }).catch(() => {});
+        baseRef.current = { version: fp.version ?? null, body: fp.body || '', bodyFr: fp.bodyFr || '' }; setSeed((n) => n + 1); }).catch(() => setSeed((n) => n + 1));
       // co-author emails aren't on the public post — fetch them for the editor.
-      api.get(`/blog/${post.id}/collab`).then((r) => setF((s) => ({ ...s, coAuthorEmails: r.coAuthorEmails || [] }))).catch(() => {});
-    } else setF((s) => ({ ...s, scope: defaultScope }));
+      api.get(`/blog/${post.id}/collab`).then((r) => { setF((s) => ({ ...s, coAuthorEmails: r.coAuthorEmails || [] })); setSeed((n) => n + 1); }).catch(() => setSeed((n) => n + 1));
+    } else { setF((s) => ({ ...s, scope: defaultScope })); setSeed((n) => n + 1); }
     // eslint-disable-next-line
   }, [post]);
   const REACTION_PALETTE = REACTION_OPTIONS;
@@ -326,21 +335,35 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
   });
   const addCoAuthor = () => {
     const email = collab.trim().toLowerCase();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast.error(t('be.validemail', 'Enter a valid email.'));
+    // Under the box that holds the address, not in a toast at the other end of the screen.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { setErrors((e) => ({ ...e, collab: t('be.validemail', 'Enter a valid email.') })); return; }
     if (!f.coAuthorEmails.includes(email)) setF((s) => ({ ...s, coAuthorEmails: [...s.coAuthorEmails, email] }));
+    setErrors((e) => (e.collab ? { ...e, collab: null } : e));
     setCollab('');
   };
   const removeCoAuthor = (email) => setF((s) => ({ ...s, coAuthorEmails: s.coAuthorEmails.filter((e) => e !== email) }));
   const suffix = tab === 'fr' ? 'Fr' : '';
-  const g = (base) => f[base + suffix];
-  const setField = (base, val) => setF((s) => ({ ...s, [base + suffix]: val }));
-  const hasFr = !!(f.titleFr || f.bodyFr || f.excerptFr);
+  const g = (base) => f[base + suffix] || '';
+  // Writing into a field answers its own complaint.
+  const setField = (base, val) => { setF((s) => ({ ...s, [base + suffix]: val })); setErrors((e) => (e[base] ? { ...e, [base]: null } : e)); };
+
+  // A message about a field that exists twice has to say WHICH one, and be on screen when the
+  // reader looks for it — so it moves the language tab to the offending version and stays.
+  const validate = () => {
+    const e = {};
+    if (f.title.trim().length < 2) e.title = t('be.err.title', 'The English title is required, it is the base version every language falls back to.');
+    if (!f.body.trim()) e.body = t('be.err.body', 'The English content is required, it is the base version every language falls back to.');
+    else if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) e.body = t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
+    setErrors(e);
+    if (e.title || e.body) setTab(hasConflictMarkers(f.bodyFr) && !e.title && !hasConflictMarkers(f.body) ? 'fr' : 'en');
+    return !Object.keys(e).length;
+  };
 
   const pickCover = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*'; i.onchange = async () => { const file = i.files?.[0]; if (!file) return; try { toast.info(t('be.uploading', 'Uploading…')); const url = await uploadBlogImage(file); setF((s) => ({ ...s, cover: url })); } catch { toast.error(t('be.uploadfail', 'Upload failed.')); } }; i.click(); };
   const save = async () => {
-    if (f.title.length < 2 || !f.body) return toast.error(t('be.titlereq', 'English (base) title and content are required.'));
-    // Don't let unresolved merge markers get saved.
-    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
+    // Unresolved merge markers are caught here too — this is the one place a save can be
+    // refused, so it is the one place the reasons belong.
+    if (!validate()) return;
     const [scopeKind, scopeVal] = f.scope.split(':');
     const body = { projectKey: scopeKind === 'project' ? scopeVal : undefined, showcaseSlug: scopeKind === 'showcase' ? scopeVal : undefined,
       cover: f.cover || null, coverInBody: f.coverInBody, publish: f.publish,
@@ -425,142 +448,161 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
     try { await api.del(`/blog/${post.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
   };
   const fr = tab === 'fr';
+  // The FR tab answers one question: is there a translation behind it, and is it whole.
+  const frState = f.titleFr && f.bodyFr ? 'full' : (f.titleFr || f.bodyFr || f.excerptFr) ? 'partial' : 'empty';
+  const scopeName = (scopes?.projects || []).find((pr) => `project:${pr.key}` === f.scope)?.name
+    || (scopes?.showcases || []).find((s) => `showcase:${s.slug}` === f.scope)?.name
+    || f.scope.split(':')[1];
   return (
-    <Modal open onClose={onClose} title={post ? t('be.editpost', 'Edit post') : t('be.writepost', 'Write a post')} icon={PenSquare} width="max-w-3xl"
-      footer={<>
-        {post && <Button variant="ghost" className="!text-error me-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
-        {post && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
-        {post && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2"><input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} /> Published</label>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (post ? 'Save' : 'Publish')}</Button>
-      </>}>
-      {/* Concurrent-edit merge banner (git-style): shown after a colliding save. Clean
-          merges just need a re-Save; conflicts open the visual resolver (GitMerge). */}
-      {merge && (
-        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-warning-border bg-warning-bg text-warning' : 'border-success-border bg-success-bg text-success'}`}>
-          <GitMerge size={16} className="shrink-0 mt-0.5" />
-          <div className="flex-1">
-            {merge.conflicts > 0
-              ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved while you were editing.{' '}
-                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>{t('blg.reopen', "Reopen resolver")}</button>}</>}</>
-              : <><b>{t('blg.merged', "Merged cleanly with someone else's edits.")}</b> {t('blg.reviewsave', "Review the content and Save again.")}</>}
-          </div>
-          <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
+    <EntryModal title={post ? t('be.editpost', 'Edit post') : t('be.writepost', 'Write a post')} icon={PenSquare} width="max-w-3xl"
+      dirty={dirty} busy={busy} onClose={onClose} onSave={save}
+      footer={<EntryActions busy={busy} onSave={save} saveLabel={post ? t('de.save', 'Save') : t('be.publishbtn', 'Publish')}
+        toggles={<label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
+          <input type="checkbox" checked={f.publish} onChange={(e) => setF({ ...f, publish: e.target.checked })} />
+          <Eye size={14} className={f.publish ? 'text-success' : 'text-[var(--faint)]'} />
+          {f.publish ? t('de.published', 'Published') : t('de.draft', 'Draft')}
+        </label>} />}>
+      {/* The post's own tools. In the footer they shared a row with Save, which on a phone
+          wrapped into a block taller than the buttons that matter. */}
+      {post && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Button size="sm" variant="ghost" onClick={() => setShowHistory(true)}><History size={14} /> {t('de.history', 'History')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={14} /> {t('docs.comments', 'Comments')}</Button>
+          <Button size="sm" variant="ghost" className="!text-error ms-auto" onClick={del}><Trash2 size={14} /> {t('be.delete', 'Delete')}</Button>
         </div>
       )}
-      {/* language tabs */}
-      <div className="flex items-center gap-1 mb-3">
-        {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (
-          <button key={l} type="button" onClick={() => setTab(l)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border ${tab === l ? 'bg-[var(--surface-2)] border-[var(--line)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Languages size={13} /> {label}{l === 'fr' && <span className={`text-[10px] ${hasFr ? 'text-success' : 'text-[var(--faint)]'}`}>{hasFr ? '✓' : '(optionnel)'}</span>}
-          </button>
-        ))}
-      </div>
-      {fr && <div className="text-xs text-[var(--muted)] mb-3 p-2.5 rounded-lg bg-orange-500/5 border border-[var(--line)] flex items-center gap-2"><Languages size={13} className="text-[var(--accent-ink)]" /> Traduction française optionnelle, publiée en même temps. Si vide, les lecteurs FR voient la version anglaise marquée « non traduit ».</div>}
+      {/* Concurrent-edit merge banner (git-style): shown after a colliding save. Clean
+          merges just need a re-Save; conflicts open the visual resolver (GitMerge). */}
+      <MergeBanner merge={merge} resolving={!!mergeUI?.queue?.length} onDismiss={() => setMerge(null)} onReopen={() => setMergeUI({ queue: merge.pending })} />
+
+      <LangTabs tab={tab} onTab={setTab} frState={frState} className="mb-3" />
+      {fr && <div className="text-xs text-[var(--muted)] mb-3 p-2.5 rounded-lg panel border border-[var(--line)] flex items-start gap-2">
+        <Languages size={13} className="text-[var(--accent-ink)] shrink-0 mt-0.5" /> {t('be.frnote', 'The French version is optional and is published at the same time. Leave it empty and French readers get the English one, marked as not translated.')}
+      </div>}
 
       {/* title (per-language) */}
-      <input className="input !text-xl !font-semibold !py-3" value={g('title')} onChange={(e) => setField('title', e.target.value)} placeholder={fr ? "Titre de l'article…" : 'Post title…'} />
-
-      {/* meta row (shared: blog scope + cover) */}
-      <div className="flex flex-wrap items-center gap-2 mt-3">
-        <select className="input !w-auto !py-2" value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}>
-          <optgroup label={t('blg.projects', "Projects")}>
-            {(scopes?.projects || [{ key: 'community', name: 'Community' }]).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{pr.name}</option>)}
-          </optgroup>
-          {(scopes?.showcases || []).length > 0 && <optgroup label={t('blg.otherprojects', "Other projects")}>
-            {scopes.showcases.map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{s.name}</option>)}
-          </optgroup>}
-        </select>
-        <Button type="button" size="sm" onClick={pickCover}><ImagePlus size={14} /> {f.cover ? t('blg.changecover', 'Change cover') : t('blg.addcover', 'Add cover')}</Button>
-        {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> {t('blg.removecover', 'Remove')}</Button>}
-        <span className="text-xs text-[var(--faint)] ms-auto">{t('blg.sharedlang', 'Cover & blog are shared across languages')}</span>
-      </div>
-      {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)] mt-3"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
-      {f.cover && <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> {t('be.coverInBody', 'Also show the cover at the top of the article')}</label>}
+      <EntryField label={fr ? t('be.titlefr', 'Titre (FR)') : t('be.titlelabel', 'Title')} error={errors.title}>
+        <Input className="!text-xl !font-semibold !py-3" value={g('title')} aria-invalid={errors.title ? true : undefined}
+          onChange={(e) => setField('title', e.target.value)} placeholder={fr ? t('be.ph.titlefr', "Titre de l'article…") : t('be.ph.title', 'Post title…')} />
+      </EntryField>
 
       {/* excerpt — rich editor (like content) */}
       <div className="mt-4">
-        <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block mb-1.5">Excerpt {fr && '· FR'}</label>
-        <MarkdownEditor value={g('excerpt')} onChange={(v) => setField('excerpt', v)} minHeight={70} placeholder={fr ? 'Court résumé affiché sur les cartes…' : 'Short summary shown on the blog cards…'} />
+        <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('be.excerpt', 'Excerpt')}{fr ? ' · FR' : ''}</div>
+        <MarkdownEditor value={g('excerpt')} onChange={(v) => setField('excerpt', v)} minHeight={70} placeholder={fr ? t('be.ph.excerptfr', 'Court résumé affiché sur les cartes…') : t('be.ph.excerpt', 'Short summary shown on the blog cards…')} />
       </div>
 
       {/* body — full editor */}
       <div className="mt-4">
-        <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block mb-1.5">Content {fr && '· FR'}</label>
-        <MarkdownEditor full value={g('body')} onChange={(v) => setField('body', v)} minHeight={240} placeholder={fr ? 'Rédige en Markdown (même syntaxe que les notes BMM)…' : 'Write in Markdown, same syntax as the BMM update notes.'} />
+        <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('de.content', 'Content')}{fr ? ' · FR' : ''}</div>
+        <MarkdownEditor full value={g('body')} onChange={(v) => setField('body', v)} minHeight={240} placeholder={fr ? t('be.ph.bodyfr', 'Rédige en Markdown (même syntaxe que les notes BMM)…') : t('be.ph.body', 'Write in Markdown, same syntax as the BMM update notes.')} />
+        <FieldError>{errors.body}</FieldError>
       </div>
 
-      {/* table of contents (sommaire) */}
-      <div className="mt-4 rounded-xl border border-[var(--line)] p-3">
-        <label className="flex items-center justify-between text-sm font-medium cursor-pointer">
-          <span>{t('blg.toclong', "Table of contents (sommaire)")}</span>
+      {/* Below the fold: the decisions that are made once per post. Each one writes its
+          current value on its own fold, so nothing has to be opened to be checked. A new post
+          opens on the one that has no sensible default — which blog it goes to. */}
+      <EntrySection icon={LayoutGrid} title={t('be.sec.where', 'Blog and cover')} status={scopeName} defaultOpen={!post}>
+        <EntryField label={t('be.blogfield', 'Blog')} hint={t('blg.sharedlang', 'Cover & blog are shared across languages')}>
+          <select className="input" value={f.scope} onChange={(e) => setF({ ...f, scope: e.target.value })}>
+            <optgroup label={t('blg.projects', 'Projects')}>
+              {(scopes?.projects || [{ key: 'community', name: 'Community' }]).map((pr) => <option key={pr.key} value={`project:${pr.key}`}>{pr.name}</option>)}
+            </optgroup>
+            {(scopes?.showcases || []).length > 0 && <optgroup label={t('blg.otherprojects', 'Other projects')}>
+              {scopes.showcases.map((s) => <option key={s.slug} value={`showcase:${s.slug}`}>{s.name}</option>)}
+            </optgroup>}
+          </select>
+        </EntryField>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" size="sm" onClick={pickCover}><ImagePlus size={14} /> {f.cover ? t('blg.changecover', 'Change cover') : t('blg.addcover', 'Add cover')}</Button>
+          {f.cover && <Button type="button" size="sm" onClick={() => setF((s) => ({ ...s, cover: '' }))}><X size={14} /> {t('blg.removecover', 'Remove')}</Button>}
+        </div>
+        {f.cover && <div className="rounded-xl overflow-hidden border border-[var(--line)]"><img src={thumb(f.cover, 512)} alt="" className="w-full h-40 object-cover" /></div>}
+        {f.cover && <label className="flex items-center gap-2 text-sm cursor-pointer text-[var(--muted)]"><input type="checkbox" checked={f.coverInBody !== false} onChange={(e) => setF((s) => ({ ...s, coverInBody: e.target.checked }))} /> {t('be.coverInBody', 'Also show the cover at the top of the article')}</label>}
+      </EntrySection>
+
+      <EntrySection icon={ListTree} title={t('blg.toclong', 'Table of contents (sommaire)')} status={f.showToc ? t('be.on', 'On') : t('be.off', 'Off')}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={f.showToc} onChange={(e) => setF((s) => ({ ...s, showToc: e.target.checked }))} />
+          {t('be.toc.show', 'Show a table of contents at the top of the post')}
         </label>
-        <p className="text-xs text-[var(--faint)] mt-1">Auto-built from your headings, shown at the top of the post. Leave off to place your own with the <b>{t('blg.toc', "Table of contents")}</b> block.</p>
-        {f.showToc && <input className="input !py-1.5 !text-sm mt-2" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder={t('be.toc.headingPh', 'Heading (default: On this page)')} />}
-      </div>
+        <Explain summary={t('be.toc.sum', 'Built from your headings.')}>
+          {t('be.toc.body', 'Leave this off to place the contents yourself, anywhere in the post, with the Table of contents block.')}
+        </Explain>
+        {f.showToc && <Input className="!py-1.5 !text-sm" value={f.tocTitle} onChange={(e) => setF((s) => ({ ...s, tocTitle: e.target.value }))} placeholder={t('be.toc.headingPh', 'Heading (default: On this page)')} />}
+      </EntrySection>
 
-      {/* reactions + collaborators (shared across languages) */}
-      <div className="mt-5 grid sm:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-[var(--line)] p-3">
-          <label className="flex items-center justify-between text-sm font-medium cursor-pointer">
-            <span>Reactions</span>
-            <input type="checkbox" checked={f.reactionsEnabled} onChange={(e) => setF((s) => ({ ...s, reactionsEnabled: e.target.checked }))} />
-          </label>
-          <p className="text-xs text-[var(--faint)] mt-1">Let readers react — pick up to 3 ({f.reactionTypes.length}/3).</p>
-          {f.reactionsEnabled && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {REACTION_PALETTE.map((name) => {
-                const on = f.reactionTypes.includes(name); const disabled = !on && f.reactionTypes.length >= 3;
-                return <button key={name} type="button" disabled={disabled} title={name} onClick={() => toggleReaction(name)}
-                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
-              })}
-            </div>
-          )}
-        </div>
-        <div className="rounded-xl border border-[var(--line)] p-3">
-          <div className="text-sm font-medium">{t('blg.collaborators', 'Collaborators')}</div>
-          <p className="text-xs text-[var(--faint)] mt-1">{t('blg.coauthorhint', 'Add co-authors by email, their avatars show on the post.')}</p>
-          <div className="flex gap-1.5 mt-2">
-            <Input value={collab} onChange={(e) => setCollab(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }} placeholder="collaborator@email.com" className="!py-1.5 !text-sm" />
-            <Button type="button" size="sm" onClick={addCoAuthor}><Plus size={14} /></Button>
+      <EntrySection icon={Smile} title={t('be.sec.reactions', 'Reactions')} status={f.reactionsEnabled ? `${f.reactionTypes.length}/3` : t('be.off', 'Off')}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={f.reactionsEnabled} onChange={(e) => setF((s) => ({ ...s, reactionsEnabled: e.target.checked }))} />
+          {t('be.rx.enable', 'Let readers react to this post')}
+        </label>
+        {f.reactionsEnabled && (<>
+          <div className="text-xs text-[var(--faint)]">{t('be.rx.pick', 'Pick up to 3 ({n}/3).').replace('{n}', f.reactionTypes.length)}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {REACTION_PALETTE.map((name) => {
+              const on = f.reactionTypes.includes(name); const disabled = !on && f.reactionTypes.length >= 3;
+              return <button key={name} type="button" disabled={disabled} title={name} aria-label={name} onClick={() => toggleReaction(name)}
+                className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
+            })}
           </div>
-          {f.coAuthorEmails.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {f.coAuthorEmails.map((email) => (
-                <span key={email} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--line)]">{email}<button type="button" onClick={() => removeCoAuthor(email)} className="text-[var(--faint)] hover:text-error"><X size={11} /></button></span>
-              ))}
-            </div>
-          )}
-          {/* Comments: an editor-collaboration tool. Off = only editors see them; on =
-              readers see them (read-only) on the published article. */}
-          <label className="flex items-start gap-2 mt-3 pt-3 border-t border-[var(--line)] cursor-pointer">
-            <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} />
-            <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-success" /> : <MessageSquare size={12} />} Comments visible to readers</span>
-              <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post, comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
-          </label>
-          {/* Newsletter announcement — send subscribers an email about this post (once).
-              Uses the standard template; the subject/intro can be overridden. Staff only. */}
-          {canNewsletter && <div className="mt-3 pt-3 border-t border-[var(--line)]">
-            {nlSent ? (
-              <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-success" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
-            ) : (<>
-              <label className={`flex items-start gap-2 ${f.publish ? 'cursor-pointer' : 'opacity-50'}`}>
-                <input type="checkbox" className="mt-0.5" disabled={!f.publish} checked={f.notifyNewsletter && f.publish} onChange={(e) => setF({ ...f, notifyNewsletter: e.target.checked })} />
-                <span className="text-xs"><span className="font-medium flex items-center gap-1"><Mail size={12} className="text-[var(--accent-ink)]" /> {t('be.nl.notify', 'Announce to newsletter subscribers')}</span>
-                  <span className="text-[var(--faint)]">{f.publish ? t('be.nl.notifyhint', 'Emails active subscribers about this new article (with a link). Sent once.') : t('be.nl.draftnote', 'Publish the post to announce it.')}</span></span>
-              </label>
-              {f.notifyNewsletter && f.publish && (
-                <div className="mt-2.5 ms-6 space-y-2">
-                  <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional), default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
-                  <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional), defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
-                </div>
-              )}
-            </>)}
-          </div>}
+        </>)}
+      </EntrySection>
+
+      <EntrySection icon={UserIcon} title={t('blg.collaborators', 'Collaborators')} status={f.coAuthorEmails.length ? String(f.coAuthorEmails.length) : t('be.none', 'None')}>
+        <p className="text-xs text-[var(--faint)]">{t('blg.coauthorhint', 'Add co-authors by email, their avatars show on the post.')}</p>
+        <div className="flex gap-1.5">
+          <Input value={collab} onChange={(e) => { setCollab(e.target.value); setErrors((x) => (x.collab ? { ...x, collab: null } : x)); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }} placeholder="collaborator@email.com" className="!py-1.5 !text-sm" />
+          <Button type="button" size="sm" onClick={addCoAuthor} aria-label={t('be.addcoauthor', 'Add co-author')}><Plus size={14} /></Button>
         </div>
-      </div>
+        <FieldError>{errors.collab}</FieldError>
+        {f.coAuthorEmails.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {f.coAuthorEmails.map((email) => (
+              <span key={email} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full panel border border-[var(--line)]">{email}<button type="button" onClick={() => removeCoAuthor(email)} className="text-[var(--faint)] hover:text-error" aria-label={t('blg.remove', 'Remove')}><X size={11} /></button></span>
+            ))}
+          </div>
+        )}
+      </EntrySection>
+
+      {/* Comments: an editor-collaboration tool. Off = only editors see them; on =
+          readers see them (read-only) on the published article. */}
+      <EntrySection icon={MessageSquare} title={t('de.sec.comments', 'Comments')} status={f.commentsPublic ? t('de.comments.on', 'Visible to readers') : t('de.comments.off', 'Editors only')}>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} />
+          <span className="text-sm flex items-center gap-1.5">
+            {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />}
+            {t('be.comments.showReaders', 'Show the comment thread to readers on the published post')}
+          </span>
+        </label>
+        <Explain summary={t('de.comments.sum', 'Comments are an editing tool first.')}>
+          {t('be.comments.body', 'Off, the thread stays private to the author, the co-authors and staff. On, readers can read it, but they still cannot post: writing a comment stays with the editors.')}
+        </Explain>
+      </EntrySection>
+
+      {/* Newsletter announcement — send subscribers an email about this post (once).
+          Uses the standard template; the subject/intro can be overridden. Staff only. */}
+      {canNewsletter && (
+        <EntrySection icon={Mail} title={t('be.sec.newsletter', 'Newsletter')}
+          status={nlSent ? t('be.nl.sent', 'Sent') : (f.notifyNewsletter && f.publish) ? t('be.nl.willsend', 'Will be sent') : t('be.off', 'Off')}>
+          {nlSent ? (
+            <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Mail size={12} className="text-success" /> {t('be.nl.already', 'Newsletter already sent on {d}.').replace('{d}', new Date(nlSent).toLocaleDateString())}</div>
+          ) : (<>
+            <label className={`flex items-start gap-2 ${f.publish ? 'cursor-pointer' : 'opacity-50'}`}>
+              <input type="checkbox" className="mt-0.5" disabled={!f.publish} checked={f.notifyNewsletter && f.publish} onChange={(e) => setF({ ...f, notifyNewsletter: e.target.checked })} />
+              <span className="text-sm"><span className="font-medium flex items-center gap-1"><Mail size={12} className="text-[var(--accent-ink)]" /> {t('be.nl.notify', 'Announce to newsletter subscribers')}</span>
+                <span className="text-xs text-[var(--faint)]">{f.publish ? t('be.nl.notifyhint', 'Emails active subscribers about this new article (with a link). Sent once.') : t('be.nl.draftnote', 'Publish the post to announce it.')}</span></span>
+            </label>
+            {f.notifyNewsletter && f.publish && (
+              <div className="ms-6 space-y-2">
+                <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional), default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
+                <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional), defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
+              </div>
+            )}
+          </>)}
+        </EntrySection>
+      )}
       {showHistory && post && <HistoryModal base={`/blog/${post.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
       {showComments && post && <CommentsModal base={`/blog/${post.id}`} body={f.body} onClose={() => setShowComments(false)} />}
@@ -574,6 +616,6 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
             if (cur.field === 'bodyFr') setTab('fr');
           }} />
       ); })()}
-    </Modal>
+    </EntryModal>
   );
 }

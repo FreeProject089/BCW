@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, GitMerge, History, MessageSquare, Globe } from 'lucide-react';
+import { BookOpen, Plus, Pencil, Trash2, Search, PanelLeftClose, Menu, Save, Languages, Smile, Meh, Frown, CornerDownLeft, X, ChevronRight, Hash, History, MessageSquare, Globe, FolderTree, Eye } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { merge3, hasConflictMarkers } from '../lib/merge3.js';
 import HistoryModal from '../editor/history-modal.jsx';
@@ -12,7 +12,8 @@ import { useI18n } from '../i18n.jsx';
 import Markdown, { IconGlyph, anchorEl, ANCHOR_PREFIX } from '../ui/md.jsx';
 import { useSectionComments, useSectionCommentPills, AuthorsRow } from '../ui/post-bits.jsx';
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
-import { useToast, useDialog, Button, Spinner, Modal, Input, Select, Field, EmptyState } from '../ui/ui.jsx';
+import { useToast, useDialog, Button, Spinner, Input, EmptyState, Explain } from '../ui/ui.jsx';
+import { EntryModal, EntryActions, EntrySection, EntryField, FieldError, LangTabs, MergeBanner, useDirtyForm } from '../ui/entry-modal.jsx';
 
 // BCWEB documentation — a docs space rendered with the B.MD block markdown
 // system. Public read; ADMIN/SUPERADMIN (the "special role") get an inline editor.
@@ -541,7 +542,10 @@ function HelpfulWidget({ page, canEdit }) {
   );
 }
 
-/* Role-gated page editor (title, category, icon, order, publish, EN + FR body). */
+/* Role-gated page editor (title, category, icon, order, publish, EN + FR body).
+   The shell, the language tabs, the merge banner and the "don't throw my draft away" guard
+   come from ui/entry-modal.jsx: this and the blog editor are the same screen over a different
+   table, and they had drifted into two layouts with two sets of bugs. */
 function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReopen, reopenDraft }) {
   const toast = useToast(); const dialog = useDialog(); const { t } = useI18n();
   const categories = [...new Set(tree.map((c) => c.category))];
@@ -549,6 +553,14 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   const [tab, setTab] = useState('en');
   const [busy, setBusy] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  // Per-field validation messages. They used to be toasts, which is the wrong place for
+  // "this field is empty": the message is four seconds long, it appears at the other end of
+  // the screen, and it does not say which of the two title fields it means.
+  const [errors, setErrors] = useState({});
+  // Bumped once this editor has finished seeding itself from the server, so the unsaved-work
+  // guard compares against the loaded page rather than against the blank form it mounted with.
+  const [seed, setSeed] = useState(0);
+  const dirty = useDirtyForm(f, seed);
   // Concurrent-edit tracking (see blog editor / merge3.js) — two admins editing the
   // same page merge git-style instead of one silently overwriting the other.
   const baseRef = useRef({ version: null, body: '', bodyFr: '' });
@@ -557,17 +569,35 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
   const [showHistory, setShowHistory] = useState(false);
   useEffect(() => {
     // Restored after an "undo" on the save toast — re-seed the exact editor state (and
-    // the original base version, so a post-conflict re-save can still 3-way-merge).
+    // the original base version, so a post-conflict re-save can still 3-way-merge). No seed
+    // bump: a restored draft IS unsaved work, and closing it must ask.
     if (draft) { setF(draft); if (draftBase) baseRef.current = draftBase; return; }
     if (page) setF({ title: page.title || '', titleFr: page.titleFr || '', category: page.category || 'General', categoryFr: page.categoryFr || '', icon: page.icon || '', order: page.order || 0, published: page.published !== false, body: '', bodyFr: '', commentsPublic: page.commentsPublic === true });
     // full bodies aren't in the sidebar tree — fetch the page.
-    if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; }).catch(() => {});
+    if (page?.slug) api.get(`/docs/${page.slug}`).then((r) => { setF((s) => ({ ...s, body: r.page.body || '', bodyFr: r.page.bodyFr || '' })); baseRef.current = { version: r.page.version ?? null, body: r.page.body || '', bodyFr: r.page.bodyFr || '' }; setSeed((n) => n + 1); }).catch(() => setSeed((n) => n + 1));
+    else setSeed((n) => n + 1);
     // eslint-disable-next-line
   }, [page?.id]);
 
+  // Writing into a field answers its own complaint.
+  const set = (patch, clear) => { setF((s) => ({ ...s, ...patch })); if (clear) setErrors((e) => (e[clear] ? { ...e, [clear]: null } : e)); };
+  const suffix = tab === 'fr' ? 'Fr' : '';
+  const g = (base) => f[base + suffix] || '';
+  const setLangField = (base, v) => set({ [base + suffix]: v }, base);
+  // Which language tab the reader should be looking at when a message is about a field that
+  // exists twice. A validation error nobody can see is a save that silently does nothing.
+  const validate = () => {
+    const e = {};
+    if (!f.title.trim()) e.title = t('de.err.title', 'The English title is required: it names the page in the sidebar, the breadcrumb and every link to it.');
+    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) e.body = t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.');
+    setErrors(e);
+    if (e.title) setTab('en');
+    else if (e.body && hasConflictMarkers(f.bodyFr) && !hasConflictMarkers(f.body)) setTab('fr');
+    return !Object.keys(e).length;
+  };
+
   const save = async () => {
-    if (f.title.trim().length < 1) return toast.error(t('de.titlereq', 'A title is required.'));
-    if (hasConflictMarkers(f.body) || hasConflictMarkers(f.bodyFr)) return toast.error(t('be.conflicts', 'Resolve the conflict markers (<<<<<<< … >>>>>>>) first, then save.'));
+    if (!validate()) return;
     // The French fields are sent even when empty so clearing a translation actually clears
     // it — omitting them would leave the old value with no way to remove it.
     const b = { title: f.title, titleFr: f.titleFr || null, category: f.category || 'General', categoryFr: f.categoryFr || null, icon: f.icon || null, order: Number(f.order) || 0, published: f.published, body: f.body, bodyFr: f.bodyFr || null, commentsPublic: f.commentsPublic,
@@ -635,50 +665,84 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
     try { await api.del(`/docs/${page.id}`); toast.success(t('be.deleted', 'Deleted.')); onSaved(); } catch { toast.error(t('be.failed', 'Failed.')); }
   };
   const fr = tab === 'fr';
+  // What the FR tab is really being asked: is there a translation behind it, and is it whole.
+  const frState = f.bodyFr && f.titleFr ? 'full' : (f.bodyFr || f.titleFr) ? 'partial' : 'empty';
 
   return (
-    <Modal open onClose={onClose} title={page ? 'Edit page' : 'New page'} icon={BookOpen} width="max-w-3xl"
-      footer={<>
-        {page && <Button variant="ghost" className="!text-error me-auto" onClick={del}><Trash2 size={15} /> Delete</Button>}
-        {page && <Button variant="ghost" onClick={() => setShowHistory(true)}><History size={15} /> History</Button>}
-        {page && <Button variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={15} /> Comments</Button>}
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2" title="{t('docs.comments.showReaders', 'Show the comment thread to readers on the published page')}"><input type="checkbox" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} /> {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />} Public comments</label>
-        <label className="flex items-center gap-1.5 text-sm text-[var(--muted)] me-2"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> Published</label>
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : <><Save size={15} /> Save</>}</Button>
-      </>}>
-      {merge && (
-        <div className={`mb-3 rounded-xl border px-3.5 py-2.5 text-sm flex items-start gap-2.5 ${merge.conflicts > 0 ? 'border-warning-border bg-warning-bg text-warning' : 'border-success-border bg-success-bg text-success'}`}>
-          <GitMerge size={16} className="shrink-0 mt-0.5" />
-          <div className="flex-1">
-            {merge.conflicts > 0
-              ? <><b>{merge.conflicts} conflict{merge.conflicts > 1 ? 's' : ''} to resolve.</b> Someone else saved this page while you were editing.{' '}
-                  {mergeUI?.queue?.length ? 'Resolve them in the panel, then Save.' : <>Then Save. {merge.pending && <button className="underline font-medium" onClick={() => setMergeUI({ queue: merge.pending })}>{t('dcs.reopen', "Reopen resolver")}</button>}</>}</>
-              : <><b>{t('dcs.merged', "Merged cleanly with someone else's edits.")}</b> {t('dcs.reviewsave', "Review and Save again.")}</>}
-          </div>
-          <button onClick={() => setMerge(null)} className="opacity-70 hover:opacity-100"><X size={14} /></button>
+    <EntryModal title={page ? t('de.editpage', 'Edit page') : t('de.newpage', 'New page')} icon={BookOpen} width="max-w-3xl"
+      dirty={dirty} busy={busy} onClose={onClose} onSave={save}
+      footer={<EntryActions busy={busy} onSave={save} saveLabel={<><Save size={15} /> {t('de.save', 'Save')}</>}
+        toggles={<label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer">
+          <input type="checkbox" checked={f.published} onChange={(e) => set({ published: e.target.checked })} />
+          <Eye size={14} className={f.published ? 'text-success' : 'text-[var(--faint)]'} />
+          {f.published ? t('de.published', 'Published') : t('de.draft', 'Draft')}
+        </label>} />}>
+      {/* The page's own tools. They used to sit in the footer beside Save, where on a phone
+          they pushed it into a fourth wrapped row. */}
+      {page && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <Button size="sm" variant="ghost" onClick={() => setShowHistory(true)}><History size={14} /> {t('de.history', 'History')}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setShowComments(true)}><MessageSquare size={14} /> {t('docs.comments', 'Comments')}</Button>
+          <Button size="sm" variant="ghost" className="!text-error ms-auto" onClick={del}><Trash2 size={14} /> {t('be.delete', 'Delete')}</Button>
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
-        <Field label={t('dcs.title', "Title")}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('dcs.ph.pagetitle', "Page title")} /></Field>
-        <Field label={t('dcs.titlefr', "Titre (FR)")} hint={t('de.frhint', 'Optional, falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
-        <Field label={t('dcs.catfr', "Cat\u00e9gorie (FR)")}><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder={t('dcs.ph.catfr', "Guides / Installation")} /></Field>
-        <Field label={t('dcs.category', "Category")} hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder={t('dcs.ph.cat', "Guides / Setup")} />
-          <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
-        <Field label="Icon"><Input value={f.icon} onChange={(e) => setF({ ...f, icon: e.target.value })} placeholder="book" className="!w-24" /></Field>
-        <Field label={t('dcs.order', "Order")}><Input type="number" value={f.order} onChange={(e) => setF({ ...f, order: e.target.value })} className="!w-20" /></Field>
+      <MergeBanner merge={merge} resolving={!!mergeUI?.queue?.length} onDismiss={() => setMerge(null)} onReopen={() => setMergeUI({ queue: merge.pending })} />
+
+      <LangTabs tab={tab} onTab={setTab} frState={frState} className="mb-3" />
+      {fr && <div className="text-xs text-[var(--muted)] mb-3 p-2.5 rounded-lg panel border border-[var(--line)] flex items-start gap-2">
+        <Languages size={13} className="text-[var(--accent-ink)] shrink-0 mt-0.5" /> {t('de.frnote', 'The French version is optional. Leave a field empty and French readers get the English one, marked as not translated.')}
+      </div>}
+
+      {/* The common path and nothing else: what the page is called and what is on it. */}
+      <EntryField label={fr ? t('dcs.titlefr', 'Titre (FR)') : t('dcs.title', 'Title')} error={errors.title}>
+        <Input className="!text-lg !font-semibold !py-2.5" value={g('title')} aria-invalid={errors.title ? true : undefined}
+          onChange={(e) => setLangField('title', e.target.value)} placeholder={t('dcs.ph.pagetitle', 'Page title')} />
+      </EntryField>
+      <div className="mt-4">
+        <div className="text-xs font-medium text-[var(--muted)] mb-1.5">{t('de.content', 'Content')}{fr ? ' · FR' : ''}</div>
+        <MarkdownEditor full minHeight={300}
+          value={fr ? f.bodyFr : f.body}
+          onChange={(v) => setLangField('body', v)}
+          placeholder={fr ? t('de.ph.bodyfr', 'French translation (optional)…') : t('de.ph.body', 'Write with content blocks, use the Blocks button.')} />
+        <FieldError>{errors.body}</FieldError>
       </div>
-      <div className="flex items-center gap-1 mb-2">
-        {[['en', 'English (base)'], ['fr', 'Français']].map(([l, label]) => (
-          <button key={l} type="button" onClick={() => setTab(l)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border ${tab === l ? 'bg-[var(--surface-2)] border-[var(--line)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Languages size={13} /> {label}{l === 'fr' && f.bodyFr && <span className="text-[10px] text-success">✓</span>}
-          </button>
-        ))}
-      </div>
-      <MarkdownEditor full minHeight={300}
-        value={fr ? f.bodyFr : f.body}
-        onChange={(v) => setF((s) => (fr ? { ...s, bodyFr: v } : { ...s, body: v }))}
-        placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with content blocks, use the Blocks button.'} />
+
+      {/* Everything below is set once and then rarely touched, so it folds. The fields that
+          matter on every edit stay above the fold; the ones that matter on the first save are
+          one click away, with their current value written on the fold itself. */}
+      <EntrySection icon={FolderTree} title={t('de.sec.place', 'Where it sits in the sidebar')} status={[f.category, f.icon].filter(Boolean).join(' · ')}>
+        <Explain summary={t('de.place.sum', 'The category builds the sidebar tree.')}>
+          {t('de.place.body', 'Write "Guides / Setup" to nest this page under a subcategory, as many levels deep as you need. Inside a group, pages are sorted by the order number, lowest first. The icon is a name from the icon set, such as book or terminal.')}
+        </Explain>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <EntryField label={t('dcs.category', 'Category')}>
+            <Input list="doc-cats" value={f.category} onChange={(e) => set({ category: e.target.value })} placeholder={t('dcs.ph.cat', 'Guides / Setup')} />
+            <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist>
+          </EntryField>
+          <EntryField label={t('dcs.catfr', 'Catégorie (FR)')} hint={t('de.frhint', 'Optional, falls back to the English.')}>
+            <Input value={f.categoryFr || ''} onChange={(e) => set({ categoryFr: e.target.value })} placeholder={t('dcs.ph.catfr', 'Guides / Installation')} />
+          </EntryField>
+          <EntryField label={t('de.icon', 'Icon')}>
+            <Input value={f.icon} onChange={(e) => set({ icon: e.target.value })} placeholder="book" />
+          </EntryField>
+          <EntryField label={t('dcs.order', 'Order')}>
+            <Input type="number" value={f.order} onChange={(e) => set({ order: e.target.value })} />
+          </EntryField>
+        </div>
+      </EntrySection>
+
+      <EntrySection icon={MessageSquare} title={t('de.sec.comments', 'Comments')} status={f.commentsPublic ? t('de.comments.on', 'Visible to readers') : t('de.comments.off', 'Editors only')}>
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => set({ commentsPublic: e.target.checked })} />
+          <span className="text-sm flex items-center gap-1.5">
+            {f.commentsPublic ? <Globe size={13} className="text-success" /> : <MessageSquare size={13} />}
+            {t('docs.comments.showReaders', 'Show the comment thread to readers on the published page')}
+          </span>
+        </label>
+        <Explain summary={t('de.comments.sum', 'Comments are an editing tool first.')}>
+          {t('de.comments.body', 'Off, the thread is private to the people who can edit this page. On, readers can read it on the published page, but they still cannot post: writing a comment stays with the editors.')}
+        </Explain>
+      </EntrySection>
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
       {showComments && page && <CommentsModal base={`/docs/${page.id}`} body={f.body} onClose={() => setShowComments(false)} />}
@@ -692,6 +756,6 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
             if (cur.field === 'bodyFr') setTab('fr');
           }} />
       ); })()}
-    </Modal>
+    </EntryModal>
   );
 }
