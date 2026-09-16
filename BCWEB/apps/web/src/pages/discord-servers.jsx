@@ -140,7 +140,7 @@ function GuildMembers({ guildId }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className="truncate font-medium" title={m.nickname || m.username || m.discordId}>{m.nickname || m.username || m.discordId}</span>
-                    {L ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)] tabular-nums shrink-0" title={`${L.displayName} · ${L.points.toLocaleString()} pts`}><Sparkles size={9} /> Lv {L.level}</span> : <span className="text-[10px] text-[var(--faint)] shrink-0">{t('ds.mem.unlinked', 'not linked')}</span>}
+                    {L ? <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded tint-primary text-[var(--accent-ink)] tabular-nums shrink-0" title={`${L.displayName} · ${L.points.toLocaleString()} pts`}><Sparkles size={9} /> Lv {L.level}</span> : <span className="text-[10px] text-[var(--faint)] shrink-0">{t('ds.mem.unlinked', 'not linked')}</span>}
                     {L?.badges?.length > 0 && <span className="hidden sm:inline-flex items-center gap-1 shrink-0">{L.badges.slice(0, 4).map((b) => <span key={b.name} className="text-[9px] px-1 py-0.5 rounded border" style={{ borderColor: `${b.color}66`, color: b.color }} title={b.name}>{b.name}</span>)}</span>}
                   </div>
                   <div className="flex flex-wrap items-center gap-1 mt-0.5">
@@ -150,7 +150,7 @@ function GuildMembers({ guildId }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button type="button" onClick={() => { setOpen(isOpen ? null : m.discordId); setPick(''); }} title={t('ds.mem.roles', 'Roles')} className={`p-1.5 rounded-lg hover:bg-[var(--surface-2)] ${isOpen ? 'text-[var(--primary-2)]' : 'text-[var(--muted)]'}`}><Shield size={13} /></button>
+                  <button type="button" onClick={() => { setOpen(isOpen ? null : m.discordId); setPick(''); }} title={t('ds.mem.roles', 'Roles')} className={`p-1.5 rounded-lg hover:bg-[var(--surface-2)] ${isOpen ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`}><Shield size={13} /></button>
                   {m.guildJoinedAt && <span className="text-[10px] text-[var(--faint)] shrink-0 hidden sm:inline ms-1">{new Date(m.guildJoinedAt).toLocaleDateString()}</span>}
                 </div>
               </div>
@@ -341,7 +341,7 @@ function GuildConfig({ guildId, onSaved }) {
         {SECTIONS.map((s) => (
           <button key={s.id} type="button" onClick={(e) => { setSection(s.id); e.currentTarget.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' }); }}
             className={`shrink-0 snap-center inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${section === s.id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-            <s.icon size={14} className={section === s.id ? 'text-[var(--primary-2)]' : ''} /> {s.label}
+            <s.icon size={14} className={section === s.id ? 'text-[var(--accent-ink)]' : ''} /> {s.label}
             {s.dirty && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" title={t('ds.unsaved', 'Unsaved changes')} />}
           </button>
         ))}
@@ -356,7 +356,7 @@ function GuildConfig({ guildId, onSaved }) {
             <Head title={here.label} sub={here.sub} />
             <label className="flex items-center gap-2.5 text-sm font-medium cursor-pointer select-none">
               <input type="checkbox" checked={draft.mod.enabled} onChange={(e) => setDraft((d) => ({ ...d, mod: { ...d.mod, enabled: e.target.checked } }))} />
-              <Shield size={15} className="text-[var(--primary-2)]" /> {t('ds.automod.modon', 'Moderation on for this server')}
+              <Shield size={15} className="text-[var(--accent-ink)]" /> {t('ds.automod.modon', 'Moderation on for this server')}
             </label>
             <p className="text-[11.5px] text-[var(--muted)] ps-6 mt-0.5">{t('ds.automod.modon.h2', 'Off, neither automod nor /warn does anything here.')}</p>
           </div>
@@ -454,7 +454,7 @@ function GuildConfig({ guildId, onSaved }) {
                 if (bp.paid && !bp.unlocked) {
                   return (
                     <div className="mt-2.5 rounded-lg border b-primary bg-[var(--primary)]/[0.05] p-3">
-                      <div className="text-[12.5px] font-semibold flex items-center gap-1.5"><ImageIcon size={13} className="text-[var(--primary-2)]" /> {t('ds.wc.bg.paidt', 'Custom banner, a one-time upgrade')}</div>
+                      <div className="text-[12.5px] font-semibold flex items-center gap-1.5"><ImageIcon size={13} className="text-[var(--accent-ink)]" /> {t('ds.wc.bg.paidt', 'Custom banner, a one-time upgrade')}</div>
                       {/* This used to end at "ask an admin to unlock it for your server" — a
                           price with no till. It is a purchase now; the unlock is written by the
                           Stripe webhook, so an abandoned checkout grants nothing. */}
@@ -624,7 +624,7 @@ function GuildConfig({ guildId, onSaved }) {
                     const on = (r.sources || ['*']).includes(key);
                     return (
                       <button key={key} type="button" onClick={() => toggleSrc(key)}
-                        className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'tint-primary b-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+                        className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'tint-primary b-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
                     );
                   })}
                 </div>
@@ -724,7 +724,7 @@ export function MyDiscordServers() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <MessageSquare size={16} className="text-[var(--primary-2)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
+        <MessageSquare size={16} className="text-[var(--accent-ink)]" /><h2 className="font-semibold">{t('ds.title', 'My Discord servers')}</h2>
         {inviteUrl && <a href={inviteUrl} target="_blank" rel="noreferrer" className="ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white bg-[#5865F2] hover:opacity-90 transition"><DiscordIcon size={15} className="text-white" /> {t('ds.invite', 'Invite the bot')}</a>}
       </div>
       <div className="grid md:grid-cols-[minmax(0,240px)_1fr] gap-4">

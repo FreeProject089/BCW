@@ -36,7 +36,7 @@ export default function SanctionPage() {
     return (
       <div className="max-w-lg mx-auto py-14">
         <Card className="p-7 text-center">
-          <Gavel size={22} className="text-[var(--primary-2)] mx-auto mb-3" />
+          <Gavel size={22} className="text-[var(--accent-ink)] mx-auto mb-3" />
           <p className="text-sm text-[var(--muted)] mb-4">
             {t('sanp.signin', 'Sign in to read {c}. A decision is only shown to the account it was made about.').replace('{c}', code)}
           </p>
@@ -84,7 +84,7 @@ export default function SanctionPage() {
               <h1 className="text-xl font-bold">{t(`sanc.k.${s.kind}`, s.kind)}</h1>
               {over && <Badge tone="green">{t(`sanp.s.${s.status}`, s.status)}</Badge>}
             </div>
-            <code className="text-[12px] font-mono text-[var(--primary-2)]">{s.code}</code>
+            <code className="text-[12px] font-mono text-[var(--accent-ink)]">{s.code}</code>
           </div>
         </div>
 
@@ -140,7 +140,7 @@ export default function SanctionPage() {
               {t('sanp.subs.s', '{n} cancelled, because their term ended before the sanction did. Nothing was taken out again on your behalf.').replace('{n}', String(s.cancelledSubs.length))}
               {s.keptSubs?.length > 0 && ' ' + t('sanp.subs.k', '{n} kept, their term outlasts it.').replace('{n}', String(s.keptSubs.length))}
             </p>
-            <Link to="/dashboard?s=billing" className="text-[var(--primary-2)] hover:underline">{t('sanp.billing', 'Open billing')}</Link>
+            <Link to="/dashboard?s=billing" className="text-[var(--accent-ink)] hover:underline">{t('sanp.billing', 'Open billing')}</Link>
           </div>
         )}
       </Card>
@@ -148,7 +148,7 @@ export default function SanctionPage() {
       {/* The contest. Says plainly what it does and does not do — a form that quietly changes
           nothing is how people conclude nobody read it. */}
       <Card className="p-6">
-        <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Scale size={15} className="text-[var(--primary-2)]" /> {t('sanp.contest', 'Contest this')}</div>
+        <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Scale size={15} className="text-[var(--accent-ink)]" /> {t('sanp.contest', 'Contest this')}</div>
         {s.contestedAt ? (
           <>
             <p className="text-[12px] text-[var(--muted)] mb-2">{t('sanp.filed', 'Filed {d}.').replace('{d}', new Date(s.contestedAt).toLocaleString())}</p>

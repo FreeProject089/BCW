@@ -42,13 +42,13 @@ export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '
 
   if (status === 'none') return null;
   if (status === 'locked') return (
-    <Link to="/2fa" className={`text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1 ${className}`}><KeyRound size={11} /> {t('tfa.fill.locked', 'Codes are in the Authenticator (locked)')}</Link>
+    <Link to="/2fa" className={`text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1 ${className}`}><KeyRound size={11} /> {t('tfa.fill.locked', 'Codes are in the Authenticator (locked)')}</Link>
   );
   const title = (a) => a.issuer || a.label || 'Account';
   return (
     <div className={`min-w-0 ${className}`}>
       <button type="button" onClick={() => setOpen((v) => !v)} className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] hover:text-[var(--text)] transition">
-        <ShieldCheck size={12} className="text-[var(--primary-2)]" /> {t('tfa.fill.from', 'From your Authenticator')} <span className="text-[var(--muted)]">({accts.length})</span>
+        <ShieldCheck size={12} className="text-[var(--accent-ink)]" /> {t('tfa.fill.from', 'From your Authenticator')} <span className="text-[var(--muted)]">({accts.length})</span>
         <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -59,9 +59,9 @@ export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '
               <button key={a.id} type="button" onClick={() => code && onFill(code)}
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border b-primary tint-primary hover:tint-primary transition text-start"
                 title={t('tfa.fill.hint', 'Fill from your local BCWEB Authenticator')}>
-                <ShieldCheck size={13} className="text-[var(--primary-2)] shrink-0" />
+                <ShieldCheck size={13} className="text-[var(--accent-ink)] shrink-0" />
                 <span className="flex-1 min-w-0 truncate text-xs text-[var(--muted)]">{title(a)}</span>
-                <span className="font-mono tabular-nums text-sm text-[var(--primary-2)] shrink-0">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
+                <span className="font-mono tabular-nums text-sm text-[var(--accent-ink)] shrink-0">{code ? code.replace(/(\d{3})(\d+)/, '$1 $2') : '••••••'}</span>
               </button>
             );
           })}

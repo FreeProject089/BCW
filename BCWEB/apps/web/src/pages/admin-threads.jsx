@@ -67,7 +67,7 @@ function ThreadsConfig() {
         {num('messagesPerHour', t('adm.th.mph', 'Replies / hour'))}{num('maxBody', t('adm.th.max', 'Max length'))}
       </div>
       <Field label={t('adm.th.blockedmails', 'Blocked e-mails (one per line)')}><textarea className="input" rows={3} value={cfg.blockedEmailsText ?? (cfg.blockedEmails || []).join('\n')} onChange={(e) => setF({ ...cfg, blockedEmailsText: e.target.value })} /></Field>
-      <div className="text-[12px] text-[var(--muted)]">{t('adm.th.blockedusers', 'Blocked accounts')}: {(cfg.blockedUserIds || []).length} {(cfg.blockedUserIds || []).length > 0 && <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => setF({ ...cfg, blockedUserIds: [] })}>{t('adm.th.unblockall', 'unblock all')}</button>}</div>
+      <div className="text-[12px] text-[var(--muted)]">{t('adm.th.blockedusers', 'Blocked accounts')}: {(cfg.blockedUserIds || []).length} {(cfg.blockedUserIds || []).length > 0 && <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => setF({ ...cfg, blockedUserIds: [] })}>{t('adm.th.unblockall', 'unblock all')}</button>}</div>
       <div className="flex justify-end"><Button size="sm" variant="primary" loading={busy} disabled={!f} onClick={save}>{t('common.save', 'Save')}</Button></div>
     </Card>
   );
@@ -83,7 +83,7 @@ export function AdminThreads() {
     <div className="space-y-4 mt-6">
       <Card className="p-4">
         <div className="flex items-center gap-2 flex-wrap mb-3">
-          <MessageSquare size={16} className="text-[var(--primary-2)]" />
+          <MessageSquare size={16} className="text-[var(--accent-ink)]" />
           <div className="font-semibold">{t('adm.th.title', 'Member conversations')}</div>
           {data?.flagged > 0 && <Badge tone="warning"><Flag size={10} /> {data.flagged}</Badge>}
           <div className="ms-auto flex items-center gap-2">

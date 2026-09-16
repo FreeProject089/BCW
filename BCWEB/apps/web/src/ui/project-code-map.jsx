@@ -54,7 +54,7 @@ export default function ProjectCodeMap({ projectKey, t = (k, d) => d }) {
         return (
             <div className="mt-8">
                 <h3 className="text-sm font-semibold mb-1 flex items-center gap-2">
-                    <Network size={15} className="text-[var(--primary-2)]" /> {t('pmap.title', 'The code itself')}
+                    <Network size={15} className="text-[var(--accent-ink)]" /> {t('pmap.title', 'The code itself')}
                 </h3>
                 {/* The admin's own words first, then what the map is. Their sentence is
                     about THIS repository; the standing explanation is about every map. */}
@@ -79,7 +79,7 @@ export default function ProjectCodeMap({ projectKey, t = (k, d) => d }) {
     if (state === 'loading') {
         return (
             <p className="mt-8 text-[12px] text-[var(--muted)] inline-flex items-center gap-2">
-                <Network size={14} className="text-[var(--primary-2)]" /> {t('pmap.loading', 'Reading the map…')}
+                <Network size={14} className="text-[var(--accent-ink)]" /> {t('pmap.loading', 'Reading the map…')}
             </p>
         );
     }

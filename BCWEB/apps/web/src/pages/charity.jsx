@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Heart, Vote, Info, ArrowRight, Check } from 'lucide-react';
-import { Button, Card, Badge, Modal, Input, useToast } from '../ui/ui.jsx';
+import { Button, Card, Badge, Modal, Input, useToast, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAsync } from './pages.jsx';
@@ -71,7 +71,7 @@ function ContributeModal({ pot, onClose }) {
         <div className="rounded-lg bg-[var(--surface-2)] px-3 py-2.5 text-sm space-y-1.5">
           <div className="flex items-center justify-between"><span className="text-[var(--muted)]">{t('ch.total', 'You give')}</span><span className="font-semibold tabular-nums">{money(finalCents, pot.currency)}</span></div>
           <div className="flex items-center justify-between text-[13px]"><span className="text-[var(--faint)]">{t('ch.fee', 'Estimated card fee')}</span><span className="tabular-nums text-[var(--faint)]">− {money(feeCents, pot.currency)}</span></div>
-          <div className="flex items-center justify-between border-t border-[var(--line)] pt-1.5"><span className="text-[var(--muted)]">{t('ch.net', 'Reaches the pot')}</span><span className="font-semibold tabular-nums text-[var(--primary-2)]">{money(netCents, pot.currency)}</span></div>
+          <div className="flex items-center justify-between border-t border-[var(--line)] pt-1.5"><span className="text-[var(--muted)]">{t('ch.net', 'Reaches the pot')}</span><span className="font-semibold tabular-nums text-[var(--accent-ink)]">{money(netCents, pot.currency)}</span></div>
         </div>
         {/* Why a little less lands in the pot, and that a gift is final. Both are the questions a
             first-time giver actually has, answered before they pay rather than after. */}
@@ -119,9 +119,9 @@ function PotSummary({ pot, t }) {
       {pot.percent > 0 && <div className="text-xs text-[var(--faint)] mt-1">{t('ch.projected', 'Up to {n}% of eligible monthly revenue is added by BetterCommunity.').replace('{n}', pot.percent)}</div>}
       {pot.status === 'paid' && (
         <div className="mt-3 rounded-lg bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text)] flex items-center justify-center gap-2 flex-wrap">
-          <Check size={15} className="text-[var(--primary-2)] shrink-0" />
+          <Check size={15} className="text-[var(--accent-ink)] shrink-0" />
           <span>{t('ch.sent', 'This month’s donation has been sent.')}</span>
-          {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--primary-2)]">{t('ch.proof', 'View proof')}</a>}
+          {pot.proofUrl && <a href={pot.proofUrl} target="_blank" rel="noreferrer" className="underline text-[var(--accent-ink)]">{t('ch.proof', 'View proof')}</a>}
         </div>
       )}
     </>
@@ -164,8 +164,14 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   );
   const heading = (
     <>
-      <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--primary-2)]'} /> {t('ch.title', 'Community Charity')}</div>
-      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'Every month a share of our revenue, plus your gifts, goes to a charity the community chooses.')}</p>
+      <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--accent-ink)]'} /> {t('ch.title', 'Community Charity')}</div>
+      {/* One line above the numbers. How the two streams add up and how the money leaves
+          is the whole of /charity, and repeating it here pushed the pot below the fold on a
+          phone. Folded, it stays available without being in front of the figure. */}
+      <p className={`text-xs mb-1 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'A charity the community chooses, every month.')}</p>
+      <Explain className={`text-xs mb-4 ${d.align === 'left' ? 'text-left' : d.align === 'right' ? 'text-right' : 'text-center'}`}>
+        {t('ch.sub2', 'A share of our revenue is added to your gifts, and the whole pot goes to the charity the vote names. The payment is made by hand, with proof.')}
+      </Explain>
     </>
   );
   if (!custom) {
@@ -186,8 +192,8 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   const bleed = d.overflow ? d.bleed : 0;
   // The ink re-points the text TOKENS (not just `color`), so the muted/faint lines inside
   // PotSummary follow too — they read var(--muted) / var(--faint), which the frame redefines.
-  const inkStyle = d.ink === 'light' ? { color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.35)', '--text': '#fff', '--muted': 'rgba(255,255,255,.82)', '--faint': 'rgba(255,255,255,.66)', '--surface-2': 'rgba(255,255,255,.18)' }
-    : d.ink === 'dark' ? { color: '#111', textShadow: '0 1px 0 rgba(255,255,255,.45)', '--text': '#111', '--muted': 'rgba(0,0,0,.7)', '--faint': 'rgba(0,0,0,.55)', '--surface-2': 'rgba(0,0,0,.12)' } : {};
+  const inkStyle = d.ink === 'light' ? { color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.55), 0 0 18px rgba(0,0,0,.35)', '--text': '#fff', '--muted': 'rgba(255,255,255,.82)', '--faint': 'rgba(255,255,255,.66)', '--surface-2': 'rgba(255,255,255,.18)', '--accent-ink': '#fbbf24' }
+    : d.ink === 'dark' ? { color: '#111', textShadow: '0 1px 0 rgba(255,255,255,.45)', '--text': '#111', '--muted': 'rgba(0,0,0,.7)', '--faint': 'rgba(0,0,0,.55)', '--surface-2': 'rgba(0,0,0,.12)', '--accent-ink': '#8a3f06' } : {};
   const half = Math.round(d.stickerSize / 2);
   const corner = {
     tl: { top: -d.stickerOffset, left: -d.stickerOffset },
@@ -245,7 +251,7 @@ export default function CharityPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2"><Heart className="text-[var(--primary-2)]" /> {t('ch.title', 'Community Charity')}</h1>
+        <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2"><Heart className="text-[var(--accent-ink)]" /> {t('ch.title', 'Community Charity')}</h1>
         <p className="text-[var(--muted)] mt-2">{t('ch.page.intro', 'Each month, a share of BetterCommunity’s eligible revenue — plus voluntary gifts from the community — is pooled and donated to an association the Discord community votes for.')}</p>
       </div>
 

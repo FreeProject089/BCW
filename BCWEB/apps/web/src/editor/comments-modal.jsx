@@ -36,7 +36,7 @@ function CommentBody({ c, isReply, ctx }) {
         <CAvatar a={c} />
         <span className="text-sm font-medium">{c.author?.name}</span>
         <span className="text-[11px] text-[var(--faint)]">{fmt(c.createdAt)}</span>
-        {edited && <button onClick={() => openHistory(c.id)} title={t('cm.history', "View this comment's edit history")} className="text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> {t('cm.edited', 'edited')}</button>}
+        {edited && <button onClick={() => openHistory(c.id)} title={t('cm.history', "View this comment's edit history")} className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-0.5 underline decoration-dotted"><History size={10} /> {t('cm.edited', 'edited')}</button>}
         {c.resolved && <span className="text-[10px] font-semibold uppercase tracking-wide text-success flex items-center gap-0.5"><Check size={10} /> resolved</span>}
         {c.participants?.length > 1 && (
           <span className="flex items-center -space-x-1.5 ms-auto" title={`Contributors: ${c.participants.map((u) => u.name).join(', ')}`}>
@@ -48,8 +48,8 @@ function CommentBody({ c, isReply, ctx }) {
         )}
       </div>
       {c.anchor && !isReply && (onJump
-        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)] hover:tint-primary-strong transition"><Hash size={10} /> {c.anchor}</button>
-        : <div className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--accent-ink)] hover:tint-primary-strong transition"><Hash size={10} /> {c.anchor}</button>
+        : <div className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--accent-ink)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ms-8 mt-1.5">
           <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder={t('cm.ph.edit', "Edit comment \u2014 supports blocks, tables, images\u2026")} />

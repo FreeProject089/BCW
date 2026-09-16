@@ -89,7 +89,7 @@ export function safeColour(v) {
   return s;
 }
 const TOKEN_NAMES = new Set([
-  '--primary', '--primary-2', '--on-primary',
+  '--primary', '--primary-2', '--on-primary', '--accent-ink',
   '--bg', '--bg-solid', '--surface', '--surface-2', '--surface-3', '--avatar-ring',
   '--text', '--muted', '--faint',
   '--line', '--line-strong', '--control-border',

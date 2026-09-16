@@ -40,7 +40,7 @@ export function ProductRows({ products = [], style = 'rows' }) {
         {products.map((p) => (
           <Link key={p.name} to={p.to}>
             <Card className="p-4 h-full hover:border-[var(--primary)] transition-colors">
-              {p.logo ? <AppLogo name={p.logo} size={26} /> : <p.icon size={22} className="text-[var(--primary-2)]" />}
+              {p.logo ? <AppLogo name={p.logo} size={26} /> : <p.icon size={22} className="text-[var(--accent-ink)]" />}
               <div className="mt-2 font-semibold text-sm">{p.name}</div>
               <p className="mt-1 text-[12px] text-[var(--muted)] leading-snug">{p.desc}</p>
             </Card>
@@ -58,12 +58,12 @@ export function ProductRows({ products = [], style = 'rows' }) {
             className="group flex items-center gap-3 rounded-xl border border-[var(--line)] px-4 py-3 hover:border-[var(--primary)] transition-colors"
             style={{ background: 'var(--surface)' }}
           >
-            {p.logo ? <AppLogo name={p.logo} size={22} /> : <p.icon size={20} className="text-[var(--primary-2)]" />}
+            {p.logo ? <AppLogo name={p.logo} size={22} /> : <p.icon size={20} className="text-[var(--accent-ink)]" />}
             <span className="min-w-0">
               <span className="block font-semibold text-sm">{p.name}</span>
               <span className="block text-[12px] text-[var(--muted)] truncate" title={p.desc}>{p.desc}</span>
             </span>
-            <ArrowRight size={16} className="ms-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--primary)] transition-colors" />
+            <ArrowRight size={16} className="ms-auto shrink-0 text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition-colors" />
           </Link>
         </li>
       ))}
@@ -106,7 +106,7 @@ export function NewsGrid({ posts = [], limit = 3, heading = true, compact = fals
         <ul className="divide-y divide-[var(--line)] border-y border-[var(--line)]">
           {posts.slice(0, limit).map((p) => (
             <li key={p.id}>
-              <Link to={`/blog/${p.slug || p.id}`} className="flex items-baseline gap-3 py-2.5 hover:text-[var(--primary-2)] transition-colors">
+              <Link to={`/blog/${p.slug || p.id}`} className="flex items-baseline gap-3 py-2.5 hover:text-[var(--accent-ink)] transition-colors">
                 <span className="text-sm font-medium min-w-0 truncate" title={p.title}>{p.title}</span>
                 {p.publishedAt && (
                   <span className="ms-auto shrink-0 text-[11px] text-[var(--faint)] tabular-nums">

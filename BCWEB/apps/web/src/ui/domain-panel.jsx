@@ -83,7 +83,7 @@ export default function DomainPanel({ kind, id }) {
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2 font-semibold text-[15px]"><Globe size={16} className="text-[var(--primary-2)]" /> {t('dom.t', 'Your own domain')}</div>
+        <div className="flex items-center gap-2 font-semibold text-[15px]"><Globe size={16} className="text-[var(--accent-ink)]" /> {t('dom.t', 'Your own domain')}</div>
         {d && (d.verified
           ? <Badge tone="success"><CheckCircle2 size={11} /> {t('dom.verified', 'Verified')}</Badge>
           : <Badge tone="warning"><AlertTriangle size={11} /> {t('dom.pending', 'Waiting on DNS')}</Badge>)}

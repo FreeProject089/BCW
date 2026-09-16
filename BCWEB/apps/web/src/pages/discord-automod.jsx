@@ -457,7 +457,7 @@ function RouteRow({ k, label, sub, ctx }) {
         </Select>
         {onTest && sub && (
           <button type="button" disabled={!!testing} onClick={() => test(k)} title={t('lg.test', 'Send a test entry')}
-            className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)] disabled:opacity-50 shrink-0">
+            className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--accent-ink)] hover:bg-[var(--surface-2)] disabled:opacity-50 shrink-0">
             <Send size={12} />
           </button>
         )}

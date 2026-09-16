@@ -171,7 +171,7 @@ export default function StatusPage() {
         )}
       </Card>
       <Card className="p-4">
-        <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Bell size={15} className="text-[var(--primary-2)]" /> {t('st.sub.title', 'Get told when something breaks')}</div>
+        <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Bell size={15} className="text-[var(--accent-ink)]" /> {t('st.sub.title', 'Get told when something breaks')}</div>
         <p className="text-[12px] text-[var(--muted)] mb-3">{t('st.sub.desc', 'One message when a service goes down, one when it comes back. Nothing else, and every message carries a link to stop them.')}</p>
         <div className="flex flex-col sm:flex-row gap-2">
           <Input className="flex-1" type="email" value={email} onChange={(e) => setEmail(e.target.value)}

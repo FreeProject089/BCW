@@ -113,7 +113,7 @@ export default function StatusBanner({ compact = false }) {
               </div>
             );
           })}
-          <Link to="/status" className="inline-flex items-center gap-1.5 text-xs text-[var(--primary)] hover:underline">
+          <Link to="/status" className="inline-flex items-center gap-1.5 text-xs text-[var(--accent-ink)] hover:underline">
             <Activity size={13} /> {t('sb.more', 'Full status and history')}
           </Link>
         </div>

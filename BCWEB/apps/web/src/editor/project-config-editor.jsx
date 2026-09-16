@@ -39,7 +39,7 @@ function Section({ icon: Icon, title, desc, children, defaultOpen = false, badge
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-[var(--surface-2)] transition text-start">
-        <Icon size={16} className="text-[var(--primary-2)] shrink-0" />
+        <Icon size={16} className="text-[var(--accent-ink)] shrink-0" />
         <span className="font-medium text-sm flex-1">{title}</span>
         {badge != null && <Badge tone="primary">{badge}</Badge>}
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -401,7 +401,7 @@ function CommitImport({ slug }) {
   return (
     <div className="rounded-xl border border-[var(--line)] panel p-3 mb-3">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start">
-        <GitLogIcon size={15} className="text-[var(--primary-2)] shrink-0" />
+        <GitLogIcon size={15} className="text-[var(--accent-ink)] shrink-0" />
         <span className="text-sm font-medium flex-1">{t('pce.ci.title', 'Import commits (full history)')}</span>
         {info ? <Badge tone="green">{t('pce.ci.badge', '{n} commits · {d}').replace('{n}', info.total).replace('{d}', new Date(info.importedAt).toLocaleDateString())}</Badge> : info === false ? <Badge>{t('pce.ci.none', 'GitHub stats')}</Badge> : null}
         <span className="text-[11px] text-[var(--faint)]">{open ? '▲' : '▼'}</span>
@@ -639,7 +639,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
               <Input value={it.label || ''} onChange={(e) => patch({ label: e.target.value })} placeholder={t('pce.ph.label', "Label")} />
               <Input value={it.url || ''} onChange={(e) => patch({ url: e.target.value })} placeholder="https://…" />
               <button type="button" onClick={() => patch({ primary: !it.primary })} title={t('pce.primarybtn', "Primary button")}
-                className={`px-2 py-1.5 rounded-lg border text-xs flex items-center gap-1 ${it.primary ? 'border-[var(--primary)] text-[var(--primary)]' : 'border-[var(--line)] text-[var(--faint)]'}`}>
+                className={`px-2 py-1.5 rounded-lg border text-xs flex items-center gap-1 ${it.primary ? 'border-[var(--primary)] text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--faint)]'}`}>
                 <Star size={12} className={it.primary ? 'fill-[var(--primary)]' : ''} /> Primary
               </button>
             </div>

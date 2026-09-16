@@ -333,7 +333,7 @@ export function Dropdown({ value, options, onChange, className = '', size, place
             <button key={String(o.value)} type="button" role="option" aria-selected={String(o.value) === String(value)} onClick={() => { setOpen(false); btnRef.current?.focus?.(); if (String(o.value) !== String(value)) onChange(o.value); }}
               className={`press-sm w-full flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-start transition-colors ${String(o.value) === String(value) ? 'bg-[var(--surface-2)] font-medium text-[var(--text)]' : 'hover:bg-[var(--surface-2)] text-[var(--muted)]'}`}>
               {o.icon}<span className="flex-1 truncate" title={o.label}>{o.label}</span>
-              {String(o.value) === String(value) && <Check size={14} className="text-[var(--primary-2)]" />}
+              {String(o.value) === String(value) && <Check size={14} className="text-[var(--accent-ink)]" />}
             </button>
           ))}
         </div>
@@ -415,7 +415,7 @@ export function Field({ label, hint, children, className = '' }) {
         <div className="text-xs text-[var(--faint)] mt-1">
           <span ref={hintRef} className={folded ? 'line-clamp-2' : ''}>{hint}</span>
           {(clipped || open) && (
-            <button type="button" onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }} className="text-[var(--primary-2)] hover:underline font-medium ms-1">
+            <button type="button" onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }} className="text-[var(--accent-ink)] hover:underline font-medium ms-1">
               {open ? t('common.less', 'less') : t('common.more', 'more')}
             </button>
           )}
@@ -475,7 +475,7 @@ export function PageHeader({ icon: Icon, title, subtitle, actions }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 mb-6">
       <div className="flex items-center gap-3 min-w-0">
-        {Icon && <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={20} className="text-[var(--primary-2)]" /></div>}
+        {Icon && <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={20} className="text-[var(--accent-ink)]" /></div>}
         <div className="min-w-0"><h1 className="text-xl sm:text-2xl font-bold leading-tight">{title}</h1>{subtitle && <p className="text-sm text-[var(--muted)] mt-0.5">{subtitle}</p>}</div>
       </div>
       {actions && <div className="shrink-0">{actions}</div>}
@@ -522,6 +522,39 @@ export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
       )}
       {hint && <div className="text-xs text-[var(--faint)] mt-3 mx-auto max-w-sm break-words">{hint}</div>}
     </Card>
+  );
+}
+
+/* ── Learn more ──────────────────────────────────────────────────────────────────────
+ *
+ * The problem this solves is not "the text is too long", it is "the text is in the way".
+ * A card that explains itself in four sentences pushes its own controls below the fold,
+ * makes a grid of cards ragged because each one explains itself to a different length, and
+ * on a phone turns a row of three into a column of three essays. The instinct is to cut the
+ * explanation; the explanation is usually right, it is just always on.
+ *
+ * So: one line stays, the rest folds. `<details>` because it is the browser's own
+ * disclosure — keyboard, screen readers, Ctrl+F (find-in-page opens a closed details in
+ * every current browser) and printing all work without a line of JavaScript, and the
+ * closed height is one line whatever the content is, which is what makes a grid line up.
+ *
+ *   <Explain summary="Un bot Discord, une app, un site.">the three paragraphs</Explain>
+ *
+ * `summary` is the sentence that stays visible; children are what unfolds. When there is no
+ * lead sentence the marker stands alone as a quiet "Learn more" link, which is the shape
+ * used inside a dense card.
+ */
+export function Explain({ summary, label, children, className = '', tone = 'muted', open = false }) {
+  const { t } = useI18n();
+  const more = label || t('common.learnmore', 'Learn more');
+  return (
+    <details className={`explain ${className}`} open={open}>
+      <summary>
+        {summary ? <span className={tone === 'muted' ? 'text-[var(--muted)]' : ''}>{summary} </span> : null}
+        <span className="explain-cta">{more}<ChevronDown size={13} className="explain-chev" aria-hidden="true" /></span>
+      </summary>
+      <div className="explain-body">{children}</div>
+    </details>
   );
 }
 
@@ -577,7 +610,7 @@ export function Modal({ open, onClose, title, icon: Icon, children, footer, widt
       <div ref={cardRef} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : 'Dialog'} tabIndex={-1}
         className={`card modal-card anim-pop w-full ${width} p-0 overflow-hidden max-h-[92vh] flex flex-col`} onMouseDown={(e) => e.stopPropagation()} style={{ boxShadow: '0 24px 70px -20px rgba(0,0,0,0.7)', outline: 'none' }}>
         <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[var(--line)] shrink-0">
-          {Icon && <Icon size={18} className="text-[var(--primary-2)]" />}
+          {Icon && <Icon size={18} className="text-[var(--accent-ink)]" />}
           <div id={titleId} className="font-semibold flex-1 min-w-0 truncate" title={title}>{title}</div>
           <button className="btn-ghost btn btn-sm !px-1.5" onClick={onClose} aria-label={t('common.close2', "Close")}><X size={16} /></button>
         </div>

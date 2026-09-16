@@ -94,7 +94,7 @@ export function AdminMediaFlags() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2"><Images size={16} className="text-[var(--primary-2)]" /> {t('adm.mf.title', 'Lookalike pictures')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Images size={16} className="text-[var(--accent-ink)]" /> {t('adm.mf.title', 'Lookalike pictures')}</h2>
         {stats.data?.flags?.pending ? <Badge tone="warning">{stats.data.flags.pending}</Badge> : null}
         <div className="ml-auto flex items-center gap-2">
           <Select value={status} onChange={(e) => { setStatus(e.target.value); setPage(0); }} className="!w-auto">

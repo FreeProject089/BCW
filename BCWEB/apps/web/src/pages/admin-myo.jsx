@@ -20,10 +20,10 @@ export function AdminMyo() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 me-2"><Wand2 size={16} className="text-[var(--primary-2)]" /> {t('amyo.title', 'Make Your Own, commissions')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Wand2 size={16} className="text-[var(--accent-ink)]" /> {t('amyo.title', 'Make Your Own, commissions')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['requests', t('amyo.tab.requests', 'Requests')], ['products', t('amyo.tab.products', 'Catalog')], ['settings', t('amyo.tab.settings', 'Settings')]].map(([k, l]) => (
-            <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${view === k ? 'bg-[var(--bg-solid)] text-[var(--primary)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
+            <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${view === k ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
           ))}
         </div>
       </div>
@@ -94,7 +94,7 @@ function AdminMyoRequests() {
           decides whether to raise a limit is the one you are looking at right now. */}
       {load && (limits?.maxOpen || limits?.maxOpenUrgent) ? (
         <Card className="p-3 mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
-          <span className="flex items-center gap-1.5 font-medium"><Gauge size={13} className="text-[var(--primary-2)]" /> {t('amyo.load', 'Live load')}</span>
+          <span className="flex items-center gap-1.5 font-medium"><Gauge size={13} className="text-[var(--accent-ink)]" /> {t('amyo.load', 'Live load')}</span>
           {!!limits.maxOpen && <span className={load.openTotal >= limits.maxOpen ? 'text-warning font-semibold' : 'text-[var(--muted)]'}>{t('amyo.load.open', 'Open')}: {load.openTotal} / {limits.maxOpen}</span>}
           {!!limits.maxOpenUrgent && <span className={load.openUrgent >= limits.maxOpenUrgent ? 'text-warning font-semibold' : 'text-[var(--muted)]'}>{t('amyo.load.urgent', 'Urgent')}: {load.openUrgent} / {limits.maxOpenUrgent}</span>}
         </Card>
@@ -102,7 +102,7 @@ function AdminMyoRequests() {
 
       <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5 mb-3">
         {TABS.map(([k, l, n]) => (
-          <button key={k} onClick={() => setScope(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${scope === k ? 'bg-[var(--bg-solid)] text-[var(--primary)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <button key={k} onClick={() => setScope(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${scope === k ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {l}{typeof n === 'number' ? ` · ${n}` : ''}
           </button>
         ))}
@@ -140,7 +140,7 @@ function AdminMyoRequests() {
                   someone else is the dropdown beside it. */}
               {!r.archivedAt && (mine ? (
                 <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => assign(r, null)} title={t('amyo.drop', 'Give it up')}>
-                  <UserCheck size={13} className="text-[var(--primary)]" /> {t('amyo.mine', 'Mine')}
+                  <UserCheck size={13} className="text-[var(--accent-ink)]" /> {t('amyo.mine', 'Mine')}
                 </Button>
               ) : (
                 <Button size="sm" variant="ghost" disabled={busyId === r.id} onClick={() => assign(r, me?.id)}>
@@ -299,7 +299,7 @@ function AdminMyoSettings() {
           Each limit shows what it is currently holding, because a cap set without seeing
           today's number is a guess you find out about through a complaint. */}
       <div className="pt-3 border-t border-[var(--line)]">
-        <div className="flex items-center gap-2 text-sm font-medium"><Users size={14} className="text-[var(--primary-2)]" /> {t('amyo.s.caps', 'How much you take on at once')}</div>
+        <div className="flex items-center gap-2 text-sm font-medium"><Users size={14} className="text-[var(--accent-ink)]" /> {t('amyo.s.caps', 'How much you take on at once')}</div>
         <p className="text-xs text-[var(--faint)] mt-1 mb-3">{t('amyo.s.capssub', 'When a limit is reached the form refuses new requests, before the payment, never after. 0 means no limit.')}</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('amyo.s.maxurgent', 'Urgent at once')} hint={data?.load ? t('amyo.s.now', 'now: {n}').replace('{n}', data.load.openUrgent) : undefined}>

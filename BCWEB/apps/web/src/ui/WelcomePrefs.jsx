@@ -94,7 +94,7 @@ export default function WelcomePrefs() {
         <button type="button" onClick={() => onChange(!on)}
             className="w-full flex items-center gap-3 py-2.5 text-start border-b border-[var(--line)] last:border-0">
             <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0">
-                <Icon size={14} className="text-[var(--primary-2)]" />
+                <Icon size={14} className="text-[var(--accent-ink)]" />
             </span>
             <span className="flex-1 min-w-0">
                 <span className="block text-sm font-medium">{title}</span>
@@ -113,7 +113,7 @@ export default function WelcomePrefs() {
             role="dialog" aria-modal="true" aria-label={t('wp.title', 'Make it yours')}>
             <Card className="w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" style={{ background: 'var(--bg-solid)' }}>
                 <div className="flex items-center gap-2 mb-1">
-                    <Rocket size={18} className="text-[var(--primary-2)]" />
+                    <Rocket size={18} className="text-[var(--accent-ink)]" />
                     <h2 className="font-semibold">{t('wp.title', 'Make it yours')}</h2>
                 </div>
                 <p className="text-xs text-[var(--muted)] mb-4">

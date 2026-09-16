@@ -104,7 +104,7 @@ function RepoContents({ id, k }) {
         <li className="flex items-center gap-2 py-1.5" style={{ paddingLeft: `${depth * 16}px` }}>
           <button onClick={() => setOpen(!open)} className="flex items-center gap-2 min-w-0 flex-1 text-start">
             <ChevronDown size={13} className={`text-[var(--faint)] flex-none transition-transform ${open ? '' : '-rotate-90'}`} />
-            <FolderOpen size={13} className="text-[var(--primary-2)] flex-none" />
+            <FolderOpen size={13} className="text-[var(--accent-ink)] flex-none" />
             <span className="text-sm truncate min-w-0" title={path}>{name}</span>
           </button>
           <span className="text-xs text-[var(--faint)] tabular-nums flex-none">
@@ -132,7 +132,7 @@ function RepoContents({ id, k }) {
   return (
     <Card className="p-4 mt-4">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <div className="flex items-center gap-2 font-medium"><FolderOpen size={16} className="text-[var(--primary-2)]" /> {t('rc.title', 'Contents')}</div>
+        <div className="flex items-center gap-2 font-medium"><FolderOpen size={16} className="text-[var(--accent-ink)]" /> {t('rc.title', 'Contents')}</div>
         <span className="text-xs text-[var(--faint)]">
           {t('rc.count', '{n} files · {size}')
             .replace('{n}', String(total?.count ?? files.length))
@@ -198,7 +198,7 @@ export default function RepoPublicPage() {
       <div className="flex items-center gap-2 flex-wrap mb-4 text-sm">
         <span className="text-[var(--faint)]">{t('rp.ownedby', 'Owned by')}</span>
         <span className="font-medium flex items-center gap-1"><Users size={13} /> {repo.author || '—'}</span>
-        {repo.ownerBcId && <button onClick={() => copy(repo.ownerBcId)} title={t('rp.copybcid', 'Copy the owner’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {repo.ownerBcId} <Copy size={10} /></button>}
+        {repo.ownerBcId && <button onClick={() => copy(repo.ownerBcId)} title={t('rp.copybcid', 'Copy the owner’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)]"><Fingerprint size={11} /> {repo.ownerBcId} <Copy size={10} /></button>}
         {/* The count used to be display-only here; starring was only possible from the /repos
             list, which is the wrong place to decide you want to keep something. */}
         <StarButton favorited={repo.favorited} count={repo.favoriteCount} signedIn={!!user}
@@ -210,7 +210,7 @@ export default function RepoPublicPage() {
 
       {deeplink ? (
         <Card className="p-4">
-          <div className="flex items-center gap-2 mb-2 font-medium"><GitBranch size={16} className="text-[var(--primary-2)]" /> {t('rp.addto', 'Open in BetterModsManager')}</div>
+          <div className="flex items-center gap-2 mb-2 font-medium"><GitBranch size={16} className="text-[var(--accent-ink)]" /> {t('rp.addto', 'Open in BetterModsManager')}</div>
           <div className="flex flex-wrap items-center gap-2">
             <a href={deeplink}><Button size="sm" variant="primary"><GitBranch size={14} /> {t('rp.openbmm', 'Open in BMM')}</Button></a>
             <Button size="sm" variant="ghost" onClick={() => copy(repo.repoJson)}><Copy size={13} /> {t('rp.copyurl', 'Copy repo.json URL')}</Button>

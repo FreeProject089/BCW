@@ -96,7 +96,7 @@ export function MyoPage() {
       {/* ── Hero ── */}
       <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
         <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full tint-primary blur-3xl -z-10" />
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] bg-[var(--primary)]/[0.08] border b-primary mb-4">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] bg-[var(--primary)]/[0.08] border b-primary mb-4">
           <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
         </span>
         <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>
@@ -117,7 +117,7 @@ export function MyoPage() {
             under it, so the sequence belongs to the thing you clicked. */}
         <details className="group myo-deal">
           <summary className="mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:b-primary hover:text-[var(--text)] transition-colors">
-            <Sparkles size={13} className="text-[var(--primary-2)] shrink-0" />
+            <Sparkles size={13} className="text-[var(--accent-ink)] shrink-0" />
             <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
             <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
           </summary>
@@ -182,10 +182,10 @@ export function MyoPage() {
           <div className="mb-10 sm:mb-12">
             <div className="flex items-baseline gap-3 mb-3 flex-wrap">
               <h2 className="font-semibold text-lg flex items-center gap-2">
-                <MessageSquare size={18} className="text-[var(--primary-2)]" /> {t('myo.mine', 'My requests')}
+                <MessageSquare size={18} className="text-[var(--accent-ink)]" /> {t('myo.mine', 'My requests')}
               </h2>
               {unread > 0 && (
-                <span className="text-xs font-semibold text-[var(--primary-2)]">
+                <span className="text-xs font-semibold text-[var(--accent-ink)]">
                   {t('myo.mineUnread', '{n} waiting for you').replace('{n}', String(unread))}
                 </span>
               )}
@@ -196,7 +196,7 @@ export function MyoPage() {
                 return (
                   <Link key={r.id} to={`/myo/${r.id}`}
                     className={`card p-3 flex items-center gap-3 hover:border-[var(--primary)] ${r.userUnread ? 'border-[var(--primary)]' : ''}`}>
-                    <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><K size={16} /></span>
+                    <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><K size={16} /></span>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate" title={r.name}>{r.name}</div>
                       <div className="text-xs text-[var(--faint)]">{new Date(r.createdAt).toLocaleDateString()}</div>
@@ -204,7 +204,7 @@ export function MyoPage() {
                     {/* A word, not a dot. A coloured circle is only legible to somebody who
                         already knows what it means. */}
                     {r.userUnread && (
-                      <span className="text-[11px] font-semibold text-[var(--primary-2)] whitespace-nowrap">
+                      <span className="text-[11px] font-semibold text-[var(--accent-ink)] whitespace-nowrap">
                         {t('myo.unread', 'New reply')}
                       </span>
                     )}
@@ -293,7 +293,7 @@ export function MyoConversation({ id, admin = false }) {
       {/* header */}
       <Card className="p-4">
         <div className="flex items-start gap-3">
-          <span className="w-11 h-11 rounded-xl tint-primary grid place-items-center text-[var(--primary-2)] shrink-0">{r.logo ? <img src={r.logo} alt="" className="w-8 h-8 rounded object-contain" /> : <K size={20} />}</span>
+          <span className="w-11 h-11 rounded-xl tint-primary grid place-items-center text-[var(--accent-ink)] shrink-0">{r.logo ? <img src={r.logo} alt="" className="w-8 h-8 rounded object-contain" /> : <K size={20} />}</span>
           <div className="flex-1 min-w-0">
             <div className="font-semibold flex items-center gap-2 flex-wrap">{r.name}
               <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
@@ -363,7 +363,7 @@ function QuoteCard({ q, admin, viewerIsStaff, onPay, onWithdraw, t, cur }) {
   const withdrawn = q.status === 'withdrawn';
   return (
     <Card className={`p-4 border-2 ${paid ? 'border-success-border' : withdrawn ? 'border-[var(--line)] opacity-60' : 'b-primary'}`}>
-      <div className="flex items-center gap-2 mb-2"><FileText size={16} className="text-[var(--primary-2)]" /><span className="font-semibold">{q.title || t('myo.quote', 'Quote')}</span>
+      <div className="flex items-center gap-2 mb-2"><FileText size={16} className="text-[var(--accent-ink)]" /><span className="font-semibold">{q.title || t('myo.quote', 'Quote')}</span>
         {paid && <Badge tone="green"><Check size={10} /> {t('myo.quote.paid', 'paid')}</Badge>}
         {withdrawn && <Badge>{t('myo.quote.withdrawn', 'withdrawn')}</Badge>}
         <Badge tone={q.includesSource ? 'green' : ''}>{q.includesSource ? t('myo.src.with', 'source included') : t('myo.src.without', 'no source')}</Badge>

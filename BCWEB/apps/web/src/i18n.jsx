@@ -2002,7 +2002,7 @@ const DICT = {
     'proj.nocontrib': 'Pas encore de contributeurs', 'proj.messages': 'Messages de la communauté',
     'proj.blog': 'Blog', 'proj.noposts': 'Pas encore d’articles',
     'common.loading': 'Chargement…', 'common.cancel': 'Annuler',
-    'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.', 'common.invalidjson': 'JSON invalide.',
+    'common.failed': 'Échec.', 'common.deleted': 'Supprimé.', 'common.saved': 'Enregistré.', 'common.removed': 'Retiré.', 'common.copied': 'Copié.', 'common.learnmore': 'En savoir plus', 'common.savefail': 'Échec de l’enregistrement.', 'common.loadfail': 'Échec du chargement.', 'common.invalidjson': 'JSON invalide.',
 
     // ── Admin : config des projets ──
     'ap.title': 'Configuration des projets', 'ap.sub': 'Configure les téléchargements, liens, contributeurs & messages, le suivi d’avancement, les docs légales et la source des notes de version GitHub — par projet.',
@@ -2899,7 +2899,7 @@ const DICT = {
     'cart.autorenew.hb': 'Garde ce dépôt en avant automatiquement, refacturé tous les {n} jours. Annulable à tout moment dans Facturation.',
     'cart.note2': 'Prépayé maintenant pour tout le panier. Les articles en renouvellement auto continuent en abonnement après leur durée.',
     'cart.mustagree': 'Merci d’accepter d’abord les Conditions et la politique de paiement.',
-    'cart.agree': 'J’accepte les <a href="/legal/terms" target="_blank" class="text-[var(--primary-2)] underline">Conditions</a> et la politique <a href="/legal/refunds" target="_blank" class="text-[var(--primary-2)] underline">Paiements & Remboursements</a>, et je comprends que le contenu que j’héberge relève de ma responsabilité.',
+    'cart.agree': 'J’accepte les <a href="/legal/terms" target="_blank" class="text-[var(--accent-ink)] underline">Conditions</a> et la politique <a href="/legal/refunds" target="_blank" class="text-[var(--accent-ink)] underline">Paiements & Remboursements</a>, et je comprends que le contenu que j’héberge relève de ma responsabilité.',
     'hosting.custom.cta': 'Créer un plan sur mesure', 'hosting.custom.modaltitle': 'Créer un plan sur mesure',
     'hosting.note': 'Les mises à jour nécessitent seulement un SHA valide. Nous fixons la limite d’envoi par dépôt.',
     'hosting.pool.title': 'Nouveau pool de stockage', 'hosting.pool.label': 'Nom du pool', 'hosting.pool.ph': 'mon-pool',
@@ -4564,7 +4564,8 @@ const DICT = {
     'lc.import': 'Importer', 'lc.export': 'Exporter', 'lc.import.h': 'Collez un JSON { « clé » : « valeur » }. Il est fusionné dans l’éditeur pour révision ; rien n’est enregistré tant que vous n’appuyez pas sur Enregistrer.', 'lc.import.apply': 'Charger',
     'lc.badjson': 'Ce n’est pas un JSON valide.', 'lc.imported': '{n} chaînes chargées, vérifiez, puis Enregistrez.',
     'lc.searchall': 'Rechercher dans toutes les chaînes…', 'lc.hint.all': 'Toutes les chaînes de l’application. Ce qui reste vide retombe sur l’anglais.', 'lc.capped': 'les 400 premières affichées, affinez la recherche',
-    'ch.title': 'Cagnotte solidaire', 'ch.sub': 'Chaque mois, une part de nos revenus, plus vos dons, est reversée à une association choisie par la communauté.',
+    'ch.title': 'Cagnotte solidaire', 'ch.sub': 'Une association choisie par la communauté, chaque mois.',
+    'ch.sub2': 'Une part de nos revenus est ajoutée à vos dons, et la cagnotte entière part à l’association que le vote désigne. Le versement est fait à la main, avec une preuve.',
     'ch.give.cta': 'Augmenter la cagnotte', 'ch.vote': 'Voter', 'ch.more': 'En savoir plus',
     'ch.breakdown': 'BetterCommunity {a} + communauté {b}', 'ch.community': 'communauté',
     'ch.for': 'Association du mois :', 'ch.voting': 'L’association est en cours de choix par vote communautaire.',
@@ -6321,7 +6322,8 @@ const DICT = {
     'dev.hub.newsall': 'Tous les articles',
     'home.myo.k': 'Make Your Own',
     'home.myo.t': 'Fais-le construire pour toi',
-    'home.myo.d': 'Un bot Discord, une app, un site, ou quelque chose que personne n’a encore fait. Ça commence par une consultation payante — des conseils et un devis — et la construction ne démarre qu’une fois ce devis accepté. Rien n’est facturé pour le travail avant que tu sois d’accord.',
+    'home.myo.d': 'Un bot Discord, une app, un site, ou quelque chose que personne n’a encore fait.',
+    'home.myo.d2': 'Ça commence par une consultation payante : des conseils et un devis. La construction ne démarre qu’une fois ce devis accepté, et rien n’est facturé pour le travail avant que tu sois d’accord.',
     'home.myo.cta': 'Lancer une commande',
     'home.myo.full': 'La file est pleine, les nouvelles commandes sont en pause.',
     'home.myo.f1': 'Bots Discord', 'home.myo.f2': 'Applications', 'home.myo.f3': 'Sites web', 'home.myo.f4': 'Autre chose',
@@ -6330,7 +6332,8 @@ const DICT = {
     'home.myo.s3': 'Tu décides, puis c’est construit', 'home.myo.s3d': 'Rien n’est facturé pour le travail tant que tu n’as pas validé le devis. Tu dis non, ça s’arrête là.',
     'home.dev.k': "Pour les développeurs",
     'home.dev.t': "Construis sur BetterCommunity",
-    'home.dev.d': "Connecte des gens avec leur compte BetterCommunity, lis leur contenu avec leur permission, et fais-toi prévenir quand il change. Une API REST, OpenID Connect et des webhooks — aucun SDK à installer, et une clé prend environ une minute.",
+    'home.dev.d': "Connecte des gens avec leur compte BetterCommunity, lis leur contenu avec leur permission, et fais-toi prévenir quand il change.",
+    'home.dev.d2': "Une API REST, OpenID Connect et des webhooks. Aucun SDK à installer, et une clé prend environ une minute.",
     'home.dev.cta': "Ouvrir l’espace développeurs",
     'home.dev.cta2': "Référence de l’API",
     'home.dev.f1': "Clés API",
@@ -7564,7 +7567,7 @@ export function LangToggle({ type = 'auto' } = {}) {
       <div className="inline-flex items-center gap-0.5">
         {LIST.map((l) => (
           <button key={l.code} onClick={() => setLang(l.code)} title={nameOf(l)}
-            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--primary-2)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {l.code}
           </button>
         ))}
@@ -7589,7 +7592,7 @@ export function LangToggle({ type = 'auto' } = {}) {
           <div className="max-h-72 overflow-auto">
             {filtered.map((l) => (
               <button key={l.code} onClick={() => { setLang(l.code); setOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--accent-ink)] font-medium' : 'text-[var(--text)]'}`}>
                 {nameOf(l)} {l.code === lang && <span className="text-[10px] uppercase tracking-wider">{l.code}</span>}
               </button>
             ))}
@@ -7633,7 +7636,7 @@ export function LangSelect({ className = '', type = 'dropdown' }) {
       <div className={`inline-flex items-center gap-0.5 ${className}`}>
         {LIST.map((l) => (
           <button key={l.code} type="button" onClick={() => setLang(l.code)} title={nameOf(l)}
-            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--primary-2)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`px-2 py-1 rounded-md text-xs font-semibold uppercase transition ${l.code === lang ? 'tint-primary text-[var(--accent-ink)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {l.code}
           </button>
         ))}
@@ -7665,7 +7668,7 @@ export function LangSelect({ className = '', type = 'dropdown' }) {
           <div className="max-h-72 overflow-auto">
             {filtered.map((l) => (
               <button key={l.code} type="button" role="option" aria-selected={l.code === lang} onClick={() => { setLang(l.code); setOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--primary-2)] font-medium' : 'text-[var(--text)]'}`}>
+                className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--surface-2)] transition ${l.code === lang ? 'text-[var(--accent-ink)] font-medium' : 'text-[var(--text)]'}`}>
                 {nameOf(l)} {l.code === lang && <Check size={13} />}
               </button>
             ))}

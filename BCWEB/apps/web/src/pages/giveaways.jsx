@@ -30,7 +30,7 @@ export function Giveaways() {
       <div>
         {header}
         <Card className="p-8 text-center max-w-md mx-auto">
-          <Gift size={30} className="mx-auto text-[var(--primary-2)] mb-3" />
+          <Gift size={30} className="mx-auto text-[var(--accent-ink)] mb-3" />
           <div className="font-semibold">{t('gwp.signin.t', 'Sign in to enter')}</div>
           <p className="text-sm text-[var(--muted)] mt-1">{t('gwp.signin.s', 'Giveaways are entered with your BetterCommunity account, so the prize can reach your inventory.')}</p>
           <Link to="/auth"><Button variant="primary" className="mt-4"><LogIn size={15} /> {t('gwp.signin.btn', 'Sign in')}</Button></Link>
@@ -65,7 +65,7 @@ export function Giveaways() {
             return (
               <Card key={g.id} className="p-4">
                 <div className="flex items-start gap-3">
-                  <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><Gift size={18} className="text-[var(--primary-2)]" /></span>
+                  <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><Gift size={18} className="text-[var(--accent-ink)]" /></span>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold break-words">{g.prize}</div>
                     <div className="text-[12px] text-[var(--muted)] flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-0.5">

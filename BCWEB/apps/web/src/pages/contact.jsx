@@ -62,7 +62,7 @@ function Choice({ icon, label, sub, onClick }) {
   return (
     <button type="button" onClick={onClick}
       className="w-full text-start flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] px-4 py-3 hover:border-[var(--ring)] transition-colors">
-      <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface)] shrink-0"><Glyph name={icon} className="text-[var(--primary-2)]" /></span>
+      <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface)] shrink-0"><Glyph name={icon} className="text-[var(--accent-ink)]" /></span>
       <span className="flex-1 min-w-0">
         <span className="block font-medium text-sm">{label}</span>
         {sub && <span className="block text-xs text-[var(--muted)] mt-0.5">{sub}</span>}
@@ -180,7 +180,7 @@ export function Contact() {
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
         {channels.map((c) => (
           <a key={c.label} href={c.href} target="_blank" rel="noreferrer">
-            <Card hover className="p-5 h-full"><c.icon size={22} className={c.kofi ? 'text-orange-400' : 'text-[var(--primary-2)]'} />
+            <Card hover className="p-5 h-full"><c.icon size={22} className={c.kofi ? 'text-orange-400' : 'text-[var(--accent-ink)]'} />
               <div className="font-semibold mt-3">{c.label}</div><div className="text-xs text-[var(--muted)] mt-0.5">{c.sub}</div></Card>
           </a>
         ))}
@@ -238,7 +238,7 @@ export function Contact() {
           <div className="p-6">
             <button type="button" onClick={() => setStep(branch ? 'q2' : 'q1')} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 mb-3"><ArrowLeft size={13} /> {fr ? 'Retour' : 'Back'}</button>
             <div className="font-semibold text-sm">{say(spec.title)}</div>
-            <p className="text-xs text-[var(--muted)] mt-1 flex items-start gap-1.5"><Info size={13} className="mt-0.5 shrink-0 text-[var(--primary-2)]" /><span>{say(spec.lead)}</span></p>
+            <p className="text-xs text-[var(--muted)] mt-1 flex items-start gap-1.5"><Info size={13} className="mt-0.5 shrink-0 text-[var(--accent-ink)]" /><span>{say(spec.lead)}</span></p>
 
             {spec.fields.length > 0 && (
               <div className="mt-4 grid sm:grid-cols-2 gap-4">
@@ -278,7 +278,7 @@ export function Contact() {
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
-              <p className="text-xs text-[var(--faint)] flex items-center gap-1.5"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {fr ? 'Ton email sert uniquement à te répondre.' : 'Your email is only used to reply to you.'}</p>
+              <p className="text-xs text-[var(--faint)] flex items-center gap-1.5"><ShieldCheck size={13} className="text-[var(--accent-ink)]" /> {fr ? 'Ton email sert uniquement à te répondre.' : 'Your email is only used to reply to you.'}</p>
               <Button variant="primary" disabled={!valid || busy} onClick={send}>{busy ? <Spinner /> : <><Send size={15} /> {fr ? 'Envoyer' : 'Send message'}</>}</Button>
             </div>
           </div>

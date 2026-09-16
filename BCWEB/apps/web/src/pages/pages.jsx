@@ -479,7 +479,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
   const renderTab = (tb, big) => (
     <button key={tb.id} onClick={() => set(leafOf(tb)[0].id)} title={tb.badge && tb.badgeTitle ? tb.badgeTitle : undefined}
       className={`flex items-center gap-2.5 px-3 ${big ? 'py-2.5' : 'py-2'} rounded-xl text-sm text-start w-full whitespace-nowrap transition-colors press ${active === tb.id ? 'bg-[var(--surface-2)] text-[var(--text)] border border-[var(--line)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] border border-transparent'}`}>
-      <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--primary-2)]' : ''}`} /> <span className="min-w-0 truncate" title={tb.label}>{tb.label}</span>
+      <tb.icon size={16} className={`shrink-0 ${active === tb.id ? 'text-[var(--accent-ink)]' : ''}`} /> <span className="min-w-0 truncate" title={tb.label}>{tb.label}</span>
       {(() => {
         const n = (tb.badge || 0) + leafOf(tb).reduce((a, lf) => a + (lf === tb ? 0 : (lf.badge || 0)), 0);
         if (!n) return null;
@@ -561,7 +561,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
       <div className="md:hidden mb-4 relative z-20">
         <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
           className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
-          {current?.icon && <current.icon size={16} className="text-[var(--primary-2)]" />}
+          {current?.icon && <current.icon size={16} className="text-[var(--accent-ink)]" />}
           <span className="flex-1 text-start truncate" title={current?.label}>{current?.label}</span>
           <span className="text-[11px] text-[var(--faint)] tabular-nums">{idx + 1}/{realTabs.length}</span>
           <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />
@@ -597,7 +597,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
               {current.sub.map((lf) => (
                 <button key={lf.id} onClick={() => set(lf.id)}
                   className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border transition-colors press ${activeLeaf === lf.id ? 'tint-primary b-primary text-[var(--text)] font-medium' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}>
-                  {lf.icon && <lf.icon size={13} className={activeLeaf === lf.id ? 'text-[var(--primary-2)]' : ''} />} {lf.label}
+                  {lf.icon && <lf.icon size={13} className={activeLeaf === lf.id ? 'text-[var(--accent-ink)]' : ''} />} {lf.label}
                   {lf.badge ? <Badge tone="primary">{lf.badge}</Badge> : null}
                 </button>
               ))}
@@ -630,10 +630,10 @@ export function Installer() {
         <div className="text-xs text-[var(--faint)] mt-3">{t('inst.platform', 'Windows 10/11 · 64-bit')}</div>
       </section>
       <section className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {feats.map(([I, title, d]) => <Card key={title} className="p-5"><I size={20} className="text-[var(--primary-2)]" /><div className="font-semibold mt-3">{title}</div><div className="text-sm text-[var(--muted)] mt-1">{d}</div></Card>)}
+        {feats.map(([I, title, d]) => <Card key={title} className="p-5"><I size={20} className="text-[var(--accent-ink)]" /><div className="font-semibold mt-3">{title}</div><div className="text-sm text-[var(--muted)] mt-1">{d}</div></Card>)}
       </section>
       <Card className="p-8 mt-6 text-center">
-        <Sparkles size={22} className="mx-auto text-[var(--primary-2)]" />
+        <Sparkles size={22} className="mx-auto text-[var(--accent-ink)]" />
         <div className="font-semibold text-lg mt-2">{t('inst.dev', 'In active development')}</div>
         <p className="text-sm text-[var(--muted)] mt-1 max-w-md mx-auto">{t('inst.dev.d', 'BetterInstaller is being built as a separate Slint-based app. Follow progress on the blog.')}</p>
       </Card>

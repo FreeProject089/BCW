@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 import {
   Server, Rocket, ArrowRight, Upload, CheckCircle2, ShieldCheck, Inbox, Eye, Lock, Zap, Users, Newspaper, LayoutDashboard, Star, Link2, Code2, Wand2, AppWindow, Globe, Sparkles, Clock, ChevronLeft, ChevronRight, BadgeCheck, AlertTriangle, Ban, MessageSquare, Plus,
 } from 'lucide-react';
-import { Button, Card, Badge } from '../ui/ui.jsx';
+import { Button, Card, Badge, Explain } from '../ui/ui.jsx';
 import { api } from '../lib/api.js';
 import { productCards } from '../lib/home-products.js';
 import { CATALOG_SEEN } from '../lib/prefs.js';
@@ -111,7 +111,7 @@ function YourProjectHere() {
     <Card className="reveal-on-scroll mt-4 p-5 flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="flex-1">
         <div className="font-semibold flex items-center gap-2">
-          <Sparkles size={16} className="text-[var(--primary-2)]" />
+          <Sparkles size={16} className="text-[var(--accent-ink)]" />
           {t('home.yours.title', 'Your project can have a page here too')}
         </div>
         <div className="text-sm text-[var(--muted)] mt-1">
@@ -128,7 +128,7 @@ function YourProjectHere() {
 function SectionKicker({ n, label }) {
   return (
     <div className="reveal-on-scroll flex items-center gap-3 mb-6">
-      <span className="text-[11px] font-mono font-bold text-[var(--primary-2)] tracking-widest">{n}</span>
+      <span className="text-[11px] font-mono font-bold text-[var(--accent-ink)] tracking-widest">{n}</span>
       <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--faint)]">{label}</span>
       <span className="flex-1 h-px bg-gradient-to-r from-[var(--line-strong)] to-transparent" />
     </div>
@@ -522,12 +522,12 @@ export function Home({ draft = null }) {
                         can resolve, then the generic box. */}
                     {p.logo ? <AppLogo pkey={p.logo} size={30} fallback={p.icon} />
                       : p.img ? <img src={p.img} alt="" width={30} height={30} loading="lazy" className="rounded-[6px] object-contain" />
-                      : p.glyph ? <IconGlyph name={p.glyph} size={26} className="text-[var(--primary-2)]" />
-                      : <p.icon size={22} className="text-[var(--primary-2)]" />}
+                      : p.glyph ? <IconGlyph name={p.glyph} size={26} className="text-[var(--accent-ink)]" />
+                      : <p.icon size={22} className="text-[var(--accent-ink)]" />}
                   </span>
                   <div className="font-semibold mt-3">{p.name}</div>
                   <div className="text-sm text-[var(--muted)] mt-1">{p.desc}</div>
-                  <div className="text-xs text-[var(--primary-2)] mt-3 flex items-center gap-1">{t('prod.open')} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
+                  <div className="text-xs text-[var(--accent-ink)] mt-3 flex items-center gap-1">{t('prod.open')} <ArrowRight size={12} className="transition-transform group-hover:translate-x-0.5" /></div>
                 </div>
               </Card>
             </Link>
@@ -599,7 +599,7 @@ export function Home({ draft = null }) {
           <Card hover className="p-6 group relative overflow-hidden">
             <div className="relative">
               <div className="flex items-start gap-4 flex-wrap">
-                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:b-primary shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:b-primary shrink-0"><ShieldCheck size={20} className="text-[var(--accent-ink)]" /></span>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold">{t('home.feat.moderated', 'Every listing says how it was checked')}</div>
                   <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two ways in: reviewed by us first, or posted straight by its maker. Every page tells you which, no guessing.')}</div>
@@ -630,7 +630,7 @@ export function Home({ draft = null }) {
                     draws its own — and names the thing that actually holds it: reports. */}
                 <div className="rounded-xl border border-[var(--line)] panel p-4">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
-                    <Users size={15} className="text-[var(--primary-2)] shrink-0" />
+                    <Users size={15} className="text-[var(--accent-ink)] shrink-0" />
                     {t('home.mod.community', 'Community catalogues and repositories')}
                   </div>
                   <div className="flex items-center gap-1.5 mt-3 flex-wrap">
@@ -659,7 +659,7 @@ export function Home({ draft = null }) {
               // reported as hard to read. `.rail-tile` keeps the rule and adds the same
               // solid surface the cards use.
               <div key={title} className="group rail-tile">
-                <I size={18} className="text-[var(--primary-2)]" />
+                <I size={18} className="text-[var(--accent-ink)]" />
                 <div className="font-semibold mt-2.5 text-[15px]">{title}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 leading-relaxed">{d}</div>
               </div>
@@ -724,7 +724,7 @@ export function Home({ draft = null }) {
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-[17px] leading-snug">{title}</div>
                       <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed">{d}</div>
-                      <div className={`text-sm mt-4 inline-flex items-center gap-1.5 font-semibold ${done ? 'text-[var(--muted)]' : 'text-[var(--primary-2)]'}`}>
+                      <div className={`text-sm mt-4 inline-flex items-center gap-1.5 font-semibold ${done ? 'text-[var(--muted)]' : 'text-[var(--accent-ink)]'}`}>
                         {cta} <ArrowRight size={14} className="transition-transform group-hover:translate-x-1" />
                       </div>
                     </div>
@@ -753,9 +753,15 @@ export function Home({ draft = null }) {
                 second network request on a page that already makes eight. */}
             <div className="relative max-w-3xl">
               <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.dev.t', 'Build on BetterCommunity')}</h3>
+              {/* One line, then a fold. The paragraph that used to sit here was four
+                  clauses of API shopping-list, which is the right information for somebody
+                  already interested and pure height for everybody else. */}
               <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes. A REST API, OpenID Connect and webhooks — no SDK to install, and a key takes about a minute.')}
+                {t('home.dev.d', 'Sign people in with their BetterCommunity account, read their content with their permission, and get told when it changes.')}
               </p>
+              <Explain className="mt-2 text-sm">
+                {t('home.dev.d2', 'A REST API, OpenID Connect and webhooks. No SDK to install, and a key takes about a minute.')}
+              </Explain>
               <div className="flex flex-wrap gap-2 mt-6">
                 <Link to="/dev"><Button variant="primary" className="!px-5 !py-2.5"><Code2 size={15} /> {t('home.dev.cta', 'Open the developer area')}</Button></Link>
                 <Link to="/docs/bcweb-api"><Button className="!px-5 !py-2.5">{t('home.dev.cta2', 'API reference')}</Button></Link>
@@ -789,8 +795,14 @@ export function Home({ draft = null }) {
               <div className="relative max-w-3xl">
                 <h3 className="text-2xl sm:text-3xl font-extrabold leading-tight">{t('home.myo.t', 'Have it built for you')}</h3>
                 <p className="text-[var(--muted)] mt-3 leading-relaxed">
-                  {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet. It starts with a paid consultation — advice and a quote — and building begins only once you have approved that quote. Nothing is charged for the work before you agree to it.')}
+                  {t('home.myo.d', 'A Discord bot, an app, a website, or something nobody has made yet.')}
                 </p>
+                {/* How the money works is the question that stops somebody clicking, so it
+                    stays on the page — folded, not cut, and not in front of the list of
+                    what can be commissioned. */}
+                <Explain className="mt-2 text-sm">
+                  {t('home.myo.d2', 'It starts with a paid consultation: advice and a quote. Building begins only once you have approved that quote, and nothing is charged for the work before you agree to it.')}
+                </Explain>
                 <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-5 text-[13px] text-[var(--muted)]">
                   {/* The Discord mark, not lucide's generic robot: it is the only one of the
                       four that IS a brand, and the logo is already inline in this bundle. */}
@@ -799,7 +811,7 @@ export function Home({ draft = null }) {
                     [Globe, t('home.myo.f3', 'Websites')],
                     [Sparkles, t('home.myo.f4', 'Something else')]].map(([I, label]) => (
                     <li key={label} className="inline-flex items-center gap-2">
-                      <I size={15} className="text-[var(--primary-2)] shrink-0" aria-hidden="true" />
+                      <I size={15} className="text-[var(--accent-ink)] shrink-0" aria-hidden="true" />
                       <span>{label}</span>
                     </li>
                   ))}
@@ -873,7 +885,7 @@ export function Home({ draft = null }) {
             <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
               {pollData.polls.length > 1 ? t('home.poll.many', 'A few questions') : t('home.poll', 'One question')}
             </h2>
-            <Link to="/polls" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">
+            <Link to="/polls" className="text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">
               {t('home.poll.all', 'All polls')} <ArrowRight size={13} />
             </Link>
           </div>
@@ -890,7 +902,7 @@ export function Home({ draft = null }) {
       {show('news') && (
       <section>
         <SectionKicker n={reviewsData?.enabled && reviewsData.reviews?.length ? '05' : '04'} label={t('home.k.news', 'From the blog')} />
-        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="text-sm text-[var(--primary-2)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
+        <div className="reveal-on-scroll flex items-center justify-between mb-5"><h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{t('home.news')}</h2><Link to="/blog" className="text-sm text-[var(--accent-ink)] flex items-center gap-1 hover:gap-2 transition-all">{t('home.news.all')} <ArrowRight size={13} /></Link></div>
         {!data?.posts?.length ? <Card className="p-6 text-[var(--muted)] text-sm">{t('home.news.none')}</Card> : (() => {
           const posts = data.posts; const featured = posts[0]; const rest = posts.slice(1, 4);
           const fdate = (d) => d ? new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '';
@@ -901,16 +913,16 @@ export function Home({ draft = null }) {
                 <Card hover className="overflow-hidden h-full flex flex-col" style={{ background: 'var(--bg-solid)' }}>
                   <div className="relative overflow-hidden">
                     {featured.cover ? <img src={thumb(featured.cover, 768)} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
-                      : <div className="w-full h-56 blog-nocover grid place-items-center"><Newspaper size={34} className="text-[var(--primary-2)]" /></div>}
-                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full scrim backdrop-blur text-[var(--primary-2)] border border-[var(--line)]">Latest</span>
+                      : <div className="w-full h-56 blog-nocover grid place-items-center"><Newspaper size={34} className="text-[var(--accent-ink)]" /></div>}
+                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full scrim backdrop-blur text-[var(--accent-ink)] border border-[var(--line)]">Latest</span>
                   </div>
                   <div className="p-6 flex flex-col flex-1">
                     <Badge tone="primary" className="self-start">{featured.project?.name}</Badge>
-                    <div className="font-bold text-xl mt-2 leading-snug group-hover:text-[var(--primary-2)] transition-colors">{featured.title}</div>
+                    <div className="font-bold text-xl mt-2 leading-snug group-hover:text-[var(--accent-ink)] transition-colors">{featured.title}</div>
                     <div className="text-sm text-[var(--muted)] mt-2 line-clamp-3 flex-1">{featured.excerpt}</div>
                     <div className="flex items-center justify-between mt-4">
                       <span className="flex items-center gap-2 min-w-0 text-xs text-[var(--faint)]"><AuthorsRow authors={featured.authors} size={20} /> · {fdate(featured.publishedAt)}</span>
-                      <span className="text-xs text-[var(--primary-2)] flex items-center gap-1 font-medium shrink-0">Read <ArrowRight size={12} /></span>
+                      <span className="text-xs text-[var(--accent-ink)] flex items-center gap-1 font-medium shrink-0">Read <ArrowRight size={12} /></span>
                     </div>
                   </div>
                 </Card>
@@ -922,10 +934,10 @@ export function Home({ draft = null }) {
                   <Link key={p.id} to={`/blog/${p.slug}`} className="group">
                     <Card hover className="p-4 flex gap-4 h-full" style={{ background: 'var(--bg-solid)' }}>
                       {p.cover ? <img src={thumb(p.cover, 256)} alt="" className="w-24 h-24 rounded-lg object-cover shrink-0" />
-                        : <div className="w-24 h-24 rounded-lg blog-nocover grid place-items-center shrink-0"><Newspaper size={20} className="text-[var(--primary-2)]" /></div>}
+                        : <div className="w-24 h-24 rounded-lg blog-nocover grid place-items-center shrink-0"><Newspaper size={20} className="text-[var(--accent-ink)]" /></div>}
                       <div className="min-w-0 flex flex-col flex-1">
                         <Badge tone="primary" className="self-start">{p.project?.name}</Badge>
-                        <div className="font-semibold mt-1 leading-snug line-clamp-2 group-hover:text-[var(--primary-2)] transition-colors">{p.title}</div>
+                        <div className="font-semibold mt-1 leading-snug line-clamp-2 group-hover:text-[var(--accent-ink)] transition-colors">{p.title}</div>
                         <div className="text-xs text-[var(--muted)] mt-1 line-clamp-2">{p.excerpt}</div>
                         <div className="flex items-center gap-2 mt-auto pt-1"><AuthorsRow authors={p.authors} size={18} /><span className="text-[11px] text-[var(--faint)]">{fdate(p.publishedAt)}</span></div>
                       </div>

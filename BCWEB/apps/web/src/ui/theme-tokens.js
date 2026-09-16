@@ -37,6 +37,10 @@ export const TOKENS = [
     label: { en: 'Ink on accent', fr: 'Encre sur l’accent' },
     affects: { en: 'Text sitting ON the accent fill. Derived from the accent’s luminance, override only if you have measured the contrast yourself.',
                fr: 'Le texte posé SUR l’accent. Dérivé de sa luminance, ne le force que si tu as mesuré le contraste toi-même.' } },
+  { name: '--accent-ink', group: 'accent', scope: 'mode', uses: 866, derived: true,
+    label: { en: 'Accent as text', fr: 'Accent en texte' },
+    affects: { en: 'The accent used as INK — links, icons, active tabs, highlighted numbers. Derived per mode by walking the accent toward the page ink until it clears 4.5:1, because the raw accent is a fill (the shipped orange measures 2.15:1 on white).',
+               fr: 'L’accent utilisé comme ENCRE — liens, icônes, onglets actifs, chiffres mis en avant. Dérivé par mode en rapprochant l’accent de l’encre de la page jusqu’à passer 4.5:1, car l’accent brut est un aplat (l’orange livré mesure 2,15:1 sur blanc).' } },
 
   // ── page & surfaces ───────────────────────────────────────────────────────────────
   { name: '--bg', group: 'page', scope: 'mode', uses: 88,

@@ -323,7 +323,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('bmi.titleAny', 'Inspect a BMM file')}</div>
+        <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--accent-ink)]" /> {t('bmi.titleAny', 'Inspect a BMM file')}</div>
         <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setParsed(null); setText(''); setFileName(''); }}>{t('common.close', 'Close')}</Button>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-2">
@@ -333,7 +333,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={(e) => { e.preventDefault(); setDragOver(false); loadFile(e.dataTransfer?.files?.[0]); }}
-        className={`rounded-lg border border-dashed p-3 mb-2 text-[12px] text-center ${dragOver ? 'border-[var(--primary-2)] text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
+        className={`rounded-lg border border-dashed p-3 mb-2 text-[12px] text-center ${dragOver ? 'border-[var(--primary-2)] text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)]'}`}
       >
         {t('bmi.drop', 'Drop a file here, or')}{' '}
         <label className="underline cursor-pointer">
@@ -494,7 +494,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
             <div className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <b className="text-[13px]">{rep.title}</b>
-                <span className="text-[11px] text-[var(--primary-2)]">{rep.format}</span>
+                <span className="text-[11px] text-[var(--accent-ink)]">{rep.format}</span>
               </div>
               <div className="mt-1.5 flex flex-col gap-0.5">
                 {(rep.summary || []).map((r, i) => (
@@ -505,7 +505,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               </div>
               {(rep.detail || []).length > 0 && (
                 <details className="mt-2">
-                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.entries', 'Entries')} ({rep.detail.length})</summary>
+                  <summary className="text-[12px] cursor-pointer text-[var(--accent-ink)]">{t('bmi.entries', 'Entries')} ({rep.detail.length})</summary>
                   <div className="mt-1.5 flex flex-col gap-0.5 max-h-64 overflow-auto">
                     {rep.detail.map((d, i) => (
                       <div key={i} className="text-[11px] break-all">
@@ -547,7 +547,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
             <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 mb-2">
               <div className="flex items-baseline gap-2 flex-wrap">
                 <b className="text-[13px]">{tk.name}</b>
-                <span className="text-[11px] text-[var(--primary-2)]">{tk.trigger}</span>
+                <span className="text-[11px] text-[var(--accent-ink)]">{tk.trigger}</span>
                 <span className="text-[11px] text-[var(--muted)] ms-auto">{tk.stepCount} {t('bmi.steps', 'steps')}</span>
               </div>
               {tk.description && <div className="text-[12px] text-[var(--muted)] mt-1">{tk.description}</div>}
@@ -556,14 +556,14 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               {tk.targets.length > 0 && <div className="text-[11px] text-[var(--muted)] mt-1 break-all"><b>{t('bmi.names', 'Names:')}</b> {tk.targets.join('  ·  ')}</div>}
               {tk.scripts.map((sc, j) => (
                 <details key={j} className="mt-2">
-                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.script', 'Script')} — {sc.engine}</summary>
+                  <summary className="text-[12px] cursor-pointer text-[var(--accent-ink)]">{t('bmi.script', 'Script')} — {sc.engine}</summary>
                   {/* whitespace-pre and its own scroll: reflowed code is code you cannot judge. */}
                   <pre className="mt-1.5 p-2 rounded-lg text-[11px] overflow-auto max-h-64 whitespace-pre" style={{ background: 'var(--bg-solid)', border: '1px solid var(--line)' }}>{sc.code}</pre>
                 </details>
               ))}
               {tk.steps?.length > 0 && (
                 <details className="mt-2" open>
-                  <summary className="text-[12px] cursor-pointer text-[var(--primary-2)]">{t('bmi.tree', 'Every step, in order')}</summary>
+                  <summary className="text-[12px] cursor-pointer text-[var(--accent-ink)]">{t('bmi.tree', 'Every step, in order')}</summary>
                   <div className="mt-1.5 flex flex-col gap-0.5">
                     {tk.steps.map((n, j) => <BmmpaStep key={j} node={n} depth={0} t={t} />)}
                   </div>

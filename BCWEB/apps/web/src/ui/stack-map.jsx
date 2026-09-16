@@ -341,7 +341,7 @@ function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (
 
         {node.docs && (
           <a href={node.docs} target="_blank" rel="noreferrer"
-            className="inline-block text-[13px] text-[var(--primary-2)] hover:underline break-all">
+            className="inline-block text-[13px] text-[var(--accent-ink)] hover:underline break-all">
             {t('stack.f.docs', 'Documentation')} ↗
           </a>
         )}
@@ -376,7 +376,7 @@ function Side({ title, list, name, onPick, empty }) {
             {list.map(([id, label]) => (
               <li key={id}>
                 <button type="button" onClick={() => onPick(id)}
-                  className="text-[13px] text-start hover:text-[var(--primary-2)] transition">
+                  className="text-[13px] text-start hover:text-[var(--accent-ink)] transition">
                   {name(id)}{label && <span className="text-[var(--faint)]"> · {label}</span>}
                 </button>
               </li>

@@ -99,7 +99,7 @@ export function Settings() {
 
   const Row = ({ icon: Icon, title, desc, children }) => (
     <div className="flex items-center gap-3 py-3.5 border-b border-[var(--line)] last:border-0">
-      <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={16} className="text-[var(--primary-2)]" /></span>
+      <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><Icon size={16} className="text-[var(--accent-ink)]" /></span>
       <div className="flex-1 min-w-0"><div className="text-sm font-medium">{title}</div>{desc && <div className="text-xs text-[var(--muted)] mt-0.5">{desc}</div>}</div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -115,7 +115,7 @@ export function Settings() {
   const Group = ({ icon: Icon, title, children, className = '' }) => (
     <Card className={`p-4 sm:p-5 ${className}`}>
       <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
-        <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Icon size={14} className="text-[var(--primary-2)]" /></span>
+        <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Icon size={14} className="text-[var(--accent-ink)]" /></span>
         <span className="text-sm font-semibold">{title}</span>
       </div>
       {children}
@@ -192,7 +192,7 @@ export function Settings() {
           </Row>
           <TelemetryRequests Row={Row} />
           <div className="pt-3 text-xs text-[var(--muted)]">
-            {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--primary-2)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--primary-2)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
+            {t('set.privacy.more', 'Read more in the')} <Link to="/legal/cookies" className="text-[var(--accent-ink)] hover:underline">{t('nav.cookies', 'Cookie Policy')}</Link> {t('set.and', 'and')} <Link to="/legal/privacy" className="text-[var(--accent-ink)] hover:underline">{t('nav.privacy', 'Privacy Policy')}</Link>.
           </div>
         </Group>
       </div>
@@ -261,7 +261,7 @@ export function Authorize() {
   if (!user) return (
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7 text-center">
-        <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Shield size={22} className="text-[var(--primary-2)]" /></span>
+        <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Shield size={22} className="text-[var(--accent-ink)]" /></span>
         <p className="text-[var(--muted)] mb-4">{t('oauth.needlogin', 'Please sign in to continue.')}</p>
         <Button variant="primary" onClick={() => { window.location.href = `/auth?next=${encodeURIComponent('/authorize?rt=' + rt)}`; }}>{t('nav.login', 'Sign in')}</Button>
       </Card>
@@ -302,7 +302,7 @@ export function Authorize() {
               // rel=noreferrer as well as noopener: the referrer would tell an unreviewed
               // third party which account was looking at its consent screen.
               <a href={info.homepageUrl} target="_blank" rel="noopener noreferrer nofollow"
-                 className="mt-1 inline-block text-[var(--primary-2)] hover:underline break-all">{info.homepageUrl}</a>
+                 className="mt-1 inline-block text-[var(--accent-ink)] hover:underline break-all">{info.homepageUrl}</a>
             )}
           </div>
         )}
@@ -310,7 +310,7 @@ export function Authorize() {
         <ul className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] mb-4 overflow-hidden">
           {(info.scopes || []).map((s) => { const [I, label, sub] = SCOPE_META[s] || [CheckCircle2, s, '']; return (
             <li key={s} className="flex items-center gap-3 px-3.5 py-2.5">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0"><I size={16} /></span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--accent-ink)] shrink-0"><I size={16} /></span>
               <div className="min-w-0"><div className="text-sm font-medium leading-tight">{label}</div>{sub && <div className="text-xs text-[var(--muted)] truncate" title={sub}>{sub}</div>}</div>
               <CheckCircle2 size={16} className="text-success ms-auto shrink-0" />
             </li>

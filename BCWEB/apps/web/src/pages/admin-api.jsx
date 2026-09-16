@@ -136,7 +136,7 @@ function SandboxView() {
     <>
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-          <div className="text-sm font-semibold flex items-center gap-2"><FlaskConical size={14} className="text-[var(--primary-2)]" /> {t('aapi.sb.title', 'Developer sandbox')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><FlaskConical size={14} className="text-[var(--accent-ink)]" /> {t('aapi.sb.title', 'Developer sandbox')}</div>
           <Select className="w-auto" value={String(hours)} onChange={(e) => setHours(Number(e.target.value))}>
             {[24, 24 * 7, 24 * 30].map((n) => <option key={n} value={n}>{n === 24 ? t('aapi.sb.24h', 'Last 24 hours') : t('aapi.sb.days', 'Last {n} days').replace('{n}', String(n / 24))}</option>)}
           </Select>
@@ -226,7 +226,7 @@ export function AdminApi() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 me-2"><KeyRound size={16} className="text-[var(--primary-2)]" /> {t('aapi.title', 'Public API')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><KeyRound size={16} className="text-[var(--accent-ink)]" /> {t('aapi.title', 'Public API')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['overview', t('aapi.tab.overview', 'Usage')], ['keys', t('aapi.tab.keys', 'Keys')], ['requests', t('aapi.tab.requests', 'Calls')], ['sandbox', t('aapi.tab.sandbox', 'Sandbox')], ['limits', t('aapi.tab.limits', 'Limits')], ['settings', t('aapi.tab.settings', 'Recording')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)}
@@ -240,7 +240,7 @@ export function AdminApi() {
         <>
           <Card className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <div className="text-sm font-semibold flex items-center gap-2"><Activity size={14} className="text-[var(--primary-2)]" /> {t('aapi.traffic', 'Calls per day')}</div>
+              <div className="text-sm font-semibold flex items-center gap-2"><Activity size={14} className="text-[var(--accent-ink)]" /> {t('aapi.traffic', 'Calls per day')}</div>
               <Select className="w-auto" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
                 {[7, 30, 90].map((n) => <option key={n} value={n}>{t('aapi.lastn', 'Last {n} days').replace('{n}', String(n))}</option>)}
               </Select>
@@ -289,7 +289,7 @@ export function AdminApi() {
 
       {view === 'settings' && (
         <Card className="p-4">
-          <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Sliders size={14} className="text-[var(--primary-2)]" /> {t('aapi.rec.title', 'What gets recorded')}</div>
+          <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Sliders size={14} className="text-[var(--accent-ink)]" /> {t('aapi.rec.title', 'What gets recorded')}</div>
           <p className="text-[12px] text-[var(--muted)] mb-3">
             {t('aapi.rec.sub', 'Counts are always kept in full and are not affected by anything here. These two settings only govern the sample of individual calls — the detailed list, which exists to explain an incident and is worth very little a month later.')}
           </p>
@@ -484,7 +484,7 @@ function LimitsCard() {
   const save = async () => { setBusy(true); try { await api.put('/admin/api/limits', v); toast.success(t('common.saved', 'Saved.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); } };
   return (
     <Card className="p-4">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Gauge size={14} className="text-[var(--primary-2)]" /> {t('aapi.lim.title', 'Request ceilings')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Gauge size={14} className="text-[var(--accent-ink)]" /> {t('aapi.lim.title', 'Request ceilings')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('aapi.lim.sub', 'How many requests a minute the platform answers for one IP and for one signed-in account, on every route. The per-IP default comes from the environment ({n}); 0 keeps it. Per account is off at 0. Both take effect within 15 seconds.').replace('{n}', String(data.envDefault))}</p>
       <div className="grid sm:grid-cols-2 gap-3">
         <Field label={t('aapi.lim.ip', 'Requests / min per IP')}><Input type="number" min="0" value={v.perIpMin} onChange={(e) => setV({ ...v, perIpMin: Number(e.target.value) || 0 })} placeholder={String(data.envDefault)} /></Field>

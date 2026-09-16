@@ -65,7 +65,7 @@ export default function DevTryIt() {
   return (
     <div className="rounded-2xl border border-[var(--line)] overflow-hidden" style={{ background: 'var(--surface)' }}>
       <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--line)] flex-wrap">
-        <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 text-[var(--primary-2)]"
+        <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 text-[var(--accent-ink)]"
           style={{ background: 'color-mix(in srgb, currentColor 14%, transparent)' }}>GET</span>
         <div className="flex gap-1 flex-wrap min-w-0">
           {CALLS.map((c) => (

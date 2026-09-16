@@ -68,7 +68,7 @@ export function Catalog() {
           <div className="flex gap-1.5 flex-wrap">
             {(project === 'bsm' ? ['', 'PRESET'] : ['', ...ALL_KINDS]).map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
-              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
         </div>
@@ -90,7 +90,7 @@ export function Catalog() {
                 </label>
               )}
               <Link to={`/item/${it.slug}`}><Card hover className={`p-5 h-full ${checked ? 'border-[var(--primary)]' : ''}`}>
-                <div className="flex items-center justify-between"><div className={`grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] ${multi ? 'ms-6' : ''}`}><I size={17} className="text-[var(--primary-2)]" /></div><Badge>v{it.version}</Badge></div>
+                <div className="flex items-center justify-between"><div className={`grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] ${multi ? 'ms-6' : ''}`}><I size={17} className="text-[var(--accent-ink)]" /></div><Badge>v{it.version}</Badge></div>
                 <div className="font-semibold mt-3">{it.name}</div>
                 <div className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{it.description || t('cat.nodesc', 'No description.')}</div>
                 <div className="text-xs text-[var(--faint)] mt-3 flex items-center gap-3 flex-wrap">
@@ -123,7 +123,7 @@ function CommunityCatalogsStrip({ project = '', q = '' }) {
   return (
     <div className="mt-8">
       <div className="flex items-center gap-2 mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('cc.pub.title', 'Community catalogs')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--accent-ink)]" /> {t('cc.pub.title', 'Community catalogs')}</h2>
         <Badge tone="">{cats.length}</Badge>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('cc.pub.desc', 'Catalogs hosted by community members, added directly in BMM as a source. Unverified; add at your own discretion.')}</p>
@@ -190,7 +190,7 @@ export function ItemDetail() {
         </Card>
       )}
       <div className="flex items-start gap-4">
-        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={26} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-14 h-14 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={26} className="text-[var(--accent-ink)]" /></div>
         <div className="flex-1">
           <div className="flex items-center gap-2"><Badge tone="primary">{it.kind}</Badge><Badge>v{it.version}</Badge></div>
           <h1 className="text-2xl font-bold mt-2">{it.name}</h1>
@@ -210,7 +210,7 @@ export function ItemDetail() {
         const jsonUrl = `${location.origin}/api/catalog/${it.slug}/catalog.json`;
         return (
           <Card className="p-3 mt-5 flex items-center gap-2.5 flex-wrap">
-            <FileJson size={16} className="text-[var(--primary-2)] shrink-0" />
+            <FileJson size={16} className="text-[var(--accent-ink)] shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-xs text-[var(--faint)]">{t('item.json.label', 'catalog.json, import this {k} individually in BMM').replace('{k}', it.kind.toLowerCase())}</div>
               <code className="text-xs text-[var(--muted)] break-all">{jsonUrl}</code>

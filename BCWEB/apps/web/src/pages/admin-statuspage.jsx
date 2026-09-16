@@ -65,7 +65,7 @@ export default function AdminStatusPage() {
     <div>
       <div className="flex items-center gap-2 mb-1 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2 me-2">
-          <Activity size={16} className="text-[var(--primary-2)]" /> {t('stp.title', 'Status page')}
+          <Activity size={16} className="text-[var(--accent-ink)]" /> {t('stp.title', 'Status page')}
         </h2>
         <Select className="w-auto ms-auto" value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
           <option value="30">{t('cls.d30', 'Last 30 days')}</option>

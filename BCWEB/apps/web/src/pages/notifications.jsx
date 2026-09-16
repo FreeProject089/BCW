@@ -49,7 +49,7 @@ function Preferences() {
     // The id is the target of the empty state's action below — the one useful thing to do on
     // a page with no notifications is decide which ones you want.
     <Card className="p-5" id="notif-prefs">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> {t('notif.prefs', 'What you hear about')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--accent-ink)]" /> {t('notif.prefs', 'What you hear about')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('notif.prefs.s', 'Switching a category off stops those notifications being created at all — they are not hidden and kept, so turning it back on shows nothing from the meantime.')}
       </p>
@@ -82,13 +82,13 @@ function StaffQueues() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <ShieldCheck size={15} className="text-[var(--primary-2)]" /> {t('notif.staff', 'Waiting for you')}
+        <ShieldCheck size={15} className="text-[var(--accent-ink)]" /> {t('notif.staff', 'Waiting for you')}
         <Badge tone="amber">{data.total}</Badge>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('notif.staff.s', 'Queues you can act on. Counted live, not stored, so nothing here can be "read" without being dealt with.')}</p>
       <div className="space-y-1">
         {(data.queues || []).filter((q) => q.n).map((q) => (
-          <Link key={q.key} to={q.to} className="flex items-center gap-2 py-1.5 text-[13px] hover:text-[var(--primary-2)]">
+          <Link key={q.key} to={q.to} className="flex items-center gap-2 py-1.5 text-[13px] hover:text-[var(--accent-ink)]">
             <Badge tone="amber">{q.n}</Badge>
             <span className="flex-1">{t(`notif.queue.${q.key}`, q.key)}</span>
             <ArrowRight size={13} className="text-[var(--faint)]" />
@@ -114,7 +114,7 @@ export default function NotificationCentre() {
     return (
       <div className="max-w-lg mx-auto py-12">
         <Card className="p-7 text-center">
-          <Bell size={22} className="text-[var(--primary-2)] mx-auto mb-3" />
+          <Bell size={22} className="text-[var(--accent-ink)] mx-auto mb-3" />
           <p className="text-sm text-[var(--muted)] mb-4">{t('notif.signin', 'Sign in to see your notifications.')}</p>
           <Link to="/auth?next=/notifications"><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
         </Card>
@@ -160,7 +160,7 @@ export default function NotificationCentre() {
   return (
     <div className="max-w-3xl mx-auto py-8">
       <div className="flex items-center gap-3 mb-5">
-        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><Bell size={20} className="text-[var(--primary-2)]" /></span>
+        <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><Bell size={20} className="text-[var(--accent-ink)]" /></span>
         <div className="flex-1">
           <h1 className="text-2xl font-bold leading-tight">{t('notif.title', 'Notifications')}</h1>
           <p className="text-sm text-[var(--muted)]">{unread ? t('notif.unread', '{n} unread').replace('{n}', String(unread)) : t('notif.allread', 'Nothing unread.')}</p>

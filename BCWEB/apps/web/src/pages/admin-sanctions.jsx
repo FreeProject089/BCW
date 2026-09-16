@@ -143,7 +143,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
         <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--surface-2)] shrink-0 mt-0.5"><Icon size={14} className="text-[var(--muted)]" /></span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 flex-wrap">
-            <code className="text-[11px] font-mono text-[var(--primary-2)]">{s.code}</code>
+            <code className="text-[11px] font-mono text-[var(--accent-ink)]">{s.code}</code>
             <Badge tone={KIND_TONE[s.kind] || 'primary'}>{t(`sanc.k.${s.kind}`, s.kind)}</Badge>
             {s.status !== 'active' && <Badge>{t(`sanc.s.${s.status}`, s.status)}</Badge>}
             {contestOpen && <Badge tone="amber">{t('sanc.contested', 'contested')}</Badge>}
@@ -337,7 +337,7 @@ export function AdminSanctions() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 me-2"><Gavel size={16} className="text-[var(--primary-2)]" /> {t('sanc.title', 'Sanctions')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Gavel size={16} className="text-[var(--accent-ink)]" /> {t('sanc.title', 'Sanctions')}</h2>
         {data?.openContests > 0 && (
           <button onClick={() => setStatus('contested')} className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg bg-warning/15 text-warning hover:bg-warning/25">
             <Scale size={12} /> {t('sanc.opencontests', '{n} waiting for an answer').replace('{n}', String(data.openContests))}
@@ -418,7 +418,7 @@ function ClosureSurveys() {
   return (
     <Card className="p-4 mt-8">
       <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((o) => !o)}>
-        <FileText size={15} className="text-[var(--primary-2)]" />
+        <FileText size={15} className="text-[var(--accent-ink)]" />
         <span className="font-semibold text-sm">{t('cls.title', 'Why people left')}</span>
         <span className="text-[11px] text-[var(--faint)] ms-auto">{open ? t('common.hide', 'Hide') : t('common.show', 'Show')}</span>
       </button>

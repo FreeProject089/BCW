@@ -103,7 +103,7 @@ export default function DealRail({ cfg = {}, compact = false }) {
                 ? 'mt-1 text-[11.5px] text-[var(--faint)] italic leading-snug'
                 : `inline-flex items-center rounded-full px-2 py-[3px] mt-1 text-[11.5px] font-semibold tabular-nums ${
                   s.pays
-                    ? 'tint-primary text-[var(--primary-2)] border b-primary'
+                    ? 'tint-primary text-[var(--accent-ink)] border b-primary'
                     : 'text-[var(--faint)] border border-[var(--line)]'
                 }`}>{s.amount}</div>
               {s.note && <div className="text-[11px] text-[var(--faint)] tabular-nums mt-1">{s.note}</div>}

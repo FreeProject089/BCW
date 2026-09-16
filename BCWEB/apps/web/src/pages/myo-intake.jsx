@@ -124,7 +124,7 @@ function Tiles({ options, value, onPick, multi = false, lang, cols = 'sm:grid-co
             on(o.id) ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07] text-[var(--text)]'
                      : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong,var(--line))] hover:text-[var(--text)]'}`}>
           {L(lang, o)}
-          {on(o.id) && <Check size={13} className="absolute top-2 end-2 text-[var(--primary-2)]" />}
+          {on(o.id) && <Check size={13} className="absolute top-2 end-2 text-[var(--accent-ink)]" />}
         </button>
       ))}
     </div>
@@ -195,9 +195,9 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
                 className={`text-start rounded-xl border px-3 py-3 transition-all hover:-translate-y-0.5 ${
                   on ? 'border-[var(--primary)] bg-[var(--primary)]/[0.07]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
                 <span className="flex items-center gap-2">
-                  {Ico ? <Ico size={16} className="text-[var(--primary-2)] shrink-0" /> : null}
+                  {Ico ? <Ico size={16} className="text-[var(--accent-ink)] shrink-0" /> : null}
                   <span className="font-medium text-sm">{c.label}</span>
-                  {on && <Check size={13} className="ms-auto text-[var(--primary-2)]" />}
+                  {on && <Check size={13} className="ms-auto text-[var(--accent-ink)]" />}
                 </span>
                 {c.blurb ? <span className="block text-[11.5px] text-[var(--muted)] mt-1 leading-relaxed">{c.blurb}</span> : null}
               </button>

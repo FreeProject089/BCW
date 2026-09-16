@@ -109,7 +109,7 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
 
   return (
     <figure className="doc-replay not-prose my-4 rounded-2xl overflow-hidden border border-[var(--line)] bg-[var(--bg-solid)]" style={{ boxShadow: 'var(--shadow)' }}>
-      {title && <figcaption className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b border-[var(--line)] bg-[var(--surface-2)]"><PlayCircle size={15} className="text-[var(--primary-2)]" /> {title}</figcaption>}
+      {title && <figcaption className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b border-[var(--line)] bg-[var(--surface-2)]"><PlayCircle size={15} className="text-[var(--accent-ink)]" /> {title}</figcaption>}
       <div ref={wrap} className="relative bg-black" style={{ minHeight: 200 }}>
         <div ref={stage} style={{ position: 'relative', width: '100%' }} />
         {!started && (
@@ -125,7 +125,7 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
       </div>
       {status === 'ready' && (
         <div className="flex items-center gap-2 px-3 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]">
-          <button type="button" onClick={toggle} className="shrink-0 text-[var(--text)] hover:text-[var(--primary-2)]" aria-label={playing ? tr('Pause', 'Pause') : tr('Lire', 'Play')}>{playing ? <Pause size={17} /> : <Play size={17} />}</button>
+          <button type="button" onClick={toggle} className="shrink-0 text-[var(--text)] hover:text-[var(--accent-ink)]" aria-label={playing ? tr('Pause', 'Pause') : tr('Lire', 'Play')}>{playing ? <Pause size={17} /> : <Play size={17} />}</button>
           <button type="button" onClick={restart} className="shrink-0 text-[var(--muted)] hover:text-[var(--text)]" aria-label={tr('Recommencer', 'Restart')}><RotateCcw size={15} /></button>
           <span className="text-[11px] tabular-nums text-[var(--faint)] shrink-0 w-9 text-end">{fmtTime(cur)}</span>
           <input type="range" min={0} max={dur || 0} value={Math.min(cur, dur || 0)} onChange={seek} className="flex-1 accent-[var(--primary)] h-1 cursor-pointer" aria-label={tr('Position', 'Seek')} />

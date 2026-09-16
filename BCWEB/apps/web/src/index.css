@@ -39,6 +39,13 @@
   --text: #17140f;
   --muted: #57514a;
   --faint: #726b61;       /* 4.56:1 on --surface-2, its worst case (was #837c72 → 3.57:1) */
+  /* The accent AS TEXT. --primary-2 (#f59e0b) measures 2.15:1 on white and --primary
+     (#f97316) 2.80:1: both are fills, and both were being used as ink in ~850 places, which
+     is what made the light theme read as "pale text on white". This is the same orange
+     walked toward black until it clears 4.5:1 on a card (#f3eee6 → 4.69:1) and 5.42:1 on
+     white. The runtime theme injector recomputes it per mode from the site's accent
+     (see accentInk in ui/theme.jsx), so a custom accent gets a readable ink too. */
+  --accent-ink: #a8520b;
   /* Light depth = SUBTLE shadows: low opacity, generous blur, no dark border. Nudged up a
      hair so cards read as raised, not painted-on. */
   --shadow-sm: 0 1px 2px rgba(30, 20, 5, 0.06);
@@ -77,6 +84,8 @@
   --text: #f3efe9;
   --muted: #a39b8f;
   --faint: #857e73;       /* 4.53:1 on --surface-2 (was #6f685d → 3.31:1) */
+  /* On a near-black page the shipped amber is already ink: 8.50:1 on --surface-2. */
+  --accent-ink: #f59e0b;
   /* Dark depth = NO shadows. Elevation comes from surface lightness steps + borders. */
   --shadow-sm: none;
   --shadow: none;
@@ -1156,3 +1165,23 @@ label:has(> input[type="radio"]) {
 @media (min-width: 1024px) {
   .cst-page-body { grid-template-columns: 280px minmax(0, 1fr) 320px; }
 }
+
+/* ── Explain: the "Learn more" disclosure ───────────────────────────────────────────
+   See the Explain component in ui/ui.jsx for WHY. This is only its clothing: the marker
+   is removed (Safari needs the -webkit pseudo-element too, and without it the card gets a
+   stray triangle), the summary is one line whether or not there is a lead sentence, and
+   the chevron turns when it opens. The body is separated by space, not by a border — it is
+   the same thought continued, not a second block. */
+.explain > summary { list-style: none; cursor: pointer; display: block; }
+.explain > summary::-webkit-details-marker { display: none; }
+.explain > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; border-radius: 6px; }
+.explain-cta {
+  display: inline-flex; align-items: center; gap: 2px; white-space: nowrap;
+  color: var(--accent-ink); font-weight: 500;
+}
+.explain > summary:hover .explain-cta { text-decoration: underline; }
+.explain-chev { transition: transform .18s ease; }
+.explain[open] > summary .explain-chev { transform: rotate(180deg); }
+.explain-body { margin-top: 8px; color: var(--muted); line-height: 1.6; }
+.explain-body > * + * { margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .explain-chev { transition: none; } }

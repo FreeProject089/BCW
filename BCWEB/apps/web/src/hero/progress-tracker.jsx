@@ -53,7 +53,7 @@ export function ProgressTracker({ data, title, lang }) {
   return (
     <section>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><ListTodo size={16} className="text-[var(--primary-2)]" /> {title}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><ListTodo size={16} className="text-[var(--accent-ink)]" /> {title}</h2>
         <span className="text-sm text-[var(--muted)]"><b className="text-[var(--text)]">{overall}%</b> {lang === 'fr' ? 'global' : 'overall'} · {counts.done} {lang === 'fr' ? 'faits' : 'done'} · {counts.prog} {lang === 'fr' ? 'en cours' : 'active'} · {counts.plan} {lang === 'fr' ? 'prévus' : 'planned'}</span>
       </div>
       {(data?.art != null || data?.code != null || data?.lastUpdate) && (

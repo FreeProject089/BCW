@@ -141,7 +141,7 @@ export default function Docs() {
   const sideInner = (
     <>
       <div className="flex items-center gap-2 mb-3">
-        <BookOpen size={18} className="text-[var(--primary)]" />
+        <BookOpen size={18} className="text-[var(--accent-ink)]" />
         <span className="font-bold">{t('docs.title')}</span>
       </div>
       <button onClick={() => setSearch(true)}
@@ -155,11 +155,11 @@ export default function Docs() {
       {(() => {
         const PageLink = (p) => (
           <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
-            className={`group relative flex items-center gap-2.5 ps-3 pe-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'tint-primary text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+            className={`group relative flex items-center gap-2.5 ps-3 pe-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'tint-primary text-[var(--accent-ink)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
             {activeSlug === p.slug && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[var(--primary)]" />}
-            <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
+            <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
             <span className="truncate flex-1">{titleOf(p)}</span>
-            {!p.published && <span className="text-[10px] text-orange-400 shrink-0">draft</span>}
+            {!p.published && <span className="text-[10px] text-[var(--warning)] shrink-0">draft</span>}
           </Link>
         );
         // Recursive group renderer — one function, any depth. The search filter (q) force-
@@ -227,20 +227,20 @@ export default function Docs() {
             <article ref={articleRef} className="card p-5 sm:p-7">
               {/* Breadcrumb: Docs › Category › Subcategory › page title. */}
               <nav className="flex items-center gap-1.5 text-xs text-[var(--faint)] mb-3 flex-wrap">
-                <Link to="/docs" className="hover:text-[var(--primary-2)] transition">{t('docs.title', 'Docs')}</Link>
+                <Link to="/docs" className="hover:text-[var(--accent-ink)] transition">{t('docs.title', 'Docs')}</Link>
                 {(catOf(page) || '').split('/').map((s) => s.trim()).filter(Boolean).map((c, i) => <span key={i} className="inline-flex items-center gap-1.5"><ChevronRight size={11} className="opacity-60" /> {c}</span>)}
                 <ChevronRight size={11} className="opacity-60" /> <span className="text-[var(--muted)] font-medium truncate max-w-[220px]">{titleOf(page)}</span>
               </nav>
               <h1 className="text-2xl md:text-3xl font-extrabold mb-1">{titleOf(page)}</h1>
               <div className="flex items-center flex-wrap gap-x-3 gap-y-1.5 text-xs text-[var(--faint)] mb-6">
-                <button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button>
+                <button onClick={() => setReaderHistory(true)} title={t('docs.history.hint', 'View edit history')} className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)] transition">{t('docs.updated')} {new Date(page.updatedAt).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-US')} <History size={11} className="opacity-60" /></button>
                 {contributors.length > 0 && <span className="inline-flex items-center gap-1.5">·
                   <AuthorsRow authors={contributors} size={20} />
                   {contributors.length > 1 && <span>{t('docs.contributors', '{n} contributors').replace('{n}', contributors.length)}</span>}
                 </span>}
               </div>
               <PageTocMobile body={body} />
-              {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> {t('docs.notfr')}</div>}
+              {lang === 'fr' && !page.bodyFr && <div className="mb-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--accent-ink)]" /> {t('docs.notfr')}</div>}
               <Markdown pageMap={pageMap}>{body || t('docs.empty')}</Markdown>
               <HelpfulWidget page={page} canEdit={canEdit} />
             </article>
@@ -302,7 +302,7 @@ function PageTocMobile({ body }) {
         <ChevronRight size={13} className="doc-toc-m-chevron transition-transform" /> {t('docs.onthispage')}
       </summary>
       <nav className="px-3 pb-3 space-y-0.5">
-        {heads.map((h) => <a key={h.id} href={`#${h.id}`} onClick={(e) => go(e, h.id)} className={`block py-1 text-sm text-[var(--muted)] hover:text-[var(--primary)] ${h.depth === 3 ? 'ps-4 text-[13px]' : ''}`}>{h.text}</a>)}
+        {heads.map((h) => <a key={h.id} href={`#${h.id}`} onClick={(e) => go(e, h.id)} className={`block py-1 text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] ${h.depth === 3 ? 'ps-4 text-[13px]' : ''}`}>{h.text}</a>)}
       </nav>
     </details>
   );
@@ -343,7 +343,7 @@ function PageToc({ body }) {
       <nav className="border-s border-[var(--line)]">
         {heads.map((h) => (
           <a key={h.id} href={`#${h.id}`} onClick={(e) => { e.preventDefault(); anchorEl(h.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.replaceState(null, '', `#${h.id}`); }}
-            className={`block -ms-px border-s-2 py-1 text-sm leading-snug ${h.depth === 3 ? 'ps-6 text-[13px]' : 'ps-3'} ${active === h.id ? 'border-[var(--primary)] text-[var(--primary)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`block -ms-px border-s-2 py-1 text-sm leading-snug ${h.depth === 3 ? 'ps-6 text-[13px]' : 'ps-3'} ${active === h.id ? 'border-[var(--primary)] text-[var(--accent-ink)] font-medium' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {h.text}
           </a>
         ))}
@@ -441,7 +441,7 @@ function SearchPalette({ onClose, onPick }) {
         <span className="absolute left-[22px] -top-1 bottom-1/2 w-px bg-[var(--line-strong)]" />
         <span className="absolute left-[22px] top-1/2 w-2.5 h-px bg-[var(--line-strong)]" style={{ transform: 'translateY(-0.5px)' }} />
       </span>
-      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
+      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--accent-ink)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
       <div className="min-w-0 flex-1 self-center ps-3">
         <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
         <div className="text-[11px] text-[var(--faint)] truncate" title={r.title}>{r.title}</div>
@@ -451,7 +451,7 @@ function SearchPalette({ onClose, onPick }) {
   ) : (
     <button key={`${r.slug}-page-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
       className={`w-full text-start px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}>
-      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
+      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--accent-ink)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
         <IconGlyph name={r.icon || 'file'} size={15} />
       </span>
       <div className="min-w-0 flex-1">

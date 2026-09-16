@@ -38,11 +38,11 @@ export default function CookieConsent() {
     <div className="fixed bottom-4 left-4 right-4 sm:right-auto z-[55] sm:w-[28rem] anim-slide" role="dialog" aria-modal="false" aria-label={t('cookie.title', 'Cookies')}>
       <div className="card p-5" style={{ boxShadow: '0 20px 50px -16px rgba(0,0,0,0.7)' }}>
         <div className="flex items-center gap-2 mb-2">
-          <Cookie size={18} className="text-[var(--primary-2)]" />
+          <Cookie size={18} className="text-[var(--accent-ink)]" />
           <div className="font-semibold">{t('cookie.title', 'Cookies')}</div>
         </div>
         <p className="text-sm text-[var(--muted)] leading-relaxed">
-          {t('cookie.body', 'We use essential cookies to run the site, and optional analytics to understand usage. You choose.')} <Link to="/legal/cookies" className="text-orange-400 underline">{t('cookie.policy', 'Cookie policy')}</Link>.
+          {t('cookie.body', 'We use essential cookies to run the site, and optional analytics to understand usage. You choose.')} <Link to="/legal/cookies" className="text-[var(--accent-ink)] underline">{t('cookie.policy', 'Cookie policy')}</Link>.
         </p>
 
         {/* Granular categories — shown once the visitor opens "Customise". */}
@@ -57,7 +57,7 @@ export default function CookieConsent() {
               <span className="w-9 h-5 rounded-full bg-success-bg relative shrink-0 opacity-70" aria-hidden><span className="absolute top-0.5 left-[18px] w-4 h-4 rounded-full bg-white" /></span>
             </div>
             <button type="button" onClick={() => setAnalytics((v) => !v)} aria-pressed={analytics} className="w-full text-start flex items-start gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3 hover:border-[var(--line-strong)] transition">
-              <BarChart3 size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+              <BarChart3 size={16} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium">{t('cookie.cat.analytics', 'Analytics')}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5">{t('cookie.cat.analytics.d', 'Anonymous, first-party usage stats (no ads, no cross-site tracking).')}</div>

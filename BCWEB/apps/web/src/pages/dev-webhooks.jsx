@@ -58,8 +58,8 @@ function Deliveries({ id, onTest }) {
               {d.httpStatus ? <Badge tone={st.tone}>{d.httpStatus}</Badge> : null}
               {d.attempts > 1 && <span className="text-[var(--faint)]">{t('wh.attempts', '{n} attempts').replace('{n}', String(d.attempts))}</span>}
               <span className="text-[var(--faint)] ms-auto">{new Date(d.createdAt).toLocaleString()}</span>
-              <button onClick={() => setOpen(open === d.id ? null : d.id)} className="text-[var(--primary-2)] hover:underline">{t('wh.payload', 'payload')}</button>
-              <button onClick={() => replay(d)} className="text-[var(--primary-2)] hover:underline">{t('wh.replay', 'replay')}</button>
+              <button onClick={() => setOpen(open === d.id ? null : d.id)} className="text-[var(--accent-ink)] hover:underline">{t('wh.payload', 'payload')}</button>
+              <button onClick={() => replay(d)} className="text-[var(--accent-ink)] hover:underline">{t('wh.replay', 'replay')}</button>
             </div>
             {d.error && <div className="text-[11px] text-error mt-0.5 break-all">{d.error}</div>}
             {/* The retry is stated, not implied: a developer staring at a failed delivery
@@ -145,7 +145,7 @@ export default function WebhooksPanel() {
     <Card className="p-5">
       <div className="flex items-start gap-2 mb-1">
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold flex items-center gap-2"><Webhook size={15} className="text-[var(--primary-2)]" /> {t('wh.title', 'Webhooks')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><Webhook size={15} className="text-[var(--accent-ink)]" /> {t('wh.title', 'Webhooks')}</div>
           <p className="text-xs text-[var(--muted)] mt-0.5">
             {t('wh.sub', 'We call your server when something happens, so you stop asking. Every delivery is signed, check the signature before you act on one.')}
           </p>

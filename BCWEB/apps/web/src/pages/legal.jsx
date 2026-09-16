@@ -331,7 +331,7 @@ function LegalParagraph({ text }) {
       <Tag key={i}
         className={`mb-3 last:mb-0 space-y-1.5 text-[var(--muted)] leading-relaxed ${
           b.kind === 'ul' ? 'list-disc' : b.kind === 'oa' ? 'list-[lower-alpha]' : 'list-decimal'
-        } ps-5 marker:text-[var(--primary-2)]`}>
+        } ps-5 marker:text-[var(--accent-ink)]`}>
         {b.items.map((s, k) => <li key={k}><Emphasised text={s} /></li>)}
       </Tag>
     );
@@ -502,7 +502,7 @@ export function Legal({ page: fixed }) {
   // did at each end of the width range. The "All" entry is the first option rather than a
   // button beside it, so there is exactly one control here and it can never wrap or overflow.
   const tabs = [
-    { key: '__all', to: '/legal', label: lang === 'fr' ? 'Tous les documents' : 'All documents', icon: <FileText size={15} className="text-[var(--primary-2)]" /> },
+    { key: '__all', to: '/legal', label: lang === 'fr' ? 'Tous les documents' : 'All documents', icon: <FileText size={15} className="text-[var(--accent-ink)]" /> },
     ...(menu?.pages?.length ? menu.pages : BUILTIN_ORDER.filter((k) => !OPTIONAL_KEYS.includes(k)).map((k) => ({ key: k, builtIn: true })))
       .map((x) => ({
         key: x.key,
@@ -521,7 +521,7 @@ export function Legal({ page: fixed }) {
       </div>
       {/* plain-language summary */}
       <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent print:border print:bg-none">
-        <d.icon size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
+        <d.icon size={18} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
         <div className="text-sm text-[var(--muted)]">{summary}</div>
       </Card>
       {/* On a phone the contents were `hidden md:block` — which is to say, absent. A
@@ -548,8 +548,8 @@ export function Legal({ page: fixed }) {
             <a key={h} href={`#s${i}`}
               className={`block text-sm py-1 border-s ps-2 -ms-px transition-colors ${
                 active === i
-                  ? 'text-[var(--primary-2)] border-[var(--primary)] font-medium'
-                  : 'text-[var(--muted)] border-transparent hover:text-[var(--primary-2)] hover:border-[var(--primary)]'
+                  ? 'text-[var(--accent-ink)] border-[var(--primary)] font-medium'
+                  : 'text-[var(--muted)] border-transparent hover:text-[var(--accent-ink)] hover:border-[var(--primary)]'
               }`}>{h}</a>
           ))}
         </nav>
@@ -557,13 +557,13 @@ export function Legal({ page: fixed }) {
           {d.body.map(([h, p], i) => (
             <section id={`s${i}`} key={h} className="scroll-mt-24 group">
               <h2 className="text-lg font-semibold mb-2.5 flex items-baseline gap-2.5">
-                <span className="text-[var(--primary-2)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
+                <span className="text-[var(--accent-ink)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
                 <span>{h}</span>
                 {/* A permalink per section. People CITE these — "clause 14 of your terms" is
                     unusable, a link is not. Hidden until hover so it does not clutter, but
                     it is a real anchor, so keyboard focus reveals it too. */}
                 <a href={`#s${i}`} aria-label={lang === 'fr' ? 'Lien vers cette section' : 'Link to this section'}
-                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--faint)] hover:text-[var(--primary-2)] transition-opacity text-sm print:hidden">#</a>
+                  className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--faint)] hover:text-[var(--accent-ink)] transition-opacity text-sm print:hidden">#</a>
               </h2>
               {/* Blank lines separate entries; inside one, a run of `· ` or `1. ` lines
                   becomes a real list. See LegalParagraph — no markdown parser is involved,
@@ -656,7 +656,7 @@ export function LegalArchive() {
         {sections.map((sec, i) => (
           <section key={i} className="scroll-mt-24">
             <h2 className="text-lg font-semibold mb-2.5 flex items-baseline gap-2.5">
-              <span className="text-[var(--primary-2)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
+              <span className="text-[var(--accent-ink)] font-mono text-xs tabular-nums shrink-0">{String(i + 1).padStart(2, '0')}</span>
               <span>{(lang === 'fr' && sec.titleFr) || sec.title}</span>
             </h2>
             <div className="legal-md"><Markdown>{String((lang === 'fr' && sec.bodyFr) || sec.body || '')}</Markdown></div>
@@ -708,7 +708,7 @@ export function LegalIndex() {
 
   const card = (x) => (
     <Link key={x.key} to={`/legal/${x.key}`} className="card card-hover p-5 flex items-start gap-3">
-      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{docIcon(x.key, x.icon)}</span>
+      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--accent-ink)] shrink-0">{docIcon(x.key, x.icon)}</span>
       <div className="min-w-0">
         <div className="font-semibold">{title(x)}</div>
         {blurb(x) && <div className="text-sm text-[var(--muted)] mt-0.5 line-clamp-2">{blurb(x)}</div>}

@@ -345,7 +345,7 @@ export default function DevMarkdown() {
               <div className="flex flex-wrap gap-1.5">
                 {g.items.map((it) => (
                   <button key={it.id} type="button" onClick={() => addBlock(it.md)} title={it.md.split('\n')[0]}
-                    className="inline-flex items-center gap-1 text-[12px] px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:text-[var(--primary-2)] transition">
+                    className="inline-flex items-center gap-1 text-[12px] px-2 py-1 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] hover:text-[var(--accent-ink)] transition">
                     <Plus size={11} /> {it.label}
                   </button>
                 ))}

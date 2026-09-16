@@ -182,7 +182,7 @@ export function ApiConsole() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Send size={15} className="text-[var(--primary-2)]" /> {t('dev.console.title', 'Try a call')}
+        <Send size={15} className="text-[var(--accent-ink)]" /> {t('dev.console.title', 'Try a call')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('dev.console.sub2', 'A real request with your real key, and the real answer — refusals included, which are the half worth seeing. Your key stays in this browser and goes nowhere but the API.')}
@@ -466,17 +466,17 @@ export default function DevHub() {
         <div className="grid sm:grid-cols-2 gap-4 mb-10">
           <Link to="/dev/config" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
             <div className="flex items-center gap-2 mb-1">
-              <KeyRound size={16} className="text-[var(--primary-2)]" />
+              <KeyRound size={16} className="text-[var(--accent-ink)]" />
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobkey', 'Your program acts as YOU')}</span>
-              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobkey.s', 'A script, a sync job, a bot you run. Use an API key.')}</p>
           </Link>
           <Link to="/docs/sso" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
             <div className="flex items-center gap-2 mb-1">
-              <Shield size={16} className="text-[var(--primary-2)]" />
+              <Shield size={16} className="text-[var(--accent-ink)]" />
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span>
-              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+              <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
             </div>
             <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it, you never touch their password.')}</p>
           </Link>
@@ -492,17 +492,17 @@ export default function DevHub() {
       <div className="grid sm:grid-cols-3 gap-4 mb-12">
         <Link to="/dev/tools" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-1">
-            <FlaskConical size={16} className="text-[var(--primary-2)]" />
+            <FlaskConical size={16} className="text-[var(--accent-ink)]" />
             <span className="font-semibold text-[15px] flex-1">{t('dev.landing.toolsT', 'Developer tools & console')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
           </div>
           <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.toolsS', 'Try a call, validate a catalog feed, build a bmm:// link, check a webhook signature.')}</p>
         </Link>
         <Link to={hero.refUrl || '/docs/bcweb-api'} className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-1">
-            <BookOpen size={16} className="text-[var(--primary-2)]" />
+            <BookOpen size={16} className="text-[var(--accent-ink)]" />
             <span className="font-semibold text-[15px] flex-1">{hero.refLabel || t('dev.landing.guidesT', 'Guides & API reference')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
           </div>
           <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks, the full written reference.')}</p>
         </Link>
@@ -511,9 +511,9 @@ export default function DevHub() {
             and the playground were reachable only by typing the address. */}
         <Link to="/dev/bmd" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-1">
-            <Puzzle size={16} className="text-[var(--primary-2)]" />
+            <Puzzle size={16} className="text-[var(--accent-ink)]" />
             <span className="font-semibold text-[15px] flex-1">{t('dev.landing.bmdT', 'B.MD, the markdown kit')}</span>
-            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
+            <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--accent-ink)]" />
           </div>
           <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.bmdS', 'Callouts, cards, tabs, API cards, live values, diagrams, install it, try the playground, open the editor.')}</p>
           <div className="flex flex-wrap gap-1.5 mt-3">
@@ -532,7 +532,7 @@ export default function DevHub() {
         <div className="mb-10">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-2xl font-extrabold tracking-tight">{t('dev.hub.newsh', 'From the developer blog')}</h2>
-            <Link to="/blog?project=developers" className="text-sm text-[var(--primary-2)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('dev.hub.newsall', 'All posts')} <ArrowRight size={13} /></Link>
+            <Link to="/blog?project=developers" className="text-sm text-[var(--accent-ink)] inline-flex items-center gap-1 hover:gap-2 transition-all">{t('dev.hub.newsall', 'All posts')} <ArrowRight size={13} /></Link>
           </div>
           <NewsGrid posts={devPosts.data} limit={3} heading={false} />
         </div>

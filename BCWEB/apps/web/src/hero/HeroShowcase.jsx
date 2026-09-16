@@ -25,7 +25,7 @@ export default function HeroShowcase() {
 
   const Stat = ({ icon: I, label, value }) => (
     <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
-      <I size={15} className="text-[var(--primary-2)]" />
+      <I size={15} className="text-[var(--accent-ink)]" />
       <div className="text-lg font-bold mt-1.5 leading-none">{value}</div>
       <div className="text-[10px] text-[var(--muted)] mt-1">{label}</div>
     </div>

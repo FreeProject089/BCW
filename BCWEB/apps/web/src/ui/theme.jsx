@@ -33,6 +33,33 @@ export function inkOn(hex) {
 }
 export const contrastRatio = contrast;
 
+/**
+ * The accent, made readable AS TEXT on a given page.
+ *
+ * The accent is chosen to be a fill — a button, a bar, a glow — and a fill only has to be
+ * visible, not legible. Used as ink it has to clear 4.5:1, and the shipped orange does not:
+ * `--primary-2` (#f59e0b) on white measures 2.15:1, `--primary` (#f97316) 2.80:1. Both were
+ * used as text in roughly 850 places, which is why the light theme read as "pale text on
+ * white" however carefully the grey scale was tuned.
+ *
+ * So text gets its own token. It keeps the accent's hue and walks it toward the page's ink
+ * (black on a light page, white on a dark one) until it clears the bar — the smallest step
+ * that is readable, rather than a second colour somebody has to keep in sync by hand.
+ */
+export function accentInk(hex, pageHex, target = 4.5) {
+  const page = hexish(pageHex);
+  // Which way to walk: away from the page's own luminance.
+  const toward = luminance(page) > 0.35 ? [0, 0, 0] : [255, 255, 255];
+  const base = srgb(hex).map((c) => c * 255);
+  let best = hex;
+  for (let mix = 0; mix <= 100; mix += 4) {
+    const c = '#' + base.map((v, i) => Math.round(v + (toward[i] - v) * (mix / 100)).toString(16).padStart(2, '0')).join('');
+    best = c;
+    if (contrast(c, page) >= target) break;
+  }
+  return best;
+}
+
 const rgba = (hex, a) => `rgba(${srgb(hex).map((c) => Math.round(c * 255)).join(', ')}, ${a})`;
 
 /** Surfaces, lines and secondary inks, derived from a page colour and its text colour.
@@ -136,6 +163,12 @@ export function themeCss({ accent, accent2, light, dark, shared, gradients }) {
   let css = `:root{--primary:${accent};--primary-2:${a2};--on-primary:${inkOn(mid)};`
     + `--primary-glow:${rgba(accent, 0.4)};--ring:${rgba(accent, 0.55)};`
     + `--glow-a:${rgba(accent, 0.15)};--glow-b:${rgba(a2, 0.12)};}`;
+  // The accent AS TEXT, per mode — see accentInk. It cannot live in the shared block: the
+  // readable version of the same orange is dark on a white page and bright on a black one.
+  // Derived against the surface a card paints, not the page, because that is where accent
+  // text actually sits (a chip, a link inside a card), and it is the tighter of the two.
+  css += `:root,[data-theme="light"]{--accent-ink:${accentInk(a2, light?.bg || '#f3eee6')}}`
+    + `[data-theme="dark"]{--accent-ink:${accentInk(a2, dark?.bg || '#161513')}}`;
   // Page colours are per mode and entirely optional: a theme that only recolours the accent
   // leaves the shipped light/dark palettes exactly as they are.
   //
@@ -296,7 +329,7 @@ export function ThemeToggle() {
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full transition-transform duration-200 ease-out"
         style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#ffffff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
-        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
+        {dark ? <Moon size={11} className="text-[var(--accent-ink)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
       </span>
     </button>
   );

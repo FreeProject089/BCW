@@ -53,7 +53,7 @@ export function PerfDailyMetrics() {
     <Card className="p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
         <div className="text-sm font-semibold flex items-center gap-2">
-          <Activity size={15} className="text-[var(--primary-2)]" /> {t('st.metrics', 'System metrics')}
+          <Activity size={15} className="text-[var(--accent-ink)]" /> {t('st.metrics', 'System metrics')}
         </div>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden text-[11px]">
           {RANGES.map((n) => (

@@ -64,7 +64,7 @@ function PasswordGate({ id, onUnlocked }) {
   return (
     <div className="max-w-sm mx-auto py-16">
       <Card className="p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><KeyRound size={22} className="text-[var(--primary-2)]" /></div>
+        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><KeyRound size={22} className="text-[var(--accent-ink)]" /></div>
         <h1 className="text-lg font-semibold">{t('rd.locked.t', 'Private repo dashboard')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('rd.locked.s', 'Enter the dashboard password to manage this repo.')}</p>
         <Input type="password" value={pw} autoFocus placeholder={t('rd.password', 'Password')} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} />
@@ -80,7 +80,7 @@ function AuthGate() {
   return (
     <div className="max-w-sm mx-auto py-16">
       <Card className="p-6 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><Lock size={22} className="text-[var(--primary-2)]" /></div>
+        <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><Lock size={22} className="text-[var(--accent-ink)]" /></div>
         <h1 className="text-lg font-semibold">{t('rd.noaccess.t', 'No access')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('rd.noaccess.s', 'You need to be the owner, an authorized email, or have the dashboard password.')}</p>
         <Link to="/auth"><Button variant="primary" className="w-full">{t('rd.signin', 'Sign in')}</Button></Link>
@@ -123,7 +123,7 @@ function Dashboard({ data, reload }) {
             {/* Plain surface, not a brand gradient. The icon is --primary-2 and the gradient
                 was made of the same two brand colours, so the glyph sank into its own
                 background — a foreground has to contrast with what is actually behind it. */}
-            <div className="w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--primary-2)]" /></div>
+            <div className="w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center shrink-0"><Server size={20} className="text-[var(--accent-ink)]" /></div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-bold truncate" title={r.name}>{r.name}</h1>
@@ -204,7 +204,7 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, c
       {name != null && (
         <button type="button" onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-2 px-4 py-2 text-sm hover:bg-[var(--surface-2)]" style={{ paddingLeft: `${16 + depth * 16}px` }}>
           <ChevronDown size={13} className={`shrink-0 transition-transform text-[var(--faint)] ${open ? '' : '-rotate-90'}`} />
-          <Files size={14} className="text-[var(--primary-2)] shrink-0" />
+          <Files size={14} className="text-[var(--accent-ink)] shrink-0" />
           <span className="font-medium truncate" title={name}>{name}</span>
           <span className="text-[11px] text-[var(--faint)] shrink-0">{node.files.length + [...node.dirs.values()].reduce((a, d) => a + d.files.length, 0)}</span>
         </button>
@@ -219,16 +219,16 @@ function TreeNode({ node, name, depth, sel, toggle, del, downloadUrl, copyUrl, c
             return (
               <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2 text-sm ${removing?.has(f.id) ? 'file-row-out' : ''} ${isDeleting ? 'opacity-60' : ''}`} style={{ paddingLeft: `${16 + (name != null ? depth + 1 : depth) * 16}px` }}>
                 <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={isDeleting} />
-                {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
+                {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--accent-ink)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                 {isDeleting ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                   <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
-                  {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                  {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
+                  {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                  {dl && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                   {/* Open rather than download: a manifest, a log or a README is something you want to
                       LOOK at, and forcing a save for every glance is why people stop checking. */}
-                  {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
-                  {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
+                  {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                  {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                   <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>
                 </>}
               </div>
@@ -257,7 +257,7 @@ function RepoUploadPanel({ jobs, cancel }) {
         return (
           <Card key={j.id} className="p-3">
             <div className="flex items-center gap-2 mb-1.5 text-sm">
-              {up ? <Loader2 size={15} className="text-[var(--primary-2)] animate-spin shrink-0" />
+              {up ? <Loader2 size={15} className="text-[var(--accent-ink)] animate-spin shrink-0" />
                 : j.status === 'cancelled' ? <Ban size={15} className="text-[var(--faint)] shrink-0" />
                 : j.failed ? <AlertTriangle size={15} className="text-[var(--warning)] shrink-0" />
                 : <CheckCircle2 size={15} className="text-[var(--success)] shrink-0 burst" />}
@@ -367,7 +367,7 @@ function FilesTab({ r, reload }) {
   // and a sha256 is 64 characters nobody transcribes correctly. Silent when a file
   // predates hashing rather than copying an empty string that looks like a value.
   const copySha = (sha) => { if (!sha) return; copyText(sha); toast.success(t('rd.shacopied', 'Checksum copied.')); };
-  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline me-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo, its content lives at its own URL, not here.')}</Card>;
+  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--accent-ink)] inline me-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo, its content lives at its own URL, not here.')}</Card>;
 
   const shown = files
     .filter((f) => !q.trim() || f.path.toLowerCase().includes(q.trim().toLowerCase()))
@@ -389,7 +389,7 @@ function FilesTab({ r, reload }) {
       ) : (
       <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}
            className={`rounded-2xl border-2 border-dashed px-4 py-7 text-center transition-colors ${dragOver ? 'border-[var(--primary)] bg-orange-500/[0.06]' : 'border-[var(--line)]'}`}>
-        <UploadCloud size={26} className={`mx-auto mb-2 ${dragOver ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
+        <UploadCloud size={26} className={`mx-auto mb-2 ${dragOver ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} />
         <div className="text-sm text-[var(--muted)]">{t('repos.drophere', 'Drop files here')} <span className="text-[var(--faint)]">— {t('repos.orpick', 'or')}</span></div>
         <div className="flex items-center justify-center gap-2 mt-3">
           {/* The id is what the empty file list's button clicks — one picker, not two. */}
@@ -418,14 +418,14 @@ function FilesTab({ r, reload }) {
             alone). */}
         {r.published && r.hostPath && (
           <div className="px-4 py-2 border-b border-[var(--line)] flex items-center gap-2">
-            <Globe size={13} className="text-[var(--primary-2)] shrink-0" />
+            <Globe size={13} className="text-[var(--accent-ink)] shrink-0" />
             <code className="text-[11px] text-[var(--muted)] break-all flex-1 min-w-0">{`${location.origin}/hosting/${r.hostPath}/files/`}</code>
             <button onClick={() => copyUrl(`${location.origin}/hosting/${r.hostPath}/files/`)}
               title={t('rd.copybase', 'Copy the base URL of the hosted files')}
-              className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><LinkIcon size={14} /></button>
+              className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><LinkIcon size={14} /></button>
             <a href={`${location.origin}/hosting/${r.hostPath}/repo.json`} target="_blank" rel="noreferrer"
               title={t('rd.openmanifest', 'Open the manifest')}
-              className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><ExternalLink size={14} /></a>
+              className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><ExternalLink size={14} /></a>
           </div>
         )}
         <div className="px-4 py-2.5 border-b border-[var(--line)] flex items-center gap-2.5 flex-wrap">
@@ -476,17 +476,17 @@ function FilesTab({ r, reload }) {
                 return (
                 <div key={f.id} className={`flex items-center gap-2.5 px-4 py-2.5 text-sm ${removing.has(f.id) ? 'file-row-out' : ''} ${deleting.has(f.id) ? 'opacity-60' : ''}`}>
                   <input type="checkbox" className="shrink-0" checked={sel.has(f.id)} onChange={() => toggle(f.id)} disabled={deleting.has(f.id)} />
-                  {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
+                  {isManifestPath(f.path) ? <FileJson size={15} className="text-[var(--accent-ink)] shrink-0" /> : <FileText size={15} className="text-[var(--faint)] shrink-0" />}
                   <span className="flex-1 truncate font-mono text-xs" title={f.path}>{base}</span>
                   {deleting.has(f.id) ? <span className="flex items-center gap-1.5 text-xs text-error shrink-0"><Spinner className="!w-3.5 !h-3.5" /> {t('rd.deleting', 'Deleting…')}</span> : <>
                     {f.sha256 && <span className="hidden md:flex items-center gap-1 text-[10px] text-[var(--faint)] font-mono" title={`SHA-256: ${f.sha256}`}><Hash size={10} /> {f.sha256.slice(0, 10)}…</span>}
                     <span className="text-xs text-[var(--faint)] tabular-nums w-20 text-end shrink-0">{fmtSize(f.size)}</span>
-                    {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
-                    {dl && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
+                    {dl && <a href={dl} download className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('repos.download', 'Download')}><Download size={14} /></a>}
+                    {dl && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copyUrl(dl)} title={t('rd.copyfileurl', 'Copy this file’s download URL')}><LinkIcon size={14} /></button>}
                     {/* Open rather than download: a manifest, a log or a README is something you want to
                         LOOK at, and forcing a save for every glance is why people stop checking. */}
-                    {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
-                    {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
+                    {dl && <a href={dl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('rd.openfile', 'Open in a new tab')}><ExternalLink size={14} /></a>}
+                    {f.sha256 && <button className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" onClick={() => copySha(f.sha256)} title={t('rd.copysha', 'Copy the SHA-256 checksum')}><Fingerprint size={14} /></button>}
                     {!locked && <button className="text-[var(--faint)] hover:text-error shrink-0" onClick={() => del(f)}><Trash2 size={14} /></button>}
                   </>}
                 </div>
@@ -498,7 +498,7 @@ function FilesTab({ r, reload }) {
 
       {r.repoJson && (
         <Card className="p-4">
-          <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-2 flex items-center gap-1.5"><FileJson size={13} className="text-[var(--primary-2)]" /> repo.json {hasRepoJson && <Badge tone="green"><CheckCircle2 size={10} /> {t('repos.verified', 'Verified')}</Badge>}</div>
+          <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-2 flex items-center gap-1.5"><FileJson size={13} className="text-[var(--accent-ink)]" /> repo.json {hasRepoJson && <Badge tone="green"><CheckCircle2 size={10} /> {t('repos.verified', 'Verified')}</Badge>}</div>
           <pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(r.repoJson, null, 2)}</pre>
         </Card>
       )}
@@ -573,7 +573,7 @@ function UsersTab({ r }) {
 
       <Card className="p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Radio size={12} className="text-[var(--primary-2)]" /> {t('rd.traffic.title', 'Traffic, last 7 days')}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Radio size={12} className="text-[var(--accent-ink)]" /> {t('rd.traffic.title', 'Traffic, last 7 days')}</span>
           <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info" /> {t('rd.connects', 'Connects')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--primary)]" /> {t('rd.downloads', 'Downloads')}</span></span>
         </div>
         <RepoTrafficChart series={series} t={t} />
@@ -605,7 +605,7 @@ function UsersTab({ r }) {
           <div className="max-h-[36vh] overflow-auto divide-y divide-[var(--line)]">
             {events.map((e) => (
               <div key={e.id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                {e.kind === 'download' ? <Download size={13} className="text-[var(--primary-2)] shrink-0" /> : <Radio size={13} className="text-success shrink-0" />}
+                {e.kind === 'download' ? <Download size={13} className="text-[var(--accent-ink)] shrink-0" /> : <Radio size={13} className="text-success shrink-0" />}
                 <span className="font-mono text-xs text-[var(--muted)] shrink-0">{e.ip}</span>
                 <span className="text-[var(--faint)]">{e.kind === 'download' ? t('rd.downloaded', 'downloaded') : t('rd.connected2', 'connected')}</span>
                 {e.kind === 'download' && <span className="font-mono text-xs truncate flex-1" title={e.path}>{e.path}</span>}
@@ -644,7 +644,7 @@ function ActivityTab({ r }) {
     </button>
   );
   const meta = {
-    upload: [UploadIcon, 'text-[var(--primary-2)]', t('rd.act.upload', 'uploaded')],
+    upload: [UploadIcon, 'text-[var(--accent-ink)]', t('rd.act.upload', 'uploaded')],
     delete: [Trash, 'text-error', t('rd.act.delete', 'deleted')],
     publish: [WifiOn, 'text-success', t('rd.act.publish', 'went online')],
     unpublish: [WifiGone, 'text-[var(--faint)]', t('rd.act.unpublish', 'took offline')],
@@ -723,10 +723,10 @@ function OnlineTab({ r, reload, publicUrl }) {
       </div>
       {online && publicUrl && (
         <div className="mt-4 flex items-center gap-2 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] px-3 py-2">
-          <FileJson size={14} className="text-[var(--primary-2)] shrink-0" />
+          <FileJson size={14} className="text-[var(--accent-ink)] shrink-0" />
           <code className="text-xs text-[var(--muted)] break-all flex-1 min-w-0">{publicUrl}</code>
-          <button onClick={() => { navigator.clipboard?.writeText(publicUrl); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Copy size={14} /></button>
-          <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><ExternalLink size={14} /></a>
+          <button onClick={() => { navigator.clipboard?.writeText(publicUrl); toast.success(t('repos.copy.ok', 'repo.json link copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><Copy size={14} /></button>
+          <a href={publicUrl} target="_blank" rel="noreferrer" className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><ExternalLink size={14} /></a>
         </div>
       )}
       {!online && !hasRepoJson && <div className="mt-3 text-xs text-warning flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}
@@ -812,7 +812,7 @@ function SettingsTab({ r, reload }) {
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostset', 'Sandbox settings apply to hosted repos only.')}</Card>;
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed, your settings can never exceed this repo's hard limits.")}</div>
+      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--accent-ink)]" /> {t('repos.sandboxed', "Sandboxed, your settings can never exceed this repo's hard limits.")}</div>
       {/* SIZE, in Settings, because that is what a setting is: how this repo is provisioned.
           Only offered for a POOLED repo — a solo one's quota is fixed by its plan, and a
           slider that always answers "not grouped" is a control that lies about being one.
@@ -864,7 +864,7 @@ function SettingsTab({ r, reload }) {
       <Card className="p-4">
         <div className="flex items-center justify-between mb-1.5 text-sm"><span className="flex items-center gap-1.5 text-[var(--muted)]"><Zap size={14} /> {t('repos.uploadlimit', 'Upload limit')}</span><span className="font-semibold">{reqMbps >= capKbps / 1024 ? t('repos.max', 'Max') : `${reqMbps.toFixed(1)} Mbps`}</span></div>
         <input type="range" min={0.5} max={Math.max(1, capKbps / 1024)} step={0.5} value={Math.min(reqMbps, capKbps / 1024)} className="bcw-range w-full" onChange={(e) => setReqMbps(Number(e.target.value))} />
-        <div className="text-xs mt-2 flex items-center gap-1.5"><Lock size={12} className="text-[var(--faint)]" /><span className="text-[var(--muted)]">{t('repos.sandboxcap', 'Sandbox cap:')} <b>{(capKbps / 1024).toFixed(1)} Mbps</b>. {t('repos.effective', 'Effective:')} <b className="text-[var(--primary-2)]">{(effectiveKbps / 1024).toFixed(1)} Mbps</b>.</span></div>
+        <div className="text-xs mt-2 flex items-center gap-1.5"><Lock size={12} className="text-[var(--faint)]" /><span className="text-[var(--muted)]">{t('repos.sandboxcap', 'Sandbox cap:')} <b>{(capKbps / 1024).toFixed(1)} Mbps</b>. {t('repos.effective', 'Effective:')} <b className="text-[var(--accent-ink)]">{(effectiveKbps / 1024).toFixed(1)} Mbps</b>.</span></div>
       </Card>
       {/* A hosted repo already serves an nginx-format directory index next to its JSON
           manifest, and always has — there was no way to turn it off. This is that switch:
@@ -876,7 +876,7 @@ function SettingsTab({ r, reload }) {
         <label className="flex items-start gap-3 cursor-pointer">
           <input type="checkbox" className="mt-1 shrink-0" checked={listing} onChange={(e) => setListing(e.target.checked)} />
           <span className="min-w-0">
-            <span className="flex items-center gap-1.5 font-medium text-sm"><ListTree size={14} className="text-[var(--primary-2)]" /> {t('rd.listing', 'Serve a directory listing')}</span>
+            <span className="flex items-center gap-1.5 font-medium text-sm"><ListTree size={14} className="text-[var(--accent-ink)]" /> {t('rd.listing', 'Serve a directory listing')}</span>
             <span className="block text-xs text-[var(--muted)] mt-1 leading-relaxed">
               {t('rd.listing.d', 'On, browsing a folder shows an index of what is in it, in the same format a plain file server produces — which is how a client can sync without downloading everything. Off, folders answer 404 and each file still downloads at its own URL.')}
             </span>
@@ -935,7 +935,7 @@ function AgentTab({ r }) {
   return (
     <div className="space-y-4">
       <Card className="p-5">
-        <div className="flex items-center gap-2 font-semibold"><Terminal size={16} className="text-[var(--primary-2)]" /> {t('rd.agent.t', 'Your server, talking to us')}</div>
+        <div className="flex items-center gap-2 font-semibold"><Terminal size={16} className="text-[var(--accent-ink)]" /> {t('rd.agent.t', 'Your server, talking to us')}</div>
         <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2 max-w-2xl">
           {t('rd.agent.s', 'This repo lives on a machine of yours. Rather than us holding a key to it — which would put your server inside our breaches — your machine holds a token for us: it calls in on a timer to say it is alive and what it is serving, and picks up anything you queue below. We never get a way in.')}
         </p>
@@ -1109,7 +1109,7 @@ function AccessTab({ r, reload }) {
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-1"><Lock size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('rd.syncpw.title', 'Download password')}</span></div>
+        <div className="flex items-center gap-2 mb-1"><Lock size={15} className="text-[var(--accent-ink)]" /> <span className="font-semibold text-sm">{t('rd.syncpw.title', 'Download password')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">
           {t('rd.syncpw.sub', 'Required to READ this repo — its manifest, its file listing and every file. BMM asks for it when subscribing; a browser can use ?password= instead. This is not the dashboard password below, which decides who may MANAGE the repo.')}
         </p>
@@ -1133,14 +1133,14 @@ function AccessTab({ r, reload }) {
         </div>
       </Card>
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-1"><Users size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('rd.authemails', 'Authorized emails')}</span></div>
+        <div className="flex items-center gap-2 mb-1"><Users size={15} className="text-[var(--accent-ink)]" /> <span className="font-semibold text-sm">{t('rd.authemails', 'Authorized emails')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('rd.authemails.s', 'Logged-in users with these emails can open this dashboard and manage the repo.')}</p>
         <ChipList label={t('rd.emails', 'Emails')} items={emails} placeholder="collaborator@example.com"
           onAdd={(v) => { if (!validEmail(v)) return toast.error(t('rd.bademail', 'Enter a valid email.')); if (!emails.includes(v.toLowerCase())) saveEmails([...emails, v.toLowerCase()]); }}
           onRemove={(v) => saveEmails(emails.filter((x) => x !== v))} />
       </Card>
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-1"><KeyRound size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('rd.dashpw', 'Dashboard password')}</span> {hasPassword && <Badge tone="green"><CheckCircle2 size={10} /> {t('rd.pwon', 'Set')}</Badge>}</div>
+        <div className="flex items-center gap-2 mb-1"><KeyRound size={15} className="text-[var(--accent-ink)]" /> <span className="font-semibold text-sm">{t('rd.dashpw', 'Dashboard password')}</span> {hasPassword && <Badge tone="green"><CheckCircle2 size={10} /> {t('rd.pwon', 'Set')}</Badge>}</div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('rd.dashpw.s', 'Anyone with this password can open the dashboard without an account (login-less access).')}</p>
         <div className="flex gap-2">
           <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder={hasPassword ? t('rd.changepw', 'New password…') : t('rd.setpw', 'Set a password…')} onKeyDown={(e) => e.key === 'Enter' && setPassword()} />
@@ -1152,7 +1152,7 @@ function AccessTab({ r, reload }) {
       {/* Staff-wide rules are layered ON TOP of these, so a repo can be closed by a
           decision made elsewhere. Saying so here stops "but I allowed them" being a
           mystery. */}
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><Globe size={13} className="text-[var(--primary-2)]" /> {t('repos.globalpolicy.note', "Staff-wide bans and (if enabled) a site-wide whitelist apply to every repo automatically, on top of what you set below.")}</div>
+      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><Globe size={13} className="text-[var(--accent-ink)]" /> {t('repos.globalpolicy.note', "Staff-wide bans and (if enabled) a site-wide whitelist apply to every repo automatically, on top of what you set below.")}</div>
       <Card className="p-4 space-y-4">
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={access.whitelistEnabled} onChange={(e) => setAccess({ ...access, whitelistEnabled: e.target.checked })} /> {t('repos.wl', 'Whitelist-only access (only allow-listed IPs/keys/accounts can sync)')}</label>
         <ChipList label={t('repos.allowedips', 'Allowed IPs')} items={access.ips || []} onAdd={(v) => addTo(setAccess, 'ips', v)} onRemove={(v) => rm(setAccess, 'ips', v)} placeholder="203.0.113.4" />

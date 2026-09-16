@@ -58,8 +58,8 @@ export function AccountChipList({ label, items, onAdd, onRemove, placeholder }) 
             <div key={u.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
               <span className="truncate">{u.displayName}{u.discord && <span className="text-[var(--faint)]"> · Discord: {u.discord.username || u.discord.id}</span>}</span>
               <span className="flex gap-1 shrink-0">
-                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ BC</button>
-                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
+                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ BC</button>
+                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
           )) : <div className="text-xs text-[var(--faint)] px-1">{t('repos.acct.none', 'No account matches that. The search reads a creator id, a Discord id, a Discord username or a display name.')}</div>}
@@ -151,7 +151,7 @@ export function PubkeyList({ items, onAdd, onRemove }) {
           // min-w-0 + break-all: without them one unbreakable base64 run stretches the row
           // past the viewport and takes the whole card with it.
           <span key={x} title={x} className="inline-flex items-center gap-1 min-w-0 max-w-full px-2 py-1 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-            <KeyRound size={12} className="shrink-0 text-[var(--primary-2)]" />
+            <KeyRound size={12} className="shrink-0 text-[var(--accent-ink)]" />
             <span className="truncate break-all">{keyLabel(x)}</span>
             <button onClick={() => onRemove(x)} className="shrink-0 text-[var(--faint)] hover:text-error"><X size={12} /></button>
           </span>

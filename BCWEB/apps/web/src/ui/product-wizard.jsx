@@ -216,7 +216,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
       <StepRail step={step} visited={visited} errors={errors} onGo={go} t={t} />
       {restored && (
         <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
-          <RotateCcw size={13} className="text-[var(--primary-2)] shrink-0" />
+          <RotateCcw size={13} className="text-[var(--accent-ink)] shrink-0" />
           <span className="flex-1">{t('mkw.restored', 'Picked up where you left off, this is your unsaved draft, not what is published.')}</span>
           <Button size="sm" variant="ghost" onClick={discardRestored}>{t('mkw.restored.discard', 'Discard draft')}</Button>
         </div>
@@ -259,7 +259,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
               {DELIVERY_KINDS.map((o) => <option key={o.v} value={o.v}>{t(mkdKey(o.v, 'l'), o.label)}</option>)}
             </Select>
           </Field>
-          <button type="button" onClick={() => setExplain((x) => !x)} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1">
+          <button type="button" onClick={() => setExplain((x) => !x)} className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1">
             <HelpCircle size={12} /> {explain ? t('mkadm.exp.hide', 'Hide the explanation') : t('mkadm.exp.show', 'What do these mean?')}
           </button>
           {explain && renderExplainer && (
@@ -379,7 +379,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
               <div key={i} className="flex items-start gap-3 px-3 py-2">
                 <dt className="w-40 shrink-0 text-[var(--faint)] text-xs pt-0.5">{k}</dt>
                 <dd className="flex-1 min-w-0 break-words">{v}</dd>
-                <button type="button" onClick={() => go(s)} className="text-[11px] text-[var(--primary-2)] hover:underline shrink-0">{t('mkw.review.change', 'Change')}</button>
+                <button type="button" onClick={() => go(s)} className="text-[11px] text-[var(--accent-ink)] hover:underline shrink-0">{t('mkw.review.change', 'Change')}</button>
               </div>
             ))}
           </dl>

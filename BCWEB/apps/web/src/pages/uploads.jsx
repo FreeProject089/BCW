@@ -118,7 +118,7 @@ export function UploadProvider({ children }) {
           {/* dock header */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-t-2xl border border-b-0 border-[var(--line-strong)]"
                style={{ background: 'var(--bg-solid)', boxShadow: '0 -1px 0 0 var(--line) inset' }}>
-            <UploadCloud size={15} className="text-[var(--primary-2)]" />
+            <UploadCloud size={15} className="text-[var(--accent-ink)]" />
             <span className="text-sm font-semibold flex-1">
               {active ? t('up.uploadingactive', 'Uploading: {n} active').replace('{n}', active) : t('up.uploads', 'Uploads')}
             </span>
@@ -137,7 +137,7 @@ export function UploadProvider({ children }) {
                 return (
                   <div key={j.id} className="p-3 anim-fade">
                     <div className="flex items-center gap-2 mb-1.5">
-                      {uploading ? <Loader2 size={14} className="text-[var(--primary-2)] animate-spin shrink-0" />
+                      {uploading ? <Loader2 size={14} className="text-[var(--accent-ink)] animate-spin shrink-0" />
                         : j.status === 'cancelled' ? <Ban size={14} className="text-[var(--faint)] shrink-0" />
                         : j.failed ? <AlertTriangle size={14} className="text-warning shrink-0" />
                         : <CheckCircle2 size={14} className="text-success shrink-0" />}

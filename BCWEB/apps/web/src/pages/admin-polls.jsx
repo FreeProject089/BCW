@@ -139,7 +139,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
             placeholder={'![Layout A](https://…/a.png)\n\n:::callout{type=info}\nBoth options ship either way.\n:::'} />
           <div className="flex items-center justify-between gap-2 mt-1.5">
             <button type="button" onClick={() => setShowPreview((v) => !v)}
-              className="text-[11px] text-[var(--primary-2)] hover:underline">
+              className="text-[11px] text-[var(--accent-ink)] hover:underline">
               {showPreview ? t('apoll.desc.hide', 'Hide preview') : t('apoll.desc.show', 'Preview')}
             </button>
           </div>
@@ -713,7 +713,7 @@ export function AdminPolls() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[var(--primary-2)]" /> {t('apoll.title', 'Polls')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><BarChart3 size={16} className="text-[var(--accent-ink)]" /> {t('apoll.title', 'Polls')}</h2>
         <Button size="sm" variant="primary" className="ms-auto" onClick={() => setEditor(emptyDraft())}><Plus size={13} /> {t('apoll.new', 'New poll')}</Button>
       </div>
 
@@ -728,7 +728,7 @@ export function AdminPolls() {
                     <button type="button" onClick={() => togglePin(poll)} disabled={busy === poll.id}
                       title={poll.pinned ? t('apoll.pin.off', 'Stop featuring this on the home page')
                         : t('apoll.pin.on', 'Feature this on the home page')}
-                      className={`shrink-0 transition ${poll.pinned ? 'text-[var(--primary-2)]' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>
+                      className={`shrink-0 transition ${poll.pinned ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>
                       <Pin size={12} className={poll.pinned ? '' : 'opacity-50'} />
                     </button>
                     <span className="truncate" title={poll.question}>{poll.question}</span>

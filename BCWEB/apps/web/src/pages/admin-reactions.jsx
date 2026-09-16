@@ -32,7 +32,7 @@ export function AdminReactions() {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="font-semibold flex items-center gap-2">
-          <Heart size={16} className="text-[var(--primary-2)]" /> {t('adm.react.title', 'Reader feedback')}
+          <Heart size={16} className="text-[var(--accent-ink)]" /> {t('adm.react.title', 'Reader feedback')}
         </h2>
         {/* The window applies to blog reactions only. Doc votes are running totals on the page
             itself — there is no per-vote row to filter — and saying so beats letting somebody

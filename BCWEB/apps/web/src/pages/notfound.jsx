@@ -198,7 +198,7 @@ export default function NotFound() {
       {/* The page number, and one line. There were two headings above the game saying the
           same thing in different words — "Lost in space" over "that page doesn't exist" —
           and neither told anybody anything they had not worked out from the 404. */}
-      <div className="text-[86px] leading-none font-black text-[var(--primary)] tracking-tight select-none">404</div>
+      <div className="text-[86px] leading-none font-black text-[var(--accent-ink)] tracking-tight select-none">404</div>
       <p className="text-[var(--muted)] mt-1 mb-7">{t('nf.sub', 'That page does not exist. Have a game instead.')}</p>
 
       <div className="flex flex-col md:flex-row gap-6 items-start justify-center">
@@ -212,10 +212,10 @@ export default function NotFound() {
               <div className="text-center px-4">
                 {phase === 'over' && <>
                   <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
-                  <div className="text-4xl font-black text-[var(--primary)] my-1">{score}</div>
+                  <div className="text-4xl font-black text-[var(--accent-ink)] my-1">{score}</div>
                   {saved?.improved ? <div className="text-xs text-success mb-2 inline-flex items-center gap-1"><Trophy size={12} /> {t('nf.newbest', 'New personal best!')}</div>
                     : user ? <div className="text-xs text-[var(--faint)] mb-2">{t('nf.best', 'Your best: {n}').replace('{n}', best)}</div>
-                    : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--primary-2)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
+                    : <div className="text-xs text-[var(--faint)] mb-2"><Link to="/auth" className="text-[var(--accent-ink)] underline">{t('nf.signin', 'Sign in')}</Link> {t('nf.tosave', 'to save your score')}</div>}
                 </>}
                 <Button variant="primary" onClick={start}>{phase === 'over' ? <><RotateCcw size={16} /> {t('nf.again', 'Play again')}</> : <><Play size={16} /> {t('nf.play', 'Play')}</>}</Button>
                 <div className="text-[11px] text-[var(--faint)] mt-3 leading-relaxed">{t('nf.how', 'Catch orange, dodge red. Mouse, finger, or hold ← →.')}</div>
@@ -236,7 +236,7 @@ export default function NotFound() {
                 <span className={`w-5 text-center font-bold tabular-nums ${r.rank <= 3 ? 'text-warning' : 'text-[var(--faint)]'}`}>{r.rank}</span>
                 {r.user ? <Avatar user={r.user} size={22} /> : <span className="w-[22px] h-[22px] rounded-full bg-[var(--surface-2)] grid place-items-center"><Gamepad2 size={12} className="text-[var(--faint)]" /></span>}
                 <span className="flex-1 min-w-0 truncate">{r.user?.displayName || t('nf.anon', 'Anonymous')}</span>
-                <span className="font-bold tabular-nums text-[var(--primary-2)]">{r.score}</span>
+                <span className="font-bold tabular-nums text-[var(--accent-ink)]">{r.score}</span>
               </div>
             ))}
           </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet, be the first!')}</div>)}
@@ -300,7 +300,7 @@ export default function NotFound() {
               {awards.awards.some((a) => a.code) && (
                 <div className="mt-2 rounded-lg border border-[var(--primary)] p-2">
                   <div className="text-[11px] text-[var(--muted)]">{t('nf.yourcode', 'Your code')}</div>
-                  <div className="font-mono text-[13px] font-bold text-[var(--primary-2)] break-all">
+                  <div className="font-mono text-[13px] font-bold text-[var(--accent-ink)] break-all">
                     {awards.awards.find((a) => a.code).code}
                   </div>
                 </div>

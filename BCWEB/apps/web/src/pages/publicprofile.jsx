@@ -108,10 +108,10 @@ export default function PublicProfile() {
       </Card>
 
       {u.economy?.level > 0 && <Card className="p-5">
-        <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--primary-2)]" /> {t('pp.discord', 'Discord activity')}</h2>
+        <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--accent-ink)]" /> {t('pp.discord', 'Discord activity')}</h2>
         <div className="flex flex-wrap gap-2">
           <div className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center">
-            <div className="text-xl font-bold tabular-nums leading-none text-[var(--primary-2)]">{u.economy.level}</div>
+            <div className="text-xl font-bold tabular-nums leading-none text-[var(--accent-ink)]">{u.economy.level}</div>
             <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">{t('pp.eco.level', 'level')}</div>
           </div>
           <div className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center">
@@ -144,7 +144,7 @@ export default function PublicProfile() {
 
       <div className="grid sm:grid-cols-2 gap-4">
         <Card className="p-5">
-          <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><FolderGit2 size={15} className="text-[var(--primary-2)]" /> {t('pp.repos', 'Public repos')} ({u.repos.length})</h2>
+          <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><FolderGit2 size={15} className="text-[var(--accent-ink)]" /> {t('pp.repos', 'Public repos')} ({u.repos.length})</h2>
           {u.repos.length ? <div className="space-y-1.5">
             {u.repos.map((r) => (
               <Link key={r.id} to={`/repo/${r.id}`} className="block rounded-lg p-2 hover:bg-[var(--surface-2)]">
@@ -156,7 +156,7 @@ export default function PublicProfile() {
           </div> : <p className="text-sm text-[var(--faint)]">{t('pp.norepos', 'No public repos.')}</p>}
         </Card>
         <Card className="p-5">
-          <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Boxes size={15} className="text-[var(--primary-2)]" /> {t('pp.catalogs', 'Public catalogs')} ({u.catalogs.length})</h2>
+          <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Boxes size={15} className="text-[var(--accent-ink)]" /> {t('pp.catalogs', 'Public catalogs')} ({u.catalogs.length})</h2>
           {u.catalogs.length ? <div className="space-y-1.5">
             {u.catalogs.map((c) => (
               <Link key={c.slug} to={`/c/${c.slug}`} className="block rounded-lg p-2 hover:bg-[var(--surface-2)]">
@@ -180,7 +180,7 @@ export function UserSearch() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Search size={20} className="text-[var(--primary-2)]" /> {t('us.title', 'Find people')}</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Search size={20} className="text-[var(--accent-ink)]" /> {t('us.title', 'Find people')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1">{t('us.sub2', 'Search members by name, or paste a BC id, repo id or catalog id to find its owner.')}</p>
       </div>
       <div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-10" placeholder={t('us.ph2', 'Name, BC-XXXX-XXXX, repo id or catalog id…')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div>

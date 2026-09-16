@@ -31,12 +31,12 @@ export default function FeedLink({ path, label, hint, className = '' }) {
         title={hint || t('feed.hint', 'Copy this list as a JSON URL, paste it into BMM to add it as a source')}
         className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
-        {done ? <Check size={13} className="text-success" /> : <FileJson size={13} className="text-[var(--primary-2)]" />}
+        {done ? <Check size={13} className="text-success" /> : <FileJson size={13} className="text-[var(--accent-ink)]" />}
         {done ? t('feed.copied', 'URL copied') : (label || t('feed.json', 'JSON feed'))}
         {!done && <Copy size={11} className="text-[var(--faint)]" />}
       </button>
       <a href={url} target="_blank" rel="noreferrer" title={t('feed.open', 'Open it in a tab')}
-        className="inline-grid place-items-center w-[30px] h-[30px] rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition text-[var(--faint)] hover:text-[var(--primary-2)]"
+        className="inline-grid place-items-center w-[30px] h-[30px] rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition text-[var(--faint)] hover:text-[var(--accent-ink)]"
         style={{ background: 'var(--bg-solid)' }}>
         <ExternalLink size={13} />
       </a>
@@ -83,7 +83,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
         title={t('feed.ix.hint', 'Addresses that list catalogs rather than items. Paste one into BMM → Settings → Catalog index.')}
         className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
-        <FileJson size={13} className="text-[var(--primary-2)]" />
+        <FileJson size={13} className="text-[var(--accent-ink)]" />
         {t('feed.ix.btn', 'Index feeds')}
       </button>
       {open && (
@@ -104,7 +104,7 @@ export function FeedMenu({ project = '', kind = '', className = '' }) {
                 {copied === r.k
                   ? <Check size={13} className="text-success shrink-0" />
                   : <Copy size={11} className="text-[var(--faint)] shrink-0" />}
-                <a href={r.url} target="_blank" rel="noreferrer" className="shrink-0 text-[var(--faint)] hover:text-[var(--primary-2)]"
+                <a href={r.url} target="_blank" rel="noreferrer" className="shrink-0 text-[var(--faint)] hover:text-[var(--accent-ink)]"
                   title={t('feed.open', 'Open it in a tab')} onClick={(e) => e.stopPropagation()}>
                   <ExternalLink size={12} />
                 </a>

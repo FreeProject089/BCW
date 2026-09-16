@@ -92,7 +92,7 @@ function Step({ s, n, last, current, repoUrl, t }) {
                     like"; the next question is always "and what is around it". */}
                 {githubLink(repoUrl, s.file, s.line) && (
                     <a href={githubLink(repoUrl, s.file, s.line)} target="_blank" rel="noreferrer"
-                        className="ms-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline">
+                        className="ms-[18px] mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)] hover:underline">
                         <ExternalLink size={11} /> {t('cf.open', 'Open {f} on GitHub').replace('{f}', short(s.file))}
                     </a>
                 )}

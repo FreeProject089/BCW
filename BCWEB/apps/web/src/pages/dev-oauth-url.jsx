@@ -60,7 +60,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
 
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('ourl.title', 'OAuth2 URL generator')}</div>
+      <div className="text-sm font-semibold flex items-center gap-2"><Link2 size={15} className="text-[var(--accent-ink)]" /> {t('ourl.title', 'OAuth2 URL generator')}</div>
       <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">
         {t('ourl.sub', 'Build the authorize URL without guessing at parameter names. Getting one wrong sends the error to your redirect as a query string, which is the least useful place to find it.')}
       </p>
@@ -91,7 +91,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
               return (
                 <button key={sc} type="button" disabled={locked}
                   onClick={() => setPicked((v) => (on ? v.filter((x) => x !== sc) : [...v, sc]))}
-                  className={`text-[11px] font-mono px-2 py-1 rounded-lg border transition ${on ? 'tint-primary b-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:border-[var(--ring)]'} ${locked ? 'opacity-70 cursor-default' : ''}`}>
+                  className={`text-[11px] font-mono px-2 py-1 rounded-lg border transition ${on ? 'tint-primary b-primary text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:border-[var(--ring)]'} ${locked ? 'opacity-70 cursor-default' : ''}`}>
                   {on && <Check size={10} className="inline me-1" />}{sc}
                 </button>
               );
@@ -137,7 +137,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
             <Button size="sm" variant="ghost" className="ms-auto" disabled={!url} onClick={() => { copyText(url); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
             {/* Opening it really starts a flow against the real provider — which is the point,
                 and also why it is a link the person chooses rather than a preview. */}
-            <a href={url || '#'} target="_blank" rel="noreferrer" className={`text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1 ${url ? '' : 'pointer-events-none opacity-50'}`}>
+            <a href={url || '#'} target="_blank" rel="noreferrer" className={`text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1 ${url ? '' : 'pointer-events-none opacity-50'}`}>
               <ExternalLink size={11} /> {t('ourl.try', 'Try it')}
             </a>
           </div>

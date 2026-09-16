@@ -231,8 +231,8 @@ function navSubLabel(item, lang) {
 
 // Segmented "pill" nav link (desktop) + hamburger-sheet row. Module-scope so the
 // dropdown/accordion components below can share the exact same styling.
-const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
-const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-[var(--surface-2)] text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`;
+const pill = ({ isActive }) => `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition ${isActive ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+const sheet = ({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm ${isActive ? 'bg-[var(--surface-2)] text-[var(--accent-ink)] font-medium' : 'text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--text)]'}`;
 
 // Desktop dropdown pill for a configured "group" nav item — Twenty-style: opens on
 // hover (with a small close delay so the pointer can travel to the panel) and on click,
@@ -279,7 +279,7 @@ function NavDropdown({ item, t, lang }) {
           style={{ left: pos.left, top: pos.top, boxShadow: '0 14px 44px -12px rgba(0,0,0,0.42)' }}>
           {children.map((c, i) => (
             <NavLink key={c.to + i} to={c.to} onClick={() => setOpen(false)} className={({ isActive }) => `flex items-start gap-2.5 p-2 rounded-xl transition ${isActive ? 'bg-[var(--surface-2)]' : 'hover:bg-[var(--surface-2)]'}`}>
-              <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavIcon item={c} size={15} /></span>
+              <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><NavIcon item={c} size={15} /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[var(--text)] truncate">{navLabel(c, t, lang)}</span>
                 {navSubLabel(c, lang) && <span className="block text-xs text-[var(--faint)] truncate">{navSubLabel(c, lang)}</span>}
@@ -394,7 +394,7 @@ function LegalReaccept() {
     <div className="relative z-20 print:hidden border-b border-[var(--line)]"
       style={{ background: 'color-mix(in srgb, var(--primary) 10%, var(--bg-solid))' }}>
       <div className="max-w-6xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-3 text-sm">
-        <ShieldCheck size={16} className="text-[var(--primary-2)] shrink-0" />
+        <ShieldCheck size={16} className="text-[var(--accent-ink)] shrink-0" />
         <span className="flex-1 min-w-0">
           {lang === 'fr'
             ? `Nous avons mis à jour ${names}. Merci de la lire et de donner votre accord.`
@@ -551,9 +551,9 @@ function NavNotifications() {
         <div className="fixed left-2 right-2 top-16 w-auto sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-[21rem] flex flex-col max-h-[26rem] rounded-xl border border-[var(--line-strong)] z-[60] anim-fade overflow-hidden"
           style={{ background: 'var(--bg-solid)', boxShadow: '0 20px 60px -12px rgba(0,0,0,0.55), 0 0 0 1px var(--line)' }}>
           <div className="flex items-center justify-between px-3 py-2.5 border-b border-[var(--line)] shrink-0" style={{ background: 'var(--bg-solid)' }}>
-            <span className="text-sm font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--primary-2)]" /> {t('nav.notifications')}{unread > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-white">{unread}</span>}</span>
+            <span className="text-sm font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--accent-ink)]" /> {t('nav.notifications')}{unread > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)] text-white">{unread}</span>}</span>
             <span className="flex items-center gap-2.5 shrink-0">
-              {unread > 0 && <button className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1" onClick={markAll}><CheckCheck size={12} /> {t('notif.markall')}</button>}
+              {unread > 0 && <button className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1" onClick={markAll}><CheckCheck size={12} /> {t('notif.markall')}</button>}
               {items.length > 0 && <button className="text-xs text-[var(--faint)] hover:text-[var(--text)] hover:underline flex items-center gap-1" onClick={clearMenu} title={t('notif.clearmenu.hint')}><X size={12} /> {t('notif.clear')}</button>}
             </span>
           </div>
@@ -882,7 +882,7 @@ function MobileTabBar() {
   // the only thing on the bar, so they never collapse.
   const labelVisible = display === 'text' || showLabels;
   const txt = (n) => showText && <span className={`text-[10px] leading-none overflow-hidden transition-all duration-200 ${display === 'text' ? 'font-medium max-w-full truncate px-1' : ''} ${labelVisible ? 'max-h-4 opacity-100 mt-0.5' : 'max-h-0 opacity-0 mt-0'}`}>{label(n)}</span>;
-  const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`;
+  const tab = ({ isActive }) => `flex-1 flex flex-col items-center justify-center py-1.5 ${isActive ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`;
   return (
     <>
       {/* An invisible catcher so a tap anywhere else closes an open dropup. Below the nav in
@@ -913,14 +913,14 @@ function MobileTabBar() {
                     {kids.length === 0
                       ? <div className="px-3 py-2 text-xs text-[var(--faint)]">—</div>
                       : kids.map((c, j) => (
-                        <NavLink key={j} to={c.to} onClick={() => setOpenUp(null)} className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm ${isActive ? 'text-[var(--primary)] bg-[var(--surface-2)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
+                        <NavLink key={j} to={c.to} onClick={() => setOpenUp(null)} className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm ${isActive ? 'text-[var(--accent-ink)] bg-[var(--surface-2)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'}`}>
                           <NavIcon item={c} size={16} /> <span className="truncate">{label(c)}</span>
                         </NavLink>
                       ))}
                   </div>
                 )}
                 <button type="button" onClick={() => setOpenUp(open ? null : i)} aria-expanded={open} title={label(n)} aria-label={label(n)}
-                  className={`flex-1 flex flex-col items-center justify-center py-1.5 ${open ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>
+                  className={`flex-1 flex flex-col items-center justify-center py-1.5 ${open ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`}>
                   {showIcon && <span className={`grid place-items-center w-9 h-7 rounded-full transition ${open ? 'bg-[var(--surface-2)]' : ''}`}><NavIcon item={n} size={18} /></span>}
                   {txt(n)}
                 </button>
@@ -1006,8 +1006,8 @@ const showsOn = (item, mobile) => {
 function FooterCol({ title, links }) {
   const [open, setOpen] = useState(false);
   const render = ([l, to, ext]) => ext
-    ? <a key={l} href={to} target="_blank" rel="noreferrer" className="text-sm text-[var(--muted)] hover:text-[var(--primary-2)] transition w-fit">{l}</a>
-    : <Link key={l} to={to} className="text-sm text-[var(--muted)] hover:text-[var(--primary-2)] transition w-fit">{l}</Link>;
+    ? <a key={l} href={to} target="_blank" rel="noreferrer" className="text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</a>
+    : <Link key={l} to={to} className="text-sm text-[var(--muted)] hover:text-[var(--accent-ink)] transition w-fit">{l}</Link>;
   return (
     <div className="border-b border-[var(--line)] md:border-0">
       <button type="button" onClick={() => setOpen((o) => !o)}
@@ -1080,7 +1080,7 @@ function FooterEgg() {
   return (
     <>
       <button onClick={onClick} className="flex items-center gap-1.5 hover:text-[var(--muted)] transition select-none" title="✨">
-        <Sparkles size={12} className="text-[var(--primary-2)]" /> Built for the Better* community
+        <Sparkles size={12} className="text-[var(--accent-ink)]" /> Built for the Better* community
       </button>
       {open && badge && <Modal open onClose={() => setOpen(false)} title={badge.name || t('egg.title', 'You found a secret!')}
         icon={undefined} width="max-w-sm">
@@ -1091,7 +1091,7 @@ function FooterEgg() {
           <p className="text-sm text-[var(--muted)] whitespace-pre-wrap break-words">{badge.message || t('egg.default', 'Thanks for being curious. Here\'s a little something.')}</p>
           <div className="mt-4">
             {!user ? <p className="text-xs text-[var(--faint)]">{t('egg.signin', 'Sign in to keep this badge on your profile.')}</p>
-              : claimed ? <p className="text-sm font-medium text-[var(--primary-2)] flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> {t('egg.done', 'Added to your profile.')}</p>
+              : claimed ? <p className="text-sm font-medium text-[var(--accent-ink)] flex items-center justify-center gap-1.5"><CheckCircle2 size={15} /> {t('egg.done', 'Added to your profile.')}</p>
               : <Button variant="primary" onClick={claim}>{t('egg.claim', 'Claim badge')}</Button>}
           </div>
         </div>
@@ -1219,7 +1219,7 @@ function Protected({ children, role }) {
     return (
       <div className="max-w-sm mx-auto py-16">
         <div className="card p-6 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><ShieldCheck size={22} className="text-[var(--primary-2)]" /></div>
+          <div className="w-12 h-12 rounded-2xl bg-orange-500/10 border border-[var(--line)] grid place-items-center mx-auto mb-3"><ShieldCheck size={22} className="text-[var(--accent-ink)]" /></div>
           <h1 className="text-lg font-semibold">{t('admin.2fa.title', 'Two-factor authentication required')}</h1>
           <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('admin.2fa.sub', 'The admin dashboard requires 2FA on your account, even for admins. Enable it in your profile to continue.')}</p>
           <Link to="/profile"><Button variant="primary" className="w-full">{t('admin.2fa.cta', 'Go to profile')}</Button></Link>

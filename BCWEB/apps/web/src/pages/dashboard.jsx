@@ -93,7 +93,7 @@ function EconomyWidget({ onOpenShop }) {
           {/* The balance rides along on the top row on phones; on md it lives in its own column. */}
           <div className="md:hidden text-end shrink-0">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
-            <div className="text-xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={16} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()}</div>
+            <div className="text-xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={16} className="text-[var(--accent-ink)]" /> {(d.points || 0).toLocaleString()}</div>
             <div className="text-[10px] text-[var(--faint)]">{cur}</div>
           </div>
         </div>
@@ -132,7 +132,7 @@ function EconomyWidget({ onOpenShop }) {
         <div className="flex flex-col gap-3 md:items-end">
           <div className="hidden md:block text-end">
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('eco.w.balance', 'Balance')}</div>
-            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--primary-2)]" /> {(d.points || 0).toLocaleString()} <span className="text-xs font-medium text-[var(--muted)]">{cur}</span></div>
+            <div className="text-2xl font-extrabold tabular-nums leading-tight flex items-center gap-1.5 justify-end"><Coins size={18} className="text-[var(--accent-ink)]" /> {(d.points || 0).toLocaleString()} <span className="text-xs font-medium text-[var(--muted)]">{cur}</span></div>
           </div>
           {/* Two equal full-width buttons on a phone — 44px tall targets side by side beat two
               small ones squeezed next to a number. */}
@@ -159,8 +159,8 @@ function EconomyWidget({ onOpenShop }) {
 // and one bought there are the same thing — and everything bought either way lands in the
 // inventory below with its code.
 const SHOP_KIND = {
-  badge: { Icon: BadgeCheck, tone: 'text-amber-400' }, pool: { Icon: HardDrive, tone: 'text-[var(--primary-2)]' }, boost: { Icon: Zap, tone: 'text-[var(--primary-2)]' },
-  hosting: { Icon: Server, tone: 'text-[var(--primary-2)]' }, promo: { Icon: Ticket, tone: 'text-emerald-400' }, role: { Icon: Users, tone: 'text-[#5865F2]' }, custom: { Icon: Gift, tone: 'text-[var(--primary-2)]' },
+  badge: { Icon: BadgeCheck, tone: 'text-amber-400' }, pool: { Icon: HardDrive, tone: 'text-[var(--accent-ink)]' }, boost: { Icon: Zap, tone: 'text-[var(--accent-ink)]' },
+  hosting: { Icon: Server, tone: 'text-[var(--accent-ink)]' }, promo: { Icon: Ticket, tone: 'text-emerald-400' }, role: { Icon: Users, tone: 'text-[#5865F2]' }, custom: { Icon: Gift, tone: 'text-[var(--accent-ink)]' },
 };
 function EconomyShop({ view = 'shop', onView }) {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
@@ -218,11 +218,11 @@ function EconomyShop({ view = 'shop', onView }) {
         <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] panel">
           {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length], ['history', t('eco.tab.hist', 'History'), Clock, null]].map(([id, label, I, n]) => (
             <button key={id} type="button" onClick={() => onView?.(id)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-              <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label} {n != null && <span className="text-[11px] text-[var(--faint)]">{n}</span>}
+              <I size={14} className={view === id ? 'text-[var(--accent-ink)]' : ''} /> {label} {n != null && <span className="text-[11px] text-[var(--faint)]">{n}</span>}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 text-sm"><Coins size={16} className="text-[var(--primary-2)]" /> <b className="tabular-nums">{(d.points || 0).toLocaleString()}</b> <span className="text-[var(--muted)]">{cur}</span></div>
+        <div className="flex items-center gap-2 text-sm"><Coins size={16} className="text-[var(--accent-ink)]" /> <b className="tabular-nums">{(d.points || 0).toLocaleString()}</b> <span className="text-[var(--muted)]">{cur}</span></div>
       </div>
       {!d.enabled ? <EmptyState icon={ShoppingBag} title={t('eco.off.t', 'The shop is closed')} sub={t('eco.off.s', 'The Discord economy is switched off right now.')} /> : view === 'shop' ? (
         d.items?.length ? (<>
@@ -234,7 +234,7 @@ function EconomyShop({ view = 'shop', onView }) {
               const tag = tagLabel(it);
               return (
                 <Card key={it.id} className={`p-4 flex flex-col gap-3 relative ${it.tag === 'exclusive' ? 'border-amber-400/40' : ''}`}>
-                  {tag && <span className={`absolute -top-2 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${it.tag === 'exclusive' ? 'bg-amber-500/15 border-amber-400/40 text-amber-300' : it.tag === 'limited' ? 'tint-primary b-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)]'}`}>{tag}</span>}
+                  {tag && <span className={`absolute -top-2 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${it.tag === 'exclusive' ? 'tint-warning b-warning text-[var(--warning)]' : it.tag === 'limited' ? 'tint-primary b-primary text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)]'}`}>{tag}</span>}
                   <div className="flex items-start gap-3">
                     <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><K.Icon size={18} className={K.tone} /></span>
                     <div className="min-w-0 flex-1">
@@ -249,7 +249,7 @@ function EconomyShop({ view = 'shop', onView }) {
                     {it.exclusive ? <span>· {t('eco.oneper', 'one per account')}</span> : null}
                   </div>
                   <div className="flex items-center justify-between gap-2 mt-auto">
-                    <span className="text-sm font-semibold tabular-nums flex items-center gap-1"><Coins size={13} className="text-[var(--primary-2)]" /> {it.cost.toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{cur}</span></span>
+                    <span className="text-sm font-semibold tabular-nums flex items-center gap-1"><Coins size={13} className="text-[var(--accent-ink)]" /> {it.cost.toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{cur}</span></span>
                     {it.owned ? <Badge tone="green"><CheckCircle2 size={11} /> {t('eco.owned', 'Owned')}</Badge>
                       : it.soldOut ? <Badge>{t('eco.soldout', 'Sold out')}</Badge>
                       : <Button size="sm" variant={can ? 'primary' : 'ghost'} disabled={!can || busy === it.id} onClick={() => buy(it)} title={can ? undefined : t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur)}>{busy === it.id ? <Spinner /> : <><ShoppingBag size={13} /> {t('eco.buy.ok', 'Buy')}</>}</Button>}
@@ -292,7 +292,7 @@ function EconomyShop({ view = 'shop', onView }) {
           {/* Sending points: to a name, an e-mail, an id or a BC id. */}
           {d.gifts?.enabled !== false && (
             <Card className="p-4">
-              <div className="text-sm font-semibold flex items-center gap-2 mb-1"><Gift size={15} className="text-[var(--primary-2)]" /> {t('eco.gift.title', 'Send points to a member')}</div>
+              <div className="text-sm font-semibold flex items-center gap-2 mb-1"><Gift size={15} className="text-[var(--accent-ink)]" /> {t('eco.gift.title', 'Send points to a member')}</div>
               <p className="text-[11px] text-[var(--faint)] mb-3">{t('eco.gift.h', 'They must have a BetterCommunity account. Minimum {min}{cap}, also possible on Discord with /gift.').replace('{min}', d.gifts?.min || 1).replace('{cap}', d.gifts?.maxPerDay ? t('eco.gift.cap', ', at most {n} per day').replace('{n}', d.gifts.maxPerDay.toLocaleString()) : '')}</p>
               <div className="grid sm:grid-cols-[1.4fr_0.7fr_1.4fr_auto] gap-2 items-end">
                 <Field label={t('eco.gift.to', 'To (name, e-mail, id or BC id)')} className="!mb-0"><Input value={giftTo} onChange={(e) => setGiftTo(e.target.value)} placeholder="BC-XXXX-XXXX" /></Field>
@@ -304,7 +304,7 @@ function EconomyShop({ view = 'shop', onView }) {
           )}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <div className="text-sm font-semibold flex items-center gap-2"><Clock size={15} className="text-[var(--primary-2)]" /> {t('eco.hist.title', 'Point history')}</div>
+              <div className="text-sm font-semibold flex items-center gap-2"><Clock size={15} className="text-[var(--accent-ink)]" /> {t('eco.hist.title', 'Point history')}</div>
               <button type="button" onClick={loadHist} className="text-xs text-[var(--muted)] hover:text-[var(--text)] inline-flex items-center gap-1"><RefreshCw size={12} /> {t('common.refresh', 'Refresh')}</button>
             </div>
             {hist === null ? <SkeletonCard /> : !hist.length ? <EmptyState icon={Clock} title={t('eco.hist.empty.t', 'Nothing yet')} sub={t('eco.hist.empty.s', 'Earn, buy, play or gift and it shows up here.')} /> : (
@@ -390,7 +390,7 @@ function NotificationsPanel() {
       <div className="flex items-center justify-between mb-3">
         <h2 className="font-semibold flex items-center gap-2"><Bell size={16} /> Notifications {unread > 0 && <Badge tone="primary">{unread}</Badge>}</h2>
         <div className="flex items-center gap-3">
-          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--primary-2)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> {t('dash.notif.markAll', 'Mark all read')}</button>}
+          {unread > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-[var(--accent-ink)] hover:border-[var(--primary)] transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={markAll}><CheckCheck size={13} /> {t('dash.notif.markAll', 'Mark all read')}</button>}
           {list.length > 0 && <button className="text-xs flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] text-error hover:border-error transition shadow-sm" style={{ background: 'var(--bg-solid)' }} onClick={clearAll}><Trash2 size={13} /> {t('dsh.clearall', "Clear all")}</button>}
           {/* The way out to the centre, which is the only place the per-category switches
               live. This card can mark and delete; it cannot say "stop sending me this". */}
@@ -444,7 +444,7 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
     <Card className="p-5 mb-6">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
-          <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('gs.title', 'Getting started')}</div>
+          <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('gs.title', 'Getting started')}</div>
         </div>
         <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
       </div>
@@ -458,7 +458,7 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
             <div className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors ${!st.done && (st.to || st.action) ? 'hover:bg-[var(--surface-2)] press cursor-pointer' : ''}`}>
               {st.done ? <CheckCircle2 size={18} className="text-[var(--success)] shrink-0" /> : <span className="w-[18px] h-[18px] rounded-full border-2 border-[var(--line-strong)] shrink-0" />}
               <span className={`text-sm flex-1 ${st.done ? 'text-[var(--faint)] line-through' : 'font-medium'}`}>{st.label}</span>
-              {!st.done && (st.to || st.action) && <ArrowRight size={14} className="text-[var(--primary-2)] shrink-0" />}
+              {!st.done && (st.to || st.action) && <ArrowRight size={14} className="text-[var(--accent-ink)] shrink-0" />}
             </div>
           );
           if (st.done || (!st.to && !st.action)) return <div key={st.key}>{inner}</div>;
@@ -479,7 +479,7 @@ function TwoFactorNudge() {
   const hide = () => { setDismissed(true); try { localStorage.setItem(TWOFA_NUDGE_KEY, '1'); } catch {} };
   return (
     <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent border-[var(--ring)]">
-      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--primary-2)]" /></span>
+      <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--accent-ink)]" /></span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
         <div className="text-xs text-[var(--muted)] mt-0.5">{t('twofa.nudge.d', 'A single leaked password could cost you your repos, submissions and payment history. Add a second factor — about a minute, and you stay in control.')}</div>
@@ -654,10 +654,10 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
                   {reveal && <pre className="text-xs font-mono whitespace-pre-wrap break-all rounded-md bg-[var(--bg-solid)] border border-[var(--line)] px-2.5 py-2">{secret}</pre>}
                 </>)
                 : d.role ? <div className="text-xs text-[var(--muted)]">{t('mkme.role', 'Delivered as a Discord role.')}</div>
-                : d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
+                : d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
                 : d.fileKey ? <div className="text-xs text-[var(--muted)]">{t('dash.pay.file', 'Your file is ready, download it from “What you bought”, below.')}</div>
                 : <div className="text-xs text-[var(--faint)]">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>}
-              {purchase.redeemUrl && <a href={purchase.redeemUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
+              {purchase.redeemUrl && <a href={purchase.redeemUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
               {purchase.redeemNote && <div className="text-[11px] text-[var(--faint)]">{purchase.redeemNote}</div>}
             </div>
           );
@@ -730,7 +730,7 @@ function MyPurchases({ refreshKey = 0 }) {
   return (
     <Card className="p-4 mb-6">
       <div className="flex items-center gap-2 mb-3">
-        <ShoppingBag size={15} className="text-[var(--primary-2)]" />
+        <ShoppingBag size={15} className="text-[var(--accent-ink)]" />
         <span className="font-medium text-sm">{t('mkme.title', 'What you bought')}</span>
         <Badge tone="">{rows.length}</Badge>
       </div>
@@ -788,7 +788,7 @@ function OverviewSection({ icon: Icon, title, sub, children }) {
   return (
     <section className="mb-8">
       <h2 className={`font-semibold flex items-center gap-2 ${sub ? 'mb-1' : 'mb-3'}`}>
-        <Icon size={16} className="text-[var(--primary-2)]" /> {title}
+        <Icon size={16} className="text-[var(--accent-ink)]" /> {title}
       </h2>
       {sub && <p className="text-xs text-[var(--muted)] mb-3">{sub}</p>}
       {children}
@@ -956,7 +956,7 @@ export function Dashboard() {
                 {owned.map((o) => (
                   <Link key={o.label} to={o.to} className="card card-hover p-5 block">
                     <div className="flex items-center justify-between gap-2">
-                      <o.icon size={18} className="text-[var(--primary-2)]" />
+                      <o.icon size={18} className="text-[var(--accent-ink)]" />
                       <ArrowRight size={14} className="text-[var(--faint)]" />
                     </div>
                     <div className="text-3xl font-bold mt-3 tabular-nums">{o.value}</div>
@@ -1015,12 +1015,12 @@ export function Dashboard() {
             {items.loading ? <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}</div> : (list.length ? (filteredItems.length ? <div className="space-y-2">
               {filteredItems.map((it) => { const I = KIND_ICON[it.kind] || Package; const v = it.kind === 'PLUGIN' ? it.meta?.validation : null; return (
                 <Card key={it.id} className="p-4 flex items-center gap-3">
-                  <I size={18} className="text-[var(--primary-2)] shrink-0" />
+                  <I size={18} className="text-[var(--accent-ink)] shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate" title={it.name}>{it.name}</div>
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2 flex-wrap">
                       <span>{it.kind} · v{it.version}</span>
-                      {it.payloadKey && !it.meta?.download_url && <span className="text-[var(--primary-2)]">· {t('dash.hostedhere', 'hosted here')}</span>}
+                      {it.payloadKey && !it.meta?.download_url && <span className="text-[var(--accent-ink)]">· {t('dash.hostedhere', 'hosted here')}</span>}
                       {v && (v.valid ? <span className="text-success flex items-center gap-1"><BadgeCheck size={12} /> {t('dash.verified', 'verified')}</span> : <span className="text-error flex items-center gap-1"><XCircle size={12} /> {t('dash.invalid', 'invalid')}</span>)}
                     </div>
                     {/* Public listing needs admin validation; until then the item is private
@@ -1031,7 +1031,7 @@ export function Dashboard() {
                       if (!link || it.deleteAt) return null;
                       return (
                         <button onClick={() => { copyText(link); toast.success(isPub ? t('dash.pubcopied', 'Public link copied.') : t('dash.privcopied', 'Private share link copied.')); }}
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--faint)] hover:text-[var(--primary-2)] transition" title={link}>
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] transition" title={link}>
                           {isPub ? <Globe size={11} /> : <Lock size={11} />} {isPub ? t('dash.copypublic', 'Copy public link') : t('dash.copyprivate', 'Copy private link')}
                         </button>
                       );
@@ -1139,7 +1139,7 @@ function MyData() {
   return (
     <div className="space-y-4">
       <Card className="p-5">
-        <div className="flex items-center gap-2 mb-1 font-semibold"><HardDriveDownload size={16} className="text-[var(--primary-2)]" /> {t('data.title', 'Back up your content')}</div>
+        <div className="flex items-center gap-2 mb-1 font-semibold"><HardDriveDownload size={16} className="text-[var(--accent-ink)]" /> {t('data.title', 'Back up your content')}</div>
         <p className="text-sm text-[var(--muted)] mb-4">
           {t('data.sub', 'One archive with your account record, every file in the repos you own, and every catalog item you uploaded. Nothing is deleted here — this only makes you a copy.')}
         </p>
@@ -1323,10 +1323,10 @@ function ItemEditModal({ open, item, onClose, onDone }) {
   return (
     <Modal open={open} onClose={onClose} title={t('ie.title', 'View / edit item')} icon={PenSquare} width="max-w-lg" footer={footer}>
       <div className="flex items-center gap-3 mb-4">
-        <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={20} className="text-[var(--primary-2)]" /></div>
+        <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)]"><I size={20} className="text-[var(--accent-ink)]" /></div>
         <div className="min-w-0"><div className="font-semibold truncate" title={item.name}>{item.name}</div>
           <div className="text-xs text-[var(--faint)] flex items-center gap-2"><Badge tone={statusTone(item.status)}>{item.status}</Badge>{item.kind}
-            {(item.payloadKey || item.meta?.download_url) && <button onClick={viewPayload} className="text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={11} /> payload</button>}</div></div>
+            {(item.payloadKey || item.meta?.download_url) && <button onClick={viewPayload} className="text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Download size={11} /> payload</button>}</div></div>
       </div>
 
       {item.deleteAt
@@ -1335,7 +1335,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
             <span>{t('ie.notice.del1', 'Scheduled for deletion in')} <b>{fmtRemaining(item.deleteAt)}</b>. {t('ie.notice.del2', 'The files are kept until then, cancel below to keep this item.')}</span>
           </div>
         : <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)] flex items-start gap-2 mb-4">
-            <Lock size={13} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+            <Lock size={13} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
             <span>{t('ie.notice.edit', 'Editing sends the item back for moderation. The live version stays unchanged until an admin re-approves your changes.')}</span>
           </div>}
 
@@ -1359,7 +1359,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
           <Field label={t('ie.replace', 'Replace file')} hint={t('ie.replace.hint2', 'Optional, uploads a new file, re-verified before it can go live. Billed by size past the free tier.')}>
             <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </Field>
-          {file && <div className="mt-1.5 text-xs text-[var(--primary-2)] flex items-center gap-1.5"><Upload size={12} /> {file.name} {t('ie.replaces', '— replaces the current file and is re-validated on save.')}</div>}
+          {file && <div className="mt-1.5 text-xs text-[var(--accent-ink)] flex items-center gap-1.5"><Upload size={12} /> {file.name} {t('ie.replaces', '— replaces the current file and is re-validated on save.')}</div>}
           {file && noSubmitSpace && (
             <div className="mt-1.5 text-xs text-error flex items-center gap-1.5"><AlertTriangle size={12} /> {t('sub.nospace', 'Submission storage is full right now — every upload is held for moderation and there is no room left. Try again later, or self-host and paste a URL above instead.')}</div>
           )}
@@ -1431,7 +1431,7 @@ function MyPolls() {
           <div className="space-y-2">
             {open.map((p) => (
               <Card key={p.id} className="p-4 flex items-start gap-3">
-                <BarChart3 size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+                <BarChart3 size={16} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
                 <div className="min-w-0 flex-1">
                   <Link to={`/polls/${p.id}`} className="font-medium hover:underline">{p.question}</Link>
                   {p.description && <p className="text-xs text-[var(--muted)] mt-0.5 line-clamp-2">{p.description}</p>}
@@ -1501,7 +1501,7 @@ function Starred() {
         {rows.map((r) => (
           <Card key={r.id} className="p-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <div className="flex-1 min-w-0">
-              <Link to={r.url} className="font-medium hover:text-[var(--primary)] truncate block" title={r.name}>{r.name}</Link>
+              <Link to={r.url} className="font-medium hover:text-[var(--accent-ink)] truncate block" title={r.name}>{r.name}</Link>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap mt-0.5">
                 {r.author && <span className="inline-flex items-center gap-1"><Users size={11} /> {r.author}</span>}
                 {kind === 'catalog' && <span>{r.itemCount} {t('cc.items', 'items')}</span>}
@@ -1518,7 +1518,7 @@ function Starred() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Star size={16} className="text-[var(--primary-2)]" /> {t('star.title', 'Starred')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Star size={16} className="text-[var(--accent-ink)]" /> {t('star.title', 'Starred')}</h2>
       <p className="text-xs text-[var(--muted)] mb-4">{t('star.sub2', 'Unstar from the item’s own page.')}</p>
       <Section icon={Server} title={t('star.repos', 'Server repos')} rows={repos} kind="repo" />
       <Section icon={Boxes} title={t('star.catalogs', 'Community catalogs')} rows={catalogs} kind="catalog" />
@@ -1546,7 +1546,7 @@ function MyRightsNotices() {
           </div>
         ))}
       </div>
-      <Link to="/report" className="text-xs text-[var(--primary-2)] hover:underline mt-2 inline-block">{t('rn.my.new', 'File another notice')}</Link>
+      <Link to="/report" className="text-xs text-[var(--accent-ink)] hover:underline mt-2 inline-block">{t('rn.my.new', 'File another notice')}</Link>
     </Card>
   );
 }

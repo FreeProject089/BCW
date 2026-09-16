@@ -79,7 +79,7 @@ function TermControl({ months, setMonths, term, sample, t }) {
             const active = m === months;
             return (
               <button key={m} type="button" aria-pressed={active} onClick={() => pick(m)}
-                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary-2)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`rounded-full border px-2.5 py-1 text-[12px] leading-none transition-colors tabular-nums ${active ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--accent-ink)] font-semibold' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 {m} {t('hosting.mo', 'mo')}{d > 0 && <span className={`ms-1 ${active ? '' : 'text-success'}`}>−{d}%</span>}
               </button>
             );
@@ -204,9 +204,9 @@ function RedeemPromoModal({ code, promo, onClose }) {
             {repos.map((r) => (
               <button key={r.id} type="button" onClick={() => setRepoId(r.id)}
                 className={`w-full text-start px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                <HardDrive size={14} className={repoId === r.id ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
+                <HardDrive size={14} className={repoId === r.id ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
                 <span className="flex-1 truncate" title={r.name}>{r.name}</span>
-                {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--primary)]" />}
+                {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--accent-ink)]" />}
               </button>
             ))}
           </div>
@@ -271,7 +271,7 @@ function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)}
-        className="mt-2.5 text-sm font-medium text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5">
+        className="mt-2.5 text-sm font-medium text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1.5">
         <Mail size={14} /> {t('hosting.wl.open', 'Tell me when there is room')}
       </button>
     );
@@ -635,7 +635,7 @@ export function Hosting() {
             return (
               <button key={label} type="button" onClick={() => nav(to)}
                 className="text-start rounded-xl border border-[var(--line)] p-4 hover:border-[var(--ring)] transition-colors">
-                <div className="flex items-center gap-2 font-medium text-[14px]"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
+                <div className="flex items-center gap-2 font-medium text-[14px]"><Icon size={15} className="text-[var(--accent-ink)]" /> {label}</div>
                 <div className="text-[12px] text-[var(--muted)] mt-1.5 leading-relaxed">{desc}</div>
               </button>
             );
@@ -741,7 +741,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
   return createPortal((
     <div className="fixed z-[90] inset-x-2 bottom-[4.75rem] md:inset-x-auto md:right-4 md:bottom-4 md:w-[24rem] max-h-[70vh] md:max-h-[calc(100vh-2rem)] flex flex-col rounded-2xl border border-[var(--line-strong)] overflow-hidden" style={{ background: 'var(--bg-solid)', boxShadow: '0 24px 70px -18px rgba(0,0,0,0.6)' }}>
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--line)]">
-        <ShoppingCart size={16} className="text-[var(--primary-2)]" />
+        <ShoppingCart size={16} className="text-[var(--accent-ink)]" />
         <span className="font-semibold flex-1">{t('cart.your', 'Your cart')} <span className="text-[var(--faint)] font-normal">· {count}</span></span>
         <button onClick={() => setOpen(false)} className="text-[var(--faint)] hover:text-[var(--text)]"><ChevronDown size={18} /></button>
       </div>
@@ -749,7 +749,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
         {cart.map((it) => (
           <div key={it.uid} className="rounded-lg bg-[var(--surface-2)] px-3 py-2">
             <div className="flex items-center gap-2 text-sm">
-              {it.kind === 'boost' ? <Rocket size={14} className="text-warning shrink-0" /> : <HardDrive size={14} className="text-[var(--primary-2)] shrink-0" />}
+              {it.kind === 'boost' ? <Rocket size={14} className="text-warning shrink-0" /> : <HardDrive size={14} className="text-[var(--accent-ink)] shrink-0" />}
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{it.kind === 'boost' ? t('cart.boostof', 'Boost "{n}"').replace('{n}', it.repoName || '') : (it.label || it.repoName)}</div>
                 <div className="text-[11px] text-[var(--faint)]">{it.kind === 'boost' ? `${it.days} ${t('cart.days', 'days')} · ${it.autoRenew ? t('cart.recurring', 'recurring') : t('cart.onetime', 'one-time')}` : `${t('hosting.pool', 'Storage pool')} · ${it.months} ${t('hosting.mo', 'mo')}`}</div>
@@ -771,7 +771,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
                 <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer">
                   <input type="checkbox" checked={it.giftTo !== undefined}
                     onChange={(e) => setItemGift(it.uid, e.target.checked ? '' : undefined)} />
-                  <Gift size={11} className={it.giftTo !== undefined ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+                  <Gift size={11} className={it.giftTo !== undefined ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
                   {t('cart.gift', 'This is a gift for somebody else')}
                 </label>
                 {it.giftTo !== undefined && (
@@ -810,7 +810,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
         {quoteErr && !promoErr && <div className="text-[11px] text-warning">{quoteErr === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.') : quoteErr === 'over_limit' ? t('cart.err.overlimit', 'A custom plan exceeds the per-repo upload limit.') : t('cart.err.quote', 'Could not price the cart.')}</div>}
         <label className="flex items-start gap-2 text-[11px] text-[var(--muted)] cursor-pointer">
           <input type="checkbox" className="mt-0.5" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-          <span dangerouslySetInnerHTML={{ __html: t('cart.agree', 'I accept the <a href="/legal/terms" target="_blank" class="text-[var(--primary-2)] underline">Terms</a> and the <a href="/legal/refunds" target="_blank" class="text-[var(--primary-2)] underline">Payments & Refunds</a> policy, and I understand that content I host is my responsibility.') }} />
+          <span dangerouslySetInnerHTML={{ __html: t('cart.agree', 'I accept the <a href="/legal/terms" target="_blank" class="text-[var(--accent-ink)] underline">Terms</a> and the <a href="/legal/refunds" target="_blank" class="text-[var(--accent-ink)] underline">Payments & Refunds</a> policy, and I understand that content I host is my responsibility.') }} />
         </label>
         <Button variant="primary" className="w-full mt-1" disabled={busy || !count || !agreed} onClick={checkout}>{busy ? <Spinner /> : <><CreditCard size={15} /> {t('cart.checkout', 'Checkout')}{quote ? ` · ${money(quote.totalCents)}` : ''}</>}</Button>
         <p className="text-[10px] text-[var(--faint)] text-center">{t('cart.note2', 'Prepaid now for the whole cart. Items marked auto-renew continue as a subscription after their term.')}</p>
@@ -941,7 +941,7 @@ function SectionLead({ title, sub }) {
 function SubLead({ icon: Icon, title, sub }) {
   return (
     <div className="mt-9 sm:mt-12 mb-4 flex items-start gap-2.5">
-      {Icon && <Icon size={17} className="text-[var(--primary-2)] shrink-0 mt-[3px]" />}
+      {Icon && <Icon size={17} className="text-[var(--accent-ink)] shrink-0 mt-[3px]" />}
       <div className="min-w-0">
         <h3 className="font-bold text-[17px] leading-tight">{title}</h3>
         {sub && <p className="text-[13.5px] text-[var(--muted)] leading-relaxed mt-1 max-w-2xl">{sub}</p>}
@@ -1014,7 +1014,7 @@ function HostingHero({ freePlan, freeOffered }) {
           <ul className="mt-7 flex flex-col gap-2.5">
             {facts.map(([Icon, label]) => (
               <li key={label} className="flex items-center gap-2.5 text-[14.5px]">
-                <Icon size={15} className="text-[var(--primary-2)] shrink-0" />
+                <Icon size={15} className="text-[var(--accent-ink)] shrink-0" />
                 <span>{label}</span>
               </li>
             ))}

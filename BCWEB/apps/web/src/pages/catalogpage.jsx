@@ -63,8 +63,8 @@ export default function CommunityCatalogPage() {
       {/* Who hosts this catalog — link to their profile + copy their BC id. */}
       {cat.owner && <div className="flex items-center gap-2 flex-wrap mb-4 text-sm">
         <span className="text-[var(--faint)]">{t('ccp.hostedby', 'Hosted by')}</span>
-        {cat.ownerId ? <Link to={`/u/${cat.ownerId}`} className="font-medium hover:text-[var(--primary)] flex items-center gap-1"><Users size={13} /> {cat.owner}</Link> : <span className="font-medium flex items-center gap-1"><Users size={13} /> {cat.owner}</span>}
-        {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
+        {cat.ownerId ? <Link to={`/u/${cat.ownerId}`} className="font-medium hover:text-[var(--accent-ink)] flex items-center gap-1"><Users size={13} /> {cat.owner}</Link> : <span className="font-medium flex items-center gap-1"><Users size={13} /> {cat.owner}</span>}
+        {cat.ownerBcId && <button onClick={() => copy(cat.ownerBcId)} title={t('ccp.copybcid', 'Copy the host’s BC id')} className="inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)]"><Fingerprint size={11} /> {cat.ownerBcId} <Copy size={10} /></button>}
         <StarButton favorited={cat.favorited} count={cat.favoriteCount} signedIn={!!user}
           post={() => api.post(`/c/${encodeURIComponent(cat.slug)}/favorite`)} />
         <ContactButton kind="catalog" targetId={cat.slug} targetLabel={cat.name} />
@@ -83,7 +83,7 @@ export default function CommunityCatalogPage() {
             const Icon = KIND_ICON[kind] || Boxes;
             return (
               <Card key={kind} className="p-4">
-                <div className="flex items-center gap-2 mb-2 font-medium"><Icon size={16} className="text-[var(--primary-2)]" /> {t('ccp.kind.' + kind.toLowerCase(), kind)}</div>
+                <div className="flex items-center gap-2 mb-2 font-medium"><Icon size={16} className="text-[var(--accent-ink)]" /> {t('ccp.kind.' + kind.toLowerCase(), kind)}</div>
                 <div className="flex flex-wrap items-center gap-2">
                   {DEEPLINKABLE.has(kind)
                     ? <a href={deeplink(kind)}><Button size="sm" variant="primary"><Download size={14} /> {t('ccp.addbmm', 'Add to BMM')}</Button></a>

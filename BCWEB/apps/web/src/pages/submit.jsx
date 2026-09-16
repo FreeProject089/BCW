@@ -167,7 +167,7 @@ function OfficialSubmit({ onBack }) {
 
       {bulk ? (
         <Card className="p-5">
-          <div className="flex items-center gap-2 mb-2"><Layers size={16} className="text-[var(--primary-2)]" /> <h2 className="font-semibold">{t('sub2.bulk.title', 'Bulk membership')}</h2></div>
+          <div className="flex items-center gap-2 mb-2"><Layers size={16} className="text-[var(--accent-ink)]" /> <h2 className="font-semibold">{t('sub2.bulk.title', 'Bulk membership')}</h2></div>
           <p className="text-sm text-[var(--muted)] mb-3">{t('sub2.bulk.desc', 'This catalog file holds {n} entries. Each becomes its own proposal to the official catalog. Uncheck any you want to skip.').replace('{n}', bulk.entries.length)}</p>
           <div className="space-y-1.5 max-h-[46vh] overflow-y-auto mb-3">
             {bulk.entries.map((e, i) => (
@@ -220,7 +220,7 @@ function OfficialSubmit({ onBack }) {
               if (next && !metaHasContent(meta)) setMeta(metaTemplate(kind, form.name));
               return next;
             })} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced, edit metadata JSON')}</button>
-            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(metaTemplate(kind, form.name))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
+            {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(metaTemplate(kind, form.name))} className="text-xs flex items-center gap-1 text-[var(--accent-ink)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
           </div>
           <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={submitOne}>{busy ? <Spinner /> : <><Upload size={15} /> {t('sub.forreview', 'Submit for review')}</>}</Button></div>
         </Card>
@@ -353,7 +353,7 @@ function HostCatalog({ onBack }) {
           <div key={i} className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button type="button" onClick={() => { if (i < step || (i === step + 1 && stepOk(step))) setStep(i); }} disabled={i > step && !stepOk(step)}
               className="flex items-center gap-2 disabled:cursor-not-allowed">
-              <span className={`grid place-items-center w-7 h-7 rounded-full text-xs font-bold shrink-0 border transition ${i < step ? 'bg-[var(--primary)] text-[var(--on-primary)] border-[var(--primary)]' : i === step ? 'border-[var(--primary)] text-[var(--primary-2)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--faint)]'}`}>{i < step ? <Check size={14} /> : i + 1}</span>
+              <span className={`grid place-items-center w-7 h-7 rounded-full text-xs font-bold shrink-0 border transition ${i < step ? 'bg-[var(--primary)] text-[var(--on-primary)] border-[var(--primary)]' : i === step ? 'border-[var(--primary)] text-[var(--accent-ink)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] text-[var(--faint)]'}`}>{i < step ? <Check size={14} /> : i + 1}</span>
               <span className={`text-xs font-medium ${i === step ? 'text-[var(--text)]' : 'text-[var(--faint)]'} hidden sm:inline`}>{lbl}</span>
             </button>
             {i < STEPS.length - 1 && <span className={`w-4 sm:w-6 h-px ${i < step ? 'bg-[var(--primary)]' : 'bg-[var(--line)]'}`} />}
@@ -362,7 +362,7 @@ function HostCatalog({ onBack }) {
       </div>
       <Card className="p-5 space-y-3">
         {step === 0 && (<>
-          <div className="text-sm font-semibold flex items-center gap-2"><Boxes size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.basics.t', 'What is this catalogue?')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><Boxes size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.basics.t', 'What is this catalogue?')}</div>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('sub2.catname.l', 'Catalog name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('sb.ph.name', "My Server Plugins")} autoFocus /></Field>
             <Field label={t('sub2.visibility', 'Visibility')}><Select value={form.visibility} onChange={(e) => setForm({ ...form, visibility: e.target.value })}><option value="public">{t('sub2.public', 'Public (listed)')}</option><option value="private">{t('sub2.private', 'Private (invite only)')}</option></Select></Field>
@@ -379,14 +379,14 @@ function HostCatalog({ onBack }) {
         </>)}
 
         {step === 1 && (<>
-          <div className="text-sm font-semibold flex items-center gap-2"><Rocket size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.hosting.t', 'Where do the files live?')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><Rocket size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.hosting.t', 'Where do the files live?')}</div>
           <Field label={t('sub2.mode', 'Hosting mode')}>
             <div className="grid sm:grid-cols-2 gap-2">
               {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
                 ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
               ].map(([m, Icon, label, desc]) => (
                 <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                  <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
+                  <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--accent-ink)]" /> {label}</div>
                   <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
                 </button>
               ))}
@@ -400,7 +400,7 @@ function HostCatalog({ onBack }) {
           ) : (
             <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool, the same space your repos use.')}>
               {pools == null ? <Spinner /> : pools.length === 0 ? (
-                <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting#plans" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
+                <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting#plans" className="text-[var(--accent-ink)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
               ) : (
                 <>
                   <Select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
@@ -419,7 +419,7 @@ function HostCatalog({ onBack }) {
         </>)}
 
         {step === 2 && (<>
-          <div className="text-sm font-semibold flex items-center gap-2"><Lock size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.access.t', 'Who may sync it?')}</div>
+          <div className="text-sm font-semibold flex items-center gap-2"><Lock size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.access.t', 'Who may sync it?')}</div>
           <p className="text-xs text-[var(--faint)] -mt-1">{t('sub2.step.access.d', 'All optional, leave everything blank for an open catalogue anyone can sync.')}</p>
           <div className="grid sm:grid-cols-2 gap-2">
             <Field label={t('sub2.contactmail', 'Contact e-mail (optional)')} hint={t('sub2.contact.h', 'Shown on the catalogue page so people can reach you; messages also arrive in your dashboard.')}><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
@@ -433,7 +433,7 @@ function HostCatalog({ onBack }) {
 
         {step === 3 && (
           <div className="space-y-1">
-            <div className="text-sm font-semibold flex items-center gap-2 mb-2"><CheckCircle2 size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.review.t', 'Confirm and create')}</div>
+            <div className="text-sm font-semibold flex items-center gap-2 mb-2"><CheckCircle2 size={15} className="text-[var(--accent-ink)]" /> {t('sub2.step.review.t', 'Confirm and create')}</div>
             <div className="text-sm rounded-xl border border-[var(--line)] px-3.5 py-1.5">
               {rowSum(t('sub2.catname.l', 'Catalog name'), form.name.trim() || '—')}
               {rowSum(t('sub2.kind', 'Catalog type'), kindText)}
@@ -477,7 +477,7 @@ export function Submit() {
         : (
           <div className="grid sm:grid-cols-2 gap-3">
             <button onClick={() => setPath('official')} className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
-              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Boxes size={20} className="text-[var(--primary-2)]" /></div>
+              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Boxes size={20} className="text-[var(--accent-ink)]" /></div>
               <div className="font-semibold">{t('sub2.official', 'Propose to the official catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.official.d', 'Submit a plugin, theme, app or preset. Free, reviewed by our team. You can bulk-import a whole catalog.json.')}</div>
             </button>
@@ -492,7 +492,7 @@ export function Submit() {
                 actual case never. A LINK, not a third inline form: the hosting page already
                 carries pools, quotas and payment, and a duplicate here would drift. */}
             <Link to="/hosting#plans" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
-              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
+              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Rocket size={20} className="text-[var(--accent-ink)]" /></div>
               <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>
             </Link>

@@ -51,7 +51,7 @@ function OpenApiTool() {
   };
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('dvt.oa.title', 'OpenAPI → B.MD')}</div>
+      <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--accent-ink)]" /> {t('dvt.oa.title', 'OpenAPI → B.MD')}</div>
       <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">{t('dvt.oa.s', 'Paste an OpenAPI 3 (or Swagger 2) document — a URL or the JSON — and get its endpoints as :::api cards you can publish on a doc page and edit. A ::openapi{src=…} block draws the same thing live, without the editing.')}</p>
       <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 mb-2">
         {[['url', t('dvt.byurl', 'By URL')], ['paste', t('dvt.paste', 'Paste it')]].map(([k, l]) => (
@@ -87,7 +87,7 @@ function DocCheckTool() {
   };
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold flex items-center gap-2"><LinkIcon size={15} className="text-[var(--primary-2)]" /> {t('dvt.dc.title', 'Check a document')}</div>
+      <div className="text-sm font-semibold flex items-center gap-2"><LinkIcon size={15} className="text-[var(--accent-ink)]" /> {t('dvt.dc.title', 'Check a document')}</div>
       <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">{t('dvt.dc.s', 'Paste B.MD and get its outline plus every link judged: anchors against the headings, refused and insecure URLs, empty destinations. Nothing is fetched — the same check the editor runs as you type.')}</p>
       <Textarea rows={8} value={md} onChange={(e) => setMd(e.target.value)} placeholder={'# Title\n\nSee [setup](#setup) and [[Install]].'} className="!font-mono !text-[12px]" />
       <Button className="mt-2" variant="primary" onClick={run} disabled={!md.trim()}>{t('dvt.check', 'Check it')}</Button>
@@ -122,7 +122,7 @@ function Validator() {
 
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('dvt.val', 'Check a catalog feed')}</div>
+      <div className="text-sm font-semibold flex items-center gap-2"><FileJson size={15} className="text-[var(--accent-ink)]" /> {t('dvt.val', 'Check a catalog feed')}</div>
       <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">
         {t('dvt.val.s', 'Everything wrong with it in one pass, before you publish. Stricter than the reader on purpose: the reader has to keep working with feeds published years ago, so a check as forgiving as the reader would tell you nothing.')}
       </p>
@@ -186,7 +186,7 @@ function CallLog() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} className="text-[var(--primary-2)]" /> {t('dvt.calls', 'What your keys did')}</div>
+        <div className="text-sm font-semibold flex items-center gap-2"><Activity size={15} className="text-[var(--accent-ink)]" /> {t('dvt.calls', 'What your keys did')}</div>
         <div className="inline-flex rounded-[10px] bg-[var(--surface-2)] p-0.5 ms-auto">
           {[[24, '24h'], [24 * 7, '7d'], [24 * 30, '30d']].map(([h, l]) => (
             <button key={h} onClick={() => setHours(h)}
@@ -279,7 +279,7 @@ function DeeplinkBuilder() {
     return (
       <Card className="p-5">
         <div className="flex items-center gap-2 mb-1 font-medium">
-          <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
+          <LinkIcon size={16} className="text-[var(--accent-ink)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
         </div>
         <p className="text-[12px] text-[var(--muted)]">
           {t('dvt.dl.noassets', 'The action list has not been published yet. In BMM run `npm run map:deeplinks:json`, then upload frontend/deeplinks.json as the platform asset `deeplinks.json`. This builder reads it rather than keeping its own copy, which would go stale the next time a deeplink is added.')}
@@ -291,7 +291,7 @@ function DeeplinkBuilder() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 mb-1 font-medium">
-        <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
+        <LinkIcon size={16} className="text-[var(--accent-ink)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('dvt.dl.sub', 'An unencoded & in the address loses everything after it: BMM opens and adds half a source, and nothing reports it. This encodes for you.')}
@@ -357,7 +357,7 @@ function BmmScriptChecker() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 mb-1 font-medium">
-        <FlaskConical size={16} className="text-[var(--primary-2)]" /> {t('dvt.bms.title', 'Check a .bmmscript')}
+        <FlaskConical size={16} className="text-[var(--accent-ink)]" /> {t('dvt.bms.title', 'Check a .bmmscript')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('dvt.bms.sub', 'Braces that do not balance, and names BMM does not have. It is not the compiler — BMM has the only one — so a file that passes here can still fail to compile.')}
@@ -444,7 +444,7 @@ function SignatureChecker() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 mb-1 font-medium">
-        <ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('dvt.sig.title', 'Check a webhook signature')}
+        <ShieldCheck size={16} className="text-[var(--accent-ink)]" /> {t('dvt.sig.title', 'Check a webhook signature')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('dvt.sig.sub', 'HMAC-SHA256 over `timestamp.body`, computed in your browser — the secret is never sent to us. Paste the RAW body: one that was parsed and re-serialised will not match.')}
@@ -576,7 +576,7 @@ function RecipeChecker() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold flex items-center gap-2">
-        <FileJson size={15} className="text-[var(--primary-2)]" /> {t('dvt.rec', 'Check an installer.toml')}
+        <FileJson size={15} className="text-[var(--accent-ink)]" /> {t('dvt.rec', 'Check an installer.toml')}
       </div>
       <p className="text-xs text-[var(--muted)] mt-0.5 mb-3">
         {t('dvt.rec.s', 'The installer discards any key it does not recognise — silently. A mistyped section builds perfectly and does nothing, and you find out from a shipped installer. This compares your recipe against the schema the engine derives from its own types.')}
@@ -807,7 +807,7 @@ export default function DevTools() {
       <div className="lg:hidden relative z-20">
         <button onClick={() => setNavOpen((o) => !o)} aria-expanded={navOpen}
           className="card w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium press">
-          <Wrench size={16} className="text-[var(--primary-2)] shrink-0" />
+          <Wrench size={16} className="text-[var(--accent-ink)] shrink-0" />
           <span className="flex-1 text-start truncate" title={current?.label}>{current?.label}</span>
           <span className="text-[11px] text-[var(--faint)] tabular-nums shrink-0">{currentIdx + 1}/{ALL_TOOLS.length}</span>
           <ChevronDown size={16} className={`text-[var(--muted)] transition-transform duration-200 ${navOpen ? 'rotate-180' : ''}`} />

@@ -34,7 +34,7 @@ function TotpField({ value, onChange, label }) {
           authenticator, which people forget they are already carrying. */}
       <div className="text-[11px] text-[var(--muted)] mt-1">
         {t('devc.totp.where', 'From your authenticator app, or from the')}{' '}
-        <Link to="/2fa" className="text-[var(--primary-2)] hover:underline">{t('devc.totp.own', 'BetterCommunity authenticator')}</Link>
+        <Link to="/2fa" className="text-[var(--accent-ink)] hover:underline">{t('devc.totp.own', 'BetterCommunity authenticator')}</Link>
         {t('devc.totp.where2', ', if that is where you keep this account.')}
       </div>
     </Field>
@@ -134,7 +134,7 @@ function ApiKeysPanel() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <KeyRound size={15} className="text-[var(--primary-2)]" /> {t('devc.keys', 'API keys')}
+        <KeyRound size={15} className="text-[var(--accent-ink)]" /> {t('devc.keys', 'API keys')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('devc.keys.s', 'A key acts as YOU and needs nobody else’s permission, so it can only ever reach your own data. An app that acts for other people wants Sign in with BetterCommunity instead.')}
@@ -142,7 +142,7 @@ function ApiKeysPanel() {
 
       {fresh && (
         <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('devc.once', 'Copy it now, it is shown once and never again.')}</div>
+          <div className="text-[12px] font-semibold text-[var(--accent-ink)] mb-1.5">{t('devc.once', 'Copy it now, it is shown once and never again.')}</div>
           <div className="flex items-center gap-2">
             <code className="font-mono text-[12px] break-all flex-1">{fresh}</code>
             <Button size="sm" variant="ghost" onClick={() => { copyText(fresh); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
@@ -193,7 +193,7 @@ function ApiKeysPanel() {
                 <label key={sc} className="flex items-start gap-2 text-[12px]">
                   <input type="checkbox" className="mt-0.5" checked={form.picked.includes(sc)}
                     onChange={(e) => setForm((f) => ({ ...f, picked: e.target.checked ? [...f.picked, sc] : f.picked.filter((x) => x !== sc) }))} />
-                  <span><code className="font-mono text-[var(--primary-2)]">{sc}</code> — <span className="text-[var(--muted)]">{desc}</span></span>
+                  <span><code className="font-mono text-[var(--accent-ink)]">{sc}</code> — <span className="text-[var(--muted)]">{desc}</span></span>
                 </label>
               ))}
             </div>
@@ -309,13 +309,13 @@ function OAuthAppsPanel() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Shield size={15} className="text-[var(--primary-2)]" /> {t('dev.title', 'Sign in with BetterCommunity')}
+        <Shield size={15} className="text-[var(--accent-ink)]" /> {t('dev.title', 'Sign in with BetterCommunity')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('dev.sub', 'Register an app and let people sign in to it with their BetterCommunity account. Everything is discoverable at /.well-known/openid-configuration — standard OpenID Connect, no SDK of ours required.')}</p>
 
       {secret && (
         <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('dev.secret.t', 'Copy the secret now, it is shown once and never again.')}</div>
+          <div className="text-[12px] font-semibold text-[var(--accent-ink)] mb-1.5">{t('dev.secret.t', 'Copy the secret now, it is shown once and never again.')}</div>
           {[['client_id', secret.id], ['client_secret', secret.value]].map(([k, v]) => (
             <div key={k} className="flex items-center gap-2 text-[12px] mb-1">
               <span className="text-[var(--muted)] w-24 shrink-0">{k}</span>
@@ -387,7 +387,7 @@ function OAuthAppsPanel() {
                         scopes: e.target.checked ? [...f.scopes, sc] : f.scopes.filter((x) => x !== sc),
                       }))} />
                     <span>
-                      <code className="font-mono text-[var(--primary-2)]">{sc}</code>
+                      <code className="font-mono text-[var(--accent-ink)]">{sc}</code>
                       {fixed && <span className="text-[var(--faint)]"> ({t('dev.scopes.req', 'required')})</span>}
                       {/* The FR dictionary already carried per-scope descriptions, written
                           for a picker that was never built — five of them, with nine
@@ -426,7 +426,7 @@ export default function DevConfig() {
     return (
       <div className="max-w-lg mx-auto py-12">
         <Card className="p-7 text-center">
-          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Lock size={22} className="text-[var(--primary-2)]" /></span>
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Lock size={22} className="text-[var(--accent-ink)]" /></span>
           <p className="text-sm text-[var(--muted)] mb-4">{t('devc.signin', 'Credentials belong to an account, sign in to manage yours.')}</p>
           <Link to="/auth?next=/dev/config"><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
         </Card>

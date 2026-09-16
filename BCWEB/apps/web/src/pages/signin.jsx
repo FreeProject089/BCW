@@ -81,11 +81,11 @@ function AccountLockedPanel({ data, onBack }) {
         ) : (
           <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)] p-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1 flex items-center justify-center gap-1"><Clock size={12} /> {t('lock.liftsin', 'Access returns in')}</div>
-            <div className="text-2xl font-bold tabular-nums text-[var(--primary-2)]">{fmtRemain(remainMs)}</div>
+            <div className="text-2xl font-bold tabular-nums text-[var(--accent-ink)]">{fmtRemain(remainMs)}</div>
             <div className="text-[11px] text-[var(--faint)] mt-1">{new Date(data.until).toLocaleString()}</div>
           </div>
         )}
-        <button onClick={onBack} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] mt-4">{t('lock.back', '← Back to sign in')}</button>
+        <button onClick={onBack} className="text-xs text-[var(--faint)] hover:text-[var(--accent-ink)] mt-4">{t('lock.back', '← Back to sign in')}</button>
       </Card>
     </div>
   );
@@ -320,7 +320,7 @@ export function Auth() {
     return (
       <div className="max-w-sm mx-auto mt-8">
         <Card className="p-7">
-          <div className="text-center mb-6"><ShieldCheck size={32} className="mx-auto text-[var(--primary-2)] mb-3" />
+          <div className="text-center mb-6"><ShieldCheck size={32} className="mx-auto text-[var(--accent-ink)] mb-3" />
             <h1 className="text-xl font-bold">{t('auth.2fa.title') || 'Two-factor code'}</h1>
             <p className="text-sm text-[var(--muted)] mt-1">{t('auth.2fa.sub') || 'Enter the 6-digit code from your authenticator app.'}</p></div>
           <form onSubmit={(e) => { e.preventDefault(); submitCode(); }} className="space-y-3">

@@ -77,8 +77,8 @@ export default function BoostCredits() {
           {targets.map((x) => (
             <div key={`${x.kind}-${x.id}`} className="flex items-center gap-2.5 rounded-lg border border-[var(--line)] px-3 py-2.5">
               {x.kind === 'repo'
-                ? <Server size={14} className="text-[var(--primary-2)] shrink-0" />
-                : <Boxes size={14} className="text-[var(--primary-2)] shrink-0" />}
+                ? <Server size={14} className="text-[var(--accent-ink)] shrink-0" />
+                : <Boxes size={14} className="text-[var(--accent-ink)] shrink-0" />}
               <span className="flex-1 min-w-0 truncate text-[13.5px]" title={x.name}>{x.name}</span>
               {x.featured && (
                 <span className="text-[11px] text-success flex items-center gap-1 shrink-0">

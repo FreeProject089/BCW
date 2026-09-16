@@ -30,7 +30,7 @@ function RepoIdentifyCard() {
   };
   return (
     <Card className="p-4 mb-4">
-      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Fingerprint size={16} className="text-[var(--primary-2)]" /> {t('radm.identify', "Identify a repo by ID")}</div>
+      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Fingerprint size={16} className="text-[var(--accent-ink)]" /> {t('radm.identify', "Identify a repo by ID")}</div>
       <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('radm.paste', 'Paste the <span class=\"font-mono\">BCR-XXXX-XXXX</span> ID shown on a repo to resolve it to its owner and their linked identities (BMM creator ids, Discord, Ko-fi).') }} />
       <div className="grid sm:grid-cols-[1fr_auto] gap-2">
         <Input value={fp} onChange={(e) => setFp(e.target.value)} placeholder="BCR-7K2M-9XQ4" onKeyDown={(e) => e.key === 'Enter' && lookup()} className="font-mono" />
@@ -39,7 +39,7 @@ function RepoIdentifyCard() {
       {err && <div className="text-xs text-error mt-2">{err}</div>}
       {res && (
         <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3 text-sm space-y-1.5">
-          <div className="flex items-center gap-2"><GitBranch size={13} className="text-[var(--primary-2)]" /> <span className="font-medium">{res.repo.name}</span> <Badge tone={res.repo.hosted ? 'primary' : ''}>{res.repo.hosted ? 'hosted' : 'listed'}</Badge></div>
+          <div className="flex items-center gap-2"><GitBranch size={13} className="text-[var(--accent-ink)]" /> <span className="font-medium">{res.repo.name}</span> <Badge tone={res.repo.hosted ? 'primary' : ''}>{res.repo.hosted ? 'hosted' : 'listed'}</Badge></div>
           <div className="text-[var(--muted)]"><Users size={12} className="inline me-1" /> Owner: <b>{res.owner.displayName}</b> · {res.owner.email} <Badge>{res.owner.role}</Badge></div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">BCWEB id:</span> <span className="font-mono text-xs">{res.owner.id}</span></div>
           <div className="text-[var(--muted)]"><span className="text-[var(--faint)]">{t('radm.creatorids', "Creator ids:")}</span> {res.identity.creatorIds.length ? res.identity.creatorIds.map((c) => <span key={c} className="font-mono text-xs me-1.5">{c}</span>) : <span className="text-[var(--faint)]">none</span>}</div>
@@ -69,7 +69,7 @@ function AdminRepoTraffic() {
   return (
     <Card className="p-4 mb-4">
       <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((v) => !v)}>
-        <Wifi size={16} className="text-[var(--primary-2)]" />
+        <Wifi size={16} className="text-[var(--accent-ink)]" />
         <span className="font-semibold flex-1">{t('radm.livetraffic', "Live repo traffic")}</span>
         {recent.length > 0 && <Badge tone="primary">{recent.length} in the last 15 min</Badge>}
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -82,7 +82,7 @@ function AdminRepoTraffic() {
               <div className="divide-y divide-[var(--line)] max-h-64 overflow-auto rounded-lg border border-[var(--line)]">
                 {recent.map((e) => (
                   <div key={e.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                    <span className={`shrink-0 font-bold ${e.kind === 'download' ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`}>{e.kind === 'download' ? '↓' : '•'}</span>
+                    <span className={`shrink-0 font-bold ${e.kind === 'download' ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`}>{e.kind === 'download' ? '↓' : '•'}</span>
                     <span className="font-medium truncate max-w-[9rem]" title={e.repo}>{e.repo}</span>
                     <span className="font-mono text-[var(--muted)] truncate flex-1" title={e.path}>{e.path}</span>
                     <span className="text-[var(--faint)] font-mono shrink-0">{e.ip}</span>
@@ -188,7 +188,7 @@ export function AdminPools() {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
+        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--accent-ink)]" /> {t('apools.title', 'Storage pools (all users)')} <span className="text-xs text-[var(--faint)] font-normal">{groups.length}</span></h2>
         <div className="flex items-center gap-2">
           <div className="relative"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1 !text-sm" placeholder={t('apools.search', 'Search owner / pool…')} value={q} onChange={(e) => setQ(e.target.value)} /></div>
           <Button size="sm" variant="primary" onClick={grant}><HardDrive size={13} /> {t('apools.grantbtn', 'Grant a pool')}</Button>
@@ -198,9 +198,9 @@ export function AdminPools() {
         {owners.map((o) => { const selected = sel[o.ownerId] || new Set(); return (
           <Card key={o.ownerId} className="p-4">
             <div className="flex items-center gap-2 mb-2.5 text-sm flex-wrap">
-              <Users size={14} className="text-[var(--primary-2)]" />
-              <Link to={`/u/${o.ownerId}`} className="font-medium hover:text-[var(--primary)]">{o.ownerName}</Link>
-              <button onClick={() => { navigator.clipboard?.writeText(o.ownerBcId); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {o.ownerBcId}</button>
+              <Users size={14} className="text-[var(--accent-ink)]" />
+              <Link to={`/u/${o.ownerId}`} className="font-medium hover:text-[var(--accent-ink)]">{o.ownerName}</Link>
+              <button onClick={() => { navigator.clipboard?.writeText(o.ownerBcId); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1"><Fingerprint size={11} /> {o.ownerBcId}</button>
               <span className="text-[var(--faint)]">· {o.pools.length} {t('apools.pools', 'pools')}</span>
               {selected.size >= 1 && o.pools.length > 1 && <span className="ms-auto flex items-center gap-1.5">
                 <select className="input !w-auto !py-1 !text-xs" defaultValue="" onChange={(e) => e.target.value && mergeOwner(o, e.target.value)}>
@@ -284,7 +284,7 @@ export function AdminRepos() {
       <RepoIdentifyCard />
       <AdminRepoTraffic />
       <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold flex items-center gap-2"><Server size={16} className="text-[var(--primary-2)]" /> {t('radm.serverrepos', "Server Repos")}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Server size={16} className="text-[var(--accent-ink)]" /> {t('radm.serverrepos', "Server Repos")}</h2>
         <div className="flex items-center gap-2">
           {pending > 0 && <Badge tone="amber"><Clock size={11} /> {pending} pending review</Badge>}
           <Button size="sm" disabled={checkingAll} onClick={checkAll}>{checkingAll ? <Spinner /> : <><RefreshCw size={14} /> {t('radm.checkall', "Check all")}</>}</Button>
@@ -320,12 +320,12 @@ export function AdminRepos() {
                   its own line — a 4-badge repo became a 4-line column. */}
               <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-3">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
-                <GitBranch size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
+                <GitBranch size={18} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="font-medium flex items-center gap-2 flex-wrap">{r.name}
                     {/* WHO: owner → profile + copyable BC id (the thing an admin actually needs). */}
-                    {r.ownerId ? <a href={`/u/${r.ownerId}`} className="text-xs text-[var(--faint)] font-normal hover:text-[var(--primary)]">· {r.owner?.displayName}</a> : <span className="text-xs text-[var(--faint)] font-normal">· {r.owner?.displayName}</span>}
-                    {r.ownerBcId && <button onClick={() => { navigator.clipboard?.writeText(r.ownerBcId); toast.success(t('repos.bcidcopied', 'Host BC id copied.')); }} className="text-[10px] font-mono text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-0.5"><Fingerprint size={10} /> {r.ownerBcId} <Copy size={8} /></button>}
+                    {r.ownerId ? <a href={`/u/${r.ownerId}`} className="text-xs text-[var(--faint)] font-normal hover:text-[var(--accent-ink)]">· {r.owner?.displayName}</a> : <span className="text-xs text-[var(--faint)] font-normal">· {r.owner?.displayName}</span>}
+                    {r.ownerBcId && <button onClick={() => { navigator.clipboard?.writeText(r.ownerBcId); toast.success(t('repos.bcidcopied', 'Host BC id copied.')); }} className="text-[10px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-0.5"><Fingerprint size={10} /> {r.ownerBcId} <Copy size={8} /></button>}
                   </div>
                   <div className="mt-2"><StatusBadges r={r} /></div>
                   {r.hosted && (r.subscription?.currentPeriodEnd || r.subscription?.status === 'canceled' || r.subscription?.status === 'expired') && (
@@ -415,7 +415,7 @@ function RepoLimitsModal({ repo, onClose, onSaved }) {
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button></>}>
       <div className="space-y-3">
         {rows.map((r) => (
-          <Field key={r.k} label={<span className="flex items-center gap-1.5"><r.icon size={13} className="text-[var(--primary-2)]" /> {r.label}</span>}>
+          <Field key={r.k} label={<span className="flex items-center gap-1.5"><r.icon size={13} className="text-[var(--accent-ink)]" /> {r.label}</span>}>
             <div className="flex items-center gap-2">
               <Input type="number" step={r.step} min={r.min} value={f[r.k]} onChange={(e) => setF({ ...f, [r.k]: e.target.value })} />
               <span className="text-sm text-[var(--muted)] w-12">{r.suffix}</span>

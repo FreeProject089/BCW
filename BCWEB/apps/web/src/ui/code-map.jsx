@@ -238,7 +238,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                         <button key={k} type="button" disabled={off} onClick={() => setDetail(k)}
                             title={off ? t('cm.d.none', 'This scan found no calls between functions.') : undefined}
                             className={`text-xs px-2.5 py-1 rounded-full border transition ${detail === k
-                                ? 'border-[var(--primary)] text-[var(--primary)]'
+                                ? 'border-[var(--primary)] text-[var(--accent-ink)]'
                                 : `border-[var(--line)] text-[var(--muted)] ${off ? 'opacity-40' : 'hover:text-[var(--text)]'}`}`}>
                             {label}
                         </button>
@@ -439,7 +439,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                                                         <span className="text-[10px] text-[var(--faint)]">{l.kind}</span>
                                                     </div>
                                                     <button type="button" onClick={() => setPicked(other.file)}
-                                                        className="block text-start text-[11px] text-[var(--muted)] hover:text-[var(--primary-2)] break-all">
+                                                        className="block text-start text-[11px] text-[var(--muted)] hover:text-[var(--accent-ink)] break-all">
                                                         {other.file}:{other.line}
                                                     </button>
                                                     <code className="block mt-0.5 px-1.5 py-1 rounded bg-[var(--surface)] border border-[var(--line)] text-[10.5px] break-all">
@@ -466,7 +466,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                             <Side title={t('cm.importedby', 'Imported by')} list={usedBy} onPick={setPicked}
                                 empty={t('cm.noimportedby', 'Nothing else here imports it.')} />
                             <button type="button" onClick={() => setPicked(null)}
-                                className="mt-3 text-[12px] text-[var(--primary-2)] hover:underline">{t('cm.clear', 'Clear selection')}</button>
+                                className="mt-3 text-[12px] text-[var(--accent-ink)] hover:underline">{t('cm.clear', 'Clear selection')}</button>
                         </>
                     )}
                 </aside>
@@ -501,7 +501,7 @@ function Side({ title, list, onPick, empty }) {
                     {list.map((id) => (
                         <li key={id}>
                             <button type="button" onClick={() => onPick(id)}
-                                className="text-[12px] text-start hover:text-[var(--primary-2)] break-all">{id}</button>
+                                className="text-[12px] text-start hover:text-[var(--accent-ink)] break-all">{id}</button>
                         </li>
                     ))}
                 </ul>
@@ -516,7 +516,7 @@ function Trace({ steps, from, to, onClear, t }) {
     return (
         <div className="mb-3 rounded-lg border border-[var(--primary)] p-2">
             <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--primary-2)]">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--accent-ink)]">
                     {t('cm.trace', 'How they connect')}
                 </span>
                 <button type="button" onClick={onClear} className="text-[var(--faint)] hover:text-[var(--text)] leading-none px-1">×</button>

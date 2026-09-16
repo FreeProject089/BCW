@@ -96,8 +96,8 @@ export function ContactStrip({ team, contactEmail, contactPhone, className = '' 
   if (!team && !contactEmail && !contactPhone) return null;
   return (
     <div className={`flex items-center gap-3 flex-wrap text-[12.5px] text-[var(--muted)] ${className}`}>
-      {team && <Link to={`/t/${team.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Users size={13} /> {t('cm.team', 'Team')} <b className="text-[var(--text)]">{team.name}</b></Link>}
-      {contactEmail && <button type="button" className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]" onClick={async () => { await copyText(contactEmail); toast.success(t('common.copied', 'Copied.')); }} title={t('cm.copyemail', 'Copy the contact e-mail')}><Mail size={13} /> {contactEmail}</button>}
+      {team && <Link to={`/t/${team.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Users size={13} /> {t('cm.team', 'Team')} <b className="text-[var(--text)]">{team.name}</b></Link>}
+      {contactEmail && <button type="button" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]" onClick={async () => { await copyText(contactEmail); toast.success(t('common.copied', 'Copied.')); }} title={t('cm.copyemail', 'Copy the contact e-mail')}><Mail size={13} /> {contactEmail}</button>}
       {contactPhone && <span className="inline-flex items-center gap-1"><Phone size={13} /> {contactPhone}</span>}
     </div>
   );

@@ -60,7 +60,7 @@ const TYPE_TAG = {
 function TypeTag({ post, className = '' }) {
   if (post?.showcaseProject) return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium text-[var(--muted)] ${className}`}>
-      {post.showcaseProject.icon ? <img src={post.showcaseProject.icon} alt="" className="w-4 h-4 rounded object-contain" /> : <Sparkles size={14} className="text-[var(--primary-2)]" />} {post.showcaseProject.name}
+      {post.showcaseProject.icon ? <img src={post.showcaseProject.icon} alt="" className="w-4 h-4 rounded object-contain" /> : <Sparkles size={14} className="text-[var(--accent-ink)]" />} {post.showcaseProject.name}
     </span>
   );
   const m = TYPE_TAG[post?.project?.key] || TYPE_TAG.community;
@@ -108,7 +108,7 @@ export function BlogList() {
               <div key={p.id} className="group relative">
                 <Link to={`/blog/${p.slug}`}><Card hover className="overflow-hidden h-full flex flex-col">
                   {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-44 object-cover" />
-                    : <div className="w-full h-44 bg-[var(--surface-2)] border-b border-[var(--line)] grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--primary-2)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="logo-plate w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
+                    : <div className="w-full h-44 bg-[var(--surface-2)] border-b border-[var(--line)] grid place-items-center">{p.showcaseProject?.icon ? <img src={p.showcaseProject.icon} alt="" className="w-14 h-14 rounded-xl object-contain opacity-90" /> : p.showcaseProject ? <Sparkles size={40} className="text-[var(--accent-ink)] opacity-90" /> : <img src={(TYPE_TAG[p.project?.key] || TYPE_TAG.community).img} alt="" className="logo-plate w-12 h-12 rounded-xl object-contain opacity-90" />}</div>}
                   <div className="p-5 flex-1 flex flex-col">
                     <div className="text-xs text-[var(--faint)] flex items-center gap-2">{fmtDate(p.publishedAt)}{!v.translated && <span className="inline-flex items-center gap-1 text-[var(--faint)]"><Languages size={11} /> {t('blog.untranslated', 'not translated')}</span>}</div>
                     <div className="font-bold mt-1.5 text-lg leading-snug">{v.title}</div>
@@ -159,7 +159,7 @@ export function NewsletterSignup() {
       <h3 className="text-lg font-bold">{t('news.title', 'Get blog updates by email')}</h3>
       <p className="text-sm text-[var(--muted)] mt-1.5 max-w-md mx-auto">{t('news.sub', 'New posts, straight to your inbox. Double opt-in, and one-click unsubscribe in every email.')}</p>
       {state === 'done'
-        ? <p className="mt-4 text-sm text-[var(--primary-2)] font-semibold">{t('news.check', 'Almost there, check your inbox to confirm your subscription.')}</p>
+        ? <p className="mt-4 text-sm text-[var(--accent-ink)] font-semibold">{t('news.check', 'Almost there, check your inbox to confirm your subscription.')}</p>
         : (
           <form onSubmit={submit} className="mt-4 flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
@@ -210,8 +210,8 @@ export function BlogPostPage() {
         <TypeTag post={p} />
         <h1 className="text-3xl md:text-4xl font-extrabold mt-3 leading-tight">{v.title}</h1>
         <div className="text-sm text-[var(--faint)] mt-3 flex items-center gap-3"><span className="flex items-center gap-1"><UserIcon size={13} /> {p.author?.displayName}{authors.length > 1 && ` +${authors.length - 1}`}</span>
-          <button onClick={() => setShowHistory(true)} title={t('blog.history.hint', 'View edit history')} className="flex items-center gap-1 hover:text-[var(--primary-2)] transition"><CalendarDays size={13} /> {fmtDate(p.publishedAt)} <History size={11} className="opacity-60" /></button></div>
-        {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--primary-2)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
+          <button onClick={() => setShowHistory(true)} title={t('blog.history.hint', 'View edit history')} className="flex items-center gap-1 hover:text-[var(--accent-ink)] transition"><CalendarDays size={13} /> {fmtDate(p.publishedAt)} <History size={11} className="opacity-60" /></button></div>
+        {!v.translated && <div className="mt-5 p-3 rounded-lg border border-[var(--line)] bg-orange-500/5 text-sm text-[var(--muted)] flex items-center gap-2"><Languages size={15} className="text-[var(--accent-ink)]" /> Cet article n'est pas encore traduit en français — version anglaise affichée.</div>}
         {p.cover && p.coverInBody !== false && <img src={thumb(p.cover, 768)} alt="" className="w-full rounded-2xl mt-6 border border-[var(--line)]" />}
         <Markdown className="mt-7">{p.showToc && !/(^|\n)::toc\b/.test(v.body || '') ? `::toc[${p.tocTitle || 'On this page'}]\n\n${v.body}` : v.body}</Markdown>
 
@@ -223,7 +223,7 @@ export function BlogPostPage() {
               const count = rx?.counts?.[type] || 0; const mine = rx?.mine === type;
               return (
                 <button key={type} onClick={() => react(type)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                   <ReactionIcon name={type} size={16} />{count > 0 && <span className="text-xs tabular-nums">{count}</span>}
                 </button>
               );
@@ -457,7 +457,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           </button>
         ))}
       </div>
-      {fr && <div className="text-xs text-[var(--muted)] mb-3 p-2.5 rounded-lg bg-orange-500/5 border border-[var(--line)] flex items-center gap-2"><Languages size={13} className="text-[var(--primary-2)]" /> Traduction française optionnelle, publiée en même temps. Si vide, les lecteurs FR voient la version anglaise marquée « non traduit ».</div>}
+      {fr && <div className="text-xs text-[var(--muted)] mb-3 p-2.5 rounded-lg bg-orange-500/5 border border-[var(--line)] flex items-center gap-2"><Languages size={13} className="text-[var(--accent-ink)]" /> Traduction française optionnelle, publiée en même temps. Si vide, les lecteurs FR voient la version anglaise marquée « non traduit ».</div>}
 
       {/* title (per-language) */}
       <input className="input !text-xl !font-semibold !py-3" value={g('title')} onChange={(e) => setField('title', e.target.value)} placeholder={fr ? "Titre de l'article…" : 'Post title…'} />
@@ -514,7 +514,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
               {REACTION_PALETTE.map((name) => {
                 const on = f.reactionTypes.includes(name); const disabled = !on && f.reactionTypes.length >= 3;
                 return <button key={name} type="button" disabled={disabled} title={name} onClick={() => toggleReaction(name)}
-                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
+                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
               })}
             </div>
           )}
@@ -548,7 +548,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
             ) : (<>
               <label className={`flex items-start gap-2 ${f.publish ? 'cursor-pointer' : 'opacity-50'}`}>
                 <input type="checkbox" className="mt-0.5" disabled={!f.publish} checked={f.notifyNewsletter && f.publish} onChange={(e) => setF({ ...f, notifyNewsletter: e.target.checked })} />
-                <span className="text-xs"><span className="font-medium flex items-center gap-1"><Mail size={12} className="text-[var(--primary-2)]" /> {t('be.nl.notify', 'Announce to newsletter subscribers')}</span>
+                <span className="text-xs"><span className="font-medium flex items-center gap-1"><Mail size={12} className="text-[var(--accent-ink)]" /> {t('be.nl.notify', 'Announce to newsletter subscribers')}</span>
                   <span className="text-[var(--faint)]">{f.publish ? t('be.nl.notifyhint', 'Emails active subscribers about this new article (with a link). Sent once.') : t('be.nl.draftnote', 'Publish the post to announce it.')}</span></span>
               </label>
               {f.notifyNewsletter && f.publish && (

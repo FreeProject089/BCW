@@ -196,7 +196,7 @@ export default function StudioPage() {
     return (
       <div className="max-w-2xl mx-auto py-6">
         <div className="flex items-center gap-2 mb-4">
-          <LayoutTemplate size={18} className="text-[var(--primary-2)]" />
+          <LayoutTemplate size={18} className="text-[var(--accent-ink)]" />
           <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">{t('cst.pick.title', 'Studio pages of {name}').replace('{name}', target.name || id)}</h1>
           <Button size="sm" variant="ghost" onClick={() => navigate(target.back || '/admin')}>{t('common.back', 'Back')}</Button>
         </div>

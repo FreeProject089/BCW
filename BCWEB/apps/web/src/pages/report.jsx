@@ -44,7 +44,7 @@ function TargetCard({ t, target, onChange, onRemove }) {
   return (
     <Card className="p-3 space-y-2">
       <div className="flex items-start gap-2">
-        <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] shrink-0"><Icon size={15} className="text-[var(--primary-2)]" /></span>
+        <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] shrink-0"><Icon size={15} className="text-[var(--accent-ink)]" /></span>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate" title={target.label || target.url}>{target.label || target.url}</div>
           <div className="text-[11px] text-[var(--faint)] truncate">{t(`rn.t.${target.type}`, target.type)}{target.url ? ` · ${target.url}` : ''}</div>
@@ -88,7 +88,7 @@ function Lookup({ t, initialCode }) {
   const n = state?.notice;
   return (
     <Card className="p-4 space-y-3">
-      <div className="font-semibold flex items-center gap-2"><Search size={15} className="text-[var(--primary-2)]" /> {t('rn.lookup', 'Follow a notice')}</div>
+      <div className="font-semibold flex items-center gap-2"><Search size={15} className="text-[var(--accent-ink)]" /> {t('rn.lookup', 'Follow a notice')}</div>
       <form onSubmit={go} className="grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
         <Field label={t('rn.code', 'Reference')}><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="NTC-XXXX-XXXX" /></Field>
         <Field label={t('rn.email', 'E-mail it was filed with')}><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
@@ -190,7 +190,7 @@ export function ReportPage() {
           <h1 className="text-xl font-bold">{t('rn.done.t', 'Notice received')}</h1>
           <div className="font-mono text-lg">{done.code}</div>
           <p className="text-sm text-[var(--muted)]">{t('rn.done.s', 'Keep this reference. A person will review your notice; you will be told at the e-mail you gave what was decided. You can follow it here at any time with the reference and that e-mail.')}</p>
-          {user && <Link to="/dashboard?s=reports" className="text-sm text-[var(--primary-2)] hover:underline">{t('rn.done.dash', 'It is also listed in your dashboard → Reports.')}</Link>}
+          {user && <Link to="/dashboard?s=reports" className="text-sm text-[var(--accent-ink)] hover:underline">{t('rn.done.dash', 'It is also listed in your dashboard → Reports.')}</Link>}
         </Card>
         <Lookup t={t} initialCode={done.code} />
       </div>
@@ -200,7 +200,7 @@ export function ReportPage() {
   return (
     <div className="max-w-3xl mx-auto py-6 space-y-5">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><Scale size={22} className="text-[var(--primary-2)]" /> {t('rn.title', 'Report content or claim a right')}</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><Scale size={22} className="text-[var(--accent-ink)]" /> {t('rn.title', 'Report content or claim a right')}</h1>
         <p className="text-sm text-[var(--muted)] mt-1">{t('rn.sub', 'For copyright and other rights claims, impersonation, privacy, and illegal content. No account needed. Everything below is what the law asks a notice to contain — a complete notice is one we can act on the same day.')}</p>
         <p className="text-[11px] text-[var(--faint)] mt-1">{t('rn.sub2', 'Something else, a bug, a broken listing, a rude comment? The Report button next to the content is quicker.')} <Link to="/legal/terms" className="underline">{t('rn.legal', 'How reports are handled')}</Link></p>
       </div>
@@ -210,7 +210,7 @@ export function ReportPage() {
       <form onSubmit={submit} className="space-y-5">
         {/* 1 — where */}
         <section className="space-y-2">
-          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--primary-2)] text-xs font-bold">1</span> {t('rn.s1', 'Where it is')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--accent-ink)] text-xs font-bold">1</span> {t('rn.s1', 'Where it is')}</h2>
           <p className="text-xs text-[var(--muted)]">{t('rn.s1.d', 'Paste the address of the repo, catalogue, item or profile. Inside a repo or a catalogue you can then tick the exact files or items.')}</p>
           {targets.map((tg, i) => <TargetCard key={`${tg.type}:${tg.id || tg.url}`} t={t} target={tg} onChange={(next) => setTargets((l) => l.map((x, j) => (j === i ? next : x)))} onRemove={() => setTargets((l) => l.filter((_, j) => j !== i))} />)}
           <div className="flex gap-2">
@@ -221,7 +221,7 @@ export function ReportPage() {
 
         {/* 2 — why */}
         <section className="space-y-2">
-          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--primary-2)] text-xs font-bold">2</span> {t('rn.s2', 'What is wrong')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--accent-ink)] text-xs font-bold">2</span> {t('rn.s2', 'What is wrong')}</h2>
           <Field label={t('rn.kind', 'Kind of claim')}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{KINDS.map(([v, k, fb]) => <option key={v} value={v}>{t(k, fb)}</option>)}</Select></Field>
           <Field label={t('rn.why', 'Explain, why it infringes or is illegal, and how you know')} hint={t('rn.why.h', 'Be specific: "the archive mods/x.zip is my mod Foo v1.2, byte for byte" beats "they stole my work".')}>
             <Textarea rows={5} value={explanation} onChange={(e) => setExplanation(e.target.value)} />
@@ -231,7 +231,7 @@ export function ReportPage() {
         {/* 3 — the work */}
         {isRights && (
           <section className="space-y-2">
-            <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--primary-2)] text-xs font-bold">3</span> {t('rn.s3', 'The work or mark')}</h2>
+            <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--accent-ink)] text-xs font-bold">3</span> {t('rn.s3', 'The work or mark')}</h2>
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label={t('rn.wtitle', 'Its name')}><Input value={work.title} onChange={(e) => setWork({ ...work, title: e.target.value })} /></Field>
               <Field label={t('rn.basis', 'On what basis')}><Select value={work.basis} onChange={(e) => setWork({ ...work, basis: e.target.value })}>{BASIS.map(([v, k, fb]) => <option key={v} value={v}>{t(k, fb)}</option>)}</Select></Field>
@@ -248,7 +248,7 @@ export function ReportPage() {
 
         {/* 4 — who */}
         <section className="space-y-2">
-          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--primary-2)] text-xs font-bold">{isRights ? 4 : 3}</span> {t('rn.s4', 'Who you are')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--accent-ink)] text-xs font-bold">{isRights ? 4 : 3}</span> {t('rn.s4', 'Who you are')}</h2>
           <div className="grid sm:grid-cols-2 gap-3">
             <Field label={t('rn.name', 'Full name')}><Input value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} /></Field>
             <Field label={t('rn.email', 'E-mail')}><Input type="email" value={who.email} onChange={(e) => setWho({ ...who, email: e.target.value })} /></Field>
@@ -261,7 +261,7 @@ export function ReportPage() {
 
         {/* 5 — statements */}
         <section className="space-y-2">
-          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--primary-2)] text-xs font-bold">{isRights ? 5 : 4}</span> {t('rn.s5', 'Statements')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><span className="grid place-items-center w-6 h-6 rounded-full tint-primary text-[var(--accent-ink)] text-xs font-bold">{isRights ? 5 : 4}</span> {t('rn.s5', 'Statements')}</h2>
           <label className="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" className="mt-1" checked={stmt.goodFaith} onChange={(e) => setStmt({ ...stmt, goodFaith: e.target.checked })} /> <span>{t('rn.goodfaith', 'I am acting in good faith and believe the use described above is not authorised by the rights holder, their agent, or the law.')}</span></label>
           <label className="flex items-start gap-2 text-sm cursor-pointer"><input type="checkbox" className="mt-1" checked={stmt.accurate} onChange={(e) => setStmt({ ...stmt, accurate: e.target.checked })} /> <span>{t('rn.accurate', 'The information in this notice is accurate, and I am the rights holder or authorised to act for them. I understand a knowingly false notice can make me liable.')}</span></label>
           <Field label={t('rn.signature', 'Signature, type your full name')}><Input value={stmt.signature} onChange={(e) => setStmt({ ...stmt, signature: e.target.value })} /></Field>

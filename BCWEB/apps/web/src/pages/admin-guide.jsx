@@ -784,7 +784,7 @@ export default function AdminGuide() {
   return (
     <div>
       <div className="flex items-start gap-3 flex-wrap mb-1">
-        <h2 className="font-semibold flex items-center gap-2 flex-1"><BookOpen size={16} className="text-[var(--primary-2)]" /> {t('ag.title', 'Admin guide')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><BookOpen size={16} className="text-[var(--accent-ink)]" /> {t('ag.title', 'Admin guide')}</h2>
         {canEdit && <Button size="sm" variant="ghost" onClick={() => setEditing(true)}><Pencil size={13} /> {t('ag.edit', 'Edit guide')}</Button>}
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('ag.sub', 'What every admin screen does, who sees the result, and the traps worth knowing — grouped like the sidebar.')}</p>
@@ -810,9 +810,9 @@ export default function AdminGuide() {
                     return (
                       <button key={it.id} type="button" onClick={() => setActive(it.id)}
                         className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 transition text-[13px] ${on ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:panel'}`}>
-                        <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
+                        <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} />
                         <span className="truncate">{L(it.title)}</span>
-                        {it.kind === 'custom' && <span className="hidden lg:inline text-[9px] px-1 py-0.5 rounded-full tint-primary text-[var(--primary-2)] ms-auto">{t('ag.customtag', 'custom')}</span>}
+                        {it.kind === 'custom' && <span className="hidden lg:inline text-[9px] px-1 py-0.5 rounded-full tint-primary text-[var(--accent-ink)] ms-auto">{t('ag.customtag', 'custom')}</span>}
                       </button>
                     );
                   })}
@@ -829,11 +829,11 @@ export default function AdminGuide() {
           ) : (
             <Card className="p-5 lg:p-6">
               <div className="flex items-start gap-3 mb-3 pb-3 border-b border-[var(--line)]">
-                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{(() => { const I = activeItem.icon; return <I size={20} />; })()}</span>
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] text-[var(--accent-ink)] shrink-0">{(() => { const I = activeItem.icon; return <I size={20} />; })()}</span>
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{L(activeItem._heading)}</div>
                   <h3 className="text-lg font-bold leading-tight flex items-center gap-2 flex-wrap">{L(activeItem.title)}
-                    {activeItem.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)] font-medium">{t('ag.customtag', 'custom')}</span>}
+                    {activeItem.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--accent-ink)] font-medium">{t('ag.customtag', 'custom')}</span>}
                   </h3>
                 </div>
               </div>
@@ -842,7 +842,7 @@ export default function AdminGuide() {
                   with, not just the section it lives in. */}
               {kParam && activeItem.id === deep && (
                 <div className="mb-3 rounded-lg border b-primary tint-primary px-3 py-2 flex items-center gap-2 animate-[pulse_1.2s_ease-in-out_2]">
-                  <Info size={14} className="text-[var(--primary-2)] shrink-0" />
+                  <Info size={14} className="text-[var(--accent-ink)] shrink-0" />
                   <span className="text-[13px] text-[var(--muted)]">{t('ag.jumpfrom', 'You opened this from the')} <b className="text-[var(--text)]">{kParam}</b> {t('ag.jumpfrom2', 'setting.')}</span>
                 </div>
               )}
@@ -886,7 +886,7 @@ export default function AdminGuide() {
                       checklist or a table of the house rules reads like the rest of the site. */}
                   {activeItem.extra && (L(activeItem.extra) || '').trim() && (
                     <div className="mt-5 pt-4 border-t border-[var(--line)]">
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2">{t('ag.extra', 'Added by your team')}</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] mb-2">{t('ag.extra', 'Added by your team')}</div>
                       <div className="text-sm text-[var(--muted)] leading-relaxed break-words"><Markdown>{L(activeItem.extra)}</Markdown></div>
                     </div>
                   )}
@@ -1053,20 +1053,20 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
   return (
     <div>
       <div className="flex items-center gap-3 flex-wrap mb-1">
-        <h2 className="font-semibold flex items-center gap-2 flex-1"><Pencil size={16} className="text-[var(--primary-2)]" /> {t('ag.edit.title', 'Edit the admin guide')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><Pencil size={16} className="text-[var(--accent-ink)]" /> {t('ag.edit.title', 'Edit the admin guide')}</h2>
         <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
           {[['en', 'EN'], ['fr', 'FR']].map(([k, lbl]) => (
             <button key={k} type="button" onClick={() => setTab(k)} className={`px-2.5 py-1 rounded-md ${tab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>
           ))}
         </div>
-        {dirty && <span className="text-[11px] text-[var(--primary-2)] inline-flex items-center gap-1.5" title={t('ag.edit.unsaved.h', 'Nothing is stored until you save.')}><span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" /> {t('ag.edit.unsaved', 'Unsaved changes')}</span>}
+        {dirty && <span className="text-[11px] text-[var(--accent-ink)] inline-flex items-center gap-1.5" title={t('ag.edit.unsaved.h', 'Nothing is stored until you save.')}><span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)]" /> {t('ag.edit.unsaved', 'Unsaved changes')}</span>}
         <Button size="sm" variant="ghost" onClick={closeGuarded}><X size={13} /> {t('common.cancel', 'Cancel')}</Button>
         <Button size="sm" disabled={busy || !dirty} onClick={save} title="Ctrl+S">{busy ? <Spinner /> : <><Save size={13} /> {t('ag.save', 'Save guide')}</>}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
       <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
         {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['ref', t('ag.edit.ref', 'On this screen'), refEditedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
-          <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)]">{n}</span> : null}</button>
+          <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--accent-ink)]">{n}</span> : null}</button>
         ))}
       </div>
 
@@ -1077,7 +1077,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
             <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:max-h-[62vh] lg:overflow-y-auto no-scrollbar">
               {shown.map((it) => { const Icon = it.icon; const on = sel === it.id; const ed = isEdited(it.id); const hid = !!ov[it.id]?.hidden; return (
                 <button key={it.id} type="button" onClick={() => setSel(it.id)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
-                  <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
+                  <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`} />
                   <span className="flex-1 min-w-0 truncate">{L(it.title)}</span>
                   {ed && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" title={t('ag.edit.edited', 'edited')} />}
                 </button>
@@ -1103,14 +1103,14 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.body.l', 'Body — replaces the built-in paragraph (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
-                    {!((curOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromBody} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
+                    {!((curOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromBody} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--accent-ink)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
                   </div>
                   <MarkdownEditor value={(curOv.body || {})[tab] || ''} onChange={(v) => setOvField('body', { [tab]: v })} minHeight={110} placeholder={cur.body[tab] || cur.body.en} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.extra.l', 'Your section under it — house rules, who to ask, a checklist (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
-                    {GUIDE_MORE[cur.id] && !curOv.hideMore && <button type="button" onClick={pullMore} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.pullmore', 'Pull the built-in steps & traps in here to edit them')}</button>}
+                    {GUIDE_MORE[cur.id] && !curOv.hideMore && <button type="button" onClick={pullMore} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--accent-ink)] hover:border-[var(--primary)]">{t('ag.edit.pullmore', 'Pull the built-in steps & traps in here to edit them')}</button>}
                     {curOv.hideMore && <span className="text-[11px] text-[var(--faint)]">{t('ag.edit.morehidden', 'Built-in steps & traps hidden — yours replace them')}</span>}
                   </div>
                   <MarkdownEditor value={(curOv.extra || {})[tab] || ''} onChange={(v) => setOvField('extra', { [tab]: v })} minHeight={160} placeholder={tab === 'fr' ? ':::tip[Chez nous]\nCe que ton équipe doit savoir sur cet écran…\n:::' : ':::tip[Here]\nWhat your team should know about this screen…\n:::'} />
@@ -1162,7 +1162,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
                 <div>
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <div className="text-[11px] text-[var(--faint)]">{t('ag.edit.ref.body', 'Row text — replaces the description AND its control list (B.MD)')} <span className="opacity-70">({tab.toUpperCase()})</span></div>
-                    {!((curRefOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromRef} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--primary-2)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
+                    {!((curRefOv.body || {})[tab] || '').trim() && <button type="button" onClick={startFromRef} className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--line)] text-[var(--accent-ink)] hover:border-[var(--primary)]">{t('ag.edit.startfrom', 'Start from the built-in text')}</button>}
                   </div>
                   <MarkdownEditor value={(curRefOv.body || {})[tab] || ''} onChange={(v) => setRefField('body', { [tab]: v })} minHeight={160} placeholder={curRef.mod.what[tab] || curRef.mod.what.en} />
                 </div>
@@ -1178,7 +1178,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
         {rows.map((r, i) => (
           <Card key={i} className="p-3.5">
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--primary-2)] shrink-0">{(() => { const I = iconOf(r.icon); return <I size={15} />; })()}</span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--surface-2)] text-[var(--accent-ink)] shrink-0">{(() => { const I = iconOf(r.icon); return <I size={15} />; })()}</span>
               <Input className="!w-full flex-1" value={(r.title || {})[tab] || ''} onChange={(e) => setLoc(i, 'title', { [tab]: e.target.value })} placeholder={tab === 'fr' ? 'Titre de la section' : 'Section title'} />
               <div className="flex items-center gap-0.5">
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 rounded hover:bg-[var(--surface-2)] disabled:opacity-30"><ChevronUp size={14} /></button>
@@ -1191,7 +1191,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
               <div className="flex flex-wrap gap-1">
                 {Object.keys(GUIDE_ICONS).map((name) => { const I = GUIDE_ICONS[name]; return (
                   <button key={name} type="button" onClick={() => set(i, { icon: name })} title={name}
-                    className={`p-1.5 rounded-lg border ${r.icon === name ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}><I size={14} /></button>
+                    className={`p-1.5 rounded-lg border ${r.icon === name ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)]'}`}><I size={14} /></button>
                 ); })}
               </div>
             </div>

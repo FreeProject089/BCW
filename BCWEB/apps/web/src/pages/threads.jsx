@@ -50,7 +50,7 @@ export function ThreadView({ load, post, actions, back }) {
     try { await post(body); await reload(); return true; }
     catch (x) { const e = x.data?.error; toast.error(e === 'closed' ? t('th.closed', 'This conversation is closed.') : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.') : e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.') : t('common.failed', 'Failed.')); return false; }
   };
-  const who = th.ownerTeam ? <Link to={`/t/${th.ownerTeam.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Users size={12} /> {th.ownerTeam.name}</Link> : th.ownerUser?.displayName || '—';
+  const who = th.ownerTeam ? <Link to={`/t/${th.ownerTeam.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Users size={12} /> {th.ownerTeam.name}</Link> : th.ownerUser?.displayName || '—';
   return (
     <Card className="p-4 sm:p-5 space-y-3">
       <div className="flex items-start gap-2 flex-wrap">
@@ -96,7 +96,7 @@ export function MyThreads() {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <MessageSquare size={16} className="text-[var(--primary-2)]" />
+        <MessageSquare size={16} className="text-[var(--accent-ink)]" />
         <div className="font-semibold">{t('th.title', 'Conversations')}</div>
         <div className="ms-auto inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
           {[['inbox', Inbox, t('th.inbox', 'Inbox')], ['sent', Send, t('th.sent', 'Sent')]].map(([id, I, l]) => (
@@ -145,9 +145,9 @@ export default function AnonThreadPage() {
   const { t } = useI18n(); const { token } = useParams(); const { user } = useAuth();
   return (
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
-      <h1 className="text-xl font-extrabold flex items-center gap-2"><MessageSquare size={18} className="text-[var(--primary-2)]" /> {t('th.title', 'Conversations')}</h1>
+      <h1 className="text-xl font-extrabold flex items-center gap-2"><MessageSquare size={18} className="text-[var(--accent-ink)]" /> {t('th.title', 'Conversations')}</h1>
       <ThreadView load={() => api.get(`/threads/t/${encodeURIComponent(token)}`)} post={(body) => api.post(`/threads/t/${encodeURIComponent(token)}/messages`, { body })} />
-      <p className="text-[12px] text-[var(--faint)]">{t('th.anon.note', 'This page is reachable only by the link you were e-mailed. Anyone holding the link can read and answer.')} {!user && <Link to="/signin" className="text-[var(--primary-2)] hover:underline">{t('th.anon.signin', 'With an account, conversations live in your dashboard.')}</Link>}</p>
+      <p className="text-[12px] text-[var(--faint)]">{t('th.anon.note', 'This page is reachable only by the link you were e-mailed. Anyone holding the link can read and answer.')} {!user && <Link to="/signin" className="text-[var(--accent-ink)] hover:underline">{t('th.anon.signin', 'With an account, conversations live in your dashboard.')}</Link>}</p>
     </div>
   );
 }

@@ -133,12 +133,12 @@ function TeamDetail({ team, reload }) {
       <Card className="p-4 sm:p-5">
         <div className="flex items-start gap-3 flex-wrap">
           <div className="min-w-0 flex-1">
-            <div className="font-bold text-lg flex items-center gap-2"><Users size={18} className="text-[var(--primary-2)]" /> {team.name} <Badge>{t(ROLE_KEY[team.myRole] || 'tm.role.member', team.myRole)}</Badge></div>
+            <div className="font-bold text-lg flex items-center gap-2"><Users size={18} className="text-[var(--accent-ink)]" /> {team.name} <Badge>{t(ROLE_KEY[team.myRole] || 'tm.role.member', team.myRole)}</Badge></div>
             <div className="text-[12.5px] text-[var(--muted)] mt-1 flex items-center gap-3 flex-wrap">
               <span className="inline-flex items-center gap-1"><Mail size={12} /> {team.contactEmail}</span>
               {team.contactPhone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {team.contactPhone}</span>}
-              {team.website && <a href={team.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Globe size={12} /> {team.website}</a>}
-              <Link to={`/t/${team.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Link2 size={12} /> /t/{team.slug}</Link>
+              {team.website && <a href={team.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {team.website}</a>}
+              <Link to={`/t/${team.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Link2 size={12} /> /t/{team.slug}</Link>
             </div>
             {team.description && <p className="text-sm text-[var(--muted)] mt-2">{team.description}</p>}
           </div>
@@ -155,7 +155,7 @@ function TeamDetail({ team, reload }) {
         <ul className="divide-y divide-[var(--line)]">
           {members.map((m) => (
             <li key={m.id} className="py-2 flex items-center gap-2 text-sm">
-              <Link to={`/u/${m.id}`} className="font-medium hover:text-[var(--primary-2)] truncate" title={m.displayName}>{m.displayName}</Link>
+              <Link to={`/u/${m.id}`} className="font-medium hover:text-[var(--accent-ink)] truncate" title={m.displayName}>{m.displayName}</Link>
               <Badge>{m.role === 'owner' ? <><Crown size={10} /> {t('tm.role.owner', 'owner')}</> : t(ROLE_KEY[m.role], m.role)}</Badge>
               <span className="flex-1" />
               {isOwner && m.role !== 'owner' && <>
@@ -178,7 +178,7 @@ function TeamDetail({ team, reload }) {
               <div className="text-[12px] font-semibold flex items-center gap-1.5"><Link2 size={13} /> {t('tm.link.h', 'Invitation links')}</div>
 
               <div>
-                <div className="text-[12px] font-semibold flex items-center gap-1.5"><InfinityIcon size={13} className="text-[var(--primary-2)]" /> {t('tm.link.perm.h', 'Permanent link')}</div>
+                <div className="text-[12px] font-semibold flex items-center gap-1.5"><InfinityIcon size={13} className="text-[var(--accent-ink)]" /> {t('tm.link.perm.h', 'Permanent link')}</div>
                 <p className="text-[11px] text-[var(--faint)] mt-0.5 mb-2">{t('tm.link.perm.d', 'One per team, it never expires. Delete it and you can make a new one.')}</p>
                 {permanent ? (
                   <div className="flex items-center gap-2 text-[12px] flex-wrap">
@@ -200,7 +200,7 @@ function TeamDetail({ team, reload }) {
 
               <div className="border-t border-[var(--line)] pt-3">
                 <div className="text-[12px] font-semibold flex items-center gap-1.5">
-                  <Clock size={13} className="text-[var(--primary-2)]" /> {t('tm.link.temp.h', 'Temporary links')}
+                  <Clock size={13} className="text-[var(--accent-ink)]" /> {t('tm.link.temp.h', 'Temporary links')}
                   <span className="font-normal text-[var(--faint)] tabular-nums">{temporary.filter((l) => l.usable).length}/{policy.maxTemporary}</span>
                 </div>
                 <p className="text-[11px] text-[var(--faint)] mt-0.5 mb-2">{t('tm.link.temp.d', 'Each one expires on its own. Anyone signed in who opens it joins with the role you pick.')}</p>
@@ -277,7 +277,7 @@ export function MyTeams() {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-center gap-2 mb-2 flex-wrap">
-        <Users size={16} className="text-[var(--primary-2)]" />
+        <Users size={16} className="text-[var(--accent-ink)]" />
         <div className="font-semibold">{t('tm.title', 'Teams')}</div>
         {atLimit
           ? <Button size="sm" variant="primary" className="ms-auto" onClick={buySlot}><ShoppingBag size={13} /> {t('tm.slot.buy', 'One more team: {p}').replace('{p}', lim ? money(lim.slot.cents, lim.slot.currency) : '')}</Button>
@@ -335,15 +335,15 @@ export default function TeamPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-5">
       <div className="flex items-start gap-3 flex-wrap">
-        <div className="w-14 h-14 rounded-2xl bg-[var(--surface-2)] grid place-items-center shrink-0">{tm.avatar ? <img src={tm.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover" /> : <Users size={24} className="text-[var(--primary-2)]" />}</div>
+        <div className="w-14 h-14 rounded-2xl bg-[var(--surface-2)] grid place-items-center shrink-0">{tm.avatar ? <img src={tm.avatar} alt="" className="w-14 h-14 rounded-2xl object-cover" /> : <Users size={24} className="text-[var(--accent-ink)]" />}</div>
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-extrabold">{tm.name}</h1>
           {tm.description && <p className="text-sm text-[var(--muted)] mt-1">{tm.description}</p>}
           <div className="text-[12.5px] text-[var(--muted)] mt-2 flex items-center gap-3 flex-wrap">
             <span className="inline-flex items-center gap-1"><Mail size={12} /> {tm.contactEmail}</span>
             {tm.contactPhone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {tm.contactPhone}</span>}
-            {tm.website && <a href={tm.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Globe size={12} /> {t('tm.website', 'Website')}</a>}
-            {tm.discord && <a href={tm.discord} target="_blank" rel="noreferrer" className="hover:text-[var(--primary-2)]">Discord</a>}
+            {tm.website && <a href={tm.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-[var(--accent-ink)]"><Globe size={12} /> {t('tm.website', 'Website')}</a>}
+            {tm.discord && <a href={tm.discord} target="_blank" rel="noreferrer" className="hover:text-[var(--accent-ink)]">Discord</a>}
           </div>
         </div>
         <ContactButton kind="team" targetId={tm.slug} targetLabel={tm.name} variant="primary" />
@@ -354,8 +354,8 @@ export default function TeamPage() {
       </Card>
       {(tm.repos.length > 0 || tm.catalogs.length > 0) && (
         <div className="grid sm:grid-cols-2 gap-4">
-          <Card className="p-4"><div className="font-semibold mb-2 flex items-center gap-1.5"><Package size={14} /> {t('tm.repos', 'Repos')}</div>{tm.repos.length ? <ul className="space-y-1 text-sm">{tm.repos.map((r) => <li key={r.id}><Link to={`/r/${r.id}`} className="hover:text-[var(--primary-2)]">{r.name}</Link></li>)}</ul> : <div className="text-[12px] text-[var(--faint)]">—</div>}</Card>
-          <Card className="p-4"><div className="font-semibold mb-2 flex items-center gap-1.5"><Layers size={14} /> {t('tm.catalogs', 'Catalogues')}</div>{tm.catalogs.length ? <ul className="space-y-1 text-sm">{tm.catalogs.map((c) => <li key={c.id}><Link to={`/c/${c.slug}`} className="hover:text-[var(--primary-2)]">{c.name}</Link></li>)}</ul> : <div className="text-[12px] text-[var(--faint)]">—</div>}</Card>
+          <Card className="p-4"><div className="font-semibold mb-2 flex items-center gap-1.5"><Package size={14} /> {t('tm.repos', 'Repos')}</div>{tm.repos.length ? <ul className="space-y-1 text-sm">{tm.repos.map((r) => <li key={r.id}><Link to={`/r/${r.id}`} className="hover:text-[var(--accent-ink)]">{r.name}</Link></li>)}</ul> : <div className="text-[12px] text-[var(--faint)]">—</div>}</Card>
+          <Card className="p-4"><div className="font-semibold mb-2 flex items-center gap-1.5"><Layers size={14} /> {t('tm.catalogs', 'Catalogues')}</div>{tm.catalogs.length ? <ul className="space-y-1 text-sm">{tm.catalogs.map((c) => <li key={c.id}><Link to={`/c/${c.slug}`} className="hover:text-[var(--accent-ink)]">{c.name}</Link></li>)}</ul> : <div className="text-[12px] text-[var(--faint)]">—</div>}</Card>
         </div>
       )}
     </div>
@@ -382,7 +382,7 @@ export function TeamJoin() {
   return (
     <div className="max-w-md mx-auto py-12">
       <Card className="p-5 space-y-3 text-center">
-        <Users size={28} className="mx-auto text-[var(--primary-2)]" />
+        <Users size={28} className="mx-auto text-[var(--accent-ink)]" />
         <div className="font-semibold text-lg">{data.team?.name}</div>
         {data.team?.description && <p className="text-sm text-[var(--muted)]">{data.team.description}</p>}
         <p className="text-sm">{t('tm.join.as', 'You are invited to join as {r}.').replace('{r}', t(ROLE_KEY[data.role] || 'tm.role.member', data.role))}</p>

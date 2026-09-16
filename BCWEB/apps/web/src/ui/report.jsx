@@ -79,7 +79,7 @@ export function ReportThread({ messages }) {
         <div key={m.id} className={`flex ${m.staff ? 'justify-start' : 'justify-end'}`}>
           <div className={`max-w-[85%] rounded-xl px-3 py-2 border ${m.staff ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'tint-primary b-primary'}`}>
             <div className="text-[11px] text-[var(--faint)] mb-1 flex items-center gap-1.5">
-              {m.staff && <Shield size={11} className="text-[var(--primary-2)]" />}
+              {m.staff && <Shield size={11} className="text-[var(--accent-ink)]" />}
               <span className="font-medium">{m.staff ? (m.author || t('rp.staff', 'Staff')) : (m.author || t('rp.you', 'You'))}</span>
               <span>· {new Date(m.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
             </div>
@@ -141,7 +141,7 @@ export function ReportJoin() {
     <div className="max-w-md mx-auto px-4 py-16">
       <Card className="p-6 text-center">
         {!user ? <>
-          <Lock size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
+          <Lock size={28} className="mx-auto text-[var(--accent-ink)] mb-3" />
           <h1 className="text-lg font-semibold">{t('rj.signin.t', 'Sign in to join')}</h1>
           <p className="text-sm text-[var(--muted)] mt-1 mb-4">{t('rj.signin.s', 'You need an account to join this conversation.')}</p>
           <Link to={`/auth?next=${encodeURIComponent(location.pathname)}`}><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
@@ -151,7 +151,7 @@ export function ReportJoin() {
             <h1 className="text-lg font-semibold">{t('rj.cant', 'Can’t join')}</h1>
             <p className="text-sm text-[var(--muted)] mt-1">{ERR[state.error] || ERR.invalid_invite}</p>
           </> : <>
-            <MessageSquare size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
+            <MessageSquare size={28} className="mx-auto text-[var(--accent-ink)] mb-3" />
             <h1 className="text-lg font-semibold">{t('rj.title', 'Join this conversation')}</h1>
             <p className="text-sm text-[var(--muted)] mt-1 mb-4">{state.preview?.report?.label ? t('rj.about', 'About “{n}”.').replace('{n}', state.preview.report.label) : t('rj.support', 'A support conversation.')}</p>
             <Button variant="primary" onClick={join} disabled={joining}>{joining ? <Spinner /> : t('rj.join', 'Join conversation')}</Button>
@@ -197,7 +197,7 @@ export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
             the place for it. The full form knows the target already. */}
         <p className="text-[11px] text-[var(--muted)]">
           {t('rp.rights', 'Copyright, trademark, privacy or illegal content?')}{' '}
-          <Link to={`/report?${new URLSearchParams({ type: targetType, id: targetId || '', label: targetLabel || '' }).toString()}`} className="text-[var(--primary-2)] hover:underline" onClick={onClose}>{t('rp.rights.go', 'Use the notice form')}</Link>
+          <Link to={`/report?${new URLSearchParams({ type: targetType, id: targetId || '', label: targetLabel || '' }).toString()}`} className="text-[var(--accent-ink)] hover:underline" onClick={onClose}>{t('rp.rights.go', 'Use the notice form')}</Link>
         </p>
       </div>
     </Modal>

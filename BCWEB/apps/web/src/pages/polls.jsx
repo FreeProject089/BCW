@@ -253,7 +253,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                         onClick={() => set(q.id, n)}
                         title={String(n)}
                         className={q.config.style === 'stars'
-                          ? `text-xl leading-none transition-colors ${on ? 'text-[var(--primary)]' : 'text-[var(--faint)]'}`
+                          ? `text-xl leading-none transition-colors ${on ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`
                           : `px-2.5 py-1 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] tint-accent' : 'border-[var(--line)] hover:panel'}`}>
                         {q.config.style === 'stars' ? '★' : n}
                       </button>
@@ -349,7 +349,7 @@ export function PollTeaser({ poll }) {
       className="card p-4 flex flex-col gap-2 h-full hover:border-[var(--line-strong)] transition group"
     >
       <div className="flex items-start gap-2">
-        <BarChart3 size={15} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
+        <BarChart3 size={15} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
         <span className="font-semibold text-[14px] leading-snug flex-1 min-w-0">{poll.question}</span>
         {answered && <Check size={14} className="text-[var(--success)] shrink-0 mt-0.5" aria-label={t('poll.t.done', 'You answered this')} />}
       </div>
@@ -362,7 +362,7 @@ export function PollTeaser({ poll }) {
         {!poll.open && <Badge>{t('poll.closed', 'Closed')}</Badge>}
         {poll.open && poll.audience === 'users' && <Badge tone="primary"><Users size={10} /> {t('poll.members', 'Members')}</Badge>}
         {count !== null && <span className="tabular-nums">{t('poll.t.answers', '{n} answers').replace('{n}', String(count))}</span>}
-        <span className="ms-auto text-[var(--primary-2)] opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-0.5">
+        <span className="ms-auto text-[var(--accent-ink)] opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-0.5">
           {answered || !poll.open ? t('poll.t.see', 'See results') : t('poll.t.answer', 'Answer')} <ArrowRight size={11} />
         </span>
       </div>
@@ -413,7 +413,7 @@ export function PollCard({ poll: initial, onChange }) {
   return (
     <Card className="p-5">
       <div className="flex items-start gap-2">
-        <BarChart3 size={16} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
+        <BarChart3 size={16} className="text-[var(--accent-ink)] mt-0.5 shrink-0" />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[15px]">{poll.question}</div>
           {/* Markdown, not plain text — so a poll can show the thing it is asking about.
@@ -645,7 +645,7 @@ export default function PollsPage() {
               <button key={id} type="button" onClick={() => setFilter(id)} disabled={!counts[id] && filter !== id}
                 className={`px-2.5 py-1 rounded-full text-[12px] border transition ${
                   filter === id
-                    ? 'border-[var(--primary-2)] tint-accent text-[var(--primary-2)]'
+                    ? 'border-[var(--primary-2)] tint-accent text-[var(--accent-ink)]'
                     : counts[id]
                       ? 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'
                       : 'border-[var(--line)] text-[var(--faint)] opacity-50 cursor-default'
@@ -735,7 +735,7 @@ export function SinglePollPage() {
           sub={t('poll.one.gone.s', 'It may have been removed, or the link may be missing the part after ?k= — that part is what opens an unlisted poll, and it is easy to lose when a link is pasted.')}
         />
         <div className="text-center mt-4">
-          <Link to="/polls" className="text-sm text-[var(--primary-2)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
+          <Link to="/polls" className="text-sm text-[var(--accent-ink)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
         </div>
       </div>
     );
@@ -750,7 +750,7 @@ export function SinglePollPage() {
         </p>
       )}
       <div className="text-center mt-4">
-        <Link to="/polls" className="text-sm text-[var(--primary-2)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
+        <Link to="/polls" className="text-sm text-[var(--accent-ink)] hover:underline">{t('poll.one.all', 'See the polls that are open')}</Link>
       </div>
     </div>
   );

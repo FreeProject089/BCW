@@ -26,7 +26,7 @@ const PROFILE_TABS = [
 ];
 
 function SectionLabel({ icon: Ico, children }) {
-  return <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]"><Ico size={13} className="text-[var(--primary-2)]" /> {children}</div>;
+  return <div className="flex items-center gap-2 mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--faint)]"><Ico size={13} className="text-[var(--accent-ink)]" /> {children}</div>;
 }
 
 export default function Profile() {
@@ -111,7 +111,7 @@ export default function Profile() {
           <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={120} className="mx-auto" />
           <div className="font-semibold mt-3">{form.displayName || user.displayName}</div>
           {user.bcId && <button onClick={() => { navigator.clipboard?.writeText(user.bcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }}
-            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id, click to copy')}>
+            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id, click to copy')}>
             <Fingerprint size={11} /> {user.bcId} <Copy size={10} /></button>}
           <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
 
@@ -198,7 +198,7 @@ export default function Profile() {
           <Card className="p-5 space-y-3 mt-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
-                <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('prof.visibility', 'Profile visibility')}</div>
+                <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--accent-ink)]" /> {t('prof.visibility', 'Profile visibility')}</div>
                 <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'Public shows your name, badges, join date and public repos, never your email. Private: only you and staff.')}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -228,7 +228,7 @@ export default function Profile() {
 
           {/* Badges earned — shown next to your name across the site. */}
           {user.badges?.length > 0 && <Card className="p-5 mt-4">
-            <div className="text-sm font-semibold mb-3 flex items-center gap-2"><BadgeCheck size={15} className="text-[var(--primary-2)]" /> {t('prof.badges', 'Your badges')}</div>
+            <div className="text-sm font-semibold mb-3 flex items-center gap-2"><BadgeCheck size={15} className="text-[var(--accent-ink)]" /> {t('prof.badges', 'Your badges')}</div>
             <div className="flex flex-wrap gap-2">
               {user.badges.map((ub) => (
                 <span key={ub.badge.id} className="inline-flex items-center gap-1.5 text-sm rounded-lg px-2.5 py-1.5 border border-[var(--line)]" style={{ background: `color-mix(in srgb, ${ub.badge.color} 10%, transparent)` }} title={ub.badge.description}>
@@ -246,7 +246,7 @@ export default function Profile() {
           <TwoFactorCard />
           <SignInMethods />
           <Card className="p-5">
-            <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.changepw', 'Change password')}</div>
+            <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--accent-ink)]" /> {t('prof.changepw', 'Change password')}</div>
             <p className="text-xs text-[var(--muted)] mb-3">{t('prof.changepw.d', 'Use a strong password you don’t reuse anywhere else.')}</p>
             <div className="grid sm:grid-cols-3 gap-3">
               <Field label={t('prof.currentpw', 'Current password')}><Input type="password" autoComplete="current-password" value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} aria-invalid={msg === 'pwwrong' || undefined} /></Field>
@@ -287,12 +287,12 @@ export default function Profile() {
               duplicating a single toggle here. */}
           <Link to="/settings" className="block">
             <Card className="p-5 flex items-center gap-3 hover:border-[var(--ring)] transition group">
-              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><SettingsIcon size={17} className="text-[var(--primary-2)]" /></span>
+              <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><SettingsIcon size={17} className="text-[var(--accent-ink)]" /></span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold">{t('prof.settings', 'Settings')}</div>
                 <div className="text-xs text-[var(--muted)]">{t('prof.settings.d', 'Theme, language, intro animation, translucency & cookies.')}</div>
               </div>
-              <ArrowRight size={16} className="text-[var(--faint)] group-hover:text-[var(--primary-2)] group-hover:translate-x-0.5 transition shrink-0" />
+              <ArrowRight size={16} className="text-[var(--faint)] group-hover:text-[var(--accent-ink)] group-hover:translate-x-0.5 transition shrink-0" />
             </Card>
           </Link>
           </div>}
@@ -422,7 +422,7 @@ export function TransfersCard({ className = '' }) {
   return (
     <Card className={`p-5 ${className}`} id="transfers">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <ArrowRight size={15} className="text-[var(--primary-2)]" /> {t('tr.title', 'Ownership transfers')}
+        <ArrowRight size={15} className="text-[var(--accent-ink)]" /> {t('tr.title', 'Ownership transfers')}
       </div>
       <p className="text-[12px] text-[var(--muted)]">
         {t('tr.sub', 'Nothing moves until it is accepted. Taking something on means taking on its storage and whatever is reported about it.')}
@@ -665,7 +665,7 @@ function CloseAccountCard() {
               <div key={b.kind} className="flex items-center gap-2 text-[13px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-warning shrink-0" />
                 <span className="flex-1">{label(b)}</span>
-                <Link to={b.where} className="text-[var(--primary-2)] hover:underline text-xs">{t('acl.goto', 'Go there')}</Link>
+                <Link to={b.where} className="text-[var(--accent-ink)] hover:underline text-xs">{t('acl.goto', 'Go there')}</Link>
               </div>
             ))}
           </div>
@@ -703,7 +703,7 @@ function AccountInfoCard({ user }) {
   const rows = [
     { icon: User, label: t('prof.info.name', 'Display name'), value: user.displayName },
     { icon: Mail, label: t('prof.info.email', 'Email'), value: showEmail ? user.email : maskEmail(user.email),
-      action: <button onClick={() => setShowEmail((v) => !v)} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')} aria-label={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')}>{showEmail ? <EyeOff size={13} /> : <Eye size={13} />}</button> },
+      action: <button onClick={() => setShowEmail((v) => !v)} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')} aria-label={showEmail ? t('prof.hide', 'Hide') : t('prof.show', 'Show')}>{showEmail ? <EyeOff size={13} /> : <Eye size={13} />}</button> },
     { icon: Shield, label: t('prof.info.role', 'Role'), value: <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'}>{user.role}</Badge> },
     { icon: CalendarDays, label: t('prof.info.since', 'Member since'), value: new Date(user.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) },
   ];
@@ -712,7 +712,7 @@ function AccountInfoCard({ user }) {
       <div className="grid sm:grid-cols-2 gap-x-6 gap-y-4">
         {rows.map((r, i) => (
           <div key={i} className="flex items-center gap-3 min-w-0">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><r.icon size={16} className="text-[var(--primary-2)]" /></span>
+            <span className="grid place-items-center w-9 h-9 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><r.icon size={16} className="text-[var(--accent-ink)]" /></span>
             <div className="min-w-0 flex-1">
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{r.label}</div>
               <div className="text-sm font-medium truncate flex items-center gap-2">{r.value}{r.action}</div>
@@ -815,7 +815,7 @@ function SessionsCard() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <Monitor size={15} className="text-[var(--primary-2)]" /> {t('prof.sess.title', 'Signed-in devices')}
+        <Monitor size={15} className="text-[var(--accent-ink)]" /> {t('prof.sess.title', 'Signed-in devices')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('prof.sess.sub', 'Do not recognise one? Sign it out, it stops working immediately.')}
@@ -878,7 +878,7 @@ function SessionsCard() {
                 ? 'border-[var(--primary-2)] bg-[var(--surface-2)]'
                 : 'border-[var(--line)]')}
             >
-              <div className={'shrink-0 ' + (sess.current ? 'text-[var(--primary-2)]' : 'text-[var(--muted)]')}>
+              <div className={'shrink-0 ' + (sess.current ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]')}>
                 <DeviceIcon kind={sess.device} />
               </div>
               <div className="min-w-0 flex-1">
@@ -946,7 +946,7 @@ function DevPointerCard() {
   return (
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <KeyRound size={15} className="text-[var(--primary-2)]" /> {t('prof.dev.title', 'API keys & apps')}
+        <KeyRound size={15} className="text-[var(--accent-ink)]" /> {t('prof.dev.title', 'API keys & apps')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('prof.dev.s', 'Your API keys and registered apps live in the developer area, beside the console that tests them.')}
@@ -1031,7 +1031,7 @@ function TwoFactorCard() {
   if (!status) return null;
   return (
     <div ref={cardRef} className="scroll-mt-24"><Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--primary-2)]" /> {t('prof.2fa.title', 'Two-factor authentication')} {status.enabled && <Badge tone="green">{t('prof.2fa.on', 'On')}</Badge>}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--accent-ink)]" /> {t('prof.2fa.title', 'Two-factor authentication')} {status.enabled && <Badge tone="green">{t('prof.2fa.on', 'On')}</Badge>}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('prof.2fa.sub', 'Adds a 6-digit code from an authenticator app on top of your password.')}{status.canControlServer ? ` ${t('prof.2fa.required', 'Required to use the server-control tools.')}` : ''}</p>
 
       {recoveryCodes ? (
@@ -1154,7 +1154,7 @@ function CreatorLinks() {
   const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('cid.title', 'Creator IDs')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--accent-ink)]" /> {t('cid.title', 'Creator IDs')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('cl.desc', "Link your BMM creator id(s). In BMM, generate a pairing code, then paste it here. One creator id links to one account; linked ids can't be unlinked for 2 weeks.")}</p>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (
@@ -1268,7 +1268,7 @@ function DiscordLinks() {
   const visible = links.filter((l) => !pending.has(l.id));
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><DiscordIcon size={15} className="text-[var(--primary-2)]" /> Discord</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><DiscordIcon size={15} className="text-[var(--accent-ink)]" /> Discord</div>
       {prov?.discord && (
         <div className="rounded-xl border border-[var(--line)] panel p-3 mb-3 flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[12rem]">
@@ -1334,11 +1334,11 @@ function SignInMethods() {
   };
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--primary-2)]" /> {t('sim.title', 'Sign-in methods')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><KeyRound size={15} className="text-[var(--accent-ink)]" /> {t('sim.title', 'Sign-in methods')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('sim.desc', 'Every way into this account. Link several so losing one never locks you out.')}</p>
       <div className="space-y-2">
         <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 flex items-center gap-2.5">
-          <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Mail size={17} className="text-[var(--primary-2)]" /></span>
+          <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Mail size={17} className="text-[var(--accent-ink)]" /></span>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm">{t('sim.email', 'E-mail + password')}</div>
             <div className="text-[11px] text-[var(--faint)]">{data.hasPassword ? t('sim.pwset', 'Password set') : t('sim.nopw', 'No password yet, set one below to sign in without a provider.')}</div>
@@ -1422,7 +1422,7 @@ function SocialConnections() {
   };
   return (
     <Card className="p-5">
-      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--primary-2)]" /> {t('sc.title', 'Social accounts')}</div>
+      <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Link2 size={15} className="text-[var(--accent-ink)]" /> {t('sc.title', 'Social accounts')}</div>
       <div className="space-y-2">
         {configured.map(([k, Ico, label, color, kind]) => { const c = linked[k]; return (
           <div key={k} className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5">
@@ -1430,7 +1430,7 @@ function SocialConnections() {
               <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Ico size={17} style={{ color }} /></span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm">{label}</div>
-                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--primary)] truncate block" title={c.handle}>{c.handle}</a>
+                {c ? <a href={c.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--faint)] hover:text-[var(--accent-ink)] truncate block" title={c.handle}>{c.handle}</a>
                   : <div className="text-[11px] text-[var(--faint)]">{t('sc.notlinked', 'Not linked')}</div>}
               </div>
               {c ? <button onClick={() => disconnect(k)} className="text-[var(--faint)] hover:text-error p-1" title={t('sc.disconnect', 'Disconnect')}><X size={16} /></button>

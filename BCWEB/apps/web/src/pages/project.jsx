@@ -180,7 +180,7 @@ function DownloadMenu({ downloads = [], children, pkey }) {
             return (
               <a key={`${d.label}:${d.url}`} href={d.url} download rel="noreferrer" role="menuitem" onClick={() => { setOpen(false); fireDl(); }}
                 className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-[var(--text)] hover:bg-[var(--surface-2)] transition-colors">
-                <span className={`shrink-0 ${isPrimary ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
+                <span className={`shrink-0 ${isPrimary ? 'text-[var(--accent-ink)]' : 'text-[var(--muted)]'}`}>{dlIcon(d, 15)}</span>
                 <span className="min-w-0 flex-1 truncate" title={d.label}>{d.label}</span>
                 {/* A dot, not the word "default": the label is often already long, and the
                     row used to end in an all-caps English word in the French UI. */}
@@ -237,7 +237,7 @@ function VersionHistoryModal({ endpoint, currentVersion, onClose }) {
           {loadingSel ? <div className="p-6 text-center"><Spinner /></div>
             : !sel ? <div className="text-sm text-[var(--faint)] grid place-items-center h-full py-8"><span className="flex items-center gap-2"><Clock size={15} /> {t('ver.pick', 'Pick a version to see it as it was.')}</span></div>
             : <div className="space-y-3">
-                <div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-lg">{cfg.name || ''} <span className="text-[var(--primary-2)]">v{sel.version}</span></h3>{versions?.find((x) => x.version === sel.version)?.current && <Badge tone="primary">{t('ver.current', 'current')}</Badge>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><h3 className="font-bold text-lg">{cfg.name || ''} <span className="text-[var(--accent-ink)]">v{sel.version}</span></h3>{versions?.find((x) => x.version === sel.version)?.current && <Badge tone="primary">{t('ver.current', 'current')}</Badge>}</div>
                 {notes && <p className="text-sm text-[var(--muted)]">{notes}</p>}
                 {Array.isArray(cfg.downloads) && cfg.downloads.some((d) => d.url)
                   ? <div className="flex items-center gap-2 flex-wrap pt-1"><DownloadMenu downloads={cfg.downloads} /></div>
@@ -281,7 +281,7 @@ function CountdownBlock({ announcement, done, cd, bare }) {
   return (
     <div className={`max-w-2xl mx-auto text-center ${bare ? 'py-4' : 'py-10'}`}>
       {announcement.logo && <img src={announcement.logo} alt="" className="w-20 h-20 rounded-2xl object-contain mx-auto mb-5 shadow-lg bg-[var(--surface-2)] border border-[var(--line)] p-1.5" />}
-      {!bare && <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--primary-2)] mb-2"><Sparkles size={13} /> {t('prj.comingsoon', "Coming soon")}</div>}
+      {!bare && <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--accent-ink)] mb-2"><Sparkles size={13} /> {t('prj.comingsoon', "Coming soon")}</div>}
       {(announcement.title || !bare) && <h1 className={`${bare ? 'text-2xl' : 'text-3xl md:text-4xl'} font-extrabold tracking-tight mb-4`}>{announcement.title || 'Something big is coming'}</h1>}
       {!done ? (
         <div className="flex items-center justify-center gap-2 md:gap-4 my-8">
@@ -588,7 +588,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
       {!!weeks.length && (
         <Card className="p-5 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span>{a.source?.branch && <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]" title={t('act.branch.h', 'This project pins a branch; the activity is read from its commits (a rolling year).')}><GitBranch size={10} /> {a.source.branch}</span>}{a.source?.imported && <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--muted)]" title={t('act.imported.h', 'Commits read from a git log the maintainers exported ({d}), the whole history, not just what GitHub’s statistics cover.').replace('{d}', a.source.importedAt ? new Date(a.source.importedAt).toLocaleDateString() : '')}><GitBranch size={10} /> {t('act.imported', 'full history')}{a.source.importedFrom ? ` · ${a.source.importedFrom}` : ''}</span>}</div>
+            <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span>{a.source?.branch && <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--accent-ink)]" title={t('act.branch.h', 'This project pins a branch; the activity is read from its commits (a rolling year).')}><GitBranch size={10} /> {a.source.branch}</span>}{a.source?.imported && <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--muted)]" title={t('act.imported.h', 'Commits read from a git log the maintainers exported ({d}), the whole history, not just what GitHub’s statistics cover.').replace('{d}', a.source.importedAt ? new Date(a.source.importedAt).toLocaleDateString() : '')}><GitBranch size={10} /> {t('act.imported', 'full history')}{a.source.importedFrom ? ` · ${a.source.importedFrom}` : ''}</span>}</div>
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
               {t('act.less', 'Less')}
               {[0, 2, 4, 8, 13].map((n) => <span key={n} className="w-3 h-3 rounded-sm border border-[var(--line)]" style={{ backgroundColor: heatColor(n) }} />)}
@@ -614,7 +614,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
               <b className="text-[var(--text)]">{selDay.date}</b> — {selDay.count} {t('act.commitsl', 'commit(s)')}
               {githubUrl && /github\.com\//.test(githubUrl) && (
                 <a href={`${githubUrl.replace(/\/+$/, '')}/commits${a.source?.branch ? `/${encodeURIComponent(a.source.branch)}` : ''}?since=${selDay.date}&until=${selDay.date}`} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline">
+                  className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline">
                   <Github size={11} /> {t('act.viewday', 'View that day on GitHub')}
                 </a>
               )}
@@ -658,7 +658,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
                   {c.avatar
                     ? <img src={c.avatar} alt="" loading="lazy" className="w-7 h-7 rounded-full shrink-0 border border-[var(--line)] bg-[var(--surface-2)]" />
                     : <span className="w-7 h-7 rounded-full shrink-0 grid place-items-center bg-[var(--surface-2)] border border-[var(--line)] text-[11px] font-semibold text-[var(--muted)]">{String(c.name || '?').slice(0, 1).toUpperCase()}</span>}
-                  <Name {...nameProps} className={`w-28 sm:w-32 shrink-0 truncate text-sm ${c.url ? 'hover:text-[var(--primary-2)] hover:underline' : ''}`} title={c.name}>{c.name}</Name>
+                  <Name {...nameProps} className={`w-28 sm:w-32 shrink-0 truncate text-sm ${c.url ? 'hover:text-[var(--accent-ink)] hover:underline' : ''}`} title={c.name}>{c.name}</Name>
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden">
                     <div className="h-full rounded-full" style={{ width: `${(c.commits / maxContrib) * 100}%`, backgroundColor: 'var(--primary)' }} />
                   </div>
@@ -750,7 +750,7 @@ function FeaturedCard({ f, t }) {
           {f.title && <span className="font-semibold text-sm">{f.title}</span>}
         </div>
         {f.body && <div className="text-[13px] text-[var(--muted)] leading-relaxed prose-sm"><Markdown>{f.body}</Markdown></div>}
-        {embed?.type === 'link' && f.url && <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--primary-2)] hover:underline mt-2">{t('proj.feat.open', 'Open')} <ExternalLink size={11} /></a>}
+        {embed?.type === 'link' && f.url && <a href={f.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[var(--accent-ink)] hover:underline mt-2">{t('proj.feat.open', 'Open')} <ExternalLink size={11} /></a>}
       </div>
     </Card>
   );
@@ -846,7 +846,7 @@ function Overview({ c, pkey, progressUrl }) {
           part of the overview. */}
       {featured.length > 0 && (
         <div>
-          <h2 className="font-semibold mb-3 flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('proj.featured', 'Highlights')}</h2>
+          <h2 className="font-semibold mb-3 flex items-center gap-2"><Sparkles size={16} className="text-[var(--accent-ink)]" /> {t('proj.featured', 'Highlights')}</h2>
           <div className="grid sm:grid-cols-2 gap-4">
             {featured.map((f, i) => <FeaturedCard key={i} f={f} t={t} />)}
           </div>
@@ -899,7 +899,7 @@ function Releases({ pkey, releasesUrl }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><ScrollText size={16} className="text-[var(--primary-2)]" /> {t('proj.releases')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><ScrollText size={16} className="text-[var(--accent-ink)]" /> {t('proj.releases')}</h2>
         <span className="text-xs text-[var(--muted)]">{files.length} {lang === 'fr' ? 'note(s)' : 'note(s)'}</span>
       </div>
 
@@ -909,7 +909,7 @@ function Releases({ pkey, releasesUrl }) {
           return (
             <Card key={dir} className="p-0 overflow-hidden">
               <button onClick={() => toggle(dir)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--surface-2)] transition text-start">
-                <FolderGit2 size={14} className="text-[var(--primary-2)] shrink-0" />
+                <FolderGit2 size={14} className="text-[var(--accent-ink)] shrink-0" />
                 <span className="font-medium text-sm truncate" title={dir}>{dir}</span>
                 <Badge>{groups[dir].length}</Badge>
                 <ChevronDown size={16} className={`ms-auto shrink-0 text-[var(--faint)] transition-transform ${gclosed ? '-rotate-90' : ''}`} />
@@ -918,7 +918,7 @@ function Releases({ pkey, releasesUrl }) {
                 <div className="border-t border-[var(--line)] divide-y divide-[var(--line)]">
                   {groups[dir].map((f) => { const I = noteIcon(f.name); return (
                     <button key={f.path} onClick={() => setActive(f)} className="group w-full flex items-center gap-3 px-4 py-3 text-start hover:bg-[var(--surface-2)] transition">
-                      <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--bg-solid)] transition shrink-0"><I size={16} className="text-[var(--primary-2)]" /></span>
+                      <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] group-hover:bg-[var(--bg-solid)] transition shrink-0"><I size={16} className="text-[var(--accent-ink)]" /></span>
                       <span className="flex-1 min-w-0 text-sm font-medium truncate" title={f.name}>{f.name}</span>
                       <span className="text-xs text-[var(--muted)] flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">{lang === 'fr' ? 'Lire' : 'Read'} <ChevronRight size={13} /></span>
                     </button>
@@ -949,7 +949,7 @@ function MessageTicker({ messages }) {
   if (!messages.length) return null;
   return (
     <section>
-      <h2 className="font-semibold mb-3 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('proj.messages')}</h2>
+      <h2 className="font-semibold mb-3 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('proj.messages')}</h2>
       <Card className="p-8 text-center relative overflow-hidden min-h-[120px] grid place-items-center">
         <p key={i} className="anim-fade text-lg md:text-xl text-[var(--text)] max-w-2xl mx-auto leading-relaxed">“{messages[i].message}”</p>
         {messages.length > 1 && <div className="flex gap-1.5 justify-center mt-5">{messages.map((_, k) => <span key={k} className={`w-1.5 h-1.5 rounded-full ${k === i ? 'bg-[var(--primary)]' : 'bg-[var(--line-strong)]'}`} />)}</div>}
@@ -1023,17 +1023,17 @@ function Community({ c, communityUrl }) {
       <MessageTicker messages={messages} />
       {ordered.map(([cat, list]) => (
         <section key={cat}>
-          <h2 className="font-semibold mb-3 flex items-center gap-2"><Users size={16} className="text-[var(--primary-2)]" /> {CAT_META[cat]?.label || cat} <span className="text-sm font-normal text-[var(--faint)]">· {list.length}</span></h2>
+          <h2 className="font-semibold mb-3 flex items-center gap-2"><Users size={16} className="text-[var(--accent-ink)]" /> {CAT_META[cat]?.label || cat} <span className="text-sm font-normal text-[var(--faint)]">· {list.length}</span></h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {list.map((p, i) => (
               <Card key={i} hover className="p-5 group transition-all duration-200 hover:-translate-y-1">
                 <div className="flex items-center gap-3">
                   {p.pfp ? <img src={p.pfp} alt="" loading="lazy" className="w-12 h-12 rounded-full object-cover border border-[var(--line)] transition-transform duration-200 group-hover:scale-110 group-hover:border-[var(--primary)]" />
                     : <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center text-white font-bold transition-transform duration-200 group-hover:scale-110">{(p.name || '?')[0]}</div>}
-                  <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--primary-2)] transition-colors" title={p.name}>{p.name}</div><div className="text-xs text-[var(--primary-2)]">{p.role}</div></div>
+                  <div className="min-w-0"><div className="font-semibold truncate group-hover:text-[var(--accent-ink)] transition-colors" title={p.name}>{p.name}</div><div className="text-xs text-[var(--accent-ink)]">{p.role}</div></div>
                 </div>
                 {p.description && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.description}</p>}
-                {p.links && <div className="flex gap-2 mt-3">{Object.entries(p.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink }; return <a key={k} href={v} target="_blank" rel="noreferrer" className="text-[var(--muted)] hover:text-[var(--primary-2)]"><m.icon size={16} /></a>; })}</div>}
+                {p.links && <div className="flex gap-2 mt-3">{Object.entries(p.links).filter(([, v]) => v).map(([k, v]) => { const m = LINK_META[k] || { icon: ExternalLink }; return <a key={k} href={v} target="_blank" rel="noreferrer" className="text-[var(--muted)] hover:text-[var(--accent-ink)]"><m.icon size={16} /></a>; })}</div>}
               </Card>
             ))}
           </div>
@@ -1073,13 +1073,13 @@ function Legal({ c }) {
   return (
     <div className="max-w-2xl">
       {legacyLicense && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent">
-        <ShieldCheck size={20} className="text-[var(--primary-2)]" />
+        <ShieldCheck size={20} className="text-[var(--accent-ink)]" />
         <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {legacyLicense}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
       </Card>}
       <div className="grid sm:grid-cols-2 gap-3">
         {docs.map((d) => (
           <a key={d.title} href={d.url} target="_blank" rel="noreferrer">
-            <Card hover className="p-4 flex items-center gap-3 h-full"><d.icon size={18} className="text-[var(--primary-2)]" />
+            <Card hover className="p-4 flex items-center gap-3 h-full"><d.icon size={18} className="text-[var(--accent-ink)]" />
               <div className="flex-1 min-w-0"><div className="font-medium">{d.title}</div><div className="text-xs text-[var(--muted)]">{d.sub}</div></div>
               <ExternalLink size={15} className="text-[var(--faint)]" /></Card>
           </a>
@@ -1169,7 +1169,7 @@ function RequestListing() {
   return (
     <Card className="p-5 mt-6">
       <div className="flex items-start gap-3 flex-wrap">
-        <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] text-[var(--primary-2)] shrink-0">
+        <div className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] text-[var(--accent-ink)] shrink-0">
           <Sparkles size={18} />
         </div>
         <div className="min-w-0 flex-1">
@@ -1208,7 +1208,7 @@ function RequestListing() {
               <div className="flex flex-wrap gap-2 mb-3">
                 {[['open', true], ['closed', false]].map(([k, v]) => (
                   <button key={k} type="button" onClick={() => set({ isOpenSource: v, ownership: v ? f.ownership : 'owner' })}
-                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:b-primary'}`}>
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:b-primary'}`}>
                     {k === 'open' ? t('rl.src.open', 'Open source') : t('rl.src.closed', 'Closed source')}
                   </button>
                 ))}
@@ -1244,7 +1244,7 @@ function RequestListing() {
           {est && (
             <div className="mt-4 rounded-lg border border-[var(--line)] panel p-3 text-xs">
               <div className="flex items-center gap-2 flex-wrap">
-                <Clock size={13} className="text-[var(--primary-2)]" />
+                <Clock size={13} className="text-[var(--accent-ink)]" />
                 <span className="text-[var(--muted)]">{t('rl.est.free', 'Typical wait: {r}').replace('{r}', `${dur(est.freeLowH)}\u2013${dur(est.freeHighH)}`)}</span>
                 {cfg.paidEnabled && <span className="text-[var(--muted)]">\u00b7 {t('rl.est.paid', 'paid (priority): {r}').replace('{r}', `${dur(est.paidLowH)}\u2013${dur(est.paidHighH)}`)}</span>}
               </div>
@@ -1256,7 +1256,7 @@ function RequestListing() {
           <div className="mt-3 space-y-1.5">
             <label className="flex items-start gap-2 text-xs cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={tos} onChange={(e) => setTos(e.target.checked)} />
-              <span>{t('rl.tos.pre', 'I have read and accept the')} <Link to="/legal/submissions" target="_blank" className="text-[var(--primary-2)] underline">{t('rl.tos.link', 'Submission Terms')}</Link>{t('rl.tos.post', ', and I confirm my declarations above are accurate.')}</span>
+              <span>{t('rl.tos.pre', 'I have read and accept the')} <Link to="/legal/submissions" target="_blank" className="text-[var(--accent-ink)] underline">{t('rl.tos.link', 'Submission Terms')}</Link>{t('rl.tos.post', ', and I confirm my declarations above are accurate.')}</span>
             </label>
             {cfg.paidEnabled && (
               <label className="flex items-start gap-2 text-xs cursor-pointer">
@@ -1306,11 +1306,11 @@ export function OtherProjects() {
                 <Card hover className="p-5 h-full">
                   <div className="flex items-center gap-3">
                     {p.icon
-                      ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
+                      ? <div className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-1.5 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={28} rounded={8} /></div>
                       : <div className="grid place-items-center w-11 h-11 rounded-xl bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-sm shrink-0">{p.short}</div>}
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{p.isAnnouncing ? (p.announceTitle || p.name) : p.name}</div>
-                      {p.isAnnouncing && <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', "Coming soon")}</div>}
+                      {p.isAnnouncing && <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1"><Clock size={11} /> {t('prj.comingsoon', "Coming soon")}</div>}
                     </div>
                   </div>
                   {p.tagline && <p className="text-sm text-[var(--muted)] mt-3 line-clamp-3">{p.tagline}</p>}
@@ -1329,7 +1329,7 @@ function ShowcaseCommunity({ cfg, c, slug }) {
   const { t } = useI18n();
   if (cfg.community?.url) return (
     <Card className="p-8 text-center">
-      <Users size={28} className="mx-auto text-[var(--primary-2)] mb-3" />
+      <Users size={28} className="mx-auto text-[var(--accent-ink)] mb-3" />
       <div className="font-semibold mb-4">{t('proj.community')}</div>
       <a href={cfg.community.url} target="_blank" rel="noreferrer"><Button variant="primary"><ExternalLink size={15} /> {t('prj.opencommunity', "Open community")}</Button></a>
     </Card>
@@ -1349,7 +1349,7 @@ function ShowcaseLegal({ legal, lang }) {
         const Ic = LEGAL_ICONS[card.icon] || ShieldCheck;
         const inner = (
           <Card hover={!!card.url} className="p-4 flex items-start gap-3 h-full">
-            <Ic size={18} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+            <Ic size={18} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
             <div className="flex-1 min-w-0"><div className="font-medium">{pick(card.title)}</div>{card.text && <div className="text-xs text-[var(--muted)] mt-1 leading-relaxed">{pick(card.text)}</div>}</div>
             {card.url && <ExternalLink size={15} className="text-[var(--faint)] shrink-0" />}
           </Card>
@@ -1432,7 +1432,7 @@ export function ShowcaseProjectPage({ preview = null }) {
     <div>
       <div className="flex flex-col md:flex-row md:items-center gap-5 mb-8">
         {proj.icon
-          ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--primary-2)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
+          ? <div className="grid place-items-center w-16 h-16 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0 p-2 text-[var(--accent-ink)]"><ShowcaseIcon icon={proj.icon} size={44} rounded={10} /></div>
           : <div className="grid place-items-center w-16 h-16 rounded-2xl bg-gradient-to-br from-brand to-brand-2 shrink-0"><span className="text-xl font-extrabold text-white">{proj.short}</span></div>}
         <div className="flex-1"><div className="flex items-center gap-3 flex-wrap"><h1 className="text-3xl font-extrabold">{proj.name}</h1>{cfg.version && <button onClick={() => setShowVersions(true)} title={t('ver.open', 'Version history')} className="press-sm"><Badge tone="primary"><Clock size={11} /> v{cfg.version}</Badge></button>}</div>{cfg.tagline && <p className="text-[var(--muted)] mt-1">{cfg.tagline}</p>}</div>
         <div className="flex flex-wrap items-start gap-2">
@@ -1447,7 +1447,7 @@ export function ShowcaseProjectPage({ preview = null }) {
       <div className="flex gap-2 mb-6 border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         {tabs.map(([id, label, Icon]) => (
           <button key={id} onClick={() => setSp((p) => { const n = new URLSearchParams(p); n.set('tab', id); return n; })}
-            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${activeTab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'} ${id === 'countdown' ? 'text-[var(--primary-2)]' : ''}`}>
+            className={`flex items-center gap-1.5 px-3 py-2.5 text-sm border-b-2 -mb-px whitespace-nowrap ${activeTab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'} ${id === 'countdown' ? 'text-[var(--accent-ink)]' : ''}`}>
             {/* Not every tab has an icon: a custom tab is a title and a B.MD body, and it
                 passes null here. React throws on a null element type — "Element type is
                 invalid" — so one custom tab took the whole page down, which is the one thing
@@ -1498,7 +1498,7 @@ function ProjectBlogTab({ project, page }) {
       {posts.map((p) => { const v = pick(p); return (
         <Link key={p.id} to={`/blog/${p.slug}`}>
           <Card hover className="overflow-hidden h-full flex flex-col">
-            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center"><Newspaper size={32} className="text-[var(--primary-2)] opacity-80" /></div>}
+            {p.cover ? <img src={thumb(p.cover, 512)} alt="" className="w-full h-40 object-cover" /> : <div className="w-full h-40 bg-[var(--surface-2)] border border-[var(--line)] grid place-items-center"><Newspaper size={32} className="text-[var(--accent-ink)] opacity-80" /></div>}
             <div className="p-4 flex-1 flex flex-col">
               <div className="text-xs text-[var(--faint)]">{fmt(p.publishedAt)}</div>
               <div className="font-bold mt-1 leading-snug">{v.title}</div>
@@ -1580,10 +1580,10 @@ function Marketplace({ pkey, products = [], onChanged }) {
         return (
           <Card key={pr.id} className="p-4 flex flex-col">
             <div className="flex items-start gap-2 mb-1">
-              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={16} /> : <ShoppingBag size={16} />}</span>
+              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]">{pr.deliveryKind.startsWith('key') ? <Key size={16} /> : <ShoppingBag size={16} />}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold leading-tight">{pr.name}</div>
-                <div className="text-sm font-bold text-[var(--primary-2)] tabular-nums">
+                <div className="text-sm font-bold text-[var(--accent-ink)] tabular-nums">
                   {money(pr)}{every(pr) && <span className="font-normal text-[var(--muted)]"> {every(pr)}</span>}
                 </div>
               </div>
@@ -1595,7 +1595,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
             {(pr.redeemNote || pr.redeemUrl) && (
               <div className="text-[11px] text-[var(--muted)] mb-3 rounded-lg border border-[var(--line)] p-2 space-y-1">
                 {pr.redeemNote && <div className="whitespace-pre-wrap break-words">{pr.redeemNote}</div>}
-                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
+                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[var(--accent-ink)] hover:underline break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
               </div>
             )}
             {d ? (
@@ -1617,7 +1617,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
                 {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue, contact the project.')}</div>}
                 {/* Repeated here on purpose. This is the moment somebody is holding a key and
                     wondering what to do with it, and the copy above has scrolled away. */}
-                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
+                {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}
               </div>
             ) : (
               <Button variant="primary" className="mt-auto justify-center" disabled={busy === pr.id || soldOut} onClick={() => buy(pr)}>

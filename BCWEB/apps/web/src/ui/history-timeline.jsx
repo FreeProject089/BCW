@@ -22,13 +22,13 @@ import { useI18n } from '../i18n.jsx';
  *  than rendering nothing — a new action type must never make a row invisible. */
 const LOOK = {
   'file.add': [FilePlus2, 'text-success'],
-  'file.update': [UploadCloud, 'text-[var(--primary-2)]'],
+  'file.update': [UploadCloud, 'text-[var(--accent-ink)]'],
   'file.remove': [Trash2, 'text-error'],
   settings: [Settings2, 'text-[var(--muted)]'],
   access: [KeyRound, 'text-warning'],
   publish: [Wifi, 'text-success'],
   unpublish: [WifiOff, 'text-[var(--faint)]'],
-  domain: [Globe, 'text-[var(--primary-2)]'],
+  domain: [Globe, 'text-[var(--accent-ink)]'],
   created: [FilePlus2, 'text-success'],
 };
 

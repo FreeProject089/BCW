@@ -98,7 +98,7 @@ export function DocSwitcher({ options, current, label, className = '' }) {
               }`}>
               <span className="mt-0.5 shrink-0">{o.icon}</span>
               <span className="flex-1 min-w-0 break-words">{o.label}</span>
-              {o.key === current && <Check size={14} className="text-[var(--primary-2)] shrink-0 mt-0.5" />}
+              {o.key === current && <Check size={14} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />}
             </Link>
           ))}
         </div>

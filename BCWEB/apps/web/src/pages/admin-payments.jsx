@@ -59,7 +59,7 @@ export function AdminPendingPayments() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><CreditCard size={16} className="text-[var(--primary-2)]" /> {t('adpay.title', 'Pending payments')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><CreditCard size={16} className="text-[var(--accent-ink)]" /> {t('adpay.title', 'Pending payments')}</h2>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={reload} title={t('common.refresh', 'Refresh')}><RefreshCw size={13} /></Button>
           <Button size="sm" variant="primary" disabled={running} onClick={() => run(15)} title={t('adpay.run.h', 'Ask Stripe about every checkout older than 15 minutes and finish what the webhook missed.')}>{running ? <RefreshCw size={13} className="animate-spin" /> : <RefreshCw size={13} />} {t('adpay.run', 'Reconcile now')}</Button>

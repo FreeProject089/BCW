@@ -264,7 +264,7 @@ export default function CommandPalette() {
             <button data-active={i === active ? '1' : '0'}
               onMouseEnter={() => setActive(i)} onClick={() => run(it)}
               className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition ${i === active ? 'bg-[var(--surface-2)]' : ''}`}>
-              <span className="text-[var(--primary-2)] shrink-0">{icon(it.kind)}</span>
+              <span className="text-[var(--accent-ink)] shrink-0">{icon(it.kind)}</span>
               <span className="flex-1 min-w-0">
                 <span className="block text-sm text-[var(--text)] truncate" title={it.label}>{it.label}</span>
                 {it.kind === 'doc' && it.section && <span className="block text-[11px] text-[var(--faint)] truncate flex items-center gap-1"><Hash size={10} /> {it.section}</span>}

@@ -387,7 +387,7 @@ export function Admin() {
                  the badges. Content first, actions on their own measured row. */
               <Card key={sub.id} className="p-4">
                 <div className="flex items-start gap-3">
-                  <I size={18} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+                  <I size={18} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{sub.item?.name} {sub.item?.version && <span className="text-xs text-[var(--faint)] font-normal">v{sub.item.version}</span>}</div>
                     <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap">
@@ -621,7 +621,7 @@ function AdminCatalogCreator() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--accent-ink)]" /> {t('cc.title', 'Create an official catalog entry')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4" dangerouslySetInnerHTML={{ __html: t('cc.sub', 'Publishes instantly (no moderation) and is flagged <b>Official</b>. BSM offers presets; BMM offers apps, plugins and themes with a <code>bmm://</code> deeplink.') }} />
       {/* Which catalog you are filling — chosen once, not re-answered per entry. */}
       <div className="flex flex-wrap gap-2 mb-3">
@@ -631,7 +631,7 @@ function AdminCatalogCreator() {
           return (
             <button key={c.id} type="button" onClick={() => setCatId(c.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
-              <Icon size={14} className={on ? 'text-[var(--primary-2)]' : ''} /> {c.label}
+              <Icon size={14} className={on ? 'text-[var(--accent-ink)]' : ''} /> {c.label}
             </button>
           );
         })}
@@ -762,7 +762,7 @@ function AdminUsers() {
   const since = (d) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Users size={16} className="text-[var(--primary-2)]" /> {t('au.title', 'User search')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Users size={16} className="text-[var(--accent-ink)]" /> {t('au.title', 'User search')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('au.desc', 'Search by user id, Unique BC id (BC-XXXX-XXXX), display name, email, a linked creator id, or a linked Discord (username / id). Click a user to see full details.')}</p>
       <div className="flex gap-2 mb-5">
         <div className="relative flex-1">
@@ -807,7 +807,7 @@ function AdminUsers() {
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={u.displayName}>{u.displayName}</span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge>{u.status === 'banned' ? <Badge tone="red"><Ban size={10} /> {t('au.banned', 'banned')}</Badge> : u.status === 'suspended' ? <Badge tone="amber"><Clock size={10} /> {t('au.suspended', 'suspended')}</Badge> : null}</div>
                 <div className="text-xs text-[var(--faint)] truncate">{u.email} · {t('au.since', 'since')} {since(u.createdAt)}</div>
                 <div className="text-xs text-[var(--faint)] mt-0.5 font-mono truncate flex items-center gap-2">
-                  {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--primary-2)]"><Fingerprint size={11} /> {u.bcId}</span>}
+                  {u.bcId && <span className="inline-flex items-center gap-1 text-[var(--accent-ink)]"><Fingerprint size={11} /> {u.bcId}</span>}
                   <span className="truncate" title={u.id}>{u.id}</span>
                 </div>
                 {u.discord && (
@@ -912,7 +912,7 @@ function AdminExpenses({ mrrCents }) {
   return (
     <Card className="p-4 mb-3">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start mb-1">
-        <Wallet size={15} className="text-[var(--primary-2)]" />
+        <Wallet size={15} className="text-[var(--accent-ink)]" />
         <span className="font-medium text-sm">{t('ex.title', 'Running costs')}</span>
         <Badge>{rows.length}</Badge>
         <span className="ms-auto text-sm tabular-nums">
@@ -1051,7 +1051,7 @@ function AdminPlanUsers() {
   const emptyCopy = [t(`pu.empty.${tab}.t`, 'No customer here'), t(`pu.empty.${tab}.s`, 'Nobody is in this tab yet.')];
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--primary-2)]" /> {t('pu.title', 'Customers & revenue')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Receipt size={16} className="text-[var(--accent-ink)]" /> {t('pu.title', 'Customers & revenue')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('pu.desc', "What every customer currently has active: free-tier hosting, paid hosting/boosts, or expired/ended terms. Click a row to see the detail; click the user's name for their full profile.")}</p>
       <AdminExpenses mrrCents={mrr?.totalCents || 0} />
       {/* The cards render even with nothing to show. They used to be hidden until the
@@ -1066,8 +1066,8 @@ function AdminPlanUsers() {
           <>
             <div className="grid sm:grid-cols-3 gap-3 mb-2">
               <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><RefreshCw size={12} className="text-success" /> {t('pu.mrr', 'Monthly recurring revenue')}</div><div className="text-2xl font-bold text-success tabular-nums">{num(<>{mrrMoney(mrr?.totalCents || 0)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.mo', 'mo')}</span></>)}</div></Card>
-              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--primary-2)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{num(<>{mrrMoney(mrr?.annualCents || 0)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></>)}</div></Card>
-              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--primary-2)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{num(mrr?.subCount || 0)}</div></Card>
+              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><TrendingUp size={12} className="text-[var(--accent-ink)]" /> {t('pu.arr', 'Annualized (est.)')}</div><div className="text-2xl font-bold tabular-nums">{num(<>{mrrMoney(mrr?.annualCents || 0)}<span className="text-sm font-normal text-[var(--faint)]">/{t('pu.yr', 'yr')}</span></>)}</div></Card>
+              <Card className="p-4"><div className="text-xs text-[var(--faint)] flex items-center gap-1.5 mb-1"><CreditCard size={12} className="text-[var(--accent-ink)]" /> {t('pu.activesubs', 'Active subscriptions')}</div><div className="text-2xl font-bold tabular-nums">{num(mrr?.subCount || 0)}</div></Card>
             </div>
             {/* A zero you cannot trust is worse than no number: without this the card
                 reads a confident "$0.00/mo" whether nobody is paying or Stripe simply
@@ -1118,7 +1118,7 @@ function AdminPlanUsers() {
                 {/* A <button>, not a clickable <span>: it opens the user detail, and looked
                     like a link (hover:underline) while being unreachable by keyboard — no
                     focus, no Enter (WCAG 2.1.1 / 4.1.2). */}
-                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-start hover:underline hover:text-[var(--primary-2)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
+                <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0"><button type="button" onClick={(e) => { e.stopPropagation(); setDetail(u.id); }} className="text-start hover:underline hover:text-[var(--accent-ink)]" title={t('au.opendetail', 'Open this account’s details')}>{u.displayName}</button></span> <Badge tone={u.role === 'SUPERADMIN' ? 'red' : u.role === 'ADMIN' ? 'amber' : u.role === 'MOD' ? 'primary' : ''}>{u.role}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate" title={u.email}>{u.email}</div>
               </div>
               {tab === 'paying' && (u.totalSpentCents != null || u.mrrCents > 0) && (
@@ -1148,12 +1148,12 @@ function AdminPlanUsers() {
                   if (a.deleteAt) bits.push(`${t('pu.d.deletes', 'deletes')} ${since(a.deleteAt)}`);
                   return (
                     <div key={i} className="flex items-start gap-2.5 text-sm px-3 py-2 rounded-lg bg-[var(--surface-2)]">
-                      <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-success' : 'text-[var(--primary-2)]'}`} />
+                      <TypeIcon size={14} className={`shrink-0 mt-0.5 ${a.paid ? 'text-success' : 'text-[var(--accent-ink)]'}`} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate" title={a.name || a.label}>{a.name || a.label}</span>
                           <Badge tone={a.paid ? 'green' : ''}>{a.paid ? t('pu.d.paid', 'paid') : t('pu.d.free', 'free')}</Badge>
-                          {a.repoId && <a href={`/repo/${a.repoId}`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] hover:underline text-xs inline-flex items-center gap-0.5">{t('pu.d.open', 'open')} <ArrowUpRight size={11} /></a>}
+                          {a.repoId && <a href={`/repo/${a.repoId}`} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] hover:underline text-xs inline-flex items-center gap-0.5">{t('pu.d.open', 'open')} <ArrowUpRight size={11} /></a>}
                         </div>
                         {bits.length > 0 && <div className="text-xs text-[var(--faint)] mt-0.5">{bits.join(' · ')}</div>}
                         {a.spend && a.spend.spentCents > 0 && (
@@ -1162,7 +1162,7 @@ function AdminPlanUsers() {
                         {a.spend?.invoiceNos?.length > 0 && (
                           <div className="text-[11px] text-[var(--faint)] mt-0.5 flex items-center gap-1.5 flex-wrap"><Receipt size={10} className="shrink-0" /> {t('pu.d.invoices', 'Invoices:')}
                             {a.spend.invoiceNos.slice(-3).map((n) => (
-                              <button key={n} onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(n); toast.success(t('common.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary-2)]" title={t('common.copy', 'Copy')}>{n}</button>
+                              <button key={n} onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(n); toast.success(t('common.copied', 'Copied.')); }} className="font-mono hover:text-[var(--accent-ink)]" title={t('common.copy', 'Copy')}>{n}</button>
                             ))}
                             {a.spend.invoiceNos.length > 3 && <span>+{a.spend.invoiceNos.length - 3}</span>}
                           </div>
@@ -1228,8 +1228,8 @@ function PolicyAccountChips({ label, items, onAdd, onRemove }) {
             <div key={u.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
               <span className="truncate">{u.displayName}{u.discord && <span className="text-[var(--faint)]"> · Discord: {u.discord.username || u.discord.id}</span>}</span>
               <span className="flex gap-1 shrink-0">
-                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ BC</button>
-                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
+                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ BC</button>
+                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
           )) : <div className="text-[11px] text-[var(--faint)] px-1">{t('gap.noaccounts', 'No accounts found.')}</div>}
@@ -1324,7 +1324,7 @@ function SiteBansCard() {
                   <code className="font-mono flex-1 min-w-0 truncate" title={b.ip}>{b.ip}</code>
                   <span className="text-[var(--faint)]">{b.reason}</span>
                   <span className="text-[var(--faint)] tabular-nums">{Math.max(0, Math.round((b.until - Date.now()) / 60000))} min</span>
-                  <button type="button" onClick={() => lift(b.ip)} className="text-[var(--primary-2)] hover:underline">{t('bans.lift', 'Lift')}</button>
+                  <button type="button" onClick={() => lift(b.ip)} className="text-[var(--accent-ink)] hover:underline">{t('bans.lift', 'Lift')}</button>
                 </div>
               ))}
             </div>
@@ -1368,7 +1368,7 @@ function GlobalAccessPolicyCard() {
   return (
     <Card className="p-5 space-y-4">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Globe size={16} className="text-[var(--primary-2)]" /> {t('gap.title', 'Global access policy')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Globe size={16} className="text-[var(--accent-ink)]" /> {t('gap.title', 'Global access policy')}</h2>
         <p className="text-sm text-[var(--muted)]">{t('gap.desc', "Applied identically to every hosted repo, on top of each owner's own settings — a ban here blocks a client everywhere; the whitelist here is added to whichever repos require one.")}</p>
       </div>
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={policy.whitelistOnly} onChange={(e) => setPolicy({ ...policy, whitelistOnly: e.target.checked })} /> {t('gap.wlonly', 'Whitelist-only for ALL repos (forces every hosted repo into whitelist mode, site-wide)')}</label>
@@ -1435,13 +1435,13 @@ function AuditDetail({ id, onClose, onPickActor }) {
           </div>
           {row(t('sec.detail.when', 'When'), new Date(e.createdAt).toLocaleString())}
           {row(t('sec.detail.actor', 'Actor'), e.actor
-            ? <button onClick={() => { onPickActor?.(e.actor.id); onClose(); }} className="hover:text-[var(--primary-2)] text-start">
+            ? <button onClick={() => { onPickActor?.(e.actor.id); onClose(); }} className="hover:text-[var(--accent-ink)] text-start">
                 {e.actor.displayName} <span className="text-xs text-[var(--faint)]">({e.actor.role})</span>
               </button>
             : '—')}
           {row(t('sec.detail.detail', 'Detail'), e.detail || <span className="text-[var(--faint)]">—</span>)}
           {row('IP', e.ip || <span className="text-[var(--faint)]">—</span>, true)}
-          {row(t('sec.detail.id', 'Entry id'), <span className="inline-flex items-center gap-2">{e.id}<button onClick={() => copyText(e.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={12} /></button></span>, true)}
+          {row(t('sec.detail.id', 'Entry id'), <span className="inline-flex items-center gap-2">{e.id}<button onClick={() => copyText(e.id)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={12} /></button></span>, true)}
           {d.data.signed && <>
             {row(t('sec.detail.sig', 'Signature'), flag(d.data.hmacOk, t('sec.detail.sigok', 'Matches its contents'), t('sec.detail.signo', 'Contents altered'), t('sec.detail.legacy', 'Unsigned (pre-chain)')))}
             {row(t('sec.detail.link', 'Link to previous'), flag(d.data.linkOk, t('sec.detail.linkok', 'Continuous'), t('sec.detail.linkno', 'Broken'), t('sec.detail.linkfirst', 'First retained entry')))}
@@ -1573,7 +1573,7 @@ function AdminSecurity() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Lock size={16} className="text-[var(--primary-2)]" /> {t('sec.title', 'Security log')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Lock size={16} className="text-[var(--accent-ink)]" /> {t('sec.title', 'Security log')}</h2>
       <SettingsPointer className="mb-3" keys={['audit.maxDays', 'audit.maxEntries']}>{t('sec.ptr', 'How long this log is kept, and how many entries')}</SettingsPointer>
       <p className="text-sm text-[var(--muted)] mb-3">{t('sec.desc', 'Login attempts (success/fail, IP) and the admin action audit trail.')}</p>
 
@@ -1586,15 +1586,15 @@ function AdminSecurity() {
 
       <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <div className="seg-rail p-0.5 gap-0.5">
-          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'logins' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
-          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'audit' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
+          <button onClick={() => setTab('logins')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'logins' ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.logins', 'Login attempts')}</button>
+          <button onClick={() => setTab('audit')} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${tab === 'audit' ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('sec.tab.audit', 'Admin audit trail')}</button>
         </div>
         {/* The quick ranges are what the DATE fields are a refinement of, so they go dim
             rather than disappear once a range is typed — a control that vanishes when you
             use its neighbour reads as a bug. */}
         <div className={`seg-rail p-0.5 gap-0.5 ${tab === 'audit' && (from || to) ? 'opacity-40' : ''}`}>
           {(tab === 'audit' ? AUDIT_QUICK : SECURITY_RANGES).map(([h, label]) => (
-            <button key={h} onClick={() => { setHours(h); if (tab === 'audit') { setFrom(''); setTo(''); } }} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${hours === h ? 'bg-[var(--bg-solid)] text-[var(--primary-2)] shadow-sm font-medium' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
+            <button key={h} onClick={() => { setHours(h); if (tab === 'audit') { setFrom(''); setTo(''); } }} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${hours === h ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--faint)] hover:text-[var(--text)]'}`}>{label}</button>
           ))}
         </div>
       </div>
@@ -1663,8 +1663,8 @@ function AdminSecurity() {
             <div key={a.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
               {a.success ? <CheckCircle2 size={15} className="text-success shrink-0" /> : <XCircle size={15} className="text-error shrink-0" />}
               <div className="flex-1 min-w-0">
-                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--primary-2)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ms-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
-                <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--primary-2)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
+                <div className="truncate"><button onClick={() => setQ(a.email)} className="font-medium hover:text-[var(--accent-ink)]">{a.email}</button> {a.user && <span className="text-xs text-[var(--faint)]">· {a.user.displayName} ({a.user.role})</span>} {suspiciousIps.has(a.ip) && <Badge tone="red" className="ms-1">{t('sec.bruteforce', 'Brute-force?')}</Badge>}</div>
+                <div className="text-[11px] text-[var(--faint)] font-mono"><button onClick={() => setQ(a.ip)} className="hover:text-[var(--accent-ink)]">{a.ip}</button> {a.reason ? `· ${a.reason}` : ''}</div>
               </div>
               <span className="text-[11px] text-[var(--faint)] shrink-0">{new Date(a.createdAt).toLocaleString()}</span>
             </div>
@@ -1787,7 +1787,7 @@ function AdminSecurity() {
           <div className="max-h-[65vh] overflow-auto divide-y divide-[var(--line)]">
             {entries.map((e) => (
               <div key={e.id} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--surface-2)] transition">
-                <Shield size={15} className="text-[var(--primary-2)] shrink-0" />
+                <Shield size={15} className="text-[var(--accent-ink)] shrink-0" />
                 <button onClick={() => setOpenId(e.id)} className="flex-1 min-w-0 text-start">
                   <div className="truncate"><span className="font-medium">{e.actor?.displayName || '—'}</span> <span className="text-[var(--muted)] font-mono text-[12px]">{e.action}</span>{e.detail && <span className="text-[var(--faint)]"> · {e.detail}</span>}</div>
                   <div className="text-[11px] text-[var(--faint)] font-mono">{e.ip || '—'}</div>
@@ -2049,7 +2049,7 @@ function PerfCompare() {
     <Card className="p-4">
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
         <div className="text-sm font-semibold flex items-center gap-2">
-          <TrendingUp size={15} className="text-[var(--primary-2)]" /> {t('perf.cmp.title', 'Compared with the period before')}
+          <TrendingUp size={15} className="text-[var(--accent-ink)]" /> {t('perf.cmp.title', 'Compared with the period before')}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="input !py-1.5 !text-sm !w-auto">
@@ -2353,7 +2353,7 @@ function AdminServerPerf() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--primary-2)]" /> {t('sp.title', 'Server performance')}
+        <h2 className="font-semibold flex items-center gap-2"><Cpu size={16} className="text-[var(--accent-ink)]" /> {t('sp.title', 'Server performance')}
           {health && <Badge tone={health === 'ok' ? 'green' : health === 'warn' ? 'amber' : 'red'}>{health === 'ok' ? <CheckCircle2 size={11} /> : <AlertTriangle size={11} />} {healthLabel}</Badge>}
         </h2>
         <div className="flex items-center gap-2">
@@ -2501,7 +2501,7 @@ function AdminServerPerf() {
         return (
           <Card className="p-4 mb-4">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Download size={13} className="text-[var(--primary-2)]" /> {t('sp.bw.title', 'Bandwidth served, by consumer')}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Download size={13} className="text-[var(--accent-ink)]" /> {t('sp.bw.title', 'Bandwidth served, by consumer')}</span>
               <span className="text-[11px] text-[var(--muted)] tabular-nums">{fmtBytes(total)} {t('sp.bw.since', 'since restart')}</span>
             </div>
             {total > 0 ? <>
@@ -2527,7 +2527,7 @@ function AdminServerPerf() {
         return (
           <Card className="p-4 mb-4">
             <button onClick={() => toggleSec('alloc')} className="w-full flex items-center justify-between gap-2 mb-1 flex-wrap text-start">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Server size={13} className="text-[var(--primary-2)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Server size={13} className="text-[var(--accent-ink)]" /> {t('sp.alloc', 'Per-repo allocation')} <span className="text-[var(--muted)] normal-case tracking-normal">· {ra.repos.length}</span></span>
               <span className="flex items-center gap-2">
                 <span className="text-[11px] tabular-nums text-[var(--muted)] hidden sm:inline">
                   {t('sp.alloc.summary2', '{n} repo(s) · {u} Mbps total upload').replace('{n}', ra.repos.length).replace('{u}', ra.totalUploadMbps)}
@@ -2710,7 +2710,7 @@ function AdminServerPerf() {
         </Card>
         <Card className="p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> {t('sp.ssl', 'SSL certificate')}</div>
-          {ssl?.notHttps ? <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Info size={12} className="text-[var(--primary-2)] shrink-0" /> {t('sp.ssl.nohttps', 'SITE_URL is http://, no certificate to probe. HTTPS is provisioned & auto-renewed by Caddy/Let’s Encrypt in production.')}</div>
+          {ssl?.notHttps ? <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Info size={12} className="text-[var(--accent-ink)] shrink-0" /> {t('sp.ssl.nohttps', 'SITE_URL is http://, no certificate to probe. HTTPS is provisioned & auto-renewed by Caddy/Let’s Encrypt in production.')}</div>
             : ssl?.daysLeft != null ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : <Badge tone="green">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge>} <span className="text-[var(--faint)] text-xs">{t('sp.ssl.expires', 'expires {d}').replace('{d}', new Date(ssl.expiresAt).toLocaleDateString())}</span></div>
             : <div className="text-xs text-[var(--faint)]">{t('sp.ssl.noprobe', "Couldn't probe SITE_URL's certificate.")}</div>}
         </Card>
@@ -2897,7 +2897,7 @@ function AdminServerPerf() {
                     </div>
                   </div>
                   <button onClick={(ev) => { ev.stopPropagation(); copyText(outageLine(o)); toast.success(t('common.copied', 'Copied.')); }}
-                    className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0 opacity-0 group-hover:opacity-100 transition mt-0.5"
+                    className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0 opacity-0 group-hover:opacity-100 transition mt-0.5"
                     title={t('common.copy', 'Copy')}><Copy size={12} /></button>
                 </div>
               );
@@ -3091,12 +3091,12 @@ function FileManager() {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-2 text-sm flex-wrap">
-        <FileText size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="font-semibold shrink-0">{t('fm.title', 'File manager')}</span>
+        <FileText size={14} className="text-[var(--accent-ink)] shrink-0" /> <span className="font-semibold shrink-0">{t('fm.title', 'File manager')}</span>
         <div className="flex items-center gap-1 text-xs font-mono text-[var(--faint)] min-w-0 overflow-x-auto">
-          <button onClick={() => load('.')} className="hover:text-[var(--primary-2)] shrink-0">/</button>
+          <button onClick={() => load('.')} className="hover:text-[var(--accent-ink)] shrink-0">/</button>
           {crumbs.map((c, i) => (
             <span key={i} className="flex items-center gap-1 shrink-0">
-              <button onClick={() => load(crumbs.slice(0, i + 1).join('/'))} className="hover:text-[var(--primary-2)]">{c}</button>
+              <button onClick={() => load(crumbs.slice(0, i + 1).join('/'))} className="hover:text-[var(--accent-ink)]">{c}</button>
               {i < crumbs.length - 1 && <span>/</span>}
             </span>
           ))}
@@ -3114,7 +3114,7 @@ function FileManager() {
         <div>
           <div className="flex items-center justify-between mb-1">
             <div className="text-xs text-[var(--faint)] font-mono">{editing.path}</div>
-            <button onClick={() => viewHistory(editing.path)} className="text-xs text-[var(--faint)] hover:text-[var(--primary-2)] flex items-center gap-1"><History size={12} /> {t('fm.history', 'History')}</button>
+            <button onClick={() => viewHistory(editing.path)} className="text-xs text-[var(--faint)] hover:text-[var(--accent-ink)] flex items-center gap-1"><History size={12} /> {t('fm.history', 'History')}</button>
           </div>
           <textarea value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} className="w-full h-64 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3 outline-none" spellCheck={false} />
           <div className="flex gap-2 mt-2"><Button variant="primary" disabled={busy} onClick={saveFile}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button><Button onClick={() => setEditing(null)}>{t('su.cancel', 'Cancel')}</Button></div>
@@ -3163,14 +3163,14 @@ function FileManager() {
           <div className="divide-y divide-[var(--line)] max-h-80 overflow-auto scroll-thin">
             {entries.length ? entries.map((e) => (
               <div key={e.name} className="flex items-center gap-2 py-1.5 text-sm group">
-                <button onClick={() => openEntry(e)} className="flex-1 min-w-0 text-start flex items-center gap-2 hover:text-[var(--primary-2)]">
-                  {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />} <span className="truncate" title={e.name}>{e.name}</span>
+                <button onClick={() => openEntry(e)} className="flex-1 min-w-0 text-start flex items-center gap-2 hover:text-[var(--accent-ink)]">
+                  {e.isDir ? <FolderGit2 size={13} className="text-[var(--accent-ink)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />} <span className="truncate" title={e.name}>{e.name}</span>
                 </button>
                 {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{(e.size / 1024).toFixed(1)} KB</span>}
                 <span className="hidden group-hover:flex items-center gap-2 shrink-0">
-                  {!e.isDir && <button onClick={() => downloadEntry(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.download', "Download")}><Download size={12} /></button>}
-                  {!e.isDir && <button onClick={() => viewHistory(dir === '.' ? e.name : `${dir}/${e.name}`)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.bkphist', "Backup history")}><History size={12} /></button>}
-                  <button onClick={() => rename(e)} className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('adm2.rename', "Rename")}><PenSquare size={12} /></button>
+                  {!e.isDir && <button onClick={() => downloadEntry(e)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]" title={t('adm2.download', "Download")}><Download size={12} /></button>}
+                  {!e.isDir && <button onClick={() => viewHistory(dir === '.' ? e.name : `${dir}/${e.name}`)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]" title={t('adm2.bkphist', "Backup history")}><History size={12} /></button>}
+                  <button onClick={() => rename(e)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]" title={t('adm2.rename', "Rename")}><PenSquare size={12} /></button>
                   <button onClick={() => delEntry(e)} className="text-[var(--faint)] hover:text-error" title={t('adm2.delete', "Delete")}><Trash2 size={12} /></button>
                 </span>
               </div>
@@ -3248,7 +3248,7 @@ function DbViewer() {
 
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--primary-2)]" /><span className="font-semibold">{t('dbv.title', 'Database viewer')}</span>
+      <div className="flex items-center gap-2 mb-2 text-sm flex-wrap"><HardDrive size={14} className="text-[var(--accent-ink)]" /><span className="font-semibold">{t('dbv.title', 'Database viewer')}</span>
         <span className="text-xs text-[var(--faint)]">{canEdit ? t('dbv.editcare', '(edit with care)') : t('dbv.readonly', '(read-only)')}</span>
         <div className="ms-auto flex rounded-lg border border-[var(--line)] overflow-hidden text-xs">
           {[['bcweb', 'BCWEB'], ['telemetry', 'BMM Telemetry']].map(([v, l]) => (
@@ -3426,7 +3426,7 @@ function AdminServerAdvanced() {
 
       {!elevateStatus.data?.elevated ? (
         <Card className="p-5 max-w-sm">
-          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--primary-2)]" /> {t('asa.stepup', 'Step-up verification required')}</div>
+          <div className="text-sm font-semibold mb-2 flex items-center gap-2"><ShieldCheck size={15} className="text-[var(--accent-ink)]" /> {t('asa.stepup', 'Step-up verification required')}</div>
           <p className="text-xs text-[var(--muted)] mb-3">{t('asa.stepupsub', 'Enter a fresh code from your authenticator app to unlock these tools for 15 minutes.')}</p>
           <div className="flex gap-2">
             <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
@@ -3453,7 +3453,7 @@ function AdminServerAdvanced() {
                     ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]'
                     : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
                 }`}>
-                <tl.icon size={15} className={advTool === tl.id ? 'text-[var(--primary-2)]' : ''} />
+                <tl.icon size={15} className={advTool === tl.id ? 'text-[var(--accent-ink)]' : ''} />
                 {t(tl.k, tl.label)}
               </button>
             ))}
@@ -3664,7 +3664,7 @@ function ContentBackup() {
   return (
     <Card className="p-4 space-y-3">
       <div>
-        <h3 className="font-semibold text-sm flex items-center gap-2"><FileJson size={15} className="text-[var(--primary-2)]" /> {t('cb.title', 'Content export')}</h3>
+        <h3 className="font-semibold text-sm flex items-center gap-2"><FileJson size={15} className="text-[var(--accent-ink)]" /> {t('cb.title', 'Content export')}</h3>
         <p className="text-xs text-[var(--muted)] mt-1 max-w-2xl">
           {t('cb.lede', 'The docs, blog, FAQ, legal versions, settings and account records, as JSON in a zip you can open. Take one before a risky edit, or when moving to another install.')}
         </p>
@@ -3766,11 +3766,11 @@ function BundleBrowser({ readDir, readFile }) {
   return (
     <div>
       <div className="flex items-center flex-wrap gap-1 text-[12px] mb-1.5">
-        <button onClick={() => setPath('')} className={`hover:text-[var(--primary-2)] ${path ? 'text-[var(--muted)]' : 'font-medium'}`}>{t('snap.br.root', 'Backup root')}</button>
+        <button onClick={() => setPath('')} className={`hover:text-[var(--accent-ink)] ${path ? 'text-[var(--muted)]' : 'font-medium'}`}>{t('snap.br.root', 'Backup root')}</button>
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1">
             <ChevronRight size={11} className="text-[var(--faint)]" />
-            <button onClick={() => setPath(crumbs.slice(0, i + 1).join('/'))} className={`hover:text-[var(--primary-2)] ${i === crumbs.length - 1 ? 'font-medium' : 'text-[var(--muted)]'}`}>{c}</button>
+            <button onClick={() => setPath(crumbs.slice(0, i + 1).join('/'))} className={`hover:text-[var(--accent-ink)] ${i === crumbs.length - 1 ? 'font-medium' : 'text-[var(--muted)]'}`}>{c}</button>
           </span>
         ))}
       </div>
@@ -3781,7 +3781,7 @@ function BundleBrowser({ readDir, readFile }) {
           : state.data.entries.map((e) => (
             <button key={e.name} onClick={() => open(e)} disabled={!e.isDir && !readFile}
               className="w-full text-start px-2.5 py-1.5 flex items-center gap-2 text-[12px] hover:bg-[var(--surface-2)] disabled:hover:bg-transparent disabled:cursor-default">
-              {e.isDir ? <FolderGit2 size={13} className="text-[var(--primary-2)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />}
+              {e.isDir ? <FolderGit2 size={13} className="text-[var(--accent-ink)] shrink-0" /> : <FileText size={13} className="text-[var(--faint)] shrink-0" />}
               <span className="truncate flex-1" title={e.name}>{e.name}</span>
               {!e.isDir && <span className="text-[11px] text-[var(--faint)] shrink-0">{fmtBytes(e.size)}</span>}
             </button>
@@ -4370,7 +4370,7 @@ function BackupManager() {
           of a wrapping legend, four blocks down. */}
       <div className="flex items-start gap-3 flex-wrap mb-1">
         <div className="flex items-center gap-2 text-sm">
-          <History size={14} className="text-[var(--primary-2)]" />
+          <History size={14} className="text-[var(--accent-ink)]" />
           <span className="font-semibold">{t('bkp.title', 'Backup storage')}</span>
         </div>
         <div className="ms-auto text-end leading-tight">
@@ -4773,7 +4773,7 @@ function AdminAccess({ isSuperAdmin }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('acc.title', 'Access & permissions')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--accent-ink)]" /> {t('acc.title', 'Access & permissions')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access, all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
         {isSuperAdmin && <PowerHolders onOpen={openHolder} />}
         <div className="flex gap-2 mb-3">
@@ -4832,11 +4832,11 @@ function AdminAccess({ isSuperAdmin }) {
                     // away in Custom roles below to remove it.
                     <button key={c.id} disabled={!!viaRoles && !direct} onClick={() => togglePerm(c.id)}
                       className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'} ${viaRoles && !direct ? 'cursor-default' : ''}`}>
-                      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium">{t('acc.perm.' + c.id, c.label)}</span>
                         <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, c.desc)}</span>
-                        {viaRoles && <span className="block text-[11px] text-[var(--primary-2)] mt-0.5 inline-flex items-center gap-1"><ShieldCheck size={10} /> {t('acc.perm.viarole', 'From the role {r}').replace('{r}', viaRoles.join(', '))}</span>}
+                        {viaRoles && <span className="block text-[11px] text-[var(--accent-ink)] mt-0.5 inline-flex items-center gap-1"><ShieldCheck size={10} /> {t('acc.perm.viarole', 'From the role {r}').replace('{r}', viaRoles.join(', '))}</span>}
                       </span>
                       <span className={`w-9 h-5 rounded-full relative shrink-0 transition ${on ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'} ${viaRoles && !direct ? 'opacity-60' : ''}`}><span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} /></span>
                     </button>
@@ -4858,7 +4858,7 @@ function AdminAccess({ isSuperAdmin }) {
                     <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm ps-2.5 pe-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                       <RoleBadge color={r.color}>{r.name}</RoleBadge>
                       <span className="text-xs text-[var(--faint)]">{t('acc.roles.ncaps', '{n} caps').replace('{n}', (r.capabilities || []).length)}</span>
-                      {on && <Check size={13} className="text-[var(--primary-2)]" />}
+                      {on && <Check size={13} className="text-[var(--accent-ink)]" />}
                     </button>
                   );
                 })}
@@ -4874,7 +4874,7 @@ function AdminAccess({ isSuperAdmin }) {
             ) : (<>
               <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.proj.desc', "Let this user edit a project's page content from the dashboard — one project, several, or all other-projects. They still can't pin, publish or change a project's visibility (that needs the “Manage other projects” capability).")}</p>
               {userProjGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--primary-2)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+                {userProjGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><Settings2 size={11} className="text-[var(--accent-ink)]" /> {projScopeLabel(g)} <button onClick={() => revokeProject(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
               </div>}
               <div className="flex flex-wrap items-center gap-2">
                 <Select className="!w-auto" value={pscopeSel} onChange={(e) => setPscopeSel(e.target.value)}>
@@ -4906,7 +4906,7 @@ function AdminAccess({ isSuperAdmin }) {
           <div className="pt-4 border-t border-[var(--line)]">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.blog.title', 'Blog-post access')}</div>
             {userGrants.length > 0 && <div className="flex flex-wrap gap-1.5 mb-2">
-              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--primary-2)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
+              {userGrants.map((g) => <span key={g.id} className="inline-flex items-center gap-1.5 text-xs ps-2.5 pe-1 py-1 rounded-full border border-[var(--line)] bg-[var(--surface-2)]"><PenSquare size={11} className="text-[var(--accent-ink)]" /> {scopeLabel(g)} <button onClick={() => revoke(g)} className="opacity-60 hover:opacity-100 hover:text-error" title={t('acc.revoke.title', 'Revoke')}><X size={11} /></button></span>)}
             </div>}
             <div className="flex flex-wrap items-center gap-2">
               <Select className="!w-auto" value={scopeSel} onChange={(e) => setScopeSel(e.target.value)}>
@@ -4927,7 +4927,7 @@ function AdminAccess({ isSuperAdmin }) {
       <SiteBansCard />
 
       {allProjGrants.length > 0 && <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('acc.allproj.title', 'All project-edit grants')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Settings2 size={16} className="text-[var(--accent-ink)]" /> {t('acc.allproj.title', 'All project-edit grants')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{t('acc.allproj.desc', 'Everyone who can edit a project’s content, and which. Pick a user above to edit theirs.')}</p>
         <div className="space-y-1.5">
           {allProjGrants.map((g) => (
@@ -4942,7 +4942,7 @@ function AdminAccess({ isSuperAdmin }) {
       </div>}
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--primary-2)]" /> {t('acc.all.title', 'All blog-post grants')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><PenSquare size={16} className="text-[var(--accent-ink)]" /> {t('acc.all.title', 'All blog-post grants')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{t('acc.all.desc', 'Everyone who can write blog posts, and where. Pick a user above to edit theirs.')}</p>
         {grants.loading ? <Loading /> : allGrants.length ? <div className="space-y-1.5">
           {allGrants.map((g) => (
@@ -5020,7 +5020,7 @@ function RoleManager({ roles }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-1">
-        <h2 className="font-semibold flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('rm.title', 'Custom roles')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--accent-ink)]" /> {t('rm.title', 'Custom roles')}</h2>
         <Button size="sm" variant="primary" onClick={() => open(null)}><Plus size={14} /> {t('rm.new', 'New role')}</Button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-3">{t('rm.desc', 'Reusable bundles of capabilities. Assign them to users above, effective access is the role’s caps on top of any individual permissions.')}</p>
@@ -5107,7 +5107,7 @@ function RoleManager({ roles }) {
                           const on = caps.includes(c.id); const Icon = c.icon;
                           return (
                             <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                              <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                              <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                               <span className="flex-1 min-w-0">
                                 <span className="block text-sm font-medium">{t('acc.perm.' + c.id, capLabel(c))}</span>
                                 <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, lang === 'fr' ? c.descFr : c.desc)}</span>
@@ -5202,7 +5202,7 @@ function AdminReviews() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('arv.title', 'Landing reviews')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('arv.title', 'Landing reviews')}</h2>
         <button onClick={toggleSection} className={`btn ${sectionOn ? 'btn-primary' : ''}`}>{sectionOn ? <><Eye size={14} /> {t('arv.on', 'Section shown')}</> : <><EyeOff size={14} /> {t('arv.off', 'Section hidden')}</>}</button>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('arv.desc', 'Curated testimonials shown on the landing page. Each has an English and a French text (the site shows the one matching the visitor’s language). Turn the whole section — or individual reviews — on/off.')}</p>
@@ -5215,7 +5215,7 @@ function AdminReviews() {
             <div className="text-[11px] text-[var(--faint)] mb-1">{t('arv.pfp', 'Photo')}</div>
             <Avatar variant={f.avatar?.variant || 'beam'} seed={f.avatar?.seed || f.author || 'review'} image={f.avatar?.image} colors={f.avatar?.colors} size={56} />
             <div className="flex flex-col gap-1 mt-1.5">
-              <button type="button" onClick={pickAvatar} className="text-[11px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><Upload size={11} /> {t('arv.pfp.upload', 'Upload')}</button>
+              <button type="button" onClick={pickAvatar} className="text-[11px] text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Upload size={11} /> {t('arv.pfp.upload', 'Upload')}</button>
               {f.avatar?.image && <button type="button" onClick={() => setF((s) => ({ ...s, avatar: null }))} className="text-[11px] text-[var(--faint)] hover:text-error">{t('arv.pfp.clear', 'Remove photo')}</button>}
             </div>
           </div>
@@ -5245,8 +5245,8 @@ function AdminReviews() {
               <div className="flex items-center gap-2 flex-wrap"><span className="font-medium">{rv.author}</span>{rv.role && <span className="text-xs text-[var(--faint)]">{rv.role}</span>}{rv.rating > 0 && <span className="text-xs text-warning flex items-center gap-0.5"><Star size={11} fill="currentColor" /> {rv.rating}</span>}{!rv.enabled && <Badge>{t('arv.hiddenb', 'hidden')}</Badge>}{rv.bodyFr && <Badge tone="primary">FR</Badge>}</div>
               <p className="text-sm text-[var(--muted)] mt-1 line-clamp-2">{rv.body}</p>
             </div>
-            <button onClick={() => toggleEnabled(rv)} title={rv.enabled ? t('arv.hide', 'Hide') : t('arv.show', 'Show')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1">{rv.enabled ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-            <button onClick={() => edit(rv)} title={t('common.edit', 'Edit')} className="text-[var(--faint)] hover:text-[var(--primary-2)] p-1"><PenSquare size={16} /></button>
+            <button onClick={() => toggleEnabled(rv)} title={rv.enabled ? t('arv.hide', 'Hide') : t('arv.show', 'Show')} className="text-[var(--faint)] hover:text-[var(--accent-ink)] p-1">{rv.enabled ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+            <button onClick={() => edit(rv)} title={t('common.edit', 'Edit')} className="text-[var(--faint)] hover:text-[var(--accent-ink)] p-1"><PenSquare size={16} /></button>
             <button onClick={() => del(rv)} title={t('common.delete', 'Delete')} className="text-[var(--faint)] hover:text-error p-1"><Trash2 size={16} /></button>
           </Card>
         ))}
@@ -5286,7 +5286,7 @@ function AdminAnnouncements() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><BellIcon size={16} className="text-[var(--primary-2)]" /> {t('ann.new', 'New announcement')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><BellIcon size={16} className="text-[var(--accent-ink)]" /> {t('ann.new', 'New announcement')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{t('ann.new.sub', 'Shows as a dismissible banner on every page and immediately notifies every user.')}</p>
         <Card className="p-4 space-y-3">
           <div className="grid sm:grid-cols-[1fr_auto] gap-3">
@@ -5303,7 +5303,7 @@ function AdminAnnouncements() {
       </div>
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Send size={16} className="text-[var(--primary-2)]" /> {t('ann.notify.h', 'Notify everyone (no banner)')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Send size={16} className="text-[var(--accent-ink)]" /> {t('ann.notify.h', 'Notify everyone (no banner)')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{t('ann.notify.sub', "A one-off notification pushed to every user's bell menu, with no site-wide banner.")}</p>
         <Card className="p-4 flex flex-col sm:flex-row gap-2">
           <Input className="flex-1" value={broadcastMsg} onChange={(e) => setBroadcastMsg(e.target.value)} placeholder={t('ann.notify.ph', 'A quick message to every user…')} />
@@ -5312,7 +5312,7 @@ function AdminAnnouncements() {
       </div>
 
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Bell size={16} className="text-[var(--primary-2)]" /> {t('ann.list', 'Announcements')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Bell size={16} className="text-[var(--accent-ink)]" /> {t('ann.list', 'Announcements')}</h2>
         {loading ? <Loading /> : announcements.length ? <div className="space-y-2">
           {announcements.map((a) => {
             const TIcon = ANN_TONE_ICON[a.tone] || Info;
@@ -5322,7 +5322,7 @@ function AdminAnnouncements() {
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate" title={a.title}>{a.title}</div>
                 {a.body && <div className="text-xs text-[var(--muted)] truncate" title={a.body}>{a.body}</div>}
-                {a.linkUrl && <div className="text-xs text-[var(--primary-2)] truncate flex items-center gap-1"><Link2 size={11} /> {a.linkUrl}</div>}
+                {a.linkUrl && <div className="text-xs text-[var(--accent-ink)] truncate flex items-center gap-1"><Link2 size={11} /> {a.linkUrl}</div>}
               </div>
               <Badge tone={a.active ? 'green' : ''}>{a.active ? t('ann.active', 'active') : t('ann.inactive', 'inactive')}</Badge>
               <Button size="sm" variant="ghost" onClick={() => toggleBanner(a)} title={t('ann.bannertitle', 'Toggle the site-wide banner for this announcement')}>{a.showBanner ? <Monitor size={13} /> : <MonitorOff size={13} />} {a.showBanner ? t('ann.banneron', 'Banner on') : t('ann.banneroff', 'No banner')}</Button>
@@ -5428,7 +5428,7 @@ function AdminNewsletter() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> {t('nl.h', 'Newsletter')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Mail size={16} className="text-[var(--accent-ink)]" /> {t('nl.h', 'Newsletter')}</h2>
         <p className="text-sm text-[var(--muted)] mb-3">{t('nl.sub', 'Send a custom email to your subscribers — everyone, or a hand-picked list. Every message is branded and includes a one-click unsubscribe link.')}</p>
         <div className="flex flex-wrap gap-2 mb-4">
           <Badge tone="green"><CheckCircle2 size={11} /> {t('nl.c.active', '{n} active').replace('{n}', counts.active)}</Badge>
@@ -5509,7 +5509,7 @@ function AdminNewsletter() {
 
       {/* Manage subscribers — add an address directly (already-consented import) or remove one. */}
       <div>
-        <h3 className="font-semibold mb-1 flex items-center gap-2 text-sm"><Users size={15} className="text-[var(--primary-2)]" /> {t('nl.subs', 'Subscribers')}</h3>
+        <h3 className="font-semibold mb-1 flex items-center gap-2 text-sm"><Users size={15} className="text-[var(--accent-ink)]" /> {t('nl.subs', 'Subscribers')}</h3>
         <Card className="p-4 space-y-3">
           <div className="flex flex-wrap gap-2">
             <Input type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder={t('nl.add.ph', 'email to add…')} className="flex-1 min-w-[180px] !py-2 text-sm" onKeyDown={(e) => e.key === 'Enter' && addSub()} />
@@ -5568,7 +5568,7 @@ function AdminFaq() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><HelpCircle size={16} className="text-[var(--primary-2)]" /> {t('faqa.title', 'FAQ')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><HelpCircle size={16} className="text-[var(--accent-ink)]" /> {t('faqa.title', 'FAQ')}</h2>
         <Link to="/faq" className="btn btn-sm"><ArrowUpRight size={14} /> {t('faqa.view', 'View page')}</Link>
       </div>
       <p className="text-sm text-[var(--muted)] mb-4">{t('faqa.sub', 'Curated questions & answers shown at /faq. Answers support the full BetterCommunity markdown (headings, callouts, code, links…).')}</p>
@@ -5602,8 +5602,8 @@ function AdminFaq() {
               <div className="font-medium truncate" title={it.question}>{it.question}</div>
               <div className="text-xs text-[var(--faint)] flex items-center gap-2 mt-0.5"><Badge>{it.category}</Badge>{!it.published && <Badge tone="amber">{t('faq.draft', 'draft')}</Badge>}</div>
             </div>
-            <button onClick={() => toggle(it)} title={it.published ? t('faqa.hide', 'Unpublish') : t('faqa.show', 'Publish')} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]">{it.published ? <Eye size={16} /> : <EyeOff size={16} />}</button>
-            <button onClick={() => edit(it)} className="p-1.5 text-[var(--faint)] hover:text-[var(--primary-2)]"><PenSquare size={16} /></button>
+            <button onClick={() => toggle(it)} title={it.published ? t('faqa.hide', 'Unpublish') : t('faqa.show', 'Publish')} className="p-1.5 text-[var(--faint)] hover:text-[var(--accent-ink)]">{it.published ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+            <button onClick={() => edit(it)} className="p-1.5 text-[var(--faint)] hover:text-[var(--accent-ink)]"><PenSquare size={16} /></button>
             <button onClick={() => del(it)} className="p-1.5 text-[var(--faint)] hover:text-error"><Trash2 size={16} /></button>
           </Card>
         ))}
@@ -5691,7 +5691,7 @@ function UserModerationCard({ user, onChange }) {
           <div>
             <div className="text-[11px] text-[var(--faint)] mb-1">{t('mod.duration', 'Duration')}</div>
             <div className="flex flex-wrap gap-1.5">
-              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
+              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
             </div>
           </div>
           <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason, shown to the user and emailed to them…')} rows={2} />
@@ -6318,7 +6318,7 @@ function DataRequestPanel({ user, onChanged }) {
   return (
     <Card className="p-4 mb-3">
       <div className="text-sm font-semibold flex items-center gap-2 mb-1">
-        <FileText size={15} className="text-[var(--primary-2)]" /> {t('gdpr.title', 'Data requests')}
+        <FileText size={15} className="text-[var(--accent-ink)]" /> {t('gdpr.title', 'Data requests')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('gdpr.sub', 'Everything held about this account, assembled from the schema itself rather than a list — so a table added later is included without anybody remembering to add it.')}
@@ -6392,7 +6392,7 @@ function UserSanctions({ userId }) {
   return (
     <Card className="p-4 mb-3">
       <div className="text-sm font-semibold flex items-center gap-2 mb-1">
-        <Gavel size={15} className="text-[var(--primary-2)]" /> {t('usanc.title', 'Sanctions')}
+        <Gavel size={15} className="text-[var(--accent-ink)]" /> {t('usanc.title', 'Sanctions')}
         <span className="text-[11px] text-[var(--muted)] ms-auto">{rows.length}</span>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
@@ -6462,7 +6462,7 @@ function StaffNotes({ userId }) {
   return (
     <Card className="p-4">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2">
-        <FileText size={15} className="text-[var(--primary-2)]" /> {t('un.title', 'Staff notes')}
+        <FileText size={15} className="text-[var(--accent-ink)]" /> {t('un.title', 'Staff notes')}
         {notes.length > 0 && <Badge>{notes.length}</Badge>}
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">
@@ -6575,7 +6575,7 @@ function UserPermissionsCard({ user, onChange }) {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-1 font-medium">
-        <KeyRound size={15} className="text-[var(--primary-2)]" />
+        <KeyRound size={15} className="text-[var(--accent-ink)]" />
         {t('up.title', 'Permissions')}
         <Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : user.role === 'MOD' ? 'primary' : ''}>{user.role}</Badge>
       </div>
@@ -6631,7 +6631,7 @@ function UserPermissionsCard({ user, onChange }) {
       {canManage && (
         <div className="mt-3 pt-3 border-t border-[var(--line)]">
           {!editing ? (
-            <button type="button" onClick={() => setEditing(true)} className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5"><PenSquare size={12} /> {t('up.manage', 'Manage permissions')}</button>
+            <button type="button" onClick={() => setEditing(true)} className="text-xs text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1.5"><PenSquare size={12} /> {t('up.manage', 'Manage permissions')}</button>
           ) : (
             <div className="space-y-4">
               {canTier && (
@@ -6736,7 +6736,7 @@ function UserDetailModal({ id, onClose }) {
   // Per-element unique BC id chip (copyable) — shown on each repo / catalog item.
   const BcChip = ({ code }) => code ? (
     <button onClick={() => { navigator.clipboard?.writeText(code); toast.success(t('ud.elemcopied', 'Element BC id copied.')); }}
-      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] transition" title={t('ud.elemid', 'Unique element id · {c}').replace('{c}', code)}>
+      className="shrink-0 inline-flex items-center gap-1 text-[10px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] transition" title={t('ud.elemid', 'Unique element id · {c}').replace('{c}', code)}>
       <Fingerprint size={10} /> {code}
     </button>
   ) : null;
@@ -6762,7 +6762,7 @@ function UserDetailModal({ id, onClose }) {
               <div className="text-[11px] text-[var(--faint)] font-mono mt-0.5">{u.id}</div>
               {u.bcId && (
                 <button onClick={() => { navigator.clipboard?.writeText(u.bcId); toast.success(t('ud.bccopied', 'Unique BC id copied.')); }}
-                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--primary-2)] px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary transition"
+                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--accent-ink)] px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary transition"
                   title={t('ud.bcidtip', 'Unique BC id, searchable in User search')}>
                   <Fingerprint size={12} /> {u.bcId} <Copy size={11} className="opacity-60" />
                 </button>
@@ -6790,7 +6790,7 @@ function UserDetailModal({ id, onClose }) {
                 {tabs.map(([id, label, I, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] whitespace-nowrap transition ${tab === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-                    <I size={14} className={tab === id ? 'text-[var(--primary-2)]' : ''} /> {label}{n ? <span className="text-[11px] text-[var(--faint)] tabular-nums">{n}</span> : null}
+                    <I size={14} className={tab === id ? 'text-[var(--accent-ink)]' : ''} /> {label}{n ? <span className="text-[11px] text-[var(--faint)] tabular-nums">{n}</span> : null}
                   </button>
                 ))}
               </div>
@@ -6845,18 +6845,18 @@ function UserDetailModal({ id, onClose }) {
           {tab === 'content' && (<>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Rocket size={12} /> {t('ud.hosted', 'Hosted repos')} ({hosted.length})</div>
-            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
+            {hosted.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{hosted.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><Server size={13} className="text-[var(--accent-ink)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} /><Badge tone={r.status === 'ONLINE' ? 'green' : ''}>{r.status}</Badge></div>)}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
 
           {listed.length > 0 && <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><GitBranch size={12} /> {t('ud.listed', 'Listed repos')} ({listed.length})</div>
-            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
+            <div className="space-y-1 max-h-40 overflow-auto pe-1">{listed.map((r) => <div key={r.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><GitBranch size={13} className="text-[var(--accent-ink)] shrink-0" /><span className="flex-1 truncate" title={r.name}>{r.name}</span><BcChip code={r.fingerprint} />{r.verified && <Badge tone="green">{t('ud.verified', 'verified')}</Badge>}</div>)}</div>
           </div>}
 
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Package size={12} /> {t('ud.catalogitems', 'Catalog items')} ({u.items.length})</div>
-            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--primary-2)] shrink-0" /><span className="flex-1 truncate" title={it.name}>{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
+            {u.items.length ? <div className="space-y-1 max-h-40 overflow-auto pe-1">{u.items.map((it) => { const I = KIND_ICON[it.kind] || Package; return <div key={it.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]"><I size={13} className="text-[var(--accent-ink)] shrink-0" /><span className="flex-1 truncate" title={it.name}>{it.name}</span><BcChip code={it.fingerprint} /><Badge tone={statusTone(it.status)}>{it.status}</Badge></div>; })}</div>
               : <div className="text-sm text-[var(--faint)]">{t('ud.none', 'None.')}</div>}
           </div>
           </>)}
@@ -6870,7 +6870,7 @@ function UserDetailModal({ id, onClose }) {
                 const per = s.intervalCount > 1 ? `/${s.intervalCount} ${s.interval}` : `/${s.interval}`;
                 return (
                   <div key={s.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
-                    <RefreshCw size={13} className="text-[var(--primary-2)] shrink-0" />
+                    <RefreshCw size={13} className="text-[var(--accent-ink)] shrink-0" />
                     <span className="flex-1 truncate">{s.kind === 'boost' ? t('bill.sub.boost', 'Repo boost subscription') : t('bill.sub.hosting', 'Hosting subscription')}</span>
                     <span className="font-medium shrink-0">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span>
                     {s.currentPeriodEnd && <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(s.currentPeriodEnd)}</span>}
@@ -6910,7 +6910,7 @@ function UserDetailModal({ id, onClose }) {
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Monitor size={12} /> {t('ud.sessions', 'Signed-in devices')} ({u.sessions.length})</div>
               {u.sessions.length ? <div className="space-y-1 max-h-52 overflow-auto pe-1">{u.sessions.map((sn) => (
                 <div key={sn.id} className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)]">
-                  <Monitor size={13} className="text-[var(--primary-2)] shrink-0" />
+                  <Monitor size={13} className="text-[var(--accent-ink)] shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="truncate">{[sn.browser, sn.os].filter(Boolean).join(' · ') || t('ud.sessUnknown', 'Unknown device')}</div>
                     <div className="text-[11px] text-[var(--faint)] font-mono truncate">
@@ -6945,7 +6945,7 @@ function UserDetailModal({ id, onClose }) {
                 const dead = !!k.revokedAt || expired;
                 return (
                   <div key={k.id} className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg bg-[var(--surface-2)] ${dead ? 'opacity-55' : ''}`}>
-                    <KeyRound size={13} className={dead ? 'text-[var(--faint)] shrink-0' : 'text-[var(--primary-2)] shrink-0'} />
+                    <KeyRound size={13} className={dead ? 'text-[var(--faint)] shrink-0' : 'text-[var(--accent-ink)] shrink-0'} />
                     <div className="flex-1 min-w-0">
                       <div className="truncate">{k.label || <span className="text-[var(--faint)]">{t('ud.keyNoLabel', 'Untitled key')}</span>}</div>
                       {/* The prefix, never the key. It is stored in clear precisely so two
@@ -7026,7 +7026,7 @@ function PluginContentModal({ item, onClose }) {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('pcm.files', 'Files')} ({(data.files || []).length})</span>
-            {data.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Download size={12} /> {t('pcm.dlall', 'Download all (.bmmplug)')}</a>}
+            {data.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Download size={12} /> {t('pcm.dlall', 'Download all (.bmmplug)')}</a>}
           </div>
           <div className="space-y-1 max-h-[38vh] overflow-auto">
             {(data.files || []).map((fl) => (
@@ -7034,7 +7034,7 @@ function PluginContentModal({ item, onClose }) {
                 {fl.ok ? <CheckCircle2 size={14} className="text-success shrink-0" /> : <XCircle size={14} className="text-error shrink-0" />}
                 <span className="flex-1 truncate font-mono text-xs" title={fl.path}>{fl.path}</span>
                 <span className="text-xs text-[var(--faint)]">{kb(fl.size)} KB</span>
-                <button onClick={() => dlFile(fl.path)} title={t('pcm.dlfile', 'Download this file')} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0"><Download size={13} /></button>
+                <button onClick={() => dlFile(fl.path)} title={t('pcm.dlfile', 'Download this file')} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0"><Download size={13} /></button>
               </div>
             ))}
           </div>
@@ -7068,8 +7068,8 @@ function PluginContentModal({ item, onClose }) {
 // kind of event and merges them. That is why the window is a fixed number of days rather
 // than infinite scrollback — the merge happens in memory, so it is bounded on purpose.
 const HIST_TONE = {
-  staff: 'text-[var(--primary-2)]', repo: 'text-success', catalog: 'text-warning',
-  blog: 'text-[var(--primary)]', docs: 'text-[var(--primary)]', project: 'text-[var(--primary-2)]',
+  staff: 'text-[var(--accent-ink)]', repo: 'text-success', catalog: 'text-warning',
+  blog: 'text-[var(--accent-ink)]', docs: 'text-[var(--accent-ink)]', project: 'text-[var(--accent-ink)]',
   payment: 'text-success', auth: 'text-[var(--muted)]',
 };
 const HIST_ICON = {
@@ -7154,7 +7154,7 @@ function AdminHistory() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><History size={16} className="text-[var(--primary-2)]" /> {t('hist.title', 'Site history')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><History size={16} className="text-[var(--accent-ink)]" /> {t('hist.title', 'Site history')}</h2>
       <SettingsPointer className="mb-3" keys={['history.maxRevisions', 'history.maxRevisionKB']}>{t('hist.ptr', 'How many revisions each page keeps, and how big they may get')}</SettingsPointer>
       <p className="text-sm text-[var(--muted)] mb-3">
         {t('hist.desc', 'Every recorded event, staff and user alike, merged from the logs the site already keeps — nothing here is stored twice. Filter by source, search any text, or widen the window.')}
@@ -7280,7 +7280,7 @@ function AdminHistory() {
           const Icon = HIST_ICON[src.key] || Activity; const on = sources.includes(src.key);
           return (
             <button key={src.key} onClick={() => toggle(src.key)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
               <Icon size={12} /> {t(`hist.src.${src.key}`, src.label)}
             </button>
           );
@@ -7358,12 +7358,12 @@ function AdminHistory() {
                           <div key={k} className="flex items-baseline gap-2 min-w-0">
                             <span className="text-[10px] uppercase tracking-wider text-[var(--faint)] w-24 shrink-0">{k}</span>
                             <button onClick={() => { copyText(String(v)); toast.success(t('common.copied', 'Copied.')); }}
-                              className="text-[12px] font-mono break-all text-start hover:text-[var(--primary-2)] min-w-0"
+                              className="text-[12px] font-mono break-all text-start hover:text-[var(--accent-ink)] min-w-0"
                               title={t('hist.copy', 'Copy')}>{String(v)}</button>
                           </div>
                         ))}
                       </div>
-                      {e.link && <Link to={e.link} className="inline-block text-[12px] text-[var(--primary-2)] hover:underline">{t('hist.open', 'open')}</Link>}
+                      {e.link && <Link to={e.link} className="inline-block text-[12px] text-[var(--accent-ink)] hover:underline">{t('hist.open', 'open')}</Link>}
                     </div>
                   </Modal>
                 )}
@@ -7528,13 +7528,13 @@ function MailGallery({ t }) {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <Mail size={15} className="text-[var(--primary-2)]" />
+        <Mail size={15} className="text-[var(--accent-ink)]" />
         <span className="font-semibold text-sm">{t('adm.mail.gal.title', 'Every mail we send')}</span>
         <div className="ms-auto flex items-center gap-1">
           {['auto', 'light', 'dark'].map((k) => (
             <button key={k} type="button" onClick={() => setScheme(k)}
               className={`text-xs px-2 py-1 rounded-full border ${scheme === k
-                ? 'border-[var(--primary)] text-[var(--primary)]'
+                ? 'border-[var(--primary)] text-[var(--accent-ink)]'
                 : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
               {t(`adm.mail.gal.${k}`, k)}
             </button>
@@ -7561,7 +7561,7 @@ function MailGallery({ t }) {
                       <span className="flex-1 min-w-0 truncate" title={s.label}>{s.label}</span>
                       {/* Which mails an edit would actually reach. Without this the list looks
                           uniform and the difference is only discovered after typing. */}
-                      {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}
+                      {s.editable && <Pencil size={11} className={data?.templates?.[s.id] ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}
                         title={data?.templates?.[s.id] ? t('adm.mail.tpl.on', 'edited') : t('adm.mail.tpl.can', 'you can change this wording')} />}
                       {/* Not a mail at all — worth its own mark, because "you cannot edit it"
                           and "nobody receives it" are different facts about a row. */}
@@ -7826,7 +7826,7 @@ function AdminMail() {
     <div className="space-y-4">
       <MailGallery t={t} />
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
+        <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--accent-ink)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">
           {t('adm.mail.sub', 'One message per recipient, nobody sees who else received it. Markdown is supported.')}
         </p>
@@ -8063,7 +8063,7 @@ function AdminTransfers() {
     <div className="space-y-4">
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2">
-          <ArrowRightLeft size={16} className="text-[var(--primary-2)]" /> {t('adt.title', 'Ownership transfers')}
+          <ArrowRightLeft size={16} className="text-[var(--accent-ink)]" /> {t('adt.title', 'Ownership transfers')}
         </h2>
         <p className="text-sm text-[var(--muted)]">
           {t('adt.sub', 'Every hand-over offered on the site, whether or not it was taken. Nothing here changes anything — content only moves when the person receiving it accepts.')}
@@ -8361,7 +8361,7 @@ function AdminHostingPlans() {
           {priceMoved && (
             <div className="rounded-xl border border-[var(--line)] panel p-3 space-y-2">
               <div className="text-sm font-medium flex items-center gap-2">
-                <Calendar size={14} className="text-[var(--primary-2)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
+                <Calendar size={14} className="text-[var(--accent-ink)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
               </div>
               <p className="text-xs text-[var(--muted)]">
                 {t('adm.plans.eff.s', 'Pick a date and every current subscriber is emailed now; the price changes on that day and applies from their next renewal. Leave it empty to change the price immediately — right for a correction, wrong for a rise on a plan people are paying for.')}
@@ -8377,7 +8377,7 @@ function AdminHostingPlans() {
                   <button key={String(val)} onClick={() => setApplyExisting(val)}
                     className={`text-start rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                     <div className="text-xs font-semibold flex items-center gap-1.5">
-                      {applyExisting === val ? <Check size={12} className="text-[var(--primary-2)]" /> : <span className="w-3" />}
+                      {applyExisting === val ? <Check size={12} className="text-[var(--accent-ink)]" /> : <span className="w-3" />}
                       {label}
                     </div>
                     <div className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</div>
@@ -8420,7 +8420,7 @@ function AdminHostingPlans() {
         <Card className="p-0 overflow-hidden">
           {plans.map((pl) => (
             <div key={pl.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[var(--line)] last:border-0 ${pl.active ? '' : 'opacity-60'}`}>
-              <HardDrive size={15} className="text-[var(--primary-2)] shrink-0" />
+              <HardDrive size={15} className="text-[var(--accent-ink)] shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate flex items-center gap-2">
                   {pl.name}
@@ -8434,7 +8434,7 @@ function AdminHostingPlans() {
                 {/* A change that has been PROMISED to customers is not an editor detail —
                     it is a commitment with a date on it, so it belongs on the row. */}
                 {pl.pendingPriceCents != null && (
-                  <div className="text-[11px] text-[var(--primary-2)] flex items-center gap-1.5 mt-0.5">
+                  <div className="text-[11px] text-[var(--accent-ink)] flex items-center gap-1.5 mt-0.5">
                     <Calendar size={11} />
                     {(pl.pendingApplyExisting
                       ? t('adm.plans.pending', '{p}/mo from {d} · {n} notified')
@@ -8482,7 +8482,7 @@ function AdminFreeHost() {
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('fh.title2', 'Free hosting (storage pool)')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Rocket size={16} className="text-[var(--accent-ink)]" /> {t('fh.title2', 'Free hosting (storage pool)')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('fh.sub2', 'Provisions a storage pool directly — no payment — that the owner fills with repos and catalogs. Leave the email blank to host it under your own account.')}</p>
       <Card className="p-5 space-y-3">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -8648,7 +8648,7 @@ function AdminAssets() {
   if (loading) return <Loading />;
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Download size={16} className="text-[var(--primary-2)]" /> {t('assets.title', 'Downloads & assets')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Download size={16} className="text-[var(--accent-ink)]" /> {t('assets.title', 'Downloads & assets')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('assets.sub', 'Host app installers, auto-update manifests and the JSON configs (links.json, contributors.json) at stable /api/assets/<key> URLs. The apps read BCWEB first, then GitHub, then their bundled copy.')}</p>
 
       {/* Quick-create the standard slots that don't exist yet. */}
@@ -8716,13 +8716,13 @@ function AdminAssets() {
           {assets.filter((a) => a.kind === 'json' || a.version).map((a) => (
             <Card key={a.key} className="p-3.5">
               <div className="flex items-center gap-2 flex-wrap mb-2">
-                {a.kind === 'json' ? <FileJson size={15} className="text-info" /> : <Package size={15} className="text-[var(--primary-2)]" />}
+                {a.kind === 'json' ? <FileJson size={15} className="text-info" /> : <Package size={15} className="text-[var(--accent-ink)]" />}
                 <span className="font-mono text-sm font-medium">{a.key}</span>
                 {a.label && <span className="text-xs text-[var(--faint)]">{a.label}</span>}
                 <Badge tone="">{a.kind}</Badge>
                 {a.version && <Badge tone="primary">v{a.version}</Badge>}
                 <div className="flex-1" />
-                <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1" title={publicUrl(a.key)}><Copy size={11} /> {t('assets.copyurl', 'Copy URL')}</button>
+                <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }} className="text-[11px] font-mono text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1" title={publicUrl(a.key)}><Copy size={11} /> {t('assets.copyurl', 'Copy URL')}</button>
                 <button onClick={() => del(a)} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
               </div>
               {a.kind === 'file' ? (
@@ -8803,7 +8803,7 @@ function AdminAssets() {
                         className="block w-full h-[120px] bg-[var(--surface-2)] grid place-items-center overflow-hidden">
                         {a.media === 'image' && a.inlineOk
                           ? <img src={`/api/assets/${encodeURIComponent(a.key)}?inline=1`} alt="" loading="lazy" className="w-full h-full object-cover" />
-                          : <I size={26} className="text-[var(--faint)] group-hover:text-[var(--primary-2)] transition-colors" />}
+                          : <I size={26} className="text-[var(--faint)] group-hover:text-[var(--accent-ink)] transition-colors" />}
                       </button>
                       <div className="p-2.5">
                         <div className="text-[13px] font-medium truncate" title={a.label || a.key}>{a.label || a.key}</div>
@@ -8812,12 +8812,12 @@ function AdminAssets() {
                         <AssetStats asset={a} onChange={setAsset} />
                         <div className="flex items-center gap-1 mt-2">
                           <button onClick={() => { navigator.clipboard?.writeText(publicUrl(a.key)); toast.success(t('common.copied', 'Copied.')); }}
-                            title={publicUrl(a.key)} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>
+                            title={publicUrl(a.key)} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button>
                           <a href={publicUrl(a.key)} target="_blank" rel="noreferrer"
-                            className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><Download size={13} /></a>
+                            className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--accent-ink)]"><Download size={13} /></a>
                           <input ref={(el) => (fileRefs.current[a.key] = el)} type="file" className="hidden" onChange={(e) => { pickFile(a.key, a.label, e.target.files?.[0]); e.target.value = ''; }} />
                           <button onClick={() => fileRefs.current[a.key]?.click()} disabled={busy === a.key}
-                            title={t('assets.replace', 'Replace file')} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--primary-2)]"><UploadIcon size={13} /></button>
+                            title={t('assets.replace', 'Replace file')} className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--accent-ink)]"><UploadIcon size={13} /></button>
                           <div className="flex-1" />
                           <button onClick={() => del(a)} className="p-1.5 rounded-lg text-error hover:bg-error-bg"><Trash2 size={13} /></button>
                         </div>
@@ -8852,7 +8852,7 @@ function AssetStats({ asset, onChange }) {
   if (!asset.countStats) {
     return (
       <button type="button" onClick={() => onChange(asset.key, { countStats: true })}
-        className="mt-1.5 text-[10.5px] text-[var(--faint)] hover:text-[var(--primary-2)] inline-flex items-center gap-1">
+        className="mt-1.5 text-[10.5px] text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1">
         <BarChart3 size={11} /> {t('assets.count.on', 'Count views & downloads')}
       </button>
     );
@@ -8862,7 +8862,7 @@ function AssetStats({ asset, onChange }) {
       <span className="inline-flex items-center gap-1" title={t('assets.count.views', 'Views \u2014 rendered in place')}><Eye size={11} /> {asset.views}</span>
       <span className="inline-flex items-center gap-1" title={t('assets.count.dl', 'Downloads \u2014 bytes taken away')}><Download size={11} /> {asset.downloads}</span>
       <button type="button" onClick={() => onChange(asset.key, { resetStats: true })}
-        className="text-[var(--faint)] hover:text-[var(--primary-2)]" title={t('assets.count.reset', 'Back to zero')}><RotateCcw size={11} /></button>
+        className="text-[var(--faint)] hover:text-[var(--accent-ink)]" title={t('assets.count.reset', 'Back to zero')}><RotateCcw size={11} /></button>
       <button type="button" onClick={() => onChange(asset.key, { countStats: false })}
         className="text-[var(--faint)] hover:text-error" title={t('assets.count.off', 'Stop counting')}><EyeOff size={11} /></button>
     </div>
@@ -9083,7 +9083,7 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
   return (
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 mb-1">
-        <History size={15} className="text-[var(--primary-2)] shrink-0" />
+        <History size={15} className="text-[var(--accent-ink)] shrink-0" />
         <span className="font-medium text-sm flex-1">{t('apv.title', 'Version history')}</span>
         <Button size="sm" variant="ghost" onClick={record}><Plus size={13} /> {t('apv.add', 'Record a version')}</Button>
       </div>
@@ -9138,7 +9138,7 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
                   {/* Nothing for the version already live: "put the live one live" is a
                       button whose only possible outcome is no change. */}
                   {!r.current && (
-                    <Button size="sm" variant="ghost" className="shrink-0 !text-[var(--primary-2)]" disabled={busy === r.version}
+                    <Button size="sm" variant="ghost" className="shrink-0 !text-[var(--accent-ink)]" disabled={busy === r.version}
                       title={t('apv.live.ok', 'Put it live')} aria-label={t('apv.live.ok', 'Put it live')}
                       onClick={() => putLive(r.version)}><RotateCcw size={13} /></Button>
                   )}
@@ -9214,7 +9214,7 @@ function ShowcaseQueue() {
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
         <div className="font-semibold text-sm flex-1 flex items-center gap-2">
-          <Inbox size={15} className="text-[var(--primary-2)]" /> {t('sq.title', 'Listing requests')}
+          <Inbox size={15} className="text-[var(--accent-ink)]" /> {t('sq.title', 'Listing requests')}
           {counts.pending > 0 && <Badge tone="warn">{counts.pending}</Badge>}
         </div>
         <Select className="!w-auto !py-1.5 !text-xs" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -9242,7 +9242,7 @@ function ShowcaseQueue() {
                   <div className="flex-1" />
                   <span className="text-[11px] text-[var(--faint)]">{r.user?.displayName || r.user?.email}</span>
                 </div>
-                {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--primary-2)] underline break-all">{r.url}</a>}
+                {r.url && <a href={r.url} target="_blank" rel="noreferrer" className="text-[11px] text-[var(--accent-ink)] underline break-all">{r.url}</a>}
                 {r.description && <p className="text-xs text-[var(--muted)] mt-1.5 whitespace-pre-wrap">{r.description}</p>}
                 {r.pitch && <p className="text-xs mt-1.5 whitespace-pre-wrap"><b>{t('sq.why', 'Why:')}</b> {r.pitch}</p>}
                 {/* Declarations + evidence the reviewer needs: source & licence, whether the
@@ -9252,8 +9252,8 @@ function ShowcaseQueue() {
                   <Badge tone={r.isOpenSource ? 'green' : 'amber'}>{r.isOpenSource ? t('sq.open', 'open source') : t('sq.closed', 'closed source')}</Badge>
                   {r.isOpenSource && r.license && <span className="text-[var(--muted)]">{t('sq.lic', 'licence:')} <b>{r.license}</b></span>}
                   <Badge tone="blue">{r.ownership === 'owner' ? t('sq.owner', 'rights-holder') : t('sq.fan', 'fan (not owner)')}</Badge>
-                  {r.hasProof && <a href={`/api/showcase-requests/${r.id}/proof`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] underline">{t('sq.proof', 'Download proof')}{r.proofName ? ` (${r.proofName})` : ''}</a>}
-                  {r.contactReportId && <Link to="/admin?s=reports" className="text-[var(--primary-2)] underline">{t('sq.thread', 'Contact thread')}</Link>}
+                  {r.hasProof && <a href={`/api/showcase-requests/${r.id}/proof`} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] underline">{t('sq.proof', 'Download proof')}{r.proofName ? ` (${r.proofName})` : ''}</a>}
+                  {r.contactReportId && <Link to="/admin?s=reports" className="text-[var(--accent-ink)] underline">{t('sq.thread', 'Contact thread')}</Link>}
                   {!r.isOpenSource && !r.hasProof && <span className="text-warning">{t('sq.noproof', 'closed-source but no proof, do not approve')}</span>}
                 </div>
                 {r.status === 'pending' ? (
@@ -9485,7 +9485,7 @@ function AdminProjects() {
       {/* Header row keeps the "Refresh caches" action OUT of the wrapping chooser below —
           with many showcase projects an ms-auto button in a flex-wrap row orphaned itself. */}
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
-        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--accent-ink)]" /> {t('ap.title', 'Projects config')}</h2>
         {canMngProjects && <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache, this applies them now.">
           <RefreshCw size={13} /> {t('ap.refreshcaches', 'Refresh site caches')}
         </Button>}
@@ -9534,7 +9534,7 @@ function AdminProjects() {
           a project has to appear and it used to list five names written into this file. */}
       {canMngProjects && (
         <Card className="p-4 mb-4">
-          <div className="flex items-center gap-2 mb-1"><Plus size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('adm.proj.add', 'Add an official project')}</span></div>
+          <div className="flex items-center gap-2 mb-1"><Plus size={15} className="text-[var(--accent-ink)]" /><span className="font-medium text-sm">{t('adm.proj.add', 'Add an official project')}</span></div>
           <p className="text-xs text-[var(--muted)] mb-3">
             {t('adm.proj.add.d', 'An official project can carry a catalogue and take blog permissions — that is what a showcase page cannot do. The key appears in its URL and cannot be changed afterwards.')}
           </p>
@@ -9555,7 +9555,7 @@ function AdminProjects() {
       )}
       {/* Progress tracker source: pull the project's progress.json from a URL. */}
       <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>
+        <div className="flex items-center gap-2 mb-2"><TrendingUp size={15} className="text-[var(--accent-ink)]" /><span className="font-medium text-sm">{t('ap.progsrc', 'Progress tracker source')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">A raw URL to a <code>progress.json</code> ({'{ lastUpdate, art, code, categories:[{ name, items:[{ label, status, percent }] }] }'}). Rendered live on the project page; leave empty to use the inline <code>progress</code> in the config below.</p>
         <div className="flex flex-col sm:flex-row gap-2">
           <Input className="flex-1" value={progUrl} onChange={(e) => setProgUrl(e.target.value)} placeholder="https://raw.githubusercontent.com/…/progress.json" />
@@ -9566,14 +9566,14 @@ function AdminProjects() {
         </div>
       </Card>
       {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
-        <Newspaper size={15} className="text-[var(--primary-2)] shrink-0" />
+        <Newspaper size={15} className="text-[var(--accent-ink)] shrink-0" />
         <div className="flex-1"><span className="font-medium text-sm">{t('ap.homenews', 'Show in home "Latest news"')}</span><p className="text-xs text-[var(--muted)]">{t('ap.homenews.d', "{name}'s posts always appear on /blog regardless of this, this only controls the home page feed.").replace('{name}', M.name)}</p></div>
         <button onClick={toggleHomeNews} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showOnHomeNews ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showOnHomeNews ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
       </Card>}
       {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
-        <PenSquare size={15} className="text-[var(--primary-2)] shrink-0" />
+        <PenSquare size={15} className="text-[var(--accent-ink)] shrink-0" />
         <div className="flex-1"><span className="font-medium text-sm">{t('adm3.blogtab', 'Show "Blog" tab on the project page')}</span><p className="text-xs text-[var(--muted)]">Adds a Blog tab to {M.name}'s own page, showing only {M.name}'s posts.</p></div>
         <button onClick={toggleBlogTab} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showBlogTab ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showBlogTab ? 'translate-x-[18px]' : 'translate-x-0'}`} />
@@ -9606,7 +9606,7 @@ function AdminProjects() {
         };
         return (
           <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-success-border bg-success-bg' : 'b-primary tint-primary'}`}>
-            <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-success' : 'text-[var(--primary-2)]'}`} />
+            <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-success' : 'text-[var(--accent-ink)]'}`} />
             <div className="flex-1 min-w-0 text-sm">
               <div className="font-medium">{due ? t('apj.scheddue', 'Scheduled update is due') : t('apj.schedpending', 'Scheduled update pending')} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
               <div className="text-xs text-[var(--faint)]">{parts.length ? t('apj.willapply', 'Will apply: {p}.').replace('{p}', parts.join(', ')) : t('apj.stagedupdate', 'A staged content update.')}{due ? t('apj.appliesnext', ' It applies on the next public view of the page.') : ''}</div>
@@ -10173,7 +10173,7 @@ function AdminLegal() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--primary-2)]" /> {t('al.title', 'Legal pages')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--accent-ink)]" /> {t('al.title', 'Legal pages')}</h2>
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
       </div>
 
@@ -10246,7 +10246,7 @@ function AdminLegal() {
       {!imported ? (
         <Card className="p-4">
           <div className="flex items-start gap-2 text-sm">
-            <AlertTriangle size={15} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+            <AlertTriangle size={15} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
             <div>
               <div className="font-medium mb-1">{t('al.builtin', 'This document is served from the code')}</div>
               <p className="text-xs text-[var(--muted)] mb-3">
@@ -10278,7 +10278,7 @@ function AdminLegal() {
               Saying so here is the difference between an archive and a decoration. */}
           <Card className="p-3 mb-3 text-xs">
             <div className="flex items-center gap-2 mb-1.5">
-              <History size={14} className="text-[var(--primary-2)]" />
+              <History size={14} className="text-[var(--accent-ink)]" />
               <span className="font-medium">{t('al.versions', 'Published versions')}</span>
               <Badge>{mineVersions.length}</Badge>
             </div>
@@ -10290,7 +10290,7 @@ function AdminLegal() {
                     <span>{new Date(v.publishedAt).toLocaleDateString()}</span>
                     {v.note && <span className="truncate">— {v.note}</span>}
                     <a href={`/legal/archive/${v.id}`} target="_blank" rel="noreferrer"
-                      className="ms-auto text-[var(--primary-2)] hover:underline shrink-0">{t('al.view', 'view')}</a>
+                      className="ms-auto text-[var(--accent-ink)] hover:underline shrink-0">{t('al.view', 'view')}</a>
                   </li>
                 ))}
               </ul>
@@ -10375,7 +10375,7 @@ function AdminMessages() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--primary-2)]" /> {t('am.title', 'Contact messages')} {data?.unread > 0 && <Badge tone="amber">{t('am.new', '{n} new').replace('{n}', data.unread)}</Badge>}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Mail size={16} className="text-[var(--accent-ink)]" /> {t('am.title', 'Contact messages')} {data?.unread > 0 && <Badge tone="amber">{t('am.new', '{n} new').replace('{n}', data.unread)}</Badge>}</h2>
         <Button size="sm" variant="ghost" onClick={reload}><RefreshCw size={14} /> {t('am.refresh', 'Refresh')}</Button>
       </div>
       {/* Unread count per bucket, not total: a bucket with forty read messages and one
@@ -10410,13 +10410,13 @@ function AdminMessages() {
               <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0">
                 {MSG_KINDS[m.kind]?.legal
                   ? <Gavel size={15} className="text-error" />
-                  : <MessageSquare size={15} className="text-[var(--primary-2)]" />}
+                  : <MessageSquare size={15} className="text-[var(--accent-ink)]" />}
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-medium">{m.name}</span>
                   {MSG_KINDS[m.kind] && <Badge tone={MSG_KINDS[m.kind].tone || undefined}>{MSG_KINDS[m.kind].label(t)}</Badge>}
-                  <a href={`mailto:${m.email}`} className="text-xs text-[var(--primary-2)] hover:underline">{m.email}</a>
+                  <a href={`mailto:${m.email}`} className="text-xs text-[var(--accent-ink)] hover:underline">{m.email}</a>
                   {m.user && <Badge tone="primary"><Users size={9} /> {m.user.displayName}</Badge>}
                   {!m.readAt && <Badge tone="amber">{t('am.newbadge', 'new')}</Badge>}
                   <span className="text-xs text-[var(--faint)] ms-auto">{new Date(m.createdAt).toLocaleString()}</span>
@@ -10570,9 +10570,9 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
               {insp.data.entries.map((e) => (
                 <div key={e.name}>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start font-mono ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                    <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start font-mono ${e.text != null ? 'hover:text-[var(--accent-ink)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
                     <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
-                    <button onClick={() => dlEntry(e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
+                    <button onClick={() => dlEntry(e.name)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Download size={11} /></button>
                   </div>
                   {openEntry === e.name && e.text != null && <pre className="mt-1 mb-2 p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{e.text}</pre>}
                 </div>
@@ -10582,7 +10582,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
               : <p className="text-[var(--faint)]">{t('sr.binary', 'Binary file, download to inspect.')} ({fmtBytes(insp.data.size)})</p>)
           ) : null}
         </div>}
-        {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--primary-2)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] break-all hover:underline">{dl}</a></div>}
+        {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--accent-ink)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all hover:underline">{dl}</a></div>}
       </div>
       {meta.validation && <div className="mb-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5 flex items-center gap-2">{t('sr.pluginval', 'Plugin validation')} {meta.validation.valid ? <Badge tone="green"><CheckCircle2 size={10} /> {t('sr.valid', 'valid')}</Badge> : <Badge tone="red"><XCircle size={10} /> {t('sr.invalid', 'invalid')}</Badge>}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-40 overflow-auto">{JSON.stringify(meta.validation, null, 2)}</pre></div>}
       {Object.keys(meta).length > 0 && <div><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('sr.fullmeta', 'Full metadata (review before approving)')}</div><pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-56 overflow-auto">{JSON.stringify(meta, null, 2)}</pre></div>}
@@ -10615,14 +10615,14 @@ function AdminKofi() {
   return (
     <>
       <Card className="p-4 mb-4">
-        <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--primary-2)]" /> {t('kf.title', 'Ko-fi donor rewards')}</div>
+        <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><KofiIcon size={16} className="text-[var(--accent-ink)]" /> {t('kf.title', 'Ko-fi donor rewards')}</div>
         <p className="text-xs text-[var(--muted)] mb-3" dangerouslySetInnerHTML={{ __html: t('kf.sub', "A donor whose Ko-fi email matches their BetterCommunity account automatically gets a one-time {off}% hosting discount code (valid on {min}+ month plans). Paste this webhook URL + a secret token into Ko-fi's <b>Settings → Webhooks</b>, using the same token below.").replace('{off}', data?.percentOff ?? 25).replace('{min}', data?.minMonths ?? 12) }} />
         <div className="flex items-center gap-2 mb-3 text-xs">
           <code className="flex-1 bg-[var(--surface-2)] rounded-lg px-2.5 py-1.5 truncate" title={data?.webhookUrl}>{data?.webhookUrl}</code>
           <Button size="sm" onClick={() => { navigator.clipboard?.writeText(data?.webhookUrl || ''); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
         </div>
         {data?.fromEnv ? (
-          <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('kf.tokenenv', 'The verification token is set via the KOFI_WEBHOOK_TOKEN environment variable and is managed outside the dashboard.')}</div>
+          <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--accent-ink)] shrink-0" /> {t('kf.tokenenv', 'The verification token is set via the KOFI_WEBHOOK_TOKEN environment variable and is managed outside the dashboard.')}</div>
         ) : (
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
             <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured, enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
@@ -10671,7 +10671,7 @@ function AdminKofiGoal() {
   const pct = data?.goal ? Math.min(100, Math.round((data.totalAmount / data.goal.targetAmount) * 100)) : 0;
   return (
     <Card className="p-4 mb-4">
-      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Target size={16} className="text-[var(--primary-2)]" /> {t('kg.title', 'Funding goal (public widget)')}</div>
+      <div className="flex items-center gap-2 mb-1 text-sm font-semibold"><Target size={16} className="text-[var(--accent-ink)]" /> {t('kg.title', 'Funding goal (public widget)')}</div>
       <p className="text-xs text-[var(--muted)] mb-3">{t('kg.sub', 'Shown on the homepage with the running total raised + number of tips, sourced from Ko-fi webhook events. Set a target to turn it on.')}</p>
       <div className="rounded-xl bg-[var(--surface-2)] p-3 mb-3 flex items-center gap-4 text-sm">
         <div><span className="text-[var(--faint)]">{t('kg.raised', 'Raised so far:')}</span> <b>{(data?.totalAmount || 0).toFixed(2)} {f.currency || 'USD'}</b></div>
@@ -10734,7 +10734,7 @@ function AdminPromo() {
     : t('pc.d.boost', 'boost {n} days').replace('{n}', c.boostDays);
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> {t('pc.title', 'Promo codes')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Ticket size={16} className="text-[var(--accent-ink)]" /> {t('pc.title', 'Promo codes')}</h2>
       <p className="text-xs text-[var(--muted)] mb-3">{t('pc.sub', 'Single-use / limited discount, free-hosting and boost codes, separate from the site-wide Promotions above.')}</p>
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 gap-3">
@@ -10766,7 +10766,7 @@ function AdminPromo() {
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {f.assignedTokens.map((tok) => { const [ty, ...rest] = tok.split(':'); const val = rest.join(':'); return (
                   <span key={tok} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs">
-                    <span className="text-[10px] font-bold uppercase text-[var(--primary-2)]">{ty}</span><span className="font-mono truncate max-w-[14rem]" title={val}>{val}</span>
+                    <span className="text-[10px] font-bold uppercase text-[var(--accent-ink)]">{ty}</span><span className="font-mono truncate max-w-[14rem]" title={val}>{val}</span>
                     <button type="button" onClick={() => removeToken(tok)} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>
                   </span>
                 ); })}
@@ -10780,9 +10780,9 @@ function AdminPromo() {
         {codes.map((c) => (
           <Card key={c.id} className="p-4">
             <div className="flex items-center gap-3">
-              <Ticket size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <Ticket size={18} className={c.active ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{((c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0)) > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', (c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0))}</Badge>}</div>
+                <div className="flex items-center gap-2 flex-wrap"><code className="font-mono font-semibold">{c.code}</code><button onClick={() => { navigator.clipboard?.writeText(c.code); toast.success(t('common.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button>{!c.active && <Badge>{t('pc.disabled', 'Disabled')}</Badge>}{c.stackable && <Badge tone="green"><Layers size={9} /> {t('pc.stackable', 'stackable')}</Badge>}{((c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0)) > 0 && <Badge tone="primary"><Gift size={9} /> {t('pc.gift', 'gift · {n}').replace('{n}', (c.assignedUserIds?.length || 0) + (c.assignedTokens?.length || 0))}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5"><Badge tone="primary">{c.kind.replace('_', ' ')}</Badge> {desc(c)}{c.expiresAt ? ` · exp ${new Date(c.expiresAt).toLocaleDateString()}` : ''}{c.note ? ` · ${c.note}` : ''}</div>
               </div>
               <button onClick={() => viewReds(c)} className={`text-xs px-2.5 py-1.5 rounded-lg border ${openId === c.id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Users size={12} className="inline me-1" />{c.redeemedCount}{c.maxRedemptions ? `/${c.maxRedemptions}` : ''} {t('pc.used', 'used')}</button>
@@ -10850,7 +10850,7 @@ function AdminCampaigns() {
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Megaphone size={16} className="text-[var(--primary-2)]" /> {t('cmp.title', 'Promotions (campaigns)')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Megaphone size={16} className="text-[var(--accent-ink)]" /> {t('cmp.title', 'Promotions (campaigns)')}</h2>
       <p className="text-xs text-[var(--muted)] mb-3">{t('cmp.sub', 'A site-wide, time-boxed sale: auto-applies its % at checkout and shows an announcement badge across the whole site. One campaign is live at a time (the most recently started wins).')}</p>
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap gap-2 mb-3">
@@ -10882,7 +10882,7 @@ function AdminCampaigns() {
         {list.map((c) => { const st = status(c); return (
           <Card key={c.id} className="p-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Megaphone size={18} className={st.label === t('cmp.st.live', 'Live now') ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <Megaphone size={18} className={st.label === t('cmp.st.live', 'Live now') ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">−{c.percentOff}%</Badge>{c.badgeEnabled && <Badge><Megaphone size={9} /> {t('cmp.badgeon', 'badge')}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5">{c.kind.replace('_', ' ')} · {c.appliesTo} · {new Date(c.startsAt).toLocaleString()} → {new Date(c.endsAt).toLocaleString()}{(c.badgeMessageFr || c.badgeMessageEn) ? ` · "${c.badgeMessageFr || c.badgeMessageEn}"` : ''}</div>
@@ -10943,7 +10943,7 @@ function AdminEvents() {
   };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('ev.title', 'Events')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Sparkles size={16} className="text-[var(--accent-ink)]" /> {t('ev.title', 'Events')}</h2>
       <p className="text-xs text-[var(--muted)] mb-3">{t('ev.sub', 'One event runs at a time. While live it plays a fireworks effect (a national holiday forms the country flag) and shows your announcement. Notifications + the event promo/code arrive in the next phases.')}</p>
       <Card className="p-4 mb-4">
         <div className="flex flex-wrap gap-2 mb-3">
@@ -11008,7 +11008,7 @@ function AdminEvents() {
         {list.map((e) => { const st = status(e); return (
           <Card key={e.id} className="p-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Sparkles size={18} className={st.tone === 'green' ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <Sparkles size={18} className={st.tone === 'green' ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{e.name}</span><Badge tone={st.tone}>{st.label}</Badge><Badge tone="primary">{e.kind.replace('_', ' ')}</Badge>{e.countryCode && <Badge>{e.countryCode}</Badge>}{e.promoPercent > 0 && <Badge tone="primary">−{e.promoPercent}%</Badge>}{e.eventCode && <Badge tone="green"><Ticket size={9} /> {e.eventCode}</Badge>}</div>
                 <div className="text-xs text-[var(--muted)] mt-0.5">{e.effect} · fx {e.fxDensity}/10 · {e.fxFlagDrops} {t('ev.flags', 'flag drops')} · {new Date(e.startsAt).toLocaleString()} → {new Date(e.endsAt).toLocaleString()}{e.notifyDaysBefore ? ` · ${t('ev.notifd', 'notify {n}d before').replace('{n}', e.notifyDaysBefore)}` : ''}{(e.titleFr || e.titleEn) ? ` · "${e.titleFr || e.titleEn}"` : ''}</div>
@@ -11056,7 +11056,7 @@ function AdminSso() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 me-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('sso.title', 'SSO')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Shield size={16} className="text-[var(--accent-ink)]" /> {t('sso.title', 'SSO')}</h2>
         <SettingsPointer className="mb-3" keys={['features.ssoEnabled']}>{t('sso.ptr', 'The master switch \u2014 off, and every application here stops being able to sign anybody in')}</SettingsPointer>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['clients', t('sso.tab.clients', 'Apps')], ['people', t('sso.tab.people', 'People')], ['webhooks', t('sso.tab.webhooks', 'Webhooks')]].map(([k, l]) => (
@@ -11120,7 +11120,7 @@ function RbacMap() {
   return (
     <Card className="p-4 mb-3">
       <button className="w-full flex items-center gap-2 text-start" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
-        <ShieldCheck size={15} className="text-[var(--primary-2)]" />
+        <ShieldCheck size={15} className="text-[var(--accent-ink)]" />
         <span className="text-sm font-semibold">{t('rbac.title', 'Which guard protects which route')}</span>
         {rep?.total && <span className="text-[11px] text-[var(--muted)] ms-auto">{rep.total}</span>}
       </button>
@@ -11194,7 +11194,7 @@ function CodebaseMaps() {
   return (
     <Card className="p-4 mb-3">
       <button className="w-full flex items-center gap-2 text-start" onClick={() => setOpen((o) => !o)}>
-        <Code2 size={15} className="text-[var(--primary-2)]" />
+        <Code2 size={15} className="text-[var(--accent-ink)]" />
         <span className="text-sm font-semibold">{t('maps.title', 'Codebase maps')}</span>
         <span className="text-[11px] text-[var(--muted)] ms-auto">
           {/* Counted, not typed. It said "7" while eight were mounted the moment one was
@@ -11304,7 +11304,7 @@ function InfraMap() {
                     <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.ships', 'ships')}</div>
                     <div className="flex flex-col gap-1">
                       {ships.length
-                        ? ships.map((s) => <Chip key={s} tone="text-[var(--primary-2)] b-primary">{s}</Chip>)
+                        ? ships.map((s) => <Chip key={s} tone="text-[var(--accent-ink)] b-primary">{s}</Chip>)
                         : <Chip>{t('imap.nothing', 'nothing')}</Chip>}
                     </div>
                   </div>
@@ -11375,7 +11375,7 @@ function MapCard({ icon: Icon, title, badge, children, path, explainError }) {
   return (
     <Card className="p-4 mb-3">
       <button className="w-full flex items-center gap-2 text-start" onClick={() => { setOpen((o) => !o); if (!rep) run(); }}>
-        <Icon size={15} className="text-[var(--primary-2)]" />
+        <Icon size={15} className="text-[var(--accent-ink)]" />
         <span className="text-sm font-semibold">{title}</span>
         {rep && !rep.error && badge?.(rep) && <span className="text-[11px] text-[var(--muted)] ms-auto">{badge(rep)}</span>}
       </button>
@@ -11775,7 +11775,7 @@ function AdminWebhooks() {
         <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
           {/* Shown once by the API and never retrievable — so it gets its own panel rather
               than a toast that scrolls away while you look for somewhere to paste it. */}
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('sso.wh.secret', 'Copy the signing secret now, it is shown once and never again.')}</div>
+          <div className="text-[12px] font-semibold text-[var(--accent-ink)] mb-1.5">{t('sso.wh.secret', 'Copy the signing secret now, it is shown once and never again.')}</div>
           <div className="flex items-center gap-2 text-[12px]">
             <code className="font-mono break-all flex-1">{secret}</code>
             <Button size="sm" variant="ghost" onClick={() => { copyText(secret); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
@@ -11799,7 +11799,7 @@ function AdminWebhooks() {
                 <label key={ev} className="flex items-start gap-2 text-[12px]">
                   <input type="checkbox" className="mt-0.5" checked={form.events.includes(ev)}
                     onChange={(e) => setForm((f) => ({ ...f, events: e.target.checked ? [...f.events, ev] : f.events.filter((x) => x !== ev) }))} />
-                  <span><code className="font-mono text-[var(--primary-2)]">{ev}</code>{desc ? <> — <span className="text-[var(--muted)]">{String(desc)}</span></> : null}</span>
+                  <span><code className="font-mono text-[var(--accent-ink)]">{ev}</code>{desc ? <> — <span className="text-[var(--muted)]">{String(desc)}</span></> : null}</span>
                 </label>
               ))}
             </div>
@@ -11957,14 +11957,14 @@ function AdminOAuthClients() {
   const rotate = async (c) => { try { const r = await api.post(`/admin/oauth-clients/${c.id}/rotate`); setCreated({ id: c.id, secret: r.clientSecret }); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'SSO: OAuth / OpenID Connect clients')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--accent-ink)]" /> {t('oc.title', 'SSO: OAuth / OpenID Connect clients')}</h2>
       <p className="text-xs text-[var(--muted)] mb-3">{t('oc.sub', 'Register another service to “Sign in with BetterCommunity”. It discovers everything at')} <code className="text-[11px]">/.well-known/openid-configuration</code>.</p>
       {created && (
         <Card className="p-4 mb-4 border-[var(--primary)]">
-          <div className="text-sm font-semibold text-[var(--primary-2)] mb-2">{t('oc.created', 'Client ready, copy the secret now, it is shown only once.')}</div>
-          <div className="flex items-center gap-2 text-sm mb-1"><span className="text-[var(--muted)] w-24">client_id</span><code className="font-mono break-anywhere flex-1">{created.id}</code><button onClick={() => copy(created.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
+          <div className="text-sm font-semibold text-[var(--accent-ink)] mb-2">{t('oc.created', 'Client ready, copy the secret now, it is shown only once.')}</div>
+          <div className="flex items-center gap-2 text-sm mb-1"><span className="text-[var(--muted)] w-24">client_id</span><code className="font-mono break-anywhere flex-1">{created.id}</code><button onClick={() => copy(created.id)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button></div>
           {created.secret
-            ? <div className="flex items-center gap-2 text-sm"><span className="text-[var(--muted)] w-24">client_secret</span><code className="font-mono break-anywhere flex-1">{created.secret}</code><button onClick={() => copy(created.secret)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
+            ? <div className="flex items-center gap-2 text-sm"><span className="text-[var(--muted)] w-24">client_secret</span><code className="font-mono break-anywhere flex-1">{created.secret}</code><button onClick={() => copy(created.secret)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={13} /></button></div>
             : <div className="text-xs text-[var(--muted)]">{t('oc.public', 'Public client, no secret; it must use PKCE.')}</div>}
           <div className="flex justify-end mt-3"><Button size="sm" onClick={() => setCreated(null)}>{t('common.done', 'Done')}</Button></div>
         </Card>
@@ -11991,10 +11991,10 @@ function AdminOAuthClients() {
         {list.map((c) => (
           <Card key={c.id} className="p-4">
             <div className="flex items-center gap-3 flex-wrap">
-              <Shield size={18} className={c.active ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />
+              <Shield size={18} className={c.active ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap"><span className="font-semibold">{c.name}</span>{!c.active && <Badge>{t('oc.disabled', 'Disabled')}</Badge>}{stats.data?.users?.[c.id] ? <Badge tone="primary" title={t('oc.stat.t', 'People who have granted this app access · sessions live right now')}>{t('oc.stat', '{u} users · {l} live').replace('{u}', String(stats.data.users[c.id])).replace('{l}', String(stats.data.live?.[c.id] || 0))}</Badge> : <Badge title={t('oc.stat.never.t', 'Nobody has ever signed in through this app')}>{t('oc.stat.never', 'unused')}</Badge>}<Badge tone="primary">{c.confidential ? t('oc.conf', 'confidential') : t('oc.pub', 'public')}</Badge>{c.scopes.map((s) => <Badge key={s}>{s}</Badge>)}</div>
-                <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5"><code className="font-mono break-anywhere">{c.id}</code><button onClick={() => copy(c.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={12} /></button> · {c.redirectUris.join(', ')}</div>
+                <div className="text-xs text-[var(--muted)] mt-0.5 flex items-center gap-1.5"><code className="font-mono break-anywhere">{c.id}</code><button onClick={() => copy(c.id)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={12} /></button> · {c.redirectUris.join(', ')}</div>
               </div>
               {c.confidential && <Button size="sm" variant="ghost" onClick={() => rotate(c)}>{t('oc.rotate', 'Rotate secret')}</Button>}
               <Button size="sm" onClick={() => toggle(c)}>{c.active ? t('oc.disable', 'Disable') : t('oc.enable', 'Enable')}</Button>
@@ -12501,7 +12501,7 @@ function MultiChannelInput({ value, onChange, placeholder }) {
           {list.length > 1 && <Button size="sm" variant="ghost" onClick={() => onChange(list.filter((_, k) => k !== i))}><Trash2 size={13} /></Button>}
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...list, ''])} className="text-xs text-[var(--primary-2)] hover:underline flex items-center gap-1"><Plus size={12} /> {t('db.f.addchan', 'Add another channel')}</button>
+      <button type="button" onClick={() => onChange([...list, ''])} className="text-xs text-[var(--accent-ink)] hover:underline flex items-center gap-1"><Plus size={12} /> {t('db.f.addchan', 'Add another channel')}</button>
     </div>
   );
 }
@@ -12624,7 +12624,7 @@ function SceneEditor() {
   return (
     <Card className="p-5 mb-4">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
-        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('scn.title', '3D scene')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--accent-ink)]" /> {t('scn.title', '3D scene')}</h2>
         {/* Off first, and phrased as the state rather than as an action: an admin who came
             here to switch it off should not have to read four paragraphs about shapes. */}
         <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
@@ -12818,7 +12818,7 @@ function SuiteArt({ row, onChange }) {
       <div className="grid place-items-center h-[52px] w-[52px] mx-auto rounded-xl border border-[var(--line)] bg-[var(--surface-2)] overflow-hidden">
         {row.img
           ? <img src={row.img} alt="" className="h-full w-full object-contain" />
-          : row.icon ? <IconGlyph name={row.icon} size={24} className="text-[var(--primary-2)]" />
+          : row.icon ? <IconGlyph name={row.icon} size={24} className="text-[var(--accent-ink)]" />
           : <BoxesIcon size={22} className="text-[var(--faint)]" />}
       </div>
       <div className="flex justify-center gap-1 mt-1.5">
@@ -13285,7 +13285,7 @@ function HomePageEditor() {
       {sections.products !== false && (
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-1">
-            <LayoutGrid size={15} className="text-[var(--primary-2)]" />
+            <LayoutGrid size={15} className="text-[var(--accent-ink)]" />
             <span className="font-medium text-sm">{t('hp.suite', 'The suite row')}</span>
           </div>
           <p className="text-[11px] text-[var(--muted)] mb-3">
@@ -13367,7 +13367,7 @@ function HomePageEditor() {
           Languages editor (one place for every string, both base languages and any added one).
           What remains here is the LAYOUT: which blocks the chosen variant draws. */}
       <Card className="p-4">
-        <div className="flex items-center gap-2 mb-1"><LayoutGrid size={15} className="text-[var(--primary-2)]" /><span className="font-medium text-sm">{t('hp.sections', 'Sections shown')}</span></div>
+        <div className="flex items-center gap-2 mb-1"><LayoutGrid size={15} className="text-[var(--accent-ink)]" /><span className="font-medium text-sm">{t('hp.sections', 'Sections shown')}</span></div>
         <p className="text-[11px] text-[var(--muted)] mb-3">{t('hp.sections.d', 'Which blocks this page draws. Blocks the chosen variant does not use are not listed here.')}</p>
         <div className="space-y-1.5">
           {grouped.filter((g) => !g.always && inVariant(g.id)).map((g) => (
@@ -13386,7 +13386,7 @@ function HomePageEditor() {
           support block. They draw on every landing variant. */}
       <Card className="p-4">
         <div className="flex items-center gap-2 flex-wrap mb-1">
-          <LayoutGrid size={15} className="text-[var(--primary-2)]" />
+          <LayoutGrid size={15} className="text-[var(--accent-ink)]" />
           <span className="font-medium text-sm flex-1">{t('hp.custom', 'Custom sections')}</span>
           <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
             {[['en', 'EN'], ['fr', 'FR']].map(([k, lbl]) => (
@@ -13425,7 +13425,7 @@ function HomePageEditor() {
 
       {/* Text lives in one place now. */}
       <div className="rounded-xl border border-[var(--line)] border-dashed p-4 flex items-start gap-3">
-        <Languages size={16} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
+        <Languages size={16} className="text-[var(--accent-ink)] shrink-0 mt-0.5" />
         <div className="text-sm text-[var(--muted)]">{t('hp.textmoved', 'To edit the words on this page — in English, French, or any other language — use the Languages editor. It edits every string on the site, applies live, and reverts to the shipped wording when you clear a field.')}</div>
       </div>
 
@@ -13601,7 +13601,7 @@ function RolePanels({ panels, onChange, guildList }) {
         return (
           <div key={p.id} className="rounded-lg border border-[var(--line)] p-2.5">
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setOpenId(open ? null : p.id)} className="flex-1 min-w-0 text-start text-sm font-medium truncate hover:text-[var(--primary-2)]">
+              <button type="button" onClick={() => setOpenId(open ? null : p.id)} className="flex-1 min-w-0 text-start text-sm font-medium truncate hover:text-[var(--accent-ink)]">
                 {p.title || t('db.rp.untitled', '(untitled panel)')}
                 <span className="ms-2 text-[11px] font-normal text-[var(--faint)]">
                   {(p.roles || []).length} {t('db.rp.roles', 'roles')} · {p.mode === 'dropdown' ? t('db.rp.dropdown', 'dropdown') : t('db.rp.buttons', 'buttons')}
@@ -13730,7 +13730,7 @@ function BlogRoutes({ routes, onChange, guildList }) {
                 const on = (r.sources || ['*']).includes(key);
                 return (
                   <button key={key} type="button" onClick={() => toggleSource(i, key)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'tint-primary b-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'tint-primary b-primary text-[var(--accent-ink)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
                     {t(BLOG_SOURCE_KEY[key] || '', label)}
                   </button>
                 );
@@ -13839,7 +13839,7 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
     <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-70' : ''} ${onToggle && live ? 'border-t-2 border-t-[#5865F2]/60' : ''}`}>
       <div className="p-4 pb-3">
         <div className="flex items-center gap-3">
-          <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'tint-primary b-primary'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
+          <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'tint-primary b-primary'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--accent-ink)]'} /></span>
           {/* The heading is the fold control. The switch is NOT: turning a module off and
               hiding its settings are different intentions, and one click must not do both. */}
           <button type="button" onClick={collapsible ? toggleOpen : undefined}
@@ -13928,7 +13928,7 @@ function MemberDatabaseCard({ cfg, set }) {
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
+          <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Database size={13} className="text-[var(--accent-ink)]" /></span>
           <span className="font-medium text-sm">{t('db.mdb.title', 'Member database')}</span>
           <Badge tone={on ? 'green' : ''}>{on ? t('db.mdb.on', 'on') : t('db.mdb.off', 'off')}</Badge>
           {data && <span className={`text-[11px] inline-flex items-center gap-1 ${data.botOnline ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${data.botOnline ? 'bg-success' : 'bg-[var(--faint)]'}`} /> {data.botOnline ? t('db.mdb.bot.on', 'bot online') : t('db.mdb.bot.off', 'bot offline')}</span>}
@@ -13944,7 +13944,7 @@ function MemberDatabaseCard({ cfg, set }) {
           <Clock size={13} className="text-[var(--faint)] shrink-0" />
           <span className="text-[var(--muted)]">{t('db.mdb.lastscan', 'Last roster scan')}:</span>
           <b className="tabular-nums">{loading ? '…' : ago(data?.lastScanAt)}</b>
-          {busyScan && <span className="inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)]"><Spinner /> {t('db.mdb.scanning', 'scanning…')}</span>}
+          {busyScan && <span className="inline-flex items-center gap-1 text-[11px] text-[var(--accent-ink)]"><Spinner /> {t('db.mdb.scanning', 'scanning…')}</span>}
         </div>
         <div className="ms-auto flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={refresh} disabled={refreshing} aria-busy={refreshing || undefined} title={t('db.mdb.refresh.h', 'Re-read the numbers below')}>
@@ -14012,7 +14012,7 @@ function BotLogsCard() {
   return (
     <Card className="p-4 mb-4">
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="font-medium text-sm flex items-center gap-2"><FileText size={14} className="text-[var(--primary-2)]" /> {t('db.logs', 'Live bot logs')}{at && <span className="text-[11px] text-[var(--faint)] font-normal">· {t('db.logs.updated', 'updated {t}').replace('{t}', new Date(at).toLocaleTimeString())}</span>}</span>
+        <span className="font-medium text-sm flex items-center gap-2"><FileText size={14} className="text-[var(--accent-ink)]" /> {t('db.logs', 'Live bot logs')}{at && <span className="text-[11px] text-[var(--faint)] font-normal">· {t('db.logs.updated', 'updated {t}').replace('{t}', new Date(at).toLocaleTimeString())}</span>}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -14067,7 +14067,7 @@ function MessageField({ label, hint, value, onChange, vars, placeholder, giftCod
         <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('botvar.insert', 'Insert')}:</span>
         {vars.map((vr) => (
           <button key={vr.v} type="button" onClick={() => insert(vr.v)} title={vr.d}
-            className="press-sm text-[11px] font-mono px-1.5 py-0.5 rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--primary-2)] hover:border-[var(--ring)] transition-colors">{vr.v}</button>
+            className="press-sm text-[11px] font-mono px-1.5 py-0.5 rounded-md border border-[var(--line)] bg-[var(--surface-2)] text-[var(--accent-ink)] hover:border-[var(--ring)] transition-colors">{vr.v}</button>
         ))}
       </div>
       <div className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5">
@@ -14122,7 +14122,7 @@ function BotDMCard() {
   return (
     <Card className="p-4 mb-4">
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="font-medium text-sm flex items-center gap-2"><Mail size={14} className="text-[var(--primary-2)]" /> {t('dm.title', 'Direct message / gift')}</span>
+        <span className="font-medium text-sm flex items-center gap-2"><Mail size={14} className="text-[var(--accent-ink)]" /> {t('dm.title', 'Direct message / gift')}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -14154,7 +14154,7 @@ function BotDMCard() {
           )}
           <MessageField label={t('dm.message', 'Message')} value={message} onChange={setMessage} vars={DM_VARS}
             placeholder={t('dm.message.ph', 'Thanks for being awesome, {user}! Here’s a little something…')} giftCode={withGift ? '' : undefined} />
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={withGift} onChange={(e) => setWithGift(e.target.checked)} /> <Gift size={13} className="text-[var(--primary-2)]" /> {t('dm.attachgift', 'Attach a gift promo code')}</label>
+          <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={withGift} onChange={(e) => setWithGift(e.target.checked)} /> <Gift size={13} className="text-[var(--accent-ink)]" /> {t('dm.attachgift', 'Attach a gift promo code')}</label>
           {withGift && (
             <div className="rounded-lg border border-[var(--line)] p-3 grid sm:grid-cols-2 gap-3">
               <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={gift.kind} onChange={(v) => setGift({ ...gift, kind: v })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
@@ -14309,7 +14309,7 @@ function BotGiveawaysCard() {
   return (
     <Card className="p-4 mb-4">
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="font-medium text-sm flex items-center gap-2"><Gift size={14} className="text-[var(--primary-2)]" /> {t('gw.title', 'Giveaways')}{giveaways.some((g) => g.status === 'active') && <Badge tone="green">{giveaways.filter((g) => g.status === 'active').length}</Badge>}</span>
+        <span className="font-medium text-sm flex items-center gap-2"><Gift size={14} className="text-[var(--accent-ink)]" /> {t('gw.title', 'Giveaways')}{giveaways.some((g) => g.status === 'active') && <Badge tone="green">{giveaways.filter((g) => g.status === 'active').length}</Badge>}</span>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -14414,7 +14414,7 @@ function BotGiveawaysCard() {
                 placeholder={t('gw.winnermsg.ph', 'Congrats {user}, you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
               {f.prizeKind === 'promo' && (
                 <div className="border-t border-[var(--line)] pt-3 grid sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize, the code is generated when the winner reveals it')}</div>
+                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--accent-ink)]" /> {t('gw.promoprize', 'Promo prize, the code is generated when the winner reveals it')}</div>
                   <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
                   {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
                   {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
@@ -14617,7 +14617,7 @@ function AdminBot() {
 
   const SectionTitle = ({ icon: I, title, sub }) => (
     <div className="flex items-center gap-2.5 mt-7 mb-3 pb-2 border-b border-[var(--line)]">
-      <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><I size={15} className="text-[var(--primary-2)]" /></span>
+      <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><I size={15} className="text-[var(--accent-ink)]" /></span>
       <div><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
     </div>
   );
@@ -14703,7 +14703,7 @@ function AdminBot() {
       <div className="grid md:grid-cols-2 gap-4 mb-2">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Lock size={13} className="text-[var(--primary-2)]" /></span>
+            <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Lock size={13} className="text-[var(--accent-ink)]" /></span>
             <span className="font-medium text-sm">{t('db.token', 'Bot token')}</span>
             {data?.hasToken ? <Badge tone="green"><CheckCircle2 size={10} /> {t('db.set', 'Set')}</Badge> : <Badge tone="amber">{t('db.notset', 'Not set')}</Badge>}
           </div>
@@ -14745,7 +14745,7 @@ function AdminBot() {
 
         {data?.storage && (
           <Card className="p-4">
-            <div className="flex items-center justify-between mb-2 gap-2"><span className="font-medium text-sm flex items-center gap-2"><span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><HardDrive size={13} className="text-[var(--primary-2)]" /></span> {t('db.memberdb', 'Member database')}</span>
+            <div className="flex items-center justify-between mb-2 gap-2"><span className="font-medium text-sm flex items-center gap-2"><span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><HardDrive size={13} className="text-[var(--accent-ink)]" /></span> {t('db.memberdb', 'Member database')}</span>
               <span className="text-xs text-[var(--muted)] shrink-0">{data.storage.memberCount} {t('db.tracked', 'tracked')}</span></div>
             {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
               <>
@@ -15090,7 +15090,7 @@ function AdminBot() {
             return (
             <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative panel-quiet ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
               <div className="flex items-center gap-2 pr-6">
-                <KIcon size={14} className="text-[var(--primary-2)] shrink-0" />
+                <KIcon size={14} className="text-[var(--accent-ink)] shrink-0" />
                 <Input className="!py-1.5 flex-1" value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
                 <div className="flex items-center gap-1 shrink-0"><Input type="number" className="!w-24 !py-1.5" value={it.cost ?? 0} onChange={(e) => upd(i, { cost: Number(e.target.value) })} /><span className="text-[11px] text-[var(--faint)]">{cur}</span></div>
                 {tag && <Badge tone={it.exclusive ? 'amber' : 'primary'}>{tag}</Badge>}
@@ -15161,7 +15161,7 @@ function AdminBot() {
         })()}
 
         <div className="rounded-xl border border-dashed border-[var(--line)] p-3 flex items-center gap-3 flex-wrap text-sm text-[var(--muted)]">
-          <TrendingUp size={16} className="text-[var(--primary-2)]" />
+          <TrendingUp size={16} className="text-[var(--accent-ink)]" />
           <span className="flex-1">{t('db.eco.ledger.moved2', 'Balances, the leaderboard, purchases to hand out and the full point history are on the Members page → Levels & economy.')}</span>
           <Button size="sm" variant="ghost" onClick={() => setPage('members')}>{t('db.eco.ledger.go', 'Open Members')} <ChevronRight size={13} /></Button>
         </div>
@@ -15235,7 +15235,7 @@ function AdminBot() {
       {/* Scope banner */}
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3 rounded-lg border border-[var(--line)] panel px-3 py-2">
         <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 min-w-0">
-          {scope ? <Server size={13} className="text-[var(--primary-2)] shrink-0" /> : <Globe size={13} className="text-[var(--primary-2)] shrink-0" />}
+          {scope ? <Server size={13} className="text-[var(--accent-ink)] shrink-0" /> : <Globe size={13} className="text-[var(--accent-ink)] shrink-0" />}
           <span className="truncate">{t('db.scope.editing', 'Editing')} <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : t('db.scope.notyet', ' — not configured yet')) : t('db.scope.appliedto', ' — applied to any server without its own config')}</span>
         </div>
         {scope && (isCustomized
@@ -15397,7 +15397,7 @@ function AdminBot() {
             <div className="rounded-lg border border-[var(--line)] overflow-hidden bg-[var(--surface-2)]">
               <div className="flex items-center justify-between px-3 pt-2">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.preview2', 'Preview · as it appears in Discord')}</div>
-                <button onClick={() => setPreviewNonce((n) => n + 1)} className="text-[10px] text-[var(--primary-2)] hover:underline flex items-center gap-1"><RefreshCw size={10} /> {t('db.refresh', 'Refresh')}</button>
+                <button onClick={() => setPreviewNonce((n) => n + 1)} className="text-[10px] text-[var(--accent-ink)] hover:underline flex items-center gap-1"><RefreshCw size={10} /> {t('db.refresh', 'Refresh')}</button>
               </div>
               <div className="p-3 flex items-start gap-2.5">
                 <img src="/logo.png" alt="" className="w-9 h-9 rounded-full shrink-0" />
@@ -15576,8 +15576,8 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
             <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><ColorInput value={fg} onChange={(v) => onStyle('fg', v)} /></Field>
           </div>
           <div className="flex items-center gap-2.5">
-            {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full tint-primary text-[var(--primary-2)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
-            <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
+            {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full tint-primary text-[var(--accent-ink)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
+            <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-[var(--accent-ink)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
           </div>
         </div>
         <p className="text-[11px] leading-relaxed text-[var(--faint)] m-0">
@@ -15645,7 +15645,7 @@ function EconomyHistoryCard({ currency }) {
               {rows.map((r) => { const m = r.meta || {}; const detail = r.kind === 'purchase' ? m.name : r.kind === 'casino' ? `${m.game || ''} ×${m.multiplier ?? ''}` : r.kind === 'gift_out' ? `→ ${m.toName || ''}` : r.kind === 'gift_in' ? `← ${m.fromName || ''}` : r.kind === 'levelup' ? `Lv ${m.level}` : r.kind === 'grant' ? (m.reason || '') : m.name || ''; return (
                 <tr key={r.id} className="border-t border-[var(--line)]">
                   <td className="py-1 text-[var(--faint)] whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</td>
-                  <td className="py-1"><Link to={`/u/${r.userId}`} className="hover:text-[var(--primary-2)]">{r.displayName}</Link></td>
+                  <td className="py-1"><Link to={`/u/${r.userId}`} className="hover:text-[var(--accent-ink)]">{r.displayName}</Link></td>
                   <td className="py-1"><span className="text-[var(--muted)]">{label(r.kind)}</span>{detail ? <span className="text-[var(--faint)]"> · {detail}</span> : null}</td>
                   <td className={`py-1 text-end tabular-nums font-medium ${r.delta > 0 ? 'text-success' : r.delta < 0 ? 'text-error' : 'text-[var(--faint)]'}`}>{r.delta > 0 ? '+' : ''}{r.delta.toLocaleString()}</td>
                   <td className="py-1 text-end tabular-nums text-[var(--muted)]">{r.balance.toLocaleString()} {currency}</td>
@@ -15778,7 +15778,7 @@ function AdminBotMembersPage({ currency }) {
         {[['roster', t('bm.view.roster', 'Roster'), Users], ['economy', t('bm.view.economy', 'Levels & economy'), TrendingUp]].map(([id, label, I]) => (
           <button key={id} type="button" onClick={() => setView(id)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
-            <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label}
+            <I size={14} className={view === id ? 'text-[var(--accent-ink)]' : ''} /> {label}
           </button>
         ))}
       </div>
@@ -15858,7 +15858,7 @@ function AdminBotMembers() {
   return (
     <div className="mt-6">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
-        <Users size={16} className="text-[var(--primary-2)]" />
+        <Users size={16} className="text-[var(--accent-ink)]" />
         <h2 className="font-semibold flex-1">{t('bm.title', 'Members')}{counts ? <span className="text-sm font-normal text-[var(--faint)]"> · {t('bm.count', '{a} total · {l} linked').replace('{a}', counts.all).replace('{l}', counts.linked)}</span> : null}</h2>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
@@ -15918,7 +15918,7 @@ function AdminBotMembers() {
                   <div className="text-[11px] text-[var(--faint)] truncate mt-0.5">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)}</div>
                 </div>
                 {eco && (
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg tint-primary text-[var(--primary-2)] tabular-nums shrink-0" title={`${(eco.xp || 0).toLocaleString()} XP`}>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg tint-primary text-[var(--accent-ink)] tabular-nums shrink-0" title={`${(eco.xp || 0).toLocaleString()} XP`}>
                     <Sparkles size={11} /> Lv {eco.level || 0} · {(eco.points || 0).toLocaleString()}
                   </span>
                 )}
@@ -15950,7 +15950,7 @@ function AdminBotMembers() {
                   ))}
                   {m.linkedUser && (
                     <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                      <Gift size={12} className="text-[var(--primary-2)]" /> <span className="text-[var(--muted)]">{t('bm.give', 'Give')}</span>
+                      <Gift size={12} className="text-[var(--accent-ink)]" /> <span className="text-[var(--muted)]">{t('bm.give', 'Give')}</span>
                       <Select className="!w-auto !py-1 !text-xs" value={giveKind} onChange={(e) => setGiveKind(e.target.value)}>
                         <option value="points">{t('bm.give.points', 'Points')}</option>
                         <option value="xp">XP</option>
@@ -15994,7 +15994,7 @@ function PendingDeliveries({ currency }) {
               <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${r.status === 'pending' ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}>{r.status === 'pending' ? <Clock size={14} /> : <CheckCircle2 size={14} />}</span>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{r.name} <span className="text-[11px] text-[var(--faint)] font-normal">· {kind(r.kind)}</span></div>
-                <div className="text-[11px] text-[var(--faint)] truncate"><Link to={`/u/${r.userId}`} className="hover:text-[var(--primary-2)]">{r.displayName}</Link> · {r.cost.toLocaleString()} {currency} · {new Date(r.createdAt).toLocaleDateString()} · {r.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}{r.delivery?.code ? ` · ${r.delivery.code}` : ''}</div>
+                <div className="text-[11px] text-[var(--faint)] truncate"><Link to={`/u/${r.userId}`} className="hover:text-[var(--accent-ink)]">{r.displayName}</Link> · {r.cost.toLocaleString()} {currency} · {new Date(r.createdAt).toLocaleDateString()} · {r.via === 'discord' ? 'Discord' : t('eco.inv.site', 'site')}{r.delivery?.code ? ` · ${r.delivery.code}` : ''}</div>
               </div>
               {r.status === 'pending' && <Button size="sm" variant="primary" onClick={() => deliver(r)}><CheckCircle2 size={13} /> {t('db.eco.deliv.ok', 'Handed out')}</Button>}
             </div>
@@ -16043,9 +16043,9 @@ function EconomyLedger({ currency }) {
         <div className="space-y-1.5 max-h-[46vh] overflow-auto pe-1">
           {data.members.map((m) => (
             <div key={m.userId} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2">
-              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary text-[var(--primary-2)] text-xs font-bold shrink-0">{m.level}</span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary text-[var(--accent-ink)] text-xs font-bold shrink-0">{m.level}</span>
               <div className="flex-1 min-w-0">
-                <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--primary-2)] block" title={m.displayName}>{m.displayName}</Link>
+                <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--accent-ink)] block" title={m.displayName}>{m.displayName}</Link>
                 <div className="text-[11px] text-[var(--faint)] tabular-nums">{m.xp.toLocaleString()} XP · {m.messages} msg · {m.reactions} react · {fmtH(m.voiceSeconds)}</div>
               </div>
               <span className="text-sm font-semibold tabular-nums shrink-0">{(m.points || 0).toLocaleString()} <span className="text-[11px] text-[var(--faint)] font-normal">{currency}</span></span>
@@ -16077,7 +16077,7 @@ function LedgerRow({ row }) {
   return (
     <div className="py-2.5 first:pt-0 last:pb-0">
       <div className="flex items-center justify-between gap-2 text-sm mb-1">
-        <span className="flex items-center gap-2 text-[var(--muted)] min-w-0"><I size={14} className="text-[var(--primary-2)] shrink-0" /> <span className="truncate" title={row.label}>{row.label}</span></span>
+        <span className="flex items-center gap-2 text-[var(--muted)] min-w-0"><I size={14} className="text-[var(--accent-ink)] shrink-0" /> <span className="truncate" title={row.label}>{row.label}</span></span>
         <span className="text-xs font-medium tabular-nums shrink-0">
           {row.usedBytes != null ? fmtBytes(row.usedBytes) : (row.count != null ? `${row.count}` : '—')}
           {hasBar && <span className="text-[var(--faint)]"> / {fmtBytes(row.allocatedBytes)}</span>}
@@ -16086,7 +16086,7 @@ function LedgerRow({ row }) {
       </div>
       {hasBar && <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className={`h-full ${pct >= 90 ? 'bg-error' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>}
       {row.note && <div className="text-[10px] text-[var(--faint)] mt-0.5">{row.note}</div>}
-      {row.export && <a href={row.export} download className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-1"><Download size={11} /> {t('as.exportcsv', 'Export CSV')}</a>}
+      {row.export && <a href={row.export} download className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1"><Download size={11} /> {t('as.exportcsv', 'Export CSV')}</a>}
     </div>
   );
 }
@@ -16145,7 +16145,7 @@ function AdminStorage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--primary-2)]" /> {t('as.title', 'Storage')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><HardDrive size={16} className="text-[var(--accent-ink)]" /> {t('as.title', 'Storage')}</h2>
         <div className="flex items-center gap-2 flex-wrap">
           {EXPORTS.map((x) => (
             <Button key={x.scope} size="sm" variant={x.owner ? undefined : 'ghost'} disabled={!!exporting}
@@ -16218,7 +16218,7 @@ function AdminStorage() {
         return (
           <Card className={`p-5 mb-4 ${near ? 'border-error-border' : ''}`}>
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <div className="text-sm font-medium flex items-center gap-2"><HardDrive size={15} className="text-[var(--primary-2)]" /> {t('as.totalcap', 'Total capacity')}</div>
+              <div className="text-sm font-medium flex items-center gap-2"><HardDrive size={15} className="text-[var(--accent-ink)]" /> {t('as.totalcap', 'Total capacity')}</div>
               <div className="text-xs text-[var(--muted)]"><b className="text-[var(--text)]">{cap.allocatedGB.toFixed(1)}</b> / {cap.usableGB.toFixed(0)} {t('as.gballocated', 'GB allocated')} <span className="text-[var(--faint)]">· {t('as.totalreserved', 'total {t} GB, {r} reserved').replace('{t}', cap.totalGB).replace('{r}', cap.reservedGB)}</span></div>
             </div>
             <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
@@ -16236,7 +16236,7 @@ function AdminStorage() {
           always answerable instead of one opaque "Total capacity" number. */}
       {d.ledger && (
         <Card className="p-5 mb-4">
-          <div className="text-sm font-medium mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> {t('as.capbypurpose', 'Capacity by purpose')}</div>
+          <div className="text-sm font-medium mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--accent-ink)]" /> {t('as.capbypurpose', 'Capacity by purpose')}</div>
           <div className="text-[11px] text-[var(--faint)] mb-2">{t('as.capbypurposesub', 'Real usage per category, approved submissions move out of the temp margin and into their own permanent bucket once approved.')}</div>
           <div className="divide-y divide-[var(--line)]">
             {d.ledger.map((row) => <LedgerRow key={row.key} row={row} />)}
@@ -16253,14 +16253,14 @@ function AdminStorage() {
         return (
           <Card className="p-5 mb-4">
             <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
-              <div className="text-sm font-medium flex items-center gap-2"><Database size={15} className="text-[var(--primary-2)]" /> {t('as.dbtables', 'Database, table by table')}</div>
+              <div className="text-sm font-medium flex items-center gap-2"><Database size={15} className="text-[var(--accent-ink)]" /> {t('as.dbtables', 'Database, table by table')}</div>
               <span className="text-[11px] text-[var(--faint)]">{t('as.dbtables.n', '{n} tables · sizes include indexes').replace('{n}', d.dbTables.length)}</span>
             </div>
             <div className="text-[11px] text-[var(--faint)] mb-3">{t('as.dbtables.sub', 'What inside the database takes the space. The Discord member roster is the one you size yourself (Discord bot → Member database); everything else grows with use and is pruned by its own retention setting.')}</div>
             <div className="space-y-1.5">
               {top.map((x) => (
                 <div key={x.name} className="flex items-center gap-2 text-xs">
-                  <span className="w-44 sm:w-64 truncate" title={x.name}>{x.label}{x.name === 'DiscordActivity' && <a href="/api/admin/bot/memberdb/export.csv" download className="ms-1.5 text-[var(--primary-2)] hover:underline">{t('as.export', 'export')}</a>}</span>
+                  <span className="w-44 sm:w-64 truncate" title={x.name}>{x.label}{x.name === 'DiscordActivity' && <a href="/api/admin/bot/memberdb/export.csv" download className="ms-1.5 text-[var(--accent-ink)] hover:underline">{t('as.export', 'export')}</a>}</span>
                   <span className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><span className={`block h-full ${x.name === 'DiscordActivity' ? 'bg-[#5865F2]' : 'bg-[var(--primary)]'}`} style={{ width: `${Math.max(1.5, (x.bytes / max) * 100)}%` }} /></span>
                   <span className="tabular-nums w-20 text-end font-medium">{fmtBytes(x.bytes)}</span>
                   <span className="tabular-nums w-24 text-end text-[var(--faint)] hidden sm:inline">{x.rows.toLocaleString()} {t('as.rows', 'rows')}</span>
@@ -16274,7 +16274,7 @@ function AdminStorage() {
       <div className="grid sm:grid-cols-3 gap-3 mb-4">
         {areas.map((a) => { const I = AREA_ICON[a.key] || HardDrive; return (
           <Card key={a.key} className="p-4">
-            <div className="flex items-center gap-2 text-sm text-[var(--muted)]"><I size={15} className="text-[var(--primary-2)]" /> {a.label}</div>
+            <div className="flex items-center gap-2 text-sm text-[var(--muted)]"><I size={15} className="text-[var(--accent-ink)]" /> {a.label}</div>
             <div className="text-2xl font-bold mt-2">{fmtBytes(a.bytes)}</div>
             <div className="text-xs text-[var(--faint)] mt-0.5">{t('as.objects', '{n} objects').replace('{n}', a.count)} · <code>{a.prefix}</code></div>
           </Card>); })}
@@ -16332,7 +16332,7 @@ function Sankey({ flows }) {
           <div className="absolute inset-y-0 left-0 bg-orange-500/10 rounded-lg" style={{ width: `${Math.max(6, (f.count / max) * 100)}%` }} />
           <div className="relative flex items-center gap-2 flex-1 min-w-0">
             {chip(f.from)}
-            <ArrowRight size={13} className="text-[var(--primary-2)] shrink-0" />
+            <ArrowRight size={13} className="text-[var(--accent-ink)] shrink-0" />
             {chip(f.to)}
           </div>
           <span className="relative text-sm font-semibold tabular-nums shrink-0">{f.count}</span>
@@ -16631,7 +16631,7 @@ function WebVitals() {
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!ps-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
         <Button size="sm" variant="ghost" onClick={() => setPathFilter(filterInput.trim())}><Search size={14} /> {t('ev.filter', 'Filter')}</Button>
-        {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs tint-primary text-[var(--primary-2)] border b-primary"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
+        {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs tint-primary text-[var(--accent-ink)] border b-primary"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
       </div>
       {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
         <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet, collected from real visits (needs analytics consent).')}</div>
@@ -16696,7 +16696,7 @@ function fakeNick(seed) { const h = hashSeed(seed); return `${NICK_ADJ[h % NICK_
 // (click / copy / field edit / submit / modal), each with its own icon, tint and a
 // human label, connected by a vertical rail so it reads like a session replay.
 const EVENT_META = {
-  page:        { Icon: Eye,                tint: 'text-[var(--primary-2)]', dot: 'bg-[var(--primary-2)]', key: 'an.evPage',   fb: 'Viewed' },
+  page:        { Icon: Eye,                tint: 'text-[var(--accent-ink)]', dot: 'bg-[var(--primary-2)]', key: 'an.evPage',   fb: 'Viewed' },
   click:       { Icon: MousePointerClick,  tint: 'text-info',            dot: 'bg-info',            key: 'an.evClick',  fb: 'Clicked' },
   copy:        { Icon: Copy,               tint: 'text-success',        dot: 'bg-success',        key: 'an.evCopy',   fb: 'Copied' },
   input:       { Icon: PenSquare,          tint: 'text-warning',          dot: 'bg-warning',          key: 'an.evInput',  fb: 'Edited' },
@@ -17401,7 +17401,7 @@ function SessionsPanel({ days, hours }) {
   return (
     <Card className="p-5 mb-4">
       <button onClick={() => setCollapsed((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
-        <Activity size={15} className="text-[var(--primary-2)]" />
+        <Activity size={15} className="text-[var(--accent-ink)]" />
         <h2 className="font-semibold flex-1 flex items-center gap-2">{t('an.sess.title', 'Sessions')}
           {data?.liveCount > 0 && <span className="inline-flex items-center gap-1.5 text-xs text-success"><span className="w-2 h-2 rounded-full bg-success animate-pulse" /> {data.liveCount} {t('an.liveLabel', 'live')}</span>}
         </h2>
@@ -17501,7 +17501,7 @@ function AdminGoals() {
   return (
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><Target size={16} className="text-[var(--primary-2)]" /> {t('goal.title', 'Goals')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Target size={16} className="text-[var(--accent-ink)]" /> {t('goal.title', 'Goals')}</h2>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             {WV_RANGES.map(([k]) => <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 text-xs uppercase ${range === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{k}</button>)}
@@ -17531,7 +17531,7 @@ function AdminGoals() {
           <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
           <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional, e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
         </div>
-        <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--primary-2)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
+        <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--accent-ink)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
           <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>
           <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : (editId ? t('goal.savebtn', 'Save') : <><Plus size={15} /> {t('goal.addbtn', 'Add goal')}</>)}</Button>
@@ -17568,7 +17568,7 @@ function AdminGoals() {
                   that produce it read as its supporting line rather than as three equal
                   columns competing for the eye. */}
               <div className="text-end px-3 min-w-[110px]">
-                <div className="text-2xl font-bold tabular-nums text-[var(--primary-2)] leading-none">{g.rate}%</div>
+                <div className="text-2xl font-bold tabular-nums text-[var(--accent-ink)] leading-none">{g.rate}%</div>
                 <div className="text-[10px] text-[var(--faint)] mt-1 tabular-nums">
                   {t('goal.ofvisitors', '{n} of {tot} visitors').replace('{n}', g.visitors).replace('{tot}', data?.totalVisitors ?? '—')}
                 </div>
@@ -17577,7 +17577,7 @@ function AdminGoals() {
                 {g._pending
                   ? <span className="text-[10px] uppercase tracking-wide text-[var(--faint)] px-1.5 py-1">{t('goal.pending', 'saving…')}</span>
                   : <>
-                      <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
+                      <button onClick={() => edit(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-[var(--accent-ink)] hover:bg-[var(--surface-2)]"><PenSquare size={15} /></button>
                       <button onClick={() => del(g)} className="p-1.5 rounded-md text-[var(--faint)] hover:text-error hover:bg-[var(--surface-2)]"><Trash2 size={15} /></button>
                     </>}
               </div>
@@ -17643,7 +17643,7 @@ function AdminFeedback() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-semibold flex items-center gap-2"><BugIcon size={16} className="text-[var(--primary-2)]" /> {t('fb.title', 'Feedback & crashes')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><BugIcon size={16} className="text-[var(--accent-ink)]" /> {t('fb.title', 'Feedback & crashes')}</h2>
         <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps, one inbox per project, answered from here.')}</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
@@ -17720,8 +17720,8 @@ function AdminFeedback() {
               <Field label={t('fb.cfg.perday', 'Feedback per project per day')}><Input type="number" min="0" value={draft.limits.perProjectDay} onChange={(e) => ld('perProjectDay', num(e.target.value))} /></Field>
             </div>
             <div className="flex flex-wrap gap-2 pt-1">
-              <Link to="/admin?s=api" className="text-xs text-[var(--primary-2)] hover:underline">{t('fb.cfg.gotoapi', 'API ceilings → Public API')}</Link>
-              <Link to="/admin?s=hostingsettings" className="text-xs text-[var(--primary-2)] hover:underline">{t('fb.cfg.gotostorage', 'Attachment retention → Hosting settings')}</Link>
+              <Link to="/admin?s=api" className="text-xs text-[var(--accent-ink)] hover:underline">{t('fb.cfg.gotoapi', 'API ceilings → Public API')}</Link>
+              <Link to="/admin?s=hostingsettings" className="text-xs text-[var(--accent-ink)] hover:underline">{t('fb.cfg.gotostorage', 'Attachment retention → Hosting settings')}</Link>
             </div>
           </div>
         </div>
@@ -17776,8 +17776,8 @@ function AdminFeedback() {
               <div><span className="text-[var(--faint)]">{t('fb.f.when', 'When')}</span> · {new Date(open.createdAt).toLocaleString()}</div>
               <div><span className="text-[var(--faint)]">{t('fb.f.version', 'Version')}</span> · {open.appVersion || '—'}</div>
               <div><span className="text-[var(--faint)]">{t('fb.f.os', 'OS')}</span> · {open.os || '—'}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</span> · {open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--primary)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)]"> · {open.creatorId}</span> : null}</div>
-              <div><span className="text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</span> · {open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--primary)]">{t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.sender', 'Sender')}</span> · {open.user ? <Link to={`/admin?s=users&q=${encodeURIComponent(open.user.email)}`} className="text-[var(--accent-ink)]">{open.user.displayName}</Link> : open.email || t('fb.anon', 'anonymous')}{open.creatorId ? <span className="font-mono text-[var(--faint)]"> · {open.creatorId}</span> : null}</div>
+              <div><span className="text-[var(--faint)]">{t('fb.f.thread', 'Thread')}</span> · {open.reportId ? <Link to={`/admin?s=reports&r=${open.reportId}`} className="text-[var(--accent-ink)]">{t('fb.f.openthread', 'open in Reports')}</Link> : open.email ? t('fb.f.bymail', 'replies go by e-mail') : t('fb.f.none', 'none (read-only)')}</div>
             </div>
             <pre className="text-sm whitespace-pre-wrap break-words bg-[var(--surface-2)] rounded-xl p-3 max-h-[50vh] overflow-auto">{open.body || t('fb.nobody', '(no text)')}</pre>
             {open.attachments?.length > 0 && <div>
@@ -17963,12 +17963,12 @@ function AdminErrors() {
                 {!e.handled
                   ? <Button size="sm" variant="ghost" disabled={busyId === e.id} onClick={() => markHandled(e)}><CheckCircle2 size={13} /> {t('er.markhandled', 'Mark handled')}</Button>
                   : <span className="text-success inline-flex items-center gap-1"><CheckCircle2 size={12} /> {t('er.handledchip', 'handled')}</span>}
-                <button onClick={() => copy(`${e.message}\n${e.path}\n\n${e.stack || ''}`, t('er.copiedlog', 'Error log copied.'))} className="inline-flex items-center gap-1 text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /> {t('er.copylog', 'Copy log')}</button>
+                <button onClick={() => copy(`${e.message}\n${e.path}\n\n${e.stack || ''}`, t('er.copiedlog', 'Error log copied.'))} className="inline-flex items-center gap-1 text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={12} /> {t('er.copylog', 'Copy log')}</button>
               </div>
               {/* Which signed-in accounts hit this error (BC ids) — click one to copy, or copy all. */}
               {e.bcIds?.length > 0 && <div>
-                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><Fingerprint size={12} /> {t('er.affected', 'Affected accounts')} ({e.bcIds.length}) <button onClick={() => copy(e.bcIds.join('\n'), t('er.bcidscopied', 'BC ids copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('er.copyall', 'copy all')}</button></div>
-                <div className="flex flex-wrap gap-1.5">{e.bcIds.map((b) => <button key={b} onClick={() => copy(b)} className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--primary)] hover:border-[var(--primary)]">{b}</button>)}</div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><Fingerprint size={12} /> {t('er.affected', 'Affected accounts')} ({e.bcIds.length}) <button onClick={() => copy(e.bcIds.join('\n'), t('er.bcidscopied', 'BC ids copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1"><Copy size={11} /> {t('er.copyall', 'copy all')}</button></div>
+                <div className="flex flex-wrap gap-1.5">{e.bcIds.map((b) => <button key={b} onClick={() => copy(b)} className="text-[11px] font-mono px-1.5 py-0.5 rounded border border-[var(--line)] text-[var(--muted)] hover:text-[var(--accent-ink)] hover:border-[var(--primary)]">{b}</button>)}</div>
               </div>}
               {(() => { const { ctx } = splitCtx(e.stack); return ctx ? (
                 <div className="flex flex-wrap gap-2 text-xs">
@@ -17978,7 +17978,7 @@ function AdminErrors() {
                 </div>
               ) : null; })()}
               {e.stack ? <div>
-                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')} <button onClick={() => copy(e.stack, t('er.stackcopied', 'Stack copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--primary)] inline-flex items-center gap-1"><Copy size={11} /> {t('common.copy', 'copy')}</button></div>
+                <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1 flex items-center gap-1.5"><FileText size={12} /> {t('er.stack', 'Stack trace')} <button onClick={() => copy(e.stack, t('er.stackcopied', 'Stack copied.'))} className="normal-case font-normal text-[var(--faint)] hover:text-[var(--accent-ink)] inline-flex items-center gap-1"><Copy size={11} /> {t('common.copy', 'copy')}</button></div>
                 <StackTrace text={splitCtx(e.stack).rest || e.stack} />
               </div> : <div className="text-xs text-[var(--faint)]">{t('er.nostack', 'No stack trace captured.')}</div>}
             </div>}
@@ -18029,7 +18029,7 @@ function EventsFeed({ days, hours }) {
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-center gap-2 flex-wrap mb-3">
-        <Activity size={15} className="text-[var(--primary-2)]" />
+        <Activity size={15} className="text-[var(--accent-ink)]" />
         <h2 className="font-semibold">{t('an.ev.title', 'Events')}</h2>
         <button onClick={() => setLive((l) => !l)}
           className={`text-xs px-2 py-1 rounded-lg inline-flex items-center gap-1.5 ${live ? 'bg-success/15 text-success' : 'bg-[var(--surface-2)] text-[var(--muted)]'}`}>
@@ -18047,7 +18047,7 @@ function EventsFeed({ days, hours }) {
       <div className="flex flex-wrap gap-1.5 mb-3">
         {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
           <button key={k} onClick={() => toggleKind(k)}
-            className={`text-[11px] px-2 py-1 rounded-lg ${kinds.includes(k) ? 'tint-primary-strong text-[var(--primary)]' : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`text-[11px] px-2 py-1 rounded-lg ${kinds.includes(k) ? 'tint-primary-strong text-[var(--accent-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {t(`an.ev.k.${k}`, k)} <span className="tabular-nums opacity-70">{n}</span>
           </button>
         ))}
@@ -18226,7 +18226,7 @@ function AdminAnalytics() {
     <Card className="p-4 relative overflow-hidden">
       {spark && spark.length > 1 && <Sparkline data={spark} stroke={sparkColor || 'var(--primary)'} className="absolute inset-x-0 bottom-0 h-9 w-full opacity-70 pointer-events-none" />}
       <div className="relative">
-        <div className="flex items-center justify-between gap-1"><Icon size={16} className={accent || 'text-[var(--primary-2)]'} />{delta}</div>
+        <div className="flex items-center justify-between gap-1"><Icon size={16} className={accent || 'text-[var(--accent-ink)]'} />{delta}</div>
         <div className="text-2xl font-bold mt-2">{val}</div>
         <div className="text-[11px] text-[var(--muted)]">{label}</div>
       </div>
@@ -18435,7 +18435,7 @@ function RetentionCard() {
   };
   return (
     <Card className="p-5 max-w-2xl">
-      <div className="flex items-center gap-2 mb-1"><Archive size={16} className="text-[var(--primary-2)]" /><h3 className="font-semibold">{t('an.ret.title', 'Data retention')}</h3></div>
+      <div className="flex items-center gap-2 mb-1"><Archive size={16} className="text-[var(--accent-ink)]" /><h3 className="font-semibold">{t('an.ret.title', 'Data retention')}</h3></div>
       <p className="text-xs text-[var(--muted)] mb-4">{t('an.ret.desc', 'Automatically delete analytics rows older than each window. 0 = keep forever. Purged in batches by the background sweeper.')}</p>
       <div className="space-y-3">
         {rows.map(([key, label, stat]) => {
@@ -18496,8 +18496,8 @@ function PageWhitelistEditor({ items, onAdd, onRemove }) {
             <div key={u.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
               <span className="truncate">{u.displayName}{u.discord && <span className="text-[var(--faint)]"> · Discord: {u.discord.username || u.discord.id}</span>}</span>
               <span className="flex gap-1 shrink-0">
-                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ BC</button>
-                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--primary-2)] hover:border-[var(--primary-2)]">+ Discord</button>}
+                <button onClick={() => add({ type: 'bcweb', id: u.id, label: u.displayName })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ BC</button>
+                {u.discord && <button onClick={() => add({ type: 'discord', id: u.discord.id, label: u.discord.username || u.discord.id })} className="px-1.5 py-0.5 rounded border border-[var(--line)] hover:text-[var(--accent-ink)] hover:border-[var(--primary-2)]">+ Discord</button>}
               </span>
             </div>
           )) : <div className="text-[11px] text-[var(--faint)] px-1">{t('adm2.noaccounts', "No accounts found.")}</div>}
@@ -18548,7 +18548,7 @@ function AnnouncementSection({ value, onChange }) {
   const set = (k) => (v) => onChange({ ...value, [k]: v });
   return (
     <div className="p-3 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] space-y-2">
-      <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--primary-2)]" /> {t('adm2.projann', "Project announcement (countdown teaser)")}</label>
+      <label className="flex items-center gap-2 text-sm cursor-pointer font-semibold"><input type="checkbox" checked={value.announceEnabled} onChange={(e) => set('announceEnabled')(e.target.checked)} /> <Megaphone size={13} className="text-[var(--accent-ink)]" /> {t('adm2.projann', "Project announcement (countdown teaser)")}</label>
       {value.announceEnabled && (
         <div className="space-y-2 ps-1">
           <Field label={t('adm2.title', "Title")}><Input value={value.announceTitle} onChange={(e) => set('announceTitle')(e.target.value)} placeholder={t('adm2.ph.teaser', "Something big is coming\u2026")} /></Field>
@@ -18603,7 +18603,7 @@ function AlertRow({ a }) {
         <Badge tone={info.tone.includes('red') ? 'red' : 'amber'} className="shrink-0">{info.label}</Badge>
         <span className="flex-1 min-w-0 text-[var(--muted)] truncate" title={a.message}>{a.message}</span>
         {a.count > 1 && <Badge className="shrink-0 tabular-nums">×{a.count}</Badge>}
-        <button onClick={copy} className="text-[var(--faint)] hover:text-[var(--primary-2)] shrink-0" title={t('common.copy', 'Copy')}><Copy size={13} /></button>
+        <button onClick={copy} className="text-[var(--faint)] hover:text-[var(--accent-ink)] shrink-0" title={t('common.copy', 'Copy')}><Copy size={13} /></button>
         <span className="text-[11px] text-[var(--faint)] shrink-0 tabular-nums">{ago}</span>
         <ChevronDown size={14} className={`text-[var(--faint)] shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -18745,7 +18745,7 @@ function AdminShowcase() {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--primary-2)]" /> {t('sh.title', 'Other projects')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Sparkles size={16} className="text-[var(--accent-ink)]" /> {t('sh.title', 'Other projects')}</h2>
         <SettingsPointer className="mb-3" keys={['showcase.requestsEnabled', 'showcase.paidEnabled', 'showcase.priceCents']}>{t('sh.ptr', 'Whether people may ask to be listed, whether they may pay, and how much')}</SettingsPointer>
         {canManage && <Button size="sm" variant="primary" onClick={() => setEditing('new')}><Plus size={14} /> {t('sh.new', 'New project')}</Button>}
       </div>
@@ -18760,7 +18760,7 @@ function AdminShowcase() {
           <Card key={pr.id} className="p-4">
             <div className="flex items-start gap-3">
               {pr.icon
-                ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
+                ? <div className="grid place-items-center w-10 h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--line)] shrink-0 text-[var(--accent-ink)]"><ShowcaseIcon icon={pr.icon} size={24} rounded={6} /></div>
                 : <div className="grid place-items-center w-10 h-10 rounded-lg bg-gradient-to-br from-brand to-brand-2 text-white font-extrabold text-xs shrink-0">{pr.short}</div>}
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0">
@@ -18772,7 +18772,7 @@ function AdminShowcase() {
                 </div>
                 <div className="text-xs text-[var(--faint)] flex items-center gap-1.5 flex-wrap mt-0.5">
                   {[pr.config?.tabs?.releases && 'releases', pr.config?.tabs?.community && 'community', pr.config?.tabs?.legal && 'legal'].filter(Boolean).join(' · ') || t('sh.overviewonly', 'overview only')}
-                  {pr.pinTopbar && <span className="inline-flex items-center gap-0.5 text-[var(--primary-2)]"><Rss size={10} /> topbar</span>}
+                  {pr.pinTopbar && <span className="inline-flex items-center gap-0.5 text-[var(--accent-ink)]"><Rss size={10} /> topbar</span>}
                   {pr.visibility && pr.visibility !== 'public' && <span className="inline-flex items-center gap-0.5"><EyeOff size={10} /> {pr.visibility}</span>}
                 </div>
               </div>
@@ -18873,7 +18873,7 @@ function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage =
       <div className="mt-3"><Field label={t('sh.e.tagline', 'Tagline')}><Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder={t('sh.e.taglineph', 'One-line description')} /></Field></div>
       <div className="mt-3"><Field label={t('sh.e.logo', 'Logo / icon')} hint={t('sh.e.logohint', 'Topbar pill + page header + blog-thumbnail fallback. Pick a lucide/brand icon, upload an svg/png, or paste a logo URL.')}>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-10 h-10 rounded-lg border border-[var(--line)] shrink-0 grid place-items-center bg-[var(--surface-2)] text-[var(--primary-2)]">
+          <div className="w-10 h-10 rounded-lg border border-[var(--line)] shrink-0 grid place-items-center bg-[var(--surface-2)] text-[var(--accent-ink)]">
             <ShowcaseIcon icon={icon} size={26} rounded={6} fallback={<Sparkles size={18} className="text-[var(--faint)]" />} />
           </div>
           <Input className="flex-1 min-w-[140px]" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="lucide name, simple:github, or https://…/logo.png" />
@@ -18920,7 +18920,7 @@ function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage =
       </div>
       {canManage ? (<>
         <label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> {t('sh.e.published', 'Published (visible on /projects)')}</label>
-        <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--primary-2)]" /> {t('sh.e.pin', 'Pin as its own topbar pill (not just the /projects grid)')}</label>
+        <label className="flex items-center gap-2 text-sm mt-2 cursor-pointer"><input type="checkbox" checked={pinTopbar} onChange={(e) => setPinTopbar(e.target.checked)} /> <Rss size={13} className="text-[var(--accent-ink)]" /> {t('sh.e.pin', 'Pin as its own topbar pill (not just the /projects grid)')}</label>
         <div className="mt-3">
           <VisibilitySection visibility={visibility} whitelist={whitelist} onVisibility={setVisibility}
             onAddWhitelist={(e) => setWhitelist((w) => [...w, e])} onRemoveWhitelist={(e) => setWhitelist((w) => w.filter((a) => !(a.type === e.type && a.id === e.id)))} />
@@ -19102,7 +19102,7 @@ function SeoHealthCard() {
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
         <div className="font-semibold text-sm flex-1 flex items-center gap-2">
-          <Globe size={15} className="text-[var(--primary-2)]" /> {t('seoh.title', 'SEO health')}
+          <Globe size={15} className="text-[var(--accent-ink)]" /> {t('seoh.title', 'SEO health')}
           {state && <Badge tone={problems ? 'amber' : 'green'}>{problems ? t('seoh.problems', '{n} to fix').replace('{n}', problems) : t('seoh.allgood', 'all good')}</Badge>}
         </div>
         <Button size="sm" variant="ghost" disabled={busy} onClick={run}><RefreshCw size={13} className={busy ? 'animate-spin' : ''} /> {busy ? t('seoh.checking', 'Checking…') : t('seoh.recheck', 'Re-check')}</Button>
@@ -19122,7 +19122,7 @@ function SeoHealthCard() {
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
             {state.pages.map((p) => (
               <div key={p.path} className="px-3 py-2 text-xs flex items-start gap-3">
-                <code className="shrink-0 w-24 text-[var(--primary-2)] truncate" title={p.path}>{p.path}</code>
+                <code className="shrink-0 w-24 text-[var(--accent-ink)] truncate" title={p.path}>{p.path}</code>
                 {p.missing ? <span className="text-error">{t('seoh.unreach', 'resolver unreachable')}</span> : (
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate" title={p.title}>{p.title}</div>
@@ -19256,7 +19256,7 @@ function SitemapCard() {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--primary-2)]" /> {t('sm.title', 'Sitemap')} {urls && <Badge>{t('sm.n', '{n} URLs').replace('{n}', urls.length)}</Badge>}</div>
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><FileText size={15} className="text-[var(--accent-ink)]" /> {t('sm.title', 'Sitemap')} {urls && <Badge>{t('sm.n', '{n} URLs').replace('{n}', urls.length)}</Badge>}</div>
         <a href="/sitemap.xml" target="_blank" rel="noreferrer" className="btn btn-sm">{t('sm.open', 'Open sitemap.xml')}</a>
         <a href="/robots.txt" target="_blank" rel="noreferrer" className="btn btn-sm">robots.txt</a>
         <Button size="sm" onClick={runScan} disabled={scanning} title={t('sm.scan.h', 'Check the exclusions and added paths against what the site can actually serve')}>
@@ -19285,7 +19285,7 @@ function SitemapCard() {
               {scan.deadExcludes.map((d) => (
                 <div key={d.path} className="ps-3 text-[var(--muted)]">
                   <code className="font-mono">{d.path}</code>
-                  {d.near && <> — {t('sm.scan.near', 'did you mean')} <button type="button" className="underline text-[var(--primary-2)]" onClick={() => setExclude(split(exclude).map((x) => (x === d.path ? d.near : x)).join('\n'))}><code className="font-mono">{d.near}</code></button>{t('sm.scan.near2', '? (still listed)')}</>}
+                  {d.near && <> — {t('sm.scan.near', 'did you mean')} <button type="button" className="underline text-[var(--accent-ink)]" onClick={() => setExclude(split(exclude).map((x) => (x === d.path ? d.near : x)).join('\n'))}><code className="font-mono">{d.near}</code></button>{t('sm.scan.near2', '? (still listed)')}</>}
                 </div>
               ))}
             </div>
@@ -19376,8 +19376,8 @@ function FeedbackStorageCard() {
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><BugIcon size={15} className="text-[var(--primary-2)]" /> {t('fbs.title', 'Feedback storage')}</div>
-        <Link to="/admin?s=feedback" className="text-xs text-[var(--primary-2)] hover:underline">{t('fbs.open', 'Open the feedback centre')}</Link>
+        <div className="font-semibold text-sm flex-1 flex items-center gap-2"><BugIcon size={15} className="text-[var(--accent-ink)]" /> {t('fbs.title', 'Feedback storage')}</div>
+        <Link to="/admin?s=feedback" className="text-xs text-[var(--accent-ink)] hover:underline">{t('fbs.open', 'Open the feedback centre')}</Link>
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">{t('fbs.sub', 'Screenshots, logs and crash zips sent with reports. They live in object storage under {p} and are served only to staff.').replace('{p}', data.prefix)}</p>
       <div className="grid sm:grid-cols-3 gap-2 mb-3 text-sm">
@@ -19436,7 +19436,7 @@ function SeoPagesCard() {
     <Card className="p-4 mb-4">
       <div className="flex items-center gap-2 flex-wrap mb-1">
         <div className="font-semibold text-sm flex-1 flex items-center gap-2">
-          <Share2 size={15} className="text-[var(--primary-2)]" /> {t('ogp.title', 'Link previews, per page')}
+          <Share2 size={15} className="text-[var(--accent-ink)]" /> {t('ogp.title', 'Link previews, per page')}
         </div>
         <Button size="sm" variant="ghost" onClick={() => setRows([...rows, { path: '', title: '', titleFr: '', description: '', descriptionFr: '', image: '' }])}>
           <Plus size={13} /> {t('ogp.add', 'Add a page')}
@@ -19456,7 +19456,7 @@ function SeoPagesCard() {
         return (
           <div className="rounded-lg border b-primary bg-[var(--primary)]/[0.04] p-3 mb-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-ink)] flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</span>
               <code className="text-[10px] text-[var(--faint)]">/*</code>
               <div className="flex-1" />
               <PlatformSwitcher plat={platOf('site')} setPlat={setPlatOf('site')} />
@@ -19697,7 +19697,7 @@ function PvTheme() {
       style={{ background: dark ? 'var(--primary)' : 'color-mix(in srgb, var(--text) 12%, transparent)', borderColor: 'var(--line-strong)' }}>
       <span className="absolute top-1/2 grid place-items-center w-[18px] h-[18px] rounded-full"
         style={{ left: 2, marginTop: -9, transform: dark ? 'translateX(20px)' : 'translateX(0)', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }}>
-        {dark ? <Moon size={11} className="text-[var(--primary)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
+        {dark ? <Moon size={11} className="text-[var(--accent-ink)] fill-[var(--primary)]" /> : <Sun size={11} className="text-warning" />}
       </span>
     </span>
   );
@@ -19776,7 +19776,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
   // Keep each valid item's ORIGINAL index so clicking it in the preview can jump to the
   // matching editor card (onEdit). Filter mirrors the server's accept rules.
   const valid = items.map((it, idx) => ({ it, idx })).filter(({ it }) => it.type === 'group' ? (it.label.trim() && it.children.some((c) => c.label.trim() && c.to.trim().startsWith('/'))) : (it.label.trim() && it.to.trim().startsWith('/')));
-  const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
+  const pillCls = (active) => `flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition ${active ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`;
   // Which built-in utility buttons are shown, in configured order. The precondition comes
   // from the SAME shared rule the real topbar uses (lib/roles.js) — re-deriving it here is
   // what made the preview lie: it drew "Log out" and "Sign in" at once, and offered
@@ -19922,7 +19922,7 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
             {openIdx === idx && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[240px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
               {it.children.filter((c) => c.label.trim() && c.to.trim().startsWith('/')).map((c, j) => (
                 <div key={j} className="flex items-start gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]">
-                  <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><NavPvIcon name={c.icon} /></span>
+                  <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><NavPvIcon name={c.icon} /></span>
                   <span className="min-w-0"><span className="block text-sm font-medium truncate">{pvLabel(c, lang)}</span>{(lang === 'fr' ? c.descFr : c.desc) && <span className="block text-xs text-[var(--faint)] truncate">{lang === 'fr' ? c.descFr : c.desc}</span>}</span>
                 </div>
               ))}
@@ -19936,11 +19936,11 @@ function NavPreview({ items, lang, device, onEdit, utility = {}, projectsMode = 
               {!textOnly && <Sparkles size={15} />}{!iconsOnly && <span>{t('nav.projects', 'Projects')}</span>}<ChevronDown size={13} className={`transition-transform ${projOpen ? 'rotate-180' : ''}`} />
             </button>
             {projOpen && <div className="absolute left-0 top-full mt-1.5 z-10 min-w-[220px] p-1.5 rounded-2xl border border-[var(--line)] topbar bg-[var(--bg-solid)] shadow-xl">
-              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate" title={p.name}>{p.name}</span></div>)}
+              {pvProjects.slice(0, layout.projectsMax).map((p) => <div key={p.slug} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[var(--surface-2)]"><span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><ShowcaseIcon icon={p.icon} size={15} fallback={<Sparkles size={15} />} /></span><span className="text-sm font-medium truncate" title={p.name}>{p.name}</span></div>)}
               {/* The same tail the real topbar appends, so the cap is visible while it is
                   being chosen rather than after saving. */}
               <div className="flex items-center gap-2.5 p-2 rounded-xl border-t border-[var(--line)] mt-1 pt-2">
-                <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]"><Boxes size={15} /></span>
+                <span className="w-7 h-7 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]"><Boxes size={15} /></span>
                 <span className="min-w-0">
                   <span className="block text-sm font-medium truncate">{t('nav.allProjects', 'All projects')}</span>
                   {pvProjects.length > layout.projectsMax && (
@@ -20141,7 +20141,7 @@ function AdminNav() {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Navigation size={16} className="text-[var(--primary-2)]" /> {t('nav.title', 'Topbar navigation')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Navigation size={16} className="text-[var(--accent-ink)]" /> {t('nav.title', 'Topbar navigation')}</h2>
         <p className="text-sm text-[var(--muted)]">{t('nav.desc', 'Design the public topbar: an ordered list of links and hover-dropdown groups, each with an icon and a name in both languages. While this is off (or empty) the site uses its built-in navigation.')}</p>
       </div>
 
@@ -20170,7 +20170,7 @@ function AdminNav() {
             className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition press ${
               panel === k ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
             }`}>
-            <I size={15} className={panel === k ? 'text-[var(--primary-2)]' : ''} /> {label}
+            <I size={15} className={panel === k ? 'text-[var(--accent-ink)]' : ''} /> {label}
           </button>
         ))}
       </div>
@@ -20178,7 +20178,7 @@ function AdminNav() {
       {/* Live preview of the real topbar built from the items below. */}
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--primary-2)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Eye size={13} className="text-[var(--accent-ink)]" /> {t('nav.pv.title', 'Live preview')} <span className="normal-case font-normal text-[var(--faint)]">({lang.toUpperCase()})</span></div>
           <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
             <button onClick={() => setDevice('desktop')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'desktop' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><MonitorIcon size={13} /> {t('nav.pv.desktop', 'Desktop')}</button>
             <button onClick={() => setDevice('mobile')} className={`px-2.5 py-1 text-xs flex items-center gap-1.5 ${device === 'mobile' ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}><Smartphone size={13} /> {t('nav.pv.mobile', 'Mobile')}</button>
@@ -20191,7 +20191,7 @@ function AdminNav() {
       {/* Pinned projects display + mobile bottom bar. */}
       {panel === 'layout' && (
       <Card className="p-4 space-y-4">
-        <h3 className="font-semibold text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--primary-2)]" /> {t('nav.extra.title', 'Projects & mobile')}</h3>
+        <h3 className="font-semibold text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--accent-ink)]" /> {t('nav.extra.title', 'Projects & mobile')}</h3>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="min-w-0">
             <div className="font-medium text-sm">{t('nav.projmode', 'Pinned projects in the topbar')}</div>
@@ -20305,7 +20305,7 @@ function AdminNav() {
       {panel === 'buttons' && (
       <Card className="p-4">
         <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-          <h3 className="font-semibold text-sm flex items-center gap-2"><LayoutGrid size={15} className="text-[var(--primary-2)]" /> {t('nav.util.title', 'Topbar buttons')}</h3>
+          <h3 className="font-semibold text-sm flex items-center gap-2"><LayoutGrid size={15} className="text-[var(--accent-ink)]" /> {t('nav.util.title', 'Topbar buttons')}</h3>
           <Button size="sm" variant="ghost" onClick={resetUtil}><RotateCcw size={13} /> {t('nav.util.reset', 'Show all, original order')}</Button>
         </div>
         <p className="text-xs text-[var(--muted)] mb-3">{t('nav.util.desc', 'Show/hide and reorder the built-in buttons. Each still respects its own rule (e.g. Admin only shows for staff, Sign in only when logged out). Order changes stay within a group.')}</p>
@@ -20584,7 +20584,7 @@ export function OwnerCatalogs() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('mycat.title', 'My catalogs')}</h2>
+        <div><h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--accent-ink)]" /> {t('mycat.title', 'My catalogs')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('oc.desc', 'Catalogs you host. Share the /c link or add them in BMM. Managed catalogs draw from a storage pool.')}</p></div>
         <Link to="/submit"><Button size="sm" variant="primary"><Plus size={14} /> {t('oc.new', 'New catalog')}</Button></Link>
       </div>
@@ -20760,7 +20760,7 @@ function AdminCatalogs() {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--primary-2)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
+        <h2 className="font-semibold mb-1 flex items-center gap-2"><Layers size={16} className="text-[var(--accent-ink)]" /> {t('cc.admin.title', 'Community catalogs')}</h2>
         <SettingsPointer className="mb-1" keys={['catalog.freeTierCapEnabled', 'catalog.freeTierCapMB']}>{t('cc.admin.ptr.pool', 'The free upload pool and its cap')}</SettingsPointer>
         <SettingsPointer className="mb-3" keys={['pricing.catalogHostPerMBCents']}>{t('cc.admin.ptr.price', 'What the excess costs')}</SettingsPointer>
         <p className="text-sm text-[var(--muted)]">{t('cc.admin.desc2', 'Owner-hosted catalogs. Suspend takes one offline for everyone; unlist just removes it from the public browser (its URL still works); delete purges it. Examine reads the hosted files without running anything.')}</p>
@@ -20778,8 +20778,8 @@ function AdminCatalogs() {
               <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0" title={c.name}>{c.name}</span> <Badge tone={c.visibility === 'private' ? 'amber' : ''}>{c.visibility}</Badge><Badge tone="">{c.mode}</Badge></div>
               {/* Line 2: WHO — owner (→ profile) + one BMM creator id (copy) + a compact count. */}
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2.5 flex-wrap mt-0.5">
-                <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--primary)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
-                {cr ? <button onClick={() => { navigator.clipboard?.writeText(cr.id); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono inline-flex items-center gap-1 hover:text-[var(--primary)]" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.id.slice(0, 12)}… <Copy size={9} /></button>
+                <a href={`/u/${c.ownerId}`} className="flex items-center gap-1 hover:text-[var(--accent-ink)]" title={c.email}><Users size={11} /> {c.owner || t('cc.noname', '—')}{c.ownerRole && c.ownerRole !== 'USER' && <Badge tone={roleTone(c.ownerRole)}>{c.ownerRole}</Badge>}</a>
+                {cr ? <button onClick={() => { navigator.clipboard?.writeText(cr.id); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono inline-flex items-center gap-1 hover:text-[var(--accent-ink)]" title={t('cc.creatorid', 'Linked BMM creator id')}><Fingerprint size={11} /> {cr.id.slice(0, 12)}… <Copy size={9} /></button>
                   : <span className="inline-flex items-center gap-1 text-warning" title={t('cc.nolink', 'No linked BMM account')}><AlertTriangle size={11} /> {t('cc.nolink', 'no BMM link')}</span>}
                 <span>{c.itemCount} {t('cc.items', 'items')} · <Download size={11} className="inline" /> {c.downloads ?? 0}</span>
                 <a href={`/c/${c.slug}`} target="_blank" rel="noreferrer" className="underline">/c/{c.slug}</a>
@@ -20856,9 +20856,9 @@ function AdminCatalogExamine({ catalog, onClose }) {
                   {inspect.data.entries.map((e) => (
                     <div key={e.name}>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start ${e.text != null ? 'hover:text-[var(--primary)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
+                        <button onClick={() => setOpenEntry(openEntry === e.name ? null : (e.text != null ? e.name : null))} className={`flex-1 min-w-0 truncate text-start ${e.text != null ? 'hover:text-[var(--accent-ink)]' : 'cursor-default'}`}>{e.text != null && <ChevronDown size={11} className={`inline me-1 transition-transform ${openEntry === e.name ? '' : '-rotate-90'}`} />}{e.name}</button>
                         <span className="text-[var(--faint)] tabular-nums">{fmtBytes(e.size)}</span>
-                        <button onClick={() => dl(it, e.name)} className="text-[var(--faint)] hover:text-[var(--primary)]"><Download size={11} /></button>
+                        <button onClick={() => dl(it, e.name)} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Download size={11} /></button>
                       </div>
                       {openEntry === e.name && e.text != null && <pre className="mt-1 mb-2 p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{e.text}</pre>}
                     </div>
@@ -20907,7 +20907,7 @@ function AdminBadges() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--primary-2)]" /> {t('ab.title', 'Badges')}</h2>
+        <div><h2 className="font-semibold flex items-center gap-2"><BadgeCheck size={16} className="text-[var(--accent-ink)]" /> {t('ab.title', 'Badges')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('ab.desc', 'Profile badges shown next to a member’s name. Grant manual badges to users, or set up an easter-egg badge users can unlock.')}</p></div>
         <Button size="sm" variant="primary" onClick={() => setEdit({ ...BADGE_BLANK })}><Plus size={14} /> {t('ab.new', 'New badge')}</Button>
       </div>
@@ -21063,7 +21063,7 @@ export function MyReports() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('mr.title', 'Messages & reports')}</h2>
+          <h2 className="font-semibold flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('mr.title', 'Messages & reports')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('mr.sub', 'Reports you filed and support conversations. Replies from the team show up here.')}</p>
         </div>
         <Button size="sm" variant="primary" onClick={() => setNewOpen(true)}><Plus size={14} /> {t('mr.new2', 'New report / contact')}</Button>
@@ -21071,7 +21071,7 @@ export function MyReports() {
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
-            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
             <div className="flex-1 min-w-0">
               <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>{r.userUnread && <Badge tone="red">{t('mr.new', 'new reply')}</Badge>}</div>
               <div className="text-xs text-[var(--faint)]">{t('mr.on', 'on {t}').replace('{t}', r.targetType)} · {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</div>
@@ -21121,9 +21121,9 @@ function ReportThreadModal({ id, admin, onClose }) {
           <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
           <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
           {/* Full report subject: the reported entity's id (repo id / catalog slug / user id) + when. */}
-          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id, click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
+          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--accent-ink)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id, click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
           {admin && <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(r.createdAt).toLocaleString()}</span>}
-          {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
+          {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--accent-ink)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
         </div>
         {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report, reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
         {admin && !own && <div className="flex flex-wrap gap-2">
@@ -21199,7 +21199,7 @@ function ReportPeoplePanel({ report, onChange }) {
             <div key={iv.id} className="flex items-center gap-2 text-xs">
               <span className="flex-1 min-w-0 truncate font-mono" title={iv.url}>{iv.url}</span>
               <span className="text-[var(--faint)] shrink-0">{iv.maxUses === 0 ? '∞' : `${iv.uses}/${iv.maxUses}`}{iv.targetType !== 'any' ? ` · ${iv.targetType}` : ''}</span>
-              <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--primary)]"><Copy size={12} /></button>
+              <button onClick={() => { navigator.clipboard?.writeText(iv.url); toast.success(t('ccp.copied', 'Copied.')); }} className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Copy size={12} /></button>
               <button onClick={() => rmInvite(iv)} className="text-[var(--faint)] hover:text-error"><X size={12} /></button>
             </div>
           ))}
@@ -21228,7 +21228,7 @@ function AdminReports() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><Inbox size={16} className="text-[var(--primary-2)]" /> {t('ar.title', 'Reports')}</h2>
+        <div><h2 className="font-semibold flex items-center gap-2"><Inbox size={16} className="text-[var(--accent-ink)]" /> {t('ar.title', 'Reports')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('ar.sub', 'User reports and support threads. Reply, archive, close or delete.')}</p></div>
         <Button size="sm" variant="ghost" onClick={() => setCfgOpen(true)}><Settings2 size={14} /> {t('ar.settings', 'Settings')}</Button>
       </div>
@@ -21238,7 +21238,7 @@ function AdminReports() {
       {loading ? <Loading /> : reports.length ? <div className="space-y-1.5">
         {reports.map((r) => { const Ico = REPORT_TARGET_ICON[r.targetType] || MessageSquare; return (
           <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
-            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+            <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
             <div className="flex-1 min-w-0">
               <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="truncate min-w-0">{r.targetLabel || t('mr.general', 'Support request')}</span> {r.staffUnread && <Badge tone="red">{t('ar.unread', 'new')}</Badge>}{r.reporterId === user?.id && <Badge tone="amber">{t('ar.yours', 'your report')}</Badge>}<Badge tone="">{r.reason === 'showcase_submission' ? t('mr.submission', 'Project submission') : (r.reason || r.targetType)}</Badge></div>
               <div className="text-xs text-[var(--faint)] truncate flex items-center gap-2 flex-wrap"><span className="flex items-center gap-1"><Users size={11} /> {r.reporter}</span>{r.reporterBcId && <span className="font-mono flex items-center gap-1"><Fingerprint size={10} /> {r.reporterBcId}</span>}<span>· {r.messageCount} {t('mr.msgs', 'messages')} · {fmtAgo(r.lastActivityAt)}</span></div>
@@ -21272,7 +21272,7 @@ function AdminRights() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--primary-2)]" /> {t('rn.adm.title', 'Rights notices')}</h2>
+        <div><h2 className="font-semibold flex items-center gap-2"><Scale size={16} className="text-[var(--accent-ink)]" /> {t('rn.adm.title', 'Rights notices')}</h2>
           <p className="text-sm text-[var(--muted)]">{t('rn.adm.sub', 'Copyright and other rights claims, DSA reports, and what the protected-works registry matched. Take down as narrowly as the claim; register the work so it stays down.')}</p></div>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden">
           {[['queue', t('rn.adm.queue', 'Queue')], ['works', t('rn.adm.works', 'Protected works')], ['config', t('common.settings', 'Settings')]].map(([k, lbl]) => <button key={k} onClick={() => setTab(k)} className={`px-3 py-1.5 text-sm ${tab === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}</button>)}
@@ -21285,7 +21285,7 @@ function AdminRights() {
         {loading ? <Loading /> : list.length ? <div className="space-y-1.5">
           {list.map((n) => { const Ico = KIND_ICON[n.kind] || Scale; return (
             <button key={n.id} onClick={() => setOpenId(n.id)} className="w-full text-start"><Card className="p-3 flex items-center gap-3 card-hover">
-              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--primary-2)]" /></span>
+              <span className="grid place-items-center w-9 h-9 rounded-lg bg-[var(--surface-2)] shrink-0"><Ico size={15} className="text-[var(--accent-ink)]" /></span>
               <div className="flex-1 min-w-0">
                 <div className="font-medium flex items-center gap-2 flex-wrap min-w-0"><span className="font-mono text-xs">{n.code}</span><span className="truncate min-w-0">{n.work?.title || n.targets?.[0]?.label || n.targets?.[0]?.url || '—'}</span> <Badge>{t(`rn.k.${n.kind}`, n.kind)}</Badge> <Badge tone={n.status === 'new' || n.status === 'countered' ? 'warning' : n.status === 'actioned' ? 'success' : undefined}>{t(`rn.s.${n.status}`, n.status)}</Badge></div>
                 <div className="text-xs text-[var(--faint)] truncate">{n.kind === 'match' ? `${t('rn.adm.matched', 'matched')} ${n.matchVia}` : `${n.name}${n.org ? ` · ${n.org}` : ''}`} · {n.targets?.length || 0} {t('rn.adm.targets', 'target(s)')} · {new Date(n.createdAt).toLocaleString()}</div>
@@ -21333,7 +21333,7 @@ function RightsNoticeModal({ id, onClose }) {
           {n.kind !== 'match' && (
             <Card className="p-3">
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s4', 'Who')}</div>
-              <div><b>{n.name}</b>{n.org ? ` · ${n.org}` : ''} · <a href={`mailto:${n.email}`} className="text-[var(--primary-2)]">{n.email}</a>{n.country ? ` · ${n.country}` : ''}{n.phone ? ` · ${n.phone}` : ''}</div>
+              <div><b>{n.name}</b>{n.org ? ` · ${n.org}` : ''} · <a href={`mailto:${n.email}`} className="text-[var(--accent-ink)]">{n.email}</a>{n.country ? ` · ${n.country}` : ''}{n.phone ? ` · ${n.phone}` : ''}</div>
               {n.address && <div className="text-xs text-[var(--muted)]">{n.address}</div>}
               <div className="text-xs text-[var(--muted)]">{t(`rn.b.${n.onBehalfOf}`, n.onBehalfOf)} · {t('rn.adm.signed', 'signed')} "{n.signature}" · {n.goodFaith && n.accurate ? t('rn.adm.stmts', 'both statements made') : t('rn.adm.nostmts', 'STATEMENTS MISSING')} · ip {n.ip}{n.reporter ? ` · ${t('rn.adm.account', 'account')} ${n.reporter.displayName}` : ''}</div>
             </Card>
@@ -21343,7 +21343,7 @@ function RightsNoticeModal({ id, onClose }) {
             <Card className="p-3">
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.s3', 'The work')}</div>
               <div><b>{n.work.title}</b> · {t(`rn.b.${n.work.basis || 'owner'}`, n.work.basis)}</div>
-              {n.work.urls?.map((u) => <div key={u} className="text-xs"><a href={u} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] break-all">{u}</a></div>)}
+              {n.work.urls?.map((u) => <div key={u} className="text-xs"><a href={u} target="_blank" rel="noreferrer" className="text-[var(--accent-ink)] break-all">{u}</a></div>)}
               {n.work.basisText && <p className="text-xs text-[var(--muted)] whitespace-pre-wrap mt-1">{n.work.basisText}</p>}
               {n.work.hashes?.length > 0 && <div className="text-[11px] text-[var(--faint)] mt-1">{n.work.hashes.length} {t('rn.adm.hashes', 'hash(es) supplied')}</div>}
             </Card>
@@ -21353,7 +21353,7 @@ function RightsNoticeModal({ id, onClose }) {
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)]">{t('rn.s1', 'Where')}</div>
             {resolved.map((tg, i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] p-2">
-                <div className="flex items-center gap-2 flex-wrap"><Badge>{t(`rn.t.${tg.type}`, tg.type)}</Badge><span className="font-medium">{tg.label || tg.url}</span>{tg.url && <a href={tg.url} target="_blank" rel="noreferrer" className="text-xs text-[var(--primary-2)]">{t('common.open', 'open')}</a>}
+                <div className="flex items-center gap-2 flex-wrap"><Badge>{t(`rn.t.${tg.type}`, tg.type)}</Badge><span className="font-medium">{tg.label || tg.url}</span>{tg.url && <a href={tg.url} target="_blank" rel="noreferrer" className="text-xs text-[var(--accent-ink)]">{t('common.open', 'open')}</a>}
                   <span className="text-xs text-[var(--faint)]">{tg.live?.exists === false ? t('rn.adm.gone', 'no longer exists') : tg.live?.status ? `${t('common.status', 'status')} ${tg.live.status}` : ''}{tg.live?.files != null ? ` · ${tg.live.files} ${t('rn.adm.files', 'files')}` : ''}{tg.live?.items != null ? ` · ${tg.live.items} ${t('rn.adm.items', 'items')}` : ''}</span></div>
                 {tg.files?.length > 0 && <div className="text-xs font-mono text-[var(--muted)] mt-1">{tg.files.join(' · ')}</div>}
                 {tg.note && <div className="text-xs text-[var(--muted)] mt-1">{tg.note}</div>}
@@ -21370,7 +21370,7 @@ function RightsNoticeModal({ id, onClose }) {
               <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rn.adm.owners', 'Answerable accounts')}</div>
               {owners.map((o) => (
                 <div key={o.id} className="flex items-center gap-2 flex-wrap text-sm">
-                  <Link to={`/admin?s=users&q=${encodeURIComponent(o.email || o.id)}`} className="text-[var(--primary-2)]">{o.displayName}</Link><span className="font-mono text-xs text-[var(--faint)]">{o.bcId}</span>
+                  <Link to={`/admin?s=users&q=${encodeURIComponent(o.email || o.id)}`} className="text-[var(--accent-ink)]">{o.displayName}</Link><span className="font-mono text-xs text-[var(--faint)]">{o.bcId}</span>
                   <Badge tone={o.strikes?.over ? 'error' : o.strikes?.strikes ? 'warning' : undefined}>{t('rn.adm.strikes', '{n} / {m} strikes in {d} days').replace('{n}', o.strikes?.strikes ?? 0).replace('{m}', o.strikes?.threshold ?? 3).replace('{d}', o.strikes?.windowDays ?? 365)}</Badge>
                   {o.prior?.length > 0 && <span className="text-xs text-[var(--faint)]">{o.prior.join(', ')}</span>}
                   {o.strikes?.over && <span className="text-xs text-error">{t('rn.adm.repeat', 'Repeat infringer, consider the account screen.')}</span>}
@@ -21588,7 +21588,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 flex-1"><BellIcon size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.needs', 'Needs attention')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><BellIcon size={16} className="text-[var(--accent-ink)]" /> {t('adm.tab.needs', 'Needs attention')}</h2>
         <Button size="sm" variant="ghost" onClick={() => onReload?.()}><RefreshCw size={13} /> {t('common.refresh', 'Refresh')}</Button>
       </div>
 
@@ -21601,7 +21601,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
                 <Link key={q.key} to={q.to}>
                   <Card className={`p-3.5 h-full transition-colors ${n > 0 ? 'b-primary' : ''} hover:border-[var(--primary)]`}>
                     <div className="flex items-center gap-2 text-xs text-[var(--muted)] mb-1"><q.icon size={13} /> {q.label(t)}</div>
-                    <div className={`text-2xl font-semibold tabular-nums ${n > 0 ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`}>
+                    <div className={`text-2xl font-semibold tabular-nums ${n > 0 ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'}`}>
                       {n == null ? '—' : n}
                     </div>
                   </Card>
@@ -21632,7 +21632,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
                     <button onClick={() => dismiss(it, 'handled')} title={t('nq.handled.h', 'Dealt with, take it off this list')}
                       className="text-[var(--faint)] hover:text-success"><CheckCircle2 size={14} /></button>
                     <button onClick={() => dismiss(it, 'archived')} title={t('nq.archived.h', 'Not going to act on it, take it off this list')}
-                      className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Archive size={14} /></button>
+                      className="text-[var(--faint)] hover:text-[var(--accent-ink)]"><Archive size={14} /></button>
                   </span>
                 </div>
               ))}
@@ -21675,7 +21675,7 @@ function SocialIconPreview({ icon }) {
   if (bundled) {
     return (
       <span title={t('afoot.icon.bundled', 'Built-in brand icon')}
-        className="w-7 h-7 shrink-0 grid place-items-center rounded-lg border border-[var(--line)] text-[10px] font-bold uppercase text-[var(--primary-2)]">
+        className="w-7 h-7 shrink-0 grid place-items-center rounded-lg border border-[var(--line)] text-[10px] font-bold uppercase text-[var(--accent-ink)]">
         {key.slice(0, 2)}
       </span>
     );
@@ -21809,7 +21809,7 @@ function AdminFooter() {
   return (
     <div>
       <div className="flex items-center gap-2 flex-wrap mb-1">
-        <h2 className="font-semibold flex items-center gap-2 flex-1"><PanelTop size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.footer', 'Footer')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 flex-1"><PanelTop size={16} className="text-[var(--accent-ink)]" /> {t('adm.tab.footer', 'Footer')}</h2>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={!!f.enabled} onChange={(e) => setF({ ...f, enabled: e.target.checked })} />
           {t('afoot.enabled', 'Use this footer')}
@@ -21868,7 +21868,7 @@ function AdminFooter() {
             className={`shrink-0 inline-flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition press ${
               panel === k ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--primary)]'
             }`}>
-            <I size={15} className={panel === k ? 'text-[var(--primary-2)]' : ''} /> {label}
+            <I size={15} className={panel === k ? 'text-[var(--accent-ink)]' : ''} /> {label}
           </button>
         ))}
       </div>
@@ -22313,7 +22313,7 @@ function AdminSiteTheme() {
 
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--primary-2)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Palette size={16} className="text-[var(--accent-ink)]" /> {t('adm.tab.sitetheme', 'Site theme')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('st.sub2', 'Everything visitors see the site wearing: the accent pair, the gradients, the page and surface colours in both modes, and the site’s own mark. Only a superadmin can change it.')}</p>
 
       <AppIconsCard />
@@ -22538,7 +22538,7 @@ function AdminSiteTheme() {
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
                     {m === 'dark' ? <Moon size={12} /> : <Sun size={12} />} {m === 'dark' ? t('st.dark', 'Dark') : t('st.light', 'Light')}
                   </span>
-                  {editing && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)] font-medium">{t('st.editing', 'editing')}</span>}
+                  {editing && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--accent-ink)] font-medium">{t('st.editing', 'editing')}</span>}
                 </div>
                 <div id={`st-preview-${m}`} className={`rounded-xl border p-3.5 space-y-3 transition ${editing ? 'b-primary ring-1 ring-[var(--primary)]' : 'border-[var(--line)]'}`}
                   style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f, m), color: 'var(--text)' }}>
@@ -22700,7 +22700,7 @@ function EconomyStatsCard() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <TrendingUp size={16} className="text-[var(--primary-2)]" />
+        <TrendingUp size={16} className="text-[var(--accent-ink)]" />
         <div className="font-semibold">{t('db.eco.st.title', 'Where the points go')}</div>
         <span className="text-[11px] text-[var(--faint)]">{t('db.eco.st.utc', 'Days and weeks are UTC; weeks start on Monday.')}</span>
         <div className="ms-auto flex items-center gap-1">
@@ -22818,7 +22818,7 @@ function EconomySeasonCard() {
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2 mb-1 flex-wrap">
-        <RotateCcw size={16} className="text-[var(--primary-2)]" />
+        <RotateCcw size={16} className="text-[var(--accent-ink)]" />
         <div className="font-semibold">{t('db.eco.season.title', 'Seasons')}</div>
         {data?.state && <span className="text-[11px] text-[var(--faint)]">{t('db.eco.season.no', 'Season {n}').replace('{n}', data.state.seasonNo)}</span>}
         <div className="ms-auto text-[12px] text-[var(--muted)]">
@@ -22922,7 +22922,7 @@ const MK_BLANK = {
  */
 function ConfigElsewhere({ to, children }) {
   return (
-    <Link to={to} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--primary-2)] hover:underline">
+    <Link to={to} className="inline-flex items-center gap-1.5 text-[11px] text-[var(--accent-ink)] hover:underline">
       <SettingsIcon size={12} /> {children} <ChevronRight size={11} />
     </Link>
   );
@@ -23052,7 +23052,7 @@ function ProjectMarginCard({ data, targets, onSaved }) {
   return (
     <Card className="p-4 mb-4">
       <button type="button" onClick={() => setOpen((x) => !x)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="text-sm font-medium flex items-center gap-2"><Scale size={15} className="text-[var(--primary-2)]" /> {t('mkadm.pm.title', 'Margin per project')}</span>
+        <span className="text-sm font-medium flex items-center gap-2"><Scale size={15} className="text-[var(--accent-ink)]" /> {t('mkadm.pm.title', 'Margin per project')}</span>
         <span className="text-[11px] text-[var(--faint)]">{t('mkadm.pm.count', '{n} of {m} page(s) set').replace('{n}', pages.filter((p) => map[p.scope] != null).length).replace('{m}', pages.length)} {open ? <ChevronUp size={12} className="inline" /> : <ChevronDown size={12} className="inline" />}</span>
       </button>
       {open && (
@@ -23143,7 +23143,7 @@ function ProjectPayoutCard({ pages, onChanged }) {
   return (
     <Card className="p-4 mb-4">
       <button type="button" onClick={() => setOpen((x) => !x)} className="w-full flex items-center justify-between gap-2 text-start">
-        <span className="text-sm font-medium flex items-center gap-2"><Wallet size={15} className="text-[var(--primary-2)]" /> {t('mkadm.po.title', 'Payouts per project')}</span>
+        <span className="text-sm font-medium flex items-center gap-2"><Wallet size={15} className="text-[var(--accent-ink)]" /> {t('mkadm.po.title', 'Payouts per project')}</span>
         <span className="text-[11px] text-[var(--faint)]">
           {t('mkadm.po.count', '{n} of {m} page(s) paid out').replace('{n}', ready).replace('{m}', pages.length)}
           {' '}{open ? <ChevronUp size={12} className="inline" /> : <ChevronDown size={12} className="inline" />}
@@ -23287,7 +23287,7 @@ function AdminMarketplace() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><ShoppingBag size={16} className="text-[var(--primary-2)]" /> {t('mkadm.title', 'Project marketplace')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><ShoppingBag size={16} className="text-[var(--accent-ink)]" /> {t('mkadm.title', 'Project marketplace')}</h2>
         <SettingsPointer className="mb-1" keys={['marketplace.storageMB']}>{t('mkadm.ptr.store', 'How much room product files have')}</SettingsPointer>
         <SettingsPointer className="mb-3" keys={['marketplace.feePercentBp']}>{t('mkadm.ptr.fee', 'What the platform keeps on a sale')}</SettingsPointer>
         <Button size="sm" variant="primary" onClick={() => setDraft({ ...MK_BLANK })}><Plus size={14} /> {t('mkadm.new', 'New product')}</Button>
@@ -23319,7 +23319,7 @@ function AdminMarketplace() {
         <div className="space-y-2">
           {rows.map((pr) => (
             <div key={pr.id} className="card p-3 flex items-center gap-3 flex-wrap">
-              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--primary-2)]">{pr.deliveryKind.startsWith('key') ? <Key size={15} /> : <ShoppingBag size={15} />}</span>
+              <span className="w-9 h-9 rounded-lg bg-[var(--surface-2)] grid place-items-center shrink-0 text-[var(--accent-ink)]">{pr.deliveryKind.startsWith('key') ? <Key size={15} /> : <ShoppingBag size={15} />}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-medium truncate">{pr.name} {!pr.active && <Badge>{t('mkadm.off', 'off')}</Badge>}</div>
                 <div className="text-xs text-[var(--faint)]">{pr.projectKey || pr.showcaseProjectId} · {pr.deliveryKind} · {pr.priceCents > 0 ? `${(pr.priceCents / 100).toFixed(2)} ${pr.currency}` : t('mk.free', 'Free')} · {t('mkadm.sold', '{n} sold').replace('{n}', pr.sold || 0)}{pr.deliveryKind === 'key_pool' ? ` · ${t('mkadm.keys', '{n} keys').replace('{n}', pr.keyCount || 0)}` : ''}
@@ -23408,12 +23408,12 @@ function SeedGeneratorCard() {
   const sectionsList = preview?.sections || [];
   return (
     <Card className="p-4 mt-4">
-      <div className="text-sm font-medium flex items-center gap-2 mb-1"><Database size={14} className="text-[var(--primary-2)]" /> {t('sg.title', 'Custom seed generator')}</div>
+      <div className="text-sm font-medium flex items-center gap-2 mb-1"><Database size={14} className="text-[var(--accent-ink)]" /> {t('sg.title', 'Custom seed generator')}</div>
       <p className="text-[11px] text-[var(--muted)] mb-3 max-w-2xl">{t('sg.sub2', 'Pick what to include — a whole section, or expand it and choose the exact rows — and download a runnable, idempotent seed script that recreates them on another install. Running it twice changes nothing the second time.')}</p>
       <div className="flex items-center gap-2 mb-2 text-xs">
-        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { const all = sectionsList.map((x) => x.key); refresh(all); setItemSel(Object.fromEntries(all.filter(hasItems).map((k) => [k, itemsOf(k).map((i) => i.id)]))); }}>{t('sg.all', 'Select all')}</button>
+        <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => { const all = sectionsList.map((x) => x.key); refresh(all); setItemSel(Object.fromEntries(all.filter(hasItems).map((k) => [k, itemsOf(k).map((i) => i.id)]))); }}>{t('sg.all', 'Select all')}</button>
         <span className="text-[var(--faint)]">·</span>
-        <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { refresh([]); setItemSel({}); }}>{t('sg.none', 'None')}</button>
+        <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => { refresh([]); setItemSel({}); }}>{t('sg.none', 'None')}</button>
         <span className="ms-auto text-[var(--muted)] tabular-nums">{t('sg.total2', '{n} section(s) · {k} row(s)').replace('{n}', effectiveSections.length).replace('{k}', effectiveSections.reduce((a, k) => a + chosenCount(k), 0))}</span>
       </div>
       <div className="space-y-2 mb-3">
@@ -23434,9 +23434,9 @@ function SeedGeneratorCard() {
               {withItems && expanded[s.key] && (
                 <div className="border-t border-[var(--line)] px-3 py-2">
                   <div className="flex items-center gap-2 mb-1.5 text-[11px]">
-                    <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => { if (!on) toggle(s.key); setAllItems(s.key, true); }}>{t('sg.rowsall', 'All')}</button>
+                    <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => { if (!on) toggle(s.key); setAllItems(s.key, true); }}>{t('sg.rowsall', 'All')}</button>
                     <span className="text-[var(--faint)]">·</span>
-                    <button type="button" className="text-[var(--primary-2)] hover:underline" onClick={() => setAllItems(s.key, false)}>{t('sg.rowsnone', 'None')}</button>
+                    <button type="button" className="text-[var(--accent-ink)] hover:underline" onClick={() => setAllItems(s.key, false)}>{t('sg.rowsnone', 'None')}</button>
                   </div>
                   <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 max-h-52 overflow-y-auto">
                     {list.map((it) => (
@@ -23531,8 +23531,8 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="seg-rail p-0.5 gap-0.5">
-              <button onClick={() => setScope('core')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'core' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.core', 'Core')}</button>
-              <button onClick={() => setScope('all')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'all' ? 'bg-[var(--bg-solid)] text-[var(--primary)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.all', 'All strings')}</button>
+              <button onClick={() => setScope('core')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'core' ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.core', 'Core')}</button>
+              <button onClick={() => setScope('all')} className={`px-2.5 py-1 rounded-[10px] text-xs transition ${scope === 'all' ? 'bg-[var(--bg-solid)] text-[var(--accent-ink)] shadow-sm font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{t('lc.scope.all', 'All strings')}</button>
             </div>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none"><input type="checkbox" className="accent-[var(--primary)]" checked={untransOnly} onChange={(e) => setUntransOnly(e.target.checked)} /> {t('lc.untrans', 'Untranslated only')}</label>
             <div className="flex-1" />
@@ -23562,7 +23562,7 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
                 {vars.length > 0 && (
                   <div className="flex items-center gap-1.5 flex-wrap mb-1.5 text-[10px] text-[var(--faint)]">
                     <span>{t('lc.keepvars', 'keep:')}</span>
-                    {vars.map((v) => <code key={v} className="px-1 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]">{v}</code>)}
+                    {vars.map((v) => <code key={v} className="px-1 py-0.5 rounded bg-[var(--surface-2)] text-[var(--accent-ink)]">{v}</code>)}
                   </div>
                 )}
                 <Input dir={locale.rtl ? 'rtl' : 'ltr'} value={valOf(k)} placeholder={dict[k]?.en || ''}
@@ -23661,7 +23661,7 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
           <button key={v} type="button" onClick={() => set('mode', v)}
             className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
             <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)] to-transparent b-primary' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
-              {v === 'default' ? <Heart size={14} className="text-[var(--primary-2)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
+              {v === 'default' ? <Heart size={14} className="text-[var(--accent-ink)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
             </span>
             <span className="min-w-0"><span className="block text-sm font-medium">{l}</span><span className="block text-[11px] text-[var(--muted)] leading-snug">{h}</span></span>
           </button>
@@ -23794,7 +23794,7 @@ function CharityAdminCard() {
   const pv = data.preview || {};
   return (
     <Card className="mt-6 p-5">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Heart size={16} className="text-[var(--primary-2)]" /> {t('chc.title', 'Community Charity')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Heart size={16} className="text-[var(--accent-ink)]" /> {t('chc.title', 'Community Charity')}</h2>
       <p className="text-sm text-[var(--muted)] mb-4">{t('chc.sub', 'Each month a share of eligible revenue goes to a community-chosen association. The final payment is sent manually.')}</p>
 
       <label className="flex items-center gap-2 text-sm cursor-pointer select-none mb-3">
@@ -23886,7 +23886,7 @@ function BotI18nCard() {
   const missing = keys.filter((k) => !(base[lang]?.[k]) && !(overrides[lang]?.[k])).length;
   return (
     <Card className="mt-6 p-5">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('bi.title', 'Discord bot')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--accent-ink)]" /> {t('bi.title', 'Discord bot')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('bi.sub', 'Every text the bot shows — buttons, cards, the casino, the onboarding — per language. The bot ships English, French, German and Spanish; edit any of them here, or add a language by code (missing keys fall back to English). A server’s manager picks the bot’s language on the welcome card (/setup); “auto” follows each member’s own Discord language.')}</p>
       {loading ? <Spinner /> : !keys.length ? (
         <div className="text-sm text-[var(--faint)]">{t('bi.nobase', 'The bot has not reported its dictionary yet, it does on its first heartbeat after starting. Start the bot, then reload.')}</div>
@@ -23894,7 +23894,7 @@ function BotI18nCard() {
         <>
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs">
-              {langs.map((l) => <button key={l} type="button" onClick={() => { setLang(l); setDraft({}); }} className={`px-2.5 py-1 rounded-md uppercase ${lang === l ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{l}{overrides[l] && Object.keys(overrides[l]).length ? <span className="ms-1 text-[9px] text-[var(--primary-2)]">●</span> : null}</button>)}
+              {langs.map((l) => <button key={l} type="button" onClick={() => { setLang(l); setDraft({}); }} className={`px-2.5 py-1 rounded-md uppercase ${lang === l ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{l}{overrides[l] && Object.keys(overrides[l]).length ? <span className="ms-1 text-[9px] text-[var(--accent-ink)]">●</span> : null}</button>)}
             </div>
             <div className="flex items-center gap-1">
               <Input className="!py-1 !text-xs w-16" placeholder="it" maxLength={5} value={custom} onChange={(e) => setCustom(e.target.value.toLowerCase())} />
@@ -23975,7 +23975,7 @@ function LanguagesCard() {
   const coreCount = Object.keys(core).length;
   return (
     <Card className="mt-6 p-5">
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Languages size={16} className="text-[var(--primary-2)]" /> {t('lc.title', 'Languages')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Languages size={16} className="text-[var(--accent-ink)]" /> {t('lc.title', 'Languages')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('lc.sub2', 'Edit every site string, in any language. English and French are the built-in base — edit them as an override; add more languages below. Saving applies live for everyone, and clearing a field falls back to the built-in text.')}</p>
 
       {/* A plain three-step so a translator knows where to start without reading the paragraph. */}
@@ -23986,7 +23986,7 @@ function LanguagesCard() {
           t('lc.step3', 'Type the translation, it applies live for everyone. Leave a field empty to fall back to the built-in text.'),
         ].map((s, i) => (
           <div key={i} className="flex items-start gap-2">
-            <span className="grid place-items-center w-5 h-5 rounded-full tint-primary text-[var(--primary-2)] text-[10px] font-bold shrink-0">{i + 1}</span>
+            <span className="grid place-items-center w-5 h-5 rounded-full tint-primary text-[var(--accent-ink)] text-[10px] font-bold shrink-0">{i + 1}</span>
             <span>{s}</span>
           </div>
         ))}
@@ -24000,7 +24000,7 @@ function LanguagesCard() {
           {[['en', 'English'], ['fr', 'Français']].map(([code, name]) => (
             <button key={code} type="button" onClick={() => setEditing({ code, nativeName: name, rtl: false, base: true })}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--line)] hover:border-[var(--primary)] text-sm transition">
-              <PenSquare size={13} className="text-[var(--primary-2)]" /> {t('lc.editbase', 'Edit {x}').replace('{x}', name)}
+              <PenSquare size={13} className="text-[var(--accent-ink)]" /> {t('lc.editbase', 'Edit {x}').replace('{x}', name)}
               {data?.baseCounts?.[code] > 0 && <Badge tone="primary">{t('lc.overridden', '{n} changed').replace('{n}', data.baseCounts[code])}</Badge>}
             </button>
           ))}
@@ -24149,11 +24149,11 @@ function AdminSettings() {
           The "Save all" pill still floats to a sticky dock at the bottom-right when
           there are unsaved edits, so pinning the header isn't needed. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('hs.title', 'Hosting settings')}</h2>
+        <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--accent-ink)]" /> {t('hs.title', 'Hosting settings')}</h2>
         {/* The fields below carry a one-line description each; the long "what does this actually
             do, and when would I change it" lives in the Admin guide so this screen stays a
             control panel, not a manual. */}
-        <Link to="?s=guide&g=hostingsettings" className="text-xs text-[var(--primary-2)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
+        <Link to="?s=guide&g=hostingsettings" className="text-xs text-[var(--accent-ink)] hover:underline inline-flex items-center gap-1.5 shrink-0"><BookOpen size={13} /> {t('hs.guide', 'Full explanations in the Admin guide')}</Link>
       </div>
       {dirtyKeys.length > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 anim-slide">
@@ -24186,7 +24186,7 @@ function AdminSettings() {
         <Dropdown value={tab} onChange={(v) => setTab(v)} className="min-w-[240px]"
           options={HS_TABS.map((tb) => ({
             value: tb.gk,
-            icon: <tb.icon size={14} className={tab === tb.gk ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'} />,
+            icon: <tb.icon size={14} className={tab === tb.gk ? 'text-[var(--accent-ink)]' : 'text-[var(--faint)]'} />,
             label: (
               <span className="inline-flex items-center gap-1.5">
                 {t(`hs.g.${tb.gk}`, tb.title)}
@@ -24231,7 +24231,7 @@ function AdminSettings() {
         return (
           <Card className="p-4 mb-3">
             <div className="flex items-center justify-between text-sm mb-2 flex-wrap gap-2">
-              <span className="flex items-center gap-2 font-medium"><HardDrive size={15} className="text-[var(--primary-2)]" /> {t('hs.totalcap', 'Total capacity')}</span>
+              <span className="flex items-center gap-2 font-medium"><HardDrive size={15} className="text-[var(--accent-ink)]" /> {t('hs.totalcap', 'Total capacity')}</span>
               <span className="text-xs text-[var(--muted)] tabular-nums">{t('hs.capused', '{used} / {total} GB used · {free} GB free').replace('{used}', used.toFixed(1)).replace('{total}', total).replace('{free}', Math.max(0, total - used).toFixed(1))}</span>
             </div>
             <div className="flex h-3.5 rounded-full overflow-hidden bg-[var(--surface-2)] border border-[var(--line)]">
@@ -24275,7 +24275,7 @@ function AdminSettings() {
       {c && (
         <Card className="p-4 mb-3">
           <div className="flex items-center justify-between text-sm mb-1.5">
-            <span className="flex items-center gap-2 text-[var(--muted)]"><Upload size={14} className="text-[var(--primary-2)]" /> {t('hs.tempstore', 'Temp storage (submissions)')}</span>
+            <span className="flex items-center gap-2 text-[var(--muted)]"><Upload size={14} className="text-[var(--accent-ink)]" /> {t('hs.tempstore', 'Temp storage (submissions)')}</span>
             <span className="font-semibold tabular-nums">{(c.tempUsedGB ?? 0).toFixed(2)} / {c.tempMarginGB ?? 0} GB</span>
           </div>
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden flex">
@@ -24306,7 +24306,7 @@ function AdminSettings() {
           return (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
             <div className="w-full flex items-center gap-2.5 px-4 py-3 panel border-b border-[var(--line)] text-start">
-              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><g.icon size={15} className="text-[var(--accent-ink)]" /></span>
               <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)]">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
               <span className="text-[10px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
             </div>
@@ -24345,7 +24345,7 @@ function AdminSettings() {
                   {/* The gist stays on the control; the full explanation lives in the Admin guide,
                       so a setting reads as a control, not a manual (clamp + a "learn more" link). */}
                   <div className="text-[11px] text-[var(--faint)] mt-1.5 line-clamp-2">{D}</div>
-                  <Link to={`?s=guide&g=hostingsettings&k=${encodeURIComponent(k)}`} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
+                  <Link to={`?s=guide&g=hostingsettings&k=${encodeURIComponent(k)}`} className="text-[11px] text-[var(--accent-ink)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
                   {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total, can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
