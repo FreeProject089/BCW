@@ -4,7 +4,7 @@
 // the four rules that stop this feature from destroying something, because every one of them
 // protects a document a person may have legally agreed to:
 //
-//   · the five built-ins survive the migration with the keys their stored sections already
+//   · every built-in survives the migration with the keys its stored sections already
 //     hold — a key that shifts is a document that silently empties;
 //   · a built-in cannot be deleted, because its text is compiled into the web bundle and the
 //     row is the only thing listing it;
@@ -26,10 +26,16 @@ before(async () => {
 });
 after(async () => { if (RUN) await p?.$disconnect?.(); });
 
-test('the five built-ins are present, with the keys their sections already use', { skip }, async () => {
-  const pages = await p.legalPage.findMany({ where: { builtIn: true }, select: { key: true } });
+test('every built-in is present, with the keys its sections already use', { skip }, async () => {
+  const pages = await p.legalPage.findMany({ where: { builtIn: true }, select: { key: true, published: true } });
   const keys = pages.map((x) => x.key).sort();
-  assert.deepEqual(keys, ['about', 'cookies', 'privacy', 'refunds', 'terms']);
+  assert.deepEqual(keys, ['about', 'cookies', 'dpa', 'privacy', 'refunds', 'submissions', 'terms']);
+  // The addendum is the one document a deployment chooses to offer, so it ships unpublished:
+  // an Article 28 contract nobody agreed to must not appear on a site by default.
+  assert.equal(pages.find((x) => x.key === 'dpa')?.published, false);
+  for (const k of ['about', 'cookies', 'privacy', 'refunds', 'terms']) {
+    assert.equal(pages.find((x) => x.key === k)?.published, true, `${k} must stay published`);
+  }
 });
 
 test('a page carries its heading, and losing the heading does not lose the page', { skip }, async () => {
