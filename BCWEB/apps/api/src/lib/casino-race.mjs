@@ -40,14 +40,186 @@ const TRACKS = [
   { name: 'Serpentine', pts: [[0.06, 0.86], [0.36, 0.86], [0.40, 0.70], [0.26, 0.62], [0.30, 0.46], [0.50, 0.44], [0.56, 0.30], [0.42, 0.16], [0.60, 0.06], [0.82, 0.12], [0.92, 0.30], [0.80, 0.44], [0.92, 0.62], [0.80, 0.80], [0.60, 0.92], [0.30, 0.94], [0.10, 0.94]], sectors: [0.30, 0.66], pit: [0.015, 0.13] },
 ];
 
+// ── the Paddock-Manager import ─────────────────────────────────────────────────────────
+// A real export from the Paddock-Manager circuit editor is a chain of segments, each with
+// its own control points in an ARBITRARY pixel space (negative coordinates included), its
+// own `speedFactor` (how fast that stretch is taken) and its own length; plus three sectors
+// given as segment indices, and a pit lane authored as its own little chain of segments
+// beside the track. Converting it means four things, and getting any of them wrong draws a
+// track that is not the one the person built:
+//   · the polyline — segments chain end to end, so the last point of one IS the first point
+//     of the next: concatenating naively doubles every joint, and the closing point doubles
+//     the start. Deduplicate, then resample by arc length to a bounded number of points
+//     (the stored shape has to stay small enough to live in the bot config);
+//   · the box — normalise into 0..1 keeping the ASPECT RATIO. Stretching each axis to fill
+//     the box turns a long thin circuit into a blob that shares nothing with the original;
+//   · the sectors — a sector starts at a segment index, which is only a fraction of the lap
+//     once you sum the segments' lengths up to it (point counts are the fallback, since an
+//     export may omit a length);
+//   · the pit lane — the built-ins fake one by pushing the track inwards; a real export
+//     AUTHORS it, so normalise those points with the same transform and it lands exactly
+//     where it was drawn. Where it joins and rejoins is read off the geometry (the nearest
+//     point of the loop to each of its ends): the editor's entry/exit indices are often both
+//     zero, which would collapse the pit lane to nothing.
+// And `speedFactor` is carried per point, so the simulation can actually slow the cars in
+// the slow parts (see `paceAt` in simulateRace). It is renormalised so a full lap still
+// takes the same time: only the DISTRIBUTION of pace around the lap changes.
+const PAD_POINTS = 240;   // the stored polyline, after resampling
+const PAD_PIT_POINTS = 48;
+const PAD_MAX_RAW = 20000;
+const PAD_BOX = 0.02;     // the margin left around the fitted circuit inside the unit box
+
+/** Resample a polyline to N points, evenly spaced by arc length. Carries a per-point value. */
+function arcResample(pts, N, closed, vals) {
+  const n = pts.length;
+  const segs = closed ? n : n - 1;
+  if (n < 2 || N < 2 || segs < 1) return null;
+  const cum = [0];
+  for (let i = 0; i < segs; i++) { const a = pts[i], b = pts[(i + 1) % n]; cum.push(cum[i] + Math.hypot(b[0] - a[0], b[1] - a[1])); }
+  const total = cum[segs];
+  if (!(total > 0)) return null;
+  const span = closed ? N : N - 1; // a closed loop's last sample stops just short of the start
+  const out = [], ov = [];
+  let i = 0;
+  for (let j = 0; j < N; j++) {
+    const d = (j / span) * total;
+    while (i < segs - 1 && cum[i + 1] < d) i++;
+    const a = pts[i], b = pts[(i + 1) % n];
+    const u = (d - cum[i]) / Math.max(1e-12, cum[i + 1] - cum[i]);
+    out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+    if (vals) ov.push(vals[Math.min(vals.length - 1, i)]);
+  }
+  return { pts: out, vals: vals ? ov : null };
+}
+const samePoint = (a, b) => Math.abs(a[0] - b[0]) < 1e-9 && Math.abs(a[1] - b[1]) < 1e-9;
+
+/** Concatenate a chain of segments' control points, dropping the joints they share. */
+function chainPoints(segments, out, speeds) {
+  for (const s of segments) {
+    const cps = Array.isArray(s?.controlPoints) ? s.controlPoints : null;
+    if (!cps || cps.length < 2) return false;
+    // The editor's speedFactor runs down to ~0.1, a 10:1 swing around the lap. Taken
+    // literally at 96 frames a car covers a whole straight between two frames and reads as a
+    // teleport, so the factor is square-rooted: the slow parts stay slow and the fast parts
+    // stay fast, in the same order, within a range the film can actually show.
+    const f = Number(s?.speedFactor);
+    const sf = Number.isFinite(f) && f > 0 ? Math.sqrt(Math.min(2, Math.max(0.08, f))) : 1;
+    for (const p of cps) {
+      const x = Number(p?.x), y = Number(p?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+      if (out.length && samePoint(out[out.length - 1], [x, y])) continue;
+      out.push([x, y]); speeds.push(sf);
+    }
+  }
+  return out.length >= 2;
+}
+
+/** The index of the loop point nearest `p` (the pit lane's ends, read off the geometry). */
+function nearestIndex(loop, p) {
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < loop.length; i++) { const d = (loop[i][0] - p[0]) ** 2 + (loop[i][1] - p[1]) ** 2; if (d < bd) { bd = d; best = i; } }
+  return best;
+}
+
+/**
+ * A Paddock-Manager circuit export → the stored circuit shape. Returns null for anything
+ * malformed — a half-parsed track is never drawn.
+ */
+export function importPaddockCircuit(json) {
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return null;
+  const segments = Array.isArray(json.segments) ? json.segments : null;
+  if (!segments || segments.length < 2 || segments.length > 400) return null;
+  let rawCount = 0;
+  for (const s of segments) rawCount += Array.isArray(s?.controlPoints) ? s.controlPoints.length : 0;
+  if (rawCount < 6 || rawCount > PAD_MAX_RAW) return null;
+
+  const raw = [], rawSpeeds = [];
+  if (!chainPoints(segments, raw, rawSpeeds)) return null;
+  // The loop closes back onto its first point: drop the repeat, the polyline is implicitly closed.
+  while (raw.length > 3 && samePoint(raw[raw.length - 1], raw[0])) { raw.pop(); rawSpeeds.pop(); }
+  if (raw.length < 6) return null;
+
+  // The pit lane, authored beside the track (optional).
+  const pitSegs = Array.isArray(json.pitlane?.segments) ? json.pitlane.segments : [];
+  const pitRaw = [], pitSpeeds = [];
+  let hasPit = false;
+  if (pitSegs.length) {
+    let n = 0; for (const s of pitSegs) n += Array.isArray(s?.controlPoints) ? s.controlPoints.length : 0;
+    hasPit = n > 1 && n <= PAD_MAX_RAW && chainPoints(pitSegs, pitRaw, pitSpeeds);
+  }
+
+  // Fit into 0..1 KEEPING THE ASPECT: one scale for both axes, then centre.
+  const all = hasPit ? [...raw, ...pitRaw] : raw;
+  let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+  for (const [x, y] of all) { if (x < mnx) mnx = x; if (y < mny) mny = y; if (x > mxx) mxx = x; if (y > mxy) mxy = y; }
+  const bw = mxx - mnx, bh = mxy - mny;
+  const spanBox = Math.max(bw, bh);
+  if (!Number.isFinite(spanBox) || spanBox <= 0) return null;
+  const k = (1 - 2 * PAD_BOX) / spanBox;
+  const ox = (1 - bw * k) / 2 - mnx * k, oy = (1 - bh * k) / 2 - mny * k;
+  const fit = ([x, y]) => [Math.min(1, Math.max(0, x * k + ox)), Math.min(1, Math.max(0, y * k + oy))];
+
+  const loop = arcResample(raw.map(fit), Math.min(PAD_POINTS, Math.max(24, raw.length)), true, rawSpeeds);
+  if (!loop) return null;
+  const pts = loop.pts;
+  // Renormalise the pace so a lap still takes the same time: scale every factor by the mean
+  // of their inverses, which makes mean(1 / factor) = 1 over the (arc-uniform) points.
+  const inv = loop.vals.reduce((a, f) => a + 1 / f, 0) / loop.vals.length;
+  const speeds = loop.vals.map((f) => Math.round(f * inv * 1000) / 1000);
+
+  // The sectors: a start index each, turned into fractions of the lap by cumulative length.
+  const cum = [0];
+  segments.forEach((s, i) => { const L = Number(s?.length); cum.push(cum[i] + (Number.isFinite(L) && L > 0 ? L : (Array.isArray(s?.controlPoints) ? s.controlPoints.length : 1))); });
+  const lapLen = cum[segments.length];
+  let sectors = [0.34, 0.66];
+  const sc = Array.isArray(json.sectors) ? json.sectors : [];
+  if (sc.length === 3 && lapLen > 0) {
+    const b = [1, 2].map((i) => {
+      const idx = Math.min(segments.length - 1, Math.max(0, parseInt(sc[i]?.startSegmentIndex, 10) || 0));
+      return Math.round((cum[idx] / lapLen) * 1000) / 1000;
+    });
+    if (b[0] > 0.05 && b[1] > b[0] + 0.05 && b[1] < 0.95) sectors = b;
+  }
+
+  // The pit lane's ends, read off the geometry, become the lap fractions the simulation uses
+  // to send a stopping car down it.
+  let pitPts = null, pit = [0.015, 0.13];
+  if (hasPit) {
+    const rs = arcResample(pitRaw.map(fit), Math.min(PAD_PIT_POINTS, Math.max(4, pitRaw.length)), false, null);
+    if (rs) {
+      pitPts = rs.pts;
+      const a = nearestIndex(pts, pitPts[0]) / pts.length;
+      const b = nearestIndex(pts, pitPts[pitPts.length - 1]) / pts.length;
+      const len = Number(json.pitlane?.totalLength);
+      let spanFrac = b > a + 0.01 ? b - a : (Number.isFinite(len) && len > 0 && lapLen > 0 ? len / lapLen : 0.13);
+      spanFrac = Math.min(0.29, Math.max(0.03, spanFrac));
+      // Stored like the built-ins': [pit-in, pit-out] as fractions of the lap.
+      const pIn = Math.min(0.6, Math.max(0, Math.round(a * 1000) / 1000));
+      pit = [pIn, Math.round((pIn + spanFrac) * 1000) / 1000];
+    }
+  }
+
+  const corners = Number.isFinite(Number(json.cornerCount)) ? Math.max(0, Math.min(99, Math.round(Number(json.cornerCount)))) : null;
+  const length = Number.isFinite(Number(json.totalLength)) && Number(json.totalLength) > 0 ? Math.round(Number(json.totalLength)) : Math.round(lapLen) || null;
+  const name = padName(json.name);
+  return { id: padId(json.id, name), name, kind: 'paddock', pts, speeds, pitPts, sectors, pit, corners, length };
+}
+const padName = (v) => String(v || 'Circuit').replace(/[^\p{L}\p{N} \-'.]/gu, '').trim().slice(0, 24) || 'Circuit';
+const padId = (id, name) => (String(id || name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'circuit').slice(0, 32);
+
 /**
  * A circuit an admin imported (the Paddock-Manager export, or a hand-written one):
  *   { name, points: [[x, y], …] in 0..1 (≥ 6, a closed loop), sectors?: [a, b], pit?: [in, span] }
+ * A raw Paddock export (anything carrying `segments`) is converted here too, and the already
+ * converted shape (`kind: 'paddock'`) is re-validated, so a Paddock file is accepted wherever
+ * a circuit is — the admin's import box and the `circuits` list in the bot config alike.
  * Anything malformed is refused (null) rather than drawn wrong: the renderer never trusts a
  * setting it did not write. `pts`/`points` are both accepted.
  */
 export function normalizeCircuit(c) {
   if (!c || typeof c !== 'object') return null;
+  if (Array.isArray(c.segments)) return importPaddockCircuit(c);
+  if (c.kind === 'paddock') return normalizePaddockStored(c);
   const src = Array.isArray(c.points) ? c.points : Array.isArray(c.pts) ? c.pts : null;
   if (!src || src.length < 6 || src.length > 64) return null;
   const pts = [];
@@ -63,6 +235,36 @@ export function normalizeCircuit(c) {
   const pit = pt.every((v) => Number.isFinite(v)) && pt[0] >= 0 && pt[1] > pt[0] && pt[1] < 0.3 ? pt : [0.015, 0.13];
   const name = String(c.name || 'Custom').replace(/[^\w \-'.]/g, '').slice(0, 24) || 'Custom';
   return { name, pts, sectors, pit, id: String(c.id || name.toLowerCase().replace(/[^a-z0-9]+/g, '-')).slice(0, 32) };
+}
+
+/** Re-validate an already-imported Paddock circuit read back out of the bot config. */
+function normalizePaddockStored(c) {
+  const read = (src, min, max) => {
+    if (!Array.isArray(src) || src.length < min || src.length > max) return null;
+    const out = [];
+    for (const p of src) {
+      if (!Array.isArray(p) || p.length < 2) return null;
+      const x = Number(p[0]), y = Number(p[1]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      out.push([Math.min(1, Math.max(0, x)), Math.min(1, Math.max(0, y))]);
+    }
+    return out;
+  };
+  const pts = read(c.pts || c.points, 6, PAD_POINTS);
+  if (!pts) return null;
+  const pitPts = c.pitPts ? read(c.pitPts, 2, PAD_PIT_POINTS) : null;
+  let speeds = null;
+  if (Array.isArray(c.speeds) && c.speeds.length === pts.length) {
+    speeds = c.speeds.map((f) => (Number.isFinite(Number(f)) && Number(f) > 0 ? Math.min(4, Math.max(0.05, Number(f))) : 1));
+  }
+  const sec = Array.isArray(c.sectors) && c.sectors.length === 2 ? c.sectors.map(Number) : [];
+  const sectors = sec.length === 2 && sec.every((v) => Number.isFinite(v)) && sec[0] > 0.05 && sec[1] > sec[0] + 0.05 && sec[1] < 0.95 ? sec : [0.34, 0.66];
+  const pt = Array.isArray(c.pit) && c.pit.length === 2 ? c.pit.map(Number) : [];
+  const pit = pt.length === 2 && pt.every((v) => Number.isFinite(v)) && pt[0] >= 0 && pt[1] > pt[0] && pt[1] - pt[0] < 0.3 && pt[1] < 0.8 ? pt : [0.015, 0.13];
+  const name = padName(c.name);
+  const corners = Number.isFinite(Number(c.corners)) ? Math.max(0, Math.min(99, Math.round(Number(c.corners)))) : null;
+  const length = Number.isFinite(Number(c.length)) && Number(c.length) > 0 ? Math.round(Number(c.length)) : null;
+  return { id: padId(c.id, name), name, kind: 'paddock', pts, speeds, pitPts, sectors, pit, corners, length };
 }
 
 /**
@@ -104,6 +306,8 @@ export function pickCircuit(settings = {}, seed = 1) {
   return all.find((t) => t.id === choice || t.name === choice) || all[Math.abs(seed) % all.length];
 }
 export const BUILTIN_CIRCUITS = () => TRACKS.map((t) => ({ id: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: t.name }));
+/** The built-ins WITH their geometry — the admin preview draws them without re-deriving them. */
+export const BUILTIN_TRACKS = () => TRACKS.map((t) => ({ id: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: t.name, pts: t.pts.map((p) => [...p]), sectors: [...t.sectors], pit: [...t.pit] }));
 
 /** Catmull-Rom through a closed set of points, sampled into N evenly spaced points. */
 function smoothLoop(pts, N = 480) {
@@ -138,26 +342,42 @@ export function layoutTrack(index, box) {
   // A number picks a built-in; an object (from pickCircuit / normalizeCircuit) is used as is.
   const T = typeof index === 'object' && index ? index : TRACKS[((index % TRACKS.length) + TRACKS.length) % TRACKS.length];
   const { x, y, w, h } = box;
-  const loop = smoothLoop(T.pts).map(([px, py]) => [x + px * w, y + py * h]);
+  // An imported circuit is already aspect-correct inside the unit box, so it is placed with
+  // ONE scale and centred: stretching it to fill a 420×180 strip would undo the import's work.
+  const paddock = T.kind === 'paddock' && Array.isArray(T.pts);
+  const k = Math.min(w, h);
+  const place = paddock
+    ? ([px, py]) => [x + (w - k) / 2 + px * k, y + (h - k) / 2 + py * k]
+    : ([px, py]) => [x + px * w, y + py * h];
+  const dense = paddock ? arcResample(T.pts.map(place), 480, true, T.speeds || null) : null;
+  const loop = paddock ? dense.pts : smoothLoop(T.pts).map(place);
   const N = loop.length;
+  // The pace around the lap, from the export's per-segment speedFactor (1 everywhere else).
+  const paceVals = paddock && dense.vals ? dense.vals : null;
+  const paceAt = paceVals ? (s) => paceVals[Math.min(N - 1, Math.max(0, Math.floor((((s % 1) + 1) % 1) * N)))] : null;
   const at = (s) => { const u = ((s % 1) + 1) % 1; const f = u * N; const i = Math.floor(f) % N; const j = (i + 1) % N; const k = f - Math.floor(f); return [loop[i][0] + (loop[j][0] - loop[i][0]) * k, loop[i][1] + (loop[j][1] - loop[i][1]) * k]; };
   // The pit lane: the track between pit-in and pit-out, pushed inwards by a fixed offset.
   const inward = (s) => { const a = at(s - 0.004), b = at(s + 0.004); const dx = b[0] - a[0], dy = b[1] - a[1]; const l = Math.hypot(dx, dy) || 1; return [-dy / l, dx / l]; };
   const [pIn, pOut] = T.pit;
   const span = pOut - pIn;
   const cx = loop.reduce((a, q) => a + q[0], 0) / N, cy = loop.reduce((a, q) => a + q[1], 0) / N;
-  const pit = [];
-  const steps = 18;
-  for (let k = 0; k <= steps; k++) {
-    const s = pIn + span * (k / steps); const p = at(s); const nrm = inward(s);
-    const ease = Math.sin(Math.min(1, Math.min(k, steps - k) / 3) * Math.PI / 2); // slip in and out
-    // Offset towards the inside of the loop (the centroid side), whichever way it runs.
-    const side = (nrm[0] * (cx - p[0]) + nrm[1] * (cy - p[1])) >= 0 ? 1 : -1;
-    const off = 16 * ease * side;
-    pit.push([p[0] + nrm[0] * off, p[1] + nrm[1] * off]);
+  // An imported circuit carries its own pit lane, drawn where its author put it; everything
+  // else gets the approximation: the track between pit-in and pit-out, pushed inwards.
+  const authored = paddock && Array.isArray(T.pitPts) && T.pitPts.length >= 2 ? T.pitPts.map(place) : null;
+  const pit = authored || [];
+  if (!authored) {
+    const steps = 18;
+    for (let i = 0; i <= steps; i++) {
+      const s = pIn + span * (i / steps); const p = at(s); const nrm = inward(s);
+      const ease = Math.sin(Math.min(1, Math.min(i, steps - i) / 3) * Math.PI / 2); // slip in and out
+      // Offset towards the inside of the loop (the centroid side), whichever way it runs.
+      const side = (nrm[0] * (cx - p[0]) + nrm[1] * (cy - p[1])) >= 0 ? 1 : -1;
+      const off = 16 * ease * side;
+      pit.push([p[0] + nrm[0] * off, p[1] + nrm[1] * off]);
+    }
   }
-  const pitAt = (u) => { const f = Math.min(1, Math.max(0, u)) * steps; const i = Math.min(steps - 1, Math.floor(f)); const k = f - i; return [pit[i][0] + (pit[i + 1][0] - pit[i][0]) * k, pit[i][1] + (pit[i + 1][1] - pit[i][1]) * k]; };
-  return { name: T.name, loop, at, sectors: T.sectors, pit, pitAt, pitIn: pIn, pitSpan: span, inward };
+  const pitAt = (u) => { const f = Math.min(1, Math.max(0, u)) * (pit.length - 1); const i = Math.min(pit.length - 2, Math.floor(f)); const t = f - i; return [pit[i][0] + (pit[i + 1][0] - pit[i][0]) * t, pit[i][1] + (pit[i + 1][1] - pit[i][1]) * t]; };
+  return { name: T.name, loop, at, sectors: T.sectors, pit, pitAt, pitIn: pIn, pitSpan: span, inward, paceAt, corners: T.corners ?? null, length: T.length ?? null };
 }
 // ── the simulation ─────────────────────────────────────────────────────────────────────
 function rng(seed) {
@@ -170,7 +390,7 @@ const clamp01 = (t) => Math.min(1, Math.max(0, t));
  * Run the race. Returns per-frame progress (in laps, 0..LAPS) for each car, plus the events
  * and per-frame state the drawer needs. `winner` is the car that must cross the line first.
  */
-export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pitSpan = 0.13, laps = LAPS, equalStats = true, incidents = true, pitStops = true, colours = CAR_COLOURS }) {
+export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pitSpan = 0.13, laps = LAPS, equalStats = true, incidents = true, pitStops = true, colours = CAR_COLOURS, paceAt = null }) {
   const r = rng(seed);
   const LAPS_ = Math.min(12, Math.max(1, Math.floor(laps) || LAPS));
   const w = Math.min(cars - 1, Math.max(0, winner | 0));
@@ -205,6 +425,10 @@ export function simulateRace({ winner, seed, frames, cars = 6, pitIn = 0.015, pi
       const prev = P[c][f - 1];
       const wear = 1 + 0.02 * Math.pow(Math.max(0, prev - lastStop[c]), 1.5);   // tyres go off
       let v = (pace[c] / wear) * (1 + Math.sin(f * 0.35 + jitter[c]) * 0.03);   // a little breathing
+      // An imported circuit knows how fast each of its stretches is taken: slow in the
+      // twisty part, flat out down the straight. Renormalised at import, so the LAP TIME is
+      // unchanged and only its distribution around the lap differs.
+      if (paceAt) { const g = paceAt(prev); if (Number.isFinite(g) && g > 0) v *= g; }
       const pw = pitWindow(c);
       if (pw && prev >= pw[0] && prev < pw[1]) v *= 0.45;                        // crawling down the pit lane
       return v;

@@ -27,6 +27,7 @@ const MOD_RANK = { USER: 0, MOD: 1, ADMIN: 2, SUPERADMIN: 3 };
 import { prefixUsage } from '../lib/storage.mjs';
 import { capacityStatus, realDiskStats, stripe } from './hosting.mjs';
 import { powVerify } from './auth.mjs';
+import { CONTACT_KINDS, validateContactFields, composeContactBody } from '../lib/contact-triage.mjs';
 import { FILES_BACKUP_ROOT, DB_BACKUP_ROOT, repoSizeBytes } from '../lib/gitbackup.mjs';
 import { userBcId, itemFingerprint, repoFingerprint, loadOwnerIdentities, looksLikeBcId, findUserIdByBcId } from '../lib/repofingerprint.mjs';
 import { telemetryDb } from './server-control.mjs';
@@ -1483,15 +1484,12 @@ export default async function miscRoutes(app) {
   // daily quota applies: 3/day by IP for anonymous senders, 5/day by account
   // for logged-in senders (checked instead of by IP once linked, since a
   // logged-in sender's IP may be shared/dynamic).
-  // The kinds a sender can pick. data_export and data_delete are the reason this exists:
-  // they carry a legal deadline, and a deadline that is not countable is one nobody counts.
-  // 'report' and 'copyright' are the DSA Art. 16 notice and the rights-holder notice. The
-  // Terms promise ONE route for both and the form had no category for either, so a notice
-  // arrived as 'other' — into the generic pile, with no counter and no priority. A legal
-  // route nobody can find is the same as no route.
-  const CONTACT_KINDS = ['other', 'data_export', 'data_delete', 'bug', 'billing', 'appeal',
-    'report', 'copyright'];
-
+  // The kinds a sender can pick, and what each destination of the triage must contain, live
+  // in lib/contact-triage.mjs — shared with the tests and mirrored by the web form. data_export
+  // and data_delete are the reason kinds exist at all: they carry a legal deadline, and a
+  // deadline that is not countable is one nobody counts. 'report' and 'copyright' are the DSA
+  // Art. 16 notice and the rights-holder notice (the triage now sends those people to /report,
+  // but messages already sent still arrive here and must stay countable).
   app.post('/contact', { config: { rateLimit: { max: 8, timeWindow: '10 minutes' } }, preHandler: optionalAuth() }, async (req, reply) => {
     if (!powVerify(req.body?.pow)) return reply.code(400).send({ error: 'pow_required' });
     const b = z.object({
@@ -1501,15 +1499,30 @@ export default async function miscRoutes(app) {
       // Sender-declared and validated against a closed list, so a client cannot invent a
       // kind that no queue counts and no staff member ever sees.
       kind: z.enum(CONTACT_KINDS).optional(),
+      // The triage: which destination the questionnaire ended on, and its own fields. When
+      // one is given the DESTINATION decides the kind — a client that could send both
+      // independently could file a security report into the data-export queue.
+      dest: z.string().max(40).optional(),
+      fields: z.record(z.union([z.string(), z.boolean(), z.number()])).optional(),
     }).safeParse(req.body);
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    let kind = b.data.kind || 'other';
+    let body = b.data.body;
+    if (b.data.dest) {
+      const v = validateContactFields(b.data.dest, b.data.fields);
+      if (!v.ok) return reply.code(400).send({ error: v.error, field: v.field });
+      kind = v.kind;
+      // The answers go above the message, in the body the admin inbox already renders — a
+      // second place to look is a place nobody looks.
+      body = composeContactBody(b.data.dest, v.fields, body);
+    }
     const p = await db();
     const ip = String(clientIp(req) || '').slice(0, 64);
     const userId = req.user?.uid || null;
     const since = new Date(Date.now() - 864e5);
     const dailyCount = await p.contactMessage.count({ where: { createdAt: { gte: since }, ...(userId ? { userId } : { ip, userId: null }) } });
     if (dailyCount >= (userId ? 5 : 3)) return reply.code(429).send({ error: 'daily_limit' });
-    const msg = await p.contactMessage.create({ data: { ...b.data, kind: b.data.kind || 'other', ip, userId } });
+    const msg = await p.contactMessage.create({ data: { name: b.data.name, email: b.data.email, body, kind, ip, userId } });
     forwardContactToDiscord(msg).catch(() => {}); // best-effort
     announceLegalNotice(p, msg).catch(() => {}); // best-effort, and opt-in — see below
     return reply.code(201).send({ ok: true });

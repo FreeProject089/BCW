@@ -343,7 +343,7 @@ function raceSetup(p, frames) {
   const rs = p.race || {};
   const seedCircuit = Math.floor(p.r.k[2] * 4294967295) >>> 0;
   p.track = layoutTrack(pickCircuit(rs, seedCircuit), box);
-  p.sim = simulateRace({ winner: p.winner, seed: p.seed, frames, pitIn: p.track.pitIn, pitSpan: p.track.pitSpan, laps: rs.laps, equalStats: rs.equalStats !== false, incidents: rs.incidents !== false, pitStops: rs.pitStops !== false, colours: rs.colours });
+  p.sim = simulateRace({ winner: p.winner, seed: p.seed, frames, pitIn: p.track.pitIn, pitSpan: p.track.pitSpan, laps: rs.laps, equalStats: rs.equalStats !== false, incidents: rs.incidents !== false, pitStops: rs.pitStops !== false, colours: rs.colours, paceAt: p.track.paceAt });
 }
 function drawRace(x, f, p) {
   drawTrack(x, p.track);

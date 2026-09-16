@@ -47,8 +47,11 @@ const plans = [
   { name: 'Free', storageGB: 1, uploadLimitKbps: 512, cpuShare: 0.1, priceMonthlyCents: 0 },
   { name: 'Pool 5 GB', storageGB: 5, uploadLimitKbps: 2048, cpuShare: 0.25, priceMonthlyCents: 300 },
   { name: 'Pool 10 GB', storageGB: 10, uploadLimitKbps: 4096, cpuShare: 0.5, priceMonthlyCents: 500 },
-  { name: 'Pool 25 GB', storageGB: 25, uploadLimitKbps: 8192, cpuShare: 0.75, priceMonthlyCents: 1000 },
-  { name: 'Pool 50 GB', storageGB: 50, uploadLimitKbps: 16384, cpuShare: 1.0, priceMonthlyCents: 1800 },
+  // The two biggest plans come WITH boosts — the "featured" credit, granted monthly by the
+  // sweeper (grantIncludedBoosts) and spendable on a repo or a catalogue. It is the one thing
+  // on the card that is not just a bigger number, which is why the two top tiers carry it.
+  { name: 'Pool 25 GB', storageGB: 25, uploadLimitKbps: 8192, cpuShare: 0.75, priceMonthlyCents: 1000, boostsPerPeriod: 1, boostPeriodMonths: 1, boostDays: 7 },
+  { name: 'Pool 50 GB', storageGB: 50, uploadLimitKbps: 16384, cpuShare: 1.0, priceMonthlyCents: 1800, boostsPerPeriod: 3, boostPeriodMonths: 1, boostDays: 7 },
 ];
 for (const plan of plans) {
   const found = await p.hostingPlan.findFirst({ where: { name: plan.name } });

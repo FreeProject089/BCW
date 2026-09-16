@@ -30,6 +30,72 @@ export function inviteUsable(inv, now = new Date()) {
   if (inv.maxUses && inv.uses >= inv.maxUses) return false;
   return true;
 }
+
+// ── Invitation links: one permanent, a handful of temporary ones ─────────────────────────
+//
+// A team has at most ONE link that never expires. That is the link somebody pins in a Discord
+// channel or puts in a README, and two of them is not twice as useful — it is one more secret
+// to remember to revoke. Everything else is temporary and says when it dies.
+//
+// "Permanent" is the absence of an expiry, not a column: a link with no `expiresAt` is the
+// permanent one, which is also what `inviteUsable` already reads. A second boolean would be a
+// second copy of the same fact, and the two would disagree the first time one was written and
+// the other was not.
+export const TEAM_INVITE_DEFAULTS = { maxTemporary: 5, lifetimeDays: [1, 7, 30] };
+
+/** Is this the team's never-expiring link? */
+export const isPermanentInvite = (inv) => !!inv && !inv.expiresAt;
+
+/**
+ * The invite-link rules an admin set: how many temporary links a team may hold open at once,
+ * and the lifetimes a temporary one may be given. Nonsense falls back to the defaults rather
+ * than to nothing — an unparseable list must not leave a team unable to invite anybody.
+ */
+export function invitePolicy(settings = {}) {
+  const n = Number(settings['teams.inviteMaxTemporary']);
+  const maxTemporary = Number.isFinite(n) && n >= 0 ? Math.min(50, Math.floor(n)) : TEAM_INVITE_DEFAULTS.maxTemporary;
+  const raw = settings['teams.inviteLifetimeDays'];
+  const list = [...new Set((Array.isArray(raw) ? raw : String(raw ?? '').split(/[^0-9]+/))
+    .map((v) => Math.floor(Number(v)))
+    .filter((v) => Number.isFinite(v) && v >= 1 && v <= 365))].sort((a, b) => a - b).slice(0, 12);
+  return { maxTemporary, lifetimeDays: list.length ? list : TEAM_INVITE_DEFAULTS.lifetimeDays };
+}
+
+/**
+ * May this team make the link it is asking for? Returns null when it may, or the named refusal
+ * the page turns into a sentence.
+ *
+ * `days` of 0/null means the permanent one. Counting only links that still WORK is deliberate:
+ * an expired temporary link is a dead row, and letting it hold a slot means the cap quietly
+ * shrinks to zero for a team that never revoked anything.
+ */
+export function invitePlanFor(open, days, policy, now = new Date()) {
+  const live = (open || []).filter((i) => inviteUsable(i, now));
+  if (!days) {
+    return live.some(isPermanentInvite)
+      ? { error: 'permanent_exists' }
+      : { expiresAt: null, permanent: true };
+  }
+  const d = Math.floor(Number(days));
+  if (!policy.lifetimeDays.includes(d)) return { error: 'invalid_lifetime', allowed: policy.lifetimeDays };
+  const used = live.filter((i) => !isPermanentInvite(i)).length;
+  if (used >= policy.maxTemporary) return { error: 'too_many_invites', limit: policy.maxTemporary, open: used };
+  return { expiresAt: new Date(now.getTime() + d * 86400e3), permanent: false, days: d };
+}
+
+/** One invite, as the team page reads it. The token never leaves this function on its own. */
+export const serInvite = (r, now = new Date()) => ({
+  id: r.id,
+  kind: isPermanentInvite(r) ? 'permanent' : 'temporary',
+  role: r.role,
+  expiresAt: r.expiresAt,
+  maxUses: r.maxUses,
+  uses: r.uses,
+  usable: inviteUsable(r, now),
+  url: `/teams/join/${r.token}`,
+  createdAt: r.createdAt,
+});
+
 const STAFF = ['ADMIN', 'SUPERADMIN'];
 
 export const isStaff = (user) => !!user && STAFF.includes(user.role);

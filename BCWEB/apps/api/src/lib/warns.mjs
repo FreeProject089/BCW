@@ -15,9 +15,13 @@
 //     ban somebody who was already at the threshold before — the action belongs to the
 //     warning that CROSSED the line, and to no other.
 
-/** What a threshold may do. `warn` is the do-nothing case, kept so a rule can be written
- *  down and disabled without deleting it. */
-export const WARN_ACTIONS = ['warn', 'timeout', 'kick', 'ban'];
+/** What a threshold may do — the same list as LADDER_ACTIONS in the bot's features/automod.mjs,
+ *  and the same meanings, because a ladder saved from either dashboard is read by both.
+ *  `log`, `delete` and `warn` are the do-nothing cases, kept so a step can be written down and
+ *  disabled without deleting it. `quarantine` is a timeout under the name the per-rule join
+ *  action uses; it resolves to a timeout here so the queued BotAction has a kind Discord knows. */
+export const WARN_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'quarantine'];
+const WARN_NOOPS = ['log', 'delete', 'warn'];
 
 import { logModeration } from './discord-storage.mjs';
 
@@ -45,8 +49,12 @@ export function normalizeThresholds(raw) {
             minutes: t?.minutes == null ? null : Math.max(1, Math.floor(Number(t.minutes))),
         }))
         .filter((t) => Number.isFinite(t.count) && t.count >= 1 && WARN_ACTIONS.includes(t.action));
+    // Two steps on the same count would both be "the" step for it, and which one fired would
+    // depend on sort order. The first one written wins; the rest are dropped.
+    const seen = new Set();
+    const once = clean.filter((t) => { if (seen.has(t.count)) return false; seen.add(t.count); return true; });
     // Highest first: the rule that matters is the most severe one this count has reached.
-    return clean.sort((a, b) => b.count - a.count);
+    return once.sort((a, b) => b.count - a.count);
 }
 
 /**
@@ -62,7 +70,10 @@ export function actionFor(count, thresholds = DEFAULT_THRESHOLDS) {
     // EXACT match, not ">=": the action belongs to the warning that crossed the line. With
     // ">=", every warning after the third would fire the timeout again, for ever.
     const hit = ladder.find((t) => t.count === n);
-    if (!hit || hit.action === 'warn') return null;
+    if (!hit || WARN_NOOPS.includes(hit.action)) return null;
+    // 'quarantine' IS a timeout to Discord. Saying so here is what keeps the queued BotAction
+    // to a kind the bot knows how to carry out.
+    if (hit.action === 'quarantine') return { kind: 'timeout', minutes: hit.minutes || 60, at: n, quarantine: true };
     return {
         kind: hit.action,
         minutes: hit.action === 'timeout' ? (hit.minutes || 60) : (hit.minutes ?? null),

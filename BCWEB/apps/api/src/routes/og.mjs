@@ -8,8 +8,9 @@
 //
 // Everything else on the page is a courtesy redirect to the real SPA URL, so if a
 // human ever lands here they bounce straight to the app.
-import { db } from '../lib/lib.mjs';
+import { db, requireCap } from '../lib/lib.mjs';
 import { renderCasinoGif } from '../lib/casino-gif.mjs';
+import { BUILTIN_CIRCUITS, pickCircuit, normalizeCircuit } from '../lib/casino-race.mjs';
 import { getBotConfig } from './bot.mjs';
 import { loadAvatarImage, loadBadgeIcon } from '../lib/avatar-image.mjs';
 
@@ -405,6 +406,67 @@ export default async function ogRoutes(app) {
       reply.header('content-type', 'image/png'); reply.header('cache-control', 'public, max-age=300');
       return reply.send(await c.encode('png'));
     } catch (e) { req.log?.warn?.({ err: e?.message }, 'casino card failed'); return reply.code(500).send({ error: 'render_failed' }); }
+  });
+
+  // ── Admin: the race circuit, before it is saved ───────────────────────────────────────
+  // The admin page draws the circuit that is selected RIGHT NOW in the form, which is not
+  // the one the saved config names — so these three take the settings in the body instead of
+  // reading them back out of the database. All three are guarded by `manage_economy`, the
+  // same capability that owns the rest of the economy — and they live under `/admin/economy`
+  // for that reason: check-capabilities records which SECTION each capability reaches, and
+  // putting them under `/admin/bot` would have made manage_economy reach a second one.
+  //
+  //   POST /admin/economy/race/circuit          one circuit file (a Paddock-Manager export or a
+  //                                         hand-written { name, points }) → the stored
+  //                                         shape, or 400 not_a_circuit
+  //   POST /admin/economy/race/circuit/resolve  { circuit, circuits, seed } → the circuit that
+  //                                         choice actually runs on, WITH its geometry. It
+  //                                         calls pickCircuit, the same function the renderer
+  //                                         calls, so "at random" in the preview means what
+  //                                         it means in the film instead of a second rule.
+  //   POST /admin/economy/race/preview.gif      the animated film of the settings in the body
+  const RACE_CAP = requireCap('manage_economy');
+  app.post('/admin/economy/race/circuit/resolve', { preHandler: RACE_CAP, bodyLimit: 4 * 1024 * 1024 }, async (req) => {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const seed = (parseInt(String(b.seed ?? ''), 10) || 1) >>> 0;
+    const circuits = (Array.isArray(b.circuits) ? b.circuits.slice(0, 20) : []).map(normalizeCircuit).filter(Boolean);
+    return { circuit: pickCircuit({ circuit: String(b.circuit || 'builtin').slice(0, 40), circuits }, seed), builtins: BUILTIN_CIRCUITS() };
+  });
+
+  // 4 MB: a circuit export is tens of kilobytes, an editor file with its undo history is not
+  // a circuit — the cap refuses it before it is parsed rather than after.
+  app.post('/admin/economy/race/circuit', { preHandler: RACE_CAP, bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    const body = req.body;
+    // One file, an array of them, or a wrapper with a `circuits` list: the same three shapes
+    // the paste box has always taken.
+    const list = Array.isArray(body) ? body : Array.isArray(body?.circuits) ? body.circuits : [body];
+    if (!list.length || list.length > 20) return reply.code(400).send({ error: 'not_a_circuit' });
+    const circuits = list.map(normalizeCircuit).filter(Boolean);
+    if (!circuits.length) return reply.code(400).send({ error: 'not_a_circuit' });
+    return { circuits };
+  });
+
+  app.post('/admin/economy/race/preview.gif', { preHandler: RACE_CAP, bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    const b = req.body && typeof req.body === 'object' ? req.body : {};
+    const seed = (parseInt(String(b.seed ?? ''), 10) || Date.now()) >>> 0;
+    const winner = Math.min(5, Math.max(0, parseInt(b.winner, 10) || 0));
+    // The settings exactly as the form holds them — never the saved ones.
+    const race = {
+      circuit: String(b.circuit || 'builtin').slice(0, 40),
+      laps: Math.min(12, Math.max(1, parseInt(b.laps, 10) || 3)),
+      equalStats: b.equalStats !== false,
+      incidents: b.incidents !== false,
+      pitStops: b.pitStops !== false,
+      colours: Array.isArray(b.colours) ? b.colours.slice(0, 6).map((c) => String(c).slice(0, 7)) : undefined,
+      circuits: (Array.isArray(b.circuits) ? b.circuits.slice(0, 20) : []).map(normalizeCircuit).filter(Boolean),
+    };
+    try {
+      const buf = await renderCasinoGif({ game: 'race', win: true, detail: `${winner}|${winner}`, amount: '0', seed, text: null, race });
+      return reply.header('content-type', 'image/gif').header('cache-control', 'no-store').send(buf);
+    } catch (e) {
+      req.log?.warn?.({ err: e?.message }, 'race preview gif failed');
+      return reply.code(500).send({ error: 'render_failed' });
+    }
   });
 
   // The leaderboard as one picture — the bot attaches it to /leaderboard. `guildId` narrows

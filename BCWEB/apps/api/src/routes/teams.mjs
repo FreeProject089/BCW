@@ -5,6 +5,9 @@
 //   POST   /me/teams                         create (owner)
 //   PATCH  /me/teams/:id                     details (owner / admin)
 //   DELETE /me/teams/:id                     dissolve (owner) — repos, catalogues and pools stay with their owners
+//   GET    /me/teams/:id/invites             the links: the permanent one, the temporary ones, the caps
+//   POST   /me/teams/:id/invites             make one — { role, days } (days 0/absent = the permanent link)
+//   DELETE /me/teams/:id/invites/:inviteId   revoke one (the permanent slot frees immediately)
 //   POST   /me/teams/:id/members             invite { to } by id, BC id, e-mail or display name (owner / admin)
 //   POST   /me/teams/:id/accept | /decline   the invited account answers
 //   PATCH  /me/teams/:id/members/:userId     role (owner)
@@ -17,7 +20,7 @@
 import { z } from 'zod';
 import { db, requireRole, optionalAuth, notify, logAudit } from '../lib/lib.mjs';
 import { findUserIdByBcId, looksLikeBcId } from '../lib/repofingerprint.mjs';
-import { slugifyTeam, teamRoleOf, isStaff, serTeam, teamLimitFor, teamSlotPrice, inviteUsable } from '../lib/teams.mjs';
+import { slugifyTeam, teamRoleOf, isStaff, serTeam, teamLimitFor, teamSlotPrice, inviteUsable, invitePolicy, invitePlanFor, serInvite } from '../lib/teams.mjs';
 import { settings as hostingSettings, stripe } from './hosting.mjs';
 import { recordPendingCheckout } from '../lib/pending-checkout.mjs';
 import crypto from 'node:crypto';
@@ -122,28 +125,49 @@ export default async function teamRoutes(app) {
     return { url: session.url };
   });
 
-  // Invitation links: `/teams/join/<token>`, for a role, until a date and/or N uses.
+  // Invitation links: `/teams/join/<token>`, for a role, permanent or until a date.
+  //
+  // Two shapes, and the page shows them apart because they are used apart: ONE permanent link
+  // that a team pins somewhere and revokes when it is done with it, and a few temporary ones
+  // handed to a person for a week. The caps live with the admin (`teams.inviteMaxTemporary`,
+  // `teams.inviteLifetimeDays`) beside the team limit and the slot price.
   app.get('/me/teams/:id/invites', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
+    const now = new Date();
     const rows = await p.teamInvite.findMany({ where: { teamId: got.t.id, revokedAt: null }, orderBy: { createdAt: 'desc' } });
-    return { invites: rows.map((r) => ({ id: r.id, role: r.role, expiresAt: r.expiresAt, maxUses: r.maxUses, uses: r.uses, usable: inviteUsable(r), url: `/teams/join/${r.token}`, createdAt: r.createdAt })) };
+    const invites = rows.map((r) => serInvite(r, now));
+    return {
+      invites,
+      permanent: invites.find((i) => i.kind === 'permanent') || null,
+      temporary: invites.filter((i) => i.kind === 'temporary'),
+      policy: invitePolicy(await hostingSettings(p)),
+    };
   });
   app.post('/me/teams/:id/invites', { preHandler: requireRole(), config: { rateLimit: { max: 20, timeWindow: '1 hour' } } }, async (req, reply) => {
-    const b = z.object({ role: z.enum(['admin', 'member']).default('member'), days: z.number().int().min(1).max(90).nullable().optional(), maxUses: z.number().int().min(1).max(500).nullable().optional() }).safeParse(req.body || {});
+    const b = z.object({ role: z.enum(['admin', 'member']).default('member'), days: z.number().int().min(0).max(365).nullable().optional(), maxUses: z.number().int().min(1).max(500).nullable().optional() }).safeParse(req.body || {});
     if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
-    const open = await p.teamInvite.count({ where: { teamId: got.t.id, revokedAt: null } });
-    if (open >= 10) return reply.code(409).send({ error: 'too_many_invites' });
-    const r = await p.teamInvite.create({ data: { token: crypto.randomBytes(18).toString('base64url'), teamId: got.t.id, role: b.data.role, createdBy: req.user.uid, expiresAt: b.data.days ? new Date(Date.now() + b.data.days * 86400e3) : null, maxUses: b.data.maxUses || null } });
-    await logAudit(p, req.user.uid, 'team.invite.link', `team=${got.t.id} role=${r.role}`).catch(() => {});
-    return reply.code(201).send({ invite: { id: r.id, role: r.role, expiresAt: r.expiresAt, maxUses: r.maxUses, uses: 0, usable: true, url: `/teams/join/${r.token}`, createdAt: r.createdAt } });
+    const policy = invitePolicy(await hostingSettings(p));
+    const open = await p.teamInvite.findMany({ where: { teamId: got.t.id, revokedAt: null }, select: { expiresAt: true, maxUses: true, uses: true, revokedAt: true } });
+    // One decision, named: the route never refuses on its own, so the rule is testable without
+    // a database and the page always gets an error string it can turn into a sentence.
+    const plan = invitePlanFor(open, b.data.days, policy);
+    if (plan.error) return reply.code(409).send(plan);
+    const r = await p.teamInvite.create({ data: { token: crypto.randomBytes(18).toString('base64url'), teamId: got.t.id, role: b.data.role, createdBy: req.user.uid, expiresAt: plan.expiresAt, maxUses: b.data.maxUses || null } });
+    await logAudit(p, req.user.uid, 'team.invite.link', `team=${got.t.id} role=${r.role} ${plan.permanent ? 'permanent' : `${plan.days}d`}`).catch(() => {});
+    return reply.code(201).send({ invite: serInvite(r) });
   });
   app.delete('/me/teams/:id/invites/:inviteId', { preHandler: requireRole() }, async (req, reply) => {
     const p = await db();
     const got = await load(p, req, reply, ['owner', 'admin']); if (!got) return;
-    await p.teamInvite.updateMany({ where: { id: req.params.inviteId, teamId: got.t.id }, data: { revokedAt: new Date() } });
+    // Revoked, not deleted: the row is the record that the link existed and stopped working,
+    // and `inviteUsable` already reads `revokedAt` as "no". The permanent one can be made
+    // again straight after — revoking it frees the single slot.
+    const r = await p.teamInvite.updateMany({ where: { id: req.params.inviteId, teamId: got.t.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    if (!r.count) return reply.code(404).send({ error: 'not_found' });
+    await logAudit(p, req.user.uid, 'team.invite.revoke', `team=${got.t.id} invite=${req.params.inviteId}`).catch(() => {});
     return { ok: true };
   });
   // The link's landing: what team, what role, still valid — then the join.

@@ -585,7 +585,14 @@ export default async function botRoutes(app) {
     const guildLogChannels = Object.fromEntries(logRows.filter((r) => r.logChannelId).map((r) => [r.guildId, r.logChannelId]));
     const i18n = i18nRow?.value && typeof i18nRow.value === 'object' ? i18nRow.value : {};
     const row = await p.adminSetting.findUnique({ where: { key: 'bot.restart' } });
-    return { config: { ...(await getBotConfig(p)), guildLanguages, guildLogChannels, i18n }, restartAt: row?.value?.at || null };
+    // The imported race circuits are geometry for the RENDERER, which reads the config from
+    // the database directly. The bot only needs to know how many laps, so shipping them here
+    // would put a few hundred kilobytes of control points on every poll for nothing.
+    const cfg = await getBotConfig(p);
+    if (cfg?.economy?.casino?.race?.circuits) {
+      cfg.economy = { ...cfg.economy, casino: { ...cfg.economy.casino, race: { ...cfg.economy.casino.race, circuits: undefined, circuitCount: cfg.economy.casino.race.circuits.length } } };
+    }
+    return { config: { ...cfg, guildLanguages, guildLogChannels, i18n }, restartAt: row?.value?.at || null };
   });
 
   // Public: the bot's invite URL, built from its own application id. A bot's client_id is not
@@ -2519,6 +2526,37 @@ export default async function botRoutes(app) {
     return { members: rows.map((r) => ({ ...r, linked: byId[r.discordId] || null })), total, mode: 'global', roles };
   });
 
+  /**
+   * "Where would this land?" — resolve one log category against the SAVED routing, and post a
+   * sample entry there.
+   *
+   * The whole point is the answer, not the sample: the dashboard asks so it can say where the
+   * test went in words. When the answer is "nowhere" nothing is queued, because a queued
+   * action that vanishes is exactly the outcome this button exists to disprove.
+   */
+  app.post('/me/discord/guilds/:id/logs/test', { preHandler: requireRole() }, async (req, reply) => {
+    const b = z.object({ category: z.string().min(1).max(40) }).safeParse(req.body);
+    if (!b.success) return reply.code(400).send({ error: 'invalid_input' });
+    const p = await db();
+    const ids = await myDiscordIds(p, req.user.uid);
+    const g = ids.length ? await p.botGuild.findFirst({ where: { guildId: req.params.id, ...manageableWhere(ids) } }) : null;
+    if (!g) return reply.code(404).send({ error: 'not_found' });
+    if (!LOG_CATEGORY_GROUP[b.data.category]) return reply.code(400).send({ error: 'unknown_category' });
+    const raw = (await p.adminSetting.findUnique({ where: { key: 'bot.config' } }))?.value || {};
+    // A guild's `logs` REPLACES the top-level one wholesale — the same rule resolveGuildConfig
+    // applies in the bot, not a merge.
+    const logs = raw.guilds?.[g.guildId]?.logs ?? raw.logs ?? {};
+    const route = resolveLogRoute(logs, b.data.category, { legacyChannelId: g.logChannelId || '' });
+    if (route.kind === 'off') return { ok: false, route };
+    const action = await p.botAction.create({
+      data: {
+        kind: 'log_test', discordId: ids[0], guildId: g.guildId, reason: b.data.category,
+        targetLabel: b.data.category, requestedById: req.user.uid,
+      },
+    });
+    return { ok: true, route, action: { id: action.id } };
+  });
+
   // Buy the custom welcome banner for a server you manage.
   //
   // The paid state existed and the gate below (402 `banner_locked`) refused the upload, but
@@ -2822,14 +2860,31 @@ export default async function botRoutes(app) {
 // is bounded; every list is capped; every action is an enum — an unknown key is stripped.
 const AUTOMOD_ACTION = z.enum(['log', 'delete', 'warn', 'timeout', 'kick', 'ban']);
 const idList = (n = 100) => z.array(z.string().max(32)).max(n);
-const rule = (extra) => z.object({ enabled: z.boolean().optional(), action: AUTOMOD_ACTION.optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), ...extra }).optional();
+// The parameters every rule carries alongside its own thresholds (documented at the top of the
+// bot's features/automod.mjs). All optional: a rule saved as `{ enabled, action }` by an older
+// dashboard still parses, and the bot fills the defaults in.
+const RULE_PARAMS = {
+  dm: z.boolean().optional(),
+  logOnly: z.boolean().optional(),
+};
+// Message rules also decide whether the message goes, and carry their own exemption list on
+// top of the global one.
+const MSG_RULE_PARAMS = {
+  ...RULE_PARAMS,
+  deleteMessage: z.boolean().optional(),
+  exempt: z.object({ roles: idList().optional(), channels: idList().optional() }).optional(),
+};
+const rule = (extra) => z.object({ enabled: z.boolean().optional(), action: AUTOMOD_ACTION.optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), ...MSG_RULE_PARAMS, ...extra }).optional();
 const MODERATION_SCHEMA = z.object({
   enabled: z.boolean().optional(),
   antiSelfbot: z.boolean().optional(),
   purgeChannelId: z.string().max(32).optional(),
   purgeChannelIds: idList(50).optional(),
   clearMax: z.number().int().min(1).max(100).optional(),
-  warnThresholds: z.array(z.object({ count: z.number().int().min(1).max(1000), action: z.enum(['warn', 'timeout', 'kick', 'ban']), minutes: z.number().int().min(1).max(40320).optional() })).max(20).optional(),
+  // The warn ladder: "at N warnings, do X". The action list is WARN_ACTIONS in lib/warns.mjs
+  // and LADDER_ACTIONS in the bot's features/automod.mjs — one vocabulary, read by both. The
+  // rows are not required to arrive sorted: both readers sort by count themselves.
+  warnThresholds: z.array(z.object({ count: z.number().int().min(1).max(1000), action: z.enum(['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'quarantine']), minutes: z.number().int().min(1).max(40320).optional() })).max(20).optional(),
   automod: z.object({
     enabled: z.boolean().optional(),
     exempt: z.object({ roles: idList().optional(), channels: idList().optional(), users: idList().optional(), moderators: z.boolean().optional() }).optional(),
@@ -2843,12 +2898,57 @@ const MODERATION_SCHEMA = z.object({
       caps: rule({ ratio: z.number().min(0).max(1).optional(), minLetters: z.number().int().min(1).max(4000).optional() }),
       zalgo: rule({ maxCombining: z.number().int().min(1).max(1000).optional(), maxRatio: z.number().min(0).max(1).optional() }),
       attachments: rule({ allowTypes: z.array(z.string().max(16)).max(100).optional(), blockTypes: z.array(z.string().max(16)).max(100).optional() }),
-      accountAge: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'kick', 'ban', 'quarantine', 'timeout']).optional(), minDays: z.number().min(0).max(3650).optional(), timeoutMin: z.number().int().min(1).max(40320).optional() }).optional(),
+      accountAge: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'kick', 'ban', 'quarantine', 'timeout']).optional(), minDays: z.number().min(0).max(3650).optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), ...RULE_PARAMS }).optional(),
       selfbot: rule({ channelsPerWindow: z.number().int().min(2).max(50).optional(), windowSec: z.number().int().min(1).max(600).optional(), identicalAcrossSec: z.number().int().min(1).max(3600).optional(), maxPerMinute: z.number().int().min(1).max(1000).optional() }),
-      raid: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'timeout', 'kick', 'ban']).optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), joins: z.number().int().min(2).max(1000).optional(), windowSec: z.number().int().min(1).max(3600).optional(), lockdownMin: z.number().int().min(1).max(1440).optional(), raiseVerification: z.boolean().optional(), alert: z.boolean().optional() }).optional(),
+      raid: z.object({ enabled: z.boolean().optional(), action: z.enum(['log', 'timeout', 'kick', 'ban']).optional(), timeoutMin: z.number().int().min(1).max(40320).optional(), joins: z.number().int().min(2).max(1000).optional(), windowSec: z.number().int().min(1).max(3600).optional(), lockdownMin: z.number().int().min(1).max(1440).optional(), raiseVerification: z.boolean().optional(), alert: z.boolean().optional(), ...RULE_PARAMS }).optional(),
     }).optional(),
   }).optional(),
 });
+// ── Where a log category lands ─────────────────────────────────────────────────────────────
+// CATEGORIES / GROUPS in the bot's features/logs.mjs, and resolveRoute's rule, written once
+// more here: the API cannot import the bot, and the "test" button's whole value is that the
+// answer comes from the server rather than from the browser's guess. If the routing rule
+// changes there, it changes here — the two are one decision written twice, like the
+// dashboard's own copy in apps/web/src/pages/discord-automod.jsx.
+const LOG_CATEGORY_GROUP = {
+  'messages.delete': 'messages', 'messages.edit': 'messages', 'messages.bulk': 'messages',
+  'members.join': 'members', 'members.leave': 'members', 'members.kick': 'members', 'members.ban': 'members',
+  'members.unban': 'members', 'members.timeout': 'members', 'members.nick': 'members', 'members.roles': 'members',
+  voice: 'voice', automod: 'automod', modcmd: 'moderation',
+  'server.channels': 'server', 'server.roles': 'server', 'server.emoji': 'server', 'server.webhooks': 'server',
+  'bot.errors': 'bot', 'bot.config': 'bot',
+  'economy.casino': 'economy', 'economy.shop': 'economy', 'economy.season': 'economy',
+};
+const LOG_GROUP_LABEL = { messages: 'Messages', members: 'Members', voice: 'Voice', automod: 'Automod', moderation: 'Moderation', server: 'Server', bot: 'Bot', economy: 'Economy' };
+/** → { kind: 'forum'|'channel'|'off', id, tags, from } — `from` names the rule that decided. */
+function resolveLogRoute(rawLogs, category, { legacyChannelId = '' } = {}) {
+  const L = rawLogs && typeof rawLogs === 'object' ? rawLogs : {};
+  const group = LOG_CATEGORY_GROUP[category];
+  const off = { kind: 'off', id: '', tags: [], from: 'off' };
+  if (!group) return { ...off, from: 'unknown category' };
+  if (L.enabled === false) return { ...off, from: 'logs disabled' };
+  const groupTag = LOG_GROUP_LABEL[group];
+  const read = (v) => {
+    if (v === 'off' || v?.kind === 'off') return { kind: 'off' };
+    if (typeof v === 'string' && v.trim()) return { kind: 'channel', id: v.trim(), tags: [] };
+    if (v && typeof v === 'object' && (v.kind === 'forum' || v.kind === 'channel') && String(v.id || '').trim()) {
+      return { kind: v.kind, id: String(v.id).trim(), tags: Array.isArray(v.tags) ? v.tags.filter(Boolean).slice(0, 5) : [] };
+    }
+    return null;
+  };
+  const routes = L.routes && typeof L.routes === 'object' ? L.routes : {};
+  for (const [key, why] of [[category, `route for ${category}`], [group, `route for ${group}`]]) {
+    const r = read(routes[key]);
+    if (!r) continue;
+    if (r.kind === 'off') return { ...off, from: `${key} routed off` };
+    return { kind: r.kind, id: r.id, tags: r.kind === 'forum' ? (r.tags.length ? r.tags : [groupTag]) : [], from: why };
+  }
+  if (String(L.forumId || '').trim()) return { kind: 'forum', id: String(L.forumId).trim(), tags: [groupTag], from: 'the log forum' };
+  const ch = String(L.channelId || '').trim() || String(legacyChannelId || '').trim();
+  if (ch) return { kind: 'channel', id: ch, tags: [], from: String(L.channelId || '').trim() ? 'the log channel' : 'the /config log channel' };
+  return { ...off, from: 'nothing configured' };
+}
+
 const LOG_ROUTE = z.union([
   z.literal('off'),
   z.string().max(32),

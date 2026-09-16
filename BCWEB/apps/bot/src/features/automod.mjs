@@ -16,7 +16,7 @@
 //       { count: 3, action: 'timeout', minutes: 60 },   //   admin screen (lib/warns.mjs reads
 //       { count: 5, action: 'kick' },      //   this same key). Exact-count match: the warning
 //       { count: 7, action: 'ban' },       //   that crosses a line fires, later ones do not.
-//     ],
+//     ],                                   //   action ∈ LADDER_ACTIONS (see below)
 //     automod: {
 //       enabled: true,
 //       // Who and where the rules never apply. Moderators (Manage Messages / Manage Guild /
@@ -25,14 +25,24 @@
 //       // Local warn memory (used when the site cannot be reached and for the pure engine):
 //       // a warning older than decayHours no longer counts toward the ladder. 0 = never decays.
 //       warnDecayHours: 168,
-//       // Every rule: { enabled, action, ...thresholds }. `action` is one of
+//       // Every rule: { enabled, action, ...thresholds, ...parameters }. `action` is one of
 //       //   'log'      record it, touch nothing
 //       //   'delete'   delete the message (message rules only)
 //       //   'warn'     delete + a recorded warning (the ladder may escalate it)
 //       //   'timeout'  delete + timeout for `timeoutMin` minutes
 //       //   'kick'     delete + kick
 //       //   'ban'      delete + ban
-//       // For a message rule every action except 'log' also deletes the message.
+//       //
+//       // PARAMETERS every rule also accepts, all optional and all defaulted so a rule saved
+//       // as nothing but `{ enabled, action }` keeps behaving exactly as it did:
+//       //   deleteMessage: true    message rules only — the action deletes the message. false
+//       //                          punishes without removing the evidence. 'log' never deletes.
+//       //   dm: false              the member is told by DM what fired and what it cost them.
+//       //   logOnly: false         carry NOTHING out: the rule still fires and still lands in
+//       //                          the log, but the action is downgraded to 'log'. A way to
+//       //                          watch a rule for a week before letting it bite.
+//       //   exempt: { roles: [], channels: [] }   message rules only — on TOP of the global
+//       //                          exemption list above, never instead of it.
 //       rules: {
 //         spam:        { enabled: true,  action: 'timeout', timeoutMin: 10, maxMessages: 6, windowSec: 5, maxRepeats: 3, repeatWindowSec: 30 },
 //         mentions:    { enabled: true,  action: 'timeout', timeoutMin: 60, maxUsers: 6, maxRoles: 3, everyone: false },
@@ -52,7 +62,8 @@
 // Every threshold is a number the admin dashboard can render as a field; every action is a
 // string from ACTIONS; every list is an array of ids or strings. `normalizeAutomod(raw)` turns
 // whatever was saved into this shape with the defaults filled in — the engine only ever sees
-// a normalised config.
+// a normalised config. Nothing here is required: an older config that has only some of these
+// keys (or a rule with no keys at all) normalises to the same defaults it always did.
 //
 // ── DECISIONS ──────────────────────────────────────────────────────────────────────────────
 //
@@ -65,7 +76,7 @@
 //   memberRoles: [], isModerator, inviteGuilds: { code: guildId } }.
 // `state` is what createState() returns — per-guild memory of recent messages, joins,
 //   warnings and the lockdown clock. The engine reads and updates it; nothing else does.
-// An action: { rule, action, reason, deleteMessage, timeoutMin, meta }.
+// An action: { rule, action, reason, deleteMessage, timeoutMin, dm, meta }.
 // `strongest(actions)` picks the one to carry out when several rules fire at once — the
 //   most severe wins, they are never stacked.
 
@@ -77,23 +88,36 @@ import { modStats } from '../store.mjs';
 export const ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban'];
 const SEVERITY = { log: 0, delete: 1, warn: 2, timeout: 3, kick: 4, ban: 5, quarantine: 3, lockdown: 3 };
 export const RULES = ['spam', 'mentions', 'invites', 'links', 'words', 'caps', 'zalgo', 'attachments', 'accountAge', 'selfbot', 'raid'];
+/** The rules that judge a MESSAGE. The other two judge a join, so they have nothing to delete
+ *  and no channel/role of their own to be exempt in. */
+export const MESSAGE_RULES = ['spam', 'mentions', 'invites', 'links', 'words', 'caps', 'zalgo', 'attachments', 'selfbot'];
+/** What a step of the warn ladder may do. 'log', 'delete' and 'warn' are the written-down
+ *  no-ops (a step that exists and bites nothing); 'quarantine' is a timeout under another name,
+ *  kept because that is what the per-rule join action calls it. */
+export const LADDER_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban', 'quarantine'];
+const LADDER_NOOPS = ['log', 'delete', 'warn'];
+
+// Parameters every rule accepts on top of its own thresholds. Merged into the defaults below
+// so normalizeAutomod fills them in for a rule that was saved without them.
+const COMMON_PARAMS = { dm: false, logOnly: false };
+const MSG_PARAMS = { ...COMMON_PARAMS, deleteMessage: true };
 
 export const DEFAULT_AUTOMOD = {
   enabled: true,
   exempt: { roles: [], channels: [], users: [], moderators: true },
   warnDecayHours: 168,
   rules: {
-    spam: { enabled: true, action: 'timeout', timeoutMin: 10, maxMessages: 6, windowSec: 5, maxRepeats: 3, repeatWindowSec: 30 },
-    mentions: { enabled: true, action: 'timeout', timeoutMin: 60, maxUsers: 6, maxRoles: 3, everyone: false },
-    invites: { enabled: true, action: 'delete', allowGuilds: [], allowCodes: [] },
-    links: { enabled: false, action: 'delete', allowDomains: [] },
-    words: { enabled: false, action: 'delete', patterns: [] },
-    caps: { enabled: false, action: 'delete', ratio: 0.7, minLetters: 12 },
-    zalgo: { enabled: true, action: 'delete', maxCombining: 6, maxRatio: 0.3 },
-    attachments: { enabled: true, action: 'delete', allowTypes: [], blockTypes: ['exe', 'bat', 'cmd', 'scr', 'msi', 'ps1', 'vbs', 'jar', 'com', 'dll', 'hta', 'lnk'] },
-    accountAge: { enabled: false, action: 'kick', minDays: 7, timeoutMin: 1440 },
-    selfbot: { enabled: true, action: 'kick', channelsPerWindow: 3, windowSec: 5, identicalAcrossSec: 10, maxPerMinute: 40 },
-    raid: { enabled: true, action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true },
+    spam: { enabled: true, action: 'timeout', timeoutMin: 10, maxMessages: 6, windowSec: 5, maxRepeats: 3, repeatWindowSec: 30, ...MSG_PARAMS },
+    mentions: { enabled: true, action: 'timeout', timeoutMin: 60, maxUsers: 6, maxRoles: 3, everyone: false, ...MSG_PARAMS },
+    invites: { enabled: true, action: 'delete', allowGuilds: [], allowCodes: [], ...MSG_PARAMS },
+    links: { enabled: false, action: 'delete', allowDomains: [], ...MSG_PARAMS },
+    words: { enabled: false, action: 'delete', patterns: [], ...MSG_PARAMS },
+    caps: { enabled: false, action: 'delete', ratio: 0.7, minLetters: 12, ...MSG_PARAMS },
+    zalgo: { enabled: true, action: 'delete', maxCombining: 6, maxRatio: 0.3, ...MSG_PARAMS },
+    attachments: { enabled: true, action: 'delete', allowTypes: [], blockTypes: ['exe', 'bat', 'cmd', 'scr', 'msi', 'ps1', 'vbs', 'jar', 'com', 'dll', 'hta', 'lnk'], ...MSG_PARAMS },
+    accountAge: { enabled: false, action: 'kick', minDays: 7, timeoutMin: 1440, ...COMMON_PARAMS },
+    selfbot: { enabled: true, action: 'kick', channelsPerWindow: 3, windowSec: 5, identicalAcrossSec: 10, maxPerMinute: 40, ...MSG_PARAMS },
+    raid: { enabled: true, action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true, ...COMMON_PARAMS },
   },
 };
 export const DEFAULT_LADDER = [
@@ -128,6 +152,12 @@ export function normalizeAutomod(raw) {
       }
     }
     if (name === 'words') out.patterns = strList(s.patterns, 500); // case is the pattern's business
+    // Per-rule exemptions: roles and channels this rule alone ignores, ON TOP of the global
+    // list. Only message rules have them — a join has no channel and no roles yet.
+    if (MESSAGE_RULES.includes(name)) {
+      const re = s.exempt && typeof s.exempt === 'object' ? s.exempt : {};
+      out.exempt = { roles: strList(re.roles), channels: strList(re.channels) };
+    }
     rules[name] = out;
   }
   const ex = r.exempt && typeof r.exempt === 'object' ? r.exempt : {};
@@ -139,22 +169,35 @@ export function normalizeAutomod(raw) {
   };
 }
 
-/** The ladder, highest count first, dropping what cannot be honoured (same rule as lib/warns.mjs). */
+/**
+ * The ladder, highest count first, dropping what cannot be honoured (same rule as
+ * lib/warns.mjs). Two steps on the same count would both be "the" step for it, so the first
+ * one written wins and the rest are dropped — otherwise which one fires depends on sort order.
+ */
 export function normalizeLadder(raw) {
   const list = Array.isArray(raw) ? raw : [];
+  const seen = new Set();
   return list
     .map((t) => ({ count: Math.floor(Number(t?.count)), action: String(t?.action || '').toLowerCase(), minutes: t?.minutes == null ? null : Math.max(1, Math.floor(Number(t.minutes))) }))
-    .filter((t) => Number.isFinite(t.count) && t.count >= 1 && ['warn', 'timeout', 'kick', 'ban'].includes(t.action))
+    .filter((t) => Number.isFinite(t.count) && t.count >= 1 && LADDER_ACTIONS.includes(t.action))
+    .filter((t) => { if (seen.has(t.count)) return false; seen.add(t.count); return true; })
     .sort((a, b) => b.count - a.count);
 }
 
-/** What the warning that brought the total to `count` triggers — exact match, never stacked. */
+/**
+ * What the warning that brought the total to `count` triggers — exact match, never stacked.
+ * A no-op step ('log', 'delete', 'warn') is a line written down that costs the member nothing,
+ * and returns null exactly like a count with no step at all. 'quarantine' is a timeout; it
+ * says so in `kind` so every caller (which queues a BotAction by that name) stays honest, and
+ * carries a `quarantine` flag for the screens that want to call it by its own name.
+ */
 export function escalationFor(count, ladder = DEFAULT_LADDER) {
   const n = Math.floor(Number(count));
   if (!Number.isFinite(n) || n < 1) return null;
   const L = normalizeLadder(ladder && ladder.length ? ladder : DEFAULT_LADDER);
   const hit = L.find((t) => t.count === n);
-  if (!hit || hit.action === 'warn') return null;
+  if (!hit || LADDER_NOOPS.includes(hit.action)) return null;
+  if (hit.action === 'quarantine') return { kind: 'timeout', minutes: hit.minutes || 60, at: n, quarantine: true };
   return { kind: hit.action, minutes: hit.action === 'timeout' ? (hit.minutes || 60) : null, at: n };
 }
 
@@ -195,6 +238,19 @@ export function warnCount(state, userId, cfg, now = Date.now()) {
 }
 
 // ── Exemptions ────────────────────────────────────────────────────────────────────────────
+/**
+ * A rule's OWN exemption list — roles and channels it alone ignores. Deliberately not
+ * isExempt(): there is no moderator clause and no user list here, so a rule cannot quietly
+ * widen what the global list decided.
+ */
+export function ruleExempt(rule, { channelId, memberRoles = [] } = {}) {
+  const e = rule?.exempt;
+  if (!e) return false;
+  if (channelId && (e.channels || []).includes(String(channelId))) return true;
+  const roles = (memberRoles || []).map(String);
+  return !!(roles.length && (e.roles || []).some((r) => roles.includes(String(r))));
+}
+
 export function isExempt(exempt, { authorId, channelId, memberRoles = [], isModerator = false } = {}) {
   const e = exempt || {};
   if (e.moderators !== false && isModerator) return true;
@@ -278,10 +334,19 @@ export function zalgoScore(text) {
 export const extOf = (name) => { const m = String(name || '').toLowerCase().match(/\.([a-z0-9]{1,8})$/); return m ? m[1] : ''; };
 
 // ── The engine ────────────────────────────────────────────────────────────────────────────
-const act = (rule, r, reason, meta = {}, { deleteMessage = true } = {}) => ({
-  rule, action: r.action, reason, deleteMessage: r.action !== 'log' && deleteMessage,
-  timeoutMin: r.action === 'timeout' || r.action === 'quarantine' ? (r.timeoutMin || 10) : null, meta,
-});
+// One rule firing → one action. `logOnly` downgrades the whole thing to 'log' here, at the
+// single place that builds an action, so every caller downstream (strongest, the delete, the
+// DM, applyToMember) sees a rule that decided to do nothing rather than each having to
+// remember the flag.
+const act = (rule, r, reason, meta = {}, { deleteMessage = true } = {}) => {
+  const action = r.logOnly ? 'log' : r.action;
+  return {
+    rule, action, reason,
+    deleteMessage: action !== 'log' && r.deleteMessage !== false && deleteMessage,
+    timeoutMin: action === 'timeout' || action === 'quarantine' ? (r.timeoutMin || 10) : null,
+    dm: !!r.dm, meta,
+  };
+};
 
 /**
  * One message in. Updates the state (recent messages per user), returns every rule that
@@ -301,9 +366,12 @@ export function evaluateMessage(message, state, cfg) {
   u.msgs.push({ t: now, ch: message.channelId, h, id: message.id });
   if (exempt) return out;
   const text = String(message.content || '');
+  // A rule runs when it is on AND this channel / these roles are not on its own exemption
+  // list. The global list has already had its say above.
+  const on = (r) => r.enabled && !ruleExempt(r, message);
 
   // spam: rate + repeats
-  if (R.spam.enabled) {
+  if (on(R.spam)) {
     const inWindow = u.msgs.filter((m) => now - m.t <= R.spam.windowSec * 1000).length;
     if (inWindow > R.spam.maxMessages) out.push(act('spam', R.spam, `${inWindow} messages in ${R.spam.windowSec}s`, { count: inWindow, kind: 'rate' }));
     else if (text.length) {
@@ -312,7 +380,7 @@ export function evaluateMessage(message, state, cfg) {
     }
   }
   // mentions
-  if (R.mentions.enabled) {
+  if (on(R.mentions)) {
     const m = message.mentions || {};
     const users = Number(m.users || 0), roles = Number(m.roles || 0);
     if (users > R.mentions.maxUsers) out.push(act('mentions', R.mentions, `${users} user mentions`, { users, roles }));
@@ -320,7 +388,7 @@ export function evaluateMessage(message, state, cfg) {
     else if (m.everyone && !R.mentions.everyone) out.push(act('mentions', R.mentions, '@everyone / @here', { everyone: true }));
   }
   // invites
-  if (R.invites.enabled) {
+  if (on(R.invites)) {
     const codes = extractInvites(text);
     if (codes.length) {
       const resolved = message.inviteGuilds || {};
@@ -334,33 +402,33 @@ export function evaluateMessage(message, state, cfg) {
     }
   }
   // links
-  if (R.links.enabled) {
+  if (on(R.links)) {
     const links = extractLinks(text).filter((l) => !domainAllowed(l.host, R.links.allowDomains));
     if (links.length) out.push(act('links', R.links, `link to ${[...new Set(links.map((l) => l.host))].join(', ')}`, { hosts: links.map((l) => l.host) }));
   }
   // words
-  if (R.words.enabled && R.words.patterns.length) {
+  if (on(R.words) && R.words.patterns.length) {
     const hits = matchWords(text, R.words.patterns);
     if (hits.length) out.push(act('words', R.words, `banned word (${hits.length} pattern${hits.length > 1 ? 's' : ''})`, { patterns: hits }));
   }
   // caps
-  if (R.caps.enabled) {
+  if (on(R.caps)) {
     const { ratio, letters } = capsRatio(text);
     if (letters >= R.caps.minLetters && ratio >= R.caps.ratio) out.push(act('caps', R.caps, `${Math.round(ratio * 100)}% capitals`, { ratio, letters }));
   }
   // zalgo / excessive unicode
-  if (R.zalgo.enabled) {
+  if (on(R.zalgo)) {
     const z = zalgoScore(text);
     if (z.combining >= R.zalgo.maxCombining || (z.combining > 0 && z.ratio >= R.zalgo.maxRatio)) out.push(act('zalgo', R.zalgo, `${z.combining} combining marks`, z));
   }
   // attachments
-  if (R.attachments.enabled && Array.isArray(message.attachments) && message.attachments.length) {
+  if (on(R.attachments) && Array.isArray(message.attachments) && message.attachments.length) {
     const allow = R.attachments.allowTypes, block = R.attachments.blockTypes;
     const bad = message.attachments.map((a) => extOf(a.name)).filter((e) => (allow.length ? !allow.includes(e) : block.includes(e)));
     if (bad.length) out.push(act('attachments', R.attachments, `attachment type ${bad.map((e) => `.${e || '?'}`).join(', ')}`, { types: bad }));
   }
   // anti-selfbot
-  if (R.selfbot.enabled) {
+  if (on(R.selfbot)) {
     const win = u.msgs.filter((m) => now - m.t <= R.selfbot.windowSec * 1000);
     const channels = new Set(win.map((m) => m.ch));
     const perMinute = u.msgs.filter((m) => now - m.t <= 60_000).length;
@@ -394,8 +462,8 @@ export function evaluateJoin(member, state, cfg) {
   if (R.accountAge.enabled && member.accountCreatedAt) {
     const ageDays = (now - Number(member.accountCreatedAt)) / 86_400_000;
     if (ageDays < R.accountAge.minDays) {
-      const a = R.accountAge.action === 'quarantine' ? 'timeout' : R.accountAge.action;
-      out.push({ rule: 'accountAge', action: a, reason: `account is ${ageDays < 1 ? 'under a day' : `${Math.floor(ageDays)} day(s)`} old (minimum ${R.accountAge.minDays})`, deleteMessage: false, timeoutMin: a === 'timeout' ? R.accountAge.timeoutMin : null, meta: { ageDays } });
+      const a = R.accountAge.logOnly ? 'log' : R.accountAge.action === 'quarantine' ? 'timeout' : R.accountAge.action;
+      out.push({ rule: 'accountAge', action: a, reason: `account is ${ageDays < 1 ? 'under a day' : `${Math.floor(ageDays)} day(s)`} old (minimum ${R.accountAge.minDays})`, deleteMessage: false, timeoutMin: a === 'timeout' ? R.accountAge.timeoutMin : null, dm: !!R.accountAge.dm, meta: { ageDays } });
     }
   }
   if (R.raid.enabled) {
@@ -408,8 +476,8 @@ export function evaluateJoin(member, state, cfg) {
       state.lockdownSince = now;
       out.push({ rule: 'raid', action: 'lockdown', reason: `${recent} joins in ${R.raid.windowSec}s`, deleteMessage: false, timeoutMin: R.raid.lockdownMin, meta: { joins: recent, until: state.lockdownUntil, raiseVerification: R.raid.raiseVerification, alert: R.raid.alert } });
     }
-    if (lockdownActive(state, now) && R.raid.action !== 'log') {
-      out.push({ rule: 'raid', action: R.raid.action, reason: 'joined during raid lockdown', deleteMessage: false, timeoutMin: R.raid.action === 'timeout' ? R.raid.timeoutMin : null, meta: { lockdown: true } });
+    if (lockdownActive(state, now) && R.raid.action !== 'log' && !R.raid.logOnly) {
+      out.push({ rule: 'raid', action: R.raid.action, reason: 'joined during raid lockdown', deleteMessage: false, timeoutMin: R.raid.action === 'timeout' ? R.raid.timeoutMin : null, dm: !!R.raid.dm, meta: { lockdown: true } });
     }
   }
   return out;
@@ -459,6 +527,25 @@ export async function automodConfig(guildId) {
 let logSink = null;
 export function setAutomodLogger(fn) { logSink = fn; }
 const log = (guildId, category, event) => { try { return Promise.resolve(logSink?.(guildId, category, event)).catch(() => {}); } catch { return null; } };
+
+/**
+ * Tell the member what fired and what it cost them — only when the rule asked for it (`dm`).
+ * A closed DM is the normal case, not a failure, so this never throws and never blocks the
+ * action it describes.
+ */
+async function dmMember(user, guild, best, reason) {
+  if (!best?.dm || typeof user?.send !== 'function') return false;
+  const what = {
+    log: 'It was recorded. Nothing else happened.',
+    delete: 'Your message was removed.',
+    warn: 'Your message was removed and a warning was added to your record.',
+    timeout: `Your message was removed and you cannot post for ${best.timeoutMin || 10} minute(s).`,
+    kick: 'You were removed from the server.',
+    ban: 'You were banned from the server.',
+  }[best.action] || '';
+  const body = [`**${guild?.name || 'This server'}** — an automod rule fired: ${reason}`, what].filter(Boolean).join('\n');
+  return user.send(body.slice(0, 1900)).then(() => true).catch(() => false);
+}
 
 /** Carry out the actions on a message's author. */
 async function applyToMember(member, guild, best, reason, targetUser) {
@@ -510,10 +597,13 @@ export async function onAutomodMessage(msg) {
   const reason = actions.map((a) => `${a.rule}: ${a.reason}`).join('; ');
   let deleted = false;
   if (actions.some((a) => a.deleteMessage)) { deleted = await msg.delete().then(() => true).catch(() => false); if (deleted) modStats.purged++; }
+  // Before the action, not after: once somebody is kicked or banned there is no mutual server
+  // left and Discord refuses the DM, so a message sent afterwards would never arrive.
+  const dmSent = await dmMember(msg.author, msg.guild, best, reason);
   const outcome = await applyToMember(msg.member, msg.guild, best, reason, msg.author);
   console.log(`[automod] ${msg.guild.name}: ${msg.author.tag} — ${reason} → ${best.action}${outcome?.failed ? ` (failed: ${outcome.failed})` : ''}`);
   await log(msg.guild.id, 'automod', {
-    kind: 'automod', rule: actions.map((a) => a.rule).join('+'), action: best.action, reason, deleted, outcome,
+    kind: 'automod', rule: actions.map((a) => a.rule).join('+'), action: best.action, reason, deleted, outcome, dm: dmSent,
     user: { id: msg.author.id, tag: msg.author.tag, avatar: msg.author.displayAvatarURL?.({ size: 64 }) },
     channelId: msg.channelId, messageId: msg.id, content: msg.content, attachments: plain.attachments,
   });
@@ -531,9 +621,10 @@ export async function onAutomodJoin(member) {
   if (lockdown) await startLockdown(member.guild, state, lockdown, c.automod);
   const best = strongest(actions);
   if (best) {
+    const dmSent = await dmMember(member.user, member.guild, best, best.reason);
     const outcome = await applyToMember(member, member.guild, best, best.reason, member.user);
     await log(member.guild.id, 'automod', {
-      kind: 'automod', rule: best.rule, action: best.action, reason: best.reason, outcome,
+      kind: 'automod', rule: best.rule, action: best.action, reason: best.reason, outcome, dm: dmSent,
       user: { id: member.id, tag: member.user?.tag, avatar: member.user?.displayAvatarURL?.({ size: 64 }) }, accountCreatedAt: member.user?.createdTimestamp,
     });
   }

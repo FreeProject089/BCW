@@ -61,6 +61,16 @@
   mix — repos and catalogs share the same pool bytes, and freeing one returns the space to
   the other. A freshly-bought empty pool shows in *My Repos* as an actionable card ("Add
   repo" / "Add catalog"). Plans (5/10/25/50 GB + custom) and a $0 free tier.
+- **The plan card reads at a glance** — each paid plan lists what it gives in one column:
+  the storage, the download bandwidth, the boosts it includes (with a line saying what a
+  boost does), the custom domain, and where the free tier stands right now. The recommended
+  plan is lifted forward rather than only tinted. Checkout and the flexible prepaid term are
+  unchanged.
+- **The two most expensive plans include boosts** — a boost is the existing *featured*
+  credit: it puts a repo or a catalogue first in the public listing for a few days. The
+  count, the period and the days are set per plan in Admin → Hosting → Plans, and the
+  sweeper grants them once per period (idempotent — a unique index, not a check, so two
+  sweepers running at once still grant once). Spend them from *My boosts*.
 - **Billing anchors to the pool** — the subscription (prepaid term or auto-renew) is on the
   pool, so a purchase can hold repos, catalogs, or nothing yet. On lapse the whole pool
   (its repos **and** catalogs) is suspended with the usual 72h delete grace; renewing (auto
@@ -112,7 +122,7 @@
 - **Scheduled updates** — stage project content to go live at a future date/time (lazy,
   no cron), cancellable.
 - **Optional legal documents** — a document that ships with the app but is not true of every deployment (today the Data Processing Addendum) stays OFF until Admin → Legal publishes it. While it is off its page answers "not part of this site's terms", the API does not serve its text, it is absent from the menu and the index, the privacy policy's pointer to it disappears, and no account is asked to accept it.
-- **Teams: links and slots** — an owner or admin mints invitation links (role, expiry, max uses) that anyone signed in can open to join; an account owns up to the admin's limit of teams (Hosting settings → Teams), and one more is a one-off Stripe payment for a permanent slot.
+- **Teams: links and slots** — an owner or admin mints invitation links that anyone signed in can open to join with the chosen role. A team holds at most **one permanent link** (never expires, copy it once, revoke and remake it whenever) plus a configurable number of **temporary** links, each with its own lifetime and a delete button showing what is left of it; the server refuses a second permanent link and any lifetime the admin does not offer. Both caps live in Hosting settings → Pricing beside the team limit (`teams.inviteMaxTemporary`, `teams.inviteLifetimeDays`). An account owns up to the admin's limit of teams, and one more is a one-off Stripe payment for a permanent slot.
 - **Files that expire** — one mechanism (`/f/<token>`) for Make Your Own deliverables (30 days after delivery or 7 after the first download; the first download is the proof, written into the conversation; archives keep no attachments), mail attachments (dated links, or inline when small) and any file handed out for a while. Mail: the composer keeps the admin's own templates and the gallery lets a built-in wording be edited in place instead of rewritten; the header logo sits on a white plate.
 - **Admin search** — the dashboard sidebar's box finds screens by label, synonym (FR/EN), accent-insensitive prefix or a one-letter typo, ranked from the admin guide's own text, and below them the data itself (accounts, repos, catalogues, teams, conversations, reports, sanctions, commissions, posts, docs, FAQ, polls, codes) through `/admin/search`.
 - **Lookalike pictures** — every uploaded image (and the images inside uploaded archives, and linked avatars) gets a perceptual hash; one within a few bits of another account's picture, or byte-identical to it, lands in Admin → Moderation → Lookalike pictures with both pictures side by side, to clear or act on.
@@ -130,15 +140,30 @@
   server) returns the block's reference plus a link to the contact page. Welcome/bye banners
   take a **custom background** uploaded on the spot, kept as a site-hosted (moderatable) image.
   **Automod** — eleven data-driven rules (spam, mass mentions, invites, links, words, caps,
-  zalgo, attachments, account age, selfbot, raid), each with an on/off, an action
-  (log / delete / warn / timeout / kick / ban, quarantine for account age) and its thresholds
-  under "Advanced", plus exemptions (roles, channels, users, moderators) and a warn decay — and
-  **log routing**: a forum (one tagged post per category or per day) or a text channel, with
-  a route per group and per category (23 categories in 8 groups). Both are edited from the
-  server owner's own dashboard (Automod / Logs sections) and from the admin bot tab under the
-  server picker, where a **Global defaults** bubble edits what every server without its own
-  config follows; the admin's Alerts module can also name an **alerts forum** so every admin
-  alert kind becomes a tagged post.
+  zalgo, attachments, account age, selfbot, raid). Each rule reads as two sentences: what it
+  catches, with its numbers as the fields you type in ("more than 6 messages in 5 seconds"),
+  and what it then does. Beyond the action (log / delete / warn / timeout / kick / ban,
+  quarantine for account age) every rule carries its own **parameters** — the timeout length,
+  whether the message is deleted, whether the member is told by DM, and a **watch-only** switch
+  that records the rule firing without carrying anything out — plus its **own exemptions**
+  (roles, channels) on top of the global list (roles, channels, members, moderators). A rule
+  saved before those parameters existed keeps behaving exactly as it did.
+  The **warn ladder** is editable from both dashboards: "at N warnings, do X" rows added and
+  removed freely, sorted by count, each with a duration where the action takes one, and the
+  decay window (how long a warning counts) beside them. Only the step whose number a member
+  has just reached fires, never the ones below it and never twice.
+  **Log routing**: a forum (one tagged post per category or per day) or a text channel, with
+  a route per group and per category (23 categories in 8 groups). Every row states the
+  **destination it resolves to right now**, in words — "goes to #mod-log", "goes to the logs
+  forum, tag Server", "nowhere" — so an inherited route shows the place it ends at rather than
+  the word "default", and each category has a **test button** that posts a sample entry and
+  says where it went. Roles, channels and members are picked from searchable lists fed by the
+  bot's heartbeat (a role's colour, a channel's `#`, forum apart from text), with the raw id
+  box kept as the fallback when the bot has reported nothing.
+  Both are edited from the server owner's own dashboard (Automod / Logs sections) and from the
+  admin bot tab under the server picker, where a **Global defaults** bubble edits what every
+  server without its own config follows; the admin's Alerts module can also name an **alerts
+  forum** so every admin alert kind becomes a tagged post.
 - **Community Charity** — each month a share of eligible revenue goes to a community-chosen
   association, paid manually. It is an admin **switch** (Admin → Ko-fi & funding → Community
   Charity): off, `/charity` says the programme is not running, the command palette hides the
@@ -361,7 +386,22 @@
   target (repo, catalogue entry, user, file); notice codes to follow up, counter-notices,
   strikes, a **protected-works registry** whose hashes / patterns / URLs flag matching uploads
   on save, and an admin **Rights** queue with takedown, reject, restore and scan.
-- **Legal** — Privacy, Terms, Cookies, **About**, **Payments & Refunds** (EN/FR).
+- **Contact is a triage** — `/contact` asks two short questions instead of offering one form
+  with a topic dropdown, and sends the person to the destination that fits. A copyright or
+  takedown claim and a report about content or a person are handed to the flows that already
+  exist (`/report` and the report modal), carrying the address already typed, so nobody is
+  asked the same question twice. The rest end on a small form that asks the two or three
+  things its answer needs: the pool for a hosting question, the reference for an invoice, what
+  was already tried for an account problem, where it is plus a no-secrets acknowledgement for a
+  security report, the account and a permanence acknowledgement for erasure. Every field is
+  validated again on the server, the destination (not the browser) decides which admin queue
+  the message is counted in, and the answers are written above the message so staff still read
+  one thread in one place. Going back never loses what was typed, and a `?topic=` link from
+  another page still skips straight to its form with its template.
+- **Legal** — Privacy, Terms, Cookies, **About**, **Payments & Refunds** (EN/FR). On a
+  document page the other documents are one control that names the one you are reading and
+  opens the list: it cannot overflow, it cuts no label, and it works the same on a phone as on
+  a desktop, however many documents an admin adds.
 
 ## Abuse & safety
 - Edge anti-bot / anti-DDoS (Caddy + Fastify), proof-of-work on sign-up & contact,

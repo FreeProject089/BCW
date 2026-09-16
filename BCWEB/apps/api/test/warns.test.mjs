@@ -5,7 +5,7 @@
 // fourth warning is added, is a decision that cannot be explained to the person it happened to.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionFor, normalizeThresholds, warnMessage, DEFAULT_THRESHOLDS } from '../src/lib/warns.mjs';
+import { actionFor, normalizeThresholds, warnMessage, DEFAULT_THRESHOLDS, WARN_ACTIONS } from '../src/lib/warns.mjs';
 
 const LADDER = [
     { count: 3, action: 'timeout', minutes: 60 },
@@ -82,6 +82,38 @@ describe('normalizeThresholds', () => {
         for (const bad of [null, undefined, 'nope', 42, [{}], [null]]) {
             assert.deepEqual(normalizeThresholds(bad), []);
         }
+    });
+});
+
+// The ladder is configurable from two dashboards now, over a wider vocabulary. The risk is
+// not a crash: it is a step the screen lets somebody write that this reader drops, so the
+// fifth warning does nothing and the screen still shows a rule for it.
+describe('the wider ladder the dashboards can write', () => {
+    test('log and delete are no-ops, exactly like warn', () => {
+        for (const action of ['log', 'delete', 'warn']) {
+            assert.equal(actionFor(2, [{ count: 2, action }]), null, action);
+        }
+    });
+
+    test('quarantine resolves to a timeout, because that is the kind the queue can carry out', () => {
+        // The BotAction created from this is named after `kind`. 'quarantine' is not something
+        // Discord can be asked for, so it must not travel under that name.
+        const a = actionFor(4, [{ count: 4, action: 'quarantine', minutes: 45 }]);
+        assert.equal(a.kind, 'timeout');
+        assert.equal(a.minutes, 45);
+        assert.equal(a.quarantine, true);
+        assert.equal(actionFor(4, [{ count: 4, action: 'quarantine' }]).minutes, 60);
+    });
+
+    test('two steps on one count: the first written wins and the other is dropped', () => {
+        const r = normalizeThresholds([{ count: 3, action: 'kick' }, { count: 3, action: 'ban' }]);
+        assert.deepEqual(r.map((t) => t.action), ['kick']);
+    });
+
+    test('the bot and the API read one vocabulary', () => {
+        // Same list as LADDER_ACTIONS in apps/bot/src/features/automod.mjs. A step either side
+        // drops is a step that silently does nothing wherever it is read.
+        assert.deepEqual([...WARN_ACTIONS].sort(), ['ban', 'delete', 'kick', 'log', 'quarantine', 'timeout', 'warn']);
     });
 });
 

@@ -70,6 +70,17 @@
   libérer l'un rend la place à l'autre. Un pool fraîchement acheté et vide apparaît dans
   *Mes Repos* comme une carte actionnable (« Ajouter un dépôt » / « Ajouter un catalogue »).
   Plans (5/10/25/50 Go + custom) et un free-tier à 0 $.
+- **La carte d’offre se lit d’un coup d’œil** — chaque offre payante liste ce qu’elle donne
+  dans une seule colonne : le stockage, la bande passante, les boosts inclus (avec une ligne
+  qui dit ce que fait un boost), le domaine personnalisé, et l’état de l’offre gratuite. L’offre
+  recommandée passe devant les autres au lieu d’être seulement teintée. Le paiement et le terme
+  prépayé flexible ne changent pas.
+- **Les deux offres les plus chères incluent des boosts** — un boost est le crédit *à la une*
+  déjà en place : il met un dépôt ou un catalogue en tête de la liste publique pendant
+  quelques jours. Le nombre, la période et les jours se règlent par offre dans Admin →
+  Hébergement → Offres, et le sweeper les accorde une fois par période (idempotent — un
+  index unique, pas une vérification, donc deux sweepers simultanés n’en accordent qu’un
+  jeu). À dépenser depuis *Mes boosts*.
 - **La facturation est rattachée au pool** — la souscription (terme prépayé ou auto-renew)
   est sur le pool ; un achat peut donc contenir des repos, des catalogues, ou rien encore.
   À l'expiration, tout le pool (ses repos **et** catalogues) est suspendu avec la grâce de
@@ -126,7 +137,7 @@
 - **Mises à jour planifiées** — préparer du contenu de projet pour publication à une
   date/heure future (paresseux, sans cron), annulable.
 - **Documents légaux optionnels** — un document livré avec l’application mais qui n’est pas vrai de chaque déploiement (aujourd’hui l’Accord de traitement des données) reste DÉSACTIVÉ tant qu’Admin → Légal ne l’a pas publié. Désactivé, sa page répond « ne fait pas partie des conditions de ce site », l’API ne sert pas son texte, il est absent du menu et de l’index, le renvoi de la politique de confidentialité disparaît, et aucun compte n’est invité à l’accepter.
-- **Équipes : liens et places** — un propriétaire ou admin crée des liens d’invitation (rôle, expiration, nombre d’usages) que toute personne connectée peut ouvrir pour rejoindre ; un compte possède jusqu’à la limite d’équipes fixée par l’admin (Réglages d’hébergement → Équipes), et une de plus est un paiement Stripe unique pour une place définitive.
+- **Équipes : liens et places** — un propriétaire ou admin crée des liens d’invitation que toute personne connectée peut ouvrir pour rejoindre avec le rôle choisi. Une équipe garde au plus **un lien permanent** (il n’expire jamais, on le copie une fois, on le supprime et on le recrée quand on veut) et un nombre configurable de liens **temporaires**, chacun avec sa durée, le temps restant affiché et son bouton Supprimer ; le serveur refuse un second lien permanent et toute durée que l’admin ne propose pas. Les deux plafonds sont dans Réglages d’hébergement → Tarifs, à côté de la limite d’équipes (`teams.inviteMaxTemporary`, `teams.inviteLifetimeDays`). Un compte possède jusqu’à la limite d’équipes fixée par l’admin, et une de plus est un paiement Stripe unique pour une place définitive.
 - **Fichiers qui expirent** — un seul mécanisme (`/f/<jeton>`) pour les livraisons Make Your Own (30 jours après la livraison ou 7 après le premier téléchargement ; le premier téléchargement est la preuve, écrite dans la conversation ; les archives ne gardent aucune pièce jointe), les pièces jointes des mails (liens datés, ou jointes quand petites) et tout fichier remis pour un temps. Mail : le compositeur garde les modèles de l’admin et la galerie permet de modifier un texte intégré sur place au lieu de le réécrire ; le logo d’en-tête est sur une plaque blanche.
 - **Recherche admin** — la boîte de la barre latérale trouve les écrans par libellé, synonyme (FR/EN), préfixe sans accents ou faute d’une lettre, classés d’après le texte du guide admin, et dessous les données elles-mêmes (comptes, dépôts, catalogues, équipes, conversations, signalements, sanctions, commandes, articles, docs, FAQ, sondages, codes) via `/admin/search`.
 - **Images ressemblantes** — chaque image envoyée (et les images dans les archives envoyées, et les avatars liés) reçoit une empreinte perceptuelle ; une image à quelques bits de celle d’un autre compte, ou identique octet pour octet, arrive dans Admin → Modération → Images ressemblantes, les deux côte à côte, à effacer ou traiter.
@@ -146,14 +157,31 @@
   lien vers la page de contact. Les bannières de bienvenue/au revoir acceptent un **fond
   personnalisé** envoyé sur place, conservé comme image hébergée sur le site (modérable).
   **Automod** — onze règles pilotées par les données (spam, mentions de masse, invitations,
-  liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid), chacune avec
-  un on/off, une action (journaliser / supprimer / avertir / exclusion temporaire / expulser /
-  bannir, quarantaine pour l'âge du compte) et ses seuils sous « Avancé », plus des exemptions
-  (rôles, salons, utilisateurs, modérateurs) et une péremption des avertissements — et le
-  **routage des logs** : un forum (un post étiqueté par catégorie ou par jour) ou un salon
-  texte, avec une route par groupe et par catégorie (23 catégories en 8 groupes). Les deux
-  s'éditent depuis le tableau de bord du propriétaire du serveur (sections Automod / Logs) et
-  depuis l'onglet bot de l'admin sous le sélecteur de serveur, où une bulle **Défauts
+  liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid). Chaque règle
+  se lit en deux phrases : ce qu'elle attrape, avec ses nombres comme champs à remplir
+  (« plus de 6 messages en 5 secondes »), et ce qu'elle fait ensuite. Au-delà de l'action
+  (journaliser / supprimer / avertir / exclusion temporaire / expulser / bannir, quarantaine
+  pour l'âge du compte), chaque règle porte ses **paramètres** : la durée de l'exclusion, si
+  le message est supprimé, si le membre est prévenu en MP, et un mode **observation** qui
+  enregistre le déclenchement sans rien appliquer — plus ses **propres exemptions** (rôles,
+  salons) en plus de la liste globale (rôles, salons, membres, modérateurs). Une règle
+  enregistrée avant ces paramètres se comporte exactement comme avant.
+  L'**échelle des avertissements** s'édite depuis les deux tableaux de bord : des lignes
+  « à N avertissements, faire X » qu'on ajoute et retire librement, triées par nombre, avec une
+  durée quand l'action en prend une, et la péremption (combien de temps un avertissement
+  compte) à côté. Seul le palier dont le membre vient d'atteindre le nombre se déclenche,
+  jamais ceux d'en dessous et jamais deux fois.
+  **Routage des logs** : un forum (un post étiqueté par catégorie ou par jour) ou un salon
+  texte, avec une route par groupe et par catégorie (23 catégories en 8 groupes). Chaque ligne
+  nomme la **destination où elle mène en ce moment**, en toutes lettres — « va dans #mod-log »,
+  « va dans le forum des logs, étiquette Serveur », « nulle part » — si bien qu'une route
+  héritée montre l'endroit où elle finit plutôt que le mot « défaut », et chaque catégorie a
+  un **bouton de test** qui publie une entrée d'exemple et dit où elle est partie. Les rôles,
+  salons et membres se choisissent dans des listes cherchables alimentées par le heartbeat du
+  bot (la couleur d'un rôle, le `#` d'un salon, forum distingué du texte), la saisie d'id brut
+  restant le repli quand le bot n'a rien rapporté.
+  Les deux s'éditent depuis le tableau de bord du propriétaire du serveur (sections Automod /
+  Logs) et depuis l'onglet bot de l'admin sous le sélecteur de serveur, où une bulle **Défauts
   globaux** règle ce que suit tout serveur sans config propre ; le module Alertes de l'admin
   peut aussi nommer un **forum des alertes** pour que chaque type d'alerte admin devienne un
   post étiqueté.
@@ -403,8 +431,25 @@
   fichier) ; codes de suivi, contre-notifications, strikes, un **registre d’œuvres protégées**
   dont les hachages / motifs / URL repèrent les envois correspondants à la sauvegarde, et une
   file admin **Droits** avec retrait, rejet, restauration et scan.
+- **Le contact est un triage** — `/contact` pose deux questions courtes au lieu d'un
+  formulaire unique avec une liste de sujets, et envoie la personne à la bonne destination. Une
+  réclamation de droits ou un retrait et un signalement de contenu ou de personne sont confiés
+  aux parcours qui existent déjà (`/report` et la fenêtre de signalement), avec l'adresse déjà
+  saisie, pour ne pas reposer deux fois la même question. Les autres aboutissent à un petit
+  formulaire qui demande les deux ou trois choses dont sa réponse a besoin : le pool pour une
+  question d'hébergement, la référence pour une facture, ce qui a déjà été essayé pour un
+  problème de compte, l'endroit concerné et la confirmation « aucun secret » pour un rapport de
+  sécurité, le compte et la confirmation d'irréversibilité pour une suppression. Chaque champ
+  est revalidé côté serveur, c'est la destination (et non le navigateur) qui décide de la file
+  admin qui compte le message, et les réponses sont écrites au-dessus du message : le personnel
+  lit toujours un seul fil au même endroit. Revenir en arrière ne perd jamais ce qui a été
+  écrit, et un lien `?topic=` venu d'une autre page va toujours directement à son formulaire
+  avec son modèle.
 - **Légal** — Confidentialité, CGU, Cookies, **À propos**, **Paiements & Remboursements**
-  (EN/FR).
+  (EN/FR). Sur la page d'un document, les autres documents tiennent dans un seul contrôle qui
+  nomme celui qu'on lit et ouvre la liste : il ne déborde pas, ne coupe aucun libellé, et
+  fonctionne pareil sur téléphone et sur ordinateur, quel que soit le nombre de documents
+  ajoutés par un admin.
 
 ## Abus & sûreté
 - Anti-bot / anti-DDoS en edge (Caddy + Fastify), proof-of-work à l'inscription & au

@@ -9,6 +9,7 @@
 // this whole queue exists to avoid.
 
 import { api } from '../api.mjs';
+import { logEvent, _queue, CATEGORIES } from './logs.mjs';
 
 const EVERY_MS = 20_000;
 // Discord's own ceiling for a timeout. Asking for more is rejected outright rather than
@@ -18,6 +19,22 @@ const MAX_TIMEOUT_MIN = 28 * 24 * 60;
 /** Carry out one action, and say plainly what happened. */
 async function run(guild, a) {
     const reason = `${a.reason || 'No reason given'} — by ${a.requestedByLabel || 'staff'} via the website`;
+
+    // "Where does this category land?" asked from the dashboard: post one sample entry through
+    // the ordinary routing, so the answer the dashboard printed is the answer the member sees.
+    // `reason` carries the category; there is no member to touch.
+    if (a.kind === 'log_test') {
+        const cat = String(a.reason || '').trim();
+        if (!CATEGORIES[cat]) throw new Error(`Unknown log category "${cat}".`);
+        const who = { id: a.discordId, tag: a.targetLabel || a.discordId };
+        const ok = await logEvent(guild.id, cat, {
+            user: who, actor: who, channelId: null, content: `Test entry for ${cat}, sent from the dashboard.`,
+            reason: 'dashboard test', title: 'Test', message: `Test entry for ${cat}.`, name: 'test', kind: 'test',
+        });
+        _queue.flush();
+        if (!ok) throw new Error('That category is not routed anywhere right now.');
+        return;
+    }
 
     if (a.kind === 'ban') {
         await guild.members.ban(a.discordId, { reason });
@@ -62,10 +79,16 @@ export function startModQueue(client, guildId) {
         if (!guild) {
             // Reported per action rather than swallowed: without this the queue would sit at
             // "pending" for ever and look like the bot was ignoring it.
-            for (const a of actions) await api.actionResult(a.id, false, 'The bot is not in that server.');
+            for (const a of actions) if (!a.guildId || a.guildId === guildId) await api.actionResult(a.id, false, 'The bot is not in that server.');
             return;
         }
         for (const a of actions) {
+            // One poller runs PER GUILD and each fetches the same pending list, so an action
+            // that names a guild must only be carried out by that guild's poller. Left alone,
+            // a ban asked for in one server is attempted in every server the bot is in. A row
+            // with no guild (the older ones) keeps the old behaviour, and the result is left
+            // unreported here so the right poller still reports it.
+            if (a.guildId && a.guildId !== guild.id) continue;
             try {
                 await run(guild, a);
                 await api.actionResult(a.id, true);

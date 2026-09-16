@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeAutomod, normalizeLadder, escalationFor, createState, evaluateMessage, evaluateJoin, strongest, isExempt,
   extractInvites, extractLinks, domainAllowed, compilePattern, matchWords, capsRatio, zalgoScore, contentHash, recordWarn, warnCount,
-  lockdownActive, DEFAULT_AUTOMOD, RULES, ACTIONS,
+  lockdownActive, ruleExempt, DEFAULT_AUTOMOD, RULES, ACTIONS, LADDER_ACTIONS, MESSAGE_RULES,
 } from '../src/features/automod.mjs';
 
 const T0 = 1_700_000_000_000;
@@ -323,5 +323,152 @@ describe('determinism', () => {
     const run = () => { const s = createState(); const out = []; for (let k = 0; k < 12; k++) out.push(...evaluateMessage(msg({ channelId: `c${k % 4}`, content: 'same', at: T0 + k * 300 }), s, c)); return out.map((a) => `${a.rule}:${a.action}:${a.reason}`); };
     assert.deepEqual(run(), run());
     assert.ok(run().length > 0);
+  });
+});
+
+
+// ── The configurable warn ladder ("at N warnings, do X") ─────────────────────────────────
+// The failure mode is not a crash: it is a ladder the dashboard lets you write and the bot
+// then reads differently, so the third warning does something nobody chose.
+describe('the ladder, as the dashboard can now write it', () => {
+  test('every action the dashboard offers survives normalisation', () => {
+    const written = LADDER_ACTIONS.map((action, i) => ({ count: i + 1, action, minutes: 30 }));
+    const read = normalizeLadder(written);
+    assert.deepEqual(read.map((t) => t.action).sort(), [...LADDER_ACTIONS].sort(),
+      'a step the screen can save and the bot drops is a rule that exists and does nothing');
+  });
+
+  test('log and delete are written-down no-ops, exactly like warn', () => {
+    // They belong on the ladder so a step can be parked without deleting it. What they must
+    // never do is queue something: there is no message to delete at a warning count.
+    for (const action of ['log', 'delete', 'warn']) {
+      assert.equal(escalationFor(2, [{ count: 2, action }]), null, action);
+    }
+  });
+
+  test('quarantine IS a timeout, and says so in kind', () => {
+    // Every caller queues a BotAction named after `kind`; 'quarantine' is not something
+    // Discord can be asked for, so the kind has to be the thing it really is.
+    const e = escalationFor(4, [{ count: 4, action: 'quarantine', minutes: 45 }]);
+    assert.equal(e.kind, 'timeout');
+    assert.equal(e.minutes, 45);
+    assert.equal(e.quarantine, true);
+    assert.equal(escalationFor(4, [{ count: 4, action: 'quarantine' }]).minutes, 60, 'no duration still has one');
+  });
+
+  test('two steps on the same count: the first written wins, the other is dropped', () => {
+    // Left in, which of them fires would depend on sort order — and the ladder would show
+    // two rules for one number with no way to tell which is real.
+    const L = normalizeLadder([{ count: 3, action: 'kick' }, { count: 3, action: 'ban' }]);
+    assert.equal(L.length, 1);
+    assert.equal(L[0].action, 'kick');
+    assert.equal(escalationFor(3, [{ count: 3, action: 'kick' }, { count: 3, action: 'ban' }]).kind, 'kick');
+  });
+
+  test('a ladder saved out of order still fires on the right count', () => {
+    const L = [{ count: 9, action: 'ban' }, { count: 2, action: 'timeout', minutes: 5 }, { count: 5, action: 'kick' }];
+    assert.equal(escalationFor(2, L).kind, 'timeout');
+    assert.equal(escalationFor(5, L).kind, 'kick');
+    assert.equal(escalationFor(9, L).kind, 'ban');
+    assert.equal(escalationFor(3, L), null);
+  });
+
+  test('the old three-action ladder keeps behaving exactly as it did', () => {
+    assert.deepEqual(escalationFor(3), { kind: 'timeout', minutes: 60, at: 3 });
+    assert.equal(escalationFor(5).kind, 'kick');
+    assert.equal(escalationFor(7).kind, 'ban');
+  });
+});
+
+// ── Per-rule actions and parameters ──────────────────────────────────────────────────────
+describe('per-rule parameters', () => {
+  const spamStream = (c, over = {}) => {
+    const s = createState();
+    let out = [];
+    for (let k = 0; k < 9; k++) out = evaluateMessage(msg({ content: `m${k}`, at: T0 + k * 100, ...over }), s, c);
+    return out;
+  };
+
+  test('a rule saved as nothing but { enabled, action } gets every default', () => {
+    // This is what every config written before these parameters existed looks like.
+    const c = normalizeAutomod({ rules: { spam: { enabled: true, action: 'delete' } } });
+    assert.equal(c.rules.spam.deleteMessage, true);
+    assert.equal(c.rules.spam.dm, false);
+    assert.equal(c.rules.spam.logOnly, false);
+    assert.deepEqual(c.rules.spam.exempt, { roles: [], channels: [] });
+    assert.equal(c.rules.spam.maxMessages, DEFAULT_AUTOMOD.rules.spam.maxMessages, 'its thresholds are untouched');
+    // And it still fires, with the action it was saved with.
+    const hit = spamStream(c);
+    assert.deepEqual(hit.map((a) => [a.rule, a.action, a.deleteMessage]), [['spam', 'delete', true]]);
+  });
+
+  test('deleteMessage false punishes without removing the message', () => {
+    const c = cfg({ rules: { spam: { enabled: true, action: 'timeout', timeoutMin: 7, deleteMessage: false } } });
+    const [a] = spamStream(c);
+    assert.equal(a.action, 'timeout');
+    assert.equal(a.timeoutMin, 7);
+    assert.equal(a.deleteMessage, false);
+  });
+
+  test('watch-only downgrades the action to log and deletes nothing', () => {
+    const c = cfg({ rules: { spam: { enabled: true, action: 'ban', logOnly: true } } });
+    const [a] = spamStream(c);
+    assert.equal(a.action, 'log', 'the rule still fires — it is the ACTION that is withheld');
+    assert.equal(a.deleteMessage, false);
+    assert.equal(a.timeoutMin, null);
+    // And it loses to a rule that really does bite, instead of winning on its written severity.
+    assert.equal(strongest([a, { rule: 'x', action: 'delete' }]).action, 'delete');
+  });
+
+  test('dm rides on the action so the Discord side knows whom to tell', () => {
+    const c = cfg({ rules: { spam: { enabled: true, action: 'delete', dm: true } } });
+    assert.equal(spamStream(c)[0].dm, true);
+    assert.equal(spamStream(cfg({ rules: { spam: { enabled: true, action: 'delete' } } }))[0].dm, false);
+  });
+
+  test('a rule exemption silences THAT rule and nothing else', () => {
+    const c = cfg({
+      rules: {
+        spam: { enabled: true, action: 'delete', exempt: { channels: ['quiet'], roles: [] } },
+        links: { enabled: true, action: 'delete' },
+      },
+    });
+    const s = createState();
+    let last = [];
+    for (let k = 0; k < 9; k++) last = evaluateMessage(msg({ channelId: 'quiet', content: `see http://x.test/${k}`, at: T0 + k * 100 }), s, c);
+    assert.deepEqual(rulesOf(last), ['links'], 'spam is exempt here; links is not');
+  });
+
+  test('a per-rule exemption cannot exempt a moderator or a user — only roles and channels', () => {
+    // isExempt() owns "who is above the rules". A rule list that could add a user to that
+    // would be a second place to write the same permission, and they would drift.
+    const r = { exempt: { roles: ['vip'], channels: ['quiet'] } };
+    assert.equal(ruleExempt(r, { channelId: 'quiet' }), true);
+    assert.equal(ruleExempt(r, { memberRoles: ['vip'] }), true);
+    assert.equal(ruleExempt(r, { channelId: 'loud', memberRoles: ['plebs'], isModerator: true }), false);
+    assert.equal(ruleExempt({}, { channelId: 'quiet' }), false);
+  });
+
+  test('the global exemption still wins over a rule that has no exemption of its own', () => {
+    const c = cfg({ rules: { spam: { enabled: true, action: 'delete' } }, exempt: { channels: ['quiet'] } });
+    const s = createState();
+    let last = [];
+    for (let k = 0; k < 9; k++) last = evaluateMessage(msg({ channelId: 'quiet', content: `m${k}`, at: T0 + k * 100 }), s, c);
+    assert.deepEqual(last, []);
+  });
+
+  test('only message rules carry an exemption list; the join rules have nothing to exempt', () => {
+    const c = normalizeAutomod({});
+    for (const name of RULES) {
+      assert.equal('exempt' in c.rules[name], MESSAGE_RULES.includes(name), name);
+    }
+  });
+
+  test('a join rule honours watch-only and dm too', () => {
+    const c = cfg({ rules: { accountAge: { enabled: true, action: 'ban', minDays: 30, logOnly: true, dm: true }, raid: { enabled: false } } });
+    const [a] = evaluateJoin({ id: 'u9', guildId: 'g1', bot: false, accountCreatedAt: T0 - 86_400_000, joinedAt: T0 }, createState(), c);
+    assert.equal(a.rule, 'accountAge');
+    assert.equal(a.action, 'log');
+    assert.equal(a.dm, true);
   });
 });
