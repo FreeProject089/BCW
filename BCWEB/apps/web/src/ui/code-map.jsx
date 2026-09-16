@@ -214,7 +214,7 @@ export default function CodeMap({ graph, t = (k, d) => d }) {
                 <p className="text-[12px] text-[var(--warning)] mb-2">
                     {/* Every drawable file, not just the JS ones — the Rust half of a repo
                         counted for nothing in this total and made it read low. */}
-                    {t('cm.truncated', 'Showing {n} of {m} files — the rest are not drawn.')
+                    {t('cm.truncated', 'Showing {n} of {m} files, the rest are not drawn.')
                         .replace('{n}', graph.stats.drawn)
                         .replace('{m}', (graph.stats.jsFiles || 0) + (graph.stats.rustFiles || 0))}
                 </p>

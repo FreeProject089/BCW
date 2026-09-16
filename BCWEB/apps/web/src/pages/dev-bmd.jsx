@@ -172,7 +172,7 @@ export default function DevBmd() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold flex items-center gap-2"><ShieldCheck size={16} /> {t('dvb.csp', 'Content Security Policy')}</h2>
-        <p className="text-sm text-[var(--muted)] max-w-2xl">{t('dvb.csp.d', 'What the defaults reach for, so the policy can name them — or set the CDN knobs to null and list nothing.')}</p>
+        <p className="text-sm text-[var(--muted)] max-w-2xl">{t('dvb.csp.d', 'What the defaults reach for, so the policy can name them, or set the CDN knobs to null and list nothing.')}</p>
         <Snippet code={CSP} lang="css" />
       </section>
 

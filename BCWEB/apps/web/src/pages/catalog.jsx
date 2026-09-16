@@ -48,7 +48,7 @@ export function Catalog() {
         </div>} />
       {/* Filter bar: project switcher · search · kind pills · sort — grouped into one
           tidy card instead of a loose flex row. */}
-      <div className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-5 space-y-3">
+      <div className="rounded-2xl border border-[var(--line)] panel p-3 mb-5 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           {[['', t('cat.allprojects', 'All')], ['bmm', 'BMM'], ['bsm', 'BSM']].map(([pk, l]) => (
             <button key={pk} onClick={() => { set('project', pk); if (kind) set('kind', ''); }} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${project === pk ? 'bg-gradient-to-br from-brand to-brand-2 text-white shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
@@ -68,7 +68,7 @@ export function Catalog() {
           <div className="flex gap-1.5 flex-wrap">
             {(project === 'bsm' ? ['', 'PRESET'] : ['', ...ALL_KINDS]).map((k) => {
               const I = k ? (KIND_ICON[k] || Package) : Package;
-              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
+              return <button key={k} onClick={() => set('kind', k)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${kind === k ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}><I size={14} /> {k ? kindLabel(k, project) : t('cat.all', 'All')}</button>;
             })}
           </div>
         </div>
@@ -101,7 +101,9 @@ export function Catalog() {
               </Card></Link>
             </div>); })}
         </div>
-      ) : <EmptyState icon={Inbox} title={t('cat.empty.t', 'Nothing here yet')} sub={t('cat.empty.s', 'Be the first to publish to this catalog.')} />)}
+      ) : <EmptyState icon={Inbox} title={t('cat.empty.t2', 'This catalogue is empty')}
+        sub={t('cat.empty.s2', 'Apps, plugins, themes and presets people publish show up here, and nobody has published one yet.')}
+        action={{ label: t('sub.title', 'Submit content'), to: `/submit?project=${project}`, icon: Package }} />)}
       <CommunityCatalogsStrip project={project} q={q} />
     </div>
   );
@@ -124,7 +126,7 @@ function CommunityCatalogsStrip({ project = '', q = '' }) {
         <h2 className="font-semibold flex items-center gap-2"><Boxes size={16} className="text-[var(--primary-2)]" /> {t('cc.pub.title', 'Community catalogs')}</h2>
         <Badge tone="">{cats.length}</Badge>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('cc.pub.desc', 'Catalogs hosted by community members — added directly in BMM as a source. Unverified; add at your own discretion.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('cc.pub.desc', 'Catalogs hosted by community members, added directly in BMM as a source. Unverified; add at your own discretion.')}</p>
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {cats.map((c) => (
           <Link key={c.id} to={`/c/${c.slug}`}><Card hover className="p-4 h-full">
@@ -172,7 +174,7 @@ export function ItemDetail() {
       {it.private && (
         <Card className="p-3.5 mb-5 flex items-center gap-2.5 bg-warning-bg border-warning-border">
           <Lock size={17} className="text-warning shrink-0" />
-          <div className="text-sm"><b>{t('item.private.t', 'Private — not listed publicly')}</b> <span className="text-[var(--muted)]">{t('item.private.d', 'This item isn’t in the public catalog yet. Only people with this direct link can see it; it’ll be listed once an admin validates it.')}</span></div>
+          <div className="text-sm"><b>{t('item.private.t', 'Private, not listed publicly')}</b> <span className="text-[var(--muted)]">{t('item.private.d', 'This item isn’t in the public catalog yet. Only people with this direct link can see it; it’ll be listed once an admin validates it.')}</span></div>
         </Card>
       )}
       {v && (
@@ -208,7 +210,7 @@ export function ItemDetail() {
           <Card className="p-3 mt-5 flex items-center gap-2.5 flex-wrap">
             <FileJson size={16} className="text-[var(--primary-2)] shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-[var(--faint)]">{t('item.json.label', 'catalog.json — import this {k} individually in BMM').replace('{k}', it.kind.toLowerCase())}</div>
+              <div className="text-xs text-[var(--faint)]">{t('item.json.label', 'catalog.json, import this {k} individually in BMM').replace('{k}', it.kind.toLowerCase())}</div>
               <code className="text-xs text-[var(--muted)] break-all">{jsonUrl}</code>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">

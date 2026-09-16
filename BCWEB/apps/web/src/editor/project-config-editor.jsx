@@ -220,7 +220,7 @@ function CodeGraphSettings({ projectKey }) {
           ? 'Currently coming from the server environment (GITHUB_WEBHOOK_SECRET). Type one here to override it for this project only.'
           : state?.secretFrom === 'page'
             ? 'Set on this page. Leave blank to keep it; clear it by saving a single space.'
-            : 'Required — a webhook with no secret is refused. Paste the same value into GitHub.'
+            : 'Required, a webhook with no secret is refused. Paste the same value into GitHub.'
       }>
         <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)}
           placeholder={state?.hasSecret ? '••••••••  (unchanged)' : 'a long random string'} />
@@ -266,7 +266,7 @@ function StackDetect({ onDraft, hasExisting }) {
     try {
       const r = await api.post('/admin/projects/stack/detect', payload);
       if (!r.nodes?.length) {
-        toast.error(t('pce.st.none', 'Nothing recognisable in {what} — no compose file and no package manifest.').replace('{what}', what));
+        toast.error(t('pce.st.none', 'Nothing recognisable in {what}, no compose file and no package manifest.').replace('{what}', what));
         return;
       }
       setDraft(r);
@@ -276,7 +276,7 @@ function StackDetect({ onDraft, hasExisting }) {
       // under "Could not read that.", which is the one sentence that helps nobody.
       const e = x.data?.error;
       toast.error(
-        e === 'not_a_github_repo' ? t('pce.st.notrepo', 'That is not a GitHub repository URL — it should look like github.com/owner/repo.')
+        e === 'not_a_github_repo' ? t('pce.st.notrepo', 'That is not a GitHub repository URL, it should look like github.com/owner/repo.')
           : e === 'github_unreachable' ? t('pce.st.unreachable', 'Could not read that repository — check it is public and the address is right. (GitHub also refuses for a while after many reads in one hour.)')
             : e === 'incomplete_fetch' ? t('pce.st.partial', 'Only part of that repository could be read, so the result would be misleading. Try again in a minute.')
               : e === 'bad_zip' ? t('pce.st.badzip', 'That file is not a readable zip.')
@@ -312,7 +312,7 @@ function StackDetect({ onDraft, hasExisting }) {
     i.type = 'file'; i.accept = '.zip,application/zip';
     i.onchange = async () => {
       const f = i.files?.[0]; if (!f) return;
-      if (f.size > 9 * 1024 * 1024) return toast.error(t('pce.st.zipbig', 'That zip is over 9 MB. Pick the folder instead — only the manifests are read.'));
+      if (f.size > 9 * 1024 * 1024) return toast.error(t('pce.st.zipbig', 'That zip is over 9 MB. Pick the folder instead, only the manifests are read.'));
       const buf = await f.arrayBuffer();
       let bin = ''; const bytes = new Uint8Array(buf);
       for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
@@ -325,7 +325,7 @@ function StackDetect({ onDraft, hasExisting }) {
     if (hasExisting && !window.confirm(t('pce.st.replace', 'Replace the components below with what was found?'))) return;
     onDraft(draft);
     setDraft(null);
-    toast.success(t('pce.st.applied', 'Added — edit anything that is not right before saving.'));
+    toast.success(t('pce.st.applied', 'Added, edit anything that is not right before saving.'));
   };
 
   return (
@@ -389,17 +389,17 @@ function CommitImport({ slug }) {
   const load = () => api.get(`/admin/projects/${slug}/activity-import`).then((r) => setInfo(r.import || false)).catch(() => setInfo(false));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [slug]);
   const cmd = 'git log --all --date=iso-strict --format="%H|%aI|%an|%s" > commits.txt';
-  const onFile = async (f) => { if (!f) return; if (f.size > 6 * 1024 * 1024) { toast.error(t('pce.ci.toobig', 'That file is over 6 MB — export without --all, or a date range.')); return; } setText(await f.text()); if (!label) setLabel(f.name.replace(/\.[^.]+$/, '')); };
+  const onFile = async (f) => { if (!f) return; if (f.size > 6 * 1024 * 1024) { toast.error(t('pce.ci.toobig', 'That file is over 6 MB, export without --all, or a date range.')); return; } setText(await f.text()); if (!label) setLabel(f.name.replace(/\.[^.]+$/, '')); };
   const run = async () => {
     if (!text.trim()) return;
     setBusy(true);
-    try { const r = await api.post(`/admin/projects/${slug}/activity-import`, { log: text, label: label.trim() || undefined }); setInfo(r.import); setText(''); toast.success(t('pce.ci.done', '{n} commits imported — the Activity tab reads them now.').replace('{n}', r.import.total)); }
+    try { const r = await api.post(`/admin/projects/${slug}/activity-import`, { log: text, label: label.trim() || undefined }); setInfo(r.import); setText(''); toast.success(t('pce.ci.done', '{n} commits imported, the Activity tab reads them now.').replace('{n}', r.import.total)); }
     catch (x) { toast.error(x?.data?.error === 'no_commits' ? t('pce.ci.nothing', 'Nothing in that text looks like git log output.') : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
-  const remove = async () => { try { await api.del(`/admin/projects/${slug}/activity-import`); setInfo(false); toast.success(t('pce.ci.removed', 'Import removed — GitHub statistics are used again.')); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const remove = async () => { try { await api.del(`/admin/projects/${slug}/activity-import`); setInfo(false); toast.success(t('pce.ci.removed', 'Import removed: GitHub statistics are used again.')); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
+    <div className="rounded-xl border border-[var(--line)] panel p-3 mb-3">
       <button type="button" onClick={() => setOpen((v) => !v)} className="w-full flex items-center gap-2 text-start">
         <GitLogIcon size={15} className="text-[var(--primary-2)] shrink-0" />
         <span className="text-sm font-medium flex-1">{t('pce.ci.title', 'Import commits (full history)')}</span>
@@ -414,9 +414,9 @@ function CommitImport({ slug }) {
             <Button size="sm" variant="ghost" onClick={() => { navigator.clipboard?.writeText(cmd); toast.success(t('common.copied', 'Copied.')); }}>{t('common.copy', 'Copy')}</Button>
           </div>
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 items-start">
-            <Textarea rows={4} className="!text-[11px] font-mono" value={text} onChange={(e) => setText(e.target.value)} placeholder={t('pce.ci.ph', 'Paste commits.txt here — or drop the file with the button →')} />
+            <Textarea rows={4} className="!text-[11px] font-mono" value={text} onChange={(e) => setText(e.target.value)} placeholder={t('pce.ci.ph', 'Paste commits.txt here, or drop the file with the button →')} />
             <div className="flex sm:flex-col gap-2">
-              <label className="cursor-pointer"><input type="file" accept=".txt,.log,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} /><span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--line)] text-sm hover:border-[var(--primary)]/40"><FileUp size={14} /> {t('pce.ci.file', 'Choose file')}</span></label>
+              <label className="cursor-pointer"><input type="file" accept=".txt,.log,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} /><span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--line)] text-sm hover:b-primary"><FileUp size={14} /> {t('pce.ci.file', 'Choose file')}</span></label>
               <Input className="!py-1.5 !text-sm sm:w-40" value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('pce.ci.label', 'Label (e.g. main repo)')} />
               <Button size="sm" variant="primary" disabled={busy || !text.trim()} onClick={run}>{busy ? <Spinner /> : <><GitLogIcon size={14} /> {t('pce.ci.go', 'Import')}</>}</Button>
             </div>
@@ -555,7 +555,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             </div>
           )}
           {!usingDefaults && (
-            <Repeatable items={c.cards} onChange={(v) => set({ cards: v })} addLabel="Add card" empty="No cards — the page will show none."
+            <Repeatable items={c.cards} onChange={(v) => set({ cards: v })} addLabel="Add card" empty="No cards, the page will show none."
               add={() => ({ id: `card${c.cards.length + 1}`, icon: 'circle', title: 'New card', body: '', to: '', cta: 'Open' })}
               render={(card, patch) => (
                 <div className="space-y-2">
@@ -563,11 +563,11 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                     <IconBtn value={card.icon} onChange={(v) => patch({ icon: v })} />
                     <Input className="flex-1" value={card.titleKey ? '' : (card.title || '')}
                       onChange={(e) => patch({ title: e.target.value, titleKey: undefined })}
-                      placeholder={card.titleKey ? '(built-in wording — type to replace)' : 'Card title'} />
+                      placeholder={card.titleKey ? '(built-in wording, type to replace)' : 'Card title'} />
                   </div>
                   <Textarea rows={2} value={card.bodyKey ? '' : (card.body || '')}
                     onChange={(e) => patch({ body: e.target.value, bodyKey: undefined })}
-                    placeholder={card.bodyKey ? '(built-in wording — type to replace)' : 'What it is for'} className="!text-sm" />
+                    placeholder={card.bodyKey ? '(built-in wording, type to replace)' : 'What it is for'} className="!text-sm" />
                   <div className="grid grid-cols-[1fr_140px] gap-2">
                     <Input value={card.to || ''} onChange={(e) => patch({ to: e.target.value })} placeholder="/dev/tools or https://…" className="!py-1.5 !text-sm" />
                     <Input value={card.ctaKey ? '' : (card.cta || '')} onChange={(e) => patch({ cta: e.target.value, ctaKey: undefined })} placeholder="Open" className="!py-1.5 !text-sm" />
@@ -647,17 +647,17 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       </Section>
 
       {/* Overview media */}
-      <Section icon={ImageIcon} title={t('pce.media', "Overview media")} desc="Shown at the top of the Overview tab. Use one — a video/replay wins over a still image.">
+      <Section icon={ImageIcon} title={t('pce.media', "Overview media")} desc="Shown at the top of the Overview tab. Use one, a video/replay wins over a still image.">
         <MediaField label={t('pce.cover', "Cover image")} value={ov.image} onChange={(v) => setIn('overview', { image: v })} accept="image/*" preview="image" />
         <MediaField label={t('pce.video', "Video (mp4/webm)")} value={ov.video} onChange={(v) => setIn('overview', { video: v })} accept="video/mp4,video/webm" preview="video" />
-        <MediaField label="rrweb / BMM replay JSON" hint="Upload an rrweb or BMM recording (.json) or paste its URL — plays as a live in-app preview, shown right below." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" preview="replay" />
+        <MediaField label="rrweb / BMM replay JSON" hint="Upload an rrweb or BMM recording (.json) or paste its URL, plays as a live in-app preview, shown right below." value={ov.replayUrl} onChange={(v) => setIn('overview', { replayUrl: v })} accept="application/json,.json" preview="replay" />
         <MediaField label="rrweb page URL (alternative)" value={ov.rrwebUrl} onChange={(v) => setIn('overview', { rrwebUrl: v })} accept="application/json,.json" />
       </Section>
 
       {/* Highlights — a headline counter + featured cards (update / video / live / announcement).
           This is the "more than a roadmap" part of the Overview. All stored in the free-form
           project config, so no schema change. */}
-      <Section icon={Sparkles} title={t('pce.featured', 'Highlights')} desc="A headline number and featured cards on the Overview — updates, videos, live streams, announcements.">
+      <Section icon={Sparkles} title={t('pce.featured', 'Highlights')} desc="A headline number and featured cards on the Overview, updates, videos, live streams, announcements.">
         <div className="rounded-lg border border-[var(--line)] p-3">
           <label className="flex items-center gap-2 text-sm font-medium mb-2 cursor-pointer select-none">
             <input type="checkbox" className="accent-[var(--primary)]" checked={!!c.counter}
@@ -688,7 +688,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                 {kind === 'live' && <p className="text-[10px] text-[var(--faint)]">{t('pce.counter.live.h', 'The URL should return a number, or JSON with a value / count / downloads / total field. Refreshed every minute.')}</p>}
               </div>
             );
-          })() : <p className="text-[11px] text-[var(--faint)]">{t('pce.counter.off', 'Off — a big headline number the Overview opens with (downloads, members, a live countdown…).')}</p>}
+          })() : <p className="text-[11px] text-[var(--faint)]">{t('pce.counter.off', 'Off, a big headline number the Overview opens with (downloads, members, a live countdown…).')}</p>}
         </div>
 
         <div className="space-y-2">
@@ -710,7 +710,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                   <Input value={f.url || ''} onChange={(e) => patch({ url: e.target.value })}
                     placeholder={f.kind === 'live' ? 'https://twitch.tv/channel or a YouTube live URL' : 'YouTube URL, or an /api/media/… .mp4 link'} />
                 )}
-                <Textarea rows={2} value={f.body || ''} onChange={(e) => patch({ body: e.target.value })} placeholder={t('pce.feat.body', 'Body — Markdown, optional')} />
+                <Textarea rows={2} value={f.body || ''} onChange={(e) => patch({ body: e.target.value })} placeholder={t('pce.feat.body', 'Body: Markdown, optional')} />
               </div>
             );
           })}
@@ -740,7 +740,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
         {progMode === 'remote' && (
           <div className="space-y-1.5">
             <div className="flex items-end gap-2">
-              <div className="flex-1"><Field label="progress.json URL" hint="A raw URL — auto-refreshed and cached for 5 min. Save first, then Test."><Input value={c.progressSource || ''} onChange={(e) => set({ progressSource: e.target.value })} placeholder="https://raw.githubusercontent.com/…/progress.json" /></Field></div>
+              <div className="flex-1"><Field label="progress.json URL" hint="A raw URL, auto-refreshed and cached for 5 min. Save first, then Test."><Input value={c.progressSource || ''} onChange={(e) => set({ progressSource: e.target.value })} placeholder="https://raw.githubusercontent.com/…/progress.json" /></Field></div>
               <Button type="button" size="sm" onClick={testRemote}><Play size={13} /> {t('pce.testsaved', "Test saved")}</Button>
             </div>
           </div>
@@ -831,7 +831,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                 hint="Your words, shown above the map. The standing explanation of what a code map is stays underneath it.">
                 <Textarea rows={2} value={stack.codeMapNote || ''}
                   onChange={(e) => setIn('stack', { codeMapNote: e.target.value })}
-                  placeholder="e.g. The front end never touches your files — every read goes through a Rust command." />
+                  placeholder="e.g. The front end never touches your files, every read goes through a Rust command." />
               </Field>
               <Field label={t('pce.excludepaths', "Paths to keep out of it")}
                 hint="One per line. A folder takes everything under it. These are removed on the SERVER — they are not sent to the browser at all, so they cannot be read out of the response either. The page says how many were left out, never which.">
@@ -903,7 +903,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
       </Section>
 
       {/* Release notes */}
-      <Section icon={ScrollText} title={t('pce.relnotes', "Release notes (GitHub)")} desc="Pulls .md files from a GitHub repo path — shown on the Release Notes tab.">
+      <Section icon={ScrollText} title={t('pce.relnotes', "Release notes (GitHub)")} desc="Pulls .md files from a GitHub repo path, shown on the Release Notes tab.">
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('pce.owner', "Owner")}><Input value={rn.owner || ''} onChange={(e) => setIn('releaseNotes', { owner: e.target.value })} placeholder="org-or-user" /></Field>
           <Field label="Repo"><Input value={rn.repo || ''} onChange={(e) => setIn('releaseNotes', { repo: e.target.value })} placeholder="my-repo" /></Field>
@@ -921,7 +921,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
             still works as an alternative for teams that host their own list. */}
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">Contributors</div>
-          <Repeatable items={contributors} onChange={(v) => setIn('community', { contributors: v })} addLabel="Add contributor" empty="No contributors yet — add them below, or use a JSON URL."
+          <Repeatable items={contributors} onChange={(v) => setIn('community', { contributors: v })} addLabel="Add contributor" empty="No contributors yet, add them below, or use a JSON URL."
             add={() => ({ name: 'Name', role: '', category: 'contributors', pfp: '', description: '', links: {} })}
             render={(it, patch) => (
               <div className="space-y-2">
@@ -1087,7 +1087,7 @@ export default function ProjectConfigEditor({ value, onChange, slug, isShowcase 
                 <Modal open onClose={() => setTabAt(null)} icon={ListTodo} width="max-w-[96vw]"
                   title={list[tabAt].title || t('pce.ctabs.untitled', 'Untitled tab')}>
                   <MarkdownEditor value={list[tabAt].body || ''} onChange={(v) => patch(tabAt, { body: v })} full
-                    placeholder={t('pce.ctabs.body', 'B.MD — the same blocks as the blog and the docs.')} />
+                    placeholder={t('pce.ctabs.body', 'B.MD, the same blocks as the blog and the docs.')} />
                 </Modal>
               )}
               <Button size="sm" onClick={() => put([...list, { id: `t${Date.now().toString(36)}`, title: '', body: '' }])}>

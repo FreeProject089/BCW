@@ -162,8 +162,8 @@ export function AdminPools() {
     catch (x) {
       const e = x.data?.error;
       toast.error(
-        e === 'below_paid' ? t('apools.belowpaid', 'Below what the owner paid for ({n} GB) — change their subscription instead.').replace('{n}', (x.data.paidGB ?? 0).toFixed(1))
-        : e === 'below_allocated' ? t('apools.belowalloc', 'Their repos and catalogs already reserve {n} GB — free some first.').replace('{n}', (x.data.allocatedGB ?? 0).toFixed(1))
+        e === 'below_paid' ? t('apools.belowpaid', 'Below what the owner paid for ({n} GB), change their subscription instead.').replace('{n}', (x.data.paidGB ?? 0).toFixed(1))
+        : e === 'below_allocated' ? t('apools.belowalloc', 'Their repos and catalogs already reserve {n} GB, free some first.').replace('{n}', (x.data.allocatedGB ?? 0).toFixed(1))
         : t('repos.failed', 'Failed.'));
     }
   };
@@ -179,9 +179,9 @@ export function AdminPools() {
     catch (x) { toast.error(x.data?.error === 'unknown_user' ? t('apools.nouser', 'No account with that email.') : t('repos.failed', 'Failed.')); }
   };
   const split = async (g) => {
-    if (!await dialog.confirm({ title: t('apools.split.t', 'Split this pool?'), message: t('apools.split.b', 'Each extra subscription becomes its own pool. Repos/catalogs stay on the original pool — reassign them afterward if needed.'), okLabel: t('apools.split.ok', 'Split') })) return;
+    if (!await dialog.confirm({ title: t('apools.split.t', 'Split this pool?'), message: t('apools.split.b', 'Each extra subscription becomes its own pool. Repos/catalogs stay on the original pool, reassign them afterward if needed.'), okLabel: t('apools.split.ok', 'Split') })) return;
     try { const r = await api.post(`/admin/hosting/groups/${g.id}/split`, {}); toast.success(t('apools.split.done', 'Split into {n} new pool(s).').replace('{n}', String(r.created))); reload(); }
-    catch (x) { toast.error(x.data?.error === 'nothing_to_split' ? t('apools.split.none', 'This pool has only one subscription — nothing to split.') : t('repos.failed', 'Failed.')); }
+    catch (x) { toast.error(x.data?.error === 'nothing_to_split' ? t('apools.split.none', 'This pool has only one subscription, nothing to split.') : t('repos.failed', 'Failed.')); }
   };
 
   if (loading) return <Loading />;
@@ -271,13 +271,13 @@ export function AdminRepos() {
   const revalidate = async (r) => {
     try {
       const res = await api.post(`/admin/repos/${r.id}/revalidate`);
-      if (res.verified) toast.success(t('arp.revalok', 'Verified “{n}” — its content matches a valid repo.json (sha {s}…).').replace('{n}', r.name).replace('{s}', String(res.sha).slice(0, 10)));
-      else toast.error(t('arp.revalbad', 'Couldn’t verify “{n}” — {r}. It stays unverified until a valid repo.json is uploaded.').replace('{n}', r.name).replace('{r}', res.reason || t('arp.norepojson', 'no valid repo.json found')));
+      if (res.verified) toast.success(t('arp.revalok', 'Verified “{n}”, its content matches a valid repo.json (sha {s}…).').replace('{n}', r.name).replace('{s}', String(res.sha).slice(0, 10)));
+      else toast.error(t('arp.revalbad', 'Couldn’t verify “{n}”: {r}. It stays unverified until a valid repo.json is uploaded.').replace('{n}', r.name).replace('{r}', res.reason || t('arp.norepojson', 'no valid repo.json found')));
       reload();
     } catch { toast.error(t('repos.failed', 'Failed.')); }
   };
   const [checkingAll, setCheckingAll] = useState(false);
-  const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(t('arp.checked', 'Checked {c} repos — {o} online, {v} verified.').replace('{c}', r.checked).replace('{o}', r.online).replace('{v}', r.verified)); reload(); } catch { toast.error(t('arp.checkfail', 'Check failed.')); } finally { setCheckingAll(false); } };
+  const checkAll = async () => { setCheckingAll(true); try { const r = await api.post('/admin/repos/check-all'); toast.success(t('arp.checked', 'Checked {c} repos: {o} online, {v} verified.').replace('{c}', r.checked).replace('{o}', r.online).replace('{v}', r.verified)); reload(); } catch { toast.error(t('arp.checkfail', 'Check failed.')); } finally { setCheckingAll(false); } };
   const [limitsRepo, setLimitsRepo] = useState(null); // repo whose CPU/upload/storage limits are being edited
   return (
     <div className="mt-10">

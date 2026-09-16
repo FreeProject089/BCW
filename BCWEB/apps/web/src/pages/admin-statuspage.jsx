@@ -33,11 +33,11 @@ export default function AdminStatusPage() {
   ];
 
   const post = async (id) => {
-    if (!f.body.trim()) return toast.error(t('stp.n.needbody', 'Say what happened — an empty update is worse than none.'));
+    if (!f.body.trim()) return toast.error(t('stp.n.needbody', 'Say what happened, an empty update is worse than none.'));
     setBusy(true);
     try {
       await api.post(`/admin/status/incidents/${id}/notes`, { state: f.state, body: f.body.trim(), publicNote: f.publicNote });
-      toast.success(f.publicNote ? t('stp.n.posted', 'Posted to the status page.') : t('stp.n.saved', 'Saved — internal only.'));
+      toast.success(f.publicNote ? t('stp.n.posted', 'Posted to the status page.') : t('stp.n.saved', 'Saved, internal only.'));
       setF({ state: 'investigating', body: '', publicNote: true });
       setOpen(null);
       reload();
@@ -82,7 +82,7 @@ export default function AdminStatusPage() {
 
       {loading && !data ? <Loading /> : !outages.length ? (
         <EmptyState icon={CheckCircle2} title={t('stp.none', 'Nothing has broken in this window.')}
-          sub={t('stp.none.s', 'Which is the good state — and is what the public page says too.')} />
+          sub={t('stp.none.s', 'Which is the good state, and is what the public page says too.')} />
       ) : (
         <div className="space-y-3">
           {outages.map((o) => {

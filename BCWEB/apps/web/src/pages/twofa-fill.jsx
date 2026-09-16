@@ -57,7 +57,7 @@ export function TotpQuickFill({ onFill, match = 'bettercommunity', className = '
             const code = codes[a.id];
             return (
               <button key={a.id} type="button" onClick={() => code && onFill(code)}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/15 transition text-start"
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border b-primary tint-primary hover:tint-primary transition text-start"
                 title={t('tfa.fill.hint', 'Fill from your local BCWEB Authenticator')}>
                 <ShieldCheck size={13} className="text-[var(--primary-2)] shrink-0" />
                 <span className="flex-1 min-w-0 truncate text-xs text-[var(--muted)]">{title(a)}</span>

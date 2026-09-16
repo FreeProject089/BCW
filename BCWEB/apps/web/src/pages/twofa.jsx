@@ -159,10 +159,10 @@ export function TwoFactor() {
     if (pass) {
       const blob = await encryptVault({ accounts, history }, String(pass));
       download({ type: 'bcw-2fa-export', version: 1, exportedAt: new Date().toISOString(), ...blob });
-      toast.success(t('tfa.exported.enc', 'Exported (encrypted) — you’ll need the passphrase to import it.'));
+      toast.success(t('tfa.exported.enc', 'Exported (encrypted), you’ll need the passphrase to import it.'));
     } else {
       download({ type: 'bcw-2fa-export', version: 1, enc: false, exportedAt: new Date().toISOString(), accounts, history });
-      toast.success(t('tfa.exported', 'Exported — keep this file somewhere safe; it contains your secrets.'));
+      toast.success(t('tfa.exported', 'Exported, keep this file somewhere safe; it contains your secrets.'));
     }
   };
   const importJson = async (file) => {
@@ -245,9 +245,9 @@ export function TwoFactor() {
         </div>} />
 
       {/* privacy / security note */}
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-4 flex items-start gap-2.5 text-xs text-[var(--muted)]">
+      <div className="rounded-xl border border-[var(--line)] panel p-3 mb-4 flex items-start gap-2.5 text-xs text-[var(--muted)]">
         <ShieldCheck size={15} className="text-success shrink-0 mt-0.5" />
-        <div>{t('tfa.note', 'Secrets never leave this browser — codes are computed locally with the Web Crypto API and stored only in this device’s local storage.')} {encrypted
+        <div>{t('tfa.note', 'Secrets never leave this browser, codes are computed locally with the Web Crypto API and stored only in this device’s local storage.')} {encrypted
           ? <span className="text-success">{t('tfa.note.enc', 'Encrypted at rest.')} <button className="underline" onClick={removePassphrase}>{t('tfa.pass.remove', 'remove')}</button> · <button className="underline" onClick={lockNow}>{t('tfa.lock', 'lock now')}</button></span>
           : <button className="underline text-[var(--primary-2)]" onClick={setPassphrase}>{t('tfa.pass.add', 'Add a passphrase to encrypt the vault.')}</button>}</div>
       </div>
@@ -262,7 +262,7 @@ export function TwoFactor() {
         <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 mb-4 flex items-start gap-2.5 text-xs">
           <AlertTriangle size={15} className="text-warning shrink-0 mt-0.5" />
           <div className="text-[var(--text)]">
-            <span className="font-semibold">{t('tfa.warn.t', 'Back this up — it exists only here.')}</span>{' '}
+            <span className="font-semibold">{t('tfa.warn.t', 'Back this up, it exists only here.')}</span>{' '}
             <span className="text-[var(--muted)]">{t('tfa.warn.b', 'These keys live in this browser’s local storage on this device. Clearing your cookies or site data, resetting the browser, or using a different one loses them for good — there is no copy on our servers to restore from, and losing them locks you out of every account they protect.')}</span>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button size="sm" variant="primary" onClick={exportJson}><Download size={13} /> {t('tfa.warn.export', 'Export a backup now')}</Button>

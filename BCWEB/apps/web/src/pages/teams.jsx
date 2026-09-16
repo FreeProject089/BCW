@@ -3,7 +3,7 @@
 // billing stays with the owner.
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag } from 'lucide-react';
+import { Users, Plus, UserPlus, Trash2, LogOut, Crown, Mail, Phone, Globe, Link2, Package, HardDrive, Layers, ArrowRightLeft, Check, X, Copy, ShoppingBag, Clock, InfinityIcon } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
 import { useAuth } from './auth.jsx';
@@ -41,14 +41,45 @@ function TeamDetail({ team, reload }) {
   const [invite, setInvite] = useState(''); const [inviteRole, setInviteRole] = useState('member');
   const { data: pub, reload: reloadPub } = useAsync(() => api.get(`/teams/${team.slug}`), [team.slug, team.updatedAt]);
   // Invitation links: one address anyone signed in can open to join with the chosen role.
-  const links = useAsync(() => (['owner', 'admin'].includes(team.myRole) ? api.get(`/me/teams/${team.id}/invites`) : Promise.resolve({ invites: [] })), [team.id]);
-  const [linkRole, setLinkRole] = useState('member'); const [linkDays, setLinkDays] = useState(7);
-  const makeLink = async () => {
-    try { const r = await api.post(`/me/teams/${team.id}/invites`, { role: linkRole, days: linkDays || null }); links.reload(); await copyLink(r.invite.url); }
-    catch (x) { toast.error(x.data?.error === 'too_many_invites' ? t('tm.link.toomany', 'Ten open links already — revoke one first.') : t('common.failed', 'Failed.')); }
+  //
+  // Two kinds, shown apart because they are used apart. The permanent one is the address a
+  // team pins in a channel; the temporary ones are handed to a person and die on their own.
+  // The server owns both rules (one permanent at most, N temporary, only the lifetimes an
+  // admin offers) and SENDS them in `policy`, so this page never decides what is allowed.
+  const links = useAsync(() => (['owner', 'admin'].includes(team.myRole) ? api.get(`/me/teams/${team.id}/invites`) : Promise.resolve({ invites: [], temporary: [], permanent: null })), [team.id]);
+  const policy = links.data?.policy || { maxTemporary: 5, lifetimeDays: [1, 7, 30] };
+  const permanent = links.data?.permanent || null;
+  const temporary = links.data?.temporary || [];
+  const [permRole, setPermRole] = useState('member');
+  const [linkRole, setLinkRole] = useState('member'); const [linkDays, setLinkDays] = useState(0);
+  const lifeDays = policy.lifetimeDays.includes(linkDays) ? linkDays : policy.lifetimeDays[0];
+  const makeLink = async (days, role) => {
+    try { const r = await api.post(`/me/teams/${team.id}/invites`, { role, days: days || 0 }); links.reload(); await copyLink(r.invite.url); }
+    catch (x) {
+      const e = x.data?.error;
+      toast.error(e === 'permanent_exists' ? t('tm.link.permexists', 'This team already has a permanent link. Delete it to make another.')
+        : e === 'too_many_invites' ? t('tm.link.toomany2', '{n} temporary links already, delete one first.').replace('{n}', x.data.limit)
+          : e === 'invalid_lifetime' ? t('tm.link.badlife', 'That lifetime is not offered.') : t('common.failed', 'Failed.'));
+    }
   };
   const copyLink = async (path) => { try { await navigator.clipboard.writeText(`${window.location.origin}${path}`); toast.success(t('tm.link.copied', 'Link copied.')); } catch { toast.success(`${window.location.origin}${path}`); } };
-  const revokeLink = async (id) => { await api.delete(`/me/teams/${team.id}/invites/${id}`).catch(() => toast.error(t('common.failed', 'Failed.'))); links.reload(); };
+  const revokeLink = async (l) => {
+    if (!await dialog.confirm({
+      title: l.kind === 'permanent' ? t('tm.link.del.q1', 'Delete the permanent link?') : t('tm.link.del.q', 'Delete this link?'),
+      message: t('tm.link.del.m', 'It stops working at once. Anyone who already joined with it stays in the team.'), danger: true,
+    })) return;
+    try { await api.del(`/me/teams/${team.id}/invites/${l.id}`); toast.success(t('tm.link.deleted', 'Link deleted.')); }
+    catch { toast.error(t('common.failed', 'Failed.')); }
+    links.reload();
+  };
+  // What is left of a temporary link, in the coarsest unit that still says something.
+  const remaining = (iso) => {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return t('tm.link.dead', 'expired');
+    const d = Math.floor(ms / 86400e3); const h = Math.floor((ms % 86400e3) / 3600e3);
+    return d > 0 ? t('tm.link.leftd', '{d}d {h}h left').replace('{d}', d).replace('{h}', h)
+      : t('tm.link.lefth', '{h}h left').replace('{h}', Math.max(1, h));
+  };
   const { data: mine } = useAsync(() => Promise.all([api.get('/me/repos').catch(() => ({ repos: [] })), api.get('/me/catalogs').catch(() => ({ catalogs: [] })), api.get('/me/hosting/groups').catch(() => ({ groups: [] }))]), []);
   const canAdmin = ['owner', 'admin'].includes(team.myRole);
   const isOwner = team.myRole === 'owner';
@@ -62,12 +93,12 @@ function TeamDetail({ team, reload }) {
   };
   const remove = async (m) => {
     if (!await dialog.confirm({ title: t('tm.remove.q', 'Remove {n} from the team?').replace('{n}', m.displayName), danger: true })) return;
-    await api.delete(`/me/teams/${team.id}/members/${m.id}`).catch(() => toast.error(t('common.failed', 'Failed.')));
+    await api.del(`/me/teams/${team.id}/members/${m.id}`).catch(() => toast.error(t('common.failed', 'Failed.')));
     reloadPub();
   };
   const leave = async () => {
     if (!await dialog.confirm({ title: t('tm.leave.q', 'Leave this team?'), message: t('tm.leave.m', 'You will no longer manage what it publishes.'), danger: true })) return;
-    try { await api.delete(`/me/teams/${team.id}/members/${user.id}`); reload(); } catch (x) { toast.error(x.data?.error === 'transfer_first' ? t('tm.transferfirst', 'Hand the team to somebody first.') : t('common.failed', 'Failed.')); }
+    try { await api.del(`/me/teams/${team.id}/members/${user.id}`); reload(); } catch (x) { toast.error(x.data?.error === 'transfer_first' ? t('tm.transferfirst', 'Hand the team to somebody first.') : t('common.failed', 'Failed.')); }
   };
   const transfer = async (m) => {
     if (!await dialog.confirm({ title: t('tm.transfer.q', 'Hand the team to {n}?').replace('{n}', m.displayName), message: t('tm.transfer.m', 'They become the owner; you stay as an admin.'), danger: true })) return;
@@ -76,7 +107,7 @@ function TeamDetail({ team, reload }) {
   };
   const dissolve = async () => {
     if (!await dialog.confirm({ title: t('tm.delete.q', 'Dissolve the team?'), message: t('tm.delete.m', 'Members are removed; repos, catalogues and pools stay with their owners.'), danger: true })) return;
-    await api.delete(`/me/teams/${team.id}`).catch(() => toast.error(t('common.failed', 'Failed.')));
+    await api.del(`/me/teams/${team.id}`).catch(() => toast.error(t('common.failed', 'Failed.')));
     reload();
   };
   const attach = async (kind, id, on) => {
@@ -143,28 +174,62 @@ function TeamDetail({ team, reload }) {
             <Select value={inviteRole} className="!w-auto" onChange={(e) => setInviteRole(e.target.value)}><option value="member">{t('tm.role.member', 'member')}</option><option value="admin">{t('tm.role.admin', 'admin')}</option></Select>
             <Button variant="primary" loading={busy} onClick={doInvite}><UserPlus size={14} /> {t('tm.invite.btn', 'Invite')}</Button>
           </div>
-            <div className="mt-3 rounded-xl border border-[var(--line)] p-3">
-              <div className="text-[12px] font-semibold mb-1.5 flex items-center gap-1.5"><Link2 size={13} /> {t('tm.link.h', 'Invitation links')}</div>
-              <p className="text-[11px] text-[var(--faint)] mb-2">{t('tm.link.d', 'Anyone signed in who opens the link joins with the role below. A link can expire and be revoked; up to ten open at once.')}</p>
-              <div className="flex flex-wrap gap-2 items-end">
-                <Field label={t('tm.link.role', 'Role')} className="!mb-0"><Select value={linkRole} onChange={(e) => setLinkRole(e.target.value)}><option value="member">{t('tm.role.member', 'Member')}</option><option value="admin">{t('tm.role.admin', 'Admin')}</option></Select></Field>
-                <Field label={t('tm.link.days', 'Valid for (days, 0 = no limit)')} className="!mb-0"><Input type="number" min={0} max={90} value={linkDays} onChange={(e) => setLinkDays(Math.max(0, Math.min(90, Number(e.target.value) || 0)))} /></Field>
-                <Button size="sm" onClick={makeLink}><Plus size={13} /> {t('tm.link.new', 'New link')}</Button>
+            <div className="mt-3 rounded-xl border border-[var(--line)] p-3 space-y-3">
+              <div className="text-[12px] font-semibold flex items-center gap-1.5"><Link2 size={13} /> {t('tm.link.h', 'Invitation links')}</div>
+
+              <div>
+                <div className="text-[12px] font-semibold flex items-center gap-1.5"><InfinityIcon size={13} className="text-[var(--primary-2)]" /> {t('tm.link.perm.h', 'Permanent link')}</div>
+                <p className="text-[11px] text-[var(--faint)] mt-0.5 mb-2">{t('tm.link.perm.d', 'One per team, it never expires. Delete it and you can make a new one.')}</p>
+                {permanent ? (
+                  <div className="flex items-center gap-2 text-[12px] flex-wrap">
+                    <Badge>{t(ROLE_KEY[permanent.role] || 'tm.role.member', permanent.role)}</Badge>
+                    <code className="min-w-0 flex-1 truncate rounded bg-[var(--surface-2)] px-1.5 py-1 text-[11px]">{window.location.origin}{permanent.url}</code>
+                    <span className="text-[var(--muted)]">{t('tm.link.uses', '{n} use(s)').replace('{n}', permanent.uses)}</span>
+                    <span className="flex gap-1">
+                      <Button size="sm" variant="primary" onClick={() => copyLink(permanent.url)}><Copy size={12} /> {t('tm.link.copy', 'Copy')}</Button>
+                      <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeLink(permanent)}><Trash2 size={12} /> {t('common.delete', 'Delete')}</Button>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 items-end">
+                    <Field label={t('tm.link.role', 'Role')} className="!mb-0"><Select value={permRole} onChange={(e) => setPermRole(e.target.value)}><option value="member">{t('tm.role.member', 'Member')}</option><option value="admin">{t('tm.role.admin', 'Admin')}</option></Select></Field>
+                    <Button size="sm" onClick={() => makeLink(0, permRole)}><Plus size={13} /> {t('tm.link.perm.new', 'Create the permanent link')}</Button>
+                  </div>
+                )}
               </div>
-              {(links.data?.invites || []).length > 0 && (
-                <ul className="mt-2 space-y-1">
-                  {links.data.invites.map((l) => (
-                    <li key={l.id} className="flex items-center gap-2 text-[12px] flex-wrap">
-                      <Badge>{t(ROLE_KEY[l.role] || 'tm.role.member', l.role)}</Badge>
-                      <span className="text-[var(--muted)]">{l.expiresAt ? t('tm.link.until', 'until {d}').replace('{d}', new Date(l.expiresAt).toLocaleDateString()) : t('tm.link.nolimit', 'no expiry')} · {t('tm.link.uses', '{n} use(s)').replace('{n}', l.uses)}{!l.usable ? ` · ${t('tm.link.dead', 'expired')}` : ''}</span>
-                      <span className="ms-auto flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => copyLink(l.url)}><Copy size={12} /> {t('tm.link.copy', 'Copy')}</Button>
-                        <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeLink(l.id)}><X size={12} /></Button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+
+              <div className="border-t border-[var(--line)] pt-3">
+                <div className="text-[12px] font-semibold flex items-center gap-1.5">
+                  <Clock size={13} className="text-[var(--primary-2)]" /> {t('tm.link.temp.h', 'Temporary links')}
+                  <span className="font-normal text-[var(--faint)] tabular-nums">{temporary.filter((l) => l.usable).length}/{policy.maxTemporary}</span>
+                </div>
+                <p className="text-[11px] text-[var(--faint)] mt-0.5 mb-2">{t('tm.link.temp.d', 'Each one expires on its own. Anyone signed in who opens it joins with the role you pick.')}</p>
+                {policy.maxTemporary > 0 && (
+                  <div className="flex flex-wrap gap-2 items-end">
+                    <Field label={t('tm.link.role', 'Role')} className="!mb-0"><Select value={linkRole} onChange={(e) => setLinkRole(e.target.value)}><option value="member">{t('tm.role.member', 'Member')}</option><option value="admin">{t('tm.role.admin', 'Admin')}</option></Select></Field>
+                    <Field label={t('tm.link.life', 'Lifetime')} className="!mb-0">
+                      <Select value={String(lifeDays)} onChange={(e) => setLinkDays(Number(e.target.value))}>
+                        {policy.lifetimeDays.map((d) => <option key={d} value={d}>{t('tm.link.life.n', '{d} days').replace('{d}', d)}</option>)}
+                      </Select>
+                    </Field>
+                    <Button size="sm" onClick={() => makeLink(lifeDays, linkRole)}><Plus size={13} /> {t('tm.link.temp.new', 'New temporary link')}</Button>
+                  </div>
+                )}
+                {temporary.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {temporary.map((l) => (
+                      <li key={l.id} className="flex items-center gap-2 text-[12px] flex-wrap">
+                        <Badge>{t(ROLE_KEY[l.role] || 'tm.role.member', l.role)}</Badge>
+                        <span className={l.usable ? 'text-[var(--muted)]' : 'text-[var(--faint)]'}>{remaining(l.expiresAt)} · {t('tm.link.uses', '{n} use(s)').replace('{n}', l.uses)}</span>
+                        <span className="ms-auto flex gap-1">
+                          <Button size="sm" variant="ghost" disabled={!l.usable} onClick={() => copyLink(l.url)}><Copy size={12} /> {t('tm.link.copy', 'Copy')}</Button>
+                          <Button size="sm" variant="ghost" className="!text-error" onClick={() => revokeLink(l)}><Trash2 size={12} /> {t('common.delete', 'Delete')}</Button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           </>)}
       </Card>
@@ -215,7 +280,7 @@ export function MyTeams() {
         <Users size={16} className="text-[var(--primary-2)]" />
         <div className="font-semibold">{t('tm.title', 'Teams')}</div>
         {atLimit
-          ? <Button size="sm" variant="primary" className="ms-auto" onClick={buySlot}><ShoppingBag size={13} /> {t('tm.slot.buy', 'One more team — {p}').replace('{p}', lim ? money(lim.slot.cents, lim.slot.currency) : '')}</Button>
+          ? <Button size="sm" variant="primary" className="ms-auto" onClick={buySlot}><ShoppingBag size={13} /> {t('tm.slot.buy', 'One more team: {p}').replace('{p}', lim ? money(lim.slot.cents, lim.slot.currency) : '')}</Button>
           : <Button size="sm" variant="primary" className="ms-auto" onClick={() => setCreating(true)}><Plus size={13} /> {t('tm.create', 'Create a team')}</Button>}
       </div>
       {lim && !lim.staff && (
@@ -227,7 +292,7 @@ export function MyTeams() {
       )}
       <p className="text-[12.5px] text-[var(--muted)] mb-3">{t('tm.desc', 'A team manages repos, catalogues and storage pools together and has one contact address. Visitors reach the team from what it publishes.')}</p>
       {invited.length > 0 && (
-        <div className="mb-3 rounded-xl border border-[var(--primary)]/40 p-3 space-y-2">
+        <div className="mb-3 rounded-xl border b-primary p-3 space-y-2">
           <div className="text-[12px] font-semibold">{t('tm.invites', 'Invitations')}</div>
           {invited.map((tm) => <div key={tm.id} className="flex items-center gap-2 text-sm"><span className="flex-1">{tm.name}</span><Button size="sm" variant="primary" onClick={() => answer(tm, 'accept')}><Check size={12} /> {t('tm.accept', 'Join')}</Button><Button size="sm" variant="ghost" onClick={() => answer(tm, 'decline')}><X size={12} /></Button></div>)}
         </div>
@@ -313,7 +378,7 @@ export function TeamJoin() {
         {data.team?.description && <p className="text-sm text-[var(--muted)]">{data.team.description}</p>}
         <p className="text-sm">{t('tm.join.as', 'You are invited to join as {r}.').replace('{r}', t(ROLE_KEY[data.role] || 'tm.role.member', data.role))}</p>
         {!data.usable ? <p className="text-sm text-[var(--muted)]">{t('tm.join.invalid', 'This link no longer works.')}</p>
-          : data.alreadyMember ? <Link to="/dashboard?s=teams"><Button variant="primary">{t('tm.join.already', 'You are already a member — open the team')}</Button></Link>
+          : data.alreadyMember ? <Link to="/dashboard?s=teams"><Button variant="primary">{t('tm.join.already', 'You are already a member, open the team')}</Button></Link>
           : !data.signedIn ? <Link to={`/auth?next=${encodeURIComponent(`/teams/join/${token}`)}`}><Button variant="primary">{t('tm.join.signin', 'Sign in to join')}</Button></Link>
           : <Button variant="primary" disabled={busy} onClick={join}>{busy ? <Spinner /> : <Check size={14} />} {t('tm.join.btn', 'Join the team')}</Button>}
       </Card>

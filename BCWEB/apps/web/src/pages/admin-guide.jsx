@@ -472,7 +472,7 @@ const GUIDE_MORE = {
       { en: 'Choose the member-storage strategy (Per-server / Free / Unified) and, in Limits, the byte cap + linked-account retention rules.', fr: 'Choisis la stratégie de stockage des membres (Par serveur / Gratuit / Unifié) et, dans Limites, le plafond d’octets + les règles de rétention des comptes liés.' },
       { en: 'Announcements: give each route a channel (and an urgent-only role). Turn on Blog / Alerts / Ko-fi / Payments and point each at a channel; “Send test” proves the bot can post there.', fr: 'Annonces : donne un salon à chaque route (et un rôle « urgent » optionnel). Active Blog / Alertes / Ko-fi / Paiements et pointe chacun vers un salon ; « Envoyer un test » prouve que le bot peut y poster.' },
       { en: 'Per-server: pick a server, “Customize this server”, then set Moderation / Welcome / Join-to-create / Gated roles for it alone. Anything left untouched follows Global defaults.', fr: 'Par serveur : choisis un serveur, « Personnaliser ce serveur », puis règle Modération / Bienvenue / Vocal à la demande / Rôles gatés pour lui seul. Ce qui n’est pas touché suit les défauts globaux.' },
-      { en: 'Per-server → Moderation holds the Automod rules (spam, mentions, invites, links, words, caps, zalgo, attachments, account age, selfbot, raid — each an on/off, an action and thresholds under “Advanced”, plus exemptions and warn decay) and the Logs card routes what the bot writes: a forum (one post per category or per day) or a text channel, overridable per group and per category. The “Global defaults” bubble edits what a server without its own config follows; a server owner edits the same two shapes from their own dashboard. Alerts → “Alerts forum” turns every admin alert into a tagged forum post.', fr: 'Par serveur → Modération porte les règles Automod (spam, mentions, invitations, liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid — chacune un on/off, une action et des seuils sous « Avancé », plus les exemptions et la péremption des avertissements) et la carte Logs route ce que le bot écrit : un forum (un post par catégorie ou par jour) ou un salon texte, surchargeable par groupe et par catégorie. La bulle « Défauts globaux » règle ce que suit un serveur sans config propre ; un propriétaire de serveur édite les deux mêmes formes depuis son tableau de bord. Alertes → « Forum des alertes » transforme chaque alerte admin en post de forum étiqueté.' },
+      { en: 'Per-server → Moderation holds the Automod rules (spam, mentions, invites, links, words, caps, zalgo, attachments, account age, selfbot, raid). Each rule states in one line what it catches, with its numbers as the fields you type in, and what it then does; on top of the action it carries its own parameters (timeout length, delete the message or not, tell the member by DM, a watch-only switch that records the rule firing without carrying anything out) and its own role/channel exemptions in addition to the global list. Under them the warn ladder is now editable here too: “at N warnings, do X” rows added and removed freely, with a duration where the action takes one and the decay window beside them — it is the same moderation.warnThresholds key the owner’s dashboard writes. The Logs card routes what the bot writes: a forum (one post per category or per day) or a text channel, overridable per group and per category, and every row names the destination it resolves to right now rather than the word “default”. The “Global defaults” bubble edits what a server without its own config follows; a server owner edits the same two shapes from their own dashboard. Alerts → “Alerts forum” turns every admin alert into a tagged forum post.', fr: 'Par serveur → Modération porte les règles Automod (spam, mentions, invitations, liens, mots, majuscules, zalgo, pièces jointes, âge du compte, selfbot, raid). Chaque règle dit en une ligne ce qu’elle attrape, avec ses nombres comme champs à remplir, et ce qu’elle fait ensuite ; en plus de l’action elle porte ses propres paramètres (durée de l’exclusion, supprimer le message ou non, prévenir le membre en MP, un mode observation qui enregistre le déclenchement sans rien appliquer) et ses propres exemptions de rôles et de salons, en plus de la liste globale. En dessous, l’échelle des avertissements s’édite désormais ici aussi : des lignes « à N avertissements, faire X » qu’on ajoute et retire librement, avec une durée quand l’action en prend une et la péremption à côté — c’est la même clé moderation.warnThresholds qu’écrit le tableau de bord du propriétaire. La carte Logs route ce que le bot écrit : un forum (un post par catégorie ou par jour) ou un salon texte, surchargeable par groupe et par catégorie, et chaque ligne nomme la destination où elle mène en ce moment plutôt que le mot « défaut ». La bulle « Défauts globaux » règle ce que suit un serveur sans config propre ; un propriétaire de serveur édite les deux mêmes formes depuis son tableau de bord. Alertes → « Forum des alertes » transforme chaque alerte admin en post de forum étiqueté.' },
       { en: 'Community: rules & role panels (buttons or dropdown), giveaways, and “Message every member”.', fr: 'Communauté : règles & panneaux de rôles (boutons ou menu), giveaways, et « Message à chaque membre ».' },
     ],
     traps: [
@@ -809,10 +809,10 @@ export default function AdminGuide() {
                     const Icon = it.icon;
                     return (
                       <button key={it.id} type="button" onClick={() => setActive(it.id)}
-                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 transition text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
+                        className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 transition text-[13px] ${on ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:panel'}`}>
                         <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
                         <span className="truncate">{L(it.title)}</span>
-                        {it.kind === 'custom' && <span className="hidden lg:inline text-[9px] px-1 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] ms-auto">{t('ag.customtag', 'custom')}</span>}
+                        {it.kind === 'custom' && <span className="hidden lg:inline text-[9px] px-1 py-0.5 rounded-full tint-primary text-[var(--primary-2)] ms-auto">{t('ag.customtag', 'custom')}</span>}
                       </button>
                     );
                   })}
@@ -833,7 +833,7 @@ export default function AdminGuide() {
                 <div className="min-w-0">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">{L(activeItem._heading)}</div>
                   <h3 className="text-lg font-bold leading-tight flex items-center gap-2 flex-wrap">{L(activeItem.title)}
-                    {activeItem.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium">{t('ag.customtag', 'custom')}</span>}
+                    {activeItem.kind === 'custom' && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)] font-medium">{t('ag.customtag', 'custom')}</span>}
                   </h3>
                 </div>
               </div>
@@ -841,7 +841,7 @@ export default function AdminGuide() {
                   control the admin came from, so the guide answers the question they clicked
                   with, not just the section it lives in. */}
               {kParam && activeItem.id === deep && (
-                <div className="mb-3 rounded-lg border border-[var(--primary)]/40 bg-[var(--primary)]/5 px-3 py-2 flex items-center gap-2 animate-[pulse_1.2s_ease-in-out_2]">
+                <div className="mb-3 rounded-lg border b-primary tint-primary px-3 py-2 flex items-center gap-2 animate-[pulse_1.2s_ease-in-out_2]">
                   <Info size={14} className="text-[var(--primary-2)] shrink-0" />
                   <span className="text-[13px] text-[var(--muted)]">{t('ag.jumpfrom', 'You opened this from the')} <b className="text-[var(--text)]">{kParam}</b> {t('ag.jumpfrom2', 'setting.')}</span>
                 </div>
@@ -1066,7 +1066,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
       <p className="text-sm text-[var(--muted)] mb-3">{t('ag.edit.sub2', 'Every built-in entry can be retitled, rewritten or hidden, and given a section of your own under it; your own sections go under “Added by your team”. Bodies and sections are B.MD — callouts, checklists, cards, tabs, everything the blog and the docs use. Both languages, shown to admins by their language setting.')}</p>
       <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs mb-4">
         {[['builtin', t('ag.edit.builtin', 'Built-in entries'), editedCount], ['ref', t('ag.edit.ref', 'On this screen'), refEditedCount], ['custom', t('ag.edit.custom', 'Your sections'), rows.length]].map(([k, lbl, n]) => (
-          <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)]">{n}</span> : null}</button>
+          <button key={k} type="button" onClick={() => setPart(k)} className={`px-3 py-1.5 rounded-md ${part === k ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)]'}`}>{lbl}{n ? <span className="ms-1.5 text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)]">{n}</span> : null}</button>
         ))}
       </div>
 
@@ -1076,7 +1076,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
             <div className="relative mb-2"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-8 !py-1.5 !text-sm" value={bq} onChange={(e) => setBq(e.target.value)} placeholder={t('ag.edit.find', 'Find an entry…')} /></div>
             <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:max-h-[62vh] lg:overflow-y-auto no-scrollbar">
               {shown.map((it) => { const Icon = it.icon; const on = sel === it.id; const ed = isEdited(it.id); const hid = !!ov[it.id]?.hidden; return (
-                <button key={it.id} type="button" onClick={() => setSel(it.id)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
+                <button key={it.id} type="button" onClick={() => setSel(it.id)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
                   <Icon size={14} className={`shrink-0 ${on ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
                   <span className="flex-1 min-w-0 truncate">{L(it.title)}</span>
                   {ed && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" title={t('ag.edit.edited', 'edited')} />}
@@ -1136,7 +1136,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
               return (
                 <div key={r.ovId} className="contents">
                   {newGroup && <div className="hidden lg:block text-[10px] uppercase tracking-wider text-[var(--faint)] px-2.5 pt-2 pb-0.5">{L(r.entryTitle)}</div>}
-                  <button type="button" onClick={() => setRefSel(r.ovId)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'bg-[var(--primary)]/10 text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
+                  <button type="button" onClick={() => setRefSel(r.ovId)} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-start whitespace-nowrap lg:whitespace-normal shrink-0 text-[13px] ${on ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:bg-[var(--surface-2)]'} ${hid ? 'line-through opacity-60' : ''}`}>
                     <span className="flex-1 min-w-0 truncate">{(L(ov[r.ovId]?.title) || '').trim() || L(r.mod.name)}</span>
                     {ed && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] shrink-0" title={t('ag.edit.edited', 'edited')} />}
                   </button>
@@ -1191,7 +1191,7 @@ function GuideEditor({ initial, overrides: initialOverrides, onClose, onSaved })
               <div className="flex flex-wrap gap-1">
                 {Object.keys(GUIDE_ICONS).map((name) => { const I = GUIDE_ICONS[name]; return (
                   <button key={name} type="button" onClick={() => set(i, { icon: name })} title={name}
-                    className={`p-1.5 rounded-lg border ${r.icon === name ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}><I size={14} /></button>
+                    className={`p-1.5 rounded-lg border ${r.icon === name ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)]'}`}><I size={14} /></button>
                 ); })}
               </div>
             </div>

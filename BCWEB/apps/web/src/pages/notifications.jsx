@@ -46,7 +46,9 @@ function Preferences() {
 
   if (!cats) return null;
   return (
-    <Card className="p-5">
+    // The id is the target of the empty state's action below — the one useful thing to do on
+    // a page with no notifications is decide which ones you want.
+    <Card className="p-5" id="notif-prefs">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> {t('notif.prefs', 'What you hear about')}</div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
         {t('notif.prefs.s', 'Switching a category off stops those notifications being created at all — they are not hidden and kept, so turning it back on shows nothing from the meantime.')}
@@ -83,7 +85,7 @@ function StaffQueues() {
         <ShieldCheck size={15} className="text-[var(--primary-2)]" /> {t('notif.staff', 'Waiting for you')}
         <Badge tone="amber">{data.total}</Badge>
       </div>
-      <p className="text-[12px] text-[var(--muted)] mb-3">{t('notif.staff.s', 'Queues you can act on. Counted live, not stored — so nothing here can be "read" without being dealt with.')}</p>
+      <p className="text-[12px] text-[var(--muted)] mb-3">{t('notif.staff.s', 'Queues you can act on. Counted live, not stored, so nothing here can be "read" without being dealt with.')}</p>
       <div className="space-y-1">
         {(data.queues || []).filter((q) => q.n).map((q) => (
           <Link key={q.key} to={q.to} className="flex items-center gap-2 py-1.5 text-[13px] hover:text-[var(--primary-2)]">
@@ -148,7 +150,7 @@ export default function NotificationCentre() {
   const clearAll = async () => {
     if (!await dialog.confirm({
       title: t('notif.clear.t', 'Delete every notification?'),
-      message: t('notif.clear.m', 'They go for good. Anything still waiting for you — a report, a suspended item — stays waiting; this only clears the messages about it.'),
+      message: t('notif.clear.m', 'They go for good. Anything still waiting for you, a report, a suspended item, stays waiting; this only clears the messages about it.'),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
     setItems([]);
@@ -186,12 +188,17 @@ export default function NotificationCentre() {
             <div className="p-6">
               <EmptyState icon={Inbox}
                 title={filter === 'unread' ? t('notif.none.unread', 'Nothing unread.') : t('notif.none', 'No notifications yet.')}
-                sub={t('notif.none.s', 'Things that need you — a repo going online, a report answered, a price changing — arrive here.')} />
+                sub={filter === 'unread'
+                  ? t('notif.none.unread.s', 'You have read everything we sent you, so this filter is empty.')
+                  : t('notif.none.s2', 'A repo going online, a report answered, a price changing: we tell you here, and nothing has happened yet.')}
+                action={filter === 'unread'
+                  ? { label: t('notif.showall', 'Show all'), onClick: () => setFilter('all'), icon: Inbox }
+                  : { label: t('notif.none.a', 'Choose what we send you'), icon: Sliders, onClick: () => document.getElementById('notif-prefs')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }} />
             </div>
           ) : (
             <div className="divide-y divide-[var(--line)]">
               {shown.map((n) => (
-                <div key={n.id} className={`px-4 py-3 flex items-start gap-3 ${n.readAt ? '' : 'bg-[var(--primary)]/5'}`}>
+                <div key={n.id} className={`px-4 py-3 flex items-start gap-3 ${n.readAt ? '' : 'tint-primary'}`}>
                   {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-[var(--primary)] mt-1.5 shrink-0" />}
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] font-medium">{n.kind}</div>

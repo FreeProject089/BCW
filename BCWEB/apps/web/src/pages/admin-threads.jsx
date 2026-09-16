@@ -98,7 +98,7 @@ export function AdminThreads() {
         {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !rows.length ? <EmptyState icon={MessageSquare} title={t('adm.th.empty', 'Nothing here.')} /> : (
           <ul className="divide-y divide-[var(--line)]">
             {rows.map((th) => (
-              <li key={th.id}><button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2 px-2 -mx-2 rounded-lg hover:bg-[var(--surface-2)]/60 flex items-center gap-3 text-sm">
+              <li key={th.id}><button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2 px-2 -mx-2 rounded-lg hover:panel flex items-center gap-3 text-sm">
                 <span className="min-w-0 flex-1"><span className="block truncate font-medium">{th.subject}</span><span className="block text-[12px] text-[var(--muted)] truncate">{th.kind} · {th.targetLabel} · {th.sender?.displayName || th.senderEmail || th.senderName || '—'} → {th.ownerTeam?.name || th.ownerUser?.displayName || '—'}</span></span>
                 {th.staffFlag === 'flagged' && <Flag size={12} className="text-warning shrink-0" />}
                 <Badge tone={th.status === 'open' ? 'success' : th.status === 'blocked' ? 'error' : ''}>{th.status}</Badge>

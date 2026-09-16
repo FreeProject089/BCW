@@ -42,11 +42,11 @@ const KIND_META = {
 // it tells them nothing about what they would be buying. An admin's own tagline still
 // wins — this only fills a hole.
 const KIND_BLURB = {
-  discord_bot: 'A bot for your server — moderation, roles, tickets, giveaways, or something nobody has built yet.',
+  discord_bot: 'A bot for your server, moderation, roles, tickets, giveaways, or something nobody has built yet.',
   app: 'A desktop or mobile application, built around what you actually do with it.',
-  website: 'A site that fits: showcase, shop, dashboard — designed, built, and handed over.',
+  website: 'A site that fits: showcase, shop, dashboard, designed, built, and handed over.',
   audit: 'A read of your code for real vulnerabilities, reported with CVE / CWE references and a CVSS score.',
-  custom: 'Anything else — a tool, a SaaS, an integration.',
+  custom: 'Anything else, a tool, a SaaS, an integration.',
 };
 const kindBlurb = (k, t) => t(`myo.blurb.${k}`, KIND_BLURB[k] || KIND_BLURB.custom);
 const kindMeta = (k) => KIND_META[k] || KIND_META.custom;
@@ -70,7 +70,7 @@ export function MyoPage() {
   const products = cfg.products || [];
   // The three base options are always offered even before an admin curates the catalog.
   const baseCards = ['discord_bot', 'app', 'website'].map((k) => products.find((p) => p.kind === k) || { kind: k, name: kindMeta(k)[lang === 'fr' ? 'fr' : 'en'], tagline: '', basePriceCents: 0, options: [], includesSource: true });
-  const customCard = products.find((p) => p.kind === 'custom') || { kind: 'custom', name: kindMeta('custom')[lang === 'fr' ? 'fr' : 'en'], tagline: t('myo.custom.tag', 'Anything else — a tool, a SaaS, a code audit with CVE/CWE + CVSS…'), basePriceCents: 0, options: [], includesSource: true };
+  const customCard = products.find((p) => p.kind === 'custom') || { kind: 'custom', name: kindMeta('custom')[lang === 'fr' ? 'fr' : 'en'], tagline: t('myo.custom.tag', 'Anything else, a tool, a SaaS, a code audit with CVE/CWE + CVSS…'), basePriceCents: 0, options: [], includesSource: true };
   const extras = products.filter((p) => !['discord_bot', 'app', 'website', 'custom'].includes(p.kind));
 
   // The catalogue, as answers to the first question. Same source as the old card grid — an
@@ -95,8 +95,8 @@ export function MyoPage() {
     <div className="max-w-6xl mx-auto px-4 py-10 sm:py-14">
       {/* ── Hero ── */}
       <div className="relative text-center max-w-2xl mx-auto mb-8 sm:mb-10">
-        <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full bg-[var(--primary)]/15 blur-3xl -z-10" />
-        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] bg-[var(--primary)]/[0.08] border border-[var(--primary)]/25 mb-4">
+        <div aria-hidden className="absolute left-1/2 -translate-x-1/2 -top-24 w-[680px] max-w-[135%] h-80 rounded-full tint-primary blur-3xl -z-10" />
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] bg-[var(--primary)]/[0.08] border b-primary mb-4">
           <Sparkles size={13} /> {t('myo.eyebrow', 'Made to order')}
         </span>
         <h1 className="text-3xl sm:text-[2.7rem] font-extrabold tracking-tight leading-[1.08]">{t('myo.title', 'We build it for you')}</h1>
@@ -116,7 +116,7 @@ export function MyoPage() {
             nothing tying the two together. A bordered pill that visibly toggles, and a panel
             under it, so the sequence belongs to the thing you clicked. */}
         <details className="group myo-deal">
-          <summary className="mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:border-[var(--primary)]/50 hover:text-[var(--text)] transition-colors">
+          <summary className="mx-auto w-fit cursor-pointer list-none select-none flex items-center gap-2 text-xs text-[var(--muted)] rounded-full border border-[var(--line)] px-3.5 py-1.5 hover:b-primary hover:text-[var(--text)] transition-colors">
             <Sparkles size={13} className="text-[var(--primary-2)] shrink-0" />
             <span>{t('myo.deal.fold', 'How it works, and when you are charged')}</span>
             <ChevronDown size={13} className="shrink-0 transition-transform group-open:rotate-180" />
@@ -225,7 +225,7 @@ export function MyoPage() {
           signing in happens at the moment of paying, which is the moment it is worth doing. */}
       <div className="flex items-baseline gap-3 mb-4 justify-center text-center flex-wrap">
         <h2 className="text-lg font-bold">{t('myo.pick.t2', 'Tell us what you need')}</h2>
-        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s2', 'A few questions — two minutes, no commitment.')}</span>
+        <span className="text-xs text-[var(--faint)]">{t('myo.pick.s2', 'A few questions, two minutes, no commitment.')}</span>
       </div>
       {cat.loading ? <div className="py-10 grid place-items-center"><Spinner /></div> : (
         <MyoIntakeWizard inline cards={wizardCards} cfg={cfg}
@@ -292,7 +292,7 @@ export function MyoConversation({ id, admin = false }) {
       {/* header */}
       <Card className="p-4">
         <div className="flex items-start gap-3">
-          <span className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center text-[var(--primary-2)] shrink-0">{r.logo ? <img src={r.logo} alt="" className="w-8 h-8 rounded object-contain" /> : <K size={20} />}</span>
+          <span className="w-11 h-11 rounded-xl tint-primary grid place-items-center text-[var(--primary-2)] shrink-0">{r.logo ? <img src={r.logo} alt="" className="w-8 h-8 rounded object-contain" /> : <K size={20} />}</span>
           <div className="flex-1 min-w-0">
             <div className="font-semibold flex items-center gap-2 flex-wrap">{r.name}
               <Badge tone={STATUS_TONE[r.status]}>{statusLabel(r.status, t)}</Badge>
@@ -320,7 +320,7 @@ export function MyoConversation({ id, admin = false }) {
           if (it.t === 'quote') return <QuoteCard key={`q${it.q.id}`} q={it.q} admin={admin} viewerIsStaff={viewerIsStaff} onPay={() => payQuote(it.q)} onWithdraw={async () => { try { await api.post(`/admin/myo/quotes/${it.q.id}/withdraw`, {}); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } }} t={t} cur={it.q.currency} />;
           return <DeliverableCard key={`d${it.d.id}`} d={it.d} t={t} />;
         })}
-        {timeline.length === 0 && r.status !== 'pending_payment' && <div className="text-sm text-[var(--faint)] text-center py-6">{t('myo.emptythread', 'No messages yet — say hello!')}</div>}
+        {timeline.length === 0 && r.status !== 'pending_payment' && <div className="text-sm text-[var(--faint)] text-center py-6">{t('myo.emptythread', 'No messages yet, say hello!')}</div>}
       </div>
 
       {/* composer (once paid + not closed) */}
@@ -346,7 +346,7 @@ function MessageRow({ m, lang }) {
     <div className={`flex gap-2.5 ${m.staff ? 'flex-row-reverse' : ''}`}>
       {!system && <Avatar user={m.author} size={30} className="shrink-0" />}
       <div className={`min-w-0 max-w-[80%] ${m.staff ? 'items-end text-end' : ''}`}>
-        <div className={`inline-block rounded-2xl px-3.5 py-2 text-sm ${system ? 'bg-[var(--surface-2)] text-[var(--muted)] text-xs italic' : m.staff ? 'bg-[var(--primary)]/12 border border-[var(--primary)]/25' : 'bg-[var(--surface-2)]'}`}>
+        <div className={`inline-block rounded-2xl px-3.5 py-2 text-sm ${system ? 'bg-[var(--surface-2)] text-[var(--muted)] text-xs italic' : m.staff ? 'tint-primary border b-primary' : 'bg-[var(--surface-2)]'}`}>
           {!system && <div className="text-[11px] text-[var(--faint)] mb-0.5">{m.author?.displayName || ''}{m.staff ? ' · staff' : ''}</div>}
           {m.body && <div className="whitespace-pre-wrap break-words">{m.body}</div>}
           {m.images?.length > 0 && <div className="flex flex-wrap gap-2 mt-2">{m.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-24 h-24 rounded-lg object-cover border border-[var(--line)]" /></a>)}</div>}
@@ -361,7 +361,7 @@ function QuoteCard({ q, admin, viewerIsStaff, onPay, onWithdraw, t, cur }) {
   const paid = q.status === 'paid';
   const withdrawn = q.status === 'withdrawn';
   return (
-    <Card className={`p-4 border-2 ${paid ? 'border-success-border' : withdrawn ? 'border-[var(--line)] opacity-60' : 'border-[var(--primary)]/40'}`}>
+    <Card className={`p-4 border-2 ${paid ? 'border-success-border' : withdrawn ? 'border-[var(--line)] opacity-60' : 'b-primary'}`}>
       <div className="flex items-center gap-2 mb-2"><FileText size={16} className="text-[var(--primary-2)]" /><span className="font-semibold">{q.title || t('myo.quote', 'Quote')}</span>
         {paid && <Badge tone="green"><Check size={10} /> {t('myo.quote.paid', 'paid')}</Badge>}
         {withdrawn && <Badge>{t('myo.quote.withdrawn', 'withdrawn')}</Badge>}
@@ -389,7 +389,7 @@ function DeliverableCard({ d, t }) {
       {d.expiry && (
         <p className="text-[11px] text-[var(--faint)] mb-2">
           {d.expiry.status === 'ok'
-            ? t('myo.deliver.until', 'Download link valid until {d} — a month after delivery, or 7 days after your first download, whichever comes first.').replace('{d}', d.expiry.expiresAt ? new Date(d.expiry.expiresAt).toLocaleDateString() : '—')
+            ? t('myo.deliver.until', 'Download link valid until {d}, a month after delivery, or 7 days after your first download, whichever comes first.').replace('{d}', d.expiry.expiresAt ? new Date(d.expiry.expiresAt).toLocaleDateString() : '—')
             : t('myo.deliver.expired', 'The download link expired on {d}; the file has been removed.').replace('{d}', d.expiry.expiresAt ? new Date(d.expiry.expiresAt).toLocaleDateString() : '—')}
           {d.expiry.downloads ? ` · ${t('myo.deliver.dl', 'downloaded {n} time(s)').replace('{n}', d.expiry.downloads)}` : ''}
         </p>

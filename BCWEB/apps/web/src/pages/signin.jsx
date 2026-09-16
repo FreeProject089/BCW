@@ -21,12 +21,12 @@ function useAsync(fn, deps = []) {
 
 /* ─────────────────────────  Auth  ───────────────────────── */
 const OAUTH_ERRORS = {
-  bad_state: 'That sign-in link expired — please try again.',
+  bad_state: 'That sign-in link expired, please try again.',
   no_code: 'Sign-in was cancelled.',
   no_email: "We couldn't get a verified email from that account. Try a different sign-in method.",
-  token_exchange_failed: 'Sign-in failed — please try again.',
+  token_exchange_failed: 'Sign-in failed, please try again.',
   not_configured: 'That sign-in method isn\'t available right now.',
-  unexpected: 'Something went wrong — please try again.',
+  unexpected: 'Something went wrong, please try again.',
 };
 
 // Password field with a show/hide toggle.
@@ -117,7 +117,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
       const e2 = x.data?.error;
       setErr(e2 === 'wrong_credentials' ? (method === 'password' ? t('auth.link.badpw', 'Wrong password.') : t('auth.link.badcode', 'Wrong or expired code.'))
         : e2 === 'already_linked' ? t('auth.link.taken', 'That {p} account is already linked to another BetterCommunity account.').replace('{p}', label)
-        : e2 === 'invalid_token' ? t('auth.link.expired', 'This link request expired — sign in with {p} again.').replace('{p}', label)
+        : e2 === 'invalid_token' ? t('auth.link.expired', 'This link request expired, sign in with {p} again.').replace('{p}', label)
         : t('auth.err.fail'));
     } finally { setBusy(false); }
   };
@@ -127,7 +127,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
       <div className="max-w-sm mx-auto mt-8"><Card className="p-7 text-center">
         <Clock size={30} className="mx-auto text-[var(--muted)] mb-3" />
         <h1 className="text-lg font-bold">{t('auth.link.expired.t', 'Link request expired')}</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{t('auth.link.expired', 'This link request expired — sign in with {p} again.').replace('{p}', label)}</p>
+        <p className="text-sm text-[var(--muted)] mt-1">{t('auth.link.expired', 'This link request expired, sign in with {p} again.').replace('{p}', label)}</p>
         <Button className="mt-4 w-full" onClick={onDecline}>{t('auth.link.back', 'Back to sign-in')}</Button>
       </Card></div>
     );
@@ -139,7 +139,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
         <div className="text-center mb-5">
           <span className="mx-auto mb-3 grid place-items-center w-14 h-14 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)]"><Ico size={26} /></span>
           <h1 className="text-xl font-bold">{t('auth.link.title', 'Link {p} to your account?').replace('{p}', label)}</h1>
-          <p className="text-sm text-[var(--muted)] mt-1.5">{t('auth.link.sub', 'A BetterCommunity account already uses {e}. Confirm it is yours and {p} becomes one more way to sign in — nothing else changes.').replace('{e}', info.email).replace('{p}', label)}</p>
+          <p className="text-sm text-[var(--muted)] mt-1.5">{t('auth.link.sub', 'A BetterCommunity account already uses {e}. Confirm it is yours and {p} becomes one more way to sign in, nothing else changes.').replace('{e}', info.email).replace('{p}', label)}</p>
         </div>
         <div className="rounded-xl bg-[var(--surface-2)] px-3 py-2.5 text-sm flex items-center gap-2.5 mb-4">
           <Ico size={16} /><span className="font-medium">{info.username || label}</span><span className="text-[var(--faint)]">→</span><span className="text-[var(--muted)] truncate">{info.displayName}</span>
@@ -149,7 +149,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
             ? <Field label={t('auth.link.pw', 'Your BetterCommunity password')}><PwInput value={password} onChange={(e) => setPassword(e.target.value)} autoFocus /></Field>
             : <Field label={t('auth.link.code', 'The 6-digit code we e-mailed to {e}').replace('{e}', info.email)}>
                 <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" inputMode="numeric" autoFocus />
-                {devcode && <div className="text-[11px] text-[var(--faint)] mt-1">{t('auth.link.devcode', 'No mail backend — the code was prefilled (dev).')}</div>}
+                {devcode && <div className="text-[11px] text-[var(--faint)] mt-1">{t('auth.link.devcode', 'No mail backend, the code was prefilled (dev).')}</div>}
               </Field>}
           {err && <div className="text-xs text-[var(--error)] anim-fade">{err}</div>}
           <Button variant="primary" className="w-full" disabled={busy || (method === 'password' ? !password : code.length !== 6)}>{busy ? <Spinner /> : t('auth.link.cta', 'Link and sign in')}</Button>
@@ -158,7 +158,7 @@ function LinkProposalPanel({ token, provider, devcode, next, onDone, onDecline }
           {info.hasPassword && <button type="button" className="text-[var(--muted)] hover:text-[var(--text)]" onClick={() => { setErr(''); setMethod(method === 'password' ? 'code' : 'password'); }}>
             {method === 'password' ? t('auth.link.usecode', 'Use the e-mailed code instead') : t('auth.link.usepw', 'Use my password instead')}
           </button>}
-          <button type="button" className="text-[var(--muted)] hover:text-[var(--text)]" onClick={decline}>{t('auth.link.no', 'Not my account — go back')}</button>
+          <button type="button" className="text-[var(--muted)] hover:text-[var(--text)]" onClick={decline}>{t('auth.link.no', 'Not my account, go back')}</button>
         </div>
       </Card>
     </div>
@@ -221,7 +221,7 @@ export function Auth() {
   useEffect(() => {
     const err = params.get('oauth_error');
     if (!err) return;
-    toast.error(OAUTH_ERRORS[err] || 'Sign-in failed — please try again.');
+    toast.error(OAUTH_ERRORS[err] || 'Sign-in failed, please try again.');
     setParams((p) => { p.delete('oauth_error'); return p; }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
@@ -242,7 +242,7 @@ export function Auth() {
       if (mode === 'login') {
         // The step callback fires only if the server asks for a proof of work, so
         // an ordinary sign-in shows nothing extra.
-        const res = await login(f.email, f.password, () => setStep(t('auth.pow.step', 'Verifying — one moment…')));
+        const res = await login(f.email, f.password, () => setStep(t('auth.pow.step', 'Verifying, one moment…')));
         if (res?.twoFactorRequired) { setTwoFa({ tempToken: res.tempToken }); return; }
         toast.success(t('auth.welcome.toast')); nav('/dashboard');
       }
@@ -274,7 +274,7 @@ export function Auth() {
       // (or a support link when permanent), instead of a generic error toast.
       else if (x.data?.error === 'account_suspended' || x.data?.error === 'account_banned') { setLock(x.data); }
       else toast.error(x.data?.error === 'invalid_credentials' ? t('auth.err.creds')
-        : x.data?.error === 'oauth_only_account' ? t('auth.err.oauthOnly', 'This account was created with GitHub or Discord — use that to sign in, or set a password from your profile once signed in.')
+        : x.data?.error === 'oauth_only_account' ? t('auth.err.oauthOnly', 'This account was created with GitHub or Discord, use that to sign in, or set a password from your profile once signed in.')
         : x.data?.error === 'invalid_token' ? t('auth.err.token')
         : x.data?.error === 'pow_required' ? t('auth.err.pow') : t('auth.err.fail'));
     } finally { setBusy(false); setStep(''); }
@@ -303,7 +303,7 @@ export function Auth() {
     return (
       <div className="max-w-sm mx-auto mt-20 flex flex-col items-center gap-3 text-[var(--muted)]">
         <Spinner />
-        <p className="text-sm">{t('auth.redirecting', 'Already signed in — taking you to your profile…')}</p>
+        <p className="text-sm">{t('auth.redirecting', 'Already signed in, taking you to your profile…')}</p>
       </div>
     );
   }
@@ -363,7 +363,7 @@ export function Auth() {
           </Field>}
           {mode === 'register' && <label className="flex items-start gap-2.5 text-sm text-[var(--muted)] cursor-pointer select-none pt-1">
             <input type="checkbox" className="mt-0.5" checked={newsletter} onChange={(e) => setNewsletter(e.target.checked)} />
-            <span>{t('auth.newsletter', 'Send me BetterCommunity news and blog updates by email.')} <span className="text-[var(--faint)]">{t('auth.newsletter.hint', 'Double opt-in — unsubscribe anytime.')}</span></span>
+            <span>{t('auth.newsletter', 'Send me BetterCommunity news and blog updates by email.')} <span className="text-[var(--faint)]">{t('auth.newsletter.hint', 'Double opt-in, unsubscribe anytime.')}</span></span>
           </label>}
           <Button variant="primary" className="w-full" disabled={busy}>{busy ? <><Spinner /> {step || '…'}</> : cta[mode]}</Button>
         </form>

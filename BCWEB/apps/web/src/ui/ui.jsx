@@ -207,7 +207,7 @@ export function StarButton({ favorited, count, post, onDone, signedIn, size = 's
   };
   return (
     <Button size={size} variant={state.on ? 'primary' : 'ghost'} onClick={toggle} disabled={!signedIn || busy}
-      title={!signedIn ? 'Sign in to star' : state.on ? 'Starred — click to remove' : 'Star this'}
+      title={!signedIn ? 'Sign in to star' : state.on ? 'Starred, click to remove' : 'Star this'}
       className={className} aria-pressed={state.on}>
       <Star size={14} className={state.on ? 'fill-current' : ''} /> {state.n}
     </Button>

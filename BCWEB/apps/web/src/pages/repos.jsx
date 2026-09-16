@@ -96,10 +96,10 @@ export function ReposPage() {
 
   return (
     <div>
-      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories — featured ones first.')}
+      <PageHeader icon={Server} title={t('repos.title', 'Server Repos')} subtitle={t('repos.sub', 'Verified community repositories, featured ones first.')}
         actions={<div className="flex items-center gap-2 flex-wrap">
           <FeedLink path="/api/repos.json" label={t('repos.feed', 'This list as JSON')}
-            hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed — the same list, for a script or another client.')} />
+            hint={t('repos.feed.h', 'Every listed, verified repo as a JSON feed, the same list, for a script or another client.')} />
           {/* Beside it, never instead of it: /repos.json is THIS list, fixed and
               parameterless, while the index is the standing address that keeps being
               right as repo catalogues are published. Two different questions. */}
@@ -140,7 +140,9 @@ export function ReposPage() {
       )}
 
       {loading ? <SkeletonGrid count={4} className="grid md:grid-cols-2 gap-4" />
-        : !repos.length ? <EmptyState icon={Server} title={t('repos.empty.t', 'No repos listed yet')} sub={t('repos.empty.s', 'Verified public repositories will appear here.')} />
+        : !repos.length ? <EmptyState icon={Server} title={t('repos.empty.t', 'No repos listed yet')}
+          sub={t('repos.empty.s2', 'This is the public list of verified Server-Repos, and nobody has listed one yet.')}
+          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }} />
         : !filtered.length ? <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />
         : (
           <>
@@ -172,7 +174,7 @@ export function ReposPage() {
                     {r.hosted && <div className="text-xs text-[var(--faint)] mt-2">{gb(r.storageUsedBytes)} / {gb(r.storageQuotaBytes)} GB</div>}
                     {r.fingerprint && (
                       <button onClick={() => { navigator.clipboard?.writeText(r.fingerprint); toast.success(t('repos.idcopied', 'Repo ID copied.')); }}
-                        title={t('repos.id.hint', 'Unique Repo ID — quote it when contacting support.')}
+                        title={t('repos.id.hint', 'Unique Repo ID, quote it when contacting support.')}
                         className="inline-flex items-center gap-1.5 mt-2 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary-2)] transition">
                         <Fingerprint size={11} /> {r.fingerprint} <Copy size={10} className="opacity-60" />
                       </button>
@@ -376,7 +378,7 @@ function MyAccessPolicyCard() {
 
   const save = async () => {
     setBusy(true);
-    try { await api.put('/me/access-policy', policy); toast.success(t('repos.mypolicy.saved', 'Saved — applies to all your hosted repos.')); reload(); }
+    try { await api.put('/me/access-policy', policy); toast.success(t('repos.mypolicy.saved', 'Saved, applies to all your hosted repos.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
 
@@ -384,10 +386,10 @@ function MyAccessPolicyCard() {
     <div className="mt-6">
       <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-2 mb-1 text-start">
         <Globe size={16} className="text-[var(--primary-2)]" />
-        <h3 className="font-semibold text-sm flex-1">{t('repos.mypolicy.title', 'My repos — access policy')}</h3>
+        <h3 className="font-semibold text-sm flex-1">{t('repos.mypolicy.title', 'My repos, access policy')}</h3>
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${open ? '' : '-rotate-90'}`} />
       </button>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('repos.mypolicy.sub', "A whitelist/blacklist applied to ALL of your own hosted repos at once — on top of each repo's own settings and any site-wide staff rules.")}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('repos.mypolicy.sub', "A whitelist/blacklist applied to ALL of your own hosted repos at once, on top of each repo's own settings and any site-wide staff rules.")}</p>
       {open && !policy && <div className="flex items-center gap-2 text-[var(--muted)] text-sm py-4"><Spinner /> {t('common.loading', 'Loading…')}</div>}
       {open && policy && (
         <Card className="p-4 space-y-4">
@@ -452,7 +454,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
         try { await api.post(`/me/hosting/groups/${g.id}/split`); reload?.(); }
         catch (x) {
           toast.error(x.data?.error === 'nothing_to_split'
-            ? t('pools.split.nothing', 'This pool holds a single plan — there is nothing to separate.')
+            ? t('pools.split.nothing', 'This pool holds a single plan, there is nothing to separate.')
             : t('repos.failed', 'Failed.'));
         }
       },
@@ -537,7 +539,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                   </a>
                 ))}
               </div>
-            ) : <div className="mt-2 text-[11px] text-[var(--faint)]">{t('pools.empty', 'Empty — add a repo or catalog to start using this space.')}</div>}
+            ) : <div className="mt-2 text-[11px] text-[var(--faint)]">{t('pools.empty', 'Empty, add a repo or catalog to start using this space.')}</div>}
             {/* Merged pool carrying several separate paid subs → offer a consolidation quote. */}
             {g.subCount >= 2 && (() => {
               const q = quotes[g.id];
@@ -548,7 +550,7 @@ function PoolsPanel({ groups, onAddRepo, t, reload, toast, dialog }) {
                     <GitBranch size={12} /> {t('pools.split.cta', 'Separate this pool back into {n} pools').replace('{n}', String(g.subCount))}
                   </button>
                 </div>
-                {!q && <button onClick={() => loadQuote(g)} className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline"><GitMerge size={12} /> {t('pools.consol.cta', '{n} separate subscriptions — see consolidation savings').replace('{n}', String(g.subCount))}</button>}
+                {!q && <button onClick={() => loadQuote(g)} className="inline-flex items-center gap-1 text-[var(--primary-2)] hover:underline"><GitMerge size={12} /> {t('pools.consol.cta', '{n} separate subscriptions, see consolidation savings').replace('{n}', String(g.subCount))}</button>}
                 {q === 'loading' && <span className="text-[var(--faint)]">{t('common.loading', 'Loading…')}</span>}
                 {q === 'err' && <span className="text-[var(--faint)]">{t('pools.consol.err', 'Could not load the quote.')}</span>}
                 {q && typeof q === 'object' && (q.eligible
@@ -617,10 +619,10 @@ export function MyRepos() {
   const push = async (r) => {
     try {
       const res = await api.post(`/repos/${r.id}/push`, {});
-      if (res.reReview) toast.info(t('repos.push.review', 'Pushed — your change is back in review before it re-appears in the public list.'));
-      else toast[res.verified ? 'success' : 'info'](res.verified ? t('repos.push.ok', 'Pushed — re-checked & verified.') : t('repos.push.bad', 'Pushed — content is not a valid repo.json (unverified).'));
+      if (res.reReview) toast.info(t('repos.push.review', 'Pushed, your change is back in review before it re-appears in the public list.'));
+      else toast[res.verified ? 'success' : 'info'](res.verified ? t('repos.push.ok', 'Pushed, re-checked & verified.') : t('repos.push.bad', 'Pushed, content is not a valid repo.json (unverified).'));
       reload();
-    } catch (x) { toast.error(x.data?.error === 'repo_suspended' ? t('repos.suspended.short', 'This repo is suspended — contact support.') : x.data?.error || t('repos.failed', 'Failed.')); }
+    } catch (x) { toast.error(x.data?.error === 'repo_suspended' ? t('repos.suspended.short', 'This repo is suspended, contact support.') : x.data?.error || t('repos.failed', 'Failed.')); }
   };
   // Publishing is what makes a repo READABLE — its manifest, its listing, every file. It
   // was only reachable from the dashboard's Online tab, two clicks deep, which is why a
@@ -629,7 +631,7 @@ export function MyRepos() {
     const going = !r.published;
     try {
       await api.post(`/repos/${r.id}/${going ? 'publish' : 'unpublish'}`);
-      toast.success(going ? t('repos.nowonline', 'Online — your repo.json is now public.') : t('repos.nowoffline', 'Taken offline.'));
+      toast.success(going ? t('repos.nowonline', 'Online, your repo.json is now public.') : t('repos.nowoffline', 'Taken offline.'));
       // reload(), not load(): this component has no load. The call sat AFTER the await, so
       // publishing SUCCEEDED and the ReferenceError landed in the catch below — the button
       // reported "Failed." on an action that had already worked.
@@ -645,12 +647,12 @@ export function MyRepos() {
     try {
       const res = await api.post(`/repos/${r.id}/list`, { listed: !r.listed });
       toast.success(!r.listed
-        ? (res?.pending ? t('repos.listed.pending', 'Submitted — a moderator will review it before it appears publicly.') : t('repos.listed.ok', 'Listed & verified — now public.'))
+        ? (res?.pending ? t('repos.listed.pending', 'Submitted, a moderator will review it before it appears publicly.') : t('repos.listed.ok', 'Listed & verified, now public.'))
         : t('repos.unlisted.ok', 'Unlisted.'));
       reload();
     }
     catch (x) {
-      if (x.data?.error === 'sha_invalid') toast.error(t('repos.sha.invalid', 'Invalid repo.json / SHA — kept private. Upload or fix a valid repo.json, then try again.'));
+      if (x.data?.error === 'sha_invalid') toast.error(t('repos.sha.invalid', 'Invalid repo.json / SHA, kept private. Upload or fix a valid repo.json, then try again.'));
       else toast.error(x.data?.error || t('repos.failed', 'Failed.'));
     }
   };
@@ -661,13 +663,13 @@ export function MyRepos() {
   const del = async (r) => {
     const typed = await dialog.prompt({
       title: t('repos.del.title', 'Delete repo'),
-      message: t('repos.del.msg', '"{name}" goes offline now and is permanently deleted — with all its content — in 72 hours. You can undo until then.').replace('{name}', r.name),
+      message: t('repos.del.msg', '"{name}" goes offline now and is permanently deleted, with all its content, in 72 hours. You can undo until then.').replace('{name}', r.name),
       label: t('repos.del.confirm.l2', 'To confirm, type the repo name: {name}').replace('{name}', r.name),
       placeholder: r.name, okLabel: t('repos.del.ok', 'Delete'), danger: true,
     });
     if (typed === false) return;
-    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
-    try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h — undo from the repo card anytime before then.')); reload(); }
+    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match, deletion cancelled."));
+    try { await api.del(`/repos/${r.id}`); toast.success(t('repos.deleted72', 'Scheduled for deletion in 72h, undo from the repo card anytime before then.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };
   // Skip the 72h window and destroy it now.
@@ -686,14 +688,14 @@ export function MyRepos() {
     if (typed === false) return;
     // Checked here for a decent message, and again on the server — this one is the only
     // check that matters, since the client can be bypassed entirely.
-    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match — deletion cancelled."));
+    if (String(typed).trim() !== r.name) return toast.error(t('repos.del.mismatch', "Name didn't match, deletion cancelled."));
     // The request is DEFERRED behind the undo toast, not fired and then apologised for.
     // "No wait" means skipping the 72-hour window, not losing the few seconds everything
     // else in this app gives you to change your mind — and here the undo is real rather
     // than compensating, because nothing has been destroyed yet when you press it.
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('repos.delnow.pending', 'Deleting "{name}" — permanently.').replace('{name}', r.name),
+      msg: t('repos.delnow.pending', 'Deleting "{name}", permanently.').replace('{name}', r.name),
       // The row goes grey and stops responding for the whole window. Before this the toast
       // said "permanently" while the card sat there looking perfectly alive, so on a list you
       // had no idea whether it had taken — and the only way to be sure was to wait it out
@@ -708,7 +710,7 @@ export function MyRepos() {
     });
   };
   const undoDelete = async (r) => {
-    try { await api.post(`/me/repos/${r.id}/delete/cancel`); toast.success(t('repos.del.undone', 'Deletion cancelled — your repo is restored.')); reload(); }
+    try { await api.post(`/me/repos/${r.id}/delete/cancel`); toast.success(t('repos.del.undone', 'Deletion cancelled, your repo is restored.')); reload(); }
     catch { toast.error(t('repos.failed', 'Failed.')); }
   };
   const check = async (r) => { try { const res = await api.post(`/repos/${r.id}/check`); toast[res.status === 'ONLINE' ? 'success' : 'error'](res.status === 'ONLINE' ? (res.verified ? t('repos.check.onver', 'Online & verified.') : t('repos.check.onunver', 'Online but unverified.')) : t('repos.check.off', 'Offline ({reason}).').replace('{reason}', res.reason || t('repos.unreachable', 'unreachable'))); reload(); } catch { toast.error(t('repos.check.failed', 'Check failed.')); } };
@@ -726,7 +728,7 @@ export function MyRepos() {
   // Free switch between single repo and a multi (pool) layout.
   const switchMode = async (r) => {
     const toMulti = !r.groupId;
-    try { await api.post(`/me/repos/${r.id}/${toMulti ? 'to-multi' : 'to-single'}`); toast.success(toMulti ? t('repos.tomulti.ok', 'Switched to multi — a storage pool was created (free).') : t('repos.tosingle.ok', 'Switched back to single.')); reload(); }
+    try { await api.post(`/me/repos/${r.id}/${toMulti ? 'to-multi' : 'to-single'}`); toast.success(toMulti ? t('repos.tomulti.ok', 'Switched to multi, a storage pool was created (free).') : t('repos.tosingle.ok', 'Switched back to single.')); reload(); }
     catch (x) { toast.error(x.data?.error === 'pool_has_multiple_repos' ? t('repos.pool.hasmulti', 'Remove the other repos from the pool first.') : t('repos.switch.failed', 'Switch failed.')); }
   };
 
@@ -750,7 +752,7 @@ export function MyRepos() {
     catch { return toast.error(t('repos.failed', 'Failed.')); }
     if (!pre.files) return toast.error(t('repos.move.empty', 'That repo has no files to move.'));
     if (pre.collisionCount) {
-      return toast.error(t('repos.move.collide', '{n} file(s) already exist in "{name}" — rename or remove them first: {list}')
+      return toast.error(t('repos.move.collide', '{n} file(s) already exist in "{name}", rename or remove them first: {list}')
         .replace('{n}', pre.collisionCount).replace('{name}', to.name)
         .replace('{list}', pre.collisions.slice(0, 3).join(', ')));
     }
@@ -769,7 +771,7 @@ export function MyRepos() {
         try { await api.post(`/me/repos/${from.id}/move-content`, { to: to.id }); reload(); }
         catch (x) {
           toast.error(x.data?.error === 'path_collision'
-            ? t('repos.move.collide2', 'Some paths now clash in the destination — nothing was moved.')
+            ? t('repos.move.collide2', 'Some paths now clash in the destination, nothing was moved.')
             : x.data?.error === 'quota_exceeded' ? t('repos.move.quota', 'Not enough storage left in the destination repo.')
             : t('repos.failed', 'Failed.'));
           reload();
@@ -815,14 +817,14 @@ export function MyRepos() {
               {r.deleteAt && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg border border-error-border bg-error-bg px-3 py-2 text-xs">
                   <AlertTriangle size={14} className="text-error shrink-0" />
-                  <span className="flex-1 text-error">{t('repos.del.pending', 'Scheduled for deletion — permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
+                  <span className="flex-1 text-error">{t('repos.del.pending', 'Scheduled for deletion, permanently removed with its content on {when}.').replace('{when}', new Date(r.deleteAt).toLocaleString())}</span>
                   <Button size="sm" variant="primary" onClick={() => undoDelete(r)}><RefreshCw size={12} /> {t('repos.del.undo', 'Undo')}</Button>
                 </div>
               )}
               {!repoLocked(r) && r.listed && r.pendingReview && !r.deleteAt && (
                 <div className="mb-3 flex items-start gap-2 rounded-lg border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-xs">
                   <Clock size={14} className="text-[var(--warning)] shrink-0 mt-0.5" />
-                  <span className="flex-1 text-[var(--warning)]">{t('repos.inreview.notice', 'In review — a moderator is verifying it before it appears in the public list. It keeps serving normally; any new change restarts the review.')}</span>
+                  <span className="flex-1 text-[var(--warning)]">{t('repos.inreview.notice', 'In review, a moderator is verifying it before it appears in the public list. It keeps serving normally; any new change restarts the review.')}</span>
                 </div>
               )}
               <div className="flex items-start gap-3">
@@ -834,14 +836,14 @@ export function MyRepos() {
                   {repoLocked(r) && !r.deleteAt && (
                     <div className="mt-1.5 flex items-start gap-2 rounded-lg border border-[var(--error-border)] bg-[var(--error-bg)] px-2.5 py-1.5 text-xs">
                       <Ban size={13} className="text-[var(--error)] shrink-0 mt-0.5" />
-                      <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended — it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
+                      <span className="flex-1 text-[var(--error)]">{t('repos.suspended.notice', 'This repo is suspended, it stays offline, can’t be listed, edited or deleted. Contact support to resolve it.')}</span>
                     </div>
                   )}
                   {/* Provisioning notice — under the title too, like suspended. */}
                   {r.status === 'PROVISIONING' && !repoLocked(r) && !r.deleteAt && (
                     <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-[var(--info-border)] bg-[var(--info-bg)] px-2.5 py-1.5 text-xs">
                       <RefreshCw size={13} className="text-[var(--info)] shrink-0 animate-spin" />
-                      <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning — open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
+                      <span className="flex-1 text-[var(--info)]">{t('repos.provisioning.notice', 'Provisioning, open the dashboard, upload your files (including repo.json) and publish to bring it online.')}</span>
                     </div>
                   )}
                   <div className="mt-2 flex items-center gap-1.5 flex-wrap">
@@ -855,7 +857,7 @@ export function MyRepos() {
                     {r.sha && <span>sha {r.sha.slice(0, 12)}…</span>}
                     {r.fingerprint && (
                       <button onClick={() => { navigator.clipboard?.writeText(r.fingerprint); toast.success(t('repos.idcopied', 'Repo ID copied.')); }}
-                        title={t('repos.id.hint', 'Unique Repo ID — quote it when contacting support.')}
+                        title={t('repos.id.hint', 'Unique Repo ID, quote it when contacting support.')}
                         className="inline-flex items-center gap-1 hover:text-[var(--primary-2)] transition"><Fingerprint size={11} /> {r.fingerprint} <Copy size={9} className="opacity-60" /></button>
                     )}
                   </div>
@@ -911,7 +913,10 @@ export function MyRepos() {
             </Card>
           ))}
         </div> : <EmptyState icon={Search} title={t('repos.nomatch.t', 'No matches')} sub={t('repos.nomatch.s', 'Try a different search or clear the filters.')} />)
-        : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')} sub={t('repos.mine.empty.s', 'Add a repo to list it publicly, or host one from the Hosting page.')} />}
+        : <EmptyState icon={Server} title={t('repos.mine.empty.t', 'No repos yet')}
+          sub={t('repos.mine.empty.s2', 'A Server-Repo is where BMM users download your files from, and you do not have one yet.')}
+          action={{ label: t('dash.hostrepo', 'Host a repo'), to: '/hosting#plans', icon: Rocket }}
+          hint={t('repos.mine.empty.h', 'Already running one on your own server? Add it with the button above the list.')} />}
 
       <MyAccessPolicyCard />
 
@@ -996,7 +1001,7 @@ function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
     setBusy(true);
     try {
       const res = await api.put(`/me/repos/${repo.id}/settings`, { access, bans, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps });
-      toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.'));
+      toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved, upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.'));
       onChanged?.(); onClose();
     } catch { toast.error(t('repos.mng.savefail', 'Failed to save.')); } finally { setBusy(false); }
   };
@@ -1011,7 +1016,7 @@ function RepoManageModal({ repo, onClose, onChanged, initialTab }) {
   return (
     <Modal open onClose={onClose} title={t('repos.mng.title', 'Manage "{name}"').replace('{name}', repo.name)} icon={ShieldCheck} width="max-w-xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('repos.savesettings', 'Save settings')}</Button></>}>
-      <div className="flex items-center gap-2 mb-4 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed — your settings can never exceed this repo's hard limits.")}</div>
+      <div className="flex items-center gap-2 mb-4 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed, your settings can never exceed this repo's hard limits.")}</div>
       <div className="flex gap-1 mb-4 border-b border-[var(--line)]">
         {tabs.map(([id, label, I]) => (
           <button key={id} onClick={() => setTab(id)} className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px ${tab === id ? 'border-[var(--primary)] text-[var(--text)]' : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={14} /> {label}</button>
@@ -1093,9 +1098,9 @@ function RepoUpgrade({ repo }) {
       const body = { storageGB: sGB, ...(sUp > curUp ? { uploadMbps: sUp } : {}) };
       const res = await api.post(`/me/repos/${repo.id}/upgrade`, body);
       if (res.url || res.checkoutUrl) { window.location.href = res.url || res.checkoutUrl; return; }
-      if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB — free tier, no charge.').replace('{n}', sGB));
+      if (res.free) toast.success(t('repos.upgraded.free', 'Upgraded to {n} GB, free tier, no charge.').replace('{n}', sGB));
     } catch (x) {
-      toast.error(x.data?.error === 'capacity_full' ? t('repos.poolfull', 'Pool full — max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1))
+      toast.error(x.data?.error === 'capacity_full' ? t('repos.poolfull', 'Pool full, max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1))
         : x.data?.error === 'not_an_upgrade' ? t('repos.notupgrade3', 'Raise storage or upload speed above their current values.')
         : x.data?.error === 'over_limit' ? t('repos.upover2', 'Exceeds the per-repo upload limit (max {u} Mbps).').replace('{u}', x.data.maxUploadMbps)
         : t('repos.failed', 'Failed.'));
@@ -1115,7 +1120,7 @@ function RepoUpgrade({ repo }) {
         <span className="text-xs text-[var(--faint)]">
           {!changed ? t('repos.currentplan', 'Your current plan.')
             : quote?.priceMonthlyCents > 0 ? t('repos.upprice', '{price}/mo').replace('{price}', `$${(quote.priceMonthlyCents / 100).toFixed(2)}`)
-            : t('repos.upgradefree', 'Still within the free tier — no charge.')}
+            : t('repos.upgradefree', 'Still within the free tier, no charge.')}
         </span>
         <Button size="sm" variant="primary" disabled={busy || !changed} onClick={upgrade}>{busy ? <Spinner /> : t('repos.upgrade', 'Upgrade')}</Button>
       </div>
@@ -1143,7 +1148,7 @@ function QuotaResizer({ repo, onChanged }) {
   const save = async () => {
     setBusy(true);
     try { await api.put(`/me/repos/${repo.id}/quota`, { storageGB: Number(gbVal) }); toast.success(t('repos.storupd', 'Storage updated.')); onChanged?.(); }
-    catch (x) { toast.error(x.data?.error === 'pool_exceeded' ? t('repos.poolfull', 'Pool full — max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1)) : x.data?.error === 'below_used' ? t('repos.belowused', 'Below current usage.') : t('repos.failed', 'Failed.')); }
+    catch (x) { toast.error(x.data?.error === 'pool_exceeded' ? t('repos.poolfull', 'Pool full, max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1)) : x.data?.error === 'below_used' ? t('repos.belowused', 'Below current usage.') : t('repos.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   return (
@@ -1204,7 +1209,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
             </>) : (
               <div className="rounded-lg border border-dashed border-[var(--line)] p-3.5 text-[12.5px] text-[var(--muted)] leading-relaxed">
                 {pools.length
-                  ? t('repos.addwhat.full', 'Your pools are full — take a bigger one, or make room first.')
+                  ? t('repos.addwhat.full', 'Your pools are full, take a bigger one, or make room first.')
                   : t('repos.addwhat.nopool', 'You have no space here yet. Pick a size and it lands on this page straight away.')}
               </div>
             )}
@@ -1228,7 +1233,7 @@ function AddRepoChoice({ pools, onClose, onPool, onExternal }) {
           <ul className="text-[12px] text-[var(--muted)] leading-relaxed mt-3 flex flex-col gap-1">
             {[
               t('repos.addwhat.ext.1', 'A repo.json on your own server or CDN'),
-              t('repos.addwhat.ext.2', 'A GitHub, GitLab or Codeberg project — paste the project page, we work out the raw file'),
+              t('repos.addwhat.ext.2', 'A GitHub, GitLab or Codeberg project, paste the project page, we work out the raw file'),
               t('repos.addwhat.ext.3', 'A plain file server with a directory index'),
             ].map((x) => <li key={x} className="flex gap-1.5"><span className="text-[var(--faint)]">·</span><span>{x}</span></li>)}
           </ul>
@@ -1257,7 +1262,7 @@ function PoolAddModal({ group, onClose, onDone }) {
     if (name.length < 2) return toast.error(t('repos.namereq', 'Name is required.'));
     setBusy(true);
     try { await api.post(`/me/hosting/groups/${group.id}/repos`, { name, storageGB: Number(gbVal) }); toast.success(t('repos.pooladded', 'Repo "{name}" added to the pool.').replace('{name}', name)); onDone(); }
-    catch (x) { toast.error(x.data?.error === 'pool_exceeded' ? t('repos.poolfull', 'Pool full — max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1)) : t('repos.failed', 'Failed.')); }
+    catch (x) { toast.error(x.data?.error === 'pool_exceeded' ? t('repos.poolfull', 'Pool full, max {n} GB.').replace('{n}', x.data.freeGB?.toFixed(1)) : t('repos.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
   return (
@@ -1286,7 +1291,7 @@ function FeatureModal({ repo, onClose }) {
   return (
     <Modal open onClose={onClose} title={t('repos.boosttitle', 'Boost "{name}"').replace('{name}', repo.name)} icon={Rocket} width="max-w-md"
       footer={<><Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={buy}>{t('hosting.continue', 'Continue to payment')}</Button></>}>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('repos.boost.desc', 'Featured repos float to the top of the public list. Pick a duration — at the end, your repo returns to its normal position.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('repos.boost.desc', 'Featured repos float to the top of the public list. Pick a duration, at the end, your repo returns to its normal position.')}</p>
       <div className="mb-4 rounded-lg border border-[var(--line)] bg-orange-500/[0.06] p-2.5 text-xs text-[var(--muted)] flex items-start gap-2">
         <Zap size={13} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
         <span>{t('repos.boost.fair', 'Boosted repos share the top spots and rotate fairly on every visit — so the more repos are boosted at once, the more the top positions cycle between them. Boosting always helps, but its edge is strongest when few others are boosting.')}</span>
@@ -1302,7 +1307,7 @@ function FeatureModal({ repo, onClose }) {
         <input type="checkbox" className="mt-0.5" checked={autoRenew} onChange={(e) => setAutoRenew(e.target.checked)} />
         <span>
           <span className="font-medium flex items-center gap-1.5"><RefreshCw size={13} className="text-[var(--primary-2)]" /> {t('repos.boost.autorenew', 'Auto-renew this boost')}</span>
-          <span className="block text-xs text-[var(--muted)] mt-0.5">{autoRenew ? t('repos.boost.autorenew.on', 'Re-boosts automatically every {n} days. Cancel anytime from “Manage billing”.').replace('{n}', days) : t('repos.boost.autorenew.off', 'One-time boost — ends after {n} days.').replace('{n}', days)}</span>
+          <span className="block text-xs text-[var(--muted)] mt-0.5">{autoRenew ? t('repos.boost.autorenew.on', 'Re-boosts automatically every {n} days. Cancel anytime from “Manage billing”.').replace('{n}', days) : t('repos.boost.autorenew.off', 'One-time boost, ends after {n} days.').replace('{n}', days)}</span>
         </span>
       </label>
       <div className="flex items-end justify-between pt-3 border-t border-[var(--line)]">
@@ -1325,14 +1330,14 @@ function PromoRedeem() {
     setBusy(true);
     try {
       const r = await api.post('/me/promo/redeem', { code: code.trim(), repoId });
-      toast.success(r.kind === 'free_hosting' ? t('promo.gotHosting', 'Redeemed! A free hosted repo was created — see "My repos".')
+      toast.success(r.kind === 'free_hosting' ? t('promo.gotHosting', 'Redeemed! A free hosted repo was created, see "My repos".')
         : r.kind === 'free_boost' ? t('promo.gotBoost', 'Redeemed! Your repo is now boosted.') : t('promo.ok', 'Redeemed!'));
       setCode(''); setPickRepo(false);
     } catch (x) {
       const e = x.data?.error;
       if (e === 'needs_repo') { setPickRepo(true); }
       else if (e === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); }
-      else toast.error(e === 'invalid' ? t('promo.invalid', 'Invalid or inactive code.') : e === 'expired' ? t('promo.expired', 'This code has expired.') : e === 'depleted' ? t('promo.depleted', 'This code is fully used.') : e === 'already_used' ? t('promo.used', 'You already used this code.') : e === 'not_yours' ? t('promo.notyours', 'This code is reserved for another account.') : e === 'use_at_checkout' ? t('promo.atcheckout', 'This is a discount code — enter it when hosting or boosting.') : t('repos.failed', 'Failed.'));
+      else toast.error(e === 'invalid' ? t('promo.invalid', 'Invalid or inactive code.') : e === 'expired' ? t('promo.expired', 'This code has expired.') : e === 'depleted' ? t('promo.depleted', 'This code is fully used.') : e === 'already_used' ? t('promo.used', 'You already used this code.') : e === 'not_yours' ? t('promo.notyours', 'This code is reserved for another account.') : e === 'use_at_checkout' ? t('promo.atcheckout', 'This is a discount code, enter it when hosting or boosting.') : t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
   return (
@@ -1379,7 +1384,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
     setBusy(true);
     try {
       const res = await api.post(`/me/repos/${repo.id}/renew`, { months, autoRenew: true });
-      if (res?.free) { toast.success(t('bill.renewed.free', 'Renewed — free tier, no charge.')); onChanged?.(); return; }
+      if (res?.free) { toast.success(t('bill.renewed.free', 'Renewed, free tier, no charge.')); onChanged?.(); return; }
       window.location = res.url;
     } catch (x) { toast.error(x.data?.error === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : x.data?.error || t('repos.failed', 'Failed.')); }
     finally { setBusy(false); }
@@ -1391,7 +1396,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
     if (!subId) return;
     if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', periodEnd ? new Date(periodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
     setBusy(true);
-    try { await api.post(`/me/subscriptions/${subId}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); onChanged?.(); }
+    try { await api.post(`/me/subscriptions/${subId}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped, active until the period ends.')); onChanged?.(); }
     catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
   return (
@@ -1417,7 +1422,7 @@ function SubscriptionRow({ repo, stripeSub, onChanged }) {
           <Select className="!w-auto !py-1.5 !text-xs" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
             {[1, 3, 6, 12, 24].map((m) => <option key={m} value={m}>{m} mo</option>)}
           </Select>
-          <Button size="sm" variant="primary" disabled={busy} onClick={enableAutoRenew} title={t('bill.autorenew.h', 'Start a recurring subscription — charges automatically each term.')}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.ah.enable', 'Enable auto-renew')}</>}</Button>
+          <Button size="sm" variant="primary" disabled={busy} onClick={enableAutoRenew} title={t('bill.autorenew.h', 'Start a recurring subscription, charges automatically each term.')}>{busy ? <Spinner /> : <><RefreshCw size={13} /> {t('bill.ah.enable', 'Enable auto-renew')}</>}</Button>
         </>
       )}
     </div>
@@ -1435,7 +1440,7 @@ export function Billing() {
     const resume = s.cancelAtPeriodEnd;
     if (!resume && !(await dialog.confirm({ title: t('bill.sub.cancel.t', 'Stop auto-renew?'), message: t('bill.sub.cancel.m', 'This subscription stays active until {d}, then won’t renew. You keep everything you’ve paid for.').replace('{d}', s.currentPeriodEnd ? new Date(s.currentPeriodEnd).toLocaleDateString() : '—'), okLabel: t('bill.sub.cancel.ok', 'Stop auto-renew'), danger: true }))) return;
     setSubBusy(s.id);
-    try { await api.post(`/me/subscriptions/${s.id}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped — active until the period ends.')); reloadOverview(); }
+    try { await api.post(`/me/subscriptions/${s.id}/cancel`, { resume }); toast.success(resume ? t('bill.sub.resumed', 'Auto-renew re-enabled.') : t('bill.sub.canceled', 'Auto-renew stopped, active until the period ends.')); reloadOverview(); }
     catch { toast.error(t('repos.failed', 'Failed.')); } finally { setSubBusy(null); }
   };
   const { data: invData } = useFetch(() => api.get('/me/invoices').catch(() => null), []);
@@ -1464,7 +1469,7 @@ export function Billing() {
   const openPortal = async () => {
     setPortalBusy(true);
     try { const { url } = await api.post('/me/billing/portal'); window.location = url; }
-    catch (x) { toast.error(x.data?.error === 'no_customer' ? t('bill.nocustomer', 'Nothing to manage yet — subscribe or boost a repo first.') : t('bill.portalfail', 'Billing portal unavailable.')); setPortalBusy(false); }
+    catch (x) { toast.error(x.data?.error === 'no_customer' ? t('bill.nocustomer', 'Nothing to manage yet, subscribe or boost a repo first.') : t('bill.portalfail', 'Billing portal unavailable.')); setPortalBusy(false); }
   };
   return (
     <div className="mt-10">
@@ -1527,7 +1532,7 @@ export function Billing() {
                   </div>
                   {isOpen && (
                     <div className="px-4 pb-3 ps-11">
-                      <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
+                      <div className="rounded-lg panel p-3 text-sm space-y-1.5">
                         <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-end">{label}{s.repoName ? ` · ${s.repoName}` : ''}</span></div>
                         <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.amount', 'Amount')}</span><span className="font-semibold text-end">{amt} <span className="text-[var(--faint)] font-normal text-xs">{per}</span></span></div>
                         <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.status', 'Status')}</span><span className="text-end">{s.cancelAtPeriodEnd ? t('bill.sub.canceling', 'canceling') : s.status}</span></div>
@@ -1567,7 +1572,7 @@ export function Billing() {
               </button>
               {isOpen && (
                 <div className="px-4 pb-3 pt-0 ps-11 space-y-2">
-                  <div className="rounded-lg bg-[var(--surface-2)]/60 p-3 text-sm space-y-1.5">
+                  <div className="rounded-lg panel p-3 text-sm space-y-1.5">
                     <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.desc', 'Description')}</span><span className="text-end">{inv.description}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.invoiceno', 'Invoice №')}</span><span className="font-mono text-end">{inv.number}</span></div>
                     <div className="flex justify-between gap-3"><span className="text-[var(--faint)]">{t('bill.date', 'Date')}</span><span className="text-end">{inv.created ? new Date(inv.created).toLocaleString() : ''}</span></div>
@@ -1594,7 +1599,9 @@ export function Billing() {
               <Button size="sm" onClick={() => setInvoice(pay.id)}><Receipt size={13} /> {t('bill.invoice', 'Invoice')}</Button>
             </div>
           ))}
-        </Card> : <EmptyState icon={Receipt} title={t('bill.empty.t', 'No payments yet')} sub={t('bill.empty.s', 'Boost a repo or host one — invoices appear here.')} />}
+        </Card> : <EmptyState icon={Receipt} title={t('bill.empty.t', 'No payments yet')}
+          sub={t('bill.empty.s2', 'Every purchase you make here leaves an invoice in this list, and you have not bought anything yet.')}
+          action={{ label: t('bill.empty.a', 'See the plans'), to: '/hosting#plans', icon: Rocket }} />}
       {invoice && <InvoiceModal id={invoice} onClose={() => setInvoice(null)} />}
     </div>
   );
@@ -1652,7 +1659,7 @@ function InvoiceModal({ id, onClose }) {
 
           {/* Line items */}
           <div className="rounded-lg border border-[var(--line)] overflow-hidden mb-4">
-            <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 bg-[var(--surface-2)]/60 text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+            <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2 panel text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)]">
               <span>{t('bill.desc', 'Description')}</span><span className="text-end">{t('bill.qty', 'Qty')}</span><span className="text-end">{t('bill.amount', 'Amount')}</span>
             </div>
             <div className="grid grid-cols-[1fr_auto_auto] gap-3 px-3 py-2.5 border-t border-[var(--line)]">
@@ -1697,7 +1704,7 @@ function RepoEditor({ repo, onClose, onSaved }) {
   ];
   const missing = (!repo && !isStaff && !cl.loading) ? reqs.filter((r) => !r.ok) : [];
   const blocked = missing.length > 0;
-  const resendVerify = async () => { setResending(true); try { await api.post('/auth/verify-email/resend', {}); toast.success(t('repos.req.emailsent', 'Verification email sent — check your inbox.')); } catch { toast.error(t('repos.req.emailfail', 'Could not send the email.')); } finally { setResending(false); } };
+  const resendVerify = async () => { setResending(true); try { await api.post('/auth/verify-email/resend', {}); toast.success(t('repos.req.emailsent', 'Verification email sent, check your inbox.')); } catch { toast.error(t('repos.req.emailfail', 'Could not send the email.')); } finally { setResending(false); } };
   useEffect(() => { if (repo) setF({ name: repo.name, description: repo.description || '', repoUrl: repo.repoUrl || '', contactEmail: repo.contactEmail || '', contactPhone: repo.contactPhone || '', tags: (repo.tags || []).join(', '), discord: repo.links?.discord || '', website: repo.links?.website || '', changelog: repo.links?.changelog || '' }); }, [repo]);
   const save = async () => {
     if (f.name.length < 2) return toast.error(t('repos.nameshort', 'Name too short.'));
@@ -1739,11 +1746,11 @@ function RepoEditor({ repo, onClose, onSaved }) {
         <Field label={t('repos.f.desc', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('repos.f.desc.ph', "What's in it?")} /></Field>
         {/* Hosted repos serve at an auto-managed URL (owner/repo); only self-host repos set their own URL. */}
         {repo?.hosted
-          ? <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('repos.f.urlauto', 'Public URL is managed automatically for hosted repos — publish from the Files panel.')}</div>
-          : <Field label={t('repos.f.url', 'Repo URL')} hint={t('repos.f.url.hint', 'Direct URL to the repo.json manifest — checked & hashed automatically.')}><Input value={f.repoUrl} onChange={(e) => setF({ ...f, repoUrl: e.target.value })} placeholder="https://…/repo.json" /></Field>}
+          ? <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('repos.f.urlauto', 'Public URL is managed automatically for hosted repos, publish from the Files panel.')}</div>
+          : <Field label={t('repos.f.url', 'Repo URL')} hint={t('repos.f.url.hint', 'Direct URL to the repo.json manifest, checked & hashed automatically.')}><Input value={f.repoUrl} onChange={(e) => setF({ ...f, repoUrl: e.target.value })} placeholder="https://…/repo.json" /></Field>}
         {!repo?.hosted && (
           <div className="grid sm:grid-cols-2 gap-2">
-            <Field label={t('repos.f.contact', 'Contact e-mail')} hint={t('repos.f.contact.h', 'Required for a repo served from your own server — shown on its page so people can reach you.')}><Input type="email" value={f.contactEmail} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>
+            <Field label={t('repos.f.contact', 'Contact e-mail')} hint={t('repos.f.contact.h', 'Required for a repo served from your own server, shown on its page so people can reach you.')}><Input type="email" value={f.contactEmail} onChange={(e) => setF({ ...f, contactEmail: e.target.value })} /></Field>
             <Field label={t('repos.f.phone', 'Phone (optional)')}><Input value={f.contactPhone} maxLength={40} onChange={(e) => setF({ ...f, contactPhone: e.target.value })} /></Field>
           </div>
         )}
@@ -1785,14 +1792,14 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
   const downloadAll = async () => {
     try {
       const res = await fetch(`/api/admin/repos/${repo.id}/files/download-all`, { credentials: 'include' });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); return toast.error(e.error === 'too_large' ? t('repos.ziptoobig', 'Too large to zip — download files individually.') : t('repos.dlfail', 'Download failed.')); }
+      if (!res.ok) { const e = await res.json().catch(() => ({})); return toast.error(e.error === 'too_large' ? t('repos.ziptoobig', 'Too large to zip, download files individually.') : t('repos.dlfail', 'Download failed.')); }
       const blob = await res.blob(); const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = `${repo.name}.zip`; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     } catch { toast.error(t('repos.dlfail', 'Download failed.')); }
   };
   // Owner: go online / take offline (public URL is auto-managed for hosted repos).
-  const goOnline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
+  const goOnline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/publish`); toast.success(t('repos.nowonline', 'Online, your repo.json is now public.')); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const takeOffline = async () => { setBusy(true); try { await api.post(`/repos/${repo.id}/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); onChanged?.(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   // Admin: validate & publish / unpublish (moderation gate).
   const publish = async () => { try { const r = await api.post(`/admin/repos/${repo.id}/publish`); toast.success(t('repos.publishedto', 'Published → /hosting/{p}/repo.json').replace('{p}', r.hostPath)); reload(); onChanged?.(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } };
@@ -1832,7 +1839,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
             </div>
           )}
           {!d.published && !hasRepoJson && <div className="mt-2 text-[11px] text-warning flex items-center gap-1.5"><AlertTriangle size={12} /> {t('repos.needjsonhint', 'Upload a valid repo.json below, then Go online.')}</div>}
-          {!d.published && hasRepoJson && <div className="mt-2 text-[11px] text-success flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
+          {!d.published && hasRepoJson && <div className="mt-2 text-[11px] text-success flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('repos.readyonline', 'Valid repo.json detected, ready to go online.')}</div>}
         </div>
       )}
 
@@ -1851,7 +1858,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
             </div>
             <div className="text-[11px] text-[var(--faint)] mt-2">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
           </div>
-          <p className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1.5"><Zap size={11} className="text-[var(--primary-2)]" /> {t('repos.upbg', "Uploads continue in the background if you close this window — you'll get a notification when they finish.")}</p>
+          <p className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 mt-1.5"><Zap size={11} className="text-[var(--primary-2)]" /> {t('repos.upbg', "Uploads continue in the background if you close this window, you'll get a notification when they finish.")}</p>
         </div>
       )}
 
@@ -1871,7 +1878,7 @@ export function HostFilesModal({ repo, admin, onClose, onChanged }) {
         </div>
       )}
 
-      {d.repoJson && <div className="mt-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('repos.jsonpreview', 'repo.json (preview — never executed)')}</div>
+      {d.repoJson && <div className="mt-4"><div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1.5">{t('repos.jsonpreview', 'repo.json (preview, never executed)')}</div>
         <pre className="text-xs bg-[var(--surface-2)] rounded-lg p-3 max-h-52 overflow-auto">{JSON.stringify(d.repoJson, null, 2)}</pre></div>}
     </Modal>
   );

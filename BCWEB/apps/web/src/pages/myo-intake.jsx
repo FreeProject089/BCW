@@ -182,7 +182,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
       // is the one that decides which checklist the scope question shows.
       id: 'kind',
       q: t('myo.w.q.kind', 'What do you want built?'),
-      hint: t('myo.w.h.kind', 'The closest match — the details are sorted out together.'),
+      hint: t('myo.w.h.kind', 'The closest match, the details are sorted out together.'),
       done: !!a.card,
       summary: chosen ? chosen.label : '',
       body: (
@@ -209,7 +209,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
     {
       id: 'name',
       q: t('myo.w.q.name', 'What is it called?'),
-      hint: t('myo.w.h.name', 'A working name is fine — it can change later.'),
+      hint: t('myo.w.h.name', 'A working name is fine, it can change later.'),
       done: a.name.trim().length >= 2,
       summary: a.name.trim(),
       body: (
@@ -225,7 +225,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
     {
       id: 'objective',
       q: t('myo.w.q.obj', 'In one sentence, what should it accomplish?'),
-      hint: t('myo.w.h.obj', 'The result you want — not how it works.'),
+      hint: t('myo.w.h.obj', 'The result you want, not how it works.'),
       done: a.objective.trim().length >= 4,
       summary: a.objective.trim(),
       body: <Input autoFocus value={a.objective} maxLength={200} onChange={(e) => set('objective', e.target.value)} placeholder={t('myo.f.objph', 'What should it accomplish?')} />,
@@ -241,7 +241,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
     {
       id: 'scope',
       q: t('myo.w.q.scope', 'What should it do?'),
-      hint: t('myo.w.h.scope', 'Pick everything that applies — nothing is binding, it is what the quote is priced against.'),
+      hint: t('myo.w.h.scope', 'Pick everything that applies, nothing is binding, it is what the quote is priced against.'),
       done: true,
       summary: (a.scope.length ? a.scope.map((id) => L(lang, scopeFor(kind).find((x) => x.id === id) || { en: id, fr: id })).join(', ') : t('myo.w.tbd', 'to be defined together'))
         + (a.scopeOther.trim() ? ` · ${a.scopeOther.trim()}` : ''),
@@ -255,7 +255,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
     {
       id: 'budget',
       q: t('myo.w.q.budget', 'What budget do you have in mind?'),
-      hint: t('myo.w.h.budget', "An honest range, in {cur}. “I don't know” is a real answer — the consultation is partly for this.").replace('{cur}', String(cfg.currency || '').toUpperCase()),
+      hint: t('myo.w.h.budget', "An honest range, in {cur}. “I don't know” is a real answer, the consultation is partly for this.").replace('{cur}', String(cfg.currency || '').toUpperCase()),
       done: true,
       summary: L(lang, BUDGETS.find((x) => x.id === a.budget) || BUDGETS[0]),
       body: <Tiles options={BUDGETS} value={a.budget} onPick={(id) => set('budget', id)} lang={lang} />,
@@ -273,8 +273,8 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
             <div className={`text-xs rounded-lg p-2.5 flex items-start gap-2 border ${urgentBlocked ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--faint)]'}`}>
               <Clock size={13} className="shrink-0 mt-0.5" />
               <span>{urgentBlocked
-                ? t('myo.f.urgentfull', 'All urgent slots are taken right now — a normal request can still start today.')
-                : t('myo.f.urgentnote', 'Prioritised — a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span>
+                ? t('myo.f.urgentfull', 'All urgent slots are taken right now, a normal request can still start today.')
+                : t('myo.f.urgentnote', 'Prioritised, a higher consultation fee ({p}).').replace('{p}', fmtMoney(cfg.urgentConsultationCents, cfg.currency))}</span>
             </div>
           )}
         </div>
@@ -327,7 +327,7 @@ export default function MyoIntakeWizard({ cards = [], cfg, onClose, inline = fal
         e === 'myo_disabled' ? t('myo.off.t', 'Not accepting requests right now')
         : e === 'stripe_unconfigured' ? t('myo.e.stripe', 'Payments are not configured yet.')
         : e === 'urgent_full' ? t('myo.e.urgentfull', 'Every urgent slot is taken. Untick "urgent" to start now, or try again later.')
-        : e === 'queue_full' ? t('myo.e.queuefull', 'The commission queue is full right now — please try again in a few days.')
+        : e === 'queue_full' ? t('myo.e.queuefull', 'The commission queue is full right now, please try again in a few days.')
         : e === 'too_many_own' ? t('myo.e.ownfull', 'You already have {n} request(s) open. Finish or close one first.').replace('{n}', x.data?.limit ?? '')
         : t('myo.e.pay', 'Could not start checkout.'));
       setBusy(false);

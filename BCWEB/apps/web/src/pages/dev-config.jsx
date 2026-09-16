@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { KeyRound, Shield, Copy, Trash2, Plus, RefreshCw, Eye, EyeOff, ArrowLeft, Lock, FlaskConical } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
-import { Card, Button, Input, Textarea, Badge, Field, Spinner, useToast, useDialog, copyText } from '../ui/ui.jsx';
+import { Card, Button, Input, Textarea, Badge, Field, Spinner, EmptyState, useToast, useDialog, copyText } from '../ui/ui.jsx';
 import { useAuth } from './auth.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
 import WebhooksPanel from './dev-webhooks.jsx';
@@ -33,7 +33,7 @@ function TotpField({ value, onChange, label }) {
           all obvious at the moment a dialog demands one — and BetterCommunity has its own
           authenticator, which people forget they are already carrying. */}
       <div className="text-[11px] text-[var(--muted)] mt-1">
-        {t('devc.totp.where', 'From your authenticator app — or from the')}{' '}
+        {t('devc.totp.where', 'From your authenticator app, or from the')}{' '}
         <Link to="/2fa" className="text-[var(--primary-2)] hover:underline">{t('devc.totp.own', 'BetterCommunity authenticator')}</Link>
         {t('devc.totp.where2', ', if that is where you keep this account.')}
       </div>
@@ -51,7 +51,7 @@ function TotpField({ value, onChange, label }) {
 function ScopeChips({ scopes, descriptions = {}, max = 6 }) {
   const { t } = useI18n();
   const list = Array.isArray(scopes) ? scopes : [];
-  if (!list.length) return <div className="text-[11px] text-error mt-1">{t('devc.noscope', 'no scope — this key can do nothing')}</div>;
+  if (!list.length) return <div className="text-[11px] text-error mt-1">{t('devc.noscope', 'no scope, this key can do nothing')}</div>;
   const shown = list.slice(0, max);
   const rest = list.length - shown.length;
   return (
@@ -82,7 +82,7 @@ function ApiKeysPanel() {
   useEffect(() => { load(); }, []);
 
   const create = async () => {
-    if (!form.picked.length) return toast.error(t('devc.needscope', 'Pick at least one scope — a key with none can do nothing.'));
+    if (!form.picked.length) return toast.error(t('devc.needscope', 'Pick at least one scope, a key with none can do nothing.'));
     if (user?.totpEnabled && form.totp.length !== 6) return toast.error(t('devc.needtotp', 'Enter your 6-digit code.'));
     setBusy(true);
     try {
@@ -141,8 +141,8 @@ function ApiKeysPanel() {
       </p>
 
       {fresh && (
-        <div className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/5 p-3 mb-3">
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('devc.once', 'Copy it now — it is shown once and never again.')}</div>
+        <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
+          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('devc.once', 'Copy it now, it is shown once and never again.')}</div>
           <div className="flex items-center gap-2">
             <code className="font-mono text-[12px] break-all flex-1">{fresh}</code>
             <Button size="sm" variant="ghost" onClick={() => { copyText(fresh); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
@@ -151,6 +151,14 @@ function ApiKeysPanel() {
         </div>
       )}
 
+      {/* An empty key list used to render NOTHING: the section was a title, a paragraph and a
+          button, and there was no way to tell "you have no keys" from "the list failed to
+          load". Hidden while the form is open — the answer is already on screen. */}
+      {keys !== null && !keys.length && !form && (
+        <EmptyState icon={KeyRound} title={t('devc.nokeys.t', 'No API keys')}
+          sub={t('devc.nokeys.s', 'A key lets a script or a bot of yours call this API as you, and you have not created one.')}
+          action={{ label: t('devc.new', 'New key'), icon: Plus, onClick: () => setForm({ label: '', picked: ['account:read'], days: '', totp: '' }) }} />
+      )}
       {keys === null ? <Spinner /> : keys.length > 0 && (
         <div className="divide-y divide-[var(--line)] mb-3">
           {keys.map((k) => (
@@ -163,7 +171,7 @@ function ApiKeysPanel() {
                   {!k.revokedAt && k.expiresAt && new Date(k.expiresAt) < new Date() && <Badge tone="amber">{t('devc.expired', 'expired')}</Badge>}
                 </div>
                 <ScopeChips scopes={k.scopes} descriptions={scopes} />
-                {k.testMode && <div className="mt-1"><Badge tone="amber"><FlaskConical size={10} /> {t('devc.testkey', 'test key — writes are simulated')}</Badge></div>}
+                {k.testMode && <div className="mt-1"><Badge tone="amber"><FlaskConical size={10} /> {t('devc.testkey', 'test key, writes are simulated')}</Badge></div>}
                 <div className="text-[11px] text-[var(--faint)]">
                   {k.lastUsedAt ? t('devc.used', 'last used {d}').replace('{d}', new Date(k.lastUsedAt).toLocaleString()) : t('devc.never', 'never used')}
                 </div>
@@ -196,7 +204,7 @@ function ApiKeysPanel() {
           {/* Chosen once, here, instead of correctly on every request. The sandbox header
               works and is documented — but it is opt-in per call, and the one time you forget
               it you have written to your real account. */}
-          <label className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-2.5">
+          <label className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] panel p-2.5">
             <input type="checkbox" className="mt-0.5" checked={!!form.testMode} onChange={(e) => setForm((f) => ({ ...f, testMode: e.target.checked }))} />
             <span>
               <b className="flex items-center gap-1.5"><FlaskConical size={12} /> {t('devc.test', 'Make it a test key')}</b>
@@ -224,20 +232,20 @@ function ApiKeysPanel() {
 // the chip tooltip: a scope name is precise and says nothing to somebody deciding whether to
 // tick it.
 const SCOPE_HELP = {
-  openid: 'Required. Identifies the person — without it there is no sign-in, only an access token.',
+  openid: 'Required. Identifies the person, without it there is no sign-in, only an access token.',
   profile: 'Display name, avatar and public profile fields.',
   email: 'The e-mail address on the account.',
   items: 'The catalog items they own.',
   repos: 'Their Server-Repos.',
   pools: 'Their storage pools and what draws from them.',
   catalogs: 'The catalogs they own, unpublished ones included.',
-  payments: 'Their invoices — amounts and dates, never a card number.',
+  payments: 'Their invoices, amounts and dates, never a card number.',
   polls: 'Polls open to them and how they answered.',
   favorites: 'The repos and catalogs they starred.',
   transfers: 'Ownership transfers offered to or by them.',
   notifications: 'Read their notifications. Read-only: an app can see what they were told, never mark it read.',
   badges: 'The badges they have earned.',
-  stats: 'Download and view counts for what they own. Aggregated — never who did the downloading.',
+  stats: 'Download and view counts for what they own. Aggregated, never who did the downloading.',
 };
 
 function OAuthAppsPanel() {
@@ -257,7 +265,7 @@ function OAuthAppsPanel() {
 
   const create = async () => {
     const uris = form.redirectUris.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
-    if (form.name.trim().length < 2) return toast.error(t('dev.needname', 'Give the app a name — people see it on the consent screen.'));
+    if (form.name.trim().length < 2) return toast.error(t('dev.needname', 'Give the app a name, people see it on the consent screen.'));
     if (!uris.length) return toast.error(t('dev.needuri', 'Add at least one redirect URI.'));
     setBusy(true);
     try {
@@ -281,7 +289,7 @@ function OAuthAppsPanel() {
   const remove = async (c) => {
     if (!await dialog.confirm({
       title: t('dev.del.t', 'Delete this app?'),
-      message: t('dev.del.m', 'Everyone who connected it is disconnected and its live sessions are revoked — {n} account(s) today. The client id cannot be reused.').replace('{n}', String(c.users || 0)),
+      message: t('dev.del.m', 'Everyone who connected it is disconnected and its live sessions are revoked: {n} account(s) today. The client id cannot be reused.').replace('{n}', String(c.users || 0)),
       okLabel: t('common.delete', 'Delete'), danger: true,
     })) return;
     try { await api.del(`/me/oauth-clients/${c.id}`); toast.success(t('common.deleted', 'Deleted.')); load(); }
@@ -306,8 +314,8 @@ function OAuthAppsPanel() {
       <p className="text-[12px] text-[var(--muted)] mb-3">{t('dev.sub', 'Register an app and let people sign in to it with their BetterCommunity account. Everything is discoverable at /.well-known/openid-configuration — standard OpenID Connect, no SDK of ours required.')}</p>
 
       {secret && (
-        <div className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/5 p-3 mb-3">
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('dev.secret.t', 'Copy the secret now — it is shown once and never again.')}</div>
+        <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
+          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('dev.secret.t', 'Copy the secret now, it is shown once and never again.')}</div>
           {[['client_id', secret.id], ['client_secret', secret.value]].map(([k, v]) => (
             <div key={k} className="flex items-center gap-2 text-[12px] mb-1">
               <span className="text-[var(--muted)] w-24 shrink-0">{k}</span>
@@ -419,7 +427,7 @@ export default function DevConfig() {
       <div className="max-w-lg mx-auto py-12">
         <Card className="p-7 text-center">
           <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--line)] mx-auto mb-4"><Lock size={22} className="text-[var(--primary-2)]" /></span>
-          <p className="text-sm text-[var(--muted)] mb-4">{t('devc.signin', 'Credentials belong to an account — sign in to manage yours.')}</p>
+          <p className="text-sm text-[var(--muted)] mb-4">{t('devc.signin', 'Credentials belong to an account, sign in to manage yours.')}</p>
           <Link to="/auth?next=/dev/config"><Button variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
         </Card>
       </div>

@@ -37,6 +37,6 @@ export const homeVariantList = (t) => [
   {
     v: 'v3',
     name: t('hp.v3', 'What’s happening'),
-    sub: t('hp.v3.s', 'A feed — posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.'),
+    sub: t('hp.v3.s', 'A feed, posts, the open poll, what people said, what is on offer. No hero. For somebody who already uses this.'),
   },
 ];

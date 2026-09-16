@@ -335,7 +335,7 @@ function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (
         {node.note && <p className="text-[var(--muted)] leading-relaxed">{node.note}</p>}
 
         <Side title={t('stack.f.needs', 'Depends on')} list={needs} name={name} onPick={onPick}
-          empty={t('stack.f.needsNone', 'Nothing — this is a starting point.')} />
+          empty={t('stack.f.needsNone', 'Nothing, this is a starting point.')} />
         <Side title={t('stack.f.feeds', 'Used by')} list={feeds} name={name} onPick={onPick}
           empty={t('stack.f.feedsNone', 'Nothing else in this diagram.')} />
 
@@ -347,7 +347,7 @@ function Panel({ node, edges, byId, kind, onPick, onClose, t, count, display = (
         )}
         {node.kind === 'external' && (
           <p className="text-[11px] text-[var(--faint)] border-t border-[var(--line)] pt-2">
-            {t('stack.f.externalNote', 'Run by someone else — this project depends on it but does not operate it.')}
+            {t('stack.f.externalNote', 'Run by someone else, this project depends on it but does not operate it.')}
           </p>
         )}
       </div>

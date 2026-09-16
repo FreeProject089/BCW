@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BarChart3, Check, Lock, Users, Search, X, CheckCircle2, ArrowRight } from 'lucide-react';
+import { BarChart3, Check, Lock, Users, Search, X, CheckCircle2, ArrowRight, MessageSquare } from 'lucide-react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { useI18n } from '../i18n.jsx';
@@ -114,7 +114,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
         // what pressing the button does.
         <div className="text-[12px] text-[var(--muted)] flex items-center gap-1.5">
           <Check size={13} className="text-[var(--success)]" />
-          {t('poll.f.already', 'You answered this. Your answers are below — sending again replaces them.')}
+          {t('poll.f.already', 'You answered this. Your answers are below, sending again replaces them.')}
         </div>
       )}
       {(poll.questions || []).map((q) => q.kind === 'note' ? (
@@ -140,7 +140,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
               const on = Array.isArray(cur) ? cur.includes(c.id) : cur === c.id;
               return (
                 <button key={c.id} type="button" onClick={() => toggleChoice(q, c.id)}
-                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] tint-accent' : 'border-[var(--line)] hover:panel'}`}>
                   {c.label}
                 </button>
               );
@@ -254,7 +254,7 @@ function PollForm({ poll, onDone, onWithdraw }) {
                         title={String(n)}
                         className={q.config.style === 'stars'
                           ? `text-xl leading-none transition-colors ${on ? 'text-[var(--primary)]' : 'text-[var(--faint)]'}`
-                          : `px-2.5 py-1 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                          : `px-2.5 py-1 rounded-lg border text-[13px] transition-colors ${on ? 'border-[var(--primary-2)] tint-accent' : 'border-[var(--line)] hover:panel'}`}>
                         {q.config.style === 'stars' ? '★' : n}
                       </button>
                     );
@@ -465,7 +465,7 @@ export function PollCard({ poll: initial, onChange }) {
                   on an open poll the anonymous half is an estimate and the reader deserves
                   to know which half of the number is the solid one. */}
               {poll.audience === 'all'
-                ? t('poll.split', '{n} answers — {u} from members, {a} anonymous (anonymous ones are counted per device, so treat them as an estimate).')
+                ? t('poll.split', '{n} answers: {u} from members, {a} anonymous (anonymous ones are counted per device, so treat them as an estimate).')
                   .replace('{n}', String(poll.total)).replace('{u}', String(poll.userTotal)).replace('{a}', String(poll.anonTotal))
                 : t('poll.count', '{n} answers, one per member.').replace('{n}', String(poll.total))}
             </div>
@@ -493,14 +493,14 @@ export function PollCard({ poll: initial, onChange }) {
             {closed && <div className="text-[12px] text-[var(--faint)] mb-2">{t('poll.closed', 'Closed')}</div>}
             <QuestionResults questions={poll.questionStats} myChoices={poll.myAnswers || {}} />
             {needsAccount && !closed && (
-              <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
+              <div className="mt-3 rounded-lg border border-[var(--line)] panel p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
                 <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
                 <Link to="/signin" className="ms-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
               </div>
             )}
           </div>
         ) : needsAccount ? (
-          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
+          <div className="rounded-lg border border-[var(--line)] panel p-3 text-[13px] text-[var(--muted)] flex items-center gap-2">
             <Lock size={14} /> {t('poll.needlogin', 'You need an account to answer this one.')}
             <Link to="/signin" className="ms-auto"><Button size="sm" variant="primary">{t('nav.signin', 'Sign in')}</Button></Link>
           </div>
@@ -511,7 +511,7 @@ export function PollCard({ poll: initial, onChange }) {
             <div className="space-y-1.5">
               {poll.options.map((o) => (
                 <button key={o.id} onClick={() => toggle(o.id)}
-                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${picked.includes(o.id) ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10' : 'border-[var(--line)] hover:bg-[var(--surface-2)]/60'}`}>
+                  className={`w-full text-start px-3 py-2 rounded-lg border text-[13px] transition-colors ${picked.includes(o.id) ? 'border-[var(--primary-2)] tint-accent' : 'border-[var(--line)] hover:panel'}`}>
                   {o.label}
                 </button>
               ))}
@@ -645,7 +645,7 @@ export default function PollsPage() {
               <button key={id} type="button" onClick={() => setFilter(id)} disabled={!counts[id] && filter !== id}
                 className={`px-2.5 py-1 rounded-full text-[12px] border transition ${
                   filter === id
-                    ? 'border-[var(--primary-2)] bg-[var(--primary-2)]/10 text-[var(--primary-2)]'
+                    ? 'border-[var(--primary-2)] tint-accent text-[var(--primary-2)]'
                     : counts[id]
                       ? 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'
                       : 'border-[var(--line)] text-[var(--faint)] opacity-50 cursor-default'
@@ -658,13 +658,18 @@ export default function PollsPage() {
       )}
 
       {!polls.length ? (
-        <EmptyState icon={BarChart3} title={t('poll.page.none', 'No poll running.')} sub={t('poll.page.none.s', 'Come back — there will be one.')} />
+        <EmptyState icon={BarChart3} title={t('poll.page.none2', 'No poll running')}
+          sub={t('poll.page.none.s2', 'This is where we ask what you think about the apps, and nothing is open right now.')}
+          action={{ label: t('poll.page.none.a', 'Tell us directly'), to: '/contact', icon: MessageSquare }} />
       ) : !shown.length ? (
         // Distinguishes "nothing matches what you typed" from "there are no polls", because the
         // second is a fact about the site and the first is a fact about the search box.
         <EmptyState icon={term ? Search : CheckCircle2}
           title={term ? t('poll.nomatch', 'Nothing matches that.') : t('poll.allanswered', 'You have answered everything.')}
-          sub={term ? t('poll.nomatch.s', 'Try a shorter word, or clear the filters.') : t('poll.allanswered.s', 'Nothing is waiting on you right now.')} />
+          sub={term ? t('poll.nomatch.s', 'Try a shorter word, or clear the filters.') : t('poll.allanswered.s', 'Nothing is waiting on you right now.')}
+          action={term
+            ? { label: t('poll.nomatch.a', 'Clear the search'), onClick: () => { setQ(''); setFilter('all'); }, icon: X }
+            : { label: t('poll.allanswered.a', 'See the results'), onClick: () => setFilter('closed'), icon: BarChart3 }} />
       ) : (
         <div className="space-y-6">
           {/* Titles, not forms.
@@ -686,7 +691,7 @@ export default function PollsPage() {
           {done.length > 0 && (
             <div>
               <h2 className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-2">
-                {t('poll.page.closed', 'Closed — results')}
+                {t('poll.page.closed', 'Closed, results')}
               </h2>
               <div className="grid sm:grid-cols-2 gap-3">
                 {done.map((p) => <PollTeaser key={p.id} poll={p} />)}

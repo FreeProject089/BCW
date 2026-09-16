@@ -56,8 +56,8 @@ export const GRADIENTS = [
   {
     name: '--grad-text', angle: 110,
     label: { en: 'Gradient headings', fr: 'Titres en dégradé' },
-    affects: { en: 'The landing page’s headline and every .gradient-text — its third stop was a hardcoded amber no theme could reach.',
-               fr: 'Le titre de la page d’accueil et tout .gradient-text — sa troisième butée était un ambre en dur qu’aucun thème n’atteignait.' },
+    affects: { en: 'The landing page’s headline and every .gradient-text, its third stop was a hardcoded amber no theme could reach.',
+               fr: 'Le titre de la page d’accueil et tout .gradient-text, sa troisième butée était un ambre en dur qu’aucun thème n’atteignait.' },
     stops: [{ color: 'var(--primary)' }, { color: 'var(--primary-2)', at: 70 }, { color: '#fbbf24' }],
   },
   {

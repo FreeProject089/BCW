@@ -142,7 +142,7 @@ function EconomyWidget({ onOpenShop }) {
           </div>
         </div>
       </div>
-      <div className="flex items-center justify-between gap-3 flex-wrap px-4 sm:px-5 py-2.5 border-t border-[var(--line)] bg-[var(--surface-2)]/30 text-[11px] text-[var(--muted)]">
+      <div className="flex items-center justify-between gap-3 flex-wrap px-4 sm:px-5 py-2.5 border-t border-[var(--line)] panel-quiet text-[11px] text-[var(--muted)]">
         {/* The explainer is for a first visit, not for every visit, and on a phone it was three
             lines of prose under a card that is otherwise numbers. Kept from sm up. */}
         <span className="hidden sm:inline">{t('eco.w.how', 'XP comes from being active on the Discord servers the bot is in. Every few levels grant {cur} to spend in the shop.').replace('{cur}', cur)}</span>
@@ -179,19 +179,19 @@ function EconomyShop({ view = 'shop', onView }) {
   const errText = (e) => e === 'insufficient' ? t('eco.err.short', 'Not enough {cur}.').replace('{cur}', cur) : e === 'already_owned' ? t('eco.err.owned', 'You already own that one.') : e === 'sold_out' ? t('eco.err.soldout', 'Sold out.') : e === 'economy_off' ? t('eco.err.off', 'The shop is closed right now.')
     : e === 'no_such_user' ? t('eco.err.nouser', 'Nobody by that name, id or e-mail.') : e === 'self' ? t('eco.err.self', 'That is you.') : e === 'gifts_off' ? t('eco.err.giftsoff', 'Gifting is switched off.') : e === 'too_small' ? t('eco.err.toosmall', 'Below the minimum gift.') : e === 'daily_cap' ? t('eco.err.cap', 'Daily gift cap reached.') : e === 'not_giftable' ? t('eco.err.notgiftable', 'That item is bound to its buyer.') : e === 'pending' ? t('eco.err.pending', 'Wait until an admin has handed it out.') : t('common.failed', 'Failed.');
   const buy = async (it) => {
-    const what = it.fulfil === 'site' ? (it.kind === 'badge' ? t('eco.buy.site', 'It is delivered immediately.') : t('eco.buy.sealed', 'It lands sealed in your inventory — reveal the code when you want it, or gift it unopened.')) : t('eco.buy.admin', 'An admin hands it out — it shows as pending until then.');
+    const what = it.fulfil === 'site' ? (it.kind === 'badge' ? t('eco.buy.site', 'It is delivered immediately.') : t('eco.buy.sealed', 'It lands sealed in your inventory, reveal the code when you want it, or gift it unopened.')) : t('eco.buy.admin', 'An admin hands it out, it shows as pending until then.');
     if (!(await dialog.confirm({ title: t('eco.buy.t', 'Buy “{n}”?').replace('{n}', it.name), message: t('eco.buy.m', 'This spends {c} {cur} of your {b}. {what}').replace('{c}', it.cost.toLocaleString()).replace('{cur}', cur).replace('{b}', (d.points || 0).toLocaleString()).replace('{what}', what), okLabel: t('eco.buy.ok', 'Buy') }))) return;
     setBusy(it.id);
     try {
       const r = await api.post('/me/economy/buy', { itemId: it.id });
       const dl = r.delivery || {};
-      toast.success(dl.badge ? t('eco.bought.badge', 'Bought — the “{b}” badge is on your profile.').replace('{b}', dl.badge) : dl.revealed === false ? t('eco.bought.sealed', 'Bought — sealed in your inventory.') : r.status === 'pending' ? t('eco.bought.pending', 'Bought — an admin will hand it out shortly.') : t('eco.bought', 'Bought.'));
+      toast.success(dl.badge ? t('eco.bought.badge', 'Bought, the “{b}” badge is on your profile.').replace('{b}', dl.badge) : dl.revealed === false ? t('eco.bought.sealed', 'Bought, sealed in your inventory.') : r.status === 'pending' ? t('eco.bought.pending', 'Bought, an admin will hand it out shortly.') : t('eco.bought', 'Bought.'));
       load(); onView?.('inventory');
     } catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
   };
   const reveal = async (p) => {
     setBusy(p.id);
-    try { const r = await api.post(`/me/economy/purchases/${p.id}/reveal`); const code = r.delivery?.code; const content = r.delivery?.content; if (code) { copyText(code); toast.success(t('eco.revealed', 'Your code: {c} — copied.').replace('{c}', code)); } else if (content) { copyText(content); toast.success(t('eco.revealed.content', 'Prize revealed — copied.')); } load(); }
+    try { const r = await api.post(`/me/economy/purchases/${p.id}/reveal`); const code = r.delivery?.code; const content = r.delivery?.content; if (code) { copyText(code); toast.success(t('eco.revealed', 'Your code: {c}, copied.').replace('{c}', code)); } else if (content) { copyText(content); toast.success(t('eco.revealed.content', 'Prize revealed, copied.')); } load(); }
     catch (x) { toast.error(errText(x?.data?.error)); } finally { setBusy(''); }
   };
   const giftItem = async (p) => {
@@ -215,7 +215,7 @@ function EconomyShop({ view = 'shop', onView }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40">
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] panel">
           {[['shop', t('eco.tab.shop', 'Shop'), ShoppingBag, d.items?.length || 0], ['inventory', t('eco.tab.inv', 'Inventory'), Backpack, purchases.length], ['history', t('eco.tab.hist', 'History'), Clock, null]].map(([id, label, I, n]) => (
             <button key={id} type="button" onClick={() => onView?.(id)} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
               <I size={14} className={view === id ? 'text-[var(--primary-2)]' : ''} /> {label} {n != null && <span className="text-[11px] text-[var(--faint)]">{n}</span>}
@@ -234,7 +234,7 @@ function EconomyShop({ view = 'shop', onView }) {
               const tag = tagLabel(it);
               return (
                 <Card key={it.id} className={`p-4 flex flex-col gap-3 relative ${it.tag === 'exclusive' ? 'border-amber-400/40' : ''}`}>
-                  {tag && <span className={`absolute -top-2 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${it.tag === 'exclusive' ? 'bg-amber-500/15 border-amber-400/40 text-amber-300' : it.tag === 'limited' ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)]'}`}>{tag}</span>}
+                  {tag && <span className={`absolute -top-2 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${it.tag === 'exclusive' ? 'bg-amber-500/15 border-amber-400/40 text-amber-300' : it.tag === 'limited' ? 'tint-primary b-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)]'}`}>{tag}</span>}
                   <div className="flex items-start gap-3">
                     <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] shrink-0"><K.Icon size={18} className={K.tone} /></span>
                     <div className="min-w-0 flex-1">
@@ -262,7 +262,7 @@ function EconomyShop({ view = 'shop', onView }) {
       ) : view === 'inventory' ? (
         purchases.length ? (
           <div className="space-y-2">
-            {pending > 0 && <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('eco.inv.pending', '{n} still on the way — an admin hands those out.').replace('{n}', pending)}</div>}
+            {pending > 0 && <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Clock size={13} className="text-warning" /> {t('eco.inv.pending', '{n} still on the way, an admin hands those out.').replace('{n}', pending)}</div>}
             {purchases.map((p) => {
               const K = SHOP_KIND[p.kind] || SHOP_KIND.custom; const dl = p.delivery || {};
               return (
@@ -277,8 +277,8 @@ function EconomyShop({ view = 'shop', onView }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
-                    {dl.content && <button type="button" onClick={() => { copyText(dl.content); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40 max-w-[16rem]" title={t('eco.inv.copycontent', 'Copy the prize')}><Gift size={12} className="text-emerald-400 shrink-0" /> <span className="truncate">{dl.content}</span> <Copy size={11} className="opacity-60 shrink-0" /></button>}
+                    {dl.code && <button type="button" onClick={() => { copyText(dl.code); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary" title={t('eco.inv.copy', 'Copy the code')}><Ticket size={12} className="text-emerald-400" /> {dl.code} <Copy size={11} className="opacity-60" /></button>}
+                    {dl.content && <button type="button" onClick={() => { copyText(dl.content); toast.success(t('common.copied', 'Copied.')); }} className="inline-flex items-center gap-1.5 text-xs font-mono px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary max-w-[16rem]" title={t('eco.inv.copycontent', 'Copy the prize')}><Gift size={12} className="text-emerald-400 shrink-0" /> <span className="truncate">{dl.content}</span> <Copy size={11} className="opacity-60 shrink-0" /></button>}
                     {p.canReveal && <Button size="sm" variant="primary" disabled={busy === p.id} onClick={() => reveal(p)} title={t('eco.reveal.h', 'Mints the code now, for you. A revealed item that is not giftable stays yours.')}>{busy === p.id ? <Spinner /> : <><Ticket size={13} /> {t('eco.reveal', 'Reveal')}</>}</Button>}
                     {p.canGift && <Button size="sm" disabled={busy === p.id} onClick={() => giftItem(p)}><Gift size={13} /> {t('eco.giftitem.ok', 'Gift')}</Button>}
                   </div>
@@ -286,14 +286,14 @@ function EconomyShop({ view = 'shop', onView }) {
               );
             })}
           </div>
-        ) : <EmptyState icon={Backpack} title={t('eco.inv.empty.t', 'Nothing here yet')} sub={t('eco.inv.empty.s', 'What you buy in the shop — here or with /shop on Discord — is listed here with its code.')} />
+        ) : <EmptyState icon={Backpack} title={t('eco.inv.empty.t', 'Nothing here yet')} sub={t('eco.inv.empty.s', 'What you buy in the shop, here or with /shop on Discord, is listed here with its code.')} />
       ) : (
         <div className="space-y-4">
           {/* Sending points: to a name, an e-mail, an id or a BC id. */}
           {d.gifts?.enabled !== false && (
             <Card className="p-4">
               <div className="text-sm font-semibold flex items-center gap-2 mb-1"><Gift size={15} className="text-[var(--primary-2)]" /> {t('eco.gift.title', 'Send points to a member')}</div>
-              <p className="text-[11px] text-[var(--faint)] mb-3">{t('eco.gift.h', 'They must have a BetterCommunity account. Minimum {min}{cap} — also possible on Discord with /gift.').replace('{min}', d.gifts?.min || 1).replace('{cap}', d.gifts?.maxPerDay ? t('eco.gift.cap', ', at most {n} per day').replace('{n}', d.gifts.maxPerDay.toLocaleString()) : '')}</p>
+              <p className="text-[11px] text-[var(--faint)] mb-3">{t('eco.gift.h', 'They must have a BetterCommunity account. Minimum {min}{cap}, also possible on Discord with /gift.').replace('{min}', d.gifts?.min || 1).replace('{cap}', d.gifts?.maxPerDay ? t('eco.gift.cap', ', at most {n} per day').replace('{n}', d.gifts.maxPerDay.toLocaleString()) : '')}</p>
               <div className="grid sm:grid-cols-[1.4fr_0.7fr_1.4fr_auto] gap-2 items-end">
                 <Field label={t('eco.gift.to', 'To (name, e-mail, id or BC id)')} className="!mb-0"><Input value={giftTo} onChange={(e) => setGiftTo(e.target.value)} placeholder="BC-XXXX-XXXX" /></Field>
                 <Field label={cur} className="!mb-0"><Input type="number" min={d.gifts?.min || 1} value={giftPts} onChange={(e) => setGiftPts(e.target.value)} /></Field>
@@ -415,7 +415,9 @@ function NotificationsPanel() {
             {!n.readAt && <span className="w-2 h-2 rounded-full bg-[var(--primary)] mt-1.5 shrink-0" />}
             <button className="text-[var(--faint)] hover:text-error opacity-0 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); del(n); }}><Trash2 size={13} /></button>
           </Card>); })}
-      </div> : <EmptyState icon={Bell} title={t('dash.notif.caughtUp', 'All caught up')} sub={t('dash.notif.caughtUpSub', 'You have no notifications.')} />)}
+      </div> : <EmptyState icon={Bell} title={t('dash.notif.caughtUp', 'All caught up')}
+        sub={t('dash.notif.caughtUpSub2', 'Anything that needs you, a repo going online or a report answered, lands here first.')}
+        action={{ label: t('dash.notif.centre', 'Notification centre'), to: '/notifications', icon: Sliders }} />)}
     </div>
   );
 }
@@ -443,7 +445,7 @@ function GettingStarted({ user, items, repos, onSubmit, onDismiss }) {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <div className="font-semibold flex items-center gap-2"><Rocket size={16} className="text-[var(--primary-2)]" /> {t('gs.title', 'Getting started')}</div>
-          <div className="text-xs text-[var(--muted)] mt-0.5">{t('gs.sub', "You're already {pct}% set up — finish the last steps to get the most out of it.").replace('{pct}', pct)}</div>
+          <div className="text-xs text-[var(--muted)] mt-0.5">{t('gs.sub', "You're already {pct}% set up, finish the last steps to get the most out of it.").replace('{pct}', pct)}</div>
         </div>
         <button onClick={onDismiss} className="text-[var(--faint)] hover:text-[var(--text)] p-1 shrink-0" title={t('gs.dismiss', 'Dismiss')}><X size={15} /></button>
       </div>
@@ -477,7 +479,7 @@ function TwoFactorNudge() {
   if (!user || user.totpEnabled || dismissed) return null;
   const hide = () => { setDismissed(true); try { localStorage.setItem(TWOFA_NUDGE_KEY, '1'); } catch {} };
   return (
-    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent border-[var(--ring)]">
+    <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent border-[var(--ring)]">
       <span className="grid place-items-center w-10 h-10 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] shrink-0"><ShieldCheck size={18} className="text-[var(--primary-2)]" /></span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold">{t('twofa.nudge.title', 'Don’t risk losing access to your account')}</div>
@@ -627,23 +629,23 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
             : ok ? t('dash.pay.ok.t', 'Payment confirmed') : failed ? t('dash.pay.fail.t', 'Payment failed') : t('dash.pay.cancel.t', 'Checkout cancelled')}
         </div>
         <p className="text-sm text-[var(--muted)] mt-1.5 max-w-xs mx-auto" aria-live="polite">
-          {confirming ? t('dash.pay.confirm.m', 'Stripe is telling us the payment went through. This usually takes a few seconds — please keep this page open.')
+          {confirming ? t('dash.pay.confirm.m', 'Stripe is telling us the payment went through. This usually takes a few seconds, please keep this page open.')
             : confirm === 'timeout' ? t('dash.pay.timeout.m', 'The confirmation is taking longer than usual. Nothing is lost: if the payment was taken, your purchase appears in “What you bought” within a few minutes, and you will get a notification. If it was not, no charge was made.')
-            : confirm === 'failed' ? t('dash.pay.expired.m', 'The checkout expired before it was paid — no charge was made. You can try again anytime.')
-            : confirm === 'delivered' ? t('dash.pay.delivered.m', 'Delivered. Here is what you bought — it also stays in “What you bought”, below.')
+            : confirm === 'failed' ? t('dash.pay.expired.m', 'The checkout expired before it was paid, no charge was made. You can try again anytime.')
+            : confirm === 'delivered' ? t('dash.pay.delivered.m', 'Delivered. Here is what you bought, it also stays in “What you bought”, below.')
             : ok
-            ? (kind === 'market' ? t('dash.pay.market.m', 'Your purchase is in “What you bought”, below — with the key or content it came with.') : kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned — it'll be online shortly."))
-            : failed ? t('dash.pay.fail.m', 'The payment could not be completed — no charge was made. Check your card details and try again.')
+            ? (kind === 'market' ? t('dash.pay.market.m', 'Your purchase is in “What you bought”, below, with the key or content it came with.') : kind === 'feature' ? t('dash.pay.feature.m', 'Your repo is now featured on the public listing.') : t('dash.pay.hosting.m', "Your repo is being provisioned, it'll be online shortly."))
+            : failed ? t('dash.pay.fail.m', 'The payment could not be completed, no charge was made. Check your card details and try again.')
             : t('dash.pay.cancel.m', 'No charge was made. You can try again anytime.')}
         </p>
         {confirm === 'delivered' && purchase && (() => {
           const d = purchase.delivery && typeof purchase.delivery === 'object' ? purchase.delivery : {};
           const secret = d.key || d.content || '';
           return (
-            <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-start text-sm max-w-xs mx-auto space-y-2">
+            <div className="mt-4 rounded-xl border border-[var(--line)] panel px-4 py-3 text-start text-sm max-w-xs mx-auto space-y-2">
               <div className="font-medium truncate">{purchase.name || t('dash.pay.marketitem', 'Marketplace purchase')}</div>
               {d.error
-                ? <div className="text-xs text-error flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project — your payment is on record.')}</div>
+                ? <div className="text-xs text-error flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project, your payment is on record.')}</div>
                 : secret ? (<>
                   {/* Covered until asked for, like "What you bought": the buyer may not be alone in front of the screen. */}
                   <div className="flex items-center gap-1.5">
@@ -654,7 +656,7 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
                 </>)
                 : d.role ? <div className="text-xs text-[var(--muted)]">{t('mkme.role', 'Delivered as a Discord role.')}</div>
                 : d.url ? <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline">{t('dash.pay.openlink', 'Open the link you bought')}</a>
-                : d.fileKey ? <div className="text-xs text-[var(--muted)]">{t('dash.pay.file', 'Your file is ready — download it from “What you bought”, below.')}</div>
+                : d.fileKey ? <div className="text-xs text-[var(--muted)]">{t('dash.pay.file', 'Your file is ready, download it from “What you bought”, below.')}</div>
                 : <div className="text-xs text-[var(--faint)]">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>}
               {purchase.redeemUrl && <a href={purchase.redeemUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--primary-2)] hover:underline block">{t('dash.pay.redeem', 'Where to use it')}</a>}
               {purchase.redeemNote && <div className="text-[11px] text-[var(--faint)]">{purchase.redeemNote}</div>}
@@ -666,7 +668,7 @@ function PaymentResultModal({ result, onClose, onDelivered }) {
           const money2 = (c) => { const cur = (inv?.currency || pay?.currency || 'usd').toUpperCase(); const sym = cur === 'USD' ? '$' : cur === 'EUR' ? '€' : cur === 'GBP' ? '£' : ''; return sym ? `${sym}${(c / 100).toFixed(2)}` : `${(c / 100).toFixed(2)} ${cur}`; };
           const single = pay?.description || (kind === 'market' ? t('dash.pay.marketitem', 'Marketplace purchase') : kind === 'feature' ? t('dash.pay.boost', 'Repo boost') : t('dash.pay.hostingitem', 'Repo hosting'));
           return (
-          <div className="mt-4 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/50 px-4 py-3 text-start text-sm max-w-xs mx-auto">
+          <div className="mt-4 rounded-xl border border-[var(--line)] panel px-4 py-3 text-start text-sm max-w-xs mx-auto">
             {inv?.number && (
               <div className="flex items-center justify-between gap-3 mb-1.5 pb-1.5 border-b border-[var(--line)]">
                 <span className="text-[var(--faint)]">{t('dash.pay.invoice', 'Invoice №')}</span>
@@ -765,7 +767,7 @@ function MyPurchases({ refreshKey = 0 }) {
               )}
               {/* A role has nothing to reveal — saying so beats a row that looks broken. */}
               {failed
-                ? <div className="text-xs text-error mt-1.5 flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project — your payment is on record.')}</div>
+                ? <div className="text-xs text-error mt-1.5 flex items-start gap-1.5"><AlertTriangle size={13} className="shrink-0 mt-px" /> {t('mkme.failed', 'Paid, but delivery did not complete. Contact the project, your payment is on record.')}</div>
                 : !secret && role ? <div className="text-xs text-[var(--muted)] mt-1">{t('mkme.role', 'Delivered as a Discord role.')}</div>
                 : !secret ? <div className="text-xs text-[var(--faint)] mt-1">{t('mkme.nothing', 'Nothing to reveal for this one.')}</div>
                 : null}
@@ -774,6 +776,24 @@ function MyPurchases({ refreshKey = 0 }) {
         })}
       </div>
     </Card>
+  );
+}
+
+// One heading per block, and the block does only what the heading says.
+//
+// The overview used to be a stack with nothing naming any of it: five stat cards (of which
+// three were a breakdown of the other two), a shortcut row, an economy card and the
+// notifications, in an order that answered no question. The headings are the fix — you
+// cannot leave a block unnamed and still pretend it has one job.
+function OverviewSection({ icon: Icon, title, sub, children }) {
+  return (
+    <section className="mb-8">
+      <h2 className={`font-semibold flex items-center gap-2 ${sub ? 'mb-1' : 'mb-3'}`}>
+        <Icon size={16} className="text-[var(--primary-2)]" /> {title}
+      </h2>
+      {sub && <p className="text-xs text-[var(--muted)] mb-3">{sub}</p>}
+      {children}
+    </section>
   );
 }
 
@@ -826,12 +846,28 @@ export function Dashboard() {
     (!iq || it.name?.toLowerCase().includes(iq))
     && (itemKind === 'all' || it.kind === itemKind)
     && (itemStatus === 'all' || (itemStatus === 'deleting' ? !!it.deleteAt : it.status === itemStatus)));
-  const stats = [
-    { icon: Package, label: t('dash.items', 'Items'), value: list.length },
-    { icon: CheckCircle2, label: t('dash.published', 'Published'), value: list.filter((i) => i.status === 'PUBLISHED').length, tone: 'text-success' },
-    { icon: Clock, label: t('dash.pending', 'Pending'), value: list.filter((i) => i.status === 'PENDING').length, tone: 'text-warning' },
-    { icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length },
-    { icon: Star, label: t('dash.featured', 'Featured'), value: rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length, tone: 'text-warning' },
+  // Two things you own, not five numbers. "Published" and "Pending" were separate cards
+  // sitting next to "Items", which is their sum — three cards for one fact. They are the
+  // breakdown OF the items card, so they live inside it, in a line you read after the number
+  // rather than beside it. Same for "Featured" and the repos. Each card is now also a link to
+  // the tab that number belongs to: the old ones were a dead end.
+  const published = list.filter((i) => i.status === 'PUBLISHED').length;
+  const pending = list.filter((i) => i.status === 'PENDING').length;
+  const featured = rlist.filter((r) => r.featuredUntil && new Date(r.featuredUntil) > new Date()).length;
+  const owned = [
+    {
+      icon: Package, label: t('dash.items', 'Items'), value: list.length, to: '/dashboard?s=items',
+      detail: list.length
+        ? t('dash.own.items', '{p} published, {n} waiting for review').replace('{p}', published).replace('{n}', pending)
+        : t('dash.own.items0', 'Apps, plugins, themes and presets you submit'),
+      warn: pending > 0,
+    },
+    {
+      icon: Server, label: t('dash.repos', 'Repos'), value: rlist.length, to: '/dashboard?s=repos',
+      detail: rlist.length
+        ? (featured ? t('dash.own.repos', '{n} featured right now').replace('{n}', featured) : t('dash.own.repos0', 'None featured right now'))
+        : t('dash.own.repos1', 'Where BMM users download your files from'),
+    },
   ];
   // How many polls are still waiting on this person, for the sidebar badge. `.catch` because
   // a badge is not worth taking the dashboard down for, and a missing number simply hides it.
@@ -897,8 +933,12 @@ export function Dashboard() {
                 its own mb-6/mb-8 and this one carried nothing, so on the dashboard it sat
                 flush against the checklist below it. A wrapping <div className="mb-6"> would
                 have left 24px of empty margin on the (common) days the card renders null. */}
+            {/* ── 1. What is waiting on this person ───────────────────────────────
+                A pending ownership transfer is a DECISION with a deadline, the checklist is
+                the way in, and the notifications are everything else. They go first, above
+                anything that is merely true. Each of the first two hides itself when it has
+                nothing to say, so on an ordinary day this section IS the notifications. */}
             <TransfersCard className="mb-6" />
-            <MyPurchases refreshKey={purchasesKey} />
             {/* Goal-gradient onboarding: the checklist owns first-run guidance (incl. 2FA);
                 once it's done or dismissed, fall back to the standalone 2FA nudge. */}
             {(() => {
@@ -907,21 +947,55 @@ export function Dashboard() {
                 ? <GettingStarted user={user} items={list} repos={rlist} onSubmit={() => nav('/submit')} onDismiss={() => { setGsDismissed(true); try { localStorage.setItem(GS_DISMISS_KEY, '1'); } catch {} }} />
                 : <TwoFactorNudge />;
             })()}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-              {actions.map((a) => (
-                <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-start flex items-center gap-2.5">
-                  <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2"><a.icon size={16} className="text-white" /></span>
-                  <span className="text-sm font-medium">{a.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-              {stats.map((st) => <Card key={st.label} className="p-5"><st.icon size={18} className={st.tone || 'text-[var(--primary-2)]'} />
-                <div className="text-3xl font-bold mt-3">{st.value}</div><div className="text-xs text-[var(--muted)] mt-0.5">{st.label}</div></Card>)}
-            </div>
-            {/* Under the content counts, not above: the site's own numbers first, Discord's second. */}
-            <EconomyWidget onOpenShop={(v) => { setEcoView(v); nav('/dashboard?s=economy'); }} />
-            <NotificationsPanel />
+            {/* NotificationsPanel writes its own heading (it needs the unread badge and the
+                mark-all / clear / centre controls beside it), so it is not wrapped. */}
+            <div className="mb-8"><NotificationsPanel /></div>
+
+            {/* ── 2. What they own ─────────────────────────────────────────────── */}
+            <OverviewSection icon={Boxes} title={t('dash.sec.own', 'What you own')} sub={t('dash.sec.own.s', 'Open one to manage it.')}>
+              <div className="grid grid-cols-2 gap-4">
+                {owned.map((o) => (
+                  <Link key={o.label} to={o.to} className="card card-hover p-5 block">
+                    <div className="flex items-center justify-between gap-2">
+                      <o.icon size={18} className="text-[var(--primary-2)]" />
+                      <ArrowRight size={14} className="text-[var(--faint)]" />
+                    </div>
+                    <div className="text-3xl font-bold mt-3 tabular-nums">{o.value}</div>
+                    <div className="text-xs font-medium mt-0.5">{o.label}</div>
+                    <div className={`text-[11px] mt-1 ${o.warn ? 'text-warning' : 'text-[var(--muted)]'}`}>{o.detail}</div>
+                  </Link>
+                ))}
+              </div>
+            </OverviewSection>
+
+            {/* ── 3. Shortcuts ─────────────────────────────────────────────────── */}
+            <OverviewSection icon={Zap} title={t('dash.sec.do', 'Start something')}>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {actions.map((a) => (
+                  <button key={a.label} onClick={() => a.onClick ? a.onClick() : nav(a.to)} className="card card-hover p-4 text-start flex items-center gap-2.5">
+                    <span className="grid place-items-center w-9 h-9 rounded-lg bg-gradient-to-br from-brand to-brand-2 shrink-0"><a.icon size={16} className="text-white" /></span>
+                    <span className="text-sm font-medium min-w-0">{a.label}</span>
+                  </button>
+                ))}
+              </div>
+            </OverviewSection>
+
+            {/* ── 4. The quiet numbers ─────────────────────────────────────────────
+                A record, not a task: what Discord has earned you and what you have bought.
+                Both hide themselves when there is nothing.
+
+                The condition below is EconomyWidget's own, re-evaluated on the copy of
+                /me/economy this page already holds. An OverviewSection renders its heading
+                unconditionally, so wrapping a self-hiding child in one is exactly how you end
+                up with a title over nothing. */}
+            {!!ecoMe?.enabled && !(ecoMe.level === 0 && ecoMe.xp === 0) && (
+              <OverviewSection icon={Coins} title={t('dash.sec.eco', 'Your Discord level')} sub={t('dash.sec.eco.s', 'Earned by being active on the servers the bot is in.')}>
+                <EconomyWidget onOpenShop={(v) => { setEcoView(v); nav('/dashboard?s=economy'); }} />
+              </OverviewSection>
+            )}
+            {/* MyPurchases titles its own card and renders null when there is nothing bought,
+                so it needs no heading from here. */}
+            <MyPurchases refreshKey={purchasesKey} />
           </>}
 
           {s === 'items' && <div>
@@ -963,7 +1037,7 @@ export function Dashboard() {
                         </button>
                       );
                     })()}
-                    {it.status === 'SUSPENDED' && <div className="text-[11px] text-error mt-0.5">{t('dash.suspendednote', 'Suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.')}</div>}
+                    {it.status === 'SUSPENDED' && <div className="text-[11px] text-error mt-0.5">{t('dash.suspendednote', 'Suspended by an admin, you can’t edit or resubmit it. Contact support to appeal.')}</div>}
                   </div>
                   {it.deleteAt
                     ? <><Badge tone="red"><Trash2 size={11} /> {t('dash.deletingin', 'Deleting in')} {fmtRemaining(it.deleteAt)}</Badge>
@@ -1040,7 +1114,7 @@ function MyData() {
       toast.success(t('data.done', 'Downloaded.'));
     } catch (x) {
       toast.error(x?.status === 429
-        ? t('data.rate', 'A backup was taken recently — try again in a little while.')
+        ? t('data.rate', 'A backup was taken recently, try again in a little while.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(''); }
   };
@@ -1051,7 +1125,7 @@ function MyData() {
   const Check = ({ k, label, hint, icon }) => (
     <label className={`flex items-start gap-2.5 cursor-pointer rounded-lg border p-3 transition-colors ${
       want[k]
-        ? 'border-[var(--primary)]/45 bg-[var(--primary)]/[0.06]'
+        ? 'b-primary bg-[var(--primary)]/[0.06]'
         : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]'
     }`}>
       <input type="checkbox" className="mt-0.5 shrink-0" checked={want[k]}
@@ -1114,7 +1188,7 @@ function MyData() {
               file has nothing to put in the archive, and an empty folder reads as a fault. */}
           {want.catalog && data?.items?.some((i) => !i.hasFile) && (
             <p className="text-[11px] text-[var(--faint)] mt-2">
-              {t('data.linkonly', '{n} of your items link to a file hosted elsewhere — the archive carries their details, not the file.')
+              {t('data.linkonly', '{n} of your items link to a file hosted elsewhere, the archive carries their details, not the file.')
                 .replace('{n}', String(data.items.filter((i) => !i.hasFile).length))}
             </p>
           )}
@@ -1130,7 +1204,7 @@ function MyData() {
         <Card className="p-5">
           <div className="font-semibold mb-1">{t('data.one', 'Get one item back')}</div>
           <p className="text-sm text-[var(--muted)] mb-3">
-            {t('data.one.s', 'The file you uploaded, whatever the item’s status — including while it waits for review, or after it was suspended.')}
+            {t('data.one.s', 'The file you uploaded, whatever the item’s status, including while it waits for review, or after it was suspended.')}
           </p>
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-80 overflow-y-auto">
             {data.items.map((it) => (
@@ -1197,7 +1271,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
     catch { toast.error(t('ie.nopayload', 'No downloadable payload.')); }
   };
   const save = async () => {
-    if (file && noSubmitSpace) return toast.error(t('sub.tempfull', 'Submission storage is full right now — try again once moderation clears space.'));
+    if (file && noSubmitSpace) return toast.error(t('sub.tempfull', 'Submission storage is full right now, try again once moderation clears space.'));
     let meta; try { meta = JSON.parse(form.meta || '{}'); } catch { return toast.error(t('ie.metajson', 'Metadata must be valid JSON.')); }
     setBusy(true);
     try {
@@ -1208,14 +1282,14 @@ function ItemEditModal({ open, item, onClose, onDone }) {
       // the new file only takes effect once the webhook confirms it's paid.
       if (res?.checkoutUrl) { window.location.href = res.checkoutUrl; return; }
       if (res?.validation && res.validation.valid === false) toast.error(t('ie.savefail', 'Saved, but the new .bmmplug failed validation ({reason}). A moderator will review.').replace('{reason}', res.validation.reason));
-      else if (res?.validation?.valid) toast.success(t('ie.saveverified', 'Saved — plugin re-verified. Pending admin re-approval.'));
-      else toast.success(t('ie.savepending', 'Saved — changes are pending admin re-approval.'));
+      else if (res?.validation?.valid) toast.success(t('ie.saveverified', 'Saved, plugin re-verified. Pending admin re-approval.'));
+      else toast.success(t('ie.savepending', 'Saved, changes are pending admin re-approval.'));
       onClose(); onDone();
-    } catch (x) { toast.error(x.data?.error === 'item_suspended' ? t('ie.suspended', 'This item was suspended by an admin — you can’t edit or resubmit it. Contact support to appeal.') : (x.data?.error || x.message || t('ie.savefail2', 'Failed to save.'))); } finally { setBusy(false); }
+    } catch (x) { toast.error(x.data?.error === 'item_suspended' ? t('ie.suspended', 'This item was suspended by an admin, you can’t edit or resubmit it. Contact support to appeal.') : (x.data?.error || x.message || t('ie.savefail2', 'Failed to save.'))); } finally { setBusy(false); }
   };
   const doDelete = async () => {
     setBusy(true);
-    try { await api.post(`/catalog/${item.id}/delete`); toast.success(t('ie.scheduled', 'Scheduled for deletion in 72h. Files are kept until then — you can cancel any time.')); onClose(); onDone(); }
+    try { await api.post(`/catalog/${item.id}/delete`); toast.success(t('ie.scheduled', 'Scheduled for deletion in 72h. Files are kept until then, you can cancel any time.')); onClose(); onDone(); }
     catch (x) { toast.error(x.data?.error || t('ie.delfail', 'Failed to delete.')); } finally { setBusy(false); }
   };
   const cancelDeletion = async () => {
@@ -1225,7 +1299,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
   };
   const cancelHosting = async () => {
     setBusy(true);
-    try { await api.post(`/catalog/${item.id}/hosting/cancel`); toast.success(t('ie.hostcancelled', 'Hosting subscription cancelled — the item is now hidden.')); onClose(); onDone(); }
+    try { await api.post(`/catalog/${item.id}/hosting/cancel`); toast.success(t('ie.hostcancelled', 'Hosting subscription cancelled, the item is now hidden.')); onClose(); onDone(); }
     catch (x) { toast.error(x.data?.error || t('ie.hostcancelfail', 'Failed to cancel.')); } finally { setBusy(false); }
   };
 
@@ -1259,7 +1333,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
       {item.deleteAt
         ? <div className="rounded-lg border border-error-border bg-error-bg p-2.5 text-xs text-error flex items-start gap-2 mb-4">
             <Trash2 size={13} className="shrink-0 mt-0.5" />
-            <span>{t('ie.notice.del1', 'Scheduled for deletion in')} <b>{fmtRemaining(item.deleteAt)}</b>. {t('ie.notice.del2', 'The files are kept until then — cancel below to keep this item.')}</span>
+            <span>{t('ie.notice.del1', 'Scheduled for deletion in')} <b>{fmtRemaining(item.deleteAt)}</b>. {t('ie.notice.del2', 'The files are kept until then, cancel below to keep this item.')}</span>
           </div>
         : <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)] flex items-start gap-2 mb-4">
             <Lock size={13} className="text-[var(--primary-2)] shrink-0 mt-0.5" />
@@ -1269,7 +1343,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
       {isPlugin && v && (
         <div className={`rounded-lg p-2.5 text-xs mb-4 flex items-center gap-2 border ${v.valid ? 'bg-success-bg border-success-border text-success' : 'bg-error-bg border-error-border text-error'}`}>
           {v.valid ? <BadgeCheck size={14} /> : <XCircle size={14} />}
-          <span className="flex-1">{v.valid ? t('ie.pkgok', 'Current package verified — checksums match.') : t('ie.pkgbad', 'Current package invalid: {reason}').replace('{reason}', v.reason)}</span>
+          <span className="flex-1">{v.valid ? t('ie.pkgok', 'Current package verified, checksums match.') : t('ie.pkgbad', 'Current package invalid: {reason}').replace('{reason}', v.reason)}</span>
           {v.sha256 && <code className="text-[10px] text-[var(--faint)]">{v.sha256.slice(0, 12)}…</code>}
         </div>
       )}
@@ -1283,7 +1357,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
 
       {ourHosted && (
         <div className="mt-3">
-          <Field label={t('ie.replace', 'Replace file')} hint={t('ie.replace.hint2', 'Optional — uploads a new file, re-verified before it can go live. Billed by size past the free tier.')}>
+          <Field label={t('ie.replace', 'Replace file')} hint={t('ie.replace.hint2', 'Optional, uploads a new file, re-verified before it can go live. Billed by size past the free tier.')}>
             <Input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
           </Field>
           {file && <div className="mt-1.5 text-xs text-[var(--primary-2)] flex items-center gap-1.5"><Upload size={12} /> {file.name} {t('ie.replaces', '— replaces the current file and is re-validated on save.')}</div>}
@@ -1291,7 +1365,7 @@ function ItemEditModal({ open, item, onClose, onDone }) {
             <div className="mt-1.5 text-xs text-error flex items-center gap-1.5"><AlertTriangle size={12} /> {t('sub.nospace', 'Submission storage is full right now — every upload is held for moderation and there is no room left. Try again later, or self-host and paste a URL above instead.')}</div>
           )}
           {file && quote && !quote.free && quote.monthlyCents > 0 && (
-            <div className="mt-1.5 text-xs text-warning flex items-center gap-1.5"><Receipt size={12} /> {t('ie.replacecost', 'This size is billed: {price}/mo — you\'ll be sent to checkout after saving.').replace('{price}', `$${(quote.monthlyCents / 100).toFixed(2)}`)}</div>
+            <div className="mt-1.5 text-xs text-warning flex items-center gap-1.5"><Receipt size={12} /> {t('ie.replacecost', 'This size is billed: {price}/mo, you\'ll be sent to checkout after saving.').replace('{price}', `$${(quote.monthlyCents / 100).toFixed(2)}`)}</div>
           )}
         </div>
       )}
@@ -1346,7 +1420,8 @@ function MyPolls() {
 
   if (!open.length && !answered.length && !votes.length) {
     return <EmptyState icon={BarChart3} title={t('dash.polls.none', 'No poll running')}
-      sub={t('dash.polls.none.s', 'When there is a question about where this goes next, it shows up here.')} />;
+      sub={t('dash.polls.none.s', 'When there is a question about where this goes next, it shows up here.')}
+      action={{ label: t('dash.polls.a', 'See the polls page'), to: '/polls', icon: BarChart3 }} />;
   }
 
   return (

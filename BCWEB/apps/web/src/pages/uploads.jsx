@@ -76,7 +76,7 @@ export function UploadProvider({ children }) {
           // network_error / status 0 = the browser's direct PUT was blocked (CORS /
           // offline / storage down) — spell that out so the copied log is actionable.
           const raw = String(e?.data?.error || e?.message || 'failed');
-          const reason = (raw === 'network_error' || e?.status === 0) ? 'network/CORS error — the upload was blocked before reaching storage' : raw.slice(0, 140);
+          const reason = (raw === 'network_error' || e?.status === 0) ? 'network/CORS error, the upload was blocked before reaching storage' : raw.slice(0, 140);
           if (failedFiles.length < 200) failedFiles.push({ name: (f.webkitRelativePath || f.name || '?'), reason, status: e?.status });
         }
         done++;
@@ -120,7 +120,7 @@ export function UploadProvider({ children }) {
                style={{ background: 'var(--bg-solid)', boxShadow: '0 -1px 0 0 var(--line) inset' }}>
             <UploadCloud size={15} className="text-[var(--primary-2)]" />
             <span className="text-sm font-semibold flex-1">
-              {active ? t('up.uploadingactive', 'Uploading — {n} active').replace('{n}', active) : t('up.uploads', 'Uploads')}
+              {active ? t('up.uploadingactive', 'Uploading: {n} active').replace('{n}', active) : t('up.uploads', 'Uploads')}
             </span>
             <button onClick={() => setMinimized((v) => !v)} className="text-[var(--faint)] hover:text-[var(--text)] p-0.5" title={minimized ? t('up.expand', 'Expand') : t('up.minimize', 'Minimize')}>
               {minimized ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
@@ -162,7 +162,7 @@ export function UploadProvider({ children }) {
                     {j.failedFiles?.length > 0 && (
                       <details className="mt-1.5">
                         <summary className="cursor-pointer text-[11px] text-warning hover:text-warning select-none">
-                          {t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}
+                          {t('up.failedfiles', '{n} failed file(s), view list').replace('{n}', j.failedFiles.length)}
                         </summary>
                         <div className="mt-1 max-h-36 overflow-auto scroll-thin rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
                           {j.failedFiles.map((ff, i) => (
@@ -182,7 +182,7 @@ export function UploadProvider({ children }) {
                             ...j.failedFiles.map((ff) => `FAILED\t${ff.name}\t${ff.reason}${ff.status != null ? `\t[status ${ff.status}]` : ''}`),
                           ].join('\n');
                           const ok = await copyText(log);
-                          ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy — select the list manually.'));
+                          ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy, select the list manually.'));
                         }}
                           className="press-sm mt-1.5 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline underline-offset-2">{t('up.copylog', 'Copy error log')}</button>
                       </details>

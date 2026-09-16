@@ -20,7 +20,7 @@ export function AdminMyo() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4 flex-wrap">
-        <h2 className="font-semibold flex items-center gap-2 me-2"><Wand2 size={16} className="text-[var(--primary-2)]" /> {t('amyo.title', 'Make Your Own — commissions')}</h2>
+        <h2 className="font-semibold flex items-center gap-2 me-2"><Wand2 size={16} className="text-[var(--primary-2)]" /> {t('amyo.title', 'Make Your Own, commissions')}</h2>
         <div className="inline-flex rounded-[12px] bg-[var(--surface-2)] p-0.5">
           {[['requests', t('amyo.tab.requests', 'Requests')], ['products', t('amyo.tab.products', 'Catalog')], ['settings', t('amyo.tab.settings', 'Settings')]].map(([k, l]) => (
             <button key={k} onClick={() => setView(k)} className={`px-3 py-1.5 rounded-[10px] text-sm transition ${view === k ? 'bg-[var(--bg-solid)] text-[var(--primary)] font-medium shadow-sm' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{l}</button>
@@ -68,7 +68,7 @@ function AdminMyoRequests() {
     try { await api.put(`/admin/myo/requests/${r.id}/archive`, { archived }); reload(); toast.success(archived ? t('amyo.archived', 'Archived.') : t('amyo.restored', 'Back in the queue.')); }
     catch (x) {
       toast.error(x.data?.error === 'still_active'
-        ? t('amyo.stillactive', 'Still in progress — deliver, close or cancel it first.')
+        ? t('amyo.stillactive', 'Still in progress, deliver, close or cancel it first.')
         : t('common.failed', 'Failed.'));
     } finally { setBusyId(null); }
   };
@@ -162,7 +162,7 @@ function AdminMyoRequests() {
                 </Button>
               ) : (
                 <Button size="sm" variant="ghost" disabled={busyId === r.id || !(ARCHIVABLE.includes(r.status) || r.assignedToId)}
-                  title={(ARCHIVABLE.includes(r.status) || r.assignedToId) ? t('amyo.archive', 'Archive') : t('amyo.stillactive', 'Still in progress — deliver, close or cancel it first.')}
+                  title={(ARCHIVABLE.includes(r.status) || r.assignedToId) ? t('amyo.archive', 'Archive') : t('amyo.stillactive', 'Still in progress, deliver, close or cancel it first.')}
                   onClick={() => setArchived(r, true)}>
                   <Archive size={13} />
                 </Button>
@@ -188,7 +188,7 @@ function AdminMyoProducts() {
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-        <p className="text-sm text-[var(--muted)] flex-1 min-w-[220px]">{t('amyo.p.sub', 'The cards shown on /myo. Prices here are display-only "from" signals — the binding price is your per-request quote.')}</p>
+        <p className="text-sm text-[var(--muted)] flex-1 min-w-[220px]">{t('amyo.p.sub', 'The cards shown on /myo. Prices here are display-only "from" signals, the binding price is your per-request quote.')}</p>
         <Button size="sm" variant="primary" onClick={() => setEditing({})}><Plus size={14} /> {t('amyo.p.new', 'New product')}</Button>
       </div>
       {loading ? <Loading /> : rows.length ? <div className="space-y-2">
@@ -295,7 +295,7 @@ function AdminMyoSettings() {
           today's number is a guess you find out about through a complaint. */}
       <div className="pt-3 border-t border-[var(--line)]">
         <div className="flex items-center gap-2 text-sm font-medium"><Users size={14} className="text-[var(--primary-2)]" /> {t('amyo.s.caps', 'How much you take on at once')}</div>
-        <p className="text-xs text-[var(--faint)] mt-1 mb-3">{t('amyo.s.capssub', 'When a limit is reached the form refuses new requests — before the payment, never after. 0 means no limit.')}</p>
+        <p className="text-xs text-[var(--faint)] mt-1 mb-3">{t('amyo.s.capssub', 'When a limit is reached the form refuses new requests, before the payment, never after. 0 means no limit.')}</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('amyo.s.maxurgent', 'Urgent at once')} hint={data?.load ? t('amyo.s.now', 'now: {n}').replace('{n}', data.load.openUrgent) : undefined}>
             <Input type="number" min="0" value={f.maxOpenUrgent} onChange={(e) => setF((s) => ({ ...s, maxOpenUrgent: e.target.value }))} />
@@ -305,7 +305,7 @@ function AdminMyoSettings() {
           </Field>
         </div>
         <div className="mt-3">
-          <Field label={t('amyo.s.maxuser', 'Open requests per customer')} hint={t('amyo.s.maxuser.h', 'Counts their unpaid ones too — otherwise one person can hold the last slot for free.')}>
+          <Field label={t('amyo.s.maxuser', 'Open requests per customer')} hint={t('amyo.s.maxuser.h', 'Counts their unpaid ones too, otherwise one person can hold the last slot for free.')}>
             <Input type="number" min="0" className="!w-32" value={f.maxOpenPerUser} onChange={(e) => setF((s) => ({ ...s, maxOpenPerUser: e.target.value }))} />
           </Field>
         </div>

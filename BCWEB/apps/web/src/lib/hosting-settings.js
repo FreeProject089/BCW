@@ -52,6 +52,8 @@ export const HOSTING_SETTINGS_GROUPS = [
     ['teams.maxOwned', 'Teams an account may own', 'How many teams one account can create as owner before it has to buy a slot. Staff are never capped. Default 3.', 'number'],
     ['teams.slotPriceCents', 'Extra team slot price (¢, one-off)', 'What one more team costs, paid once through Stripe; the slot is permanent for that account. Default 500 (5.00). Under 50 falls back to the default.', 'number'],
     ['teams.slotCurrency', 'Extra team slot currency', 'Three-letter Stripe currency for the slot price (eur, usd, chf…). Default eur.', 'text'],
+    ['teams.inviteMaxTemporary', 'Temporary invite links per team', 'How many time-limited invitation links one team may hold open at once, on top of its single permanent link. Only links that still work count, so an expired one never holds a slot. 0 = temporary links off, permanent only. Default 5.', 'number'],
+    ['teams.inviteLifetimeDays', 'Invite link lifetimes (days)', 'The lifetimes a temporary invitation link may be given, as a comma-separated list of days: 1, 7, 30. The team page offers exactly these and the server refuses anything else, so a forged request cannot buy itself a year. The permanent link is separate and never expires. Empty falls back to 1, 7, 30.', 'text'],
     ['pricing.consolidationDiscount', 'Pool consolidation discount (fraction)', 'When an owner consolidates a merged pool\'s several subscriptions into one bigger plan, this fraction (0–0.9, e.g. 0.15 = 15% off) is taken off the single-plan price. Shown as the "consolidation savings" quote on their pools.', 'number'],
   ] },
   { title: 'Feature flags', gk: 'features', icon: 'Sliders', keys: [

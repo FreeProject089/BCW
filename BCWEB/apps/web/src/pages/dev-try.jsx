@@ -99,7 +99,7 @@ export default function DevTryIt() {
           {state === 'running' ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />}
           {t('dtry.run', 'Run it')}
         </button>
-        <span className="text-[11px] text-[var(--muted)]">{t('dtry.note', 'Public endpoint — no key, no account.')}</span>
+        <span className="text-[11px] text-[var(--muted)]">{t('dtry.note', 'Public endpoint, no key, no account.')}</span>
         {state && state !== 'running' && !state.error && (
           <span className="ms-auto text-[11px] tabular-nums text-[var(--faint)]">
             <span className={state.status < 300 ? 'text-success font-semibold' : 'text-error font-semibold'}>{state.status}</span> · {state.ms} ms

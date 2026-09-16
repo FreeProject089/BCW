@@ -67,7 +67,7 @@ export default function DiffMergeModal({ open, onClose, base, mine, theirs, labe
             const show = expanded[i] || !long;
             const shown = show ? h.lines : [...h.lines.slice(0, 2), '…', ...h.lines.slice(-2)];
             return (
-              <div key={i} className="bg-[var(--surface)]/40">
+              <div key={i} className="panel-quiet">
                 {long && (
                   <button onClick={() => setExpanded((e) => ({ ...e, [i]: !e[i] }))} className="w-full flex items-center gap-1 px-2 py-1 text-[11px] text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]">
                     {show ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {show ? 'collapse' : `${h.lines.length} unchanged lines`}
@@ -121,5 +121,5 @@ function ChoiceBtn({ active, onClick, tone, icon: Icon, children }) {
 }
 function SideHdr({ tone, label }) {
   const c = tone === 'emerald' ? 'text-success' : tone === 'sky' ? 'text-info' : 'text-[var(--muted)]';
-  return <div className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${c} bg-[var(--surface-2)]/50`}>{label}</div>;
+  return <div className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${c} panel`}>{label}</div>;
 }

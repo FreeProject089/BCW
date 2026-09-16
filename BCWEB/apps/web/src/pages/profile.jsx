@@ -84,7 +84,7 @@ export default function Profile() {
   const pickPhoto = () => {
     const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
     i.onchange = async () => { const file = i.files?.[0]; if (!file) return; setUploading(true);
-      try { const url = await uploadImage(file); setAvatar((a) => ({ ...a, image: url })); toast.success(t('prof.photook', 'Photo uploaded — save your profile.')); }
+      try { const url = await uploadImage(file); setAvatar((a) => ({ ...a, image: url })); toast.success(t('prof.photook', 'Photo uploaded, save your profile.')); }
       catch { toast.error(t('prof.uploadfail', 'Upload failed.')); } finally { setUploading(false); } };
     i.click();
   };
@@ -111,7 +111,7 @@ export default function Profile() {
           <Avatar variant={avatar.variant} seed={avatar.seed || user.id} colors={avatar.colors} image={avatar.image} size={120} className="mx-auto" />
           <div className="font-semibold mt-3">{form.displayName || user.displayName}</div>
           {user.bcId && <button onClick={() => { navigator.clipboard?.writeText(user.bcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }}
-            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id — click to copy')}>
+            className="mt-1 inline-flex items-center gap-1 text-[11px] font-mono text-[var(--faint)] hover:text-[var(--primary)] transition" title={t('prof.bcidcopy', 'Your unique BetterCommunity id, click to copy')}>
             <Fingerprint size={11} /> {user.bcId} <Copy size={10} /></button>}
           <div><Badge tone={user.role === 'SUPERADMIN' ? 'red' : user.role === 'ADMIN' ? 'amber' : 'primary'} className="mt-1">{user.role}</Badge></div>
 
@@ -120,7 +120,7 @@ export default function Profile() {
             <Button size="sm" disabled={uploading} onClick={pickPhoto}>{uploading ? <Spinner /> : <><ImagePlus size={14} /> {avatar.image ? t('prof.change', 'Change') : t('prof.uploadphoto', 'Upload photo')}</>}</Button>
             <Button size="sm" variant="ghost" disabled={!avatar.image} onClick={removePhoto}><Trash2 size={14} /> {t('prof.remove', 'Remove')}</Button>
           </div>
-          {avatar.image && <div className="text-[11px] text-[var(--faint)] mt-2">{t('prof.customphoto', "Using a custom photo — the generated avatar below is hidden while it's set.")}</div>}
+          {avatar.image && <div className="text-[11px] text-[var(--faint)] mt-2">{t('prof.customphoto', "Using a custom photo, the generated avatar below is hidden while it's set.")}</div>}
 
           <div className={avatar.image ? 'opacity-40 pointer-events-none' : ''}>
           <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mt-5 mb-1.5 text-start">{t('prof.style', 'Style')}</div>
@@ -199,7 +199,7 @@ export default function Profile() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <div className="text-sm font-semibold flex items-center gap-2"><Eye size={15} className="text-[var(--primary-2)]" /> {t('prof.visibility', 'Profile visibility')}</div>
-                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'Public shows your name, badges, join date and public repos — never your email. Private: only you and staff.')}</p>
+                <p className="text-xs text-[var(--muted)] mt-0.5">{t('prof.visibility.d', 'Public shows your name, badges, join date and public repos, never your email. Private: only you and staff.')}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Link to={`/u/${user.id}`}><Button size="sm" variant="ghost"><ArrowRight size={14} /> {t('prof.viewpublic', 'View')}</Button></Link>
@@ -328,11 +328,11 @@ export function TransfersCard({ className = '' }) {
   const ERRORS = (e) => ({
     expired: t('tr.err.expired', 'That offer has expired.'),
     not_pending: t('tr.err.gone', 'That offer is no longer open.'),
-    no_longer_owned: t('tr.err.notowned', 'The sender no longer owns it — the offer has been withdrawn.'),
+    no_longer_owned: t('tr.err.notowned', 'The sender no longer owns it, the offer has been withdrawn.'),
     active_subscription: t('tr.err.sub', 'It has an active hosting subscription. That has to be cancelled or moved first.'),
     free_plan: t('tr.err.free', 'It is on the free plan, and the free tier is one per account — the person receiving it could not hold it without spending a free claim they never made. Delete it and let them create their own.'),
     // The three storage refusals are separate on purpose: they have three different fixes.
-    no_pool: t('tr.err.nopool', 'You have no storage pool to put it in. Buy hosting first — what you take on, you host.'),
+    no_pool: t('tr.err.nopool', 'You have no storage pool to put it in. Buy hosting first, what you take on, you host.'),
     insufficient_pool_space: t('tr.err.nospace', 'None of your pools has room for it. Free some space or make a pool bigger, then accept.'),
     pool_too_small: t('tr.err.poolsmall', 'That pool does not have room for it. Pick another, or make it bigger.'),
     no_such_pool: t('tr.err.nosuchpool', 'That storage pool is not one of yours.'),
@@ -372,7 +372,7 @@ export function TransfersCard({ className = '' }) {
         title: t('tr.decline.t', 'Decline this transfer?'),
         message: t('tr.decline.m', '“{n}” stays with {who}. They are told you declined; nothing else changes.')
           .replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName),
-        label: t('tr.decline.why', 'Why? (optional — sent to them)'),
+        label: t('tr.decline.why', 'Why? (optional, sent to them)'),
         placeholder: t('tr.decline.ph', 'e.g. I do not have the storage for it right now.'),
         multiline: true, rows: 3,
         okLabel: t('tr.decline', 'Decline'),
@@ -440,7 +440,7 @@ export function TransfersCard({ className = '' }) {
             {incoming.map((tr) => {
               const d = days(tr.expiresAt);
               return (
-                <div key={tr.id} className="rounded-xl border border-[var(--primary-2)] bg-[var(--surface-2)]/40 p-4">
+                <div key={tr.id} className="rounded-xl border border-[var(--primary-2)] panel p-4">
                   <div className="flex items-start gap-3">
                     <Avatar user={tr.counterparty} size={32} className="shrink-0 mt-0.5" />
                     <div className="min-w-0 flex-1">
@@ -515,14 +515,14 @@ export function TransfersCard({ className = '' }) {
             {outgoing.map((tr) => {
               const d = days(tr.expiresAt);
               return (
-                <div key={tr.id} className="flex items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/30 p-3">
+                <div key={tr.id} className="flex items-center gap-3 rounded-xl border border-[var(--line)] panel-quiet p-3">
                   <Avatar user={tr.counterparty} size={28} className="shrink-0" />
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] truncate">
                       {t('tr.sent', 'You offered “{n}” to {who}').replace('{n}', tr.targetName).replace('{who}', tr.counterparty.displayName)}
                     </div>
                     <div className={`text-[11px] ${expiryTone(d)}`}>
-                      {t('tr.await', 'Waiting — expires in {n} day(s)').replace('{n}', String(d))}
+                      {t('tr.await', 'Waiting, expires in {n} day(s)').replace('{n}', String(d))}
                     </div>
                   </div>
                   <Button size="sm" variant="ghost" className="shrink-0" disabled={busy === tr.id} onClick={() => act(tr, 'cancel')}>
@@ -597,7 +597,7 @@ function CloseAccountCard() {
     setBusy(true);
     try {
       const r = await api.post('/me/closure');
-      toast.success(t('acl.req.done', 'Scheduled. Check your email — the cancel link is in it.'));
+      toast.success(t('acl.req.done', 'Scheduled. Check your email, the cancel link is in it.'));
       await load();
       // Asked only now, once it is already scheduled: a form standing between somebody
       // and leaving stops being a question and becomes an obstacle.
@@ -611,7 +611,7 @@ function CloseAccountCard() {
 
   const cancel = async () => {
     setBusy(true);
-    try { await api.post('/me/closure/cancel'); toast.success(t('acl.kept', 'Closure cancelled — your account stays.')); setSurvey(null); await load(); }
+    try { await api.post('/me/closure/cancel'); toast.success(t('acl.kept', 'Closure cancelled, your account stays.')); setSurvey(null); await load(); }
     catch { toast.error(t('prof.failed', 'Failed.')); } finally { setBusy(false); }
   };
 
@@ -619,7 +619,7 @@ function CloseAccountCard() {
     try { await api.post('/me/closure/survey', { outcome: 'closed', reason: survey.reason, comment: survey.comment }); }
     catch { /* an unanswered survey must never look like a failed closure */ }
     setSurvey(null);
-    toast.success(t('acl.survey.thanks', 'Thank you — that is genuinely useful.'));
+    toast.success(t('acl.survey.thanks', 'Thank you, that is genuinely useful.'));
   };
 
   return (
@@ -638,7 +638,7 @@ function CloseAccountCard() {
 
           {survey && (
             <div className="mt-4 pt-3 border-t border-[var(--line)] space-y-3">
-              <p className="text-[13px] text-[var(--muted)]">{t('acl.survey.s2', 'Before you go — what pushed you to this? Optional, and it changes nothing about the closure.')}</p>
+              <p className="text-[13px] text-[var(--muted)]">{t('acl.survey.s2', 'Before you go, what pushed you to this? Optional, and it changes nothing about the closure.')}</p>
               <Field label={t('acl.survey.reason', 'Main reason')}>
                 <Select value={survey.reason} onChange={(e) => setSurvey((v) => ({ ...v, reason: e.target.value }))}>
                   <option value="">{t('acl.survey.pick', 'Prefer not to say')}</option>
@@ -818,7 +818,7 @@ function SessionsCard() {
         <Monitor size={15} className="text-[var(--primary-2)]" /> {t('prof.sess.title', 'Signed-in devices')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
-        {t('prof.sess.sub', 'Do not recognise one? Sign it out — it stops working immediately.')}
+        {t('prof.sess.sub', 'Do not recognise one? Sign it out, it stops working immediately.')}
       </p>
 
       {pending && (
@@ -853,7 +853,7 @@ function SessionsCard() {
             )}
             {!needPw && !needCode && (
               <p className="text-[11px] text-[var(--muted)]">
-                {t('prof.sess.noproof', 'This account signs in through a provider and has no second factor, so there is nothing extra to type — just confirm.')}
+                {t('prof.sess.noproof', 'This account signs in through a provider and has no second factor, so there is nothing extra to type, just confirm.')}
               </p>
             )}
             {err && <span className="text-[11px] text-[var(--error)]">{err}</span>}
@@ -1036,7 +1036,7 @@ function TwoFactorCard() {
 
       {recoveryCodes ? (
         <div className="mb-1">
-          <div className="text-xs font-semibold text-warning mb-1.5">{t('prof.2fa.recovery', 'Save these recovery codes — each works once if you lose your device. Shown only now.')}</div>
+          <div className="text-xs font-semibold text-warning mb-1.5">{t('prof.2fa.recovery', 'Save these recovery codes, each works once if you lose your device. Shown only now.')}</div>
           <div className="grid grid-cols-2 gap-1.5 font-mono text-xs bg-[var(--surface-2)] rounded-lg p-3">
             {recoveryCodes.map((c) => <div key={c}>{c}</div>)}
           </div>
@@ -1047,7 +1047,7 @@ function TwoFactorCard() {
                 // Add the freshly-enrolled account + its backup codes to the local /2fa
                 // authenticator in place (merges if already added at setup).
                 const r = addLocalAccount({ otpauth: enrolled.otpauth, secret: enrolled.secret, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity', backupCodes: recoveryCodes });
-                if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved — unlock the Authenticator (/2fa) to finish adding it.'));
+                if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved, unlock the Authenticator (/2fa) to finish adding it.'));
                 else if (r.added) toast.success(t('prof.2fa.local.addedcodes', 'Added to your BCWEB Authenticator, with backup codes.'));
                 else toast.error(t('common.failed', 'Failed.'));
               }}><Smartphone size={13} /> {t('prof.2fa.addlocal', 'Add to BCWEB Authenticator')}</Button>
@@ -1081,8 +1081,8 @@ function TwoFactorCard() {
               the code below (and every future prompt) can be filled without an app. */}
           <Button size="sm" onClick={() => {
             const r = addLocalAccount({ secret: setup.secret, otpauth: setup.otpauth, issuer: 'BetterCommunity', label: user?.email || 'BetterCommunity' });
-            if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved — unlock the Authenticator (/2fa) to finish adding it.'));
-            else if (r.added) toast.success(t('prof.2fa.local.added', 'Added to your BCWEB Authenticator — use the code below to confirm.'));
+            if (r.staged) toast.success(t('prof.2fa.local.staged', 'Saved, unlock the Authenticator (/2fa) to finish adding it.'));
+            else if (r.added) toast.success(t('prof.2fa.local.added', 'Added to your BCWEB Authenticator, use the code below to confirm.'));
             else toast.error(t('common.failed', 'Failed.'));
           }}><Smartphone size={13} /> {t('prof.2fa.addlocalnow', 'Add to BCWEB Authenticator')}</Button>
           <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" />
@@ -1183,7 +1183,7 @@ function CreatorLinks() {
         <Input value={code} maxLength={9} onChange={(e) => { const s = e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 8); setCode(s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s); }} placeholder={t('cl.ph', 'Code from BMM (e.g. K7P39QMX)')} onKeyDown={(e) => e.key === 'Enter' && link()} />
         <Button variant="primary" disabled={busy} onClick={link}>{busy ? <Spinner /> : t('cl.link', 'Link')}</Button>
       </div>
-      {msg === 'hosted' && <div className="text-sm text-warning mt-2">{t('cl.blockedShort', 'Still hosting content under this creator id — transfer or delete it first.')}</div>}
+      {msg === 'hosted' && <div className="text-sm text-warning mt-2">{t('cl.blockedShort', 'Still hosting content under this creator id, transfer or delete it first.')}</div>}
       {msg === 'linked' && <div className="text-sm text-success mt-2 flex items-center gap-1"><Check size={14} /> {t('cl.ok', 'Creator id linked.')}</div>}
       {/* Already linked? Then the key minted at link time never happened for you, and
           unlinking to trigger it is blocked for two weeks. One button, same panel. */}
@@ -1196,7 +1196,7 @@ function CreatorLinks() {
               if (r?.secret) setNotifKey(r.secret);
             } catch (x) {
               toast.error(x?.data?.error === 'too_many_keys'
-                ? t('cl.keyTooMany', 'You already have 20 active keys — revoke one first.')
+                ? t('cl.keyTooMany', 'You already have 20 active keys, revoke one first.')
                 : t('common.failed', 'Failed.'));
             } finally { setBusy(false); }
           }}><KeyRound size={13} /> {t('cl.keyMake', 'Get a BMM notifications key')}</Button>
@@ -1220,7 +1220,7 @@ function CreatorLinks() {
       )}
       {msg === 'taken' && <div className="text-sm text-error mt-2">{t('cl.taken', 'That creator id is already linked to another account.')}</div>}
       {msg === 'bad' && <div className="text-sm text-error mt-2">{t('cl.bad', 'Invalid or expired code.')}</div>}
-      {msg === 'locked' && <div className="text-sm text-error mt-2">{t('cl.lockederr', "Locked — can't unlink within 2 weeks of linking.")}</div>}
+      {msg === 'locked' && <div className="text-sm text-error mt-2">{t('cl.lockederr', "Locked, can't unlink within 2 weeks of linking.")}</div>}
       {msg === 'error' && <div className="text-sm text-error mt-2">{t('cl.error', 'Something went wrong.')}</div>}
     </Card>
   );
@@ -1270,16 +1270,16 @@ function DiscordLinks() {
     <Card className="p-5">
       <div className="text-sm font-semibold mb-1 flex items-center gap-2"><DiscordIcon size={15} className="text-[var(--primary-2)]" /> Discord</div>
       {prov?.discord && (
-        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 p-3 mb-3 flex items-center gap-3 flex-wrap">
+        <div className="rounded-xl border border-[var(--line)] panel p-3 mb-3 flex items-center gap-3 flex-wrap">
           <div className="flex-1 min-w-[12rem]">
             <div className="text-sm font-medium">{t('disl.viaApp', 'Link with Discord')}</div>
-            <div className="text-[11px] text-[var(--muted)]">{t('disl.viaApp.h', 'Opens Discord’s sign-in; the account is linked to the bot right away — nothing to copy.')}</div>
+            <div className="text-[11px] text-[var(--muted)]">{t('disl.viaApp.h', 'Opens Discord’s sign-in; the account is linked to the bot right away, nothing to copy.')}</div>
           </div>
           <Button variant="primary" size="sm" onClick={() => { window.location.href = '/api/auth/oauth/discord/start'; }}><DiscordIcon size={14} /> {t('disl.viaApp.btn', 'Continue with Discord')}</Button>
         </div>
       )}
       <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{prov?.discord ? t('disl.orcode', 'Or with a code') : t('disl.withcode', 'With a code')}</div>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('disl.desc1', 'Link your Discord account. In the server, run')} <code>/link</code> {t('disl.desc2', 'to get a code, then paste it here — it unlocks gated channels and shows your account in the community.')}</p>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('disl.desc1', 'Link your Discord account. In the server, run')} <code>/link</code> {t('disl.desc2', 'to get a code, then paste it here, it unlocks gated channels and shows your account in the community.')}</p>
       {visible.length > 0 && <div className="space-y-2 mb-3">
         {visible.map((l) => (
           <div key={l.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface-2)] text-sm">
@@ -1330,7 +1330,7 @@ function SignInMethods() {
   const methods = (data.hasPassword ? 1 : 0) + (data.links || []).length;
   const unlink = async (k) => {
     try { await api.del(`/me/oauth/${k}`); toast.success(t('sim.unlinked', 'Unlinked.')); load(); }
-    catch (x) { toast.error(x.data?.error === 'last_method' ? t('sim.last', 'This is the only way into your account — set a password first.') : t('acc.failed', 'Failed.')); }
+    catch (x) { toast.error(x.data?.error === 'last_method' ? t('sim.last', 'This is the only way into your account, set a password first.') : t('acc.failed', 'Failed.')); }
   };
   return (
     <Card className="p-5">
@@ -1341,7 +1341,7 @@ function SignInMethods() {
           <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--bg-solid)] shrink-0"><Mail size={17} className="text-[var(--primary-2)]" /></span>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm">{t('sim.email', 'E-mail + password')}</div>
-            <div className="text-[11px] text-[var(--faint)]">{data.hasPassword ? t('sim.pwset', 'Password set') : t('sim.nopw', 'No password yet — set one below to sign in without a provider.')}</div>
+            <div className="text-[11px] text-[var(--faint)]">{data.hasPassword ? t('sim.pwset', 'Password set') : t('sim.nopw', 'No password yet, set one below to sign in without a provider.')}</div>
           </div>
           {data.hasPassword ? <Badge tone="success">{t('sim.on', 'Active')}</Badge> : <Badge tone="warning">{t('sim.missing', 'Missing')}</Badge>}
         </div>
@@ -1353,7 +1353,7 @@ function SignInMethods() {
               <div className="text-[11px] text-[var(--faint)] truncate">{l ? (l.username || t('sim.on', 'Active')) : t('sc.notlinked', 'Not linked')}</div>
             </div>
             {l
-              ? <Button size="sm" variant="ghost" disabled={methods <= 1} title={methods <= 1 ? t('sim.last', 'This is the only way into your account — set a password first.') : ''} onClick={() => unlink(k)}>{t('sim.unlink', 'Unlink')}</Button>
+              ? <Button size="sm" variant="ghost" disabled={methods <= 1} title={methods <= 1 ? t('sim.last', 'This is the only way into your account, set a password first.') : ''} onClick={() => unlink(k)}>{t('sim.unlink', 'Unlink')}</Button>
               : providers[k] ? <Button size="sm" variant="default" onClick={() => { window.location.href = `/api/auth/oauth/${k}/start`; }}>{t('sim.link', 'Link')}</Button> : null}
           </div>
         ); })}

@@ -155,7 +155,7 @@ export default function Docs() {
       {(() => {
         const PageLink = (p) => (
           <Link key={p.slug} to={`/docs/${p.slug}`} onClick={() => { if (window.innerWidth < 768) setSidebar(false); }}
-            className={`group relative flex items-center gap-2.5 ps-3 pe-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'bg-[var(--primary)]/10 text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
+            className={`group relative flex items-center gap-2.5 ps-3 pe-2.5 py-1.5 rounded-lg text-sm transition ${activeSlug === p.slug ? 'tint-primary text-[var(--primary)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`}>
             {activeSlug === p.slug && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[3px] rounded-full bg-[var(--primary)]" />}
             <IconGlyph name={p.icon || 'file'} size={14} className={activeSlug === p.slug ? 'text-[var(--primary)]' : 'text-[var(--faint)] group-hover:text-[var(--muted)]'} />
             <span className="truncate flex-1">{titleOf(p)}</span>
@@ -166,7 +166,7 @@ export default function Docs() {
         // expands everything so a match is never hidden inside a collapsed sub-group.
         const renderNode = (node, depth) => {
           const isCollapsed = collapsed.has(node.path) && !q.trim();
-          const head = depth === 0 ? 'text-[11px] text-[var(--faint)]' : 'text-[10px] text-[var(--faint)]/80';
+          const head = depth === 0 ? 'text-[11px] text-[var(--faint)]' : 'text-[10px] text-[var(--faint)]';
           return (
             <div key={node.path} className={depth === 0 ? 'mb-3' : 'mt-1.5'}>
               <button onClick={() => toggleCat(node.path)} className={`w-full flex items-center gap-1 px-1 mb-1 font-bold uppercase tracking-wide hover:text-[var(--muted)] ${head}`}>
@@ -245,9 +245,11 @@ export default function Docs() {
               <HelpfulWidget page={page} canEdit={canEdit} />
             </article>
           ) : (
-            <EmptyState icon={BookOpen} title={t('docs.none.title')} sub={canEdit ? t('docs.none.sub.admin') : t('docs.none.sub')}>
-              {canEdit && <Button variant="primary" onClick={() => setEditing({})}><Plus size={15} /> {t('docs.newpage')}</Button>}
-            </EmptyState>
+            <EmptyState icon={BookOpen} title={t('docs.none.title')}
+              sub={canEdit ? t('docs.none.sub.admin2', 'Guides and reference for the apps live here, and no page has been written yet.') : t('docs.none.sub2', 'Guides and reference for the apps will live here, and nothing has been published yet.')}
+              action={canEdit
+                ? { label: t('docs.newpage'), onClick: () => setEditing({}), icon: Plus }
+                : { label: t('docs.none.a', 'Read the blog'), to: '/blog', icon: BookOpen }} />
           )}
       </main>
 
@@ -434,12 +436,12 @@ function SearchPalette({ onClose, onPick }) {
   const Row = (r, i) => r.sub ? (
     // Nested section hit: tree connector + # tile, page context muted below.
     <button key={`${r.slug}-${r.anchor || i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-start pe-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
+      className={`w-full text-start pe-3.5 py-2 flex items-stretch gap-0 rounded-xl transition ${i === active ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}>
       <span className="relative w-9 shrink-0" aria-hidden>
         <span className="absolute left-[22px] -top-1 bottom-1/2 w-px bg-[var(--line-strong)]" />
         <span className="absolute left-[22px] top-1/2 w-2.5 h-px bg-[var(--line-strong)]" style={{ transform: 'translateY(-0.5px)' }} />
       </span>
-      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
+      <span className={`self-center grid place-items-center w-7 h-7 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}><Hash size={13} /></span>
       <div className="min-w-0 flex-1 self-center ps-3">
         <div className="text-sm font-medium truncate">{highlight(r.section, q)}</div>
         <div className="text-[11px] text-[var(--faint)] truncate">{r.title}</div>
@@ -448,8 +450,8 @@ function SearchPalette({ onClose, onPick }) {
     </button>
   ) : (
     <button key={`${r.slug}-page-${i}`} data-active={i === active ? '1' : '0'} onMouseEnter={() => setActive(i)} onClick={() => pick(r)}
-      className={`w-full text-start px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}>
-      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] bg-[var(--primary)]/15' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
+      className={`w-full text-start px-3 py-2.5 flex items-center gap-3 rounded-xl transition ${i > 0 ? 'mt-1' : ''} ${i === active ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}>
+      <span className={`grid place-items-center w-8 h-8 rounded-lg shrink-0 ${i === active ? 'text-[var(--primary)] tint-primary' : 'text-[var(--muted)] bg-[var(--surface-2)]'}`}>
         <IconGlyph name={r.icon || 'file'} size={15} />
       </span>
       <div className="min-w-0 flex-1">
@@ -584,7 +586,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
         onCommit: async () => {
           try { const r = page ? await api.patch(`/docs/${page.id}`, b) : await api.post('/docs', b); onSaved(r.page?.slug); }
           catch (x) {
-            if (page && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this — reopened so you can merge, then Save.')); reopenDraft(snapshot, { page, base: origBase, conflict: true }); }
+            if (page && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this, reopened so you can merge, then Save.')); reopenDraft(snapshot, { page, base: origBase, conflict: true }); }
             else { toast.error(x.data?.error || t('be.failed', 'Failed.')); reopenDraft(snapshot, { page, base: origBase }); }
           }
         },
@@ -616,12 +618,12 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
         if (Object.keys(patch).length) setF((s) => ({ ...s, ...patch }));
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
         setMerge({ conflicts: queue.length, pending: queue });
-        if (queue.length > 0) { setMergeUI({ queue }); toast.info(t('de.conflictvisual', 'Someone else edited this page — resolve the conflicts visually, then Save.')); }
-        else toast.info(t('de.mergedreview', 'Merged with edits made by someone else — review, then Save again.'));
+        if (queue.length > 0) { setMergeUI({ queue }); toast.info(t('de.conflictvisual', 'Someone else edited this page, resolve the conflicts visually, then Save.')); }
+        else toast.info(t('de.mergedreview', 'Merged with edits made by someone else, review, then Save again.'));
       } else if (x.status === 409 && x.data?.error === 'docs_limit') {
         const d = x.data;
         toast.error(d.kind === 'count'
-          ? t('de.fullcount', 'Docs are full — at most {limit} pages allowed (currently {current}). Delete one or raise the limit in Hosting settings.').replace('{limit}', d.limit).replace('{current}', d.current)
+          ? t('de.fullcount', 'Docs are full, at most {limit} pages allowed (currently {current}). Delete one or raise the limit in Hosting settings.').replace('{limit}', d.limit).replace('{current}', d.current)
           : t('de.fullsize', 'Docs size limit ({kb} KB) would be exceeded{cur}. Trim the page, delete an old one, or raise the limit.').replace('{kb}', d.limitKB).replace('{cur}', d.currentKB ? t('de.wouldbe', ' (this would be ~{c} KB)').replace('{c}', d.currentKB) : ''));
       } else { toast.error(x.data?.error === 'forbidden' ? t('de.noperm', 'You don’t have permission.') : x.data?.error || t('be.failed', 'Failed.')); }
     }
@@ -659,7 +661,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       )}
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto_auto] gap-2 mb-3">
         <Field label={t('dcs.title', "Title")}><Input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder={t('dcs.ph.pagetitle', "Page title")} /></Field>
-        <Field label={t('dcs.titlefr', "Titre (FR)")} hint={t('de.frhint', 'Optional — falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
+        <Field label={t('dcs.titlefr', "Titre (FR)")} hint={t('de.frhint', 'Optional, falls back to the English.')}><Input value={f.titleFr || ''} onChange={(e) => setF({ ...f, titleFr: e.target.value })} placeholder={t('docs.edit.titlePh', 'Page title')} /></Field>
         <Field label={t('dcs.catfr', "Cat\u00e9gorie (FR)")}><Input value={f.categoryFr || ''} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder={t('dcs.ph.catfr', "Guides / Installation")} /></Field>
         <Field label={t('dcs.category', "Category")} hint={t('docs.cat.hint', 'Use "Top / Sub" for a subcategory')}><Input list="doc-cats" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder={t('dcs.ph.cat', "Guides / Setup")} />
           <datalist id="doc-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
@@ -676,7 +678,7 @@ function DocEditor({ page, tree, onClose, onSaved, draft, draftBase, conflictReo
       <MarkdownEditor full minHeight={300}
         value={fr ? f.bodyFr : f.body}
         onChange={(v) => setF((s) => (fr ? { ...s, bodyFr: v } : { ...s, body: v }))}
-        placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with content blocks — use the Blocks button.'} />
+        placeholder={fr ? 'Traduction française (optionnelle)…' : 'Write with content blocks, use the Blocks button.'} />
       {showHistory && page && <HistoryModal base={`/docs/${page.id}`} onClose={() => setShowHistory(false)}
         onRestore={(rev) => { setF((s) => ({ ...s, title: rev.title || s.title, body: rev.body || '', bodyFr: rev.bodyFr ?? s.bodyFr })); setTab('en'); }} />}
       {showComments && page && <CommentsModal base={`/docs/${page.id}`} body={f.body} onClose={() => setShowComments(false)} />}

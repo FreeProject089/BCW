@@ -47,7 +47,7 @@ export function heroCtas(user, t) {
  * a decision they already made.
  */
 export function heroNote(user, t) {
-  return user ? null : t('home.cta.note', 'Free to browse — no account needed.');
+  return user ? null : t('home.cta.note', 'Free to browse, no account needed.');
 }
 
 /** The closing section: its heading, its sub, and its one button. */

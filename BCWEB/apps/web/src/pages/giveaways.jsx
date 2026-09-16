@@ -23,7 +23,7 @@ export function Giveaways() {
   const { data, loading, reload } = useAsync(() => (user ? api.get('/me/giveaways') : Promise.resolve({ giveaways: [] })), [user?.id]);
   const [busy, setBusy] = useState('');
 
-  const header = <PageHeader icon={Gift} title={t('gwp.title', 'Giveaways')} subtitle={t('gwp.sub', 'Enter a community giveaway — a win lands in your inventory to claim.')} />;
+  const header = <PageHeader icon={Gift} title={t('gwp.title', 'Giveaways')} subtitle={t('gwp.sub', 'Enter a community giveaway, a win lands in your inventory to claim.')} />;
 
   if (!user) {
     return (
@@ -43,7 +43,7 @@ export function Giveaways() {
     setBusy(g.id);
     try {
       const r = await api.post(`/me/giveaways/${g.id}/enter`);
-      toast.success(r.already ? t('gwp.already', 'You are already entered — good luck!') : t('gwp.in', 'You are in! Good luck 🍀'));
+      toast.success(r.already ? t('gwp.already', 'You are already entered, good luck!') : t('gwp.in', 'You are in! Good luck 🍀'));
       reload();
     } catch (x) {
       toast.error(x?.data?.error === 'need_creator' ? t('gwp.needcreator2', 'This one needs a linked BMM creator id on your account.') : x?.data?.error === 'not_active' ? t('gwp.over', 'This giveaway has ended.') : t('common.failed', 'Failed.'));
@@ -57,7 +57,7 @@ export function Giveaways() {
     <div>
       {header}
       {loading ? <Loading /> : !list.length ? (
-        <EmptyState icon={Gift} title={t('gwp.none', 'No giveaways right now')} sub={t('gwp.none.s', 'Check back soon — or watch the Discord.')} />
+        <EmptyState icon={Gift} title={t('gwp.none', 'No giveaways right now')} sub={t('gwp.none.s', 'Check back soon, or watch the Discord.')} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {list.map((g) => {

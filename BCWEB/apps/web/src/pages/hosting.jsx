@@ -144,8 +144,8 @@ function PromoCodeField({ months, onChange }) {
         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
           <span className="text-xs text-success flex items-center gap-1"><Gift size={12} />
             {state.promo.kind === 'free_hosting'
-              ? t('hosting.promo.hostcode', 'Free hosting code — {gb} GB repo at no cost.').replace('{gb}', state.promo.storageGB)
-              : t('hosting.promo.boostcode', 'Boost code — {d} days featured.').replace('{d}', state.promo.boostDays)}
+              ? t('hosting.promo.hostcode', 'Free hosting code: {gb} GB repo at no cost.').replace('{gb}', state.promo.storageGB)
+              : t('hosting.promo.boostcode', 'Boost code: {d} days featured.').replace('{d}', state.promo.boostDays)}
           </span>
           <Button size="sm" variant="primary" onClick={() => setRedeemOpen(true)}>{t('hosting.promo.use', 'Use this code')}</Button>
         </div>
@@ -170,7 +170,7 @@ function RedeemPromoModal({ code, promo, onClose }) {
     try {
       const r = await api.post('/me/promo/redeem', { code, ...(isBoost ? { repoId } : {}) });
       toast.success(r.kind === 'free_hosting'
-        ? t('promo.gotHosting', 'Redeemed! A free hosted repo was created — see "My repos".')
+        ? t('promo.gotHosting', 'Redeemed! A free hosted repo was created, see "My repos".')
         : t('promo.gotBoost', 'Redeemed! Your repo is now boosted.'));
       onClose(); nav('/dashboard');
     } catch (x) {
@@ -178,7 +178,7 @@ function RedeemPromoModal({ code, promo, onClose }) {
       toast.error(e === 'already_used' ? t('promo.used', 'You already used this code.')
         : e === 'depleted' ? t('promo.depleted', 'This code is fully used.')
         : e === 'expired' ? t('promo.expired', 'This code has expired.')
-        : e === 'busy' ? t('promo.busy', 'Busy — try again in a second.')
+        : e === 'busy' ? t('promo.busy', 'Busy, try again in a second.')
         : t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -192,18 +192,18 @@ function RedeemPromoModal({ code, promo, onClose }) {
           <div className="font-semibold">{code}</div>
           <div className="text-[var(--muted)]">
             {isBoost ? t('hosting.promo.boostdesc', 'Boosts one of your repos to the featured spots for {d} days.').replace('{d}', promo.boostDays)
-              : t('hosting.promo.hostdesc', 'Creates a free hosted repo — {gb} GB storage{months}.').replace('{gb}', promo.storageGB).replace('{months}', promo.hostMonths ? ` for ${promo.hostMonths} months` : ', no expiry')}
+              : t('hosting.promo.hostdesc', 'Creates a free hosted repo: {gb} GB storage{months}.').replace('{gb}', promo.storageGB).replace('{months}', promo.hostMonths ? ` for ${promo.hostMonths} months` : ', no expiry')}
           </div>
         </div>
       </div>
       {isBoost && (
         repos === null ? <div className="py-4 grid place-items-center"><Spinner /></div>
-        : !repos.length ? <div className="text-sm text-[var(--muted)]">{t('hosting.promo.norepos', "You don't have any repos yet — host one first, then redeem the boost.")}</div>
+        : !repos.length ? <div className="text-sm text-[var(--muted)]">{t('hosting.promo.norepos', "You don't have any repos yet, host one first, then redeem the boost.")}</div>
         : <div className="space-y-1.5 max-h-56 overflow-auto">
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1">{t('promo.pickrepo', 'Which repo should get the boost?')}</div>
             {repos.map((r) => (
               <button key={r.id} type="button" onClick={() => setRepoId(r.id)}
-                className={`w-full text-start px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`w-full text-start px-3 py-2 rounded-xl border text-sm flex items-center gap-2 transition ${repoId === r.id ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <HardDrive size={14} className={repoId === r.id ? 'text-[var(--primary)]' : 'text-[var(--faint)]'} />
                 <span className="flex-1 truncate">{r.name}</span>
                 {repoId === r.id && <CheckCircle2 size={14} className="text-[var(--primary)]" />}
@@ -250,7 +250,7 @@ function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
       setDone(r);
     } catch (e) {
       toast.error(e?.data?.error === 'email_required'
-        ? t('hosting.wl.needmail', 'An e-mail address is needed — that is how you get told.')
+        ? t('hosting.wl.needmail', 'An e-mail address is needed, that is how you get told.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -260,9 +260,9 @@ function WaitlistBox({ user, freeTier = false, defaultGB = 5 }) {
       <div className="mt-3 text-sm text-[var(--text)] flex items-start gap-2">
         <CheckCircle2 size={16} className="text-success shrink-0 mt-0.5" />
         <span>
-          {t('hosting.wl.done', 'You are on the list — we will write to you when {n} GB is free.').replace('{n}', gb)}
+          {t('hosting.wl.done', 'You are on the list, we will write to you when {n} GB is free.').replace('{n}', gb)}
           {done.ahead > 0 && ` ${t('hosting.wl.ahead', '{n} ahead of you.').replace('{n}', done.ahead)}`}
-          {' '}<span className="text-[var(--faint)]">{t('hosting.wl.noreserve', 'Nothing is reserved — whoever checks out first gets it.')}</span>
+          {' '}<span className="text-[var(--faint)]">{t('hosting.wl.noreserve', 'Nothing is reserved, whoever checks out first gets it.')}</span>
         </span>
       </div>
     );
@@ -368,15 +368,15 @@ export function Hosting() {
       const res = await api.post('/hosting/checkout', { promoCode: promo?.code, autoRenew, ...body, repoName, mode, months });
       // A $0 plan (the free tier, or a discount that zeroes it out) is provisioned
       // directly — there's no Stripe session/url to redirect to.
-      if (res?.free) { toast.success(t('hosting.freeplan.pool2', 'Your storage pool "{name}" is ready — free tier. Add repos or catalogs to it.').replace('{name}', repoName)); return nav('/dashboard'); }
+      if (res?.free) { toast.success(t('hosting.freeplan.pool2', 'Your storage pool "{name}" is ready, free tier. Add repos or catalogs to it.').replace('{name}', repoName)); return nav('/dashboard'); }
       window.location = res.url;
     } catch (x) {
       if (x.data?.error === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); return nav('/profile'); }
       const e = x.data?.error;
       toast.error(e === 'capacity_full' ? t('hosting.err.capacity', 'No capacity available right now.')
         : e === 'over_limit' ? t('hosting.err.overlimit2', 'That exceeds the current per-repo upload limit (max {u} Mbps). Lower it and retry.').replace('{u}', x.data.maxUploadMbps)
-        : e === 'free_tier_full' ? t('hosting.err.freetierfull', 'The free plan is sold out right now — every free slot is taken. Try a paid plan, or check back later.')
-        : e === 'free_tier_already_used' ? t('hosting.err.freeused', "You've already used your one free repo (per account and per linked creator id) — pick a paid plan instead.")
+        : e === 'free_tier_full' ? t('hosting.err.freetierfull', 'The free plan is sold out right now, every free slot is taken. Try a paid plan, or check back later.')
+        : e === 'free_tier_already_used' ? t('hosting.err.freeused', "You've already used your one free repo (per account and per linked creator id), pick a paid plan instead.")
         : e === 'stripe_not_configured' ? t('hosting.err.stripe', 'Payments not configured yet.') : t('hosting.err.checkout', 'Checkout failed.'));
     }
   };
@@ -428,7 +428,7 @@ export function Hosting() {
       <section id="plans" className={`scroll-mt-24 ${plans.loading ? 'min-h-[28rem]' : ''}`}>
       <SectionLead
         title={t('hosting.plans.title', 'Pick a size, or set your own')}
-        sub={t('hosting.plans.sub', 'The same space either way — the four below are just the sizes people ask for most.')} />
+        sub={t('hosting.plans.sub', 'The same space either way, the four below are just the sizes people ask for most.')} />
 
       {/* Free tier — a real $0 plan, called out on its own instead of blending into
           the paid grid below (it isn't really "one of the four tiers", it's the
@@ -451,7 +451,7 @@ export function Hosting() {
                     for the term picked above, like a paid one, and has to be renewed — at no
                     cost — when it runs out (POST /me/hosting/groups/:id/renew prices it to
                     zero and applies it on the spot). Free, yes; without an end date, no. */}
-                <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub2', 'Host a small repo at no cost — {gb} GB storage, {mbps} Mbps upload, no card.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
+                <div className="text-[13px] text-[var(--muted)] mt-0.5">{t('hosting.freeplan.sub2', 'Host a small repo at no cost: {gb} GB storage, {mbps} Mbps upload, no card.').replace('{gb}', free.storageGB).replace('{mbps}', (free.uploadLimitKbps / 1024).toFixed(1))}</div>
                 <div className="text-[12px] text-[var(--faint)] mt-1">{freeTierSoldOut
                   ? t('hosting.freeplan.soldout.d', 'The free allowance is fully taken right now. It is metered on its own, so the paid sizes below are unaffected — leave your name and we will tell you the moment one frees up.')
                   : t('hosting.freeplan.note2', 'One free repo per account (and per linked creator id). It runs for the term chosen above and renewing it costs nothing. You can always upgrade the size later — the free floor still applies, so you only ever pay for what\'s above it.')}</div>
@@ -508,24 +508,36 @@ export function Hosting() {
           const eff = total / 100 / months;
           const base = pl.priceMonthlyCents / 100;
           const save = months > 1 ? Math.round((1 - eff / base) * 100) : 0;
-          // What the plan includes, as a list a reader can tick through — the two numbers
-          // that differ between plans first, then the three things every paid pool has,
-          // then the boosts, which an admin can attach to a plan and which were invisible
-          // on the old card even when they were the reason to pick it.
+          // What the plan includes, as a list a reader can tick through, in the order somebody
+          // comparing four cards actually reads: the two numbers that differ (storage,
+          // bandwidth), then the boosts — the one advantage that is not just a bigger number,
+          // so it carries a second line saying what a boost DOES — then the custom domain, then
+          // the free tier, because "is there a free one" is the question the grid was missing
+          // an answer to. Each row is [icon, label, included, note].
           const boosts = pl.boostsPerPeriod > 0
             ? (pl.boostPeriodMonths > 1
               ? t('hosting.card.boosts', '{n} featured boosts ({d} days each) every {m} months').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7).replace('{m}', pl.boostPeriodMonths)
               : t('hosting.card.boosts1', '{n} featured boosts ({d} days each) every month').replace('{n}', pl.boostsPerPeriod).replace('{d}', pl.boostDays ?? 7))
             : null;
+          const freeLine = freePlan
+            ? (freeOffered
+              ? [t('hosting.card.free', 'Free {s} plan available, no card').replace('{s}', `${freePlan.storageGB} GB`), true]
+              : [t('hosting.card.freeout', 'The free plan is sold out right now'), false])
+            : [t('hosting.card.nofree', 'No free plan at the moment'), false];
           const features = [
             [HardDrive, t('hosting.card.storage', '{s} of storage, split how you like').replace('{s}', storageLabel), true],
-            [Zap, t('hosting.card.upload', '{m} Mbps upload').replace('{m}', mbps), true],
-            [Layers, t('hosting.card.pool', 'Repos and catalogues in one pool'), true],
+            [Zap, t('hosting.card.upload', '{m} Mbps of download bandwidth').replace('{m}', mbps), true],
+            [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts, t('hosting.card.boostis', 'A boost puts you first')],
             [Globe, t('hosting.card.domain', 'Your own domain, per repo or catalogue'), true],
-            [Star, boosts || t('hosting.card.noboosts', 'Boosts bought separately'), !!boosts],
+            [Gift, freeLine[0], freeLine[1]],
           ];
           return (
-          <div key={pl.id} className={`card relative flex flex-col p-5 min-w-0 transition-colors ${planDisabled ? 'opacity-60' : ''} ${recommended && !planDisabled ? '!border-[var(--primary)] bg-[var(--primary)]/[0.04] shadow-[0_0_0_1px_var(--primary)]' : ''}`}>
+          // The recommended card stands FORWARD, not just differently coloured: a ring, a lift
+          // and a shadow. Four cards where one is tinted is four cards; one that sits a few
+          // pixels in front of the others is a choice the page has already made for you. The
+          // scale only from lg, where the grid has room for it to grow without touching its
+          // neighbours, and never on a card that cannot be bought.
+          <div key={pl.id} className={`card relative flex flex-col p-5 min-w-0 transition-transform ${planDisabled ? 'opacity-60' : ''} ${recommended && !planDisabled ? 'z-10 !border-[var(--primary)] bg-[var(--primary)]/[0.06] ring-2 ring-[var(--primary)] shadow-[0_12px_32px_-14px_var(--primary)] lg:scale-[1.03]' : ''}`}>
             {/* A filled pill rather than a word floating in the padding — four cards with a
                 gap at the top of three of them read as three cards missing something. The
                 other three keep an invisible copy so the bodies stay on the same line. */}
@@ -550,10 +562,15 @@ export function Hosting() {
                 : t('hosting.card.period1', '{total} for one month, paid up front').replace('{total}', `$${(total / 100).toFixed(2)}`)}
             </div>
             <ul className="mt-4 pt-4 border-t border-[var(--line)] flex flex-col gap-2">
-              {features.map(([Icon, label, yes]) => (
+              {features.map(([Icon, label, yes, note]) => (
                 <li key={label} className={`flex items-start gap-2 text-[13px] leading-snug min-w-0 ${yes ? '' : 'text-[var(--faint)]'}`}>
                   {yes ? <Check size={15} className="text-success shrink-0 mt-[1px]" aria-hidden /> : <Icon size={15} className="shrink-0 mt-[1px]" aria-hidden />}
-                  <span className="min-w-0">{label}</span>
+                  <span className="min-w-0">
+                    {label}
+                    {/* Only under the line that needs it: "3 boosts" is a quantity of
+                        something a first-time reader has never heard of. */}
+                    {yes && note && <span className="block text-[11px] text-[var(--faint)]">{note}</span>}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -572,7 +589,7 @@ export function Hosting() {
           heading instead of being a second card under the grid — it is an alternative to
           the sizes above, not an extra on top of them. */}
       <SubLead icon={Sliders}
-        title={t('hosting.cfg.title', 'Pick your size — the price follows')}
+        title={t('hosting.cfg.title', 'Pick your size, the price follows')}
         sub={t('hosting.cfg.sub', 'One pool, filled with whatever you like: one repo, several, catalogs, or a mix. Resize the split whenever you want.')} />
       <PoolConfigurator months={months} tiers={term.tiers} soldOut={soldOut} capacity={c}
         onAdd={(custom) => addHosting({ custom, label: t('cart.custom', 'Custom {gb} GB').replace('{gb}', custom.storageGB) })} />
@@ -610,7 +627,7 @@ export function Hosting() {
             // something the platform does yet, and a card that reads like an order form
             // would collect people expecting one.
             ['host-project', Rocket, t('hosting.talk.project', 'Host a project of mine'),
-              t('hosting.talk.project.d', 'A site, a Discord bot, an app. Not something we sell yet — tell us what it is and we will say honestly where we are.')],
+              t('hosting.talk.project.d', 'A site, a Discord bot, an app. Not something we sell yet, tell us what it is and we will say honestly where we are.')],
             ['', MessageSquare, t('hosting.talk.other', 'Something else'),
               t('hosting.talk.other.d', 'Anything that is neither of those.')],
           ].map(([topic, Icon, label, desc]) => {
@@ -628,7 +645,7 @@ export function Hosting() {
         <div className="text-xs text-[var(--faint)] mt-4 flex items-center gap-1.5">
           <Mail size={13} className="shrink-0" />
           {user
-            ? t('hosting.enterprise.msg', "You're signed in — send it as a message and we'll reply in your dashboard → Reports, so the whole conversation stays in one place.")
+            ? t('hosting.enterprise.msg', "You're signed in, send it as a message and we'll reply in your dashboard → Reports, so the whole conversation stays in one place.")
             : t('hosting.enterprise.signin', 'You can email us right away, or sign in first to send it as a message and track the reply in your dashboard.')}
         </div>
       </Card>
@@ -646,7 +663,7 @@ function BoostAddCard({ repos, onAdd }) {
   const { data: fp } = useAsync(() => api.get(`/hosting/feature-price?days=${days}`).catch(() => null), [days]);
   const repo = repos.find((r) => r.id === repoId);
   return (
-    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary-2)]/10 to-transparent">
+    <Card className="p-6 mt-4 flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-[var(--primary-2)] to-transparent">
       <Rocket size={26} className="text-warning shrink-0" />
       <div className="flex-1 w-full">
         <div className="font-semibold text-lg">{t('cart.boost.title', 'Boost a repo to the top')}</div>
@@ -702,13 +719,13 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
     } catch (x) {
       const e = x.data?.error;
       if (e === 'creator_link_required') { toast.error(t('hosting.err.link', 'Link a BMM creator id first (Profile → Creator IDs) to host a repo.')); nav('/profile'); }
-      else if (e === 'cart_makes_free') toast.error(t('cart.err.free', 'The total is free — remove a promo or use a free-hosting grant code instead.'));
-      else if (e === 'promo_not_stackable') toast.error(t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.'));
+      else if (e === 'cart_makes_free') toast.error(t('cart.err.free', 'The total is free, remove a promo or use a free-hosting grant code instead.'));
+      else if (e === 'promo_not_stackable') toast.error(t('cart.err.stack', 'Those codes can’t be combined, only stackable codes stack.'));
       else if (e === 'capacity_full') toast.error(t('hosting.err.capacity', 'No capacity available right now.'));
       else if (e === 'stripe_not_configured') toast.error(t('hosting.err.stripe', 'Payments not configured yet.'));
       else if (e === 'terms_not_accepted') toast.error(t('cart.mustagree', 'Please accept the Terms and Payments policy first.'));
       else if (e?.startsWith('promo_')) toast.error(t('cart.err.promo', 'A code is invalid or not eligible.'));
-      else toast.error(t('hosting.err.checkout', 'Checkout failed — {e}').replace('{e}', e || (x.status ? `HTTP ${x.status}` : 'unknown')));
+      else toast.error(t('hosting.err.checkout', 'Checkout failed: {e}').replace('{e}', e || (x.status ? `HTTP ${x.status}` : 'unknown')));
     } finally { setBusy(false); }
   };
   if (!count || introActive) return null;
@@ -741,7 +758,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
             </div>
             {/* Per-item auto-renew — hosting renews as a subscription after the prepaid
                 term; a boost re-bills every N days. Both cancellable in Billing. */}
-            <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={it.kind === 'boost' ? t('cart.autorenew.hb', 'Keep this repo featured automatically — re-bills every {n} days. Cancel anytime in Billing.').replace('{n}', it.days) : t('cart.autorenew.h', 'Keep this repo online automatically — after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
+            <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-[var(--muted)] cursor-pointer" title={it.kind === 'boost' ? t('cart.autorenew.hb', 'Keep this repo featured automatically, re-bills every {n} days. Cancel anytime in Billing.').replace('{n}', it.days) : t('cart.autorenew.h', 'Keep this repo online automatically, after the prepaid term it renews as a subscription. Cancel anytime in Billing.')}>
               <input type="checkbox" checked={!!it.autoRenew} disabled={!!it.giftTo} onChange={(e) => setItemAutoRenew(it.uid, e.target.checked)} />
               <RefreshCw size={11} className={it.autoRenew ? 'text-success' : 'text-[var(--faint)]'} /> {it.kind === 'boost' ? t('cart.autorenew.boost', 'Auto-renew every {n} days').replace('{n}', it.days) : t('cart.autorenew', 'Auto-renew after the prepaid term')}
             </label>
@@ -781,7 +798,7 @@ function CartPanel({ open, setOpen, cart, count, removeItem, setItemAutoRenew, s
           {codes.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{codes.map((c) => (
             <span key={c} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-xs font-mono">{c}<button onClick={() => setCodes((x) => x.filter((k) => k !== c))} className="text-[var(--faint)] hover:text-error"><X size={10} /></button></span>
           ))}</div>}
-          {promoErr && <div className="text-[11px] text-error mt-1.5">{quoteErr === 'promo_not_stackable' ? t('cart.err.stack', 'Those codes can’t be combined — only stackable codes stack.') : quoteErr === 'promo_not_discount' ? t('cart.err.notdiscount', 'Only discount codes apply in the cart.') : t('cart.err.promo', 'A code is invalid or not eligible.')}</div>}
+          {promoErr && <div className="text-[11px] text-error mt-1.5">{quoteErr === 'promo_not_stackable' ? t('cart.err.stack', 'Those codes can’t be combined, only stackable codes stack.') : quoteErr === 'promo_not_discount' ? t('cart.err.notdiscount', 'Only discount codes apply in the cart.') : t('cart.err.promo', 'A code is invalid or not eligible.')}</div>}
         </div>
       </div>
       <div className="border-t border-[var(--line)] p-3 space-y-1.5">
@@ -860,7 +877,7 @@ function PoolConfigurator({ months, tiers, soldOut, capacity, onAdd }) {
           </div>
         </div>
         {/* right: the price, always in view while dragging */}
-        <div className="p-5 sm:p-7 border-t md:border-t-0 md:border-s border-[var(--line)] bg-[var(--surface-2)]/40 flex flex-col">
+        <div className="p-5 sm:p-7 border-t md:border-t-0 md:border-s border-[var(--line)] panel flex flex-col">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('hosting.estprice', 'Estimated price')}</div>
           <div className="mt-2 flex items-end gap-1.5">
             <span className="text-4xl font-extrabold gradient-text leading-none">{termTotal == null ? '—' : `$${(termTotal / 100 / months).toFixed(2)}`}</span>
@@ -974,7 +991,7 @@ function HostingHero({ freePlan, freeOffered }) {
   const facts = [
     [Layers, t('hosting.hero.p1', 'One space, split how you like')],
     [Zap, t('hosting.hero.p2', 'An address that stops moving')],
-    [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing — your call')],
+    [Receipt, t('hosting.hero.p4', 'Prepaid, or renewing, your call')],
   ];
   return (
     // The first SCREEN, whatever its height: the topbar is 3.5rem + its 0.75rem inset and
@@ -982,7 +999,7 @@ function HostingHero({ freePlan, freeOffered }) {
     // svh, not vh — on a phone the URL bar is part of 100vh and the buttons would sit under
     // it. The plans start where a scroll starts, which is the whole request.
     <div className="relative min-h-[calc(100svh-7rem)] flex flex-col justify-center pb-10">
-      <div aria-hidden className="absolute left-1/2 -translate-x-1/2 top-4 w-[720px] max-w-[140%] h-72 rounded-full bg-[var(--primary)]/10 blur-3xl -z-10" />
+      <div aria-hidden className="absolute left-1/2 -translate-x-1/2 top-4 w-[720px] max-w-[140%] h-72 rounded-full tint-primary blur-3xl -z-10" />
       <div className="grid lg:grid-cols-[1.05fr_.95fr] gap-7 sm:gap-10 lg:gap-12 items-center">
         <div>
           {/* No badge over the title. It said HOSTING, on the hosting page, above a heading
@@ -991,7 +1008,7 @@ function HostingHero({ freePlan, freeOffered }) {
             {t('hosting.hero.h', 'Somewhere to put your repos and catalogues')}
           </h1>
           <p className="text-[var(--muted)] mt-4 text-[15.5px] leading-relaxed max-w-xl">
-            {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like — we keep it up, you decide what goes in it.')}
+            {t('hosting.hero.sub', 'You buy a space. You fill it with whatever you like, we keep it up, you decide what goes in it.')}
           </p>
 
           <ul className="mt-7 flex flex-col gap-2.5">
@@ -1011,7 +1028,7 @@ function HostingHero({ freePlan, freeOffered }) {
                 free storage that the card below reports as sold out is worse than no button:
                 it spends somebody's click to tell them no. */}
             {gb != null && freeOffered && (
-              <a href="#plans"><Button className="!px-6 !py-3"><Gift size={16} /> {t('hosting.hero.cta2', 'Start free — {gb} GB').replace('{gb}', gb)}</Button></a>
+              <a href="#plans"><Button className="!px-6 !py-3"><Gift size={16} /> {t('hosting.hero.cta2', 'Start free: {gb} GB').replace('{gb}', gb)}</Button></a>
             )}
           </div>
         </div>
@@ -1039,7 +1056,7 @@ function PoolDiagram() {
   const { t } = useI18n();
   // Inline backgrounds, and NOT Tailwind's `/70` opacity modifier on a var().
   //
-  // `bg-[var(--primary)]/70` compiles to nothing usable: the modifier needs raw channels to
+  // `bg-[var(--primary)]` compiles to nothing usable: the modifier needs raw channels to
   // build an rgba, and a var() holding a full colour cannot give it those. Two of the three
   // segments rendered with no background at all — one solid block where the whole point was
   // three shares — and the legend beside it showed two blank swatches. It looked deliberate.
@@ -1127,7 +1144,7 @@ function HostingCompare({ freePlan }) {
         : t('hosting.cmp.free.s2', 'One per account, no card.'),
       rows: [
         [true, t('hosting.cmp.free.1', 'A stable address anything can sync from')],
-        [true, t('hosting.cmp.free.5', 'A public page, search, favourites — people can find it')],
+        [true, t('hosting.cmp.free.5', 'A public page, search, favourites, people can find it')],
         [true, t('hosting.cmp.free.2', 'Downloads counted, for real')],
         // The row the section promised: one place where free is the wrong answer.
         [false, t('hosting.cmp.free.4b', 'One space, and it is a small one')],

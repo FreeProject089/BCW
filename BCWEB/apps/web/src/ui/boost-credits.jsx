@@ -58,14 +58,14 @@ export default function BoostCredits() {
           ? t('boost.s', 'One boost puts a repo or a catalogue at the top of its public listing. Spending one on something already featured adds to the time left rather than replacing it.')
           : t('boost.s0', 'You have spent them all for now. The next ones arrive with your plan’s next period.')}
         {data.nextExpiry && data.available
-          ? ` ${t('boost.exp', 'Use them before {d} — they do not carry over.').replace('{d}', new Date(data.nextExpiry).toLocaleDateString())}`
+          ? ` ${t('boost.exp', 'Use them before {d}, they do not carry over.').replace('{d}', new Date(data.nextExpiry).toLocaleDateString())}`
           : ''}
       </p>
 
       {data.available > 0 && (
         <div className="mt-4 flex flex-col gap-2">
           {targets.length === 0 && (
-            <div className="text-[12.5px] text-[var(--faint)]">{t('boost.notargets', 'Nothing to boost yet — a repo or a catalogue has to exist first.')}</div>
+            <div className="text-[12.5px] text-[var(--faint)]">{t('boost.notargets', 'Nothing to boost yet, a repo or a catalogue has to exist first.')}</div>
           )}
           {targets.map((x) => (
             <div key={`${x.kind}-${x.id}`} className="flex items-center gap-2.5 rounded-lg border border-[var(--line)] px-3 py-2.5">

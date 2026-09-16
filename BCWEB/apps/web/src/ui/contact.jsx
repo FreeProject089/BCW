@@ -46,10 +46,10 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
       }
       const r = await api.post('/threads', payload);
       setSent(r);
-      if (user) { toast.success(t('cm.sent', 'Sent — follow the conversation in your dashboard → Messages.')); onClose(); }
+      if (user) { toast.success(t('cm.sent', 'Sent, follow the conversation in your dashboard → Messages.')); onClose(); }
     } catch (x) {
       const e = x.data?.error;
-      toast.error(e === 'rate_limited' ? t('cm.rate', 'Too many messages for now — try again later.')
+      toast.error(e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.')
         : e === 'yourself' ? t('cm.self', 'That is you.')
         : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.')
         : e === 'not_found' ? t('cm.gone', 'This cannot be contacted any more.')
@@ -62,7 +62,7 @@ export function ContactModal({ kind, targetId, targetLabel, onClose }) {
     <Modal open onClose={onClose} title={t('cm.title', 'Message about “{n}”').replace('{n}', targetLabel || '')} icon={MessageSquare} width="max-w-lg">
       {sent && !user ? (
         <div className="space-y-3 text-sm">
-          <p>{t('cm.sentanon', 'Sent. You will be e-mailed when they answer. Keep this link — it is the only way back to the conversation without an account:')}</p>
+          <p>{t('cm.sentanon', 'Sent. You will be e-mailed when they answer. Keep this link, it is the only way back to the conversation without an account:')}</p>
           <div className="flex items-center gap-2">
             <Input value={link} readOnly className="text-xs" />
             <Button size="sm" onClick={async () => { await copyText(link); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>

@@ -81,7 +81,7 @@ function UsageBars({ series }) {
           <>
             <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px] bg-[var(--primary-2)]" />{t('aapi.l.ok', 'served')}</span>
             <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px] bg-warning" />{t('aapi.l.err', 'refused or failed')}</span>
-            <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px]" style={{ background: 'var(--line-strong)' }} />{t('aapi.l.sandbox', 'sandbox — nothing was written')}</span>
+            <span className="flex items-center gap-1 text-[var(--muted)]"><i className="w-2 h-2 rounded-[2px]" style={{ background: 'var(--line-strong)' }} />{t('aapi.l.sandbox', 'sandbox, nothing was written')}</span>
           </>
         )}
       </div>
@@ -246,7 +246,7 @@ export function AdminApi() {
               </Select>
             </div>
             <p className="text-[11px] text-[var(--muted)]">
-              {t('aapi.exact', 'These are exact counts, not the sample — every authenticated call is counted, including the ones refused for a missing scope.')}
+              {t('aapi.exact', 'These are exact counts, not the sample, every authenticated call is counted, including the ones refused for a missing scope.')}
             </p>
             <UsageBars series={d.series || []} />
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-3 border-t border-[var(--line)]">
@@ -261,7 +261,7 @@ export function AdminApi() {
 
           <Card className="p-4 mt-4">
             <div className="text-sm font-semibold mb-2">{t('aapi.topkeys', 'Busiest keys')}</div>
-            {!(d.top || []).length ? <EmptyState icon={Activity} title={t('aapi.nousage', 'No API calls in this period.')} sub={t('aapi.nousage.s', 'Nothing has used a key yet — or the period is too short.')} /> : (
+            {!(d.top || []).length ? <EmptyState icon={Activity} title={t('aapi.nousage', 'No API calls in this period.')} sub={t('aapi.nousage.s', 'Nothing has used a key yet, or the period is too short.')} /> : (
               <div className="divide-y divide-[var(--line)]">
                 {d.top.map((k) => (
                   <div key={k.keyId || 'deleted'} className="py-2 flex items-center gap-3">
@@ -333,10 +333,10 @@ function KeysTable() {
   // not in six seconds — so the request goes immediately and the undo is a real un-revoke,
   // which is also why the toast says "restore" rather than pretending nothing happened.
   const unrevoke = async (keyId) => {
-    try { await api.post(`/admin/api/keys/${keyId}/unrevoke`); toast.success(t('aapi.restored', 'Restored — the key works again.')); }
+    try { await api.post(`/admin/api/keys/${keyId}/unrevoke`); toast.success(t('aapi.restored', 'Restored, the key works again.')); }
     catch (e) {
       toast.error(e?.body?.error === 'expired'
-        ? t('aapi.cantrestore', 'That key has expired — restoring it would not make it work.')
+        ? t('aapi.cantrestore', 'That key has expired, restoring it would not make it work.')
         : t('common.failed', 'Failed.'));
     }
     reload();
@@ -439,7 +439,7 @@ function RequestsTable() {
       <p className="text-[11px] text-[var(--muted)] mb-2 flex items-start gap-1.5">
         <AlertTriangle size={12} className="text-warning mt-[2px] shrink-0" />
         {/* Stated once, at the top, in the place someone would otherwise count rows. */}
-        {t('aapi.req.warn', 'This is a sample kept for a few days, not a complete log — count nothing from it. The Usage tab has the real figures.')}
+        {t('aapi.req.warn', 'This is a sample kept for a few days, not a complete log, count nothing from it. The Usage tab has the real figures.')}
       </p>
       <form className="flex flex-wrap gap-2 mb-3" onSubmit={(e) => { e.preventDefault(); setApplied({ status, path: path.trim() }); }}>
         <Select className="w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>
@@ -491,7 +491,7 @@ function LimitsCard() {
         <Stat label={t('aapi.lim.429', 'Rate-limited (24 h)')} value={(data.last24h?.refused429 || 0).toLocaleString()} tone={data.last24h?.refused429 > 100 ? 'warn' : undefined} />
         <Stat label={t('aapi.lim.403', 'Forbidden (24 h)')} value={(data.last24h?.forbidden403 || 0).toLocaleString()} />
       </div>
-      <p className="text-[11px] text-[var(--faint)] mt-2">{t('aapi.lim.fb', 'The feedback endpoint has its own, smaller limits — Moderation → Feedback & crashes → Project settings.')}</p>
+      <p className="text-[11px] text-[var(--faint)] mt-2">{t('aapi.lim.fb', 'The feedback endpoint has its own, smaller limits: Moderation → Feedback & crashes → Project settings.')}</p>
       <Button size="sm" variant="primary" className="mt-3" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('common.save', 'Save')}</Button>
     </Card>
   );

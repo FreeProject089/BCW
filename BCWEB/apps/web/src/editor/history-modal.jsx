@@ -62,13 +62,13 @@ export default function HistoryModal({ base, onClose, onRestore }) {
       .catch(() => toast.error(t('hm.loadfail', 'Could not load that version.'))).finally(() => setLoading(false));
   };
   const fmt = (d) => { try { return new Date(d).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
-  const restore = () => { if (preview) { onRestore(preview); onClose(); toast.success(t('hm.restored', 'Restored version {v} into the editor — review, then Save.').replace('{v}', preview.version)); } };
+  const restore = () => { if (preview) { onRestore(preview); onClose(); toast.success(t('hm.restored', 'Restored version {v} into the editor, review, then Save.').replace('{v}', preview.version)); } };
   const hasFr = !!(preview?.bodyFr || prevBody?.bodyFr);
 
   return (
     <Modal open onClose={onClose} title={t('hm.title', 'Edit history')} icon={History} width="max-w-4xl"
       footer={<>
-        <span className="text-xs text-[var(--faint)] me-auto">{canRestore ? t('hm.restorehint', 'Restoring loads the version into the editor — nothing is lost until you Save.') : t('hm.readonly', 'Read-only version history for this published post.')}</span>
+        <span className="text-xs text-[var(--faint)] me-auto">{canRestore ? t('hm.restorehint', 'Restoring loads the version into the editor, nothing is lost until you Save.') : t('hm.readonly', 'Read-only version history for this published post.')}</span>
         <Button variant="ghost" onClick={onClose}>{t('hm.close', 'Close')}</Button>
         {canRestore && <Button variant="primary" disabled={!preview} onClick={restore}><RotateCcw size={14} /> {t('hm.restorebtn', 'Restore this version')}</Button>}
       </>}>
@@ -79,7 +79,7 @@ export default function HistoryModal({ base, onClose, onRestore }) {
           {revs === null ? <div className="grid place-items-center py-10"><Spinner /></div>
             : revs.length ? revs.map((r, i) => (
               <button key={r.id} onClick={() => select(i)}
-                className={`w-full text-start rounded-lg border px-3 py-2 transition ${activeIdx === i ? 'border-[var(--primary)] bg-[var(--primary)]/8' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                className={`w-full text-start rounded-lg border px-3 py-2 transition ${activeIdx === i ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium">v{r.version}{i === 0 && <span className="ms-1.5 text-[10px] font-semibold uppercase tracking-wide text-success">{t('hm.latest', 'latest')}</span>}</span>
                   <span className="text-[11px] text-[var(--faint)]">{(r.bytes / 1024).toFixed(1)} KB</span>
@@ -113,7 +113,7 @@ export default function HistoryModal({ base, onClose, onRestore }) {
               {mode === 'diff'
                 ? (prevBody
                     ? <DiffView a={bodyOf(prevBody, lang)} b={bodyOf(preview, lang)} />
-                    : <div className="text-sm text-[var(--faint)] flex items-center gap-1.5 py-4"><Languages size={14} /> {t('hm.firstversion', 'First version — nothing to compare against.')}</div>)
+                    : <div className="text-sm text-[var(--faint)] flex items-center gap-1.5 py-4"><Languages size={14} /> {t('hm.firstversion', 'First version, nothing to compare against.')}</div>)
                 : <div className="text-sm"><Markdown>{bodyOf(preview, lang) || '*(empty)*'}</Markdown></div>}
             </> : <div className="text-sm text-[var(--faint)] grid place-items-center h-full">{t('hm.selectversion', 'Select a version to preview it.')}</div>}
         </div>

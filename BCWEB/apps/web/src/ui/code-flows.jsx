@@ -186,7 +186,7 @@ export default function CodeFlows({ flows = [], repoUrl = null, t = (k, d) => d 
             )}
             {needle && !shown.length && (
                 <p className="text-[12px] text-[var(--muted)] py-3">
-                    {t('cf.none', 'No flow matches that — the search reads flow names, function names and file paths.')}
+                    {t('cf.none', 'No flow matches that, the search reads flow names, function names and file paths.')}
                 </p>
             )}
             <div className="space-y-2">

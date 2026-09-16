@@ -596,7 +596,7 @@ export function SideDash({ title, subtitle, icon, tabs, headerActions, children,
             <div className="flex flex-wrap gap-1.5 mb-4">
               {current.sub.map((lf) => (
                 <button key={lf.id} onClick={() => set(lf.id)}
-                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border transition-colors press ${activeLeaf === lf.id ? 'bg-[var(--primary)]/10 border-[var(--primary)]/40 text-[var(--text)] font-medium' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}>
+                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 border transition-colors press ${activeLeaf === lf.id ? 'tint-primary b-primary text-[var(--text)] font-medium' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--line-strong)]'}`}>
                   {lf.icon && <lf.icon size={13} className={activeLeaf === lf.id ? 'text-[var(--primary-2)]' : ''} />} {lf.label}
                   {lf.badge ? <Badge tone="primary">{lf.badge}</Badge> : null}
                 </button>

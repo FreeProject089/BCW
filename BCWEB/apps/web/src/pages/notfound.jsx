@@ -205,10 +205,10 @@ export default function NotFound() {
         {/* Game */}
         <div className="relative shrink-0 mx-auto" style={{ width: W }}>
           <canvas ref={canvasRef} width={W} height={H} onPointerMove={(e) => move(e.clientX)} onTouchMove={(e) => move(e.touches[0].clientX)}
-            className="rounded-2xl border border-[var(--line)] bg-[var(--surface-2)]/40 touch-none w-full" style={{ aspectRatio: `${W}/${H}`, maxWidth: '100%' }} />
-          <div className="absolute top-2.5 left-3 text-sm font-bold tabular-nums text-[var(--text)] bg-[var(--bg-solid)]/70 px-2 py-0.5 rounded-md backdrop-blur">{score}</div>
+            className="rounded-2xl border border-[var(--line)] panel touch-none w-full" style={{ aspectRatio: `${W}/${H}`, maxWidth: '100%' }} />
+          <div className="absolute top-2.5 left-3 text-sm font-bold tabular-nums text-[var(--text)] scrim px-2 py-0.5 rounded-md backdrop-blur">{score}</div>
           {phase !== 'playing' && (
-            <div className="absolute inset-0 grid place-items-center rounded-2xl bg-[var(--bg-solid)]/70 backdrop-blur-sm">
+            <div className="absolute inset-0 grid place-items-center rounded-2xl scrim backdrop-blur-sm">
               <div className="text-center px-4">
                 {phase === 'over' && <>
                   <div className="text-xs uppercase tracking-wider text-[var(--faint)]">{t('nf.gameover', 'Game over')}</div>
@@ -239,7 +239,7 @@ export default function NotFound() {
                 <span className="font-bold tabular-nums text-[var(--primary-2)]">{r.score}</span>
               </div>
             ))}
-          </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet — be the first!')}</div>)}
+          </div> : <div className="text-sm text-[var(--faint)] py-3 text-center">{t('nf.noscores', 'No scores yet, be the first!')}</div>)}
 
           {/* What the month is for. The numbers come from the API rather than being written
               here, because they are the same numbers the codes are minted with and a page
@@ -286,7 +286,7 @@ export default function NotFound() {
           {boardOpen && awards?.awards?.length > 0 && (
             <div className="mt-3 pt-3 border-t border-[var(--line)]">
               <div className="text-[12px] font-semibold mb-1.5">
-                {t('nf.lastmonth', 'Winners — {s}').replace('{s}', awards.season)}
+                {t('nf.lastmonth', 'Winners: {s}').replace('{s}', awards.season)}
               </div>
               <div className="space-y-1">
                 {awards.awards.map((a) => (

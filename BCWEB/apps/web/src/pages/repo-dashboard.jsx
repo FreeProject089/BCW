@@ -264,7 +264,7 @@ function RepoUploadPanel({ jobs, cancel }) {
               <span className="font-medium flex-1 truncate">
                 {up ? t('rd.up.uploading', 'Uploading…') : j.status === 'cancelled' ? t('rd.up.cancelled', 'Upload cancelled') : j.failed ? t('rd.up.witherrors', 'Finished with errors') : t('rd.up.complete', 'Upload complete')}
               </span>
-              {up && <button onClick={() => cancel(j.id)} className="press-sm text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--error)] hover:border-[var(--error)]/50 flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>}
+              {up && <button onClick={() => cancel(j.id)} className="press-sm text-[11px] px-2 py-0.5 rounded-md border border-[var(--line)] text-[var(--muted)] hover:text-[var(--error)] hover:b-error flex items-center gap-1"><Ban size={11} /> {t('up.cancel', 'Cancel')}</button>}
             </div>
             <div className="progress-track"><div className={`progress-fill ${up ? '' : 'is-done'} ${!up && !j.failed ? 'is-success' : ''}`} style={{ width: `${pct}%` }} /></div>
             <div className="flex items-center justify-between gap-2 text-[11px] text-[var(--muted)] mt-1.5">
@@ -273,11 +273,11 @@ function RepoUploadPanel({ jobs, cancel }) {
             </div>
             {j.failedFiles?.length > 0 && (
               <details className="mt-2">
-                <summary className="cursor-pointer text-[11px] text-[var(--warning)]">{t('up.failedfiles', '{n} failed file(s) — view list').replace('{n}', j.failedFiles.length)}</summary>
+                <summary className="cursor-pointer text-[11px] text-[var(--warning)]">{t('up.failedfiles', '{n} failed file(s), view list').replace('{n}', j.failedFiles.length)}</summary>
                 <div className="mt-1 max-h-32 overflow-auto scroll-thin rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2 space-y-0.5">
                   {j.failedFiles.map((ff, i) => <div key={i} className="text-[10.5px] font-mono break-anywhere"><span className="text-[var(--text)]">{ff.name}</span> <span className="text-[var(--faint)]">· {ff.reason}{ff.status != null ? ` [${ff.status}]` : ''}</span></div>)}
                 </div>
-                <button onClick={async () => { const log = [`BetterCommunity upload log`, `repo: ${j.repoName}`, `when: ${new Date().toISOString()}`, `result: ${j.done - j.failed}/${j.total} uploaded · ${j.failed} failed`, '', ...j.failedFiles.map((ff) => `FAILED\t${ff.name}\t${ff.reason}${ff.status != null ? `\t[status ${ff.status}]` : ''}`)].join('\n'); const ok = await copyText(log); ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy — select the list manually.')); }} className="press-sm mt-1.5 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline underline-offset-2">{t('up.copylog', 'Copy error log')}</button>
+                <button onClick={async () => { const log = [`BetterCommunity upload log`, `repo: ${j.repoName}`, `when: ${new Date().toISOString()}`, `result: ${j.done - j.failed}/${j.total} uploaded · ${j.failed} failed`, '', ...j.failedFiles.map((ff) => `FAILED\t${ff.name}\t${ff.reason}${ff.status != null ? `\t[status ${ff.status}]` : ''}`)].join('\n'); const ok = await copyText(log); ok ? toast.success(t('up.listcopied', 'Error log copied.')) : toast.error(t('up.copyfail', 'Could not copy, select the list manually.')); }} className="press-sm mt-1.5 text-[10.5px] text-[var(--muted)] hover:text-[var(--text)] underline underline-offset-2">{t('up.copylog', 'Copy error log')}</button>
               </details>
             )}
           </Card>
@@ -354,7 +354,7 @@ function FilesTab({ r, reload }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `${r.name}.zip`; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 4000);
-    } catch (x) { toast.error(x.message === 'selection_too_large' ? t('rd.zip.toolarge', 'Selection too large — zip downloads are capped at 2 GB. Select fewer files.') : t('rd.zip.failed', 'Download failed.')); }
+    } catch (x) { toast.error(x.message === 'selection_too_large' ? t('rd.zip.toolarge', 'Selection too large, zip downloads are capped at 2 GB. Select fewer files.') : t('rd.zip.failed', 'Download failed.')); }
     finally { setZipping(false); }
   };
   const downloadUrl = (f) => (r.published && r.hostPath) ? `${location.origin}/hosting/${r.hostPath}/files/${f.path}` : null;
@@ -367,7 +367,7 @@ function FilesTab({ r, reload }) {
   // and a sha256 is 64 characters nobody transcribes correctly. Silent when a file
   // predates hashing rather than copying an empty string that looks like a value.
   const copySha = (sha) => { if (!sha) return; copyText(sha); toast.success(t('rd.shacopied', 'Checksum copied.')); };
-  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline me-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo — its content lives at its own URL, not here.')}</Card>;
+  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]"><Globe size={16} className="text-[var(--primary-2)] inline me-2" />{t('rd.selfhost', 'This is a self-hosted (URL) repo, its content lives at its own URL, not here.')}</Card>;
 
   const shown = files
     .filter((f) => !q.trim() || f.path.toLowerCase().includes(q.trim().toLowerCase()))
@@ -384,7 +384,7 @@ function FilesTab({ r, reload }) {
     <div className="space-y-4">
       {locked ? (
         <div className="rounded-2xl border border-[var(--error-border)] bg-[var(--error-bg)] px-4 py-3 text-sm text-[var(--error)] flex items-center gap-2.5">
-          <Ban size={16} className="shrink-0" /> {t('rd.files.frozen', 'This repo is suspended — files are read-only. You can still browse and download, but can’t add or delete anything.')}
+          <Ban size={16} className="shrink-0" /> {t('rd.files.frozen', 'This repo is suspended, files are read-only. You can still browse and download, but can’t add or delete anything.')}
         </div>
       ) : (
       <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop}
@@ -392,7 +392,8 @@ function FilesTab({ r, reload }) {
         <UploadCloud size={26} className={`mx-auto mb-2 ${dragOver ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`} />
         <div className="text-sm text-[var(--muted)]">{t('repos.drophere', 'Drop files here')} <span className="text-[var(--faint)]">— {t('repos.orpick', 'or')}</span></div>
         <div className="flex items-center justify-center gap-2 mt-3">
-          <label className="btn btn-sm cursor-pointer"><UploadCloud size={13} /> {t('repos.pickfiles', 'Choose files')}<input type="file" multiple className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} /></label>
+          {/* The id is what the empty file list's button clicks — one picker, not two. */}
+          <label className="btn btn-sm cursor-pointer"><UploadCloud size={13} /> {t('repos.pickfiles', 'Choose files')}<input id="rd-pick-files" type="file" multiple className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} /></label>
           <label className="btn btn-sm cursor-pointer"><FolderUp size={13} /> {t('repos.pickfolder', 'Choose folder')}<input type="file" multiple webkitdirectory="" directory="" className="hidden" onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} /></label>
         </div>
         <div className="text-[11px] text-[var(--faint)] mt-2.5">{t('repos.includejson', 'Include a')} <code>repo.json</code> {t('repos.tomanifest', 'manifest. SHA / checksum is computed automatically.')}</div>
@@ -449,7 +450,23 @@ function FilesTab({ r, reload }) {
           {!locked && sel.size > 0 && <Button size="sm" onClick={delSelected} className="!text-error"><Trash2 size={12} /> {t('rd.delsel.btn', 'Delete {n}').replace('{n}', sel.size)}</Button>}
         </div>
         <div className="max-h-[46vh] overflow-auto">
-          {!shown.length ? <div className="text-sm text-[var(--faint)] px-4 py-4">{q.trim() ? t('rd.nomatch', 'No files match.') : t('repos.nofiles', 'No files yet.')}</div>
+          {/* Not the shared EmptyState: this list already sits inside a Card, and EmptyState
+              renders one — a card inside a card reads as a rendering bug. Same contract
+              though: what it is, why it is empty, and one button that fills it. */}
+          {!shown.length ? (
+            <div className="px-4 py-8 text-center">
+              <Files size={26} className="mx-auto text-[var(--faint)] mb-2" />
+              <div className="text-sm font-semibold">{q.trim() ? t('rd.nomatch.t', 'No file matches') : t('repos.nofiles.t', 'No files yet')}</div>
+              <div className="text-xs text-[var(--muted)] mt-1">
+                {q.trim() ? t('rd.nomatch.s', 'Nothing in this repo matches what you typed.') : t('repos.nofiles.s', 'These are the files BMM downloads from this repo, and none has been uploaded.')}
+              </div>
+              <div className="mt-3">
+                {q.trim()
+                  ? <Button size="sm" onClick={() => setQ('')}><X size={13} /> {t('rd.nomatch.a', 'Clear the search')}</Button>
+                  : !locked && <Button size="sm" variant="primary" onClick={() => document.getElementById('rd-pick-files')?.click()}><UploadCloud size={13} /> {t('repos.pickfiles', 'Choose files')}</Button>}
+              </div>
+            </div>
+          )
           : view === 'tree' ? <TreeNode node={tree} name={null} depth={0} sel={sel} toggle={toggle} del={del} downloadUrl={downloadUrl} copyUrl={copyUrl} copySha={copySha} t={t} removing={removing} deleting={deleting} />
           : (
             <div className="divide-y divide-[var(--line)]">
@@ -556,7 +573,7 @@ function UsersTab({ r }) {
 
       <Card className="p-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Radio size={12} className="text-[var(--primary-2)]" /> {t('rd.traffic.title', 'Traffic — last 7 days')}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Radio size={12} className="text-[var(--primary-2)]" /> {t('rd.traffic.title', 'Traffic, last 7 days')}</span>
           <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-info" /> {t('rd.connects', 'Connects')}</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-[var(--primary)]" /> {t('rd.downloads', 'Downloads')}</span></span>
         </div>
         <RepoTrafficChart series={series} t={t} />
@@ -687,8 +704,8 @@ function OnlineTab({ r, reload, publicUrl }) {
   const { t } = useI18n(); const toast = useToast();
   const [busy, setBusy] = useState(false);
   const hasRepoJson = (r.files || []).some((f) => isManifestPath(f.path)) && !!r.repoJson;
-  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostonline', 'Self-hosted repos are reached at their own URL — nothing to publish here.')}</Card>;
-  const go = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/publish`); toast.success(t('repos.nowonline', 'Online — your repo.json is now public.')); reload(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
+  if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostonline', 'Self-hosted repos are reached at their own URL, nothing to publish here.')}</Card>;
+  const go = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/publish`); toast.success(t('repos.nowonline', 'Online, your repo.json is now public.')); reload(); } catch (x) { toast.error(x.data?.error === 'no_content' ? t('repos.needfiles', 'Upload at least one file first.') : t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const off = async () => { setBusy(true); try { await api.post(`/repos/${r.id}/dashboard/unpublish`); toast.success(t('repos.nowoffline', 'Taken offline.')); reload(); } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); } };
   const online = r.published && r.status === 'ONLINE';
   return (
@@ -713,7 +730,7 @@ function OnlineTab({ r, reload, publicUrl }) {
         </div>
       )}
       {!online && !hasRepoJson && <div className="mt-3 text-xs text-warning flex items-center gap-1.5"><AlertTriangle size={13} /> {t('repos.needjsonhint', 'Upload a valid repo.json first, then Go online.')}</div>}
-      {!online && hasRepoJson && <div className="mt-3 text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> {t('repos.readyonline', 'Valid repo.json detected — ready to go online.')}</div>}
+      {!online && hasRepoJson && <div className="mt-3 text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> {t('repos.readyonline', 'Valid repo.json detected, ready to go online.')}</div>}
     </Card>
     {/* Right under the address it replaces: the bettercommunity URL above is what a custom
         domain becomes an alias for, and seeing them together is the explanation. */}
@@ -751,7 +768,7 @@ function SettingsTab({ r, reload }) {
       // Into THIS repo's pool, never the other way: merging is destructive to the source, and
       // the pool the person is standing in front of is the one they mean to keep.
       await api.post('/me/hosting/groups/merge', { sourceId: mergeId, targetId: pool.id });
-      toast.success(t('rd.size.merged', 'Pools merged — the space is available here now.'));
+      toast.success(t('rd.size.merged', 'Pools merged, the space is available here now.'));
       setMergeId('');
       reload();
     } catch (x) {
@@ -768,7 +785,7 @@ function SettingsTab({ r, reload }) {
     } catch (x) {
       // The server's two refusals are two different problems and two different fixes.
       const e = x.data?.error;
-      toast.error(e === 'below_used' ? t('rd.size.belowused', 'Smaller than what the repo holds — delete files first.')
+      toast.error(e === 'below_used' ? t('rd.size.belowused', 'Smaller than what the repo holds, delete files first.')
         : e === 'pool_exceeded' ? t('rd.size.poolfull', 'The pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
         : e === 'not_grouped' ? t('rd.size.solo', 'This repo has a fixed quota from its plan.')
         : t('repos.mng.savefail', 'Failed to save.'));
@@ -783,7 +800,7 @@ function SettingsTab({ r, reload }) {
     // was changed on the Access tab in between — a save on one screen quietly reverting
     // another is the worst kind of data loss, because nothing reports it.
     const cur = r.settings || {};
-    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access: cur.access || {}, bans: cur.bans || {}, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps, listing }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved — upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
+    try { const res = await api.put(`/repos/${r.id}/dashboard/settings`, { access: cur.access || {}, bans: cur.bans || {}, requestedUploadKbps: requestedKbps <= 0 ? null : requestedKbps, listing }); toast.success(res.effectiveUploadKbps < requestedKbps ? t('repos.mng.capped', 'Saved, upload capped to {n} Mbps by the sandbox.').replace('{n}', (res.effectiveUploadKbps / 1024).toFixed(1)) : t('repos.mng.saved', 'Settings saved.')); reload(); }
     // Name the failure when the server named it: "Failed to save." over a form holding a key
     // somebody just pasted tells them nothing about which of the six fields is wrong.
     catch (x) {
@@ -795,7 +812,7 @@ function SettingsTab({ r, reload }) {
   if (!r.hosted) return <Card className="p-5 text-sm text-[var(--muted)]">{t('rd.selfhostset', 'Sandbox settings apply to hosted repos only.')}</Card>;
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed — your settings can never exceed this repo's hard limits.")}</div>
+      <div className="flex items-center gap-2 text-xs text-[var(--muted)]"><ShieldCheck size={13} className="text-[var(--primary-2)]" /> {t('repos.sandboxed', "Sandboxed, your settings can never exceed this repo's hard limits.")}</div>
       {/* SIZE, in Settings, because that is what a setting is: how this repo is provisioned.
           Only offered for a POOLED repo — a solo one's quota is fixed by its plan, and a
           slider that always answers "not grouped" is a control that lies about being one.
@@ -907,7 +924,7 @@ function AgentTab({ r }) {
   };
   const queue = async (cmd) => {
     setBusy(true);
-    try { const d = await api.post(`/me/repos/${r.id}/agent/command`, { cmd }); setAgent(d.agent); toast.success(t('rd.agent.queued', 'Queued — it runs on the next call in.')); }
+    try { const d = await api.post(`/me/repos/${r.id}/agent/command`, { cmd }); setAgent(d.agent); toast.success(t('rd.agent.queued', 'Queued, it runs on the next call in.')); }
     catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
 
@@ -927,7 +944,7 @@ function AgentTab({ r }) {
       {/* The secret, the one time it exists outside the machine that will use it. */}
       {token && (
         <Card className="p-5" style={{ borderColor: 'var(--ring)' }}>
-          <div className="font-semibold text-sm">{t('rd.agent.new', 'Copy this now — it is not shown again')}</div>
+          <div className="font-semibold text-sm">{t('rd.agent.new', 'Copy this now, it is not shown again')}</div>
           <div className="mt-2 flex items-center gap-2">
             <code className="flex-1 min-w-0 truncate text-[12.5px] bg-[var(--surface-2)] border border-[var(--line)] rounded-lg px-3 py-2">{token}</code>
             <Button size="sm" variant="secondary" onClick={() => { copyText(token); toast.success(t('common.copied', 'Copied.')); }}><Copy size={14} /></Button>
@@ -945,7 +962,7 @@ function AgentTab({ r }) {
           <div className="text-sm text-[var(--muted)]">
             {agent?.revokedAt
               ? t('rd.agent.revoked', 'The last token was revoked. Issue a new one when the server is ready to use it.')
-              : t('rd.agent.none', 'No token yet. Issuing one does nothing on its own — nothing happens until your server uses it.')}
+              : t('rd.agent.none', 'No token yet. Issuing one does nothing on its own, nothing happens until your server uses it.')}
           </div>
           <Button variant="primary" className="mt-3" disabled={busy} onClick={issue}>
             {busy ? <Spinner /> : <><KeyRound size={15} /> {agent?.revokedAt ? t('rd.agent.reissue', 'Issue a new token') : t('rd.agent.issue', 'Issue a token')}</>}
@@ -1105,7 +1122,7 @@ function AccessTab({ r, reload }) {
             <Button size="sm" onClick={clearSyncPassword} className="!text-error">{t('rd.remove', 'Remove')}</Button>
           </div>
         ) : (
-          <p className="text-[11px] text-[var(--faint)] mb-2">{t('rd.syncpw.off', 'No password — anyone your access lists allow can read this repo.')}</p>
+          <p className="text-[11px] text-[var(--faint)] mb-2">{t('rd.syncpw.off', 'No password, anyone your access lists allow can read this repo.')}</p>
         )}
         <div className="flex gap-2 mt-2">
           <Input type="password" autoComplete="new-password" value={syncPw} onChange={(e) => setSyncPw(e.target.value)}

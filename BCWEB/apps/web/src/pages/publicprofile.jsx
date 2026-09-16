@@ -109,11 +109,11 @@ export default function PublicProfile() {
       {u.economy?.level > 0 && <Card className="p-5">
         <h2 className="font-semibold mb-3 text-sm flex items-center gap-2"><Sparkles size={15} className="text-[var(--primary-2)]" /> {t('pp.discord', 'Discord activity')}</h2>
         <div className="flex flex-wrap gap-2">
-          <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-2 text-center">
+          <div className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center">
             <div className="text-xl font-bold tabular-nums leading-none text-[var(--primary-2)]">{u.economy.level}</div>
             <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">{t('pp.eco.level', 'level')}</div>
           </div>
-          <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-2 text-center">
+          <div className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center">
             <div className="text-xl font-bold tabular-nums leading-none">{(u.economy.xp || 0).toLocaleString()}</div>
             <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">XP</div>
           </div>
@@ -122,7 +122,7 @@ export default function PublicProfile() {
             [Sparkles, (u.economy.reactions || 0).toLocaleString(), t('pp.eco.reacts', 'reactions')],
             [Mic, `${Math.floor((u.economy.voiceSeconds || 0) / 3600)}h`, t('pp.eco.voice', 'in voice')],
           ].map(([Ic, v, l], i) => (
-            <div key={i} className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-2 text-center min-w-[70px]">
+            <div key={i} className="rounded-xl border border-[var(--line)] panel px-3.5 py-2 text-center min-w-[70px]">
               <div className="text-xl font-bold tabular-nums leading-none flex items-center justify-center gap-1"><Ic size={13} className="text-[var(--faint)]" /> {v}</div>
               <div className="text-[10px] uppercase tracking-wide text-[var(--faint)] mt-1">{l}</div>
             </div>
@@ -180,7 +180,7 @@ export function UserSearch() {
     <div className="max-w-2xl mx-auto px-4 py-8 space-y-4">
       <div>
         <h1 className="text-2xl font-bold flex items-center gap-2"><Search size={20} className="text-[var(--primary-2)]" /> {t('us.title', 'Find people')}</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{t('us.sub2', 'Search members by name — or paste a BC id, repo id or catalog id to find its owner.')}</p>
+        <p className="text-sm text-[var(--muted)] mt-1">{t('us.sub2', 'Search members by name, or paste a BC id, repo id or catalog id to find its owner.')}</p>
       </div>
       <div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-10" placeholder={t('us.ph2', 'Name, BC-XXXX-XXXX, repo id or catalog id…')} value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div>
       {q.trim().length < 2 ? <p className="text-sm text-[var(--faint)] text-center py-8">{t('us.type', 'Type at least 2 characters.')}</p>

@@ -213,7 +213,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
   const BLOCKS = [
     { icon: TagIcon, label: 'Callout', snip: '\n:::tip[Good to know]\nSomething worth highlighting.\n:::\n' },
     { icon: Sparkles, label: 'Custom callout', snip: '\n:::callout[Custom]{icon=rocket color="#7c3aed"}\nYour own icon and colour.\n:::\n' },
-    { icon: ChevronDown, label: 'Collapsible', snip: '\n:::details[Click to expand]\nHidden content — supports **markdown**.\n:::\n' },
+    { icon: ChevronDown, label: 'Collapsible', snip: '\n:::details[Click to expand]\nHidden content, supports **markdown**.\n:::\n' },
     { icon: LayoutGrid, label: 'Cards', snip: '\n::::cards\n:::card{title="First" icon=rocket}\nCard description.\n:::\n:::card{title="Link card" href="https://example.com" icon=link}\nGoes somewhere.\n:::\n::::\n' },
     { icon: ImagePlus, label: 'Image card', snip: '\n:::card{title="With image" image="https://picsum.photos/400/200"}\nCaption or description.\n:::\n' },
     { icon: Columns2, label: 'Columns', snip: '\n::::columns\n:::column\nLeft column.\n:::\n:::column\nRight column.\n:::\n::::\n' },
@@ -246,9 +246,9 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
     { icon: ListOrdered, label: 'Steps', snip: '\n::::steps[How it works]{type=1}\n:::step[First]\nWhat to do. Supports **markdown**, callouts, code — anything.\n:::\n:::step[Second]\nAnd so on.\n:::\n::::\n' },
     { icon: ListOrdered, label: 'Steps (lettered)', snip: '\n::::steps[Options]{type=a color="#7c3aed"}\n:::step[Option A]\nOne way.\n:::\n:::step[Option B]\nAnother.\n:::\n::::\n' },
     { icon: Milestone, label: 'Roadmap', snip: '\n:::roadmap[Roadmap]{orientation=vertical}\n```json\n{"categories":[{"name":"v1.0","items":[{"label":"Core","status":"done"},{"label":"Docs","status":"progress","percent":40},{"label":"Polish","status":"planned"}]}]}\n```\n:::\n' },
-    { icon: Quote, label: 'Quote', snip: '\n> A blockquote — supports **markdown**.\n' },
+    { icon: Quote, label: 'Quote', snip: '\n> A blockquote, supports **markdown**.\n' },
     { icon: Minus, label: 'Divider', snip: '\n---\n' },
-    { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content — text or an ![image](url).\n:::\n' },
+    { icon: AlignCenter, label: 'Align (center)', snip: '\n:::center\nCentered content, text or an ![image](url).\n:::\n' },
     { icon: AlignLeft, label: 'Align (left)', snip: '\n:::left\nLeft-aligned content.\n:::\n' },
     { icon: AlignRight, label: 'Align (right)', snip: '\n:::right\nRight-aligned content.\n:::\n' },
     { icon: MessageSquare, label: 'Annotation (hover note)', snip: '<doc-comment data-comment="Your note here">annotated text</doc-comment>' },
@@ -331,7 +331,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
             already handled `preview` in any mode; only this button was gated. */}
         <button type="button" onClick={() => setPreview((v) => !v)} className={`btn btn-sm${mode !== 'rich' ? ' ms-auto' : ''}`}><Eye size={14} /> {preview ? t('lp.back', 'Edit') : t('bmdc.preview', 'Preview')}</button>
         {preview && <button type="button" onClick={() => setPvUnlocked((v) => !v)} className={`btn btn-sm${pvUnlocked ? ' is-on' : ''}`}
-          title={pvUnlocked ? t('lp.locked.h', 'Lock the preview — show it as a reader sees it') : t('lp.unlock.h', 'Edit directly on the rendered page')}>
+          title={pvUnlocked ? t('lp.locked.h', 'Lock the preview, show it as a reader sees it') : t('lp.unlock.h', 'Edit directly on the rendered page')}>
           {pvUnlocked ? <Unlock size={14} /> : <Lock size={14} />} <span className="hidden sm:inline">{pvUnlocked ? t('lp.editing', 'Editing') : t('lp.locked', 'Locked')}</span>
         </button>}
         {/* .bmd — B.MD's own file: the document plus a `---` front matter carrying its format
@@ -369,7 +369,7 @@ export function MarkdownEditor({ value, onChange, placeholder, minHeight = 220, 
                 preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
                 up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
                 title: t('bmdc.title', 'Title'), icon: t('bmdc.icon', 'Icon'), noIcon: t('bmdc.noicon', 'Pick an icon'),
-                empty: t('bmdc.empty', 'Empty document — insert a block above.'),
+                empty: t('bmdc.empty', 'Empty document, insert a block above.'),
                 style: t('bmdc.style', 'Style'), styleA: t('bmdc.styleA', 'Style A'), styleB: t('bmdc.styleB', 'Style B'),
                 space: t('bmdc.space', 'Space below'), spaceAuto: t('bmdc.spaceAuto', 'Space: auto'),
                 space_none: t('bmdc.space.none', 'None'), space_xs: t('bmdc.space.xs', 'Tiny'), space_sm: t('bmdc.space.sm', 'Small'),

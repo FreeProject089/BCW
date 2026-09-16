@@ -46,7 +46,7 @@ export function ThreadView({ load, post, actions, back }) {
   const { thread: th, side } = data;
   const send = async (body) => {
     try { await post(body); await reload(); return true; }
-    catch (x) { const e = x.data?.error; toast.error(e === 'closed' ? t('th.closed', 'This conversation is closed.') : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.') : e === 'rate_limited' ? t('cm.rate', 'Too many messages for now — try again later.') : t('common.failed', 'Failed.')); return false; }
+    catch (x) { const e = x.data?.error; toast.error(e === 'closed' ? t('th.closed', 'This conversation is closed.') : e === 'blocked' ? t('cm.blocked', 'Messaging is not available for this sender.') : e === 'rate_limited' ? t('cm.rate', 'Too many messages for now, try again later.') : t('common.failed', 'Failed.')); return false; }
   };
   const who = th.ownerTeam ? <Link to={`/t/${th.ownerTeam.slug}`} className="inline-flex items-center gap-1 hover:text-[var(--primary-2)]"><Users size={12} /> {th.ownerTeam.name}</Link> : th.ownerUser?.displayName || '—';
   return (
@@ -98,18 +98,28 @@ export function MyThreads() {
         <div className="font-semibold">{t('th.title', 'Conversations')}</div>
         <div className="ms-auto inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
           {[['inbox', Inbox, t('th.inbox', 'Inbox')], ['sent', Send, t('th.sent', 'Sent')]].map(([id, I, l]) => (
-            <button key={id} type="button" onClick={() => setBox(id)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs ${box === id ? 'bg-[var(--primary)]/12 font-medium' : 'text-[var(--muted)]'}`}><I size={12} /> {l}</button>
+            <button key={id} type="button" onClick={() => setBox(id)} className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs ${box === id ? 'tint-primary font-medium' : 'text-[var(--muted)]'}`}><I size={12} /> {l}</button>
           ))}
         </div>
       </div>
-      <p className="text-[12px] text-[var(--muted)] mb-3">{t('th.desc', 'Messages from people about your repos, catalogues, teams and profile — and the ones you sent. Reports to the staff are below.')}</p>
-      {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !rows.length ? <EmptyState icon={MessageSquare} title={box === 'inbox' ? t('th.empty.in', 'Nothing yet.') : t('th.empty.sent', 'You have not written to anyone yet.')} /> : (
+      <p className="text-[12px] text-[var(--muted)] mb-3">{t('th.desc', 'Messages from people about your repos, catalogues, teams and profile, and the ones you sent. Reports to the staff are below.')}</p>
+      {loading && !data ? <div className="py-6 text-center"><Spinner /></div> : !rows.length ? (
+        box === 'inbox'
+          ? <EmptyState icon={Inbox} title={t('th.empty.in2', 'No messages')}
+              sub={t('th.empty.in.s', 'People write to you here about your repos, catalogues, teams and profile, and nobody has yet.')}
+              action={{ label: t('th.empty.in.a', 'See your public profile'), to: '/profile', icon: Users }}
+              hint={t('th.empty.in.h', 'They reach you from the Contact button on anything you own.')} />
+          : <EmptyState icon={Send} title={t('th.empty.sent2', 'Nothing sent')}
+              sub={t('th.empty.sent.s', 'Messages you start show up here, and you have not written to anyone yet.')}
+              action={{ label: t('th.empty.sent.a', 'Browse repos'), to: '/repos', icon: MessageSquare }}
+              hint={t('th.empty.sent.h', 'Use the Contact button on a repo, catalogue or profile to start one.')} />
+      ) : (
         <ul className="divide-y divide-[var(--line)]">
           {rows.map((th) => {
             const unread = box === 'inbox' ? th.ownerUnread : th.senderUnread;
             return (
               <li key={th.id}>
-                <button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2.5 flex items-center gap-3 hover:bg-[var(--surface-2)]/60 rounded-lg px-2 -mx-2">
+                <button type="button" onClick={() => setOpen(th.id)} className="w-full text-start py-2.5 flex items-center gap-3 hover:panel rounded-lg px-2 -mx-2">
                   <span className="text-lg shrink-0" aria-hidden>{KIND_ICON[th.kind] || '✉️'}</span>
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate ${unread ? 'font-semibold' : ''}`}>{th.subject}</span>

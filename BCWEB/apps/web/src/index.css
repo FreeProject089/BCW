@@ -353,6 +353,37 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
     .num-wrap > .num-dec { grid-column: 3; grid-row: 2; min-height: 0; border-inline-start: 0;
       border-start-start-radius: 0; border-end-start-radius: 0; border-end-end-radius: var(--r-md); }
   }
+  /* Inner panels and tints, because Tailwind cannot put an alpha on a CSS variable.
+     `bg-[var(--surface-2)]/40` compiles to NOTHING in Tailwind 3: no rule is emitted, the
+     element gets no background at all, and the panel reads as a bare border on whatever is
+     behind it. Three hundred places on this site were written that way, which is why the
+     "Translucent surfaces" setting looked ignored: those panels were see-through whatever
+     the setting said, because they were never painted.
+     `.panel` is the inner surface those were reaching for. It is SOLID by default, so the
+     setting is what decides, and it joins the frosted family under [data-surface-glass]
+     exactly as .card does. `.tint-*` are the accent washes, painted with color-mix, which
+     does accept a variable. */
+  /* Background only, on purpose: these replace a background utility, and the elements that
+     carry them already declare their own border and radius. Adding either here would put a
+     line around three hundred panels that never had one. */
+  .panel { background: var(--surface-2); }
+  .panel-quiet { background: color-mix(in srgb, var(--surface-2) 55%, var(--bg-solid)); }
+  .scrim { background: color-mix(in srgb, var(--bg-solid) 85%, transparent); }
+  [data-surface-glass] .panel, [data-surface-glass] .panel-quiet {
+    background: color-mix(in srgb, var(--surface-2) calc(var(--glass-alpha, 0.85) * 100%), transparent); }
+  [data-theme="dark"][data-surface-glass] .panel, [data-theme="dark"][data-surface-glass] .panel-quiet {
+    background: color-mix(in srgb, #1c1913 calc(var(--glass-alpha, 0.85) * 100%), transparent); }
+  .tint-primary { background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .tint-primary-strong { background: color-mix(in srgb, var(--primary) 22%, transparent); }
+  .tint-accent { background: color-mix(in srgb, var(--primary-2) 12%, transparent); }
+  .tint-success { background: color-mix(in srgb, var(--success) 12%, transparent); }
+  .tint-warning { background: color-mix(in srgb, var(--warning) 12%, transparent); }
+  .tint-error { background: color-mix(in srgb, var(--error) 12%, transparent); }
+  .b-primary { border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+  .b-success { border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+  .b-warning { border-color: color-mix(in srgb, var(--warning) 40%, transparent); }
+  .b-error { border-color: color-mix(in srgb, var(--error) 40%, transparent); }
+
   /* Inputs (incl. search + filter bars — <Select> is a styled .input too) are
      SOLID by default so "Translucent surfaces = off" is actually honoured. The
      frosted variant lives under [data-surface-glass] below. */

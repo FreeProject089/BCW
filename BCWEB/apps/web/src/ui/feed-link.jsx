@@ -28,7 +28,7 @@ export default function FeedLink({ path, label, hint, className = '' }) {
   return (
     <div className={`inline-flex items-center gap-1 ${className}`}>
       <button type="button" onClick={copy}
-        title={hint || t('feed.hint', 'Copy this list as a JSON URL — paste it into BMM to add it as a source')}
+        title={hint || t('feed.hint', 'Copy this list as a JSON URL, paste it into BMM to add it as a source')}
         className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg border border-[var(--line-strong)] hover:border-[var(--primary)] transition"
         style={{ background: 'var(--bg-solid)' }}>
         {done ? <Check size={13} className="text-success" /> : <FileJson size={13} className="text-[var(--primary-2)]" />}

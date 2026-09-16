@@ -36,7 +36,7 @@ export default function CommunityCatalogPage() {
       <PageHeader icon={Boxes} title={t('ccp.title', 'Community catalog')} />
       <EmptyState icon={err === 'not_whitelisted' || err === 'banned' ? ShieldAlert : Boxes}
         title={err === 'not_whitelisted' ? t('ccp.private.t', 'Private catalog') : err === 'banned' ? t('ccp.banned.t', 'Access blocked') : t('ccp.gone.t', 'Catalog not found')}
-        sub={err === 'not_whitelisted' ? t('ccp.private.s', "This catalog is private — you need an invite (or a share link) from its owner.") : err === 'banned' ? t('ccp.banned.s', 'You are not allowed to view this catalog.') : t('ccp.gone.s', 'It may have been removed or suspended.')} />
+        sub={err === 'not_whitelisted' ? t('ccp.private.s', "This catalog is private, you need an invite (or a share link) from its owner.") : err === 'banned' ? t('ccp.banned.s', 'You are not allowed to view this catalog.') : t('ccp.gone.s', 'It may have been removed or suspended.')} />
     </div>
   );
 
@@ -73,7 +73,9 @@ export default function CommunityCatalogPage() {
       <ContactStrip team={cat.team} contactEmail={cat.contactEmail} contactPhone={cat.contactPhone} className="mb-4" />
 
       {kinds.length === 0 ? (
-        <EmptyState icon={Boxes} title={t('ccp.empty.t', 'Nothing to add yet')} sub={t('ccp.empty.s', 'This catalog has no BMM-importable content yet.')} />
+        <EmptyState icon={Boxes} title={t('ccp.empty.t', 'Nothing to add yet')}
+          sub={t('ccp.empty.s2', 'This catalogue has nothing BMM can import yet, so there is nothing to add to the app.')}
+          action={{ label: t('ccp.empty.a', 'Browse the catalogue'), to: '/catalog?project=bmm', icon: Boxes }} />
       ) : (
         <div className="space-y-3">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('ccp.addto', 'Add to BetterModsManager')}</div>
@@ -128,7 +130,7 @@ export default function CommunityCatalogPage() {
           </Card>
           {cat.itemCount > contents.length && (
             <p className="text-[11px] text-[var(--faint)] mt-1.5">
-              {t('ccp.more', 'Showing the first {n} — open the feed for the full list.').replace('{n}', contents.length)}
+              {t('ccp.more', 'Showing the first {n}, open the feed for the full list.').replace('{n}', contents.length)}
             </p>
           )}
         </div>

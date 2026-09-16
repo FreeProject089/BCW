@@ -78,7 +78,7 @@ function SignatureVerdict({ v, t }) {
     return (
       <div className="text-[12px] rounded-lg border border-[var(--success)] p-2 mb-2">
         <div className="text-[var(--success)] font-medium">
-          {t('bmi.sig.valid', 'Intact — unchanged since it was signed.')}
+          {t('bmi.sig.valid', 'Intact, unchanged since it was signed.')}
         </div>
         <div className="text-[var(--muted)] mt-0.5 break-all">
           {t('bmi.sig.key', 'Signing key')} <code>{String(v.authorId).slice(0, 16)}…</code>
@@ -94,7 +94,7 @@ function SignatureVerdict({ v, t }) {
     return (
       <div className="text-[12px] rounded-lg border border-[var(--error)] p-2 mb-2">
         <div className="text-[var(--error)] font-medium">
-          {t('bmi.sig.tampered', 'ALTERED — this file carries a signature, and it does not match its contents.')}
+          {t('bmi.sig.tampered', 'ALTERED, this file carries a signature, and it does not match its contents.')}
         </div>
         <div className="text-[var(--muted)] mt-0.5">
           {t('bmi.sig.tamperedwhy', 'Either it was edited after signing, or the signature block was copied from another file.')}
@@ -165,7 +165,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     // Parsed here first so a typo is answered instantly and locally, and so the server is
     // never asked to make sense of something that is not JSON at all.
     try { doc = JSON.parse(text); }
-    catch { return toast.error(t('bmi.badjson', 'That is not valid JSON — paste the whole .bmmpa file.')); }
+    catch { return toast.error(t('bmi.badjson', 'That is not valid JSON, paste the whole .bmmpa file.')); }
     setBusy(true); setRep(null); setParsed(null);
     try { setRep(await api.post(endpoint, { doc })); setParsed(doc); }
     catch (x) { toast.error(x?.data?.detail || t('common.failed', 'Failed.')); }
@@ -297,7 +297,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
     const head = new Uint8Array(await file.slice(0, 4).arrayBuffer().catch(() => new ArrayBuffer(0)));
     const isZip = head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
     if (!isZip && file.size > 8 * 1024 * 1024) {
-      return toast.error(t('bmi.toobig', 'That file is over 8 MB — larger than the inspector accepts.'));
+      return toast.error(t('bmi.toobig', 'That file is over 8 MB, larger than the inspector accepts.'));
     }
     const raw = isZip ? '' : await file.text().catch(() => null);
     if (raw == null) return toast.error(t('bmi.readfail', 'Could not read that file.'));
@@ -327,7 +327,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
         <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setRep(null); setParsed(null); setText(''); setFileName(''); }}>{t('common.close', 'Close')}</Button>
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-2">
-        {t('bmi.subAny', 'Paste any BMM file — automation, mod list, session replay, navbar config. It is read, never run: nothing is imported and nothing is fetched.')}
+        {t('bmi.subAny', 'Paste any BMM file, automation, mod list, session replay, navbar config. It is read, never run: nothing is imported and nothing is fetched.')}
       </p>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -355,7 +355,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
           {archSig && archSig.state !== 'toobig' && <SignatureVerdict v={archSig} t={t} />}
           {archSig?.state === 'toobig' && (
             <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2 mb-2">
-              {t('bmi.sig.toobig', 'Too large to verify in the browser — every entry would have to be hashed. The listing below is still exact.')}
+              {t('bmi.sig.toobig', 'Too large to verify in the browser, every entry would have to be hashed. The listing below is still exact.')}
             </div>
           )}
           <div className="flex items-center gap-2 flex-wrap text-[12px] text-[var(--muted)] mb-1">
@@ -386,7 +386,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
               <div className={`font-medium mb-0.5 ${arch.bundle.missing.length ? 'text-warning' : ''}`}>
                 {arch.bundle.missing.length
                   ? t('bmi.bundleShort', 'This catalogue names files the archive does not hold')
-                  : t('bmi.bundleOk', 'Self-contained — every file this catalogue names is in the archive')}
+                  : t('bmi.bundleOk', 'Self-contained, every file this catalogue names is in the archive')}
               </div>
               <div className="text-[var(--muted)]">
                 {t('bmi.bundleCount', '{n} packed entr(y/ies)').replace('{n}', String(arch.bundle.promised))}
@@ -431,9 +431,9 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
             <div className="rounded-lg border border-[var(--line)] p-2 max-h-[320px] overflow-auto">
               {entry?.loading ? <div className="text-[12px] text-[var(--muted)]"><Spinner /> {t('bmi.zipopening', 'Opening…')}</div>
                 : entry?.error ? <div className="text-[12px] text-[var(--warning)] break-all">{entry.error}</div>
-                : entry?.tooBig ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.ziphuge', 'This entry is {mb} MB — too large to open in a panel. Everything about it that a review needs is in the listing.').replace('{mb}', String(Math.round(entry.size / 1048576)))}</div>
+                : entry?.tooBig ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.ziphuge', 'This entry is {mb} MB, too large to open in a panel. Everything about it that a review needs is in the listing.').replace('{mb}', String(Math.round(entry.size / 1048576)))}</div>
                 : entry ? (entry.binary
-                ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.zipbinmsg', 'Binary — {kb} KB. Nothing here renders it, and rendering it as text would be noise.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>
+                ? <div className="text-[12px] text-[var(--muted)]">{t('bmi.zipbinmsg', 'Binary: {kb} KB. Nothing here renders it, and rendering it as text would be noise.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>
                 : <>
                     {entry.truncated && <div className="text-[11px] text-[var(--warning)] mb-1">{t('bmi.ziptrunctext', 'Showing the first 256 KB of {kb} KB.').replace('{kb}', String(Math.round(entry.size / 1024)))}</div>}
                     {/* Highlighted with the same Prism setup the JSON editor uses. A moderator
@@ -539,7 +539,7 @@ export default function BmmInspector({ endpoint = '/admin/inspect' }) {
           )}
           {rep.bmmpa.unresolved?.length > 0 && (
             <div className="text-[12px] text-[var(--warning)] rounded-lg border border-[var(--warning)] p-2 mb-2 break-all">
-              {t('bmi.unresolved', 'Names {n} thing(s) it does not include — these import cleanly and fail on the user\'s machine:').replace('{n}', String(rep.bmmpa.unresolved.length))}{' '}
+              {t('bmi.unresolved', 'Names {n} thing(s) it does not include, these import cleanly and fail on the user\'s machine:').replace('{n}', String(rep.bmmpa.unresolved.length))}{' '}
               {rep.bmmpa.unresolved.slice(0, 8).map((u) => `${u.kind}:${u.id}`).join('  ·  ')}
             </div>
           )}

@@ -77,7 +77,7 @@ export function ReportThread({ messages }) {
           </div>
         ) : (
         <div key={m.id} className={`flex ${m.staff ? 'justify-start' : 'justify-end'}`}>
-          <div className={`max-w-[85%] rounded-xl px-3 py-2 border ${m.staff ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/30'}`}>
+          <div className={`max-w-[85%] rounded-xl px-3 py-2 border ${m.staff ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'tint-primary b-primary'}`}>
             <div className="text-[11px] text-[var(--faint)] mb-1 flex items-center gap-1.5">
               {m.staff && <Shield size={11} className="text-[var(--primary-2)]" />}
               <span className="font-medium">{m.staff ? (m.author || t('rp.staff', 'Staff')) : (m.author || t('rp.you', 'You'))}</span>
@@ -172,14 +172,14 @@ export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
       const { solvePow } = await import('../lib/pow.js');
       const pow = await solvePow(() => api.get('/auth/pow')); // antispam proof-of-work
       await api.post('/reports', { targetType, targetId, targetLabel, reason, body, images, pow });
-      toast.success(t('rp.sent', 'Report sent — we’ll follow up in your dashboard.'));
+      toast.success(t('rp.sent', 'Report sent, we’ll follow up in your dashboard.'));
       onClose(); return true;
     } catch (x) {
       const e = x.data?.error;
       if (e === 'already_open') { toast.error(t('rp.dup', 'You already have an open report on this. Continue it in your dashboard.')); onClose(); }
       else if (e === 'cannot_report_self') toast.error(t('rp.self', "You can't report yourself."));
-      else if (e === 'too_many_open') toast.error(t('rp.toomanyopen', 'You have too many open reports — close some first.'));
-      else if (e === 'daily_limit') toast.error(t('rp.daily', 'Daily report limit reached — try again tomorrow.'));
+      else if (e === 'too_many_open') toast.error(t('rp.toomanyopen', 'You have too many open reports, close some first.'));
+      else if (e === 'daily_limit') toast.error(t('rp.daily', 'Daily report limit reached, try again tomorrow.'));
       else toast.error(e || t('acc.failed', 'Failed.'));
       return false;
     } finally { setBusy(false); }
@@ -191,7 +191,7 @@ export function ReportModal({ targetType, targetId, targetLabel, onClose }) {
           <div className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider mb-1">{t('rp.reason', 'Reason')}</div>
           <Select value={reason} onChange={(e) => setReason(e.target.value)}>{REASONS.map(([v, k, fb]) => <option key={v} value={v}>{t(k, fb)}</option>)}</Select>
         </div>
-        <ReportComposer onSend={send} sending={busy} placeholder={t('rp.detailph', 'Add details — what’s wrong, links, screenshots…')} />
+        <ReportComposer onSend={send} sending={busy} placeholder={t('rp.detailph', 'Add details, what’s wrong, links, screenshots…')} />
         <p className="text-[11px] text-[var(--faint)]">{t('rp.note', 'Reports go to the moderation team. You can track the conversation in your dashboard → Reports.')}</p>
         {/* A rights claim is a legal instrument with required elements; the chat thread is not
             the place for it. The full form knows the target already. */}

@@ -344,7 +344,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   const saveComponent = (name) => {
     const comp = componentFromBlocks(name, chosen, uid);
     if (!comp) return;
-    if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components — delete one first.')); return; }
+    if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components, delete one first.')); return; }
     persistComponents([comp, ...components]);
     setCompOpen(false);
     setLeftTab('components');
@@ -550,7 +550,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden">
       {[['light', Sun, t('cst.theme.light', 'Light')], ['dark', Moon, t('cst.theme.dark', 'Dark')], ['phone', Smartphone, t('cst.board.phone', 'Phone')]].map(([k, Icon, label]) => (
         <button key={k} type="button" onClick={() => setEditTheme(k)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors ${editTheme === k ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs transition-colors ${editTheme === k ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
           <Icon size={12} /> {label}
         </button>
       ))}
@@ -626,10 +626,10 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
               {narrow && (
                 <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
                   <span className="flex-1 min-w-0">{stacked
-                    ? t('cst.stack.h', 'Reading order — what a phone shows. Placement is a desktop thing.')
+                    ? t('cst.stack.h', 'Reading order, what a phone shows. Placement is a desktop thing.')
                     : t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
                   {stacked
-                    ? <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely — easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
+                    ? <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely, easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
                     : <Button size="sm" variant="ghost" onClick={() => setPhoneMode('stack')}>{t('cst.board.list', 'List')}</Button>}
                 </div>
               )}
@@ -668,8 +668,8 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     return (
       <div>
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          <span className="text-[11px] text-[var(--muted)] flex-1 min-w-0">{t('cst.stack.h', 'Reading order — what a phone shows. Placement is a desktop thing.')}</span>
-          <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely — easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
+          <span className="text-[11px] text-[var(--muted)] flex-1 min-w-0">{t('cst.stack.h', 'Reading order, what a phone shows. Placement is a desktop thing.')}</span>
+          <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely, easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
           <Button size="sm" variant="ghost" onClick={() => setPreview('phone')} title={t('cst.phone', 'Phone preview')}><Eye size={14} /></Button>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap mb-2">
@@ -784,7 +784,7 @@ function StackList({ t, canvas, emit, selIds, setSelId, setSelIds, remove }) {
             <div className="rounded-lg overflow-hidden pointer-events-none"><CanvasBlock b={b} stacked /></div>
           </div>
         ))}
-        {!order.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.stack.empty', 'Nothing on this page yet — add a block above.')}</div>}
+        {!order.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.stack.empty', 'Nothing on this page yet, add a block above.')}</div>}
       </div>
       {/* A block left out of the phone version is still on the board, and the only place
           that fact can be seen is here — on the board it looks exactly like every other
@@ -815,7 +815,7 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay }) {
   return (
     <div className="cst-preview">
       <div className="flex items-center gap-2 flex-wrap mb-3 text-[11px] text-[var(--faint)]">
-        <span className="inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview — editing is paused')}</span>
+        <span className="inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview, editing is paused')}</span>
         <span className="flex-1" />
         <Button size="sm" variant="ghost" onClick={onReplay} title={t('cst.replay.anim.h', 'Mount the page again so every entrance animation plays from the start')}><RotateCcw size={13} /> {t('cst.replay.anim', 'Replay animations')}</Button>
       </div>
@@ -859,7 +859,7 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
         {[['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')], ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')], ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')],
           ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
           <button key={k} type="button" onClick={() => tog(k)} title={label} aria-label={label} aria-pressed={preview === k}
-            className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'bg-[var(--primary)]/12 text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             <Icon size={13} />
           </button>
         ))}
@@ -878,7 +878,7 @@ function LeftPane({ t, leftTab, setLeftTab, add, addShape, components, insertCom
       <div className="inline-flex w-full rounded-lg border border-[var(--line)] overflow-hidden text-xs">
         {[['blocks', Blocks, t('cst.pane.blocks', 'Blocks')], ['layers', LayoutList, t('cst.layers', 'Layers')], ['components', Puzzle, t('cst.cmp', 'Components')]].map(([k, Icon, label]) => (
           <button key={k} type="button" onClick={() => setLeftTab(k)} aria-pressed={leftTab === k}
-            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-1.5 ${leftTab === k ? 'bg-[var(--primary)]/12 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-1.5 ${leftTab === k ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
             <Icon size={12} /> <span className="truncate">{label}</span>
           </button>
         ))}
@@ -894,7 +894,7 @@ function LeftPane({ t, leftTab, setLeftTab, add, addShape, components, insertCom
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">{t('cst.shape', 'Shape')}</div>
           <div className="grid grid-cols-3 gap-1">
             {SHAPES.map((s) => (
-              <button key={s} type="button" onClick={() => addShape(s)} className="text-[11px] px-1.5 py-1.5 rounded-lg border border-[var(--line)] hover:border-[var(--primary)]/50 truncate">{t(`cst.shape.${s}`, s)}</button>
+              <button key={s} type="button" onClick={() => addShape(s)} className="text-[11px] px-1.5 py-1.5 rounded-lg border border-[var(--line)] hover:b-primary truncate">{t(`cst.shape.${s}`, s)}</button>
             ))}
           </div>
         </div>
@@ -956,7 +956,7 @@ function ComponentSection({ t, ids, components, onDetach, onRefresh, onRedefine 
           <div key={id} className="space-y-1.5">
             <div className="text-xs font-medium truncate">{c ? c.name : t('cst.cmp.gone', 'A component that was deleted')}</div>
             <div className="flex flex-wrap gap-1.5">
-              <Button size="sm" variant="ghost" onClick={onDetach} title={t('cst.cmp.detach.h', 'Keep the blocks, forget the link — updates to the component no longer reach them')}><Unlink size={13} /> {t('cst.cmp.detach', 'Detach')}</Button>
+              <Button size="sm" variant="ghost" onClick={onDetach} title={t('cst.cmp.detach.h', 'Keep the blocks, forget the link, updates to the component no longer reach them')}><Unlink size={13} /> {t('cst.cmp.detach', 'Detach')}</Button>
               {c && <Button size="sm" variant="ghost" onClick={() => onRefresh(id)} title={t('cst.cmp.refresh.h', 'Rebuild every copy on this page from the saved component')}><RefreshCw size={13} /> {t('cst.cmp.refresh', 'Update all copies')}</Button>}
               {c && <Button size="sm" variant="ghost" onClick={() => onRedefine(id)} title={t('cst.cmp.redefine.h', 'Make the selection the new definition, and rebuild every copy from it')}><Save size={13} /> {t('cst.cmp.redefine', 'Redefine from selection')}</Button>}
             </div>
@@ -975,7 +975,7 @@ function EmptyBoard({ t, onAdd, onOpenBlocks }) {
       <ul className="text-xs text-[var(--muted)] space-y-1 mb-3">
         <li><span className="font-medium text-[var(--text)]">{t('cst.pane.blocks', 'Blocks')}</span> — {t('cst.empty.blocks', 'on the left: everything you can add, the layers, and your saved components.')}</li>
         <li><span className="font-medium text-[var(--text)]">{t('cst.pane.canvas', 'Canvas')}</span> — {t('cst.empty.canvas', 'in the middle: a 1200px board. Drag to move, pull a handle to resize, drag on empty space to select several.')}</li>
-        <li><span className="font-medium text-[var(--text)]">{t('cst.pane.props', 'Properties')}</span> — {t('cst.empty.props', 'on the right: everything about the selected block — content, size, animation, link.')}</li>
+        <li><span className="font-medium text-[var(--text)]">{t('cst.pane.props', 'Properties')}</span> — {t('cst.empty.props', 'on the right: everything about the selected block, content, size, animation, link.')}</li>
       </ul>
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="primary" onClick={onAdd}><Type size={14} /> {t('cst.empty.add', 'Add a text block')}</Button>
@@ -1005,7 +1005,7 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit }) {
           const on = selIds.includes(b.id);
           return (
             <div key={b.id}
-              className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs cursor-pointer ${on ? 'bg-[var(--primary)]/12' : 'hover:bg-[var(--surface-2)]'}`}
+              className={`flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs cursor-pointer ${on ? 'tint-primary' : 'hover:bg-[var(--surface-2)]'}`}
               onClick={(e) => setSelIds(e.shiftKey || e.ctrlKey || e.metaKey ? (on ? selIds.filter((x) => x !== b.id) : [...selIds, b.id]) : [b.id])}>
               <span className={`flex-1 min-w-0 truncate ${b.hidden ? 'text-[var(--faint)] line-through' : ''}`}>
                 {b.name || t(`cst.kind.${b.kind}`, b.kind)}
@@ -1055,7 +1055,7 @@ function ButtonFields({ t, p, setProp }) {
     <label className="flex items-center gap-1.5 text-xs cursor-pointer"><input type="checkbox" checked={!!p.outline} onChange={(e) => setProp('outline', e.target.checked)} /> {t('cst.btn.outline', 'Outline')}</label>
     {p.variant === 'card' && <Field label={t('cst.btn.desc', 'Description (card)')}><Input value={p.desc || ''} onChange={(e) => setProp('desc', e.target.value)} /></Field>}
     {isDropdown ? (
-      <Field label={t('cst.btn.items', 'Menu items — one per line: label | link')}>
+      <Field label={t('cst.btn.items', 'Menu items, one per line: label | link')}>
         <Textarea rows={4} value={itemsText} onChange={(e) => setProp('items', e.target.value.split('\n').map((l) => { const [label, href] = l.split('|'); return { label: (label || '').trim(), href: (href || '').trim() }; }).filter((it) => it.label))} />
       </Field>
     ) : (<>
@@ -1363,12 +1363,12 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
         </select>
       </label>
       {!pageMode && (<>
-        <Button size="sm" variant={layersOpen ? 'primary' : 'ghost'} onClick={() => setLayersOpen((v) => !v)} title={t('cst.layers.h', 'Every block, top first — name, lock, hide, reorder')}><LayoutList size={14} /> {t('cst.layers', 'Layers')}</Button>
+        <Button size="sm" variant={layersOpen ? 'primary' : 'ghost'} onClick={() => setLayersOpen((v) => !v)} title={t('cst.layers.h', 'Every block, top first, name, lock, hide, reorder')}><LayoutList size={14} /> {t('cst.layers', 'Layers')}</Button>
         {/* A desktop author cannot otherwise ever see the stacked version, and the stacked
             version is what most visitors get. */}
         <Button size="sm" variant={preview === 'desktop' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'desktop' ? '' : 'desktop'))}><Eye size={14} /> {t('cst.preview', 'Preview')}</Button>
         <Button size="sm" variant={preview === 'phone' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'phone' ? '' : 'phone'))} title={t('cst.phone.h', 'What a phone gets: the canvas stacks')}><Smartphone size={14} /></Button>
-        {preview && <span className="text-[11px] text-[var(--faint)] inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview — editing is paused')}</span>}
+        {preview && <span className="text-[11px] text-[var(--faint)] inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview, editing is paused')}</span>}
       </>)}
     </div>
   );
@@ -1396,12 +1396,12 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
         {/* Whether THIS block says anything of its own on dark. Without it, an author on the
             dark theme cannot tell an overridden block from one that is simply inheriting —
             they look identical, which is the point of inheriting and the problem with it. */}
-        {hasDark && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--primary)]/12 text-[var(--primary-2)]">{t('cst.theme.has', 'dark variant')}</span>}
+        {hasDark && <span className="text-[10px] px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)]">{t('cst.theme.has', 'dark variant')}</span>}
         <div className="ms-auto flex gap-1">
           <button title={t('cst.front', 'Bring to front')} className="p-1 rounded hover:bg-[var(--surface-2)]" onClick={() => emit(bringTo(canvas.blocks, sel.id, 'front'))}><ArrowUp size={14} /></button>
           <button title={t('cst.back', 'Send to back')} className="p-1 rounded hover:bg-[var(--surface-2)]" onClick={() => emit(bringTo(canvas.blocks, sel.id, 'back'))}><ArrowDown size={14} /></button>
           {hasDark && (
-            <button title={t('cst.theme.reset', 'Drop the dark variant — this block follows the light layout again')}
+            <button title={t('cst.theme.reset', 'Drop the dark variant, this block follows the light layout again')}
               className="p-1 rounded hover:bg-[var(--surface-2)]"
               onClick={() => emit(canvas.blocks.map((b) => (b.id === sel.id ? { ...b, themes: { ...(b.themes || {}), dark: undefined } } : b)))}>
               <Layers size={14} />
@@ -1411,8 +1411,8 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
       </div>
       <div className="flex items-center gap-2">
         <Input className="flex-1 min-w-0" value={sel.name || ''} placeholder={t('cst.name.ph', 'Name this block…')} aria-label={t('cst.name', 'Name')} onChange={(e) => patch(sel.id, { name: e.target.value.slice(0, 60) }, `name-${sel.id}`)} />
-        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.locked ? 'text-[var(--primary-2)] bg-[var(--primary)]/12' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { locked: !sel.locked })} title={t('cst.locked.h', 'Locked: the panel still edits it, the pointer cannot move, resize or delete it')} aria-label={t('cst.locked', 'Locked')}>{sel.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
-        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.hidden ? 'text-[var(--primary-2)] bg-[var(--primary)]/12' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { hidden: !sel.hidden })} title={t('cst.hidden.h', 'Hidden: kept on the board, not shown to readers')} aria-label={t('cst.hidden', 'Hidden')}>{sel.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.locked ? 'text-[var(--primary-2)] tint-primary' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { locked: !sel.locked })} title={t('cst.locked.h', 'Locked: the panel still edits it, the pointer cannot move, resize or delete it')} aria-label={t('cst.locked', 'Locked')}>{sel.locked ? <Lock size={13} /> : <LockOpen size={13} />}</button>
+        <button type="button" className={`p-1.5 rounded border border-[var(--line)] ${sel.hidden ? 'text-[var(--primary-2)] tint-primary' : 'text-[var(--faint)]'}`} onClick={() => patch(sel.id, { hidden: !sel.hidden })} title={t('cst.hidden.h', 'Hidden: kept on the board, not shown to readers')} aria-label={t('cst.hidden', 'Hidden')}>{sel.hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {numField('X', 'x')}{numField('Y', 'y')}{numField(t('cst.w', 'Width'), 'w')}{numField(t('cst.h', 'Height'), 'h')}
@@ -1463,7 +1463,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
             sound, so the two boxes together are the only combination that does anything —
             a checkbox that does nothing is worse than no checkbox. */}
         {p.autoplay && !p.muted && (
-          <p className="text-[11px] text-warning">{t('cst.video.automute', 'Autoplay only works on a muted video — every browser blocks the other kind. Tick Muted, or the video will simply wait to be played.')}</p>
+          <p className="text-[11px] text-warning">{t('cst.video.automute', 'Autoplay only works on a muted video, every browser blocks the other kind. Tick Muted, or the video will simply wait to be played.')}</p>
         )}
       </>)}
       {sel.kind === 'embed' && (<>
@@ -1472,7 +1472,7 @@ function Inspector({ t, sel, patch, canvas, emit, setSelId, hasDark = false, onO
         {/* The allow-list is B.MD's, shared with every embed in a blog post or a doc — not a
             second list. A refused URL still renders, as a link, so it is visible that it was
             refused rather than looking like a blank block. */}
-        <p className="text-[11px] text-[var(--muted)]">{t('cst.embed.allow', 'Only YouTube and Spotify embed links can be framed — the same list the rest of the site uses. Anything else is shown as a link instead.')}</p>
+        <p className="text-[11px] text-[var(--muted)]">{t('cst.embed.allow', 'Only YouTube and Spotify embed links can be framed, the same list the rest of the site uses. Anything else is shown as a link instead.')}</p>
       </>)}
       {sel.kind === 'replay' && (
         <Field label={t('cst.replay.src', '.bmmreplay URL')} hint={t('cst.replay.h', 'A recording of the app, played by the same player the docs and the blog use.')}>

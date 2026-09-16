@@ -50,7 +50,7 @@ import { rawStatusLabel, DotDropdown } from './repos.jsx';
 import { analyseTrend, robustCeiling } from '../lib/trend.js';
 import { AdminRepos, AdminPools } from './repos-admin.jsx';
 import { TotpQuickFill } from './twofa-fill.jsx';
-import { AutomodEditor, LogsEditor, normAutomod, normLogs } from './discord-automod.jsx';
+import { AutomodEditor, LogsEditor, WarnLadderEditor, normAutomod, normLadder, normLogs, ladderForSave } from './discord-automod.jsx';
 import { PerfDailyMetrics } from './admin-server-metrics.jsx';
 import { MarkdownEditor } from '../editor/markdown-editor.jsx';
 // The built-in legal text, so the import button copies the SAME words the public page
@@ -177,7 +177,7 @@ export function Admin() {
   const suspend = async (s) => {
     const reason = await dialog.prompt({ title: t('mod.suspend.title', 'Suspend submission'), label: t('mod.suspend.label', 'Reason (sent to the author)'), placeholder: t('mod.suspend.ph', "Why is this suspended? The author can't resubmit."), okLabel: t('mod.suspend.ok', 'Suspend'), danger: true });
     if (!reason) return;
-    modVerdict(s, `/mod/submissions/${s.id}/suspend`, { reason }, t('mod.suspended2', 'Suspended — the author can no longer resubmit.'));
+    modVerdict(s, `/mod/submissions/${s.id}/suspend`, { reason }, t('mod.suspended2', 'Suspended, the author can no longer resubmit.'));
   };
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'SUPERADMIN';
   const isSuperAdmin = user?.role === 'SUPERADMIN';
@@ -593,7 +593,7 @@ function AdminCatalogCreator() {
       const body = { projectKey: projectKey, kind: kind, name: f.name, version: f.version, description: f.description,
         tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean), payloadKey, meta };
       const res = await api.post('/admin/catalog', body);
-      if (kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r} — fix before users install.').replace('{r}', res.validation.reason));
+      if (kind === 'PLUGIN' && res.validation) toast[res.validation.valid ? 'success' : 'error'](res.validation.valid ? t('cc.pubvalidated', 'Plugin "{n}" published & validated.').replace('{n}', f.name) : t('cc.pubinvalid', 'Published but INVALID: {r}, fix before users install.').replace('{r}', res.validation.reason));
       else toast.success(t('cc.published', 'Official {k} "{n}" published.').replace('{k}', KIND_LABEL[kind]).replace('{n}', f.name));
       setF({ name: '', version: '1.0.0', description: '', tags: '', url: '' }); setFile(null);
       contents.reload(); // the new entry should appear in the list below, not on next reload
@@ -630,7 +630,7 @@ function AdminCatalogCreator() {
           const on = c.id === cat.id;
           return (
             <button key={c.id} type="button" onClick={() => setCatId(c.id)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
               <Icon size={14} className={on ? 'text-[var(--primary-2)]' : ''} /> {c.label}
             </button>
           );
@@ -644,7 +644,7 @@ function AdminCatalogCreator() {
       <Card className="p-3 mb-4 flex flex-wrap items-center gap-2">
         <Server size={14} className="text-[var(--muted)]" />
         <span className="text-xs text-[var(--muted)] flex-1 min-w-0">
-          {t('cc.repos', 'Server-Repos are not published here — they are hosted by their owners and appear in the index automatically once verified and listed.')}
+          {t('cc.repos', 'Server-Repos are not published here, they are hosted by their owners and appear in the index automatically once verified and listed.')}
         </span>
         <a href="/api/repos.json" target="_blank" rel="noreferrer">
           <Button size="sm" variant="ghost"><ExternalLink size={13} /> {t('cc.reposfeed', 'Repo feed')}</Button>
@@ -666,9 +666,9 @@ function AdminCatalogCreator() {
         </div>
         <Field label={t('cc.description', 'Description')}><Textarea value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder={t('cc.descph', 'What it does, in a sentence or two…')} /></Field>
         <Field label={t('cc.tags', 'Tags (comma-separated)')}><Input value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} placeholder="audio, utility, dark-theme" /></Field>
-        {kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it — priced by size). Either way it's checksum-validated on publish.") }} />}
+        {kind === 'PLUGIN' && <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 text-xs text-[var(--muted)]" dangerouslySetInnerHTML={{ __html: t('cc.pluginnote', "Host the <code>.bmmplug</code> yourself (URL below) or with us (upload it, priced by size). Either way it's checksum-validated on publish.") }} />}
         {kind !== 'PRESET' && <Field label={kind === 'PLUGIN' ? t('cc.plugurl', '.bmmplug URL (self-hosted)') : t('cc.dlurl', 'Download URL')} hint={kind === 'PLUGIN' ? t('cc.plugurlhint', 'GitHub raw / personal server. Leave empty to host with us via upload.') : t('cc.dlurlhint', 'Where the app/theme is fetched from.')}><Input value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} placeholder={kind === 'PLUGIN' ? 'https://raw.githubusercontent.com/you/repo/main/plugin.bmmplug' : 'https://github.com/you/repo/releases/latest/download/app.zip'} /></Field>}
-        <Field label={kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted — priced by size)') : t('cc.payloadfile', 'Payload file (optional — zip / wasm)')}>
+        <Field label={kind === 'PRESET' ? t('cc.presetfile', 'Preset .json (metadata is read from the file)') : kind === 'PLUGIN' ? t('cc.plugfile', '.bmmplug file (our-hosted, priced by size)') : t('cc.payloadfile', 'Payload file (optional, zip / wasm)')}>
           <Input type="file" accept={kind === 'PRESET' ? '.json,application/json' : kind === 'PLUGIN' ? '.bmmplug,.zip' : undefined} onChange={(e) => onFile(e.target.files?.[0] || null)} /></Field>
         {deeplink && (
           <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-3">
@@ -781,9 +781,9 @@ function AdminUsers() {
           ['role', t('au.f.role', 'Any role'), [['USER', 'USER'], ['MOD', 'MOD'], ['ADMIN', 'ADMIN'], ['SUPERADMIN', 'SUPERADMIN']]],
           ['status', t('au.f.status', 'Any status'), [['active', t('au.f.active', 'Active')], ['suspended', t('au.f.susp', 'Suspended')], ['banned', t('au.f.banned', 'Banned')]]],
           ['closed', t('au.f.closed', 'Open or closed'), [['no', t('au.f.open', 'Open')], ['yes', t('au.f.isclosed', 'Closed')]]],
-          ['twofa', t('au.f.2fa', '2FA — either'), [['yes', t('au.f.2fayes', 'Has 2FA')], ['no', t('au.f.2fano', 'No 2FA')]]],
+          ['twofa', t('au.f.2fa', '2FA, either'), [['yes', t('au.f.2fayes', 'Has 2FA')], ['no', t('au.f.2fano', 'No 2FA')]]],
           ['linked', t('au.f.linked', 'Any link'), [['discord', 'Discord'], ['creator', t('au.f.creator', 'Creator id')], ['none', t('au.f.nolink', 'Nothing linked')]]],
-          ['days', t('au.f.joined', 'Joined — any time'), [['1', t('au.f.d1', 'Last 24 h')], ['7', t('au.f.d7', 'Last 7 days')], ['30', t('au.f.d30', 'Last 30 days')], ['365', t('au.f.d365', 'Last year')]]],
+          ['days', t('au.f.joined', 'Joined, any time'), [['1', t('au.f.d1', 'Last 24 h')], ['7', t('au.f.d7', 'Last 7 days')], ['30', t('au.f.d30', 'Last 30 days')], ['365', t('au.f.d365', 'Last year')]]],
           ['sort', t('au.f.new', 'Newest first'), [['old', t('au.f.old', 'Oldest first')], ['name', t('au.f.name', 'By name')]]],
         ].map(([key, any, opts]) => (
           <select key={key} value={f[key]} className="input !py-1.5 !text-sm !w-auto"
@@ -953,7 +953,7 @@ function AdminExpenses({ mrrCents }) {
           <div className="text-[11px] text-[var(--faint)] mb-1.5">{t('ex.series', 'Cost per month')}</div>
           <div className="flex items-end gap-1 h-16">
             {(data?.series || []).map((s) => (
-              <div key={s.month} className="flex-1 rounded-t bg-[var(--primary)]/60 hover:bg-[var(--primary)] transition-colors"
+              <div key={s.month} className="flex-1 rounded-t bg-[var(--primary)] hover:bg-[var(--primary)] transition-colors"
                 style={{ height: `${Math.max(2, (s.cents / maxSeries) * 100)}%` }}
                 title={`${s.month} · ${money(s.cents)}`} />
             ))}
@@ -1011,7 +1011,7 @@ function AdminExpenses({ mrrCents }) {
               </div>
             );
           })}
-          {!rows.length && <p className="text-xs text-[var(--muted)]">{t('ex.none', 'Nothing recorded yet. Add the VPS, the domain, anything you pay for — the figures above become real as soon as one exists.')}</p>}
+          {!rows.length && <p className="text-xs text-[var(--muted)]">{t('ex.none', 'Nothing recorded yet. Add the VPS, the domain, anything you pay for, the figures above become real as soon as one exists.')}</p>}
         </div>
       </div>)}
     </Card>
@@ -1070,7 +1070,7 @@ function AdminPlanUsers() {
                 never answered. */}
             {!measured && (
               <div className="text-xs text-warning flex items-center gap-1.5 mb-4">
-                <AlertTriangle size={12} /> {t('pu.nostripe', 'Stripe did not answer — these figures could not be measured.')}
+                <AlertTriangle size={12} /> {t('pu.nostripe', 'Stripe did not answer, these figures could not be measured.')}
               </div>
             )}
             {/* Subscriptions live in Stripe with no account here — a wiped database, a
@@ -1089,13 +1089,13 @@ function AdminPlanUsers() {
       })()}
       <div className="flex flex-wrap gap-2 items-center mb-3">
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
-          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer — name, email, creator id…')} value={q}
+          <Input className="!ps-8 !py-1.5 !text-sm" placeholder={t('pu.search', 'Search a customer, name, email, creator id…')} value={q}
             onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setQApplied(q.trim())} /></div>
         <Button size="sm" onClick={() => setQApplied(q.trim())}>{t('pu.searchbtn', 'Search')}</Button>
         {qApplied && <Button size="sm" variant="ghost" onClick={() => { setQ(''); setQApplied(''); }}><X size={13} /> {t('pu.clear', 'Clear')}</Button>}
       </div>
       <label className="flex items-center gap-2 text-xs text-[var(--muted)] mb-4 cursor-pointer w-fit">
-        <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} /> {t('pu.includestaff', 'Include staff (admins/mods) — normally excluded from this customer report')}
+        <input type="checkbox" checked={includeStaff} onChange={(e) => setIncludeStaff(e.target.checked)} /> {t('pu.includestaff', 'Include staff (admins/mods), normally excluded from this customer report')}
       </label>
       <div className="flex gap-2 mb-4">
         {PLANUSERS_TABS.map(([id, I, label]) => (
@@ -1261,7 +1261,7 @@ function SiteBansCard() {
   const parse = (txt) => String(txt || '').split('\n').map((l) => l.trim()).filter(Boolean).map((l) => { const i = l.indexOf('#'); const v = (i >= 0 ? l.slice(0, i) : l).trim(); const note = i >= 0 ? l.slice(i + 1).trim() : ''; return { v, note }; }).filter((e) => e.v);
   const save = async () => {
     setBusy(true);
-    try { await api.put('/admin/security/bans', { ips: parse(raw.ips), uas: parse(raw.uas), creators: parse(raw.creators), shield }); toast.success(t('bans.saved', 'Bans saved — live within 15 s.')); reload(); }
+    try { await api.put('/admin/security/bans', { ips: parse(raw.ips), uas: parse(raw.uas), creators: parse(raw.creators), shield }); toast.success(t('bans.saved', 'Bans saved, live within 15 s.')); reload(); }
     catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const lift = async (ip) => { try { await api.del(`/admin/security/bans/live/${encodeURIComponent(ip)}`); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
@@ -1311,7 +1311,7 @@ function SiteBansCard() {
             <Input className="!py-1 text-xs font-mono flex-1" placeholder="203.0.113.7" value={nowIp} onChange={(e) => setNowIp(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') blockNow(); }} />
             <Button size="sm" onClick={blockNow}><Ban size={13} /> {t('bans.blocknow', 'Block now')}</Button>
           </div>
-          {live.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('bans.live.none', 'Nobody — the shield has not had to fire.')}</div> : (
+          {live.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('bans.live.none', 'Nobody, the shield has not had to fire.')}</div> : (
             <div className="space-y-1 max-h-48 overflow-auto">
               {live.map((b) => (
                 <div key={b.ip} className="flex items-center gap-2 text-xs rounded-lg bg-[var(--surface-2)] px-2 py-1">
@@ -1532,7 +1532,7 @@ function AdminSecurity() {
       runVerify();
     } catch (e) {
       const code = e?.body?.error;
-      toast.error(code === 'export_evidence_first' ? t('sec.tool.needexport', 'Export the evidence bundle first — re-sealing destroys it.')
+      toast.error(code === 'export_evidence_first' ? t('sec.tool.needexport', 'Export the evidence bundle first, re-sealing destroys it.')
         : code === 'nothing_to_reseal' ? t('sec.tool.nobreak', 'The chain verifies. Nothing to re-sign.')
         : t('common.failed', 'Failed.'));
     }
@@ -1699,7 +1699,7 @@ function AdminSecurity() {
                 {sb && <>
                   <div className="text-sm mt-1">{t('sec.brk.since', 'Untrustworthy since')} {new Date(sb.at).toLocaleString()} <span className="text-[var(--faint)]">({sb.hoursSince}{t('sec.brk.hours', 'h ago')})</span></div>
                   <div className="text-[12px] text-[var(--muted)] mt-1">
-                    {sb.entriesAfter} {t('sec.brk.after', 'entries were written at or after that point — the chain says nothing about them, in either direction.')}
+                    {sb.entriesAfter} {t('sec.brk.after', 'entries were written at or after that point, the chain says nothing about them, in either direction.')}
                   </div>
                   {sb.trustedUntil && <div className="text-[12px] text-[var(--muted)]">{t('sec.brk.until', 'Everything up to')} {new Date(sb.trustedUntil).toLocaleString()} {t('sec.brk.until2', 'still verifies.')}</div>}
                 </>}
@@ -2236,7 +2236,7 @@ function AdminServerPerf() {
     const srv = dt.map((d, i) => ({
       key: `s-${i}-${d.from}`, source: 'server',
       label: t('sp.out.server', 'The server'),
-      cause: t('sp.out.server.cause', 'No sample was recorded for this period — the process was down or restarting.'),
+      cause: t('sp.out.server.cause', 'No sample was recorded for this period, the process was down or restarting.'),
       startedAt: d.from, endedAt: d.to, seconds: (d.minutes || 0) * 60, ongoing: false,
     }));
     // Ongoing first, then newest. Sorting purely by start time could put a live outage
@@ -2283,7 +2283,7 @@ function AdminServerPerf() {
   const outageLine = (o) => `${o.label} — ${fmtDur(o.seconds)} — ${new Date(o.startedAt).toLocaleString()}${o.endedAt ? ` → ${new Date(o.endedAt).toLocaleString()}` : ' → still down'}${o.cause ? ` — ${o.cause}` : ''}`;
   const copyOutages = async () => {
     const ok = await copyText([`BetterCommunity outage history`, `exported: ${new Date().toISOString()}`, '', ...mergedOutages.map(outageLine)].join('\n'));
-    ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the rows manually.'));
+    ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy, select the rows manually.'));
   };
 
   if (loading && !data) return <Loading />;
@@ -2425,7 +2425,7 @@ function AdminServerPerf() {
 
       <Card className="p-4 mb-4">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sp.history', 'CPU / Memory / Disk — history')}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('sp.history', 'CPU / Memory / Disk, history')}</span>
           <span className="flex items-center gap-3 text-[11px] text-[var(--muted)]"><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#f97316' }} /> CPU</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#38bdf8' }} /> Mem</span><span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: '#a78bfa' }} /> Disk</span></span>
         </div>
         <MetricChart history={history} />
@@ -2452,7 +2452,7 @@ function AdminServerPerf() {
           <div className="text-[11px] mt-2 px-3 py-2 rounded-lg alert-info flex items-center gap-2 flex-wrap">
             <span>
               {t('srvperf.multihost', '{n} hosts are recording metrics into this database.').replace('{n}', String(data.hosts.length))}{' '}
-              {t('srvperf.multihostHint', 'Replicas of this deployment, or something else pointed at the same database — a hostname cannot say which.')}{' '}
+              {t('srvperf.multihostHint', 'Replicas of this deployment, or something else pointed at the same database, a hostname cannot say which.')}{' '}
               {/* The count on its own reads as thirteen machines. Most of them are usually
                   containers that stopped existing at some past deploy and left their samples
                   behind — which is worth knowing before anybody goes looking for a fleet. */}
@@ -2491,7 +2491,7 @@ function AdminServerPerf() {
         return (
           <Card className="p-4 mb-4">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Download size={13} className="text-[var(--primary-2)]" /> {t('sp.bw.title', 'Bandwidth served — by consumer')}</span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Download size={13} className="text-[var(--primary-2)]" /> {t('sp.bw.title', 'Bandwidth served, by consumer')}</span>
               <span className="text-[11px] text-[var(--muted)] tabular-nums">{fmtBytes(total)} {t('sp.bw.since', 'since restart')}</span>
             </div>
             {total > 0 ? <>
@@ -2532,9 +2532,9 @@ function AdminServerPerf() {
               return (
               <>
                 {/* Totals summary — live upload actually served + storage used across all repos. */}
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-3">
+                <div className="rounded-lg border border-[var(--line)] panel p-3 mb-3">
                   <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[var(--faint)]">
-                    <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]/70">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
+                    <span className="flex items-center gap-1.5">{totLive > 0 && <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />}{t('sp.alloc.uplivetot', 'Live upload (total)')}: <b className="text-[var(--text)] tabular-nums">{totLive.toFixed(2)} Mbps</b> <span className="text-[var(--faint)]">/ {ra.totalUploadMbps} {t('sp.alloc.reserved', 'reserved')}</span></span>
                     <span>{t('sp.alloc.stotot', 'Storage used (total)')}: <b className="text-[var(--text)] tabular-nums">{fmtBytes(totUsed)} / {fmtBytes(totQuota)}</b></span>
                   </div>
                 </div>
@@ -2559,7 +2559,7 @@ function AdminServerPerf() {
                         const cap = r.uploadMbps || 0;
                         const upPct = cap > 0 ? Math.min(100, (live / cap) * 100) : (live > 0 ? 100 : 0);
                         return (
-                          <tr key={r.id} className="hover:bg-[var(--surface-2)]/40">
+                          <tr key={r.id} className="hover:panel">
                             <td className="py-2 ps-1 pe-3 min-w-[150px]">
                               <div className="font-medium break-all leading-tight">{r.name}</div>
                               <div className="text-[11px] text-[var(--faint)] flex items-center gap-1.5 flex-wrap">{r.owner}{r.status !== 'ONLINE' && <Badge tone={r.status === 'SUSPENDED' ? 'red' : ''}>{rawStatusLabel(r.status, t)}</Badge>}</div>
@@ -2700,7 +2700,7 @@ function AdminServerPerf() {
         </Card>
         <Card className="p-4">
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Lock size={11} /> {t('sp.ssl', 'SSL certificate')}</div>
-          {ssl?.notHttps ? <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Info size={12} className="text-[var(--primary-2)] shrink-0" /> {t('sp.ssl.nohttps', 'SITE_URL is http:// — no certificate to probe. HTTPS is provisioned & auto-renewed by Caddy/Let’s Encrypt in production.')}</div>
+          {ssl?.notHttps ? <div className="text-xs text-[var(--muted)] flex items-center gap-1.5"><Info size={12} className="text-[var(--primary-2)] shrink-0" /> {t('sp.ssl.nohttps', 'SITE_URL is http://, no certificate to probe. HTTPS is provisioned & auto-renewed by Caddy/Let’s Encrypt in production.')}</div>
             : ssl?.daysLeft != null ? <div className="text-sm">{ssl.daysLeft <= 14 ? <Badge tone="red">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : ssl.daysLeft <= 30 ? <Badge tone="amber">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge> : <Badge tone="green">{t('sp.ssl.left', '{n}d left').replace('{n}', ssl.daysLeft)}</Badge>} <span className="text-[var(--faint)] text-xs">{t('sp.ssl.expires', 'expires {d}').replace('{d}', new Date(ssl.expiresAt).toLocaleDateString())}</span></div>
             : <div className="text-xs text-[var(--faint)]">{t('sp.ssl.noprobe', "Couldn't probe SITE_URL's certificate.")}</div>}
         </Card>
@@ -2752,7 +2752,7 @@ function AdminServerPerf() {
               ...groups.map((g) => `[${g.kind}] ${g.message}${g.count > 1 ? ` (×${g.count})` : ''} — last ${new Date(g.lastAt).toLocaleString()}${g.count > 1 ? `, first ${new Date(g.firstAt).toLocaleString()}` : ''}`),
             ].join('\n');
             const ok = await copyText(log);
-            ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy — select the alerts manually.'));
+            ok ? toast.success(t('common.copied', 'Copied.')) : toast.error(t('sp.al.copyfail', 'Could not copy, select the alerts manually.'));
           };
           const unacked = ackPending ? 0 : list.filter((a) => !a.ackAt).length;
           return (<>
@@ -2797,7 +2797,7 @@ function AdminServerPerf() {
               incident is not browsing — they want what is down, since when, and whether it
               is the box or a dependency, without reading a list to find out. */}
           {liveOutages.length > 0 && (
-            <div className="rounded-xl border border-[var(--error)]/40 bg-[var(--error)]/5 p-3 mb-3">
+            <div className="rounded-xl border b-error tint-error p-3 mb-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-[var(--error)]">
                 <span className="relative flex h-2 w-2 shrink-0">
                   {/* Motion is the fastest way to read "this is not history". Guarded by the
@@ -2815,7 +2815,7 @@ function AdminServerPerf() {
                     <b>{o.label}</b>
                     <span className="text-[var(--muted)]">
                       {o.source === 'server'
-                        ? t('sp.out.live.server', 'the server has stopped reporting — the process is down or restarting')
+                        ? t('sp.out.live.server', 'the server has stopped reporting, the process is down or restarting')
                         : t('sp.out.live.dep', 'not answering its check')}
                     </span>
                     <span className="tabular-nums text-[var(--error)] font-medium">
@@ -2987,7 +2987,7 @@ function FileManager() {
     const full = dir === '.' ? e.name : `${dir}/${e.name}`;
     if (e.isDir) return load(full);
     try { const r = await api.get(`/server/files/read?path=${encodeURIComponent(full)}`); setEditing({ path: r.path, content: r.content }); }
-    catch (x) { toast.error(x.data?.error === 'too_large' ? t('fm.toolarge', 'File too large to view here — use download instead.') : t('fm.readfail', 'Failed to read (probably binary — use download instead).')); }
+    catch (x) { toast.error(x.data?.error === 'too_large' ? t('fm.toolarge', 'File too large to view here, use download instead.') : t('fm.readfail', 'Failed to read (probably binary, use download instead).')); }
   };
   const up = () => { const parts = dir.split('/').filter((x) => x !== '.'); parts.pop(); load(parts.length ? parts.join('/') : '.'); };
   // DELIBERATELY NOT behind the undo window. The undo window is a convenience for edits you
@@ -2996,7 +2996,7 @@ function FileManager() {
   const saveFile = async () => {
     if (!(await doubleConfirm(dialog, { title: t('fm.savechanges', 'Save changes'), message: t('fm.saveconfirm', 'Overwrite "{p}" on the live server? A backup of the current content is kept automatically.').replace('{p}', editing.path), okLabel: t('common.save', 'Save') }))) return;
     setBusy(true);
-    try { await api.put('/server/files/write', { path: editing.path, content: editing.content, confirmToken: 'CONFIRM' }); toast.success(t('fm.savedbackup', 'Saved — a backup of the previous version was kept.')); setEditing(null); }
+    try { await api.put('/server/files/write', { path: editing.path, content: editing.content, confirmToken: 'CONFIRM' }); toast.success(t('fm.savedbackup', 'Saved, a backup of the previous version was kept.')); setEditing(null); }
     catch { toast.error(t('fm.savefail', 'Failed to save.')); } finally { setBusy(false); }
   };
   // Deleting is the one action here worth two safety nets, because it is the one whose
@@ -3169,7 +3169,7 @@ function FileManager() {
         </>
       )}
       {history && (
-        <Modal open onClose={() => setHistory(null)} title={t('fm.histtitle', 'Backup history — {p}').replace('{p}', history.path)} icon={History} width="max-w-lg">
+        <Modal open onClose={() => setHistory(null)} title={t('fm.histtitle', 'Backup history: {p}').replace('{p}', history.path)} icon={History} width="max-w-lg">
           {history.items.length ? (
             <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
               {history.items.map((h) => (
@@ -3311,11 +3311,11 @@ function DbViewer() {
               setSaving(true);
               try {
                 await api.put(`/server/db/table/${encodeURIComponent(active)}/cell`, { pk: cell.pk, column: cell.col, value: draft, confirmToken: 'CONFIRM' });
-                toast.success(t('dbv.rowsaved', 'Saved — the previous row value was backed up.'));
+                toast.success(t('dbv.rowsaved', 'Saved, the previous row value was backed up.'));
                 setCell(null);
                 openTable(active, page, sort);
               } catch (x) {
-                toast.error(x.data?.error === 'table_protected' ? t('dbv.tableprotected', 'Audit/log tables are read-only — they can\'t be edited here.') : x.data?.error === 'column_protected' ? t('dbv.colprotected', 'This column can\'t be edited here.') : x.data?.error === 'update_failed' ? t('dbv.updatefail', 'Failed: {d}').replace('{d}', x.data?.detail || 'invalid value') : t('common.failed', 'Failed.'));
+                toast.error(x.data?.error === 'table_protected' ? t('dbv.tableprotected', 'Audit/log tables are read-only, they can\'t be edited here.') : x.data?.error === 'column_protected' ? t('dbv.colprotected', 'This column can\'t be edited here.') : x.data?.error === 'update_failed' ? t('dbv.updatefail', 'Failed: {d}').replace('{d}', x.data?.detail || 'invalid value') : t('common.failed', 'Failed.'));
               } finally { setSaving(false); }
             };
             const viewRowHistory = async () => {
@@ -3337,7 +3337,7 @@ function DbViewer() {
             );
           })()}
           {rowHistory && (
-            <Modal open onClose={() => setRowHistory(null)} title={t('dbv.rowhisttitle', 'Row backup history — {t} (pk={pk})').replace('{t}', rowHistory.table).replace('{pk}', rowHistory.pk)} icon={History} width="max-w-lg">
+            <Modal open onClose={() => setRowHistory(null)} title={t('dbv.rowhisttitle', 'Row backup history: {t} (pk={pk})').replace('{t}', rowHistory.table).replace('{pk}', rowHistory.pk)} icon={History} width="max-w-lg">
               {rowHistory.items.length ? (
                 <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto scroll-thin">
                   {rowHistory.items.map((h) => (
@@ -3510,7 +3510,7 @@ function ContentImportPreview({ file, bytes, sections, onClose, onConfirm }) {
             <div className="text-[13px] font-semibold text-[var(--text)] mb-1">{file?.name}</div>
             {d.manifest?.generatedAt
               ? t('cb.pre.made', 'Exported on') + ' ' + new Date(d.manifest.generatedAt).toLocaleString()
-              : t('cb.pre.nomanifest', 'No manifest in this zip — it may not have come from this screen.')}
+              : t('cb.pre.nomanifest', 'No manifest in this zip, it may not have come from this screen.')}
             {' · '}{fmtBytes(d.bytes || 0)}
           </div>
           {/* One sentence with the number that decides it, before the table. */}
@@ -3776,13 +3776,13 @@ function BundleBrowser({ readDir, readFile }) {
             </button>
           ))}
       </div>
-      {!readFile && <p className="text-[11px] text-[var(--faint)] mt-1">{t('snap.br.nofile', 'Folders only until it is imported — reading a file out of an archive that is not stored yet would mean uploading it again for every click.')}</p>}
+      {!readFile && <p className="text-[11px] text-[var(--faint)] mt-1">{t('snap.br.nofile', 'Folders only until it is imported, reading a file out of an archive that is not stored yet would mean uploading it again for every click.')}</p>}
       <Modal open={!!file} onClose={() => setFile(null)} title={file?.path || ''} icon={FileText} width="max-w-3xl">
         {file?.loading ? <Loading />
           : file?.error ? <div className="text-sm text-error">{file.error}</div>
-          : file?.binary ? <p className="text-sm text-[var(--muted)]">{t('snap.br.binary', 'Binary file — {n} in the backup. There is nothing useful to show as text.').replace('{n}', fmtBytes(file.bytes || 0))}</p>
+          : file?.binary ? <p className="text-sm text-[var(--muted)]">{t('snap.br.binary', 'Binary file: {n} in the backup. There is nothing useful to show as text.').replace('{n}', fmtBytes(file.bytes || 0))}</p>
           : <>
-              {file?.truncated && <div className="text-[11px] text-warning mb-2">{t('snap.br.trunc', 'Showing the first part only — the file is {n}.').replace('{n}', fmtBytes(file.bytes || 0))}</div>}
+              {file?.truncated && <div className="text-[11px] text-warning mb-2">{t('snap.br.trunc', 'Showing the first part only, the file is {n}.').replace('{n}', fmtBytes(file.bytes || 0))}</div>}
               <pre className="text-[11px] font-mono whitespace-pre-wrap bg-[var(--surface-2)] p-2 rounded-lg max-h-[60vh] overflow-auto">{file?.text}</pre>
             </>}
       </Modal>
@@ -3807,11 +3807,11 @@ function ImportPreview({ file, b64, kind, onClose, onImported }) {
     setBusy(true);
     try {
       const r = await api.post('/server/backups/snapshots/import', { kind, note: file.name.slice(0, 120), data: b64 });
-      toast.success(t('snap.imported', 'Imported — it verified, and is in the list.'));
+      toast.success(t('snap.imported', 'Imported, it verified, and is in the list.'));
       onImported(r.snapshot.id);
     } catch (x) {
       toast.error(x?.data?.error === 'invalid_bundle' ? t('snap.badimport', 'That file is not a backup git will open: {d}').replace('{d}', String(x.data.detail || '').split('\n')[0].slice(0, 120))
-        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
+        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file, compact the backups first.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -3830,7 +3830,7 @@ function ImportPreview({ file, b64, kind, onClose, onImported }) {
             </div>
             <p className="text-[12px] text-[var(--muted)] mt-1">
               {d.valid ? t('snap.pre.ok.s', 'Nothing has been stored yet. What is listed below is what an import would add to the snapshot list.')
-                : t('snap.pre.bad.s', 'Nothing was stored. Git\u2019s own words are below — usually it means a different file was picked.')}
+                : t('snap.pre.bad.s', 'Nothing was stored. Git\u2019s own words are below, usually it means a different file was picked.')}
             </p>
           </div>
           <div className="grid sm:grid-cols-2 gap-2 text-[12px]">
@@ -3890,7 +3890,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
       onRestored(); onClose();
     } catch (x) {
       toast.error(x?.data?.error === 'no_safety_snapshot' ? t('snap.nosafety', 'Could not back up the current state, so nothing was rolled back.')
-        : x?.data?.error === 'invalid_bundle' ? t('snap.invalid', 'This backup does not verify — it will not be restored.')
+        : x?.data?.error === 'invalid_bundle' ? t('snap.invalid', 'This backup does not verify, it will not be restored.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -3927,7 +3927,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
               [d.digestMatches, t('snap.c.ours', 'It is our file'), t('snap.c.ours.s', 'Its fingerprint matches what we recorded when it was written.')],
               [d.signature?.present, t('snap.c.signed', 'Signed'), t('snap.c.signed.s', 'Carries a signature that can be checked independently.')],
             ].map(([ok, label, desc]) => (
-              <div key={label} className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-2">
+              <div key={label} className="flex items-start gap-2 rounded-lg border border-[var(--line)] panel px-2.5 py-2">
                 {ok ? <CheckCircle2 size={14} className="text-success shrink-0 mt-0.5" /> : <XCircle size={14} className="text-[var(--faint)] shrink-0 mt-0.5" />}
                 <div className="min-w-0">
                   <div className="text-[12px] font-medium">{label}</div>
@@ -3935,7 +3935,7 @@ function SnapshotInspector({ id, onClose, onRestored }) {
                 </div>
               </div>
             ))}
-            <div className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-2">
+            <div className="flex items-start gap-2 rounded-lg border border-[var(--line)] panel px-2.5 py-2">
               <Archive size={14} className="text-[var(--faint)] shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <div className="text-[12px] font-medium">{fmtBytes(d.meta?.bytes || 0)}</div>
@@ -4069,7 +4069,7 @@ function SnapshotsPanel({ onChanged }) {
       // The rotation is reported, never silent. A backup routine that quietly deletes is
       // the reason people distrust backup routines.
       toast.success(r.rotated?.length
-        ? t('snap.made.rot', 'Backup taken — {n} older one(s) rotated out.').replace('{n}', String(r.rotated.length))
+        ? t('snap.made.rot', 'Backup taken: {n} older one(s) rotated out.').replace('{n}', String(r.rotated.length))
         : t('snap.made', 'Backup taken.'));
       reload(); onChanged?.();
     } catch (x) {
@@ -4128,7 +4128,7 @@ function SnapshotsPanel({ onChanged }) {
         ? t('snap.dir.now', 'That folder cannot be written to: {d}').replace('{d}', String(x.data.detail || '').slice(0, 120))
         : x?.data?.error === 'bad_dir'
           ? ({ not_absolute: t('snap.dir.abs', 'The destination must be a full path, starting from the root of the disk.'),
-               inside_files_root: t('snap.dir.inside', 'That folder is inside the tree being backed up — each backup would contain the previous ones.'),
+               inside_files_root: t('snap.dir.inside', 'That folder is inside the tree being backed up, each backup would contain the previous ones.'),
                is_root: t('snap.dir.root', 'That is the root of the disk. Pick a folder inside it.') }[x.data.reason]
              || t('snap.dir.bad', 'That destination cannot be used.'))
           : t('common.failed', 'Failed.'));
@@ -4153,7 +4153,7 @@ function SnapshotsPanel({ onChanged }) {
         const b = document.createElement('a'); b.href = su; b.download = `${name}.sig.b64`; b.click();
         URL.revokeObjectURL(su);
       }
-      toast.success(t('bkp.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+      toast.success(t('bkp.exported', 'Downloaded {n}, the signature was saved next to it.').replace('{n}', name));
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(''); }
   };
 
@@ -4196,7 +4196,7 @@ function SnapshotsPanel({ onChanged }) {
           import, so the Save at the end of that line looked as though it might save any of
           them. Everything in here answers one question — what happens when nobody is
           watching — and the whole block dims when the answer is "nothing". */}
-      <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/30 p-2.5">
+      <div className="mt-3 rounded-lg border border-[var(--line)] panel-quiet p-2.5">
         <div className="flex items-center gap-2 flex-wrap">
           <label className="inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer" title={t('snap.auto.hint', 'Take a backup automatically on a schedule')}>
             <input type="checkbox" checked={autoOn} disabled={!!busy} onChange={(e) => saveAuto(e.target.checked)} />
@@ -4221,7 +4221,7 @@ function SnapshotsPanel({ onChanged }) {
           {t('snap.what.files', 'Files')}
         </label>
         <label className="inline-flex items-center gap-1.5 text-[11px] cursor-pointer"
-          title={t('snap.what.db.h', 'The history of row edits made through the DB console above — not a dump of the whole database.')}>
+          title={t('snap.what.db.h', 'The history of row edits made through the DB console above, not a dump of the whole database.')}>
           <input type="checkbox" checked={kindsShown.includes('db')} disabled={!autoOn || !!busy} onChange={() => toggleKind('db')} />
           {t('snap.what.db', 'Database row history')}
         </label>
@@ -4235,13 +4235,13 @@ function SnapshotsPanel({ onChanged }) {
       </div>
       {kindsShown.length === 0 && autoOn && (
         <p className="text-[11px] text-warning mt-1">
-          {t('snap.what.none', 'Nothing is selected — the schedule will run and back up nothing.')}
+          {t('snap.what.none', 'Nothing is selected, the schedule will run and back up nothing.')}
         </p>
       )}
       <p className="text-[11px] text-[var(--faint)] mt-1.5">
-        {!autoOn && <span className="text-warning">{t('snap.auto.off', 'Automatic backups are OFF — the only backups from here on are the ones you take by hand. ')}</span>}
+        {!autoOn && <span className="text-warning">{t('snap.auto.off', 'Automatic backups are OFF, the only backups from here on are the ones you take by hand. ')}</span>}
         {keepNow > 0
-          ? t('snap.keep.on', 'A backup every {h}h, keeping the {n} most recent of each kind — older ones are overwritten as new ones are taken.')
+          ? t('snap.keep.on', 'A backup every {h}h, keeping the {n} most recent of each kind, older ones are overwritten as new ones are taken.')
               .replace('{n}', String(keepNow)).replace('{h}', String(everyNow))
           : t('snap.keep.off', 'Rotation is off: backups are kept until you delete them, and nothing watches the disk for you.')}
         {' '}
@@ -4335,10 +4335,10 @@ function BackupManager() {
         const b = document.createElement('a'); b.href = sigUrl; b.download = `${name}.sig.b64`; b.click();
         URL.revokeObjectURL(sigUrl);
       }
-      toast.success(t('bkp.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+      toast.success(t('bkp.exported', 'Downloaded {n}, the signature was saved next to it.').replace('{n}', name));
     } catch (x) {
       toast.error(x?.data?.error === 'no_backups' ? t('bkp.nobackups', 'Nothing to export yet — the backup store fills automatically as you edit files or database rows on this server. Make an edit, then its history is here to export.')
-        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file — compact the backups first.')
+        : x?.data?.error === 'too_large' ? t('bkp.toobig', 'Too large to export in one file, compact the backups first.')
         : t('common.failed', 'Failed.'));
     } finally { setExporting(''); }
   };
@@ -4445,7 +4445,7 @@ function BackupManager() {
         <div className="rounded-xl border border-[var(--line)] p-3">
           <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('bkp.compact.h', 'Reclaim space')}</div>
           <Button size="sm" disabled={gcBusy} onClick={runGc} title={t('bkp.compacttip', 'Runs git gc on the backup repos to reclaim space from old/loose objects. Non-destructive: NO history is deleted — every version can still be restored.')}>{gcBusy ? <Spinner /> : t('bkp.compact', 'Compact backups')}</Button>
-          <p className="text-[11px] text-[var(--faint)] mt-1.5 leading-snug">{t('bkp.note.s', 'Garbage-collects the backup git repos. It never deletes history — every past version stays restorable.')}</p>
+          <p className="text-[11px] text-[var(--faint)] mt-1.5 leading-snug">{t('bkp.note.s', 'Garbage-collects the backup git repos. It never deletes history, every past version stays restorable.')}</p>
         </div>
       </div>
 
@@ -4485,7 +4485,7 @@ function BackupManager() {
         </div>
 
         {pubkey && (
-          <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+          <div className="mt-3 rounded-lg border border-[var(--line)] panel p-3">
             <p className="text-[11px] text-[var(--muted)] mb-2">
               {t('bkp.verify.s', 'Signed with Ed25519. The key below is public on purpose — checking a backup must not require asking the server that produced it, which is precisely the thing you would be doubting.')}
             </p>
@@ -4501,7 +4501,7 @@ function BackupManager() {
           <div className="mt-3 rounded-lg border border-[var(--line)] max-h-64 overflow-y-auto">
             {['files', 'db'].map((k) => (
               <div key={k}>
-                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)] bg-[var(--surface-2)]/60 sticky top-0">
+                <div className="px-3 py-1.5 text-[11px] uppercase tracking-wider text-[var(--faint)] panel sticky top-0">
                   {k === 'files' ? t('bkp.filehist', 'File history') : t('bkp.dbhist', 'DB row history')} · {(contents[k] || []).length}
                 </div>
                 {!(contents[k] || []).length
@@ -4539,7 +4539,7 @@ const ADMIN_CAPS = [
   { id: 'manage_reports', cat: 'people', icon: FlagIcon, label: 'Handle reports', labelFr: 'Gérer les signalements', desc: 'View and reply to user reports & support threads.', descFr: 'Voir et répondre aux signalements et fils de support.' },
   { id: 'manage_projects', cat: 'content', icon: Settings2, label: 'Manage projects', labelFr: 'Gérer les projets', desc: 'Edit every fixed project page + its visibility & schedule.', descFr: 'Modifier chaque page de projet fixe + sa visibilité et sa planification.' },
   { id: 'manage_showcase', cat: 'content', icon: Sparkles, label: 'Manage other projects', labelFr: 'Gérer les autres projets', desc: 'Create, edit, pin and publish every other-project page.', descFr: 'Créer, modifier, épingler et publier chaque page « autre projet ».' },
-  { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners — publishing one also sends a notification to every user.', descFr: 'Publier et modifier les bannières d’annonce du site — en publier une envoie aussi une notification à tous les membres.' },
+  { id: 'manage_announcements', cat: 'content', icon: BellIcon, label: 'Manage announcements', labelFr: 'Gérer les annonces', desc: 'Post and edit the site announcement banners, publishing one also sends a notification to every user.', descFr: 'Publier et modifier les bannières d’annonce du site, en publier une envoie aussi une notification à tous les membres.' },
   { id: 'manage_faq', cat: 'content', icon: HelpCircle, label: 'Manage FAQ', labelFr: 'Gérer la FAQ', desc: 'Create and edit FAQ entries.', descFr: 'Créer et modifier les entrées de la FAQ.' },
   { id: 'manage_catalogs', cat: 'content', icon: Boxes, label: 'Manage catalogs', labelFr: 'Gérer les catalogues', desc: 'Moderate community catalogs (suspend / unlist).', descFr: 'Modérer les catalogues communautaires (suspendre / délister).' },
   { id: 'manage_newsletter', cat: 'growth', icon: Mail, label: 'Manage newsletter', labelFr: 'Gérer la newsletter', desc: 'Compose and send newsletters.', descFr: 'Rédiger et envoyer des newsletters.' },
@@ -4553,12 +4553,12 @@ const ADMIN_CAPS = [
   { id: 'manage_docs', cat: 'content', icon: BookOpen, label: 'Manage the docs', labelFr: 'Gérer la doc', desc: 'Write and organise the documentation pages and their categories.', descFr: 'Rédiger et organiser les pages de documentation et leurs catégories.' },
   { id: 'manage_legal', cat: 'content', icon: Scale, label: 'Manage the legal pages', labelFr: 'Gérer les pages légales', desc: 'Edit the policy pages and publish a new version of them. Not the acceptances themselves.', descFr: 'Modifier les pages de politique et en publier une nouvelle version. Pas les acceptations elles-mêmes.' },
   { id: 'manage_bot', cat: 'ops', icon: Bot, label: 'Manage the Discord bot', labelFr: 'Gérer le bot Discord', desc: 'The bot dashboard: config, features, servers, logs — and two broad ones: exporting the member database, and DMing every member. Not its token, and not the economy.', descFr: 'Le tableau de bord du bot : config, fonctionnalités, serveurs, journaux — et deux gros : exporter la base des membres, et envoyer un MP à tout le monde. Pas son token, ni l’économie.' },
-  { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things — grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
+  { id: 'manage_economy', cat: 'ops', icon: Coins, label: 'Manage the economy', labelFr: 'Gérer l’économie', desc: 'Grant and reset points, read the ledger, deliver a shop purchase by hand. Points buy things, grant it as you would grant money.', descFr: 'Créditer et remettre à zéro les points, lire le registre, livrer un achat à la main. Les points achètent des choses — accorde-le comme tu accorderais de l’argent.' },
   { id: 'manage_hosting', cat: 'ops', icon: Rocket, label: 'Manage hosting', labelFr: 'Gérer l’hébergement', desc: 'Plans, storage pools, capacity and free-hosting grants.', descFr: 'Formules, pools de stockage, capacité et hébergements gratuits accordés.' },
   { id: 'manage_assets', cat: 'ops', icon: Download, label: 'Manage downloads & assets', labelFr: 'Gérer téléchargements et ressources', desc: 'The installers people download, and the links file the apps read at startup.', descFr: 'Les installeurs que les gens téléchargent, et le fichier de liens que les apps lisent au démarrage.' },
   { id: 'manage_sanctions', cat: 'people', icon: Gavel, label: 'Manage sanctions', labelFr: 'Gérer les sanctions', desc: 'Site bans and the appeals against them.', descFr: 'Les bannissements du site et les recours contre eux.' },
   { id: 'manage_history', cat: 'people', icon: History, label: 'Manage the site history', labelFr: 'Gérer l’historique du site', desc: 'The public timeline of what changed and when.', descFr: 'La chronologie publique de ce qui a changé et quand.' },
-  { id: 'manage_donations', cat: 'growth', icon: KofiIcon, label: 'Manage donations', labelFr: 'Gérer les dons', desc: 'The Ko-fi feed and the charity pots — the two streams of money that are not sales.', descFr: 'Le flux Ko-fi et les cagnottes caritatives — les deux flux d’argent qui ne sont pas des ventes.' },
+  { id: 'manage_donations', cat: 'growth', icon: KofiIcon, label: 'Manage donations', labelFr: 'Gérer les dons', desc: 'The Ko-fi feed and the charity pots, the two streams of money that are not sales.', descFr: 'Le flux Ko-fi et les cagnottes caritatives, les deux flux d’argent qui ne sont pas des ventes.' },
   { id: 'manage_expenses', cat: 'insight', icon: Receipt, label: 'See costs and revenue', labelFr: 'Voir coûts et revenus', desc: 'Running costs against what the site earns. A money screen: grant it deliberately.', descFr: 'Les coûts de fonctionnement face à ce que le site gagne. Un écran d’argent : accorde-le délibérément.' },
   { id: 'translate_site', cat: 'translation', icon: Languages, label: 'Translate the site', labelFr: 'Traduire le site', desc: 'Open the language editor: add languages and translate every UI string.', descFr: 'Ouvrir l’éditeur de langues : ajouter des langues et traduire chaque texte de l’interface.' },
   { id: 'translate_blog', cat: 'translation', icon: Newspaper, label: 'Translate the blog', labelFr: 'Traduire le blog', desc: 'Add and edit the French (or other-language) version of blog posts.', descFr: 'Ajouter et modifier la version française (ou autre langue) des articles.' },
@@ -4619,7 +4619,7 @@ function PowerHolders({ onOpen }) {
       <div className="flex gap-4 flex-wrap">
         <Group icon={Server} tone="red" title={t('acc.holders.sc', 'Server-control')} users={data?.server || []}
           extra={(u) => (u.totpEnabled === false
-            ? <span className="text-warning text-[11px]" title={t('acc.holders.no2fa.t', 'No 2FA — the server endpoints will refuse them')}>{t('acc.holders.no2fa', 'no 2FA')}</span>
+            ? <span className="text-warning text-[11px]" title={t('acc.holders.no2fa.t', 'No 2FA, the server endpoints will refuse them')}>{t('acc.holders.no2fa', 'no 2FA')}</span>
             : null)} />
         <Group icon={TrendingUp} tone="primary" title={t('acc.holders.tel', 'Telemetry')} users={data?.telemetry || []} />
       </div>
@@ -4763,7 +4763,7 @@ function AdminAccess({ isSuperAdmin }) {
     <div className="space-y-6">
       <div>
         <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('acc.title', 'Access & permissions')}</h2>
-        <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
+        <p className="text-sm text-[var(--muted)] mb-3">{isSuperAdmin ? t('acc.desc.super', 'Find a user to manage their role, server-control access and blog-post access — all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.') : t('acc.desc.admin', 'Find a user to manage blog-post access, all in one place. Search by user id, display name, email, a linked creator id, or a linked Discord.')}</p>
         {isSuperAdmin && <PowerHolders onOpen={openHolder} />}
         <div className="flex gap-2 mb-3">
           <div className="relative flex-1"><Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
@@ -4820,8 +4820,8 @@ function AdminAccess({ isSuperAdmin }) {
                     // "off" would have looked like a revoke it cannot perform. Take the role
                     // away in Custom roles below to remove it.
                     <button key={c.id} disabled={!!viaRoles && !direct} onClick={() => togglePerm(c.id)}
-                      className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'} ${viaRoles && !direct ? 'cursor-default' : ''}`}>
-                      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                      className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'} ${viaRoles && !direct ? 'cursor-default' : ''}`}>
+                      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                       <span className="flex-1 min-w-0">
                         <span className="block text-sm font-medium">{t('acc.perm.' + c.id, c.label)}</span>
                         <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, c.desc)}</span>
@@ -4839,12 +4839,12 @@ function AdminAccess({ isSuperAdmin }) {
           {isSuperAdmin && !['ADMIN', 'SUPERADMIN'].includes(picked.role) && customRoles.length > 0 && (
             <div className="pt-4 border-t border-[var(--line)]">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><ShieldCheck size={12} /> {t('acc.roles.title', 'Custom roles')}</div>
-              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.roles.desc', 'Assign one or more roles — each hands this user its whole bundle of capabilities, layered on top of any individual permissions above.')}</p>
+              <p className="text-xs text-[var(--muted)] mb-2.5">{t('acc.roles.desc', 'Assign one or more roles, each hands this user its whole bundle of capabilities, layered on top of any individual permissions above.')}</p>
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {customRoles.map((r) => {
                   const on = rolesSel.includes(r.id);
                   return (
-                    <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm ps-2.5 pe-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    <button key={r.id} onClick={() => toggleRole(r.id)} className={`inline-flex items-center gap-1.5 text-sm ps-2.5 pe-3 py-1.5 rounded-full border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                       <RoleBadge color={r.color}>{r.name}</RoleBadge>
                       <span className="text-xs text-[var(--faint)]">{t('acc.roles.ncaps', '{n} caps').replace('{n}', (r.capabilities || []).length)}</span>
                       {on && <Check size={13} className="text-[var(--primary-2)]" />}
@@ -4879,7 +4879,7 @@ function AdminAccess({ isSuperAdmin }) {
           {isSuperAdmin && (picked.role === 'ADMIN' || picked.role === 'SUPERADMIN' || picked.canControlServer) && (
             <div className="pt-4 border-t border-[var(--line)]">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('acc.sc.title', 'Server-control tools')}</div>
-              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.sc.desc', "Grants access to the server dashboard's dangerous actions (DB viewer, restart) — still gated by that user's own 2FA step-up.")} {!picked.totpEnabled && <span className="text-warning">{t('acc.sc.no2fa', "This user hasn't enabled 2FA yet, so the tools stay locked either way.")}</span>}</p>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.sc.desc', "Grants access to the server dashboard's dangerous actions (DB viewer, restart), still gated by that user's own 2FA step-up.")} {!picked.totpEnabled && <span className="text-warning">{t('acc.sc.no2fa', "This user hasn't enabled 2FA yet, so the tools stay locked either way.")}</span>}</p>
               <Button size="sm" variant={picked.canControlServer ? 'default' : 'primary'} disabled={busy} onClick={toggleServerControl}>{busy ? <Spinner /> : (picked.canControlServer ? t('acc.sc.revoke', 'Revoke server-control') : t('acc.sc.grant', 'Grant server-control'))}</Button>
             </div>
           )}
@@ -4887,7 +4887,7 @@ function AdminAccess({ isSuperAdmin }) {
           {isSuperAdmin && ['MOD', 'ADMIN', 'SUPERADMIN'].includes(picked.role) && (
             <div className="pt-4 border-t border-[var(--line)]">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><TrendingUp size={12} /> {t('acc.tel.title', 'BMM telemetry')}</div>
-              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.tel.desc', 'Lets this admin open the BMM telemetry dashboard (gated at the edge by a BCWEB login — no separate telemetry key needed).')} {picked.role === 'SUPERADMIN' && <span className="text-[var(--faint)]">{t('acc.tel.super', 'SUPERADMIN always has access.')}</span>}</p>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('acc.tel.desc', 'Lets this admin open the BMM telemetry dashboard (gated at the edge by a BCWEB login, no separate telemetry key needed).')} {picked.role === 'SUPERADMIN' && <span className="text-[var(--faint)]">{t('acc.tel.super', 'SUPERADMIN always has access.')}</span>}</p>
               <Button size="sm" variant={picked.canViewTelemetry ? 'default' : 'primary'} disabled={busy || picked.role === 'SUPERADMIN'} onClick={toggleTelemetry}>{busy ? <Spinner /> : (picked.canViewTelemetry ? t('acc.tel.revoke', 'Revoke telemetry access') : t('acc.tel.grant', 'Grant telemetry access'))}</Button>
             </div>
           )}
@@ -5012,7 +5012,7 @@ function RoleManager({ roles }) {
         <h2 className="font-semibold flex items-center gap-2"><ShieldCheck size={16} className="text-[var(--primary-2)]" /> {t('rm.title', 'Custom roles')}</h2>
         <Button size="sm" variant="primary" onClick={() => open(null)}><Plus size={14} /> {t('rm.new', 'New role')}</Button>
       </div>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('rm.desc', 'Reusable bundles of capabilities. Assign them to users above — effective access is the role’s caps on top of any individual permissions.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('rm.desc', 'Reusable bundles of capabilities. Assign them to users above, effective access is the role’s caps on top of any individual permissions.')}</p>
       {roles.loading ? <Loading /> : list.length ? <div className="space-y-1.5 mb-3">
         {list.map((r) => (
           <Card key={r.id} className="p-3 flex items-center gap-3">
@@ -5046,8 +5046,8 @@ function RoleManager({ roles }) {
             <div>
               <div className="text-sm font-medium mb-2">{t('rm.scope', 'Where it applies')}</div>
               <div className="grid grid-cols-2 gap-2">
-                {[[false, t('rm.scope.global', 'Everywhere'), t('rm.scope.global.d', 'The capabilities below apply site-wide.')], [true, t('rm.scope.elements', 'Only these elements'), t('rm.scope.elements.d2', 'Rights on the projects ticked below — the page, its blog, or both — and nothing site-wide.')]].map(([v, label, d]) => (
-                  <button key={String(v)} type="button" onClick={() => setScoped(v)} className={`text-start rounded-xl border p-3 transition ${scoped === v ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--primary)]/40'}`}>
+                {[[false, t('rm.scope.global', 'Everywhere'), t('rm.scope.global.d', 'The capabilities below apply site-wide.')], [true, t('rm.scope.elements', 'Only these elements'), t('rm.scope.elements.d2', 'Rights on the projects ticked below, the page, its blog, or both, and nothing site-wide.')]].map(([v, label, d]) => (
+                  <button key={String(v)} type="button" onClick={() => setScoped(v)} className={`text-start rounded-xl border p-3 transition ${scoped === v ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:b-primary'}`}>
                     <div className="text-sm font-medium">{label}</div><div className="text-[11px] text-[var(--faint)]">{d}</div>
                   </button>
                 ))}
@@ -5062,20 +5062,20 @@ function RoleManager({ roles }) {
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.rights', 'Rights on these elements')}</div>
                     <div className="flex flex-wrap gap-1.5">
-                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config — not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects — the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')]].map(([id, label, h]) => {
+                      {[['pages', t('rm.scope.r.pages', 'Edit the page content'), t('rm.scope.r.pages.h', 'Like a per-project grant: overview, presentation, timeline, config, not publishing or visibility.')], ['blog', t('rm.scope.r.blog', 'Write in its blog'), t('rm.scope.r.blog.h', 'Post and edit articles in the blog of these projects, the same as a blog permission, granted by role.')], ['market', t('rm.scope.r.market', 'Run its marketplace'), t('rm.scope.r.market.h', 'Create, price and delete the products of these projects, upload their files and mint their keys. NOT the platform margin, and not where the money is paid — both stay with a super-admin.')]].map(([id, label, h]) => {
                         const on = scopeRights.includes(id);
-                        return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
+                        return <button key={id} type="button" title={h} onClick={() => setScopeRights((r) => on ? (r.length > 1 ? r.filter((x) => x !== id) : r) : [...r, id])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{label}</button>;
                       })}
                     </div>
                   </div>
                   <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={scopeAllSc} onChange={(e) => setScopeAllSc(e.target.checked)} /> {t('rm.scope.allsc.l', 'Every “other project” page')}</label>
                   {(elements.data?.projects || []).length > 0 && <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.projects', 'Official projects')}</div>
-                    <div className="flex flex-wrap gap-1.5">{(elements.data?.projects || []).map((pr) => { const on = scopeKeys.includes(pr.key); return <button key={pr.key} type="button" onClick={() => setScopeKeys((k) => on ? k.filter((x) => x !== pr.key) : [...k, pr.key])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{pr.name}</button>; })}</div>
+                    <div className="flex flex-wrap gap-1.5">{(elements.data?.projects || []).map((pr) => { const on = scopeKeys.includes(pr.key); return <button key={pr.key} type="button" onClick={() => setScopeKeys((k) => on ? k.filter((x) => x !== pr.key) : [...k, pr.key])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{pr.name}</button>; })}</div>
                   </div>}
                   {!scopeAllSc && (elements.data?.showcases || []).length > 0 && <div>
                     <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('rm.scope.showcases', 'Other projects')}</div>
-                    <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
+                    <div className="flex flex-wrap gap-1.5">{(elements.data?.showcases || []).map((sc) => { const on = scopeSlugs.includes(sc.slug); return <button key={sc.slug} type="button" onClick={() => setScopeSlugs((k) => on ? k.filter((x) => x !== sc.slug) : [...k, sc.slug])} className={`px-2.5 py-1 rounded-lg border text-xs ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>{sc.name}</button>; })}</div>
                   </div>}
                   <p className="text-[11px] text-[var(--faint)]">{t('rm.scope.h2', 'A member of this role gets the ticked rights on these elements only — page content like a per-project grant, blog posts like a blog permission, and the marketplace of those projects. Publishing, pinning, visibility and announcements stay with managers; the margin we take and the account sales are paid into stay with a super-admin.')}</p>
                 </div>
@@ -5094,8 +5094,8 @@ function RoleManager({ roles }) {
                         {inCat.map((c) => {
                           const on = caps.includes(c.id); const Icon = c.icon;
                           return (
-                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-                              <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'bg-[var(--primary)]/15 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
+                            <button key={c.id} type="button" onClick={() => toggleCap(c.id)} className={`w-full text-start flex items-center gap-3 p-2.5 rounded-xl border transition ${on ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                              <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 ${on ? 'tint-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] text-[var(--faint)]'}`}><Icon size={15} /></span>
                               <span className="flex-1 min-w-0">
                                 <span className="block text-sm font-medium">{t('acc.perm.' + c.id, capLabel(c))}</span>
                                 <span className="block text-xs text-[var(--faint)]">{t('acc.permd.' + c.id, lang === 'fr' ? c.descFr : c.desc)}</span>
@@ -5214,7 +5214,7 @@ function AdminReviews() {
         </div>
         <div className="grid sm:grid-cols-2 gap-3 mt-3">
           <Field label={t('arv.bodyen', 'Text (English)')}><Textarea rows={3} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} /></Field>
-          <Field label={t('arv.bodyfr', 'Text (French)')}><Textarea rows={3} value={f.bodyFr} onChange={(e) => setF({ ...f, bodyFr: e.target.value })} placeholder={t('arv.frph', 'Optional — falls back to English.')} /></Field>
+          <Field label={t('arv.bodyfr', 'Text (French)')}><Textarea rows={3} value={f.bodyFr} onChange={(e) => setF({ ...f, bodyFr: e.target.value })} placeholder={t('arv.frph', 'Optional, falls back to English.')} /></Field>
         </div>
         <div className="flex items-end gap-3 mt-3 flex-wrap">
           <Field label={t('arv.rating', 'Rating (1-5, optional)')}><Input type="number" min="1" max="5" className="!w-28" value={f.rating} onChange={(e) => setF({ ...f, rating: e.target.value })} /></Field>
@@ -5257,7 +5257,7 @@ function AdminAnnouncements() {
   const create = async () => {
     if (f.title.length < 2) return toast.error(t('ann.title.req', 'Title is required.'));
     setBusy(true);
-    try { const r = await api.post('/admin/announcements', { ...f, linkUrl: f.linkUrl.trim() || null }); toast.success(t('ann.published', 'Published — notified {n} user(s).').replace('{n}', r.notified)); setF({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' }); reload(); }
+    try { const r = await api.post('/admin/announcements', { ...f, linkUrl: f.linkUrl.trim() || null }); toast.success(t('ann.published', 'Published, notified {n} user(s).').replace('{n}', r.notified)); setF({ title: '', body: '', tone: 'info', showBanner: true, linkUrl: '' }); reload(); }
     catch (x) { toast.error(x.data?.error || t('ann.failed', 'Failed.')); } finally { setBusy(false); }
   };
   const toggleActive = (a) => utog.act(a.id, { active: !a.active }, () => api.put(`/admin/announcements/${a.id}`, { active: !a.active }), !a.active ? t('ann.activated', 'Announcement activated.') : t('ann.deactivated', 'Announcement deactivated.'));
@@ -5442,7 +5442,7 @@ function AdminNewsletter() {
               ['fr', t('nl.rec.fr', 'French ({n})').replace('{n}', counts.activeFr)],
               ['pick', t('nl.rec.pick', 'Pick subscribers ({n})').replace('{n}', picked.size)],
             ].map(([k, label]) => (
-              <button key={k} type="button" onClick={() => setMode(k)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === k ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
+              <button key={k} type="button" onClick={() => setMode(k)} className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${mode === k ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>{label}</button>
             ))}
           </div>
           <p className="text-[11px] text-[var(--faint)] mt-2">{t('nl.rec.note', 'Language = the one each subscriber signed up in (footer/blog/registration use the site language at the time; defaults to English). “English” / “French” send to that whole segment — no need to hand-pick.')}</p>
@@ -5471,14 +5471,14 @@ function AdminNewsletter() {
             restyle the dashboard. The white backdrop is the inbox's, not this theme's. */}
         {nlPreview && (
           <div className="mb-3">
-            <div className="text-[11px] text-[var(--faint)] mb-1">{t('nl.preview', 'Preview — including the unsubscribe footer that ships with every send')}</div>
+            <div className="text-[11px] text-[var(--faint)] mb-1">{t('nl.preview', 'Preview, including the unsubscribe footer that ships with every send')}</div>
             <div className="rounded-xl border border-[var(--line)] overflow-hidden flex justify-center bg-white">
               <iframe title="newsletter-preview" sandbox="" srcDoc={nlPreview} className="w-full"
                 style={{ maxWidth: 420, height: 460, border: 0, display: 'block' }} />
             </div>
           </div>
         )}
-        {counts.active === 0 && <div className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-2.5">{t('nl.noactive', 'No confirmed subscribers yet — sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.')}</div>}
+        {counts.active === 0 && <div className="text-xs text-[var(--muted)] rounded-lg border border-[var(--line)] panel p-2.5">{t('nl.noactive', 'No confirmed subscribers yet, sign-ups stay “pending” until they click the confirm email. You can still send yourself a test below.')}</div>}
 
         <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0 sm:max-w-xs w-full">
@@ -5571,11 +5571,11 @@ function AdminFaq() {
           <Field label={t('faqa.cat', 'Category')}><Input value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} placeholder={t('adm2.ph.general', "General")} list="faq-cats" /><datalist id="faq-cats">{categories.map((c) => <option key={c} value={c} />)}</datalist></Field>
         </div>
         <div className="grid sm:grid-cols-[1fr_200px] gap-3">
-          <Field label={t('faqa.qfr', 'Question (FR)')} hint={t('faqa.frhint', 'Optional — falls back to the English when empty.')}><Input value={f.questionFr} onChange={(e) => setF({ ...f, questionFr: e.target.value })} placeholder={t('faqa.qfrph', 'Comment faire… ?')} /></Field>
+          <Field label={t('faqa.qfr', 'Question (FR)')} hint={t('faqa.frhint', 'Optional, falls back to the English when empty.')}><Input value={f.questionFr} onChange={(e) => setF({ ...f, questionFr: e.target.value })} placeholder={t('faqa.qfrph', 'Comment faire… ?')} /></Field>
           <Field label={t('faqa.catfr', 'Category (FR)')}><Input value={f.categoryFr} onChange={(e) => setF({ ...f, categoryFr: e.target.value })} placeholder="Général" /></Field>
         </div>
-        <Field label={t('faqa.a', 'Answer (markdown)')}><MarkdownEditor value={f.answer} onChange={(v) => setF({ ...f, answer: v })} placeholder={t('faqa.aph', 'Write the answer — supports **markdown** and blocks.')} full /></Field>
-        <Field label={t('faqa.afr', 'Answer FR (markdown)')} hint={t('faqa.frhint', 'Optional — falls back to the English when empty.')}><MarkdownEditor value={f.answerFr} onChange={(v) => setF({ ...f, answerFr: v })} placeholder={t('faqa.afrph', 'Écris la réponse en français…')} full /></Field>
+        <Field label={t('faqa.a', 'Answer (markdown)')}><MarkdownEditor value={f.answer} onChange={(v) => setF({ ...f, answer: v })} placeholder={t('faqa.aph', 'Write the answer, supports **markdown** and blocks.')} full /></Field>
+        <Field label={t('faqa.afr', 'Answer FR (markdown)')} hint={t('faqa.frhint', 'Optional, falls back to the English when empty.')}><MarkdownEditor value={f.answerFr} onChange={(v) => setF({ ...f, answerFr: v })} placeholder={t('faqa.afrph', 'Écris la réponse en français…')} full /></Field>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)]"><input type="checkbox" checked={f.published} onChange={(e) => setF({ ...f, published: e.target.checked })} /> {t('faqa.published', 'Published (visible on /faq)')}</label>
         <div className="flex justify-end gap-2">
           {editId && <Button variant="ghost" onClick={reset}>{t('common.cancel', 'Cancel')}</Button>}
@@ -5660,7 +5660,7 @@ function UserModerationCard({ user, onChange }) {
   };
   const reactivate = () => moderate({ action: 'reactivate' }, 'active', t('mod.reactivated', 'Account reactivated.'));
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+    <div className="rounded-xl border border-[var(--line)] panel p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Ban size={12} /> {t('mod.title', 'Account moderation')}</div>
         <Badge tone={status === 'banned' ? 'red' : status === 'suspended' ? 'amber' : 'green'}>{status}</Badge>
@@ -5679,10 +5679,10 @@ function UserModerationCard({ user, onChange }) {
           <div>
             <div className="text-[11px] text-[var(--faint)] mb-1">{t('mod.duration', 'Duration')}</div>
             <div className="flex flex-wrap gap-1.5">
-              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
+              {MOD_DURATIONS.map((d) => <button key={d.key} type="button" onClick={() => setDur(d.key)} className={`px-2.5 py-1 rounded-lg text-xs border transition ${dur === d.key ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>{t(`mod.dur.${d.key}`, d.label)}</button>)}
             </div>
           </div>
-          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason — shown to the user and emailed to them…')} rows={2} />
+          <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t('mod.reasonph', 'Reason, shown to the user and emailed to them…')} rows={2} />
           <div className="flex gap-2">
             <Button size="sm" variant="primary" className={form.action === 'ban' ? '!bg-error hover:!bg-error' : ''} disabled={!!pending} onClick={submit}>{form.action === 'ban' ? t('mod.confirmban', 'Ban account') : t('mod.confirmsusp', 'Suspend account')}</Button>
             <Button size="sm" variant="ghost" onClick={() => setForm(null)}>{t('su.cancel', 'Cancel')}</Button>
@@ -5728,13 +5728,13 @@ function UserTwoFactorCard({ user, onChange }) {
     setPending(true);
     toast.action({
       tone: 'success', duration: 6000, cancelLabel: t('common.undo', 'Undo'),
-      msg: t('twofa.reset.done', 'Two-factor reset — the user can now sign in with their password.'),
+      msg: t('twofa.reset.done', 'Two-factor reset, the user can now sign in with their password.'),
       onCommit: async () => {
         try { const r = await api.post(`/admin/users/${user.id}/2fa/reset`); onChange?.(r); }
         catch (x) {
           toast.error(
             x.data?.error === 'cannot_moderate_higher' ? t('mod.higher', 'You can only moderate accounts below your own level.')
-            : x.data?.error === 'cannot_reset_self' ? t('twofa.reset.self', "You can't reset your own 2FA here — use Settings.")
+            : x.data?.error === 'cannot_reset_self' ? t('twofa.reset.self', "You can't reset your own 2FA here, use Settings.")
             : t('common.failed', 'Failed.'));
         }
         finally { setPending(false); }
@@ -5743,13 +5743,13 @@ function UserTwoFactorCard({ user, onChange }) {
     });
   };
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+    <div className="rounded-xl border border-[var(--line)] panel p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><KeyRound size={12} /> {t('twofa.title', 'Two-factor authentication')}</div>
         <Badge tone={enabled ? 'green' : ''}>{enabled ? t('twofa.on', 'Enabled') : t('twofa.off', 'Disabled')}</Badge>
       </div>
       {!enabled ? (
-        <div className="text-sm text-[var(--faint)] mt-2">{t('twofa.notenabled', 'No two-factor authentication on this account — nothing to reset.')}</div>
+        <div className="text-sm text-[var(--faint)] mt-2">{t('twofa.notenabled', 'No two-factor authentication on this account, nothing to reset.')}</div>
       ) : !canReset ? (
         <div className="text-sm text-[var(--faint)] mt-2">{t('mod.higher', 'You can only moderate accounts below your own level.')}</div>
       ) : (
@@ -5793,7 +5793,7 @@ function UserPasswordCard({ user }) {
       const r = await api.post(`/admin/users/${user.id}/password-reset`);
       // With no mail backend the API hands back the URL instead — otherwise this would be
       // untestable on a dev instance and its first real use would be its first test.
-      if (r.devUrl) { copyText(r.devUrl); toast.success(t('upw.link.dev', 'No mail backend — the link was copied to your clipboard.')); }
+      if (r.devUrl) { copyText(r.devUrl); toast.success(t('upw.link.dev', 'No mail backend, the link was copied to your clipboard.')); }
       else toast.success(t('upw.link.sent', 'Reset link emailed.'));
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
@@ -5809,7 +5809,7 @@ function UserPasswordCard({ user }) {
     try {
       await api.put(`/admin/users/${user.id}/password`, { password: pw, code });
       setPw(''); setCode(''); setOpen(false);
-      toast.success(t('upw.set.done', 'Password set — all their devices were signed out.'));
+      toast.success(t('upw.set.done', 'Password set, all their devices were signed out.'));
     } catch (x) {
       toast.error(x.data?.error === 'bad_code' ? t('twofa.bad', 'That code is not valid.')
         : x.data?.error === '2fa_required' ? t('upw.need2fa', 'Enable two-factor on your own account first.')
@@ -5819,11 +5819,11 @@ function UserPasswordCard({ user }) {
 
   if (!canLink && !canSet) return null;
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+    <div className="rounded-xl border border-[var(--line)] panel p-3">
       <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={12} /> {t('upw.title', 'Password')}</div>
       {canLink && (
         <div className="mt-2">
-          <div className="text-sm text-[var(--muted)]">{t('upw.desc', 'Locked out? Send the reset link — you never see their password, and only they can use it.')}</div>
+          <div className="text-sm text-[var(--muted)]">{t('upw.desc', 'Locked out? Send the reset link, you never see their password, and only they can use it.')}</div>
           <Button size="sm" variant="ghost" className="mt-2" disabled={busy} onClick={sendLink}><Mail size={14} /> {t('upw.link', 'Email a reset link')}</Button>
         </div>
       )}
@@ -5833,7 +5833,7 @@ function UserPasswordCard({ user }) {
             <Button size="sm" variant="ghost" className="!text-warning" onClick={() => setOpen(true)}><KeyRound size={14} /> {t('upw.set', 'Set a password directly')}</Button>
           ) : (
             <div className="space-y-2">
-              <div className="text-sm text-[var(--muted)]">{t('upw.set.desc', 'Superadmin only, and it needs a code from your authenticator — a stolen session must not be enough to take over an account.')}</div>
+              <div className="text-sm text-[var(--muted)]">{t('upw.set.desc', 'Superadmin only, and it needs a code from your authenticator, a stolen session must not be enough to take over an account.')}</div>
               <Input type="password" autoComplete="new-password" placeholder={t('upw.new', 'New password')} value={pw} onChange={(e) => setPw(e.target.value)} />
               <Input inputMode="numeric" placeholder={t('twofa.code', '6-digit code')} value={code} onChange={(e) => setCode(e.target.value)} />
               <TotpQuickFill onFill={(c) => setCode(c)} />
@@ -5950,7 +5950,7 @@ function UserExtras({ userId }) {
                       </div>
                     )}
                   </div>
-                ) : <div className="text-[12px] text-[var(--faint)] mb-3">{t('ud.sso.noin', 'Password only — no social sign-in linked.')}</div>}
+                ) : <div className="text-[12px] text-[var(--faint)] mb-3">{t('ud.sso.noin', 'Password only, no social sign-in linked.')}</div>}
 
                 <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('ud.sso.out', 'Apps this account signs in to')}</div>
                 {(state.data.grants || []).length ? (
@@ -6033,7 +6033,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
   const day = (d) => new Date(d).toLocaleDateString();
 
   const start = async () => {
-    if (!form.reason.trim() || form.reason.trim().length < 3) return toast.error(t('ud.cl.needreason', 'Say why — it goes in the email they receive.'));
+    if (!form.reason.trim() || form.reason.trim().length < 3) return toast.error(t('ud.cl.needreason', 'Say why, it goes in the email they receive.'));
     if (!await dialog.confirm({
       title: t('ud.cl.start.t', 'Schedule this account for closure?'),
       // Naming what the person on the other end gets, because that is the part an admin
@@ -6047,7 +6047,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
     setBusy(true);
     try {
       await api.post(`/admin/users/${user.id}/closure`, { reason: form.reason.trim(), days: Number(form.days) || 30, cancellable: form.cancellable !== false });
-      toast.success(t('ud.cl.started', 'Scheduled — they have been told.'));
+      toast.success(t('ud.cl.started', 'Scheduled, they have been told.'));
       setForm(null); onChanged();
     } catch (x) {
       toast.error(x?.data?.error === 'cannot_moderate_higher' ? t('ud.cl.outranked', 'That account outranks yours.')
@@ -6065,7 +6065,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
 
   if (user.closedAt) {
     return (
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/60 p-3 text-[13px]">
+      <div className="rounded-xl border border-[var(--line)] panel p-3 text-[13px]">
         <div className="font-semibold flex items-center gap-2"><Ban size={14} /> {t('ud.cl.closed', 'This account is closed.')}</div>
         <p className="text-[12px] text-[var(--muted)] mt-1">
           {t('ud.cl.closed.s', 'Closed on {d}. Everything personal was erased; the payment and moderation records below were kept on purpose.').replace('{d}', day(user.closedAt))}
@@ -6084,7 +6084,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
         </div>
         <p className="text-[12px] text-[var(--muted)] mt-1">
           {staff
-            ? `${t('ud.cl.pending.staff', 'Scheduled by staff. Reason given: “{r}”.').replace('{r}', user.closureReason || '—')} ${user.closureCancellable === false ? t('ud.cl.pending.final', 'Final — the account cannot call it off.') : t('ud.cl.pending.soft', 'They can call it off with the link in their email.')}`
+            ? `${t('ud.cl.pending.staff', 'Scheduled by staff. Reason given: “{r}”.').replace('{r}', user.closureReason || '—')} ${user.closureCancellable === false ? t('ud.cl.pending.final', 'Final, the account cannot call it off.') : t('ud.cl.pending.soft', 'They can call it off with the link in their email.')}`
             : t('ud.cl.pending.self', 'They asked for it themselves, and can cancel it with the link in their email until that date.')}
         </p>
         <Button size="sm" className="mt-2" disabled={busy} onClick={callOff}>{busy ? <Spinner /> : t('ud.cl.calloff', 'Call it off')}</Button>
@@ -6106,7 +6106,7 @@ function ClosureBanner({ user, onChanged, form, setForm }) {
         {[[true, t('ud.cl.mode.soft', 'They can call it off'), t('ud.cl.mode.soft.s', 'The email carries a cancel link. Use this when the account should probably go, but you might be wrong.')],
           [false, t('ud.cl.mode.final', 'Final'), t('ud.cl.mode.final.s', 'No cancel link is sent and the account cannot stop it. You can still call it off from here until the date.')]].map(([val, label, sub]) => (
           <button key={String(val)} onClick={() => setForm((f) => ({ ...f, cancellable: val }))}
-            className={`text-start rounded-lg border p-2.5 transition ${(form.cancellable !== false) === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+            className={`text-start rounded-lg border p-2.5 transition ${(form.cancellable !== false) === val ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
             <div className="text-xs font-semibold">{label}</div>
             <div className="text-[11px] text-[var(--muted)] mt-0.5">{sub}</div>
           </button>
@@ -6172,17 +6172,17 @@ function useEraseUser(user, onChanged) {
       // the account is gone from the list, or it is still there wearing a placeholder name.
       // Reporting them the same way is how somebody concludes the delete button is broken.
       if (r.outcome === 'deleted') {
-        toast.success(t('gdpr.erase.deleted', 'Deleted — the account is gone, along with {d} row(s).')
+        toast.success(t('gdpr.erase.deleted', 'Deleted, the account is gone, along with {d} row(s).')
           .replace('{d}', r.totals?.deleted ?? 0));
       } else {
         const held = (r.heldBy || []).map((h) => `${h.model} (${h.rows})`).join(', ');
-        toast.success(t('gdpr.erase.kept', 'Erased and anonymised. The row itself had to stay — it is still referenced by {w}.')
+        toast.success(t('gdpr.erase.kept', 'Erased and anonymised. The row itself had to stay, it is still referenced by {w}.')
           .replace('{w}', held || t('gdpr.erase.records', 'records that may not be deleted')));
       }
       onChanged?.();
     } catch (x) {
       toast.error(x?.data?.error === 'email_mismatch' ? t('gdpr.erase.mismatch', 'That is not this account’s email.')
-        : x?.data?.error === 'blocked' ? t('gdpr.erase.blocked', 'Still blocked — run the preview to see what by.')
+        : x?.data?.error === 'blocked' ? t('gdpr.erase.blocked', 'Still blocked, run the preview to see what by.')
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -6223,7 +6223,7 @@ function AccountEndActions({ user, onClose, onChanged }) {
           </div>
         </button>
         <button type="button" disabled={busy} onClick={erase}
-          className="text-start rounded-lg border border-[var(--error)]/40 p-2.5 hover:border-[var(--error)] transition disabled:opacity-50">
+          className="text-start rounded-lg border b-error p-2.5 hover:border-[var(--error)] transition disabled:opacity-50">
           <div className="text-xs font-semibold text-[var(--error)] flex items-center gap-1.5">
             {busy ? <Spinner size={12} /> : <Trash2 size={12} />} {t('ud.end.erase', 'Delete it now')}
           </div>
@@ -6266,7 +6266,7 @@ function DataRequestPanel({ user, onChanged }) {
       a.click();
       URL.revokeObjectURL(a.href);
       const missed = doc.couldNotRead?.length || 0;
-      if (missed) toast.error(t('gdpr.partial', '{n} table(s) could not be read — see couldNotRead in the file.').replace('{n}', String(missed)));
+      if (missed) toast.error(t('gdpr.partial', '{n} table(s) could not be read, see couldNotRead in the file.').replace('{n}', String(missed)));
       else toast.success(t('gdpr.built', 'Built from {n} table(s).').replace('{n}', String(Object.keys(doc.data || {}).length)));
     } catch (x) { toast.error(x?.data?.error || t('common.failed', 'Failed.')); }
     finally { setBusy(''); }
@@ -6338,7 +6338,7 @@ function DataRequestPanel({ user, onChanged }) {
           ) : (
             <>
               <div className="rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-2">
-                {t('gdpr.plan', '{d} row(s) would be deleted, {x} unlinked, {k} kept. Nothing has been changed — this is a preview.')
+                {t('gdpr.plan', '{d} row(s) would be deleted, {x} unlinked, {k} kept. Nothing has been changed, this is a preview.')
                   .replace('{d}', String(preview.totals?.deleted ?? 0))
                   .replace('{x}', String(preview.totals?.detached ?? 0))
                   .replace('{k}', String(preview.totals?.kept ?? 0))}
@@ -6434,7 +6434,7 @@ function StaffNotes({ userId }) {
     try { await api.del(`/admin/users/${userId}/notes/${n.id}`); reload(); }
     catch (x) {
       toast.error(x?.data?.error === 'not_a_plain_note'
-        ? t('un.locked', 'This one records a decision — it stays with it.')
+        ? t('un.locked', 'This one records a decision, it stays with it.')
         : t('common.failed', 'Failed.'));
     }
   };
@@ -6454,7 +6454,7 @@ function StaffNotes({ userId }) {
         {notes.length > 0 && <Badge>{notes.length}</Badge>}
       </div>
       <p className="text-[11px] text-[var(--faint)] mb-3">
-        {t('un.hint', 'Only staff see these. They stay readable if the account is closed or erased — which is when they matter most.')}
+        {t('un.hint', 'Only staff see these. They stay readable if the account is closed or erased, which is when they matter most.')}
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2 mb-3">
@@ -6635,14 +6635,14 @@ function UserPermissionsCard({ user, onChange }) {
                 <div>
                   <div className="text-xs font-medium mb-1.5">{t('up.assignbundles', 'Capability bundles')}</div>
                   {roles === null ? <Spinner /> : roles.length === 0 ? (
-                    <span className="text-[11px] text-[var(--faint)]">{t('up.nobundles', 'No bundles defined yet — create them in Roles & permissions.')}</span>
+                    <span className="text-[11px] text-[var(--faint)]">{t('up.nobundles', 'No bundles defined yet, create them in Roles & permissions.')}</span>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {roles.map((r) => {
                         const has = (user.customRoleIds || []).includes(r.id);
                         return (
                           <button key={r.id} type="button" disabled={busy || isSelf} onClick={() => toggleBundle(r.id)}
-                            className={`text-xs px-2 py-1 rounded-lg border transition disabled:opacity-50 ${has ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                            className={`text-xs px-2 py-1 rounded-lg border transition disabled:opacity-50 ${has ? 'border-[var(--primary)] tint-primary text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
                             {r.name} <span className="text-[var(--faint)]">({(r.capabilities || []).length})</span>
                           </button>
                         );
@@ -6657,7 +6657,7 @@ function UserPermissionsCard({ user, onChange }) {
                 <div>
                   <div className="text-xs font-medium mb-1.5">{t('up.grants', 'Individual capabilities')}</div>
                   {(user.role === 'ADMIN' || user.role === 'SUPERADMIN') ? (
-                    <span className="text-[11px] text-[var(--faint)]">{t('up.grantsmoot', 'This tier already holds every capability — grants change nothing.')}</span>
+                    <span className="text-[11px] text-[var(--faint)]">{t('up.grantsmoot', 'This tier already holds every capability, grants change nothing.')}</span>
                   ) : (
                     <div className="space-y-2">
                       {CAP_CATEGORIES.map((cat) => {
@@ -6672,7 +6672,7 @@ function UserPermissionsCard({ user, onChange }) {
                                 const Icon = c.icon || KeyRound;
                                 return (
                                   <button key={c.id} type="button" disabled={busy || isSelf} title={lang === 'fr' ? c.descFr : c.desc} onClick={() => setCap(c.id, !granted)}
-                                    className={`text-xs px-2 py-1 rounded-lg border inline-flex items-center gap-1.5 transition disabled:opacity-50 ${granted ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                                    className={`text-xs px-2 py-1 rounded-lg border inline-flex items-center gap-1.5 transition disabled:opacity-50 ${granted ? 'border-[var(--primary)] tint-primary text-[var(--text)] font-medium' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
                                     <Icon size={11} /> {lang === 'fr' ? c.labelFr : c.label}
                                   </button>
                                 );
@@ -6738,7 +6738,7 @@ function UserDetailModal({ id, onClose }) {
             <div className="text-[12px] text-[var(--muted)] flex items-center gap-1.5">
               <RotateCcw size={12} />
               {/* Not a footnote: it is the reason a "new" account can arrive already banned. */}
-              {t('ud.prior', 'This account came back to an address that had been closed — its record was carried over.')}
+              {t('ud.prior', 'This account came back to an address that had been closed, its record was carried over.')}
             </div>
           )}
           <div className="flex items-center gap-4">
@@ -6750,8 +6750,8 @@ function UserDetailModal({ id, onClose }) {
               <div className="text-[11px] text-[var(--faint)] font-mono mt-0.5">{u.id}</div>
               {u.bcId && (
                 <button onClick={() => { navigator.clipboard?.writeText(u.bcId); toast.success(t('ud.bccopied', 'Unique BC id copied.')); }}
-                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--primary-2)] px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:border-[var(--primary)]/40 transition"
-                  title={t('ud.bcidtip', 'Unique BC id — searchable in User search')}>
+                  className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-mono font-semibold text-[var(--primary-2)] px-2 py-1 rounded-md bg-[var(--surface-2)] border border-[var(--line)] hover:b-primary transition"
+                  title={t('ud.bcidtip', 'Unique BC id, searchable in User search')}>
                   <Fingerprint size={12} /> {u.bcId} <Copy size={11} className="opacity-60" />
                 </button>
               )}
@@ -6774,7 +6774,7 @@ function UserDetailModal({ id, onClose }) {
             // Wrapping chips, not a strip that scrolls off a phone: eight tabs fit in two
             // rows at 360 px, every label stays readable, and the current one is filled.
             return (
-              <div className="flex flex-wrap gap-1.5 p-1 rounded-xl bg-[var(--surface-2)]/60 border border-[var(--line)]" role="tablist">
+              <div className="flex flex-wrap gap-1.5 p-1 rounded-xl panel border border-[var(--line)]" role="tablist">
                 {tabs.map(([id, label, I, n]) => (
                   <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] whitespace-nowrap transition ${tab === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
@@ -6792,7 +6792,7 @@ function UserDetailModal({ id, onClose }) {
           <UserPermissionsCard user={u} onChange={reload} />
           </>)}
           {tab === 'links' && (<>
-          <p className="text-xs text-[var(--muted)] -mt-1">{t('ud.links.d', 'Every identity tied to this account. Unlinking removes the connection only — the account keeps its other sign-in methods.')}</p>
+          <p className="text-xs text-[var(--muted)] -mt-1">{t('ud.links.d', 'Every identity tied to this account. Unlinking removes the connection only, the account keeps its other sign-in methods.')}</p>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><KeyRound size={12} /> {t('ud.signin', 'Sign-in providers')}</div>
             {u.oauthAccounts?.length ? <div className="space-y-1">{u.oauthAccounts.map((o) => { const [nm, col] = OA_META[o.provider] || [o.provider, 'var(--muted)']; return (
@@ -6877,7 +6877,7 @@ function UserDetailModal({ id, onClose }) {
                 <span className="text-success font-medium shrink-0">${(pay.amountCents / 100).toFixed(2)}</span>
                 <span className="text-[11px] text-[var(--faint)] shrink-0">{fdate(pay.createdAt)}</span>
               </div>
-            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments — free plan only.')}</div>}
+            ))}</div> : <div className="text-sm text-[var(--faint)]">{t('ud.nopayments', 'No payments, free plan only.')}</div>}
           </div>
           </>)}
           {tab === 'security' && (<>
@@ -6945,7 +6945,7 @@ function UserDetailModal({ id, onClose }) {
                       : <Button size="sm" variant="ghost" onClick={async () => {
                           if (!await dialog.confirm({
                             title: t('ud.keyRevokeT', 'Revoke this key?'),
-                            message: t('ud.keyRevokeB', 'Anything using it stops working immediately. This cannot be undone — a new key has to be created by the owner.'),
+                            message: t('ud.keyRevokeB', 'Anything using it stops working immediately. This cannot be undone, a new key has to be created by the owner.'),
                             okLabel: t('ud.keyRevoke', 'Revoke'),
                             danger: true,
                           })) return;
@@ -6998,7 +6998,7 @@ function PluginContentModal({ item, onClose }) {
   // gracefully instead of crashing on data.valid.
   const errMsg = data?.error ? (data.detail || data.error) : err ? (err.data?.detail || err.data?.error || t('pcm.nosource', 'This plugin has no downloadable source.')) : null;
   return (
-    <Modal open onClose={onClose} title={t('pcm.title', 'Plugin content — {n}').replace('{n}', item.name)} icon={Files} width="max-w-2xl"
+    <Modal open onClose={onClose} title={t('pcm.title', 'Plugin content: {n}').replace('{n}', item.name)} icon={Files} width="max-w-2xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>{data?.downloadUrl && <a href={data.downloadUrl} target="_blank" rel="noreferrer"><Button variant="primary"><Download size={15} /> {t('pcm.dlplug', 'Download .bmmplug')}</Button></a>}</>}>
       {loading ? <Loading /> : errMsg ? (
         <div className="flex items-start gap-2.5 text-sm text-[var(--muted)] py-2">
@@ -7111,7 +7111,7 @@ function AdminHistory() {
       const dl = (blob, fname) => { const u = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = u; a.download = fname; a.click(); URL.revokeObjectURL(u); };
       dl(new Blob([text], { type: 'application/json' }), name);
       if (sig) dl(new Blob([sig], { type: 'text/plain' }), `${name}.sig.b64`);
-      toast.success(t('hist.exported', 'Downloaded {n} — the signature was saved next to it.').replace('{n}', name));
+      toast.success(t('hist.exported', 'Downloaded {n}, the signature was saved next to it.').replace('{n}', name));
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
 
@@ -7135,7 +7135,7 @@ function AdminHistory() {
       const doc = JSON.parse(new TextDecoder().decode(bytes));
       setImported({ doc, valid, name: jsonFile.name });
     } catch (e) {
-      toast.error(t('hist.import.bad', 'Could not read that file — is it a history export?'));
+      toast.error(t('hist.import.bad', 'Could not read that file, is it a history export?'));
       setImported(null);
     } finally { setBusy(false); }
   };
@@ -7199,9 +7199,9 @@ function AdminHistory() {
           {imported && (
             <div className="mt-3">
               <div className={`text-xs font-semibold flex items-center gap-1.5 ${imported.valid === true ? 'text-success' : imported.valid === false ? 'text-error' : 'text-warning'}`}>
-                {imported.valid === true ? <><ShieldCheck size={13} /> {t('hist.sig.ok', 'Signature valid — this file is exactly what the server produced.')}</>
+                {imported.valid === true ? <><ShieldCheck size={13} /> {t('hist.sig.ok', 'Signature valid, this file is exactly what the server produced.')}</>
                   : imported.valid === false ? <><AlertTriangle size={13} /> {t('hist.sig.bad', 'Signature does NOT match. Treat the contents as unverified.')}</>
-                  : <><AlertTriangle size={13} /> {t('hist.sig.none', 'No signature file given — contents shown unverified.')}</>}
+                  : <><AlertTriangle size={13} /> {t('hist.sig.none', 'No signature file given, contents shown unverified.')}</>}
               </div>
               <div className="text-[11px] text-[var(--faint)] mt-1">
                 {imported.name} · {t('hist.imported.meta', 'exported {d} · {n} entries{tr}')
@@ -7268,7 +7268,7 @@ function AdminHistory() {
           const Icon = HIST_ICON[src.key] || Activity; const on = sources.includes(src.key);
           return (
             <button key={src.key} onClick={() => toggle(src.key)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
               <Icon size={12} /> {t(`hist.src.${src.key}`, src.label)}
             </button>
           );
@@ -7278,7 +7278,7 @@ function AdminHistory() {
 
       {loading && !entries.length ? <Loading /> : !entries.length ? (
         <EmptyState icon={History} title={t('hist.none.t', 'Nothing in this window')}
-          sub={t('hist.none.s', 'Try a longer window or fewer filters — the range is a window, not the whole history.')} />
+          sub={t('hist.none.s', 'Try a longer window or fewer filters, the range is a window, not the whole history.')} />
       ) : (
         <>
           <Card className="p-0 overflow-hidden">
@@ -7495,10 +7495,10 @@ function MailGallery({ t }) {
       await api.put(`/admin/mail/templates/${current.id}`, next);
       await reload();
       setBump((n) => n + 1);
-      toast.success(next.subject || next.body ? t('adm.mail.tpl.saved', 'Saved — this is what will be sent.') : t('adm.mail.tpl.reset', 'Back to the built-in wording.'));
+      toast.success(next.subject || next.body ? t('adm.mail.tpl.saved', 'Saved, this is what will be sent.') : t('adm.mail.tpl.reset', 'Back to the built-in wording.'));
     } catch (e) {
       toast.error(e?.data?.error === 'not_editable'
-        ? t('adm.mail.tpl.notedit', 'This mail is preview-only — its sender does not carry an id yet, so wording saved here would never be used.')
+        ? t('adm.mail.tpl.notedit', 'This mail is preview-only, its sender does not carry an id yet, so wording saved here would never be used.')
         : t('common.failed', 'Failed.'));
     } finally { setSaving(false); }
   };
@@ -7690,8 +7690,8 @@ function UserPicker({ picked, setPicked }) {
       )}
       <p className="text-[11px] text-[var(--faint)] mt-2">
         {picked.length
-          ? t('adm.mail.pick.n', '{n} picked — one message each, nobody sees the others.').replace('{n}', String(picked.length))
-          : t('adm.mail.pick.none', 'Nobody picked yet. Past a couple of dozen people, use an audience instead — a query stays right, a pasted list was only right once.')}
+          ? t('adm.mail.pick.n', '{n} picked, one message each, nobody sees the others.').replace('{n}', String(picked.length))
+          : t('adm.mail.pick.none', 'Nobody picked yet. Past a couple of dozen people, use an audience instead, a query stays right, a pasted list was only right once.')}
       </p>
     </div>
   );
@@ -7801,7 +7801,7 @@ function AdminMail() {
         // admin looking at SMTP settings that were fine; the actual line said the
         // recipient's DOMAIN did not exist — a one-glance fix.
         : x.data?.error === 'all_failed'
-          ? t('adm.mail.allfailed', 'Nothing was sent — {reason}')
+          ? t('adm.mail.allfailed', 'Nothing was sent: {reason}')
               .replace('{reason}', x.data?.reason ? `${x.data.email || ''}: ${x.data.reason}` : t('adm.mail.allfailed.generic', 'the mail server rejected every message.'))
         : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
@@ -7813,7 +7813,7 @@ function AdminMail() {
       <Card className="p-4">
         <div className="flex items-center gap-2 mb-1"><Mail size={15} className="text-[var(--primary-2)]" /> <span className="font-semibold text-sm">{t('adm.mail.title', 'Email users')}</span></div>
         <p className="text-xs text-[var(--muted)] mb-3">
-          {t('adm.mail.sub', 'One message per recipient — nobody sees who else received it. Markdown is supported.')}
+          {t('adm.mail.sub', 'One message per recipient, nobody sees who else received it. Markdown is supported.')}
         </p>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('adm.mail.f.audience', 'Audience')} hint={count == null ? undefined : t('adm.mail.f.count', '{n} recipient(s)').replace('{n}', count)}>
@@ -7880,7 +7880,7 @@ function AdminMail() {
                 className="px-2.5 py-1 rounded-full text-xs text-[var(--faint)] underline">{t('adm.mail.tpl.clear', 'clear')}</button>
             )}
           </div>
-          <p className="text-[11px] text-[var(--faint)] mt-1">{t('adm.mail.tpl.note', 'A starting point, not a finished email — the placeholders are yours to replace.')}</p>
+          <p className="text-[11px] text-[var(--faint)] mt-1">{t('adm.mail.tpl.note', 'A starting point, not a finished email, the placeholders are yours to replace.')}</p>
           {/* Yours: saved from the composer, in the mail's markdown (the B.MD subset the shell
               renders). Start from scratch, from a built-in, or from one of these. */}
           <div className="flex flex-wrap gap-1.5 mt-2 items-center">
@@ -7981,7 +7981,7 @@ function AdminMail() {
             {/* The inbox line, shown as the inbox shows it: subject then preheader. It is
                 derived from the body rather than typed, so it is exactly the part of the
                 email an author never thinks to check. */}
-            <div className="rounded-t-xl border border-[var(--line)] border-b-0 px-3 py-2 bg-[var(--surface-2)]/40">
+            <div className="rounded-t-xl border border-[var(--line)] border-b-0 px-3 py-2 panel">
               <div className="text-sm font-medium truncate">{subject || t('adm.mail.nosubject', '(no subject)')}</div>
               <div className="text-xs text-[var(--faint)] truncate">{preview.preheader || '—'}</div>
             </div>
@@ -7997,7 +7997,7 @@ function AdminMail() {
               />
             </div>
             <p className="text-[11px] text-[var(--faint)] mt-1">
-              {t('adm.mail.preview.note', 'Rendered by the same template the send uses. Real clients (Gmail, Outlook) strip some CSS — send yourself a test before a broadcast.')}
+              {t('adm.mail.preview.note', 'Rendered by the same template the send uses. Real clients (Gmail, Outlook) strip some CSS, send yourself a test before a broadcast.')}
             </p>
           </div>
         )}
@@ -8174,10 +8174,10 @@ function AdminHostingPlans() {
   const cancelPending = async (pl) => {
     if (!await dialog.confirm({
       title: t('adm.plans.pending.t', 'Cancel the announced change?'),
-      message: t('adm.plans.pending.m', 'The price never moved, so there is nothing to undo — but everyone who was told it would change gets a second email saying it will not.'),
+      message: t('adm.plans.pending.m', 'The price never moved, so there is nothing to undo, but everyone who was told it would change gets a second email saying it will not.'),
       okLabel: t('adm.plans.pending.ok', 'Cancel it'),
     })) return;
-    try { const r = await api.del(`/admin/hosting/plans/${pl.id}/pending-price`); data.reload(); toast.success(t('adm.plans.pending.done', 'Cancelled — {n} told.').replace('{n}', r.notified ?? 0)); }
+    try { const r = await api.del(`/admin/hosting/plans/${pl.id}/pending-price`); data.reload(); toast.success(t('adm.plans.pending.done', 'Cancelled: {n} told.').replace('{n}', r.notified ?? 0)); }
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
@@ -8220,11 +8220,11 @@ function AdminHostingPlans() {
           // Only one plan can be the free one: the public page reads the FIRST zero-priced
           // plan and never sees a second, so saving one creates a live plan nobody can reach.
           if (x?.data?.error === 'free_plan_exists') {
-            toast.error(t('adm.plans.freedup', 'There is already an active free plan ("{n}"). Edit that one, or deactivate it first — the public page only ever shows one.')
+            toast.error(t('adm.plans.freedup', 'There is already an active free plan ("{n}"). Edit that one, or deactivate it first, the public page only ever shows one.')
               .replace('{n}', x.data?.existing?.name || ''));
           }
           if (x?.data?.error === 'duplicate_plan') {
-            toast.error(t('adm.plans.dup', 'A plan with this name and these specs already exists ({n}) — edit that one instead of adding a second.')
+            toast.error(t('adm.plans.dup', 'A plan with this name and these specs already exists ({n}), edit that one instead of adding a second.')
               .replace('{n}', x.data?.existing?.name || ''));
           }
           throw x;
@@ -8233,8 +8233,8 @@ function AdminHostingPlans() {
         // run, so it is reported here rather than promised in the toast beforehand.
         if (scheduling) {
           toast.success(toExisting
-            ? t('adm.plans.scheduled', 'Change scheduled for {d} — {n} subscriber(s) notified.').replace('{d}', whenLabel).replace('{n}', r?.notified ?? 0)
-            : t('adm.plans.schedulednew', 'Scheduled for {d} — new buyers only, so nobody was emailed.').replace('{d}', whenLabel));
+            ? t('adm.plans.scheduled', 'Change scheduled for {d}: {n} subscriber(s) notified.').replace('{d}', whenLabel).replace('{n}', r?.notified ?? 0)
+            : t('adm.plans.schedulednew', 'Scheduled for {d}, new buyers only, so nobody was emailed.').replace('{d}', whenLabel));
         }
       },
       scheduling
@@ -8260,7 +8260,7 @@ function AdminHostingPlans() {
       t('adm.plans.deletedundo', 'Deleted “{n}”.').replace('{n}', pl.name),
       {
         errorFor: (x) => (x?.data?.error === 'plan_in_use'
-          ? t('adm.plans.inuse', 'In use by {n} subscription(s) — switch it off instead.').replace('{n}', x.data.subscriptions)
+          ? t('adm.plans.inuse', 'In use by {n} subscription(s), switch it off instead.').replace('{n}', x.data.subscriptions)
           : null),
       },
     );
@@ -8287,7 +8287,7 @@ function AdminHostingPlans() {
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm">{t('adm.plans.title', 'Hosting plans')}</div>
           <p className="text-xs text-[var(--muted)]">
-            {t('adm.plans.sub', 'What the pricing page offers. Editing a price never reprices an existing subscription — it changes what new buyers see.')}
+            {t('adm.plans.sub', 'What the pricing page offers. Editing a price never reprices an existing subscription, it changes what new buyers see.')}
           </p>
         </div>
         <Button size="sm" variant="primary" onClick={() => { setDraft({ ...blank }); setOriginal(null); setEffective(''); }}><Plus size={14} /> {t('adm.plans.new', 'New plan')}</Button>
@@ -8308,7 +8308,7 @@ function AdminHostingPlans() {
                 that existed before this column did included none, so a save that leaves these
                 alone must not start granting something nobody sold. */}
             <Field label={t('adm.plans.f.boosts', 'Boosts included')} hint={Number(draft.boostsPerPeriod) > 0
-              ? t('adm.plans.f.boosts.h', '{n} every {m} month(s), {d} days each — usable on a repo or a catalogue.')
+              ? t('adm.plans.f.boosts.h', '{n} every {m} month(s), {d} days each, usable on a repo or a catalogue.')
                 .replace('{n}', Number(draft.boostsPerPeriod)).replace('{m}', Number(draft.boostPeriodMonths) || 1).replace('{d}', Number(draft.boostDays) || 7)
               : t('adm.plans.f.boosts.h0', 'None. Set a number to include boosts with this plan.')}>
               <Input type="number" min="0" max="50" value={draft.boostsPerPeriod} onChange={(e) => setDraft({ ...draft, boostsPerPeriod: e.target.value })} />
@@ -8344,7 +8344,7 @@ function AdminHostingPlans() {
               plan has no subscribers to notify, and a correction to a plan nobody holds
               should just take effect. */}
           {priceMoved && (
-            <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-2">
+            <div className="rounded-xl border border-[var(--line)] panel p-3 space-y-2">
               <div className="text-sm font-medium flex items-center gap-2">
                 <Calendar size={14} className="text-[var(--primary-2)]" /> {t('adm.plans.eff.t', 'When does the new price start?')}
               </div>
@@ -8357,10 +8357,10 @@ function AdminHostingPlans() {
                   default: it is what the payment model already does, since every Stripe
                   subscription is pinned to the price it was bought at. */}
               <div className="grid sm:grid-cols-2 gap-2">
-                {[[false, t('adm.plans.who.new', 'New buyers only'), t('adm.plans.who.new.s', 'Everyone already subscribed keeps the price they signed up at, for as long as they stay. Nobody is emailed — nothing changes for them.')],
+                {[[false, t('adm.plans.who.new', 'New buyers only'), t('adm.plans.who.new.s', 'Everyone already subscribed keeps the price they signed up at, for as long as they stay. Nobody is emailed, nothing changes for them.')],
                   [true, t('adm.plans.who.all', 'Existing subscribers too'), t('adm.plans.who.all.s', 'Their Stripe subscription moves to the new amount on that date, starting at their next renewal — never mid-term. Every one of them is emailed now.')]].map(([val, label, sub]) => (
                   <button key={String(val)} onClick={() => setApplyExisting(val)}
-                    className={`text-start rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                    className={`text-start rounded-lg border p-2.5 transition ${applyExisting === val ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                     <div className="text-xs font-semibold flex items-center gap-1.5">
                       {applyExisting === val ? <Check size={12} className="text-[var(--primary-2)]" /> : <span className="w-3" />}
                       {label}
@@ -8400,7 +8400,7 @@ function AdminHostingPlans() {
         </Card>
       )}
 
-      {!plans.length ? <EmptyState icon={HardDrive} title={t('adm.plans.none', 'No plans')} sub={t('adm.plans.nonesub', 'Nothing is on sale — the pricing page will be empty.')} /> : (
+      {!plans.length ? <EmptyState icon={HardDrive} title={t('adm.plans.none', 'No plans')} sub={t('adm.plans.nonesub', 'Nothing is on sale, the pricing page will be empty.')} /> : (
         <Card className="p-0 overflow-hidden">
           {plans.map((pl) => (
             <div key={pl.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[var(--line)] last:border-0 ${pl.active ? '' : 'opacity-60'}`}>
@@ -9079,7 +9079,7 @@ function ProjectVersionHistory({ projectKey, onApply, onSchedule, refreshKey = 0
       {data?.liveUnrecorded && (
         <div className="rounded-lg border border-dashed border-[var(--line-strong)] px-3 py-2 mb-2 flex items-center gap-2 text-[13px]">
           <span className="font-mono">{data.liveUnrecorded}</span>
-          <span className="text-[11px] text-[var(--faint)] flex-1">{t('apv.live', 'Live now, never recorded — the public list reads it from the config.')}</span>
+          <span className="text-[11px] text-[var(--faint)] flex-1">{t('apv.live', 'Live now, never recorded, the public list reads it from the config.')}</span>
           <Button size="sm" variant="ghost" disabled={busy === data.liveUnrecorded}
             onClick={async () => {
               setBusy(data.liveUnrecorded);
@@ -9236,7 +9236,7 @@ function ShowcaseQueue() {
                   <Badge tone="blue">{r.ownership === 'owner' ? t('sq.owner', 'rights-holder') : t('sq.fan', 'fan (not owner)')}</Badge>
                   {r.hasProof && <a href={`/api/showcase-requests/${r.id}/proof`} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] underline">{t('sq.proof', 'Download proof')}{r.proofName ? ` (${r.proofName})` : ''}</a>}
                   {r.contactReportId && <Link to="/admin?s=reports" className="text-[var(--primary-2)] underline">{t('sq.thread', 'Contact thread')}</Link>}
-                  {!r.isOpenSource && !r.hasProof && <span className="text-warning">{t('sq.noproof', 'closed-source but no proof — do not approve')}</span>}
+                  {!r.isOpenSource && !r.hasProof && <span className="text-warning">{t('sq.noproof', 'closed-source but no proof, do not approve')}</span>}
                 </div>
                 {r.status === 'pending' ? (
                   <div className="flex items-center gap-2 flex-wrap mt-2.5">
@@ -9406,7 +9406,7 @@ function AdminProjects() {
   // A change on GitHub (progress.json, release notes…) can sit in the server's
   // 5-min proxy cache — this makes it visible on the site immediately.
   const flushCache = async () => {
-    try { const r = await api.post('/admin/projects/flush-cache'); toast.success(t('ap.cacheflushed', 'Site caches refreshed ({n} entries) — repo changes are live now.').replace('{n}', r.flushed)); }
+    try { const r = await api.post('/admin/projects/flush-cache'); toast.success(t('ap.cacheflushed', 'Site caches refreshed ({n} entries), repo changes are live now.').replace('{n}', r.flushed)); }
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
   const previewSource = async () => {
@@ -9468,11 +9468,11 @@ function AdminProjects() {
           with many showcase projects an ms-auto button in a flex-wrap row orphaned itself. */}
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1">
         <h2 className="font-semibold flex items-center gap-2"><Settings2 size={16} className="text-[var(--primary-2)]" /> {t('ap.title', 'Projects config')}</h2>
-        {canMngProjects && <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache — this applies them now.">
+        {canMngProjects && <Button size="sm" variant="ghost" onClick={flushCache} title="Repo changes (progress.json, release notes, links) can sit in a 5-min cache, this applies them now.">
           <RefreshCw size={13} /> {t('ap.refreshcaches', 'Refresh site caches')}
         </Button>}
       </div>
-      <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source — per project.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-4">{t('ap.sub', 'Configure downloads, links, contributors & messages, the progress tracker, legal docs, and the GitHub release-notes source, per project.')}</p>
       {/* Above the per-project editors: a request waiting for an answer is the thing on this
           screen with somebody at the other end of it. */}
       {canMngProjects && <ShowcaseQueue />}
@@ -9481,7 +9481,7 @@ function AdminProjects() {
           projects and the showcase ones share one grid; a labelled divider separates them
           without the fragile inline ms-auto / orphaned w-px of the old flex row. */}
       {(() => {
-        const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] bg-[var(--surface-2)]/40 text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
+        const chip = (on) => `flex items-center gap-2 px-3.5 py-2 rounded-xl border text-sm transition press-sm ${on ? 'border-[var(--primary)] bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'border-[var(--line)] panel text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]'}`;
         // Chips while they fit on one line; a picker once they don't (measured above). The
         // built-in four stay chips, since that set is fixed and worth having one click away.
         const asMenu = !railFits && showcase.length > 0;
@@ -9549,7 +9549,7 @@ function AdminProjects() {
       </Card>
       {activeManageable && <Card className="p-4 mb-4 flex items-center gap-3">
         <Newspaper size={15} className="text-[var(--primary-2)] shrink-0" />
-        <div className="flex-1"><span className="font-medium text-sm">{t('ap.homenews', 'Show in home "Latest news"')}</span><p className="text-xs text-[var(--muted)]">{t('ap.homenews.d', "{name}'s posts always appear on /blog regardless of this — this only controls the home page feed.").replace('{name}', M.name)}</p></div>
+        <div className="flex-1"><span className="font-medium text-sm">{t('ap.homenews', 'Show in home "Latest news"')}</span><p className="text-xs text-[var(--muted)]">{t('ap.homenews.d', "{name}'s posts always appear on /blog regardless of this, this only controls the home page feed.").replace('{name}', M.name)}</p></div>
         <button onClick={toggleHomeNews} className={`relative w-10 h-6 rounded-full transition shrink-0 ${showOnHomeNews ? 'bg-[var(--primary)]' : 'bg-[var(--surface-2)] border border-[var(--line)]'}`}>
           <span className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showOnHomeNews ? 'translate-x-[18px]' : 'translate-x-0'}`} />
         </button>
@@ -9587,7 +9587,7 @@ function AdminProjects() {
           } catch { toast.error(t('apj.cannotcancel', 'Could not cancel.')); }
         };
         return (
-          <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-success-border bg-success-bg' : 'border-[var(--primary)]/40 bg-[var(--primary)]/8'}`}>
+          <div className={`mb-3 rounded-xl border px-3.5 py-2.5 flex items-start gap-2.5 ${due ? 'border-success-border bg-success-bg' : 'b-primary tint-primary'}`}>
             <Clock size={16} className={`shrink-0 mt-0.5 ${due ? 'text-success' : 'text-[var(--primary-2)]'}`} />
             <div className="flex-1 min-w-0 text-sm">
               <div className="font-medium">{due ? t('apj.scheddue', 'Scheduled update is due') : t('apj.schedpending', 'Scheduled update pending')} <span className="font-normal text-[var(--muted)]">· {when.toLocaleString()}</span></div>
@@ -9745,6 +9745,10 @@ const MSG_KINDS = {
   appeal: { tone: 'amber', label: (t) => t('am.k.appeal', 'Moderation appeal') },
   billing: { tone: null, label: (t) => t('am.k.billing', 'Billing') },
   bug: { tone: null, label: (t) => t('am.k.bug', 'Bug') },
+  // From the contact triage. A security report is amber rather than plain: it is not a
+  // legal clock, but it is the one kind here where waiting costs something.
+  security: { tone: 'amber', label: (t) => t('am.k.security', 'Security') },
+  account: { tone: null, label: (t) => t('am.k.account', 'Account') },
 };
 
 // The list behind the promise in the Terms: an address that may not be listed again.
@@ -9832,7 +9836,7 @@ function BlockedUrls({ t }) {
         </div>
         {/* Staff-only, and said so where it is typed: a reason can name a complainant. */}
         <Input value={reason} onChange={(e) => setReason(e.target.value)}
-          placeholder={t('bu.reason', 'Why (staff only — never shown to the person refused)')} />
+          placeholder={t('bu.reason', 'Why (staff only, never shown to the person refused)')} />
         <Button size="sm" onClick={add} disabled={busy || !pattern.trim()}><Plus size={14} /> {allow ? t('bu.addallow', 'Allow it') : t('bu.add', 'Block it')}</Button>
         {loading ? <Loading /> : rules.length ? (
           <div className="space-y-1.5 pt-1">
@@ -9886,7 +9890,7 @@ function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
       const c = e?.body?.error;
       toast.error(
         c === 'key_taken' ? t('al.mng.taken', 'That key is already used.')
-          : c === 'builtin_page' ? t('al.mng.builtin', 'A built-in document cannot be deleted — hide it instead.')
+          : c === 'builtin_page' ? t('al.mng.builtin', 'A built-in document cannot be deleted, hide it instead.')
           : c === 'has_versions' ? t('al.mng.versions', 'This document has published versions. Somebody\u2019s acceptance points at them.')
           : e?.body?.detail || t('common.failed', 'Failed.'),
       );
@@ -9918,7 +9922,7 @@ function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
           </div>
 
           {newPage && (
-            <div className="rounded-xl border border-[var(--primary)]/40 p-3 mb-3 space-y-2">
+            <div className="rounded-xl border b-primary p-3 mb-3 space-y-2">
               <div className="grid sm:grid-cols-2 gap-2">
                 <Field label={t('al.mng.key', 'Key (the URL, set once)')}>
                   <Input value={newPage.key} placeholder="bmm-terms"
@@ -9996,7 +10000,7 @@ function LegalPagesManager({ pages, cats, builtIn, sections, onChanged }) {
           </p>
 
           {newCat && (
-            <div className="rounded-xl border border-[var(--primary)]/40 p-3 mb-3 space-y-2">
+            <div className="rounded-xl border b-primary p-3 mb-3 space-y-2">
               <div className="grid sm:grid-cols-3 gap-2">
                 <Field label={t('al.mng.key2', 'Key')}><Input value={newCat.key} placeholder="bmm" onChange={(e) => setNewCat({ ...newCat, key: e.target.value })} /></Field>
                 <Field label={t('al.mng.label', 'Title')}><Input value={newCat.label} placeholder="BetterModsManager" onChange={(e) => setNewCat({ ...newCat, label: e.target.value })} /></Field>
@@ -10117,7 +10121,7 @@ function AdminLegal() {
       loadVersions();
     } catch (e) {
       toast.error(e?.body?.error === 'nothing_to_publish'
-        ? t('al.pub.empty', 'Import the built-in text first — there is nothing to freeze.')
+        ? t('al.pub.empty', 'Import the built-in text first, there is nothing to freeze.')
         : t('common.err', 'Something went wrong.'));
     } finally { setBusy(false); }
   };
@@ -10199,7 +10203,7 @@ function AdminLegal() {
             if (row) await api.put(`/admin/legal/pages/${row.id}`, { published: !on });
             else await api.post('/admin/legal/pages', { key: k, label: 'Data Processing Addendum', labelFr: 'Accord de traitement des données', icon: 'file-signature' });
             await reload();
-            toast.success(on ? t('al.opt.off.ok', 'Switched off — the page is gone from the site.') : t('al.opt.on.ok', 'Published — the page is live.'));
+            toast.success(on ? t('al.opt.off.ok', 'Switched off, the page is gone from the site.') : t('al.opt.on.ok', 'Published, the page is live.'));
           } catch { toast.error(t('common.failed', 'Failed.')); }
           finally { setBusy(false); }
         };
@@ -10274,7 +10278,7 @@ function AdminLegal() {
               </ul>
             ) : (
               <p className="text-[var(--muted)]">
-                {t('al.noversions', 'None yet. Until you publish one, an acceptance records only a date — not the text that was accepted.')}
+                {t('al.noversions', 'None yet. Until you publish one, an acceptance records only a date, not the text that was accepted.')}
               </p>
             )}
           </Card>
@@ -10497,7 +10501,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
   };
 
   return (
-    <Modal open onClose={onClose} title={t('sr.title', 'Review — {n}').replace('{n}', it.name)} icon={Eye} width="max-w-2xl"
+    <Modal open onClose={onClose} title={t('sr.title', 'Review: {n}').replace('{n}', it.name)} icon={Eye} width="max-w-2xl"
       footer={<><Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button><Button onClick={onReject}><XCircle size={15} /> {t('sr.reject', 'Reject')}</Button><Button variant="primary" onClick={onApprove}><CheckCircle2 size={15} /> {t('sr.approve', 'Approve')}</Button></>}>
       <div className="grid sm:grid-cols-2 gap-x-4 gap-y-2.5 text-sm mb-4">
         {rows.map(([k, v]) => <div key={k} className="min-w-0"><span className="text-[var(--faint)] text-xs">{k}</span><div className="font-medium truncate">{v}</div></div>)}
@@ -10556,7 +10560,7 @@ function SubmissionReview({ sub, onClose, onApprove, onReject, reload }) {
               ))}
             </div> : (insp.data.text != null
               ? <pre className="p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{insp.data.text}</pre>
-              : <p className="text-[var(--faint)]">{t('sr.binary', 'Binary file — download to inspect.')} ({fmtBytes(insp.data.size)})</p>)
+              : <p className="text-[var(--faint)]">{t('sr.binary', 'Binary file, download to inspect.')} ({fmtBytes(insp.data.size)})</p>)
           ) : null}
         </div>}
         {dl && <div className="mt-2 flex items-center gap-2 text-[11px]"><Download size={12} className="text-[var(--primary-2)] shrink-0" /><a href={dl} target="_blank" rel="noreferrer" className="text-[var(--primary-2)] break-all hover:underline">{dl}</a></div>}
@@ -10584,7 +10588,7 @@ function AdminKofi() {
   const grant = async () => {
     if (!email.trim()) return;
     setGrantBusy(true);
-    try { const r = await api.post('/admin/kofi/grant', { email: email.trim() }); toast.success(t('kf.granted', 'Granted — code {c}.').replace('{c}', r.code)); setEmail(''); }
+    try { const r = await api.post('/admin/kofi/grant', { email: email.trim() }); toast.success(t('kf.granted', 'Granted, code {c}.').replace('{c}', r.code)); setEmail(''); }
     catch (x) { toast.error(x.data?.error === 'no_matching_account' ? t('kf.noaccount', 'No account with that email.') : x.data?.error === 'already_granted' ? t('kf.alreadygranted', 'Already granted for this account.') : t('common.failed', 'Failed.')); }
     finally { setGrantBusy(false); }
   };
@@ -10602,7 +10606,7 @@ function AdminKofi() {
           <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs text-[var(--muted)] flex items-center gap-2"><Lock size={13} className="text-[var(--primary-2)] shrink-0" /> {t('kf.tokenenv', 'The verification token is set via the KOFI_WEBHOOK_TOKEN environment variable and is managed outside the dashboard.')}</div>
         ) : (
           <div className="grid sm:grid-cols-[1fr_auto] gap-2 mb-4">
-            <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured — enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
+            <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder={data?.configured ? t('kf.tokenset', 'Token configured, enter a new one to replace it') : t('kf.tokenph', 'Ko-fi verification token')} />
             <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('kf.savetoken', 'Save token')}</Button>
           </div>
         )}
@@ -10636,7 +10640,7 @@ function AdminKofiGoal() {
     if (!(amt > 0)) return toast.error(t('kg.amt.req', 'Target amount must be greater than 0.'));
     setBusy(true);
     undoSave(() => api.put('/admin/kofi/goal', { title: f.title.trim(), targetAmount: amt, currency: f.currency.trim() || 'USD' }),
-      t('kg.saved', 'Goal saved — now visible on the homepage.'),
+      t('kg.saved', 'Goal saved, now visible on the homepage.'),
       { onSettled: () => setBusy(false) });
   };
   const clear = async () => {
@@ -10662,7 +10666,7 @@ function AdminKofiGoal() {
       {data?.goal && (
         <div className="mb-3">
           <div className="h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2" style={{ width: `${pct}%` }} /></div>
-          <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal — live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}</div>
+          <div className="text-xs text-[var(--faint)] mt-1">{t('kg.pct', '{p}% of {a} {c} goal, live on the homepage').replace('{p}', pct).replace('{a}', data.goal.targetAmount).replace('{c}', data.goal.currency)}</div>
         </div>
       )}
       <div className="flex gap-2">
@@ -10712,7 +10716,7 @@ function AdminPromo() {
   return (
     <div>
       <h2 className="font-semibold mb-1 flex items-center gap-2"><Ticket size={16} className="text-[var(--primary-2)]" /> {t('pc.title', 'Promo codes')}</h2>
-      <p className="text-xs text-[var(--muted)] mb-3">{t('pc.sub', 'Single-use / limited discount, free-hosting and boost codes — separate from the site-wide Promotions above.')}</p>
+      <p className="text-xs text-[var(--muted)] mb-3">{t('pc.sub', 'Single-use / limited discount, free-hosting and boost codes, separate from the site-wide Promotions above.')}</p>
       <Card className="p-4 mb-4">
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.kind} onChange={(v) => set('kind', v)} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
@@ -10725,7 +10729,7 @@ function AdminPromo() {
           <Field label={t('pc.f.note', 'Note (internal)')}><Input value={f.note} onChange={(e) => set('note', e.target.value)} placeholder={t('pc.f.note.ph', 'e.g. launch promo')} /></Field>
         </div>
         <label className="flex items-center gap-2 text-sm text-[var(--muted)] mt-3 cursor-pointer w-fit" title={t('pc.f.stackable.h', 'Allow this code to be combined with OTHER stackable codes in one cart. Non-stackable codes must be used alone.')}>
-          <input type="checkbox" checked={f.stackable} onChange={(e) => set('stackable', e.target.checked)} /> {t('pc.f.stackable', 'Stackable — can be combined with other stackable codes')}
+          <input type="checkbox" checked={f.stackable} onChange={(e) => set('stackable', e.target.checked)} /> {t('pc.f.stackable', 'Stackable, can be combined with other stackable codes')}
         </label>
         <div className="mt-3">
           <Field label={t('pc.f.assign', 'Assign to specific people (gift code)')} hint={t('pc.f.assign.h2', 'If set, ONLY people matching one of these identifiers can redeem. No linked account required — it unlocks the moment that email / Discord id / creator id / BCWEB id belongs to the signed-in account. Leave empty for anyone.')}>
@@ -10785,7 +10789,7 @@ function AdminPromo() {
             )}
           </Card>
         ))}
-      </div> : <EmptyState icon={Ticket} title={t('pc.none.t', 'No promo codes yet')} sub={t('pc.none.s', 'Create one above — discount, free hosting, or a free boost.')} />}
+      </div> : <EmptyState icon={Ticket} title={t('pc.none.t', 'No promo codes yet')} sub={t('pc.none.s', 'Create one above, discount, free hosting, or a free boost.')} />}
     </div>
   );
 }
@@ -10803,8 +10807,8 @@ function AdminCampaigns() {
   const undo = useUndoableDelete(reload);
   const list = (data?.campaigns || []).filter((c) => !undo.pending.has(c.id));
   // Quick presets the admin can then tweak.
-  const presetRandom = () => setF((s) => ({ ...s, name: 'Flash sale', kind: 'flash', percentOff: 10 + Math.floor(Math.random() * 41), appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), badgeMessageEn: 'Flash sale — limited time!', badgeMessageFr: 'Vente flash — durée limitée !' }));
-  const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday — 30% off!', badgeMessageFr: 'Black Friday — 30% de remise !', badgeColor: '#111111' }));
+  const presetRandom = () => setF((s) => ({ ...s, name: 'Flash sale', kind: 'flash', percentOff: 10 + Math.floor(Math.random() * 41), appliesTo: 'all', startsAt: toLocal(new Date()), endsAt: toLocal(new Date(Date.now() + 2 * 864e5)), badgeMessageEn: 'Flash sale, limited time!', badgeMessageFr: 'Vente flash, durée limitée !' }));
+  const presetBlackFriday = () => setF((s) => ({ ...s, name: 'Black Friday', kind: 'black_friday', percentOff: 30, appliesTo: 'all', badgeMessageEn: 'Black Friday, 30% off!', badgeMessageFr: 'Black Friday, 30% de remise !', badgeColor: '#111111' }));
   const create = async () => {
     if (!f.name.trim()) return toast.error(t('cmp.err.name', 'Name is required.'));
     const body = {
@@ -10846,7 +10850,7 @@ function AdminCampaigns() {
           <Field label={t('cmp.f.start', 'Starts')}><Input type="datetime-local" value={f.startsAt} onChange={(e) => set('startsAt', e.target.value)} /></Field>
           <Field label={t('cmp.f.end', 'Ends')}><Input type="datetime-local" value={f.endsAt} onChange={(e) => set('endsAt', e.target.value)} /></Field>
           <Field label={t('cmp.f.msgen', 'Badge message (EN)')}><Input value={f.badgeMessageEn} onChange={(e) => set('badgeMessageEn', e.target.value)} placeholder={t('adm2.ph.promoen', "Black Friday \u2014 30% off!")} /></Field>
-          <Field label={t('cmp.f.msgfr', 'Badge message (FR)')}><Input value={f.badgeMessageFr} onChange={(e) => set('badgeMessageFr', e.target.value)} placeholder="Black Friday — 30% !" /></Field>
+          <Field label={t('cmp.f.msgfr', 'Badge message (FR)')}><Input value={f.badgeMessageFr} onChange={(e) => set('badgeMessageFr', e.target.value)} placeholder="Black Friday, 30% !" /></Field>
           <Field label={t('cmp.f.color', 'Badge color (hex, blank = brand)')}><Input value={f.badgeColor} onChange={(e) => set('badgeColor', e.target.value)} placeholder="#f97316" /></Field>
           <Field label={t('cmp.f.link', 'Badge link (optional)')} hint={t('cmp.f.link.h', 'Where clicking the badge goes: an internal path like /blog/black-friday, or a full https:// URL.')}><Input value={f.badgeLink} onChange={(e) => set('badgeLink', e.target.value)} placeholder="/blog/… or https://…" /></Field>
         </div>
@@ -10869,7 +10873,7 @@ function AdminCampaigns() {
             </div>
           </Card>
         ); })}
-      </div> : <EmptyState icon={Megaphone} title={t('cmp.none.t', 'No campaigns yet')} sub={t('cmp.none.s', 'Create one above — a Black Friday sale, a flash sale, anything.')} />}
+      </div> : <EmptyState icon={Megaphone} title={t('cmp.none.t', 'No campaigns yet')} sub={t('cmp.none.s', 'Create one above, a Black Friday sale, a flash sale, anything.')} />}
     </div>
   );
 }
@@ -10890,7 +10894,7 @@ function AdminEvents() {
   // The copy is the first thing anyone reads, and "Fireworks on us" described the effect
   // playing behind it rather than saying anything. These greet the reader instead.
   const presetNY = () => setF((s) => ({ ...s, name: 'New Year', kind: 'new_year', countryCode: '', badgeIcon: 'party', effect: 'fireworks', titleEn: 'Happy New Year!', titleFr: 'Bonne année !', messageEn: 'Thank you for being part of this one. Here is to the next.', messageFr: 'Merci d\'avoir fait partie de cette année. À la prochaine.' }));
-  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', effect: 'fireworks', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Look up — the colours are out tonight.', messageFr: 'Levez les yeux — les couleurs sont de sortie ce soir.' }));
+  const presetHoliday = () => setF((s) => ({ ...s, name: 'National day', kind: 'national_holiday', countryCode: s.countryCode || 'FR', badgeIcon: 'flag', effect: 'fireworks', titleEn: 'National day', titleFr: 'Fête nationale', messageEn: 'Look up, the colours are out tonight.', messageFr: 'Levez les yeux, les couleurs sont de sortie ce soir.' }));
   const create = async () => {
     if (!f.name.trim()) return toast.error(t('ev.err.name', 'Name is required.'));
     const body = {
@@ -10905,7 +10909,7 @@ function AdminEvents() {
       const e = x.data?.error;
       toast.error(e === 'end_before_start' ? t('ev.err.dates', 'End must be after start.')
         : e === 'country_required' ? t('ev.err.country', 'Pick a country (2-letter code) for a national holiday.')
-        : e === 'overlap' ? t('ev.err.overlap', 'Overlaps the active event "{n}" — only one event runs at a time.').replace('{n}', x.data?.with || '')
+        : e === 'overlap' ? t('ev.err.overlap', 'Overlaps the active event "{n}", only one event runs at a time.').replace('{n}', x.data?.with || '')
         : t('common.failed', 'Failed.'));
     }
   };
@@ -10956,7 +10960,7 @@ function AdminEvents() {
         <div className="mb-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2 pb-1 border-b border-[var(--line)]">{t('ev.g.fx', 'Fireworks')}</div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <Field label={t('ev.f.effect', 'Fireworks')} hint={t('ev.f.effect.h', 'New Year and national days play them by default — this is how you run one quietly.')}>
+          <Field label={t('ev.f.effect', 'Fireworks')} hint={t('ev.f.effect.h', 'New Year and national days play them by default, this is how you run one quietly.')}>
             <Dropdown className="w-full" value={f.effect || ''} onChange={(v) => set('effect', v)} options={[
               { value: '', label: t('ev.fx.auto', 'Automatic (on for New Year / national day)') },
               { value: 'fireworks', label: t('ev.fx.on', 'Always on') },
@@ -10995,7 +10999,7 @@ function AdminEvents() {
             </div>
           </Card>
         ); })}
-      </div> : <EmptyState icon={Sparkles} title={t('ev.none.t', 'No events yet')} sub={t('ev.none.s', 'Create one above — New Year, a national holiday, anything.')} />}
+      </div> : <EmptyState icon={Sparkles} title={t('ev.none.t', 'No events yet')} sub={t('ev.none.s', 'Create one above: New Year, a national holiday, anything.')} />}
     </div>
   );
 }
@@ -11018,7 +11022,7 @@ const SSO_SCOPE_HELP = {
   repos: 'Their hosted Server-Repos',
   pools: 'Their storage pools',
   catalogs: 'The catalogs they own, unpublished included',
-  payments: 'Invoices — amounts and dates, never a card number',
+  payments: 'Invoices, amounts and dates, never a card number',
   polls: 'Polls open to them and how they answered',
   favorites: 'Repos and catalogs they starred',
   transfers: 'Ownership transfers offered to or by them',
@@ -11110,7 +11114,7 @@ function RbacMap() {
                 tables is an answer nobody reads. */}
             <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${rep.suspicious?.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
               {rep.suspicious?.length
-                ? t('rbac.bad', '{n} admin/me route(s) with no guard — read each one before assuming it is wrong, some are public on purpose.').replace('{n}', String(rep.suspicious.length))
+                ? t('rbac.bad', '{n} admin/me route(s) with no guard, read each one before assuming it is wrong, some are public on purpose.').replace('{n}', String(rep.suspicious.length))
                 : t('rbac.ok', 'Every /admin and /me route carries a guard, or is listed as public on purpose.')}
             </div>
             {rep.suspicious?.length > 0 && (
@@ -11139,7 +11143,7 @@ function RbacMap() {
                   </div>
                 ))}
                 <div className="text-[11px] text-[var(--faint)] mt-2">
-                  {t('rbac.unguarded', '{n} route(s) with no guard at all — mostly public feeds and auth.').replace('{n}', String(rep.unguarded?.length ?? 0))}
+                  {t('rbac.unguarded', '{n} route(s) with no guard at all, mostly public feeds and auth.').replace('{n}', String(rep.unguarded?.length ?? 0))}
                 </div>
               </div>
             </div>
@@ -11228,7 +11232,7 @@ function InfraMap() {
       // read-only by docker-compose, so a deploy that ships only the image sees this instead
       // of an empty stack — and "nothing builds this" would be the wrong answer said
       // confidently.
-      explainError={{ workflows_not_found: t('imap.notfound', 'No .github/workflows reachable from the API — this map needs the repo mounted or a source checkout.') }}
+      explainError={{ workflows_not_found: t('imap.notfound', 'No .github/workflows reachable from the API, this map needs the repo mounted or a source checkout.') }}
     >
       {(r) => (<>
         <div className="flex flex-wrap gap-2 mb-3">
@@ -11266,7 +11270,7 @@ function InfraMap() {
                     <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.runs', 'runs')}</div>
                     <div className="flex gap-1.5">
                       {(w.jobs || []).map((j) => (
-                        <div key={j.name} className="rounded border border-[var(--line)] bg-[var(--surface-2)]/50 px-2 py-1">
+                        <div key={j.name} className="rounded border border-[var(--line)] panel px-2 py-1">
                           <div className="font-medium">{j.name}</div>
                           <div className="text-[9px] text-[var(--faint)] tabular-nums">
                             {t('imap.steps', '{n} steps').replace('{n}', String(j.steps))} · {j.runsOn || '—'}
@@ -11281,7 +11285,7 @@ function InfraMap() {
                     <div className="text-[9px] uppercase tracking-wider text-[var(--faint)]">{t('imap.ships', 'ships')}</div>
                     <div className="flex flex-col gap-1">
                       {ships.length
-                        ? ships.map((s) => <Chip key={s} tone="text-[var(--primary-2)] border-[var(--primary-2)]/40">{s}</Chip>)
+                        ? ships.map((s) => <Chip key={s} tone="text-[var(--primary-2)] b-primary">{s}</Chip>)
                         : <Chip>{t('imap.nothing', 'nothing')}</Chip>}
                     </div>
                   </div>
@@ -11290,7 +11294,7 @@ function InfraMap() {
               {w.secrets?.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2 items-center">
                   <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('imap.needs', 'needs')}</span>
-                  {w.secrets.map((s) => <Chip key={s} tone="text-[var(--warning)] border-[var(--warning)]/40">{s}</Chip>)}
+                  {w.secrets.map((s) => <Chip key={s} tone="text-[var(--warning)] b-warning">{s}</Chip>)}
                 </div>
               )}
             </div>
@@ -11303,7 +11307,7 @@ function InfraMap() {
           {r.secretsNeeded?.length
             ? t('imap.secretsneeded', 'These workflows need {n} secret(s) configured, so they fail on a fork: {l}')
               .replace('{n}', String(r.secretsNeeded.length)).replace('{l}', r.secretsNeeded.join(', '))
-            : t('imap.nosecrets', 'No workflow needs a secret — anybody can run all of this on a fork of the repo.')}
+            : t('imap.nosecrets', 'No workflow needs a secret, anybody can run all of this on a fork of the repo.')}
         </div>
 
         {/* The runtime half, so one panel answers both what builds it and what runs it. */}
@@ -11316,13 +11320,13 @@ function InfraMap() {
             <div className="flex flex-wrap gap-1 mt-2 items-center">
               <span className="text-[10px] uppercase tracking-wider text-[var(--faint)]">{t('imap.open', 'open to the network')}</span>
               {r.runtime.exposed.map((e, i) => (
-                <Chip key={i} tone="text-[var(--warning)] border-[var(--warning)]/40">{e.service}:{e.host}</Chip>
+                <Chip key={i} tone="text-[var(--warning)] b-warning">{e.service}:{e.host}</Chip>
               ))}
             </div>
           )}
         </>) : (
           <div className="text-[11px] text-[var(--faint)] mt-3">
-            {t('imap.noruntime', 'The compose file was not readable from here, so the runtime half is unchecked — not empty.')}
+            {t('imap.noruntime', 'The compose file was not readable from here, so the runtime half is unchecked, not empty.')}
           </div>
         )}
       </>)}
@@ -11398,7 +11402,7 @@ function SchemaMap() {
       {(r) => (<>
         <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${r.drift?.length ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
           {r.drift?.length
-            ? t('smap.drift', '{n} index/indexes exist in SQL but are not declared in schema.prisma — the next generated migration will propose dropping them.').replace('{n}', String(r.drift.length))
+            ? t('smap.drift', '{n} index/indexes exist in SQL but are not declared in schema.prisma, the next generated migration will propose dropping them.').replace('{n}', String(r.drift.length))
             : t('smap.ok', 'Every index in the migrations is declared in the schema. {m} models, {r} relations, {g} migrations.')
               .replace('{m}', String(r.models)).replace('{r}', String(r.relations)).replace('{g}', String(r.migrations))}
         </div>
@@ -11439,7 +11443,7 @@ function ComposeMap() {
       // Nothing copies infra/ into the API image, so on a deployed instance this reads
       // nothing. Said in words, because "compose_not_found" is a code, not an answer —
       // and because "no ports exposed" would be the wrong answer said confidently.
-      explainError={{ compose_not_found: t('cmap.notfound', 'docker-compose.yml is not inside the API image — this map only works from a source checkout.') }}
+      explainError={{ compose_not_found: t('cmap.notfound', 'docker-compose.yml is not inside the API image, this map only works from a source checkout.') }}
     >
       {(r) => (<>
         <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-3">
@@ -11453,7 +11457,7 @@ function ComposeMap() {
         ))}
         {r.danglingDeps?.length > 0 && (
           <div className="text-[12px] text-[var(--error)] mt-3">
-            {t('cmap.dangling', 'A depends_on names a service that does not exist — compose will refuse to start:')}{' '}
+            {t('cmap.dangling', 'A depends_on names a service that does not exist, compose will refuse to start:')}{' '}
             {r.danglingDeps.map((d) => `${d.service} → ${d.missing}`).join(', ')}
           </div>
         )}
@@ -11556,16 +11560,16 @@ function MigrationMap() {
       icon={History} path="/admin/migration-map"
       title={t('mig.title', 'The migration history, and any drift from the database')}
       badge={(r) => `${r.counts?.onDisk ?? 0}`}
-      explainError={{ migrations_not_found: t('mig.notfound', 'No migrations folder next to the API — this map needs the prisma directory.') }}
+      explainError={{ migrations_not_found: t('mig.notfound', 'No migrations folder next to the API, this map needs the prisma directory.') }}
     >
       {(r) => {
         const bad = (r.counts?.appliedNotOnDisk ?? 0) + (r.counts?.unfinished ?? 0);
         return (<>
           <div className={`text-[12px] rounded-lg border p-2.5 mb-3 ${bad ? 'border-[var(--error)] text-[var(--error)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
             {!r.hasDatabase
-              ? t('mig.nodb', '{n} migrations on disk. The database was not reachable, so applied/pending cannot be answered — and is not guessed.').replace('{n}', String(r.counts?.onDisk ?? 0))
+              ? t('mig.nodb', '{n} migrations on disk. The database was not reachable, so applied/pending cannot be answered, and is not guessed.').replace('{n}', String(r.counts?.onDisk ?? 0))
               : bad
-                ? t('mig.bad', 'The folder and the database disagree. This breaks the next deploy — on machines other than this one.')
+                ? t('mig.bad', 'The folder and the database disagree. This breaks the next deploy, on machines other than this one.')
                 : t('mig.ok', '{d} on disk, {a} applied, {p} pending. Nothing applied is missing from the folder and nothing is half-finished.')
                   .replace('{d}', String(r.counts?.onDisk ?? 0)).replace('{a}', String(r.counts?.applied ?? 0)).replace('{p}', String(r.counts?.pending ?? 0))}
           </div>
@@ -11619,7 +11623,7 @@ function DataFlow() {
     >
       {(r) => (<>
         <div className="text-[12px] rounded-lg border border-[var(--line)] text-[var(--muted)] p-2.5 mb-3">
-          {t('flow.head', '{r} routes · {m} models · {c} database calls. {u} route(s) with no guard write to the database — read each one, they are mostly deliberate.')
+          {t('flow.head', '{r} routes · {m} models · {c} database calls. {u} route(s) with no guard write to the database, read each one, they are mostly deliberate.')
             .replace('{r}', String(r.counts?.routes ?? 0)).replace('{m}', String(r.counts?.models ?? 0))
             .replace('{c}', String(r.counts?.calls ?? 0)).replace('{u}', String(r.counts?.writableUnauthenticated ?? 0))}
         </div>
@@ -11647,7 +11651,7 @@ function DataFlow() {
         ))}
         {r.counts?.outsideRoutes > 0 && (
           <div className="text-[11px] text-[var(--faint)] mt-3">
-            {t('flow.outside', '{n} database call(s) sit outside any route — sweepers, boot code and helpers, reachable by no request.')
+            {t('flow.outside', '{n} database call(s) sit outside any route, sweepers, boot code and helpers, reachable by no request.')
               .replace('{n}', String(r.counts.outsideRoutes))}
           </div>
         )}
@@ -11663,7 +11667,7 @@ function ConfigDiff() {
       icon={Sliders} path="/admin/config-diff"
       title={t('cfg.title', 'What .env.example promises, against what this instance has')}
       badge={(r) => `${r.counts?.documented ?? 0}`}
-      explainError={{ env_example_not_found: t('cfg.notfound', '.env.example is not inside the API image — this comparison only works from a source checkout.') }}
+      explainError={{ env_example_not_found: t('cfg.notfound', '.env.example is not inside the API image, this comparison only works from a source checkout.') }}
     >
       {(r) => {
         // `concern`, not `placeholder`: a SECRET equal to the example value is the finding
@@ -11690,7 +11694,7 @@ function ConfigDiff() {
           </>)}
           {kept.length > 0 && (
             <div className="text-[11px] text-[var(--faint)] mt-3">
-              {t('cfg.kept', '{n} variable(s) keep a real default from the example (5432, production, a region) — meant to be copied.').replace('{n}', String(kept.length))}
+              {t('cfg.kept', '{n} variable(s) keep a real default from the example (5432, production, a region), meant to be copied.').replace('{n}', String(kept.length))}
             </div>
           )}
           {r.undocumented?.length > 0 && (
@@ -11730,7 +11734,7 @@ function AdminWebhooks() {
   const create = async () => {
     const picked = form.events;
     if (!/^https?:\/\//i.test(form.url.trim())) return toast.error(t('sso.wh.badurl', 'Enter an http(s) address.'));
-    if (!picked.length) return toast.error(t('sso.wh.noev', 'Pick at least one event — one with none never fires.'));
+    if (!picked.length) return toast.error(t('sso.wh.noev', 'Pick at least one event, one with none never fires.'));
     setBusy(true);
     try {
       const r = await api.post('/me/webhooks', { url: form.url.trim(), label: form.label.trim(), events: picked });
@@ -11749,10 +11753,10 @@ function AdminWebhooks() {
   return (
     <div>
       {secret && (
-        <div className="rounded-lg border border-[var(--primary)] bg-[var(--primary)]/5 p-3 mb-3">
+        <div className="rounded-lg border border-[var(--primary)] tint-primary p-3 mb-3">
           {/* Shown once by the API and never retrievable — so it gets its own panel rather
               than a toast that scrolls away while you look for somewhere to paste it. */}
-          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('sso.wh.secret', 'Copy the signing secret now — it is shown once and never again.')}</div>
+          <div className="text-[12px] font-semibold text-[var(--primary-2)] mb-1.5">{t('sso.wh.secret', 'Copy the signing secret now, it is shown once and never again.')}</div>
           <div className="flex items-center gap-2 text-[12px]">
             <code className="font-mono break-all flex-1">{secret}</code>
             <Button size="sm" variant="ghost" onClick={() => { copyText(secret); toast.success(t('common.copied', 'Copied.')); }}><Copy size={13} /></Button>
@@ -11766,7 +11770,7 @@ function AdminWebhooks() {
           <Field label={t('sso.wh.url', 'Where to send it')} hint={t('sso.wh.url.h', 'https only, except http://localhost while you are developing. The payload is signed, and sending a signed payload in clear undoes the point of signing it.')}>
             <Input value={form.url} onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))} placeholder="https://example.com/hooks/bcweb" />
           </Field>
-          <Field label={t('sso.wh.label', 'Label')} hint={t('sso.wh.label.h', 'For you — it appears in this list and nowhere else.')}>
+          <Field label={t('sso.wh.label', 'Label')} hint={t('sso.wh.label.h', 'For you, it appears in this list and nowhere else.')}>
             <Input value={form.label} onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} placeholder={t('sso.wh.label.ph', 'Deploy notifier')} />
           </Field>
           <Field label={t('sso.wh.events', 'What to send')}>
@@ -11823,7 +11827,7 @@ function AdminWebhooks() {
                 </div>
                 <div className="text-[11px] text-[var(--faint)] font-mono break-all">{e.url}</div>
                 <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                  {(e.events || []).join(' · ') || t('sso.wh.noevents', 'no events — it will never fire')}
+                  {(e.events || []).join(' · ') || t('sso.wh.noevents', 'no events, it will never fire')}
                 </div>
                 {e.disabledReason && <div className="text-[11px] text-error mt-0.5">{e.disabledReason}</div>}
               </div>
@@ -11927,22 +11931,22 @@ function AdminOAuthClients() {
       setCreated({ id: r.client.id, secret: r.clientSecret });
       setF({ name: '', confidential: true, redirectUris: '', scopes: ['openid', 'profile', 'email'] });
       reload();
-    } catch (x) { toast.error(x.data?.error === 'invalid_input' ? t('oc.err.input', 'Check the fields — redirect URIs must be valid absolute URLs.') : t('common.failed', 'Failed.')); }
+    } catch (x) { toast.error(x.data?.error === 'invalid_input' ? t('oc.err.input', 'Check the fields, redirect URIs must be valid absolute URLs.') : t('common.failed', 'Failed.')); }
   };
   const toggle = async (c) => { try { await api.patch(`/admin/oauth-clients/${c.id}`, { active: !c.active }); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const del = (c) => undo.del(c.id, () => api.del(`/admin/oauth-clients/${c.id}`), t('common.deleted', 'Deleted.'));
   const rotate = async (c) => { try { const r = await api.post(`/admin/oauth-clients/${c.id}/rotate`); setCreated({ id: c.id, secret: r.clientSecret }); } catch { toast.error(t('common.failed', 'Failed.')); } };
   return (
     <div>
-      <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'SSO — OAuth / OpenID Connect clients')}</h2>
+      <h2 className="font-semibold mb-1 flex items-center gap-2"><Shield size={16} className="text-[var(--primary-2)]" /> {t('oc.title', 'SSO: OAuth / OpenID Connect clients')}</h2>
       <p className="text-xs text-[var(--muted)] mb-3">{t('oc.sub', 'Register another service to “Sign in with BetterCommunity”. It discovers everything at')} <code className="text-[11px]">/.well-known/openid-configuration</code>.</p>
       {created && (
         <Card className="p-4 mb-4 border-[var(--primary)]">
-          <div className="text-sm font-semibold text-[var(--primary-2)] mb-2">{t('oc.created', 'Client ready — copy the secret now, it is shown only once.')}</div>
+          <div className="text-sm font-semibold text-[var(--primary-2)] mb-2">{t('oc.created', 'Client ready, copy the secret now, it is shown only once.')}</div>
           <div className="flex items-center gap-2 text-sm mb-1"><span className="text-[var(--muted)] w-24">client_id</span><code className="font-mono break-anywhere flex-1">{created.id}</code><button onClick={() => copy(created.id)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
           {created.secret
             ? <div className="flex items-center gap-2 text-sm"><span className="text-[var(--muted)] w-24">client_secret</span><code className="font-mono break-anywhere flex-1">{created.secret}</code><button onClick={() => copy(created.secret)} className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Copy size={13} /></button></div>
-            : <div className="text-xs text-[var(--muted)]">{t('oc.public', 'Public client — no secret; it must use PKCE.')}</div>}
+            : <div className="text-xs text-[var(--muted)]">{t('oc.public', 'Public client, no secret; it must use PKCE.')}</div>}
           <div className="flex justify-end mt-3"><Button size="sm" onClick={() => setCreated(null)}>{t('common.done', 'Done')}</Button></div>
         </Card>
       )}
@@ -11997,7 +12001,7 @@ function GatingRules({ rules, onChange, guild }) {
   );
   return (
     <div className="space-y-2">
-      {rules.length === 0 && <div className="text-xs text-[var(--faint)] py-1">{t('db.gr.none', 'No role rules yet — add one to start gating.')}</div>}
+      {rules.length === 0 && <div className="text-xs text-[var(--faint)] py-1">{t('db.gr.none', 'No role rules yet, add one to start gating.')}</div>}
       {rules.map((r, i) => (
         <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-2.5 space-y-2">
           <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
@@ -12084,7 +12088,7 @@ function DmBroadcast() {
       toast.success(t('db.dma.started', 'Sending to {n} member(s). The bot works through them slowly.').replace('{n}', String(r.recipients)));
       setMsg(''); reload();
     } catch (e) {
-      toast.error(e?.data?.error === 'no_recipients' ? t('db.dma.norecip', 'No members match — the bot has not scanned anyone yet.') : t('common.failed', 'Failed.'));
+      toast.error(e?.data?.error === 'no_recipients' ? t('db.dma.norecip', 'No members match, the bot has not scanned anyone yet.') : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
 
@@ -12106,7 +12110,7 @@ function DmBroadcast() {
           </div>
           {/* "Unreachable" is its own number, not folded into failures: a closed DM is the
               member's own setting and nothing an admin can fix by retrying. */}
-          <p className="text-[11px] text-[var(--faint)]">{t('db.dma.unreachable', 'Unreachable means the member has direct messages closed — not an error you can retry.')}</p>
+          <p className="text-[11px] text-[var(--faint)]">{t('db.dma.unreachable', 'Unreachable means the member has direct messages closed, not an error you can retry.')}</p>
           <Button size="sm" variant="ghost" className="!text-error" onClick={stop}>{t('db.dma.stopbtn', 'Stop sending')}</Button>
         </div>
       ) : (
@@ -12116,7 +12120,7 @@ function DmBroadcast() {
           {/* The message and the decisions about it, side by side. Stacked, the send button
               sat three scrolls under the box you had just typed in. */}
           <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-5 lg:items-start">
-            <Field label={t('db.dma.msg', 'Message')} hint={t('db.dma.msg.h', '{username} and {server} are substituted per recipient. Plain text — a DM is not a channel post.')}>
+            <Field label={t('db.dma.msg', 'Message')} hint={t('db.dma.msg.h', '{username} and {server} are substituted per recipient. Plain text, a DM is not a channel post.')}>
               <Textarea rows={7} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={1500} />
               <div className="text-[10px] text-[var(--faint)] tabular-nums text-end mt-1">{msg.length} / 1500</div>
             </Field>
@@ -12180,11 +12184,11 @@ function AnnounceComposer({ guildList = [] }) {
       if (f.image.trim()) body.image = f.image.trim();
       if (f.roleId !== undefined) body.roleId = f.roleId;
       await api.post('/admin/bot/announce', body);
-      toast.success(t('db.ac.queued', 'Queued — the bot posts it within ~20 seconds. Watch the list below for the outcome.'));
+      toast.success(t('db.ac.queued', 'Queued, the bot posts it within ~20 seconds. Watch the list below for the outcome.'));
       setF((x) => ({ ...x, title: '', body: '', url: '', image: '' }));
       setTimeout(() => hist.reload(), 3000);
     } catch (e) {
-      toast.error(e?.data?.error === 'invalid_input' ? t('db.ac.invalid', 'Check the link and the image address — both must be full URLs.') : t('common.failed', 'Failed.'));
+      toast.error(e?.data?.error === 'invalid_input' ? t('db.ac.invalid', 'Check the link and the image address, both must be full URLs.') : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
 
@@ -12226,7 +12230,7 @@ function AnnounceComposer({ guildList = [] }) {
           </Select>
         </Field>
         {f.format !== 'text' && (
-          <Field label={t('db.ac.color', 'Colour')} hint={f.urgent ? t('db.ac.color.urgent', 'Ignored while urgent — urgent is always red.') : t('db.ac.color.h', 'Empty uses the colour for this kind.')}>
+          <Field label={t('db.ac.color', 'Colour')} hint={f.urgent ? t('db.ac.color.urgent', 'Ignored while urgent, urgent is always red.') : t('db.ac.color.h', 'Empty uses the colour for this kind.')}>
             <div className="flex items-center gap-1.5">
               <ColorInput value={f.color || '#64748b'} onChange={(v) => set('color', v)} className={f.urgent ? 'opacity-50 pointer-events-none' : ''} />
               {f.color && !f.urgent && <button type="button" onClick={() => set('color', '')} className="text-[11px] text-[var(--muted)] hover:text-[var(--text)]">{t('common.reset', 'Reset')}</button>}
@@ -12247,7 +12251,7 @@ function AnnounceComposer({ guildList = [] }) {
         </Field>
         <label className="flex items-center gap-1.5 text-xs pb-2">
           <input type="checkbox" checked={f.urgent} onChange={(e) => set('urgent', e.target.checked)} />
-          {t('db.ac.urgent', 'Urgent — ping the role, force red')}
+          {t('db.ac.urgent', 'Urgent, ping the role, force red')}
         </label>
         <Button variant="primary" onClick={send} disabled={busy} className="ms-auto">
           {busy ? <Spinner /> : <Send size={14} />} {t('db.ac.send', 'Send')}
@@ -12361,7 +12365,7 @@ const DEP_WHAT = (t) => ({
   storage: t('sp.dep.storage', 'Asks the object store (MinIO / S3) for its health.'),
   bot: t('sp.dep.bot', 'Checks the Discord bot\u2019s heartbeat is under two minutes old.'),
   telemetry: t('sp.dep.telemetry', 'Fetches the telemetry container over HTTP.'),
-  web: t('sp.dep.web', 'Fetches the website container over HTTP — a real request, because the API and the site fail separately.'),
+  web: t('sp.dep.web', 'Fetches the website container over HTTP, a real request, because the API and the site fail separately.'),
   stripe: t('sp.dep.stripe', 'Calls Stripe\u2019s balance endpoint with the live key. Absent when no key is set.'),
 });
 
@@ -12439,7 +12443,7 @@ function RouteTest({ kind, label, t }) {
       }
       // Not a failure of the route — a failure to hear back. Said as itself, because "it did
       // not arrive" and "the bot is not running" send somebody looking in different places.
-      setState({ ok: false, error: t('db.r.test.silent', 'The bot did not pick it up within 30 seconds — is it running?') });
+      setState({ ok: false, error: t('db.r.test.silent', 'The bot did not pick it up within 30 seconds, is it running?') });
     } catch (e) {
       toast.error(e?.data?.error || t('common.failed', 'Failed.'));
       setState(null);
@@ -12547,20 +12551,20 @@ function SceneEditor() {
   const NAMES = {
     orb: [t('scn.orb', 'Orb'), t('scn.orb.d', 'A displaced sphere. What the site has always drawn.')],
     prism: [t('scn.prism', 'Prism'), t('scn.prism.d', 'Four flat faces. The most angular silhouette here, and the cheapest to draw.')],
-    crystal: [t('scn.crystal', 'Crystal'), t('scn.crystal.d', 'Eight faces. Large enough that the distortion shows inside a single one — the shape to pick when the surface is doing the work.')],
+    crystal: [t('scn.crystal', 'Crystal'), t('scn.crystal.d', 'Eight faces. Large enough that the distortion shows inside a single one, the shape to pick when the surface is doing the work.')],
     gem: [t('scn.gem', 'Gem'), t('scn.gem.d', 'Twelve pentagons. The most faceting before the outline becomes a sphere again; best with the distortion turned down.')],
-    ring: [t('scn.ring', 'Knot'), t('scn.ring.d', 'A knotted torus. The most movement and the most fill — turn the detail down on a slow machine.')],
+    ring: [t('scn.ring', 'Knot'), t('scn.ring.d', 'A knotted torus. The most movement and the most fill, turn the detail down on a slow machine.')],
     halo: [t('scn.halo', 'Halo'), t('scn.halo.d', 'A plain ring. The knot\u2019s idea with one hole and a clean outline, which is what a page with a lot of text in front of it wants.')],
   };
 
   const SURFACES = {
     solid: [t('scn.sf.solid', 'Solid'), t('scn.sf.solid.d', 'Filled faces.')],
-    wire: [t('scn.sf.wire', 'Wireframe'), t('scn.sf.wire.d', 'Edges only — the same surface, drawn as lines.')],
+    wire: [t('scn.sf.wire', 'Wireframe'), t('scn.sf.wire.d', 'Edges only, the same surface, drawn as lines.')],
     both: [t('scn.sf.both', 'Both'), t('scn.sf.both.d', 'A wireframe traced over the solid.')],
   };
 
   const HOVERS = {
-    fracture: [t('scn.hv.fracture', 'Shatter'), t('scn.hv.fracture.d', 'It breaks into its own faces and flies apart. What the site has always done — written for the orb, so try it on the shape you picked.')],
+    fracture: [t('scn.hv.fracture', 'Shatter'), t('scn.hv.fracture.d', 'It breaks into its own faces and flies apart. What the site has always done, written for the orb, so try it on the shape you picked.')],
     swell: [t('scn.hv.swell', 'Swell'), t('scn.hv.swell.d', 'It grows a little and the distortion rises with it.')],
     spin: [t('scn.hv.spin', 'Spin up'), t('scn.hv.spin.d', 'It turns faster while the pointer is on it, and settles back when it leaves.')],
     none: [t('scn.hv.none', 'Nothing'), t('scn.hv.none.d', 'It ignores the pointer.')],
@@ -12568,7 +12572,7 @@ function SceneEditor() {
 
   const REVEALS = {
     rise: [t('scn.rv.rise', 'Rise'), t('scn.rv.rise.d', 'Lifts into place, shrinking slightly, with a blur that clears. The shipped one.')],
-    fade: [t('scn.rv.fade', 'Fade'), t('scn.rv.fade.d', 'Opacity only — nothing appears to move.')],
+    fade: [t('scn.rv.fade', 'Fade'), t('scn.rv.fade.d', 'Opacity only, nothing appears to move.')],
     slide: [t('scn.rv.slide', 'Slide'), t('scn.rv.slide.d', 'In from the side, from whichever side the scene currently is.')],
     zoom: [t('scn.rv.zoom', 'Zoom'), t('scn.rv.zoom.d', 'Grows into place, without shifting sideways under a cursor already reaching for it.')],
     none: [t('scn.rv.none', 'None'), t('scn.rv.none.d', 'Sections are simply there.')],
@@ -12661,10 +12665,10 @@ function SceneEditor() {
               pretended to unlock — picking it to make an orb slightly calmer was not a
               custom shape, it was the orb with a different label. */}
           <div className="grid sm:grid-cols-2 gap-x-5 gap-y-4 mt-5">
-            {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element — 4 is the shipped value.'), 0, 5, 1)}
+            {slider('detail', t('scn.detail', 'Detail'), t('scn.detail.d', 'Subdivisions. The cost grows with the square of this, and it is a background element, 4 is the shipped value.'), 0, 5, 1)}
             {slider('noise', t('scn.noise', 'Distortion'), t('scn.noise.d', 'How far the surface is pushed around. 0 leaves the bare solid, which is a look in itself.'), 0, 1.5, 0.05)}
-            {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead — still drawn, no longer moving.'), 0, 3, 0.1)}
-            {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0 — that is the switch above, and it costs nothing instead of drawing nothing.'), 0.1, 1, 0.05, pct)}
+            {slider('speed', t('scn.speed', 'Speed'), t('scn.speed.d', 'Rotation and drift. 0 stops it dead, still drawn, no longer moving.'), 0, 3, 0.1)}
+            {slider('opacity', t('scn.opacity', 'Presence'), t('scn.opacity.d', 'How much of the surface there is. It never reaches 0, that is the switch above, and it costs nothing instead of drawing nothing.'), 0.1, 1, 0.05, pct)}
             {slider('scale', t('scn.scale', 'Size'), t('scn.scale.d', 'Multiplies the framing, so the intro keeps its proportion to the resting size.'), 0.5, 1.8, 0.05, pct)}
             {slider('glow', t('scn.glow', 'Halo'), t('scn.glow.d', 'The soft light behind it. At 0 it is not drawn at all.'), 0, 1, 0.05, pct)}
             {slider('twinkles', t('scn.tw', 'Dust'), t('scn.tw.d', 'Specks on a tilted belt orbiting the shape, passing in front and behind. 0 removes them.'), 0, 240, 10)}
@@ -12677,7 +12681,7 @@ function SceneEditor() {
             {cfg.enabled === false ? (
               <div className="h-[220px] grid place-items-center text-center px-4">
                 <p className="text-[12px] text-[var(--muted)] leading-snug">
-                  {t('scn.prev.off', 'Nothing is drawn. Pages render exactly as they do on a machine without WebGL — a path the site has always had to support.')}
+                  {t('scn.prev.off', 'Nothing is drawn. Pages render exactly as they do on a machine without WebGL, a path the site has always had to support.')}
                 </p>
               </div>
             ) : (
@@ -12695,7 +12699,7 @@ function SceneEditor() {
           {/* The backdrop is built once per page load, so the admin looking past this card is
               looking at the previous scene. Said, rather than left to be discovered by
               staring at an unchanged page. */}
-          <span className="block text-[11px] text-[var(--muted)] mt-2">{t('scn.reload', 'Reload the page to see it behind you — the backdrop is built once, when a page loads.')}</span>
+          <span className="block text-[11px] text-[var(--muted)] mt-2">{t('scn.reload', 'Reload the page to see it behind you, the backdrop is built once, when a page loads.')}</span>
         </div>
       </div>
       <SceneEventScenes cfg={cfg} set={set} shapes={shapes} names={NAMES} />
@@ -12725,7 +12729,7 @@ function SceneEventScenes({ cfg, set, shapes, names }) {
         {t('scn.ev.d', 'Give an event its own look — a different shape or a brighter halo while it runs. Applied only while the event is live, and only when the scene above is on: switching the scene off is always final.')}
       </p>
       {!events.length ? (
-        <p className="text-[11px] text-[var(--faint)]">{t('scn.ev.none', 'No events yet — create one under Events to give it a scene.')}</p>
+        <p className="text-[11px] text-[var(--faint)]">{t('scn.ev.none', 'No events yet, create one under Events to give it a scene.')}</p>
       ) : (
         <div className="space-y-2">
           {events.map((ev) => {
@@ -13007,7 +13011,7 @@ function HomePageEditor() {
   if (err || !form || !sections) {
     return (
       <EmptyState icon={AlertTriangle} title={t('hp.failed', 'Could not load the home page text')}
-        sub={t('hp.failed.s', 'The page settings did not come back. Nothing has been changed — try again, and check the API is reachable.')}>
+        sub={t('hp.failed.s', 'The page settings did not come back. Nothing has been changed, try again, and check the API is reachable.')}>
         <Button onClick={() => reload()}><RefreshCw size={15} /> {t('common.retry', 'Try again')}</Button>
       </EmptyState>
     );
@@ -13140,7 +13144,7 @@ function HomePageEditor() {
           {/* Two different things, and the difference is the point: one shows what visitors
               see right now, the other shows what they would see if this were saved. */}
           <button type="button" onClick={() => setPreview(true)}
-            className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-[var(--text)] hover:bg-[var(--primary)]/10 transition">
+            className="text-xs inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--primary)] text-[var(--text)] hover:tint-primary transition">
             <Eye size={13} /> {t('hp.preview', 'Preview my changes')}
           </button>
           <a href="/" target="_blank" rel="noreferrer"
@@ -13204,7 +13208,7 @@ function HomePageEditor() {
               <div aria-hidden="true"
                 className="mt-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] p-1.5 space-y-1">
                 {hasHero && (
-                  <div className="rounded bg-[var(--primary)]/25 h-6 flex items-center justify-center">
+                  <div className="rounded tint-primary-strong h-6 flex items-center justify-center">
                     <span className="text-[8px] font-semibold text-[var(--muted)] tracking-wide">
                       {t('hp.wire.hero', 'HERO')}
                     </span>
@@ -13271,8 +13275,8 @@ function HomePageEditor() {
 
           <div className="grid sm:grid-cols-3 gap-2">
             {[['grid', t('hp.suite.grid', 'Grid'), t('hp.suite.grid.d', 'All of them at once, wrapping onto a second line. Nothing moves.')],
-              ['scroll', t('hp.suite.scroll', 'Swipe'), t('hp.suite.scroll.d', 'One row that scrolls sideways with snap points — the same feel as the polls strip.')],
-              ['marquee', t('hp.suite.marquee', 'Marquee'), t('hp.suite.marquee.d', 'Scrolls by itself, like the reviews. It looks alive, and a card that moves is harder to click — it pauses on hover for that reason.')]]
+              ['scroll', t('hp.suite.scroll', 'Swipe'), t('hp.suite.scroll.d', 'One row that scrolls sideways with snap points, the same feel as the polls strip.')],
+              ['marquee', t('hp.suite.marquee', 'Marquee'), t('hp.suite.marquee.d', 'Scrolls by itself, like the reviews. It looks alive, and a card that moves is harder to click, it pauses on hover for that reason.')]]
               .map(([k, label, desc]) => (
               <button key={k} type="button" onClick={() => setSuite((v) => ({ ...v, style: k }))}
                 aria-pressed={suite.style === k}
@@ -13408,7 +13412,7 @@ function HomePageEditor() {
 
       {/* Sticky: Save used to sit under a 60vh scroller, and it is the one control you need
           from wherever you happen to be on the page. */}
-      <div className="sticky bottom-0 -mx-1 px-1 pt-3 pb-3 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)] flex items-center gap-3 flex-wrap">
+      <div className="sticky bottom-0 -mx-1 px-1 pt-3 pb-3 scrim backdrop-blur border-t border-[var(--line)] flex items-center gap-3 flex-wrap">
         <Button variant="primary" onClick={save} disabled={busy}>{busy ? <Spinner /> : <><Save size={15} /> {t('common.save', 'Save')}</>}</Button>
         <span className="text-[11px] text-[var(--faint)]">
           {changed > 0
@@ -13430,7 +13434,7 @@ function RolePanelPreview({ panel }) {
   const roles = (panel.roles || []).filter((r) => r.roleId || r.label).slice(0, 25);
   const label = (r, i) => r.label || r.roleId || `${t('db.rp.role', 'role')} ${i + 1}`;
   const embedOrMsg = panel.asEmbed ? (
-    <div className="rounded-md overflow-hidden flex bg-[var(--surface-2)]/60 border border-[var(--line)] max-w-md">
+    <div className="rounded-md overflow-hidden flex panel border border-[var(--line)] max-w-md">
       <div className="w-1 shrink-0" style={{ background: panel.color || '#f59e0b' }} />
       <div className="p-3 min-w-0">
         {panel.title && <div className="font-semibold text-sm mb-1 break-words">{panel.title}</div>}
@@ -13444,7 +13448,7 @@ function RolePanelPreview({ panel }) {
     </div>
   );
   return (
-    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 p-3">
+    <div className="rounded-lg border border-[var(--line)] panel p-3">
       <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] mb-2 flex items-center gap-1.5"><Eye size={11} /> {t('db.rp.preview', 'Preview')} <span className="normal-case font-normal text-[var(--faint)]">· {t('db.rp.preview.as', 'as members see it')}</span></div>
       {/* A real Discord message — the bot's avatar, its name + BOT tag and a timestamp — so the
           panel is judged in the place it actually lands, not as a bare box on a settings page. */}
@@ -13462,7 +13466,7 @@ function RolePanelPreview({ panel }) {
             {roles.length === 0 ? (
               <div className="text-[11px] text-[var(--faint)] italic">{t('db.rp.prev.noroles', 'Add a role to see the buttons.')}</div>
             ) : panel.mode === 'dropdown' ? (
-              <div className="rounded-md border border-[var(--line)] bg-[var(--surface-2)]/60 px-3 py-2 text-xs text-[var(--muted)] flex items-center justify-between max-w-sm">
+              <div className="rounded-md border border-[var(--line)] panel px-3 py-2 text-xs text-[var(--muted)] flex items-center justify-between max-w-sm">
                 <span>{roles.length === 1 ? label(roles[0], 0) : t('db.rp.prev.select', 'Select {n} role(s)…').replace('{n}', panel.multi !== false ? '' : '1').trim()}</span>
                 <ChevronDown size={14} />
               </div>
@@ -13516,7 +13520,7 @@ function BotModuleRail({ page, setPage }) {
           const on = page === id;
           return (
             <button key={id} type="button" onClick={() => setPage(id)} aria-current={on ? 'true' : undefined}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-start transition relative ${on ? 'bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-2)]/60'}`}>
+              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-start transition relative ${on ? 'bg-[#5865F2]/10 text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)] hover:panel'}`}>
               {on && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-[#5865F2]" />}
               <Icon size={15} className={`shrink-0 ${on ? 'text-[#5865F2]' : 'text-[var(--faint)]'}`} /> <span className="truncate">{label(id, fb)}</span>
             </button>
@@ -13525,7 +13529,7 @@ function BotModuleRail({ page, setPage }) {
         </div>
       </nav>
       {/* Mobile/tablet (< xl): the same pages as a sticky, sideways-scrolling chip strip. */}
-      <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 bg-[var(--bg)]/90 backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
+      <nav className="xl:hidden sticky top-[46px] z-[15] -mx-1 mb-3 px-1 py-1.5 scrim backdrop-blur border-b border-[var(--line)] overflow-x-auto no-scrollbar">
         <div className="flex gap-1.5 min-w-max">
           {BOT_PAGES.map(([id, fb, Icon]) => {
             const on = page === id;
@@ -13662,7 +13666,7 @@ function RolePanels({ panels, onChange, guildList }) {
                     );
                   })}
                   <Button size="sm" variant="ghost" onClick={() => set(i, { roles: [...(p.roles || []), { roleId: '', label: '', style: 'secondary' }] })}><Plus size={12} /> {t('db.rp.addrole', 'Add a role')}</Button>
-                  {(p.roles || []).length > 25 && <div className="text-[11px] text-warning">{t('db.rp.cap', 'Discord shows at most 25 — the rest are not posted.')}</div>}
+                  {(p.roles || []).length > 25 && <div className="text-[11px] text-warning">{t('db.rp.cap', 'Discord shows at most 25, the rest are not posted.')}</div>}
                 </div>
 
                 <RolePanelPreview panel={p} />
@@ -13688,7 +13692,7 @@ function BlogRoutes({ routes, onChange, guildList }) {
   };
   return (
     <div className="space-y-2">
-      {routes.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.routes.none', 'No routes — add one. Each route posts the chosen blogs to a channel (in any server the bot is in).')}</div>}
+      {routes.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.routes.none', 'No routes, add one. Each route posts the chosen blogs to a channel (in any server the bot is in).')}</div>}
       {routes.map((r, i) => {
         const guild = guildList.find((gg) => gg.id === r.guildId);
         return (
@@ -13698,7 +13702,7 @@ function BlogRoutes({ routes, onChange, guildList }) {
             <Input value={r.channelId || ''} onChange={(e) => set(i, { channelId: e.target.value })} placeholder={t('db.routes.chanph', 'Channel ID (in any server the bot is in)')} />
             {guildList.length > 0 && (
               <Select className="!py-2" value={r.guildId || ''} onChange={(e) => set(i, { guildId: e.target.value })}>
-                <option value="">{t('db.routes.serveropt', 'Server (optional — for your reference)')}</option>
+                <option value="">{t('db.routes.serveropt', 'Server (optional, for your reference)')}</option>
                 {guildList.map((gg) => <option key={gg.id} value={gg.id}>{gg.name}</option>)}
               </Select>
             )}
@@ -13707,7 +13711,7 @@ function BlogRoutes({ routes, onChange, guildList }) {
                 const on = (r.sources || ['*']).includes(key);
                 return (
                   <button key={key} type="button" onClick={() => toggleSource(i, key)}
-                    className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+                    className={`px-2 py-0.5 rounded-md text-[11px] border transition ${on ? 'tint-primary b-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
                     {t(BLOG_SOURCE_KEY[key] || '', label)}
                   </button>
                 );
@@ -13739,7 +13743,7 @@ function ServerBubble({ name, icon, sub, active, dot, onClick }) {
   const initial = (name || '?').slice(0, 2).toUpperCase();
   return (
     <button onClick={onClick} title={name}
-      className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-start transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)]/50'}`}>
+      className={`relative flex items-center gap-2.5 px-3 py-2 rounded-xl border text-start transition shrink-0 w-[180px] ${active ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)] hover:panel'}`}>
       {icon ? <img src={icon} alt="" className="w-9 h-9 rounded-full shrink-0" />
         : <span className="w-9 h-9 rounded-full shrink-0 grid place-items-center text-xs font-bold bg-gradient-to-br from-brand to-brand-2 text-white">{initial}</span>}
       <div className="min-w-0 flex-1">
@@ -13816,7 +13820,7 @@ function ModuleCard({ icon: I, title, desc, enabled, onToggle, action, children,
     <Card id={id} className={`p-0 overflow-hidden self-start transition scroll-mt-24 ${off ? 'opacity-70' : ''} ${onToggle && live ? 'border-t-2 border-t-[#5865F2]/60' : ''}`}>
       <div className="p-4 pb-3">
         <div className="flex items-center gap-3">
-          <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'bg-[var(--primary)]/10 border-[var(--primary)]/20'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
+          <span className={`grid place-items-center w-9 h-9 rounded-lg shrink-0 border ${live && onToggle ? 'bg-[#5865F2]/10 border-[#5865F2]/25' : off ? 'bg-[var(--surface-2)] border-[var(--line)]' : 'tint-primary b-primary'}`}><I size={17} className={live && onToggle ? 'text-[#5865F2]' : off ? 'text-[var(--faint)]' : 'text-[var(--primary-2)]'} /></span>
           {/* The heading is the fold control. The switch is NOT: turning a module off and
               hiding its settings are different intentions, and one click must not do both. */}
           <button type="button" onClick={collapsible ? toggleOpen : undefined}
@@ -13882,21 +13886,21 @@ function MemberDatabaseCard({ cfg, set }) {
     setRescanning(true);
     try {
       await api.post('/admin/bot/memberdb/rescan', {});
-      toast.info(t('db.mdb.rescan.queued', 'Re-scan requested — the bot picks it up within a minute.'));
+      toast.info(t('db.mdb.rescan.queued', 'Re-scan requested, the bot picks it up within a minute.'));
       const before = data?.lastScanAt || null;
       for (let k = 0; k < 24; k++) { // ≤ 2 min
         await new Promise((r) => setTimeout(r, 5000));
         const d = await api.get('/admin/bot/memberdb').catch(() => null);
-        if (d && d.lastScanAt && d.lastScanAt !== before && !d.rescanPending) { await reload(); toast.success(t('db.mdb.rescan.done', 'Roster re-scanned — {n} members stored.').replace('{n}', Number(d.stored || 0).toLocaleString())); return; }
+        if (d && d.lastScanAt && d.lastScanAt !== before && !d.rescanPending) { await reload(); toast.success(t('db.mdb.rescan.done', 'Roster re-scanned: {n} members stored.').replace('{n}', Number(d.stored || 0).toLocaleString())); return; }
       }
       await reload();
-      toast.info(t('db.mdb.rescan.slow', 'Still scanning — the numbers will follow on the next refresh.'));
+      toast.info(t('db.mdb.rescan.slow', 'Still scanning, the numbers will follow on the next refresh.'));
     } catch { toast.error(t('db.mdb.rescan.fail', 'Could not queue the re-scan.')); }
     finally { setRescanning(false); }
   };
   const busyScan = rescanning || !!data?.rescanPending;
   const Stat = ({ icon: I, label, value, tone = '' }) => (
-    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2 min-w-0">
+    <div className="rounded-lg border border-[var(--line)] panel px-3 py-2 min-w-0">
       <div className="text-[10px] uppercase tracking-wider text-[var(--faint)] flex items-center gap-1"><I size={11} /> {label}</div>
       <div className={`text-base font-semibold tabular-nums leading-tight ${tone}`}>{value}</div>
     </div>
@@ -13905,7 +13909,7 @@ function MemberDatabaseCard({ cfg, set }) {
     <Card className="p-4 mb-4">
       <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
+          <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Database size={13} className="text-[var(--primary-2)]" /></span>
           <span className="font-medium text-sm">{t('db.mdb.title', 'Member database')}</span>
           <Badge tone={on ? 'green' : ''}>{on ? t('db.mdb.on', 'on') : t('db.mdb.off', 'off')}</Badge>
           {data && <span className={`text-[11px] inline-flex items-center gap-1 ${data.botOnline ? 'text-success' : 'text-[var(--faint)]'}`}><span className={`w-1.5 h-1.5 rounded-full ${data.botOnline ? 'bg-success' : 'bg-[var(--faint)]'}`} /> {data.botOnline ? t('db.mdb.bot.on', 'bot online') : t('db.mdb.bot.off', 'bot offline')}</span>}
@@ -13916,7 +13920,7 @@ function MemberDatabaseCard({ cfg, set }) {
 
       {/* The scan bar: when the roster was last written, and the two actions, each of which
           visibly does something — a spinner while it runs, a timestamp / toast when it is done. */}
-      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="rounded-lg border border-[var(--line)] panel px-3 py-2 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="text-xs flex items-center gap-1.5 min-w-0">
           <Clock size={13} className="text-[var(--faint)] shrink-0" />
           <span className="text-[var(--muted)]">{t('db.mdb.lastscan', 'Last roster scan')}:</span>
@@ -13927,10 +13931,10 @@ function MemberDatabaseCard({ cfg, set }) {
           <Button size="sm" variant="ghost" onClick={refresh} disabled={refreshing} aria-busy={refreshing || undefined} title={t('db.mdb.refresh.h', 'Re-read the numbers below')}>
             <RefreshCw size={13} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? t('db.mdb.refreshing', 'Refreshing…') : t('db.mdb.refresh', 'Refresh numbers')}
           </Button>
-          <Button size="sm" onClick={rescan} disabled={busyScan || !data?.botOnline} title={!data?.botOnline ? t('db.mdb.rescan.offline', 'The bot is offline — it cannot scan right now.') : t('db.mdb.rescan.h', 'Ask the bot to walk every server’s roster now instead of waiting for the 30-minute cycle')}>
+          <Button size="sm" onClick={rescan} disabled={busyScan || !data?.botOnline} title={!data?.botOnline ? t('db.mdb.rescan.offline', 'The bot is offline, it cannot scan right now.') : t('db.mdb.rescan.h', 'Ask the bot to walk every server’s roster now instead of waiting for the 30-minute cycle')}>
             <Users size={13} /> {busyScan ? t('db.mdb.rescan.busy', 'Scanning…') : t('db.mdb.rescan', 'Re-scan servers now')}
           </Button>
-          <a href="/api/admin/bot/memberdb/export.csv" download><Button size="sm" variant="ghost" title={t('db.mdb.export.h', 'Every stored member of every server, one row each — CSV for a spreadsheet')}><Download size={13} /> CSV</Button></a>
+          <a href="/api/admin/bot/memberdb/export.csv" download><Button size="sm" variant="ghost" title={t('db.mdb.export.h', 'Every stored member of every server, one row each: CSV for a spreadsheet')}><Download size={13} /> CSV</Button></a>
           <a href="/api/admin/bot/memberdb/export.json" download><Button size="sm" variant="ghost" title={t('db.mdb.export.jh', 'The same, one JSON object per line')}><Download size={13} /> JSON</Button></a>
         </div>
         {refreshedAt && !refreshing && <div className="basis-full text-[10px] text-[var(--faint)]">{t('db.mdb.refreshedat', 'Numbers as of {t}').replace('{t}', new Date(refreshedAt).toLocaleTimeString())}</div>}
@@ -13957,7 +13961,7 @@ function MemberDatabaseCard({ cfg, set }) {
         </div>
         <div className="h-1.5 rounded-full bg-[var(--surface-2)] overflow-hidden mb-3"><div className={`h-full ${pct > 90 ? 'bg-error' : pct > 75 ? 'bg-warning' : 'bg-gradient-to-r from-brand to-brand-2'}`} style={{ width: `${pct}%` }} /></div>
         <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('db.mdb.servers', 'Per server')}</div>
-        {!data.guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet — the bot registers each one it is in.')}</p> : (
+        {!data.guilds.length ? <p className="text-[11px] text-[var(--faint)]">{t('bg.none', 'No servers seen yet, the bot registers each one it is in.')}</p> : (
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] max-h-64 overflow-auto">
             {data.guilds.map((g) => {
               const cov = g.memberCount ? Math.min(100, (g.stored / g.memberCount) * 100) : 0;
@@ -13995,7 +13999,7 @@ function BotLogsCard() {
       {open && (
         <div className="mt-3">
           {logs == null ? <div className="text-xs text-[var(--muted)] flex items-center gap-2"><Spinner /> {t('common.loading', 'Loading…')}</div>
-            : logs.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('db.logs.none', 'No logs yet — the bot pushes them on its heartbeat (≤60s). If empty, the bot may be offline.')}</div>
+            : logs.length === 0 ? <div className="text-xs text-[var(--faint)]">{t('db.logs.none', 'No logs yet, the bot pushes them on its heartbeat (≤60s). If empty, the bot may be offline.')}</div>
             : <div className="rounded-lg bg-[#0b1220] border border-[var(--line)] p-2.5 max-h-72 overflow-auto font-mono text-[11px] leading-relaxed">
                 {logs.map((l, i) => (
                   <div key={i} className="whitespace-pre-wrap break-words"><span className="text-[var(--faint)]">{new Date(l.t).toLocaleTimeString()} </span><span className={color(l.level)}>{l.msg}</span></div>
@@ -14085,11 +14089,11 @@ function BotDMCard() {
         body.gift = g;
       }
       const r = await api.post('/admin/bot/dm', body);
-      toast.success(r.giftCode ? t('dm.sentgift', 'Queued — DM + gift code {c} on its way.').replace('{c}', r.giftCode) : t('dm.sent', 'Queued — the bot DMs it within ~30s.'));
+      toast.success(r.giftCode ? t('dm.sentgift', 'Queued: DM + gift code {c} on its way.').replace('{c}', r.giftCode) : t('dm.sent', 'Queued, the bot DMs it within ~30s.'));
       setMessage(''); setDiscordId('');
     } catch (x) {
       const e = x.data?.error;
-      toast.error(e === 'no_linked_account' ? t('dm.nolink', 'That Discord user has no linked BetterCommunity account — a gift code needs one.')
+      toast.error(e === 'no_linked_account' ? t('dm.nolink', 'That Discord user has no linked BetterCommunity account, a gift code needs one.')
         : e === 'empty_message' ? t('dm.empty', 'Add a message or a gift.')
         : e === 'discount_needs_value' ? t('pc.err.discount', 'Set a % off or free months.')
         : e === 'hosting_needs_storage' ? t('pc.err.storage', 'Set the storage GB.')
@@ -14224,7 +14228,7 @@ function BotGiveawaysCard() {
   const { t } = useI18n(); const toast = useToast(); const dialog = useDialog();
   const [open, setOpen] = useState(false);
   const { data, loading, reload } = useAsync(() => api.get('/admin/bot/giveaways'), []);
-  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, audience: 'discord', prizeKind: 'promo', prizeContent: '', winnerMessage: 'Congrats {user} — you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
+  const [f, setF] = useState({ prize: '', channelId: '', durationMinutes: 60, winnersCount: 1, reqLinked: false, reqCreator: false, audience: 'discord', prizeKind: 'promo', prizeContent: '', winnerMessage: 'Congrats {user}, you won {prize}! 🎉 Thanks for entering.', gift: { kind: 'discount', percentOff: 20, freeMonths: 0, storageGB: 10, boostDays: 7 } });
   const [busy, setBusy] = useState(false);
   const undo = useUndoableDelete(reload);
   const giveaways = (data?.giveaways || []).filter((g) => !undo.pending.has(g.id));
@@ -14250,14 +14254,14 @@ function BotGiveawaysCard() {
   // prize payload lives in a fold that is shut by default, so without this the card can show
   // "20% off" as the title while the gift underneath is a 10 GB pool.
   const winnerGets = (() => {
-    if (f.prizeKind === 'none') return t('gw.gets.none', 'nothing to claim — the title only');
+    if (f.prizeKind === 'none') return t('gw.gets.none', 'nothing to claim, the title only');
     if (f.prizeKind === 'custom') return f.prizeContent.trim()
       ? t('gw.gets.custom', 'the text you typed, sealed until they reveal it')
-      : t('gw.gets.custom.empty', 'custom content — but you have not typed any yet');
+      : t('gw.gets.custom.empty', 'custom content, but you have not typed any yet');
     const g = f.gift;
     if (g.kind === 'discount') {
       const bits = [Number(g.percentOff) ? `${Number(g.percentOff)}%` : null, Number(g.freeMonths) ? t('gw.gets.months', '{n} month(s) free').replace('{n}', Number(g.freeMonths)) : null].filter(Boolean);
-      return bits.length ? t('gw.gets.promo', 'a promo code: {x}').replace('{x}', bits.join(' + ')) : t('gw.gets.empty', 'a promo code worth nothing yet — set a discount below');
+      return bits.length ? t('gw.gets.promo', 'a promo code: {x}').replace('{x}', bits.join(' + ')) : t('gw.gets.empty', 'a promo code worth nothing yet, set a discount below');
     }
     if (g.kind === 'free_hosting') return t('gw.gets.hosting', 'a free hosted repo, {n} GB').replace('{n}', Number(g.storageGB) || 0);
     if (g.kind === 'free_pool') return t('gw.gets.pool', 'a free storage pool, {n} GB').replace('{n}', Number(g.storageGB) || 0);
@@ -14278,10 +14282,10 @@ function BotGiveawaysCard() {
       if (f.reqLinked || f.reqCreator) body.requirements = { linked: !!(f.reqLinked || f.reqCreator), creator: !!f.reqCreator };
       if (f.prizeKind === 'promo') { const g = { kind: f.gift.kind }; if (f.gift.kind === 'discount') { if (Number(f.gift.percentOff)) g.percentOff = Number(f.gift.percentOff); if (Number(f.gift.freeMonths)) g.freeMonths = Number(f.gift.freeMonths); } if (f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') g.storageGB = Number(f.gift.storageGB); if (f.gift.kind === 'free_boost') g.boostDays = Number(f.gift.boostDays); body.gift = g; }
       await api.post('/admin/bot/giveaways', body);
-      toast.success(t('gw.created', 'Giveaway created — the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
+      toast.success(t('gw.created', 'Giveaway created, the bot posts it within ~30s.')); setF({ ...f, prize: '' }); reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setBusy(false); }
   };
-  const end = async (g) => { if (!(await dialog.confirm({ title: t('gw.end.t', 'Draw now?'), message: t('gw.end.m', 'End this giveaway now and draw the winners?'), okLabel: t('gw.end.ok', 'Draw now') }))) return; try { await api.post(`/admin/bot/giveaways/${g.id}/end`); toast.success(t('gw.ending', 'Drawing — winners announced within ~30s.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
+  const end = async (g) => { if (!(await dialog.confirm({ title: t('gw.end.t', 'Draw now?'), message: t('gw.end.m', 'End this giveaway now and draw the winners?'), okLabel: t('gw.end.ok', 'Draw now') }))) return; try { await api.post(`/admin/bot/giveaways/${g.id}/end`); toast.success(t('gw.ending', 'Drawing, winners announced within ~30s.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const del = (g) => undo.del(g.id, () => api.del(`/admin/bot/giveaways/${g.id}`), t('common.deleted', 'Deleted.'));
   return (
     <Card className="p-4 mb-4">
@@ -14329,7 +14333,7 @@ function BotGiveawaysCard() {
                   && (p.gift.boostDays === undefined || Number(f.gift.boostDays) === p.gift.boostDays)));
               return (
                 <button key={p.id} type="button" onClick={() => applyPrize(p)}
-                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
+                  className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${on ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--line-strong)]'}`}>
                   {t(`gw.p.${p.id}`, p.label)}
                 </button>
               );
@@ -14372,7 +14376,7 @@ function BotGiveawaysCard() {
             <div className="space-y-3">
               <Field label={t('gw.prizekind', 'Prize kind')} hint={t('gw.prizekind.h', 'What the winner claims from their inventory')}><Dropdown className="w-full" value={f.prizeKind} onChange={(v) => setF({ ...f, prizeKind: v })} options={[{ value: 'promo', label: t('gw.pk.promo', 'Promo code (generated on reveal)') }, { value: 'custom', label: t('gw.pk.custom', 'Custom (you type the content)') }, { value: 'none', label: t('gw.pk.none', 'None (bragging rights)') }]} /></Field>
           {f.prizeKind === 'custom' && (
-                <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions — kept sealed in the winner’s inventory until they reveal it.')}>
+                <Field label={t('gw.prizecontent', 'Prize content (revealed to the winner)')} hint={t('gw.prizecontent.h', 'A code, a link, instructions, kept sealed in the winner’s inventory until they reveal it.')}>
                   <Textarea rows={3} value={f.prizeContent} onChange={(e) => setF({ ...f, prizeContent: e.target.value })} placeholder={t('gw.prizecontent.ph', 'e.g. STEAM-KEY-XXXX-YYYY, or a private download link…')} />
                 </Field>
               )}
@@ -14382,16 +14386,16 @@ function BotGiveawaysCard() {
                 <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Lock size={11} /> {t('gw.reqs', 'Entry requirements')}</div>
                 <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqLinked || f.reqCreator} disabled={f.reqCreator} onChange={(e) => setF({ ...f, reqLinked: e.target.checked })} /> {t('gw.req.linked', 'Require a linked BetterCommunity account (Discord ⇄ BCWEB)')}</label>
                 <label className="flex items-center gap-2 text-sm text-[var(--muted)] cursor-pointer w-fit"><input type="checkbox" checked={f.reqCreator} onChange={(e) => setF({ ...f, reqCreator: e.target.checked, reqLinked: e.target.checked ? true : f.reqLinked })} /> {t('gw.req.creator', 'Require a linked BMM creator id')}</label>
-                <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link — they can enter once linked.')}</div>
+                <div className="text-[11px] text-[var(--faint)]">{t('gw.req.note', 'Entrants without the required link get a helpful DM/notice pointing them to link, they can enter once linked.')}</div>
               </div>
               {/* Winner DM — customizable, English by default, with insert-at-cursor variables
                   + a live preview. The bot substitutes {user}/{prize}/{code} when it sends. */}
               <MessageField label={t('gw.winnermsg', 'Winner DM message')} hint={t('gw.winnermsg.h', 'DMed to each winner when the giveaway ends.')}
                 value={f.winnerMessage} onChange={(v) => setF({ ...f, winnerMessage: v })} vars={GIVEAWAY_VARS}
-                placeholder={t('gw.winnermsg.ph', 'Congrats {user} — you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
+                placeholder={t('gw.winnermsg.ph', 'Congrats {user}, you won {prize}! 🎉')} giftCode={f.prizeKind === 'promo' ? '' : undefined} />
               {f.prizeKind === 'promo' && (
                 <div className="border-t border-[var(--line)] pt-3 grid sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize — the code is generated when the winner reveals it')}</div>
+                  <div className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5"><Gift size={11} className="text-[var(--primary-2)]" /> {t('gw.promoprize', 'Promo prize, the code is generated when the winner reveals it')}</div>
                   <Field label={t('pc.f.type', 'Type')}><Dropdown className="w-full" value={f.gift.kind} onChange={(v) => setF({ ...f, gift: { ...f.gift, kind: v } })} options={[{ value: 'discount', label: t('pc.t.discount', 'Discount (% off / months free)') }, { value: 'free_hosting', label: t('pc.t.hosting', 'Free hosting (one repo)') }, { value: 'free_pool', label: t('pc.t.pool', 'Free storage pool') }, { value: 'free_boost', label: t('pc.t.boost', 'Free boost') }]} /></Field>
                   {f.gift.kind === 'discount' && <><Field label={t('pc.f.pctoff', '% off')}><Input type="number" value={f.gift.percentOff} onChange={(e) => setF({ ...f, gift: { ...f.gift, percentOff: e.target.value } })} /></Field><Field label={t('pc.f.freemonths', 'First months free')}><Input type="number" value={f.gift.freeMonths} onChange={(e) => setF({ ...f, gift: { ...f.gift, freeMonths: e.target.value } })} /></Field></>}
                   {(f.gift.kind === 'free_hosting' || f.gift.kind === 'free_pool') && <Field label={t('pc.f.storage', 'Storage GB')}><Input type="number" value={f.gift.storageGB} onChange={(e) => setF({ ...f, gift: { ...f.gift, storageGB: e.target.value } })} /></Field>}
@@ -14506,8 +14510,8 @@ function AdminBot() {
   // than a plain yes: you want to know, at the moment you click, that it has taken effect.
   const saveToken = async () => {
     if (!tokenInput.trim()) return toast.error(t('db.token.entered', 'Enter a token.'));
-    try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved', 'Token saved — the bot will connect within ~20s.')); setTokenInput(''); reload(); }
-    catch (x) { toast.error(x.data?.error === 'bot_enabled' ? t('db.token.offfirst', 'Disable the bot first to change its token.') : x.data?.error === 'token_from_env' ? t('db.token.fromenv', 'Token is set via env — can’t change it here.') : t('db.token.failed', 'Failed.')); }
+    try { await api.put('/admin/bot/token', { token: tokenInput.trim() }); toast.success(t('db.token.tsaved', 'Token saved, the bot will connect within ~20s.')); setTokenInput(''); reload(); }
+    catch (x) { toast.error(x.data?.error === 'bot_enabled' ? t('db.token.offfirst', 'Disable the bot first to change its token.') : x.data?.error === 'token_from_env' ? t('db.token.fromenv', 'Token is set via env, can’t change it here.') : t('db.token.failed', 'Failed.')); }
   };
   // A RECONNECT, not a process restart: the API cannot signal the bot's container, but the
   // bot re-reads its config every 20 seconds and already knows how to rebuild a client. The
@@ -14519,7 +14523,7 @@ function AdminBot() {
       const next = { ...cfg, enabled: on };
       await api.put('/admin/bot/config', { config: next });
       setCfg(next);
-      toast.success(on ? t('db.power.on.ok', 'Bot switched on — it connects within ~30 s.') : t('db.power.off.ok', 'Bot switched off — it disconnects within ~30 s.'));
+      toast.success(on ? t('db.power.on.ok', 'Bot switched on, it connects within ~30 s.') : t('db.power.off.ok', 'Bot switched off, it disconnects within ~30 s.'));
       reload?.();
     } catch { toast.error(t('db.savefail', 'Save failed.')); }
     finally { setPowering(false); }
@@ -14531,7 +14535,7 @@ function AdminBot() {
       okLabel: t('db.restart.ok', 'Reconnect'),
     })) return;
     setRestarting(true);
-    try { await api.post('/admin/bot/restart'); toast.success(t('db.restart.sent', 'Reconnecting — the bot picks this up within ~20s.')); }
+    try { await api.post('/admin/bot/restart'); toast.success(t('db.restart.sent', 'Reconnecting, the bot picks this up within ~20s.')); }
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setRestarting(false); }
   };
@@ -14555,6 +14559,9 @@ function AdminBot() {
   // The scoped server's live roles + channels (from the heartbeat) so per-server config can PICK
   // instead of paste an id. Null on Global (no single server) → the pickers fall back to inputs.
   const scopeGuild = scope ? (guildList.find((gg) => gg.id === scope) || null) : null;
+  // What the automod's member picker searches. The member database is global here (one row per
+  // person per guild), so this is the admin's own door to it rather than the owner's.
+  const adminMemberSearch = (q) => api.get(`/admin/bot/members?q=${encodeURIComponent(q || '')}&take=15`).then((r) => r.members || []).catch(() => []);
   const base = scope ? `guilds.${scope}.` : '';
   const isCustomized = scope ? !!cfg.guilds?.[scope] : true;
   const sg = (p) => (base + p).split('.').reduce((o, k) => o?.[k], cfg) ?? '';
@@ -14591,7 +14598,7 @@ function AdminBot() {
 
   const SectionTitle = ({ icon: I, title, sub }) => (
     <div className="flex items-center gap-2.5 mt-7 mb-3 pb-2 border-b border-[var(--line)]">
-      <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><I size={15} className="text-[var(--primary-2)]" /></span>
+      <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><I size={15} className="text-[var(--primary-2)]" /></span>
       <div><div className="font-semibold text-sm">{title}</div>{sub && <div className="text-[11px] text-[var(--faint)]">{sub}</div>}</div>
     </div>
   );
@@ -14623,7 +14630,7 @@ function AdminBot() {
             </div>
 
             {/* Master switch — its own pill so it never reads as one of the stats. */}
-            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] bg-[var(--surface-2)]/40'}`}>
+            <label className={`flex items-center gap-2.5 cursor-pointer rounded-lg border px-3 py-2 ${cfg.enabled !== false ? 'border-success-border bg-success-bg/60' : 'border-[var(--line)] panel'}`}>
               <span className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${cfg.enabled !== false ? 'bg-success' : 'bg-[var(--surface-3,var(--line))]'}`}>
                 <input type="checkbox" className="sr-only" checked={cfg.enabled !== false} onChange={(e) => set('enabled', e.target.checked)} />
                 <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition ${cfg.enabled !== false ? 'translate-x-[18px]' : 'translate-x-[3px]'}`} />
@@ -14639,7 +14646,7 @@ function AdminBot() {
                 [status?.tempChannels ?? 0, t('db.tempvoice', 'temp voice'), Mic],
                 ...(online && status?.uptimeSec != null ? [[`${Math.floor(status.uptimeSec / 3600)}h ${Math.floor((status.uptimeSec % 3600) / 60)}m`, t('db.uptime', 'uptime'), Clock]] : []),
               ].map(([v, l, I], i) => (
-                <div key={i} className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-1.5 min-w-[74px]">
+                <div key={i} className="rounded-lg border border-[var(--line)] panel px-3 py-1.5 min-w-[74px]">
                   <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-[var(--faint)]"><I size={11} /> {l}</div>
                   <div className="text-[15px] font-bold tabular-nums leading-tight text-[var(--text)] mt-0.5">{v}</div>
                 </div>
@@ -14649,7 +14656,7 @@ function AdminBot() {
             <Button size="sm" variant="primary" onClick={save} className="shrink-0"><CheckCircle2 size={14} /> {t('db.save', 'Save changes')}</Button>
           </div>
           {(status?.mod && (status.mod.kicks || status.mod.timeouts || status.mod.purged)) ? (
-            <div className="flex items-center gap-4 text-[11px] text-[var(--faint)] px-4 py-2 border-t border-[var(--line)] bg-[var(--surface-2)]/30">
+            <div className="flex items-center gap-4 text-[11px] text-[var(--faint)] px-4 py-2 border-t border-[var(--line)] panel-quiet">
               <Shield size={12} className="text-[var(--faint)]" />
               <span>{status.mod.kicks ?? 0} {t('db.kicked', 'kicked')}</span><span>{status.mod.timeouts ?? 0} {t('db.timedout', 'timed out')}</span><span>{status.mod.purged ?? 0} {t('db.purged', 'purged')}</span><span>{t('db.session', '(this session)')}</span>
             </div>
@@ -14677,17 +14684,17 @@ function AdminBot() {
       <div className="grid md:grid-cols-2 gap-4 mb-2">
         <Card className="p-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Lock size={13} className="text-[var(--primary-2)]" /></span>
+            <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Lock size={13} className="text-[var(--primary-2)]" /></span>
             <span className="font-medium text-sm">{t('db.token', 'Bot token')}</span>
             {data?.hasToken ? <Badge tone="green"><CheckCircle2 size={10} /> {t('db.set', 'Set')}</Badge> : <Badge tone="amber">{t('db.notset', 'Not set')}</Badge>}
           </div>
           {data?.tokenFromEnv ? (
             <p className="text-xs text-[var(--muted)]">{t('db.token.env', 'The token is provided via the DISCORD_TOKEN environment variable and is managed outside the dashboard.')}</p>
           ) : !canToken ? (
-            <p className="text-xs text-[var(--muted)]">{t('db.token.adminonly', 'The token is set by an administrator — it is not part of the bot-management permission.')}</p>
+            <p className="text-xs text-[var(--muted)]">{t('db.token.adminonly', 'The token is set by an administrator, it is not part of the bot-management permission.')}</p>
           ) : botDisabled ? (
             <>
-              <p className="text-xs text-[var(--muted)] mb-2">{t('db.token.paste', 'Paste your Discord bot token — it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.')}</p>
+              <p className="text-xs text-[var(--muted)] mb-2">{t('db.token.paste', 'Paste your Discord bot token, it’s stored server-side and the bot connects automatically within ~20s. The token is never shown again.')}</p>
               <div className="flex gap-2">
                 <Input type="password" value={tokenInput} onChange={(e) => setTokenInput(e.target.value)} placeholder={data?.hasToken ? t('db.token.new', 'New token…') : t('db.token.ph', 'Bot token…')} onKeyDown={(e) => e.key === 'Enter' && saveToken()} />
                 <Button variant="primary" onClick={saveToken}>{data?.hasToken ? t('db.token.change', 'Change') : t('db.token.settoken', 'Set token')}</Button>
@@ -14697,7 +14704,7 @@ function AdminBot() {
           ) : (
             <p className="text-xs text-warning flex items-center gap-1.5"><Bell size={12} /> {t('db.token.needoff', 'Turn the bot off (master switch) and Save to change the token.')}</p>
           )}
-          {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none', 'No token set — add one (or set DISCORD_TOKEN in compose .env) to bring the bot online.')}</div>}
+          {!online && !data?.hasToken && <div className="text-[11px] text-[var(--muted)] mt-2 flex items-center gap-1.5"><Bell size={12} /> {t('db.token.none', 'No token set, add one (or set DISCORD_TOKEN in compose .env) to bring the bot online.')}</div>}
           {/* Offered whenever a token exists, including while the bot is offline — a stuck
               connection is exactly when somebody wants this, and requiring it to be online
               first would withhold the button in the only case that needs it. */}
@@ -14719,7 +14726,7 @@ function AdminBot() {
 
         {data?.storage && (
           <Card className="p-4">
-            <div className="flex items-center justify-between mb-2 gap-2"><span className="font-medium text-sm flex items-center gap-2"><span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><HardDrive size={13} className="text-[var(--primary-2)]" /></span> {t('db.memberdb', 'Member database')}</span>
+            <div className="flex items-center justify-between mb-2 gap-2"><span className="font-medium text-sm flex items-center gap-2"><span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><HardDrive size={13} className="text-[var(--primary-2)]" /></span> {t('db.memberdb', 'Member database')}</span>
               <span className="text-xs text-[var(--muted)] shrink-0">{data.storage.memberCount} {t('db.tracked', 'tracked')}</span></div>
             {(() => { const capMB = cfg.limits?.storageMB || 0; const usedMB = data.storage.usedBytes / (1024 * 1024); const pct = capMB ? Math.min(100, (usedMB / capMB) * 100) : 0; return (
               <>
@@ -14748,7 +14755,7 @@ function AdminBot() {
           BELOW it and never leaves a gap or moves a sibling across columns — the card you
           clicked and its neighbour stay put.
       */}
-      <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel — what you send by hand, where it lands, and the sources that post on their own.")} />
+      <SectionTitle icon={Megaphone} title={t('db.sec.posts', "Announcements & posts")} sub={t('db.sec.posts.sub', "Everything the bot writes into a channel, what you send by hand, where it lands, and the sources that post on their own.")} />
       <div className="grid md:grid-cols-2 gap-4 items-start">
 
         {/* The composer is the tall card here; spanning it full-width stops the 2-col grid from
@@ -14756,7 +14763,7 @@ function AdminBot() {
             The shorter cards below then fill the two columns cleanly. */}
         <div className="md:col-span-2">
         <ModuleCard id="sec-announce" icon={Send} title={t('db.mod.announce', 'Write an announcement')}
-          desc={t('db.mod.announce.d', 'Compose and send one by hand — same queue, same routing and same failure reporting as every automatic announcement.')}
+          desc={t('db.mod.announce.d', 'Compose and send one by hand, same queue, same routing and same failure reporting as every automatic announcement.')}
           onToggle={null}>
           <AnnounceComposer guildList={guildList} />
         </ModuleCard>
@@ -14767,7 +14774,7 @@ function AdminBot() {
           desc={t('db.mod.route.d', 'A commission, an incident and "something is waiting" are read by different people. One channel carrying all three is one channel everybody mutes.')}
           enabled onToggle={null}>
           {[
-            ['myo', t('db.r.myo', 'Commissions (MYO)'), t('db.r.myo.h', 'A paid consultation arriving — somebody is waiting for an answer.')],
+            ['myo', t('db.r.myo', 'Commissions (MYO)'), t('db.r.myo.h', 'A paid consultation arriving, somebody is waiting for an answer.')],
             ['incident', t('db.r.incident', 'Status incidents'), t('db.r.incident.h', 'A service stopped answering, and a server error nobody has seen before.')],
             // Left empty ON PURPOSE by default: unlike every other row here, empty means
             // nothing is sent rather than "send to the general channel". A notice names
@@ -14805,15 +14812,15 @@ function AdminBot() {
             jagged gap beside a short neighbour, and never shoves a sibling into the other
             column — the two failure modes of a plain grid and of masonry. */}
         <div className={cfg.blog?.enabled ? 'md:col-span-2' : ''}>
-        <ModuleCard id="sec-blog" icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel — filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
+        <ModuleCard id="sec-blog" icon={Newspaper} title={t('db.mod.blog', 'Blog announcements')} desc={t('db.mod.blog.d', 'Post new blog posts to any channel, filter each route by project.')} enabled={!!cfg.blog?.enabled} onToggle={(v) => set('blog.enabled', v)}>
           <BlogRoutes routes={blogRoutes} onChange={(r) => set('blog.routes', r)} guildList={guildList} />
         </ModuleCard>
         </div>
 
         <div className={cfg.alerts?.enabled ? 'md:col-span-2' : ''}>
-        <ModuleCard id="sec-alerts" icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire — performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
+        <ModuleCard id="sec-alerts" icon={AlertTriangle} title={t('db.mod.alerts', 'Alerts')} desc={t('db.mod.alerts.d', 'Post alerts as they fire, performance in one channel, incidents in another.')} enabled={!!cfg.alerts?.enabled} onToggle={(v) => set('alerts.enabled', v)}>
           <div className="grid sm:grid-cols-2 gap-3">
-          <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage — the "is it slow?" alerts.')}>
+          <Field label={t('db.f.alertch', 'Performance channel id')} hint={t('db.f.alertch.h', 'CPU, memory, disk, Web Vitals and storage, the "is it slow?" alerts.')}>
             <Input value={g('alerts.channelId')} onChange={(e) => set('alerts.channelId', e.target.value)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
           {/* Optional on purpose. Left empty, incidents keep going to the performance
@@ -14849,7 +14856,7 @@ function AdminBot() {
             <MultiChannelInput value={cfg.payments?.refundChannelIds?.length ? cfg.payments.refundChannelIds : (cfg.payments?.refundChannelId ? [cfg.payments.refundChannelId] : [])} onChange={(v) => set('payments.refundChannelIds', v)} placeholder={t('db.f.chanid', 'Channel ID')} />
           </Field>
           <div className="pt-1">
-            <Button size="sm" onClick={async () => { try { await api.post('/admin/bot/payments/test'); toast.success(t('db.pay.testsent', 'Test queued — the bot posts it within ~2 min. Check the channel (and the bot logs if nothing shows).')); } catch { toast.error(t('common.failed', 'Failed.')); } }}><Bell size={13} /> {t('db.pay.test', 'Send test message')}</Button>
+            <Button size="sm" onClick={async () => { try { await api.post('/admin/bot/payments/test'); toast.success(t('db.pay.testsent', 'Test queued, the bot posts it within ~2 min. Check the channel (and the bot logs if nothing shows).')); } catch { toast.error(t('common.failed', 'Failed.')); } }}><Bell size={13} /> {t('db.pay.test', 'Send test message')}</Button>
             <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('db.pay.testnote', 'Posts a sample embed to the channels above so you can verify the bot can post there — no real payment needed. Save your channel ids first. Note: only NEW payments are announced after you enable this module (existing ones are skipped).')}</p>
             <PaymentsDiag />
           </div>
@@ -14873,12 +14880,12 @@ function AdminBot() {
             live. `enabled` is deliberately NOT the panel count either — ModuleCard hides its
             children when enabled === false, and a card reporting "0 panels" would refuse to
             show the form for adding the first one. */}
-        <ModuleCard id="sec-rp" icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached — as buttons, or a dropdown members pick from.')} onToggle={null}>
+        <ModuleCard id="sec-rp" icon={ShieldCheck} title={t('db.mod.rp', 'Rules & role panels')} desc={t('db.mod.rp.d', 'Post your rules with roles attached, as buttons, or a dropdown members pick from.')} onToggle={null}>
           <RolePanels panels={cfg.rolePanels || []} onChange={(v) => set('rolePanels', v)} guildList={guildList} />
         </ModuleCard>
         </div>
 
-        <ModuleCard id="sec-dma" icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity — Discord treats a burst of DMs as spam.')} onToggle={null}>
+        <ModuleCard id="sec-dma" icon={Mail} title={t('db.mod.dma', 'Message every member')} desc={t('db.mod.dma.d', 'One direct message to everyone the bot has seen. Slow by necessity: Discord treats a burst of DMs as spam.')} onToggle={null}>
           <DmBroadcast />
         </ModuleCard>
         {/* Giveaways — an engagement tool aimed at the community, not a health metric, so it
@@ -14899,7 +14906,7 @@ function AdminBot() {
         <SectionTitle icon={Sparkles} title={t('db.eco.title', 'Levels & economy')} sub={t('db.eco.sub2', 'Messages, reactions and voice time earn XP; XP earns levels; levels grant points to spend in the shop or the casino. Everything below is site-wide: one economy across every server the bot is in. Only members who linked their Discord to a BCWEB account accrue anything — an unlinked member earns nothing until they link, and nothing is credited retroactively.')} />
 
         {/* Economy — the system itself, in four short columns instead of one long form. */}
-        <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system — off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
+        <ModuleCard id="sec-eco" icon={Sparkles} title={t('db.eco.card', 'Economy')} desc={t('db.eco.card.d', 'The whole system, off until you turn it on.')} enabled={eco.enabled !== false && !!eco.enabled} onToggle={(v) => set('economy.enabled', v)}>
           <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div>
               <Lbl>{t('db.eco.g.currency', 'Currency')}</Lbl>
@@ -14921,8 +14928,8 @@ function AdminBot() {
               <Lbl>{t('db.eco.g.curve', 'Level curve')}</Lbl>
               <div className="space-y-2">
                 <Field label={t('db.eco.base', 'XP for level 1')} className="!mb-0"><Input type="number" value={num('curveBase', 100)} onChange={(e) => set('economy.curveBase', Number(e.target.value))} /></Field>
-                <Field label={t('db.eco.factor', 'Curve factor (×/level)')} className="!mb-0" hint={t('db.eco.factor.h', 'Each level needs factor× the XP of the previous one — higher = slower.')}><Input type="number" step="0.01" value={num('curveFactor', 1.18)} onChange={(e) => set('economy.curveFactor', Number(e.target.value))} /></Field>
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-2.5 py-2 text-[11px] text-[var(--faint)] space-y-0.5">
+                <Field label={t('db.eco.factor', 'Curve factor (×/level)')} className="!mb-0" hint={t('db.eco.factor.h', 'Each level needs factor× the XP of the previous one, higher = slower.')}><Input type="number" step="0.01" value={num('curveFactor', 1.18)} onChange={(e) => set('economy.curveFactor', Number(e.target.value))} /></Field>
+                <div className="rounded-lg border border-[var(--line)] panel px-2.5 py-2 text-[11px] text-[var(--faint)] space-y-0.5">
                   {[1, 5, 10, 25, 50].map((lv) => <div key={lv} className="flex justify-between tabular-nums"><span>{t('db.eco.lv', 'Lv {n}').replace('{n}', lv)}</span><b className="text-[var(--muted)]">{xpFor(lv).toLocaleString()} XP</b></div>)}
                 </div>
               </div>
@@ -14933,7 +14940,7 @@ function AdminBot() {
                 <Field label={t('db.eco.ptsevery', 'Grant points every N levels')} className="!mb-0"><Input type="number" value={num('pointsEveryLevels', 5)} onChange={(e) => set('economy.pointsEveryLevels', Number(e.target.value))} /></Field>
                 <Field label={t('db.eco.ptsper', 'Points per grant')} className="!mb-0"><Input type="number" value={num('pointsPerGrant', 10)} onChange={(e) => set('economy.pointsPerGrant', Number(e.target.value))} /></Field>
                 <label className="flex items-center gap-2.5 text-sm cursor-pointer pt-1"><BotSwitch checked={eco.statsPublic !== false} onChange={(v) => set('economy.statsPublic', v)} /> <span className="text-xs">{t('db.eco.statspub', 'Voice / message / reaction stats are public by default')}</span></label>
-                <p className="text-[11px] text-[var(--faint)]">{t('db.eco.lvlpub', 'Levels are always public — they show on the member’s BCWEB profile and via /profile.')}</p>
+                <p className="text-[11px] text-[var(--faint)]">{t('db.eco.lvlpub', 'Levels are always public, they show on the member’s BCWEB profile and via /profile.')}</p>
               </div>
             </div>
           </div>
@@ -14943,7 +14950,7 @@ function AdminBot() {
         {/* Casino — full width: its payout table needs the room, and a three-column grid put
             two short cards in a narrow column that wrapped their titles one word per line. */}
         <div>
-        <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account — the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
+        <ModuleCard id="sec-casino" icon={Ticket} title={t('db.eco.casino', 'Casino')} desc={t('db.eco.casino.d2', 'Members bet points on animated games. Needs a linked BCWEB account, the bot refuses an unlinked member before any bet.')} enabled={!!eco.casino?.enabled} onToggle={(v) => set('economy.casino.enabled', v)}>
           <div className="grid grid-cols-3 gap-2">
             <Field label={t('db.eco.minbet', 'Min bet')} className="!mb-0"><Input type="number" value={eco.casino?.minBet ?? 1} onChange={(e) => set('economy.casino.minBet', Number(e.target.value))} /></Field>
             <Field label={t('db.eco.maxbet', 'Max bet')} hint={t('db.eco.maxbet.h', '0 = no cap. The bot then says so on the table instead of silently capping an all-in.')} className="!mb-0"><Input type="number" value={eco.casino?.maxBet ?? 100} onChange={(e) => set('economy.casino.maxBet', Number(e.target.value))} /></Field>
@@ -14980,7 +14987,7 @@ function AdminBot() {
             const setLive = (k, v) => set('economy.casino.live', { ...live, [k]: v });
             return (
               <div className="space-y-3">
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                <div className="rounded-lg border border-[var(--line)] panel p-3">
                   <Lbl>{t('db.eco.payoutprev2', 'Return to player, after the house edge')}</Lbl>
                   <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.edgegame.d', 'Each game can carry its own edge. Leave a box empty to use the global percentage above.')}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
@@ -15001,7 +15008,7 @@ function AdminBot() {
                 {/* The live tables: several members on one round, in the channel, in real time.
                     Crash and the race only exist this way; the pot is the stake-weighted draw;
                     "multi" is the shared roll for the classic games. */}
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                <div className="rounded-lg border border-[var(--line)] panel p-3">
                   <Lbl>{t('db.eco.live', 'Live tables')}</Lbl>
                   <p className="text-[11px] text-[var(--faint)] mb-2 leading-snug">{t('db.eco.live.d', 'Rounds several members join from the channel and watch happen. Race: six cars, pick one. Pot: everyone stakes, one winner drawn in proportion to stake — minimum two players, no maximum. Multi: the classic games on one shared roll.')}</p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -15046,12 +15053,12 @@ function AdminBot() {
             ['hosting', Server, t('db.eco.kind.hosting', 'Free hosting'), t('db.eco.kind.hosting.h', 'A code for N GB over M months of hosting.')],
             ['promo', Ticket, t('db.eco.kind.promo', 'Promo code'), t('db.eco.kind.promo.h', 'A fixed code you typed, or a generated discount.')],
             ['role', Shield, t('db.eco.kind.role', 'Discord role'), t('db.eco.kind.role.h', 'You hand it out (Members → Purchases to hand out).')],
-            ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual'), t('db.eco.kind.custom.h', 'Anything else — you hand it out.')],
+            ['custom', Gift, t('db.eco.kind.custom', 'Custom / manual'), t('db.eco.kind.custom.h', 'Anything else, you hand it out.')],
           ];
           return (
         <ModuleCard id="sec-shop" icon={Gift} title={t('db.eco.shop', 'Shop')} desc={t('db.eco.shop.d2', 'What members buy with points, on Discord (/shop) and on the site (Dashboard → Shop & inventory). Every item needs a linked BCWEB account: that is where the badge, the code or the perk lands. Codes are sealed until the holder reveals them, so an unopened item can be gifted.')} onToggle={null}
           action={<Button size="sm" variant="ghost" onClick={() => set('economy.shop', [...shop, { id: `it-${Date.now().toString(36)}`, name: '', desc: '', cost: 100, kind: 'badge', giftable: true, active: true }])}><Plus size={13} /> {t('db.eco.additem', 'Item')}</Button>}>
-          {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet — add one. Members buy them with points.')}</div>}
+          {shop.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.eco.noitems', 'No items yet, add one. Members buy them with points.')}</div>}
           {/* One item per row, full width: the seven kind chips, the kind's own fields and the
               lifetime grid need the whole line; halved, every label wrapped. */}
           <div className="space-y-3">
@@ -15062,7 +15069,7 @@ function AdminBot() {
             const KIcon = K[1];
             const tag = it.exclusive ? t('db.eco.tag.excl', 'Exclusive') : it.stock != null && it.stock !== '' ? t('db.eco.tag.lim', 'Limited · {n}').replace('{n}', it.stock) : it.availableUntil ? t('db.eco.tag.timed', 'Timed') : null;
             return (
-            <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative bg-[var(--surface-2)]/30 ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
+            <div key={it.id || i} className={`rounded-xl border p-3 space-y-2.5 relative panel-quiet ${it.active === false ? 'border-dashed border-[var(--line)] opacity-70' : 'border-[var(--line)]'}`}>
               <div className="flex items-center gap-2 pr-6">
                 <KIcon size={14} className="text-[var(--primary-2)] shrink-0" />
                 <Input className="!py-1.5 flex-1" value={it.name || ''} onChange={(e) => upd(i, { name: e.target.value })} placeholder={t('db.eco.itemname', 'Item name')} />
@@ -15126,7 +15133,7 @@ function AdminBot() {
                   <label className="flex items-center gap-1.5 cursor-pointer" title={t('db.eco.onsite.h', 'Show this item in the site Boutique')}><input type="checkbox" checked={it.onSite !== false} onChange={(e) => upd(i, { onSite: e.target.checked })} /> {t('db.eco.onsite', 'Site shop')}</label>
                 </div>
               </div>
-              {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Pick the badge — the item is hidden until then.')}</p>}
+              {kind === 'badge' && !it.ref && <p className="text-[11px] text-warning flex items-center gap-1"><AlertTriangle size={11} /> {t('db.eco.needbadge', 'Pick the badge, the item is hidden until then.')}</p>}
             </div>
           ); })}
           </div>
@@ -15158,7 +15165,7 @@ function AdminBot() {
         <div className="md:col-span-2">
         <ModuleCard id="sec-retention" icon={LinkIcon} title={t('db.mod.retention', 'Linked-account retention')}>
           <p className="text-[11px] text-[var(--muted)] mb-3">{t('db.ret.sub', 'What the storage sweeper is allowed to do to members who linked a BCWEB account when a limit is reached.')}</p>
-          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer mb-2">
+          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] panel p-3 cursor-pointer mb-2">
             <input type="checkbox" className="mt-0.5" checked={cfg.limits?.keepLinked !== false}
               onChange={(e) => set('limits.keepLinked', e.target.checked)} />
             <div>
@@ -15166,7 +15173,7 @@ function AdminBot() {
               <p className="text-[11px] text-[var(--muted)] leading-snug mt-0.5">{t('db.ret.keep.d', 'When the cap is hit, prune anonymous rows first and keep every member who linked a site account — so a limit can’t silently delete the tie between a Discord id and a BCWEB profile.')}</p>
             </div>
           </label>
-          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 cursor-pointer">
+          <label className="flex items-start gap-2.5 rounded-lg border border-[var(--line)] panel p-3 cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={cfg.limits?.purgeUnlinks !== false}
               onChange={(e) => set('limits.purgeUnlinks', e.target.checked)} />
             <div>
@@ -15187,7 +15194,7 @@ function AdminBot() {
 
       {page === 'servers' && (<>
       {/* ═══════════ PER-SERVER ═══════════ */}
-      <SectionTitle icon={Server} title={t('db.sec.perserver', 'Per-server configuration')} sub={t('db.sec.perserver.sub', 'Moderation, welcome, join-to-create and gated roles — set independently for each server the bot is in.')} />
+      <SectionTitle icon={Server} title={t('db.sec.perserver', 'Per-server configuration')} sub={t('db.sec.perserver.sub', 'Moderation, welcome, join-to-create and gated roles, set independently for each server the bot is in.')} />
       {/* Scope selector — a bot-dashboard server picker (avatars + custom-config dot) */}
       <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar pb-1">
         {/* The top-level feature config is what every server WITHOUT its own follows (the bot's
@@ -15201,13 +15208,13 @@ function AdminBot() {
         ))}
       </div>
       {guildList.length === 0 && (
-        <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+        <div className="text-xs text-[var(--muted)] mb-3 flex items-center gap-1.5 rounded-lg border border-[var(--line)] panel p-3">
           <Bell size={13} /> {t('db.scope.noservers', 'No servers detected yet. Bring the bot online (token above) and add it to your Discord servers — they’ll appear here to configure individually. Until then, edit the Global defaults which apply to every server.')}
         </div>
       )}
 
       {/* Scope banner */}
-      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 rounded-lg border border-[var(--line)] panel px-3 py-2">
         <div className="text-xs text-[var(--muted)] flex items-center gap-1.5 min-w-0">
           {scope ? <Server size={13} className="text-[var(--primary-2)] shrink-0" /> : <Globe size={13} className="text-[var(--primary-2)] shrink-0" />}
           <span className="truncate">{t('db.scope.editing', 'Editing')} <b className="text-[var(--text)]">{scopeName}</b>{scope ? (isCustomized ? '' : t('db.scope.notyet', ' — not configured yet')) : t('db.scope.appliedto', ' — applied to any server without its own config')}</span>
@@ -15225,7 +15232,7 @@ function AdminBot() {
             <Ban size={13} className={bannedForScope ? 'text-error shrink-0' : 'text-[var(--faint)] shrink-0'} />
             {bannedForScope
               ? <span className="truncate">{t('db.ban.is', 'Blocked')} · {bannedForScope.mode === 'disable' ? t('db.ban.disable.s', 'the bot stays but ignores every command here') : t('db.ban.leave.s', 'the bot leaves and will not rejoin')}{bannedForScope.banId ? ` · ${bannedForScope.banId}` : ''}</span>
-              : <span className="truncate">{t('db.ban.not', 'Not blocked — the bot works normally here.')}</span>}
+              : <span className="truncate">{t('db.ban.not', 'Not blocked, the bot works normally here.')}</span>}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {bannedForScope
@@ -15242,7 +15249,7 @@ function AdminBot() {
       {scope && !isCustomized ? (
         <div className="text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-6 text-center">
           <Server size={22} className="mx-auto mb-2 opacity-50" />
-          {t('db.scope.prompt2', 'This server is not configured yet. Press "Configure this server" above — its owner can also do it from their own dashboard.')}
+          {t('db.scope.prompt2', 'This server is not configured yet. Press "Configure this server" above, its owner can also do it from their own dashboard.')}
         </div>
       ) : (
         <div className="grid md:grid-cols-2 gap-4 items-start">
@@ -15253,14 +15260,23 @@ function AdminBot() {
           <ModuleCard id="sec-moderation" icon={Shield} title={t('db.mod.moderation', 'Moderation')} desc={t('db.mod.moderation.d', 'Auto-kick + purge in no-post channels; anti-selfbot timeout.')} enabled={!!scopeObj.moderation?.enabled} onToggle={(v) => sset('moderation.enabled', v)}>
             <label className="flex items-center justify-between gap-2 text-sm"><span>{t('db.f.antiselfbot', 'Anti-selfbot filter')} <span className="text-[var(--faint)]">{t('db.f.antiselfbot.sub', '(mass-mention timeout)')}</span></span><BotSwitch checked={!!scopeObj.moderation?.antiSelfbot} onChange={(v) => sset('moderation.antiSelfbot', v)} /></label>
             <Field label={t('db.f.nopost', 'No-post channels')} hint={t('db.f.nopost.h', 'Posting here kicks the user + purges their messages. A channel id is unique to its server.')}>
-              <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder={t('db.f.chanph', 'Channel ID — press Enter')} />
+              <ChannelIdList ids={purgeChans} onChange={(v) => sset('moderation.purgeChannelIds', v)} placeholder={t('db.f.chanph', 'Channel ID, press Enter')} />
             </Field>
             {/* The automod rules (features/automod.mjs), through the SAME editor the owner's
                 dashboard uses — one shape, two doors. Global scope = the defaults a server
                 without its own config follows. */}
             <div className="pt-3 mt-1 border-t border-[var(--line)]">
-              <p className="text-[11px] text-[var(--faint)] mb-2">{t('db.automod.h', 'Automod — the rules below apply to this server; its owner can also tune them from their own dashboard.')}</p>
-              <AutomodEditor value={normAutomod(scopeObj.moderation?.automod)} onChange={(v) => sset('moderation.automod', v)} roles={scopeGuild?.roles} channels={scopeGuild?.channels} />
+              <p className="text-[11px] text-[var(--faint)] mb-2">{t('db.automod.h', 'Automod, the rules below apply to this server; its owner can also tune them from their own dashboard.')}</p>
+              <AutomodEditor value={normAutomod(scopeObj.moderation?.automod)} onChange={(v) => sset('moderation.automod', v)} roles={scopeGuild?.roles} channels={scopeGuild?.channels} memberSearch={adminMemberSearch} />
+              {/* The warn ladder: what a count of warnings buys. Same editor and same key
+                  (moderation.warnThresholds) as the owner's dashboard, so the two doors cannot
+                  disagree about the third warning. */}
+              <div className="pt-3 mt-3 border-t border-[var(--line)]">
+                <h4 className="text-sm font-semibold text-[var(--text)] mb-2">{t('db.ladder', 'The warn ladder')}</h4>
+                <WarnLadderEditor value={normLadder(scopeObj.moderation?.warnThresholds)} onChange={(v) => sset('moderation.warnThresholds', ladderForSave(v))}
+                  decayHours={normAutomod(scopeObj.moderation?.automod).warnDecayHours}
+                  onDecayChange={(n) => sset('moderation.automod', { ...normAutomod(scopeObj.moderation?.automod), warnDecayHours: n })} />
+              </div>
             </div>
           </ModuleCard>
           </div>
@@ -15268,7 +15284,7 @@ function AdminBot() {
           {/* Log routing (features/logs.mjs) — per server like moderation; the top-level `logs`
               is the default for a server without its own. */}
           <div className={scopeObj.logs?.enabled !== false ? 'md:col-span-2' : ''}>
-          <ModuleCard id="sec-logs" icon={FileText} title={t('db.mod.logs', 'Logs')} desc={t('db.mod.logs.d', 'Where this server logs: a forum with one post per category or per day, or a text channel — routable per group and per category.')} enabled={scopeObj.logs?.enabled !== false} onToggle={(v) => sset('logs', { ...normLogs(scopeObj.logs), enabled: v })}>
+          <ModuleCard id="sec-logs" icon={FileText} title={t('db.mod.logs', 'Logs')} desc={t('db.mod.logs.d', 'Where this server logs: a forum with one post per category or per day, or a text channel, routable per group and per category.')} enabled={scopeObj.logs?.enabled !== false} onToggle={(v) => sset('logs', { ...normLogs(scopeObj.logs), enabled: v })}>
             <LogsEditor value={normLogs(scopeObj.logs)} onChange={(v) => sset('logs', v)} channels={scopeGuild?.channels} hideEnable />
           </ModuleCard>
           </div>
@@ -15277,7 +15293,7 @@ function AdminBot() {
           <div className={scopeObj.joinToCreate?.enabled ? 'md:col-span-2' : ''}>
           <ModuleCard id="sec-jtc" icon={Mic} title={t('db.mod.jtc', 'Join-to-create voice')} desc={t('db.mod.jtc.d', 'Joining a lobby spawns a personal temp voice room.')} enabled={!!scopeObj.joinToCreate?.enabled} onToggle={(v) => sset('joinToCreate.enabled', v)}
             action={<Button size="sm" variant="ghost" onClick={() => sset('joinToCreate.lobbies', [...jtcLobbies, { lobbyChannelId: '', categoryId: '', tempCategoryName: 'Temp Voice' }])}><Plus size={13} /> {t('db.jtc.addlobby', 'Lobby')}</Button>}>
-            {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.jtc.nolobbies', 'No lobbies — add one. Joining that voice channel spawns a temp room in its category.')}</div>}
+            {jtcLobbies.length === 0 && <div className="text-xs text-[var(--faint)]">{t('db.jtc.nolobbies', 'No lobbies, add one. Joining that voice channel spawns a temp room in its category.')}</div>}
             {jtcLobbies.map((lb, i) => (
               <div key={i} className="rounded-lg border border-[var(--line)] p-2.5 space-y-2 relative">
                 <button onClick={() => sset('joinToCreate.lobbies', jtcLobbies.filter((_, k) => k !== i))} className="absolute top-2 right-2 text-[var(--faint)] hover:text-error"><Trash2 size={13} /></button>
@@ -15302,8 +15318,8 @@ function AdminBot() {
               const wbp = { allowed: true, paid: false, priceCents: 0, unlocked: [], ...(cfg.welcomeBanner || {}) };
               const unlockedStr = (wbp.unlocked || []).join('\n');
               return (
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-1.5 space-y-2.5">
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.wbp.title', 'Custom banner — owner upload policy')}</div>
+                <div className="rounded-lg border border-[var(--line)] panel p-3 mb-1.5 space-y-2.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('db.wbp.title', 'Custom banner, owner upload policy')}</div>
                   <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
                     <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" className="accent-[var(--primary)]" checked={wbp.allowed !== false} onChange={(e) => set('welcomeBanner.allowed', e.target.checked)} /> {t('db.wbp.allowed', 'Allow owners to upload a custom banner')}</label>
                     <label className={`flex items-center gap-2 cursor-pointer ${wbp.allowed === false ? 'opacity-40 pointer-events-none' : ''}`}><input type="checkbox" className="accent-[var(--primary)]" checked={!!wbp.paid} onChange={(e) => set('welcomeBanner.paid', e.target.checked)} /> {t('db.wbp.paid', 'Make it a paid, one-time upgrade')}</label>
@@ -15312,7 +15328,7 @@ function AdminBot() {
                     )}
                   </div>
                   {wbp.allowed !== false && wbp.paid && (
-                    <Field className="!mb-0" label={t('db.wbp.unlocked', 'Unlocked servers (one guild id per line)')} hint={t('db.wbp.unlocked.h', 'These servers may upload a custom banner without paying — grant one here once a server has bought the upgrade.')}>
+                    <Field className="!mb-0" label={t('db.wbp.unlocked', 'Unlocked servers (one guild id per line)')} hint={t('db.wbp.unlocked.h', 'These servers may upload a custom banner without paying, grant one here once a server has bought the upgrade.')}>
                       <Textarea rows={2} value={unlockedStr} onChange={(e) => set('welcomeBanner.unlocked', e.target.value.split(/[\n,]/).map((x) => x.trim()).filter(Boolean))} placeholder={'123456789012345678'} />
                     </Field>
                   )}
@@ -15353,7 +15369,7 @@ function AdminBot() {
                   without this the only symptom would be a background that never appears. */}
               {sg('welcome.bgImage') && !/^\/api\/media\/blog\/[A-Za-z0-9._/-]+$/.test(sg('welcome.bgImage')) && (
                 <div className="text-[11px] text-warning flex items-center gap-1 mt-1">
-                  <AlertTriangle size={11} /> {t('db.f.bgimg.bad', 'That is not an uploaded-media link. It must start with /api/media/blog/ — the colour will be used instead.')}
+                  <AlertTriangle size={11} /> {t('db.f.bgimg.bad', 'That is not an uploaded-media link. It must start with /api/media/blog/, the colour will be used instead.')}
                 </div>
               )}
             </div>
@@ -15447,7 +15463,7 @@ function BotModerate({ member }) {
     try {
       await api.post('/admin/bot/actions', { kind: k.kind, discordId: member.discordId, reason, ...(minutes ? { minutes } : {}) });
       // Deliberately not "done": it is queued, and the bot may still be refused.
-      toast.success(t('bmod.queued', 'Queued — the bot will do it within a minute, and the result shows here.'));
+      toast.success(t('bmod.queued', 'Queued, the bot will do it within a minute, and the result shows here.'));
       hist.reload();
     } catch (x) {
       toast.error(x?.data?.error === 'reason_required' ? t('bmod.needreason', 'That one needs a reason.')
@@ -15534,14 +15550,14 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
     <ModuleCard id="sec-icons" icon={ImageIcon} title={t('db.eco.icons', 'Button icons')} desc={t('db.eco.icons.d3', 'The bot’s buttons carry custom emoji instead of the unicode ones. Each icon is a coloured tile with a glyph from the same icon families as the site (lucide, Phosphor, or an image): pick the glyph and the colour per button, the shape and the glyph colour for the set, download the pack, upload it on the application’s Emojis page, then paste each emoji here.')}
       action={<a href="/api/admin/bot/emoji-pack.zip" download><Button size="sm" variant="ghost"><Download size={13} /> {t('db.eco.icons.pack', 'Icon pack')}</Button></a>}>
       {/* Set-wide style — controls on one line, the help text as its own block below */}
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3.5 space-y-3">
+      <div className="rounded-xl border border-[var(--line)] panel p-3.5 space-y-3">
         <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
           <div className="flex flex-wrap items-end gap-4">
             <Field label={t('db.eco.icons.shape', 'Tile shape')} className="!mb-0 w-40"><Dropdown value={shape} onChange={(v) => onStyle('shape', v)} options={[{ value: 'rounded', label: t('db.eco.icons.shape.rounded', 'Rounded') }, { value: 'circle', label: t('db.eco.icons.shape.circle', 'Circle') }, { value: 'square', label: t('db.eco.icons.shape.square', 'Square') }, { value: 'none', label: t('db.eco.icons.shape.none', 'No tile (glyph only)') }]} /></Field>
             <Field label={t('db.eco.icons.fg', 'Glyph colour')} className="!mb-0"><ColorInput value={fg} onChange={(v) => onStyle('fg', v)} /></Field>
           </div>
           <div className="flex items-center gap-2.5">
-            {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full bg-[var(--primary)]/12 text-[var(--primary-2)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
+            {customised ? <span className="text-[10.5px] font-medium px-2 py-0.5 rounded-full tint-primary text-[var(--primary-2)]">{t('db.eco.icons.custom', '{n} customised').replace('{n}', customised)}</span> : null}
             <button type="button" onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-[var(--primary-2)] hover:underline">{open ? t('db.eco.icons.less', 'Hide the list') : t('db.eco.icons.more', 'Map the {n} icons').replace('{n}', list.length)}</button>
           </div>
         </div>
@@ -15561,7 +15577,7 @@ function BotIconsCard({ icons, iconStyle, onChange, onStyle }) {
               // fraction of ~230px, so every one of them ellipsised at once ("gl…", "u…",
               // "<:bc_site:154…") — the card read as broken. Nothing shares a row with the
               // controls now, so nothing truncates but the label.
-              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 transition-colors ${changed ? 'border-[var(--primary)]/40 bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
+              <div key={ic.key} className={`rounded-xl border px-3 py-2.5 flex flex-col gap-2 transition-colors ${changed ? 'b-primary bg-[var(--primary)]/[0.04]' : 'border-[var(--line)] hover:border-[var(--line-strong,var(--line))]'}`}>
                 <div className="flex items-center gap-2.5 min-w-0">
                   <EmojiPreview src={preview(ic)} glyph={m.icon || ic.icon} color={m.color || ic.color} shape={shape} fg={fg} />
                   <div className="min-w-0 flex-1">
@@ -15634,7 +15650,7 @@ function BotMemberModal({ member, guildRoles, onClose }) {
   const servers = member.servers?.length ? member.servers : (member.guildId ? [{ guildId: member.guildId, name: guildRoles?.[member.guildId]?.name || member.guildId, roles: member.roles || [] }] : []);
   const queue = async (body, okMsg) => {
     setBusy(true);
-    try { await api.post('/admin/bot/actions', { discordId: member.discordId, ...body }); toast.success(okMsg || t('bmod.queued', 'Queued — the bot will do it within a minute, and the result shows here.')); hist.reload(); }
+    try { await api.post('/admin/bot/actions', { discordId: member.discordId, ...body }); toast.success(okMsg || t('bmod.queued', 'Queued, the bot will do it within a minute, and the result shows here.')); hist.reload(); }
     catch (x) { toast.error(x?.data?.error === 'reason_required' ? t('bmod.needreason', 'That one needs a reason.') : x?.data?.error === 'minutes_required' ? t('bmod.needmin', 'That one needs a duration.') : x?.data?.error === 'role_required' ? t('bmod.needrole', 'Pick a role the bot can hand out.') : t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -15682,7 +15698,7 @@ function BotMemberModal({ member, guildRoles, onClose }) {
                   <div className="flex flex-wrap gap-1 mb-2">
                     {(sv.roles || []).length ? sv.roles.map((name) => (
                       <span key={name} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)]">{name}
-                        {idOf(name) && <button type="button" disabled={busy} title={t('bmod.role.remove', 'Remove this role')} onClick={() => queue({ kind: 'role_remove', guildId: sv.guildId, roleId: idOf(name), reason: 'roles' }, t('bmod.role.queued', 'Queued — the roster refreshes on the next scan.'))} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>}
+                        {idOf(name) && <button type="button" disabled={busy} title={t('bmod.role.remove', 'Remove this role')} onClick={() => queue({ kind: 'role_remove', guildId: sv.guildId, roleId: idOf(name), reason: 'roles' }, t('bmod.role.queued', 'Queued, the roster refreshes on the next scan.'))} className="text-[var(--faint)] hover:text-error"><X size={11} /></button>}
                       </span>
                     )) : <span className="text-[11px] text-[var(--faint)]">{t('bmod.role.none', 'No role')}</span>}
                   </div>
@@ -15692,7 +15708,7 @@ function BotMemberModal({ member, guildRoles, onClose }) {
                         <option value="">{t('bmod.role.add', 'Add a role…')}</option>
                         {gr.filter((r) => !(sv.roles || []).includes(r.name)).map((r) => <option key={r.id} value={r.id}>@{r.name}</option>)}
                       </Select>
-                      <Button size="sm" variant="primary" disabled={busy || !addRole[sv.guildId]} onClick={() => { queue({ kind: 'role_add', guildId: sv.guildId, roleId: addRole[sv.guildId], reason: 'roles' }, t('bmod.role.queued', 'Queued — the roster refreshes on the next scan.')); setAddRole({ ...addRole, [sv.guildId]: '' }); }}><Plus size={12} /></Button>
+                      <Button size="sm" variant="primary" disabled={busy || !addRole[sv.guildId]} onClick={() => { queue({ kind: 'role_add', guildId: sv.guildId, roleId: addRole[sv.guildId], reason: 'roles' }, t('bmod.role.queued', 'Queued, the roster refreshes on the next scan.')); setAddRole({ ...addRole, [sv.guildId]: '' }); }}><Plus size={12} /></Button>
                     </div>
                   )}
                 </div>
@@ -15702,7 +15718,7 @@ function BotMemberModal({ member, guildRoles, onClose }) {
         </div>
         <div>
           <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5 flex items-center gap-1.5"><Gavel size={12} /> {t('bmod.title', 'Moderate')}</div>
-          {servers.length > 1 && <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('bmod.multi', 'This person is in several servers — the action is queued for the first one listed; pick the server with the roles above if you need another.')}</p>}
+          {servers.length > 1 && <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('bmod.multi', 'This person is in several servers, the action is queued for the first one listed; pick the server with the roles above if you need another.')}</p>}
           <div className="flex flex-wrap gap-1.5">
             {KINDS.map((k) => <Button key={k.kind} size="sm" variant="ghost" disabled={busy} className={k.danger ? '!text-error' : ''} onClick={() => ask(k, servers[0]?.guildId)}>{k.label}</Button>)}
           </div>
@@ -15739,7 +15755,7 @@ function AdminBotMembersPage({ currency }) {
   const [view, setView] = useState('roster');
   return (
     <div>
-      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 w-fit mt-6 mb-1" hidden={!canEco}>
+      <div className="flex items-center gap-1 p-1 rounded-xl border border-[var(--line)] panel w-fit mt-6 mb-1" hidden={!canEco}>
         {[['roster', t('bm.view.roster', 'Roster'), Users], ['economy', t('bm.view.economy', 'Levels & economy'), TrendingUp]].map(([id, label, I]) => (
           <button key={id} type="button" onClick={() => setView(id)}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition ${view === id ? 'bg-[var(--bg-solid)] text-[var(--text)] font-medium shadow-sm border border-[var(--line)]' : 'text-[var(--muted)] hover:text-[var(--text)] border border-transparent'}`}>
@@ -15817,7 +15833,7 @@ function AdminBotMembers() {
     try {
       const r = await api.post('/admin/economy/grant', { userId: m.linkedUser.id, [giveKind]: amt, reason: 'members page' });
       setRows((rs) => (rs || []).map((x) => x.discordId === m.discordId ? { ...x, linkedUser: { ...x.linkedUser, economy: { level: r.level, xp: r.xp, points: r.points } } } : x));
-      toast.success(t('bm.give.ok', 'Done — Lv {l} · {p} points').replace('{l}', r.level).replace('{p}', r.points));
+      toast.success(t('bm.give.ok', 'Done: Lv {l} · {p} points').replace('{l}', r.level).replace('{p}', r.points));
     } catch { toast.error(t('common.failed', 'Failed.')); }
   };
   return (
@@ -15883,7 +15899,7 @@ function AdminBotMembers() {
                   <div className="text-[11px] text-[var(--faint)] truncate mt-0.5">{t('bm.joined', 'joined')} {since(m.guildJoinedAt)} · {t('bm.lastmsg', 'last message')} {since(m.lastMessageAt)}</div>
                 </div>
                 {eco && (
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg bg-[var(--primary)]/10 text-[var(--primary-2)] tabular-nums shrink-0" title={`${(eco.xp || 0).toLocaleString()} XP`}>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg tint-primary text-[var(--primary-2)] tabular-nums shrink-0" title={`${(eco.xp || 0).toLocaleString()} XP`}>
                     <Sparkles size={11} /> Lv {eco.level || 0} · {(eco.points || 0).toLocaleString()}
                   </span>
                 )}
@@ -15895,7 +15911,7 @@ function AdminBotMembers() {
                   className="p-1.5 rounded-lg text-[var(--faint)] hover:text-[var(--text)] hover:bg-[var(--surface-2)] shrink-0"><ChevronDown size={16} className={`transition-transform ${open ? 'rotate-180' : ''}`} /></button>
               </div>
               {open && (
-                <div className="border-t border-[var(--line)] bg-[var(--surface-2)]/40 px-3.5 py-3 space-y-3 text-xs">
+                <div className="border-t border-[var(--line)] panel px-3.5 py-3 space-y-3 text-xs">
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-[var(--muted)]">
                     <span>id <code className="text-[11px]">{m.discordId}</code></span>
                     {m.nickname && <span>{t('bm.nick', 'nickname')} <b>{m.nickname}</b></span>}
@@ -15948,7 +15964,7 @@ function PendingDeliveries({ currency }) {
   const deliver = async (r) => { try { await api.post(`/admin/economy/purchases/${r.id}/deliver`); toast.success(t('db.eco.delivered', 'Marked as handed out.')); reload(); } catch { toast.error(t('common.failed', 'Failed.')); } };
   const kind = (k) => ({ badge: t('eco.k.badge', 'Profile badge'), pool: t('eco.k.pool', 'Storage pool'), boost: t('eco.k.boost', 'Catalog boost'), hosting: t('eco.k.hosting', 'Free hosting'), promo: t('eco.k.promo', 'Promo code'), role: t('eco.k.role', 'Discord role'), custom: t('eco.k.custom', 'Reward') })[k] || k;
   return (
-    <ModuleCard id="sec-eco-deliveries" icon={Gift} title={t('db.eco.deliv', 'Purchases to hand out')} desc={t('db.eco.deliv.d', 'Roles and custom rewards bought with points are yours to deliver — mark each one once it is done. Badges and site perks deliver themselves.')} onToggle={null}
+    <ModuleCard id="sec-eco-deliveries" icon={Gift} title={t('db.eco.deliv', 'Purchases to hand out')} desc={t('db.eco.deliv.d', 'Roles and custom rewards bought with points are yours to deliver, mark each one once it is done. Badges and site perks deliver themselves.')} onToggle={null}
       action={pending.length ? <Badge tone="amber">{pending.length}</Badge> : null}>
       {loading ? <Spinner /> : !rows.length ? <div className="text-xs text-[var(--faint)]">{t('db.eco.deliv.none', 'Nobody has bought anything yet.')}</div> : (
         <div className="space-y-1.5 max-h-[40vh] overflow-auto pe-1">
@@ -15978,7 +15994,7 @@ function EconomyLedger({ currency }) {
   const load = (query = '') => api.get(`/admin/economy?q=${encodeURIComponent(query)}`).then(setData).catch(() => setData({ members: [], totals: {} }));
   useEffect(() => { load(); }, []);
   const grant = async (m, delta, kind = 'points') => {
-    const raw = window.prompt((kind === 'xp' ? t('db.eco.grantxp.p', 'XP to give {name} (negative to take — the level follows the curve):') : t('db.eco.grant.p', 'Points to give {name} (negative to take):')).replace('{name}', m.displayName), String(delta || 100));
+    const raw = window.prompt((kind === 'xp' ? t('db.eco.grantxp.p', 'XP to give {name} (negative to take, the level follows the curve):') : t('db.eco.grant.p', 'Points to give {name} (negative to take):')).replace('{name}', m.displayName), String(delta || 100));
     if (raw == null) return;
     const amount = Math.round(Number(raw));
     if (!Number.isFinite(amount) || amount === 0) return;
@@ -15988,7 +16004,7 @@ function EconomyLedger({ currency }) {
   };
   const fmtH = (s) => `${Math.floor((s || 0) / 3600)}h`;
   return (
-    <ModuleCard id="sec-eco-ledger" icon={TrendingUp} title={t('db.eco.ledger', 'Balances & leaderboard')} desc={t('db.eco.ledger.d', 'Every member’s level and points — check them, and give or take points.')} onToggle={null}>
+    <ModuleCard id="sec-eco-ledger" icon={TrendingUp} title={t('db.eco.ledger', 'Balances & leaderboard')} desc={t('db.eco.ledger.d', 'Every member’s level and points, check them, and give or take points.')} onToggle={null}>
       {data && (
         <div className="flex items-center gap-2 flex-wrap text-[11px] text-[var(--faint)] mb-1">
           <span>{t('db.eco.tot.members', '{n} members').replace('{n}', data.totals?.members || 0)}</span>
@@ -16006,7 +16022,7 @@ function EconomyLedger({ currency }) {
         <div className="space-y-1.5 max-h-[46vh] overflow-auto pe-1">
           {data.members.map((m) => (
             <div key={m.userId} className="flex items-center gap-3 rounded-lg border border-[var(--line)] px-3 py-2">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 text-[var(--primary-2)] text-xs font-bold shrink-0">{m.level}</span>
+              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary text-[var(--primary-2)] text-xs font-bold shrink-0">{m.level}</span>
               <div className="flex-1 min-w-0">
                 <Link to={`/u/${m.userId}`} className="text-sm font-medium truncate hover:text-[var(--primary-2)] block">{m.displayName}</Link>
                 <div className="text-[11px] text-[var(--faint)] tabular-nums">{m.xp.toLocaleString()} XP · {m.messages} msg · {m.reactions} react · {fmtH(m.voiceSeconds)}</div>
@@ -16113,7 +16129,7 @@ function AdminStorage() {
           {EXPORTS.map((x) => (
             <Button key={x.scope} size="sm" variant={x.owner ? undefined : 'ghost'} disabled={!!exporting}
               onClick={() => runExport(x.scope, x.cols)}
-              title={x.owner ? t('as.exp.owner.h', 'Names each row’s owner — needs 2FA or SUPERADMIN, and is written to the audit log') : t('as.exp.agg.h', 'Totals only, nobody is named')}>
+              title={x.owner ? t('as.exp.owner.h', 'Names each row’s owner, needs 2FA or SUPERADMIN, and is written to the audit log') : t('as.exp.agg.h', 'Totals only, nobody is named')}>
               {exporting === x.scope ? <Spinner /> : x.owner ? <ShieldCheck size={13} /> : <Download size={13} />} {x.label}
             </Button>
           ))}
@@ -16123,7 +16139,7 @@ function AdminStorage() {
       {/* Storage is a SNAPSHOT — there is no history table behind it, so unlike Server
           performance it cannot be compared with last month. Said here rather than left for
           somebody to discover by looking for a date picker that does not exist. */}
-      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-1">{t('as.snapshot', 'A reading of right now. Storage keeps no history, so there is nothing earlier to compare it with — export regularly if you want a trend.')}</p>
+      <p className="text-[11px] text-[var(--faint)] -mt-2 mb-1">{t('as.snapshot', 'A reading of right now. Storage keeps no history, so there is nothing earlier to compare it with, export regularly if you want a trend.')}</p>
       <p className="text-[11px] text-[var(--faint)] mb-4 flex items-start gap-1.5">
         <ShieldCheck size={12} className="mt-0.5 shrink-0" />
         <span>{t('as.exp.note', 'Exports come from the server and are complete — the tables below are capped for the screen. The three marked with a shield name each row’s owner: they need 2FA on your account (a SUPERADMIN passes anyway) and each one is written to the audit log.')}</span>
@@ -16200,7 +16216,7 @@ function AdminStorage() {
       {d.ledger && (
         <Card className="p-5 mb-4">
           <div className="text-sm font-medium mb-1 flex items-center gap-2"><Sliders size={15} className="text-[var(--primary-2)]" /> {t('as.capbypurpose', 'Capacity by purpose')}</div>
-          <div className="text-[11px] text-[var(--faint)] mb-2">{t('as.capbypurposesub', 'Real usage per category — approved submissions move out of the temp margin and into their own permanent bucket once approved.')}</div>
+          <div className="text-[11px] text-[var(--faint)] mb-2">{t('as.capbypurposesub', 'Real usage per category, approved submissions move out of the temp margin and into their own permanent bucket once approved.')}</div>
           <div className="divide-y divide-[var(--line)]">
             {d.ledger.map((row) => <LedgerRow key={row.key} row={row} />)}
           </div>
@@ -16451,7 +16467,7 @@ function GeoPanel({ countries, regions, cities, days, hours }) {
               </div>
             ))}
           </div>
-        ) : <div className="text-sm text-[var(--faint)] py-4">{t('an.geo.none', 'No data yet — needs geo-located visits.')}</div>}
+        ) : <div className="text-sm text-[var(--faint)] py-4">{t('an.geo.none', 'No data yet, needs geo-located visits.')}</div>}
     </Card>
   );
 }
@@ -16516,7 +16532,7 @@ function VitalsBreakdownTable({ rows, dim }) {
         </tr></thead>
         <tbody>
           {sorted.map((r) => { const rate = pageRating(r); const label = r.key ?? '—'; return (
-            <tr key={label} className="border-b border-[var(--line)]/60 hover:bg-[var(--surface-2)]/30">
+            <tr key={label} className="border-b border-[var(--line)] hover:panel-quiet">
               <td className="py-2 px-2 relative">
                 <span className={`absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full ${rate ? RATING_DOT[rate] : 'bg-[var(--line-strong)]'}`} />
                 <span className="inline-flex items-center gap-1.5 ps-3.5 align-middle text-xs text-[var(--muted)] truncate max-w-[240px]" title={label}>
@@ -16530,7 +16546,7 @@ function VitalsBreakdownTable({ rows, dim }) {
               <td className="py-2 px-2 text-end">{vitalChip('TTFB', r.ttfb)}</td>
               <td className="py-2 px-2 text-end">
                 <div className="flex items-center justify-end gap-2">
-                  <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]/70" style={{ width: `${Math.round((r.samples || 0) / maxN * 100)}%` }} /></div>
+                  <div className="h-1 w-10 rounded-full bg-[var(--surface-2)] overflow-hidden hidden md:block"><div className="h-full bg-[var(--primary)]" style={{ width: `${Math.round((r.samples || 0) / maxN * 100)}%` }} /></div>
                   <span className="text-[var(--faint)] tabular-nums text-xs w-8 text-end">{r.samples}</span>
                 </div>
               </td>
@@ -16594,10 +16610,10 @@ function WebVitals() {
         <div className="relative flex-1 min-w-[200px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--faint)]" />
           <Input className="!ps-8 !py-1.5 text-sm" placeholder={t('an.wv.filterph', 'Filter by page path (e.g. /catalog)…')} value={filterInput} onChange={(e) => setFilterInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && setPathFilter(filterInput.trim())} /></div>
         <Button size="sm" variant="ghost" onClick={() => setPathFilter(filterInput.trim())}><Search size={14} /> {t('ev.filter', 'Filter')}</Button>
-        {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/30"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
+        {pathFilter && <button onClick={() => { setPathFilter(''); setFilterInput(''); }} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs tint-primary text-[var(--primary-2)] border b-primary"><span className="font-mono">{pathFilter}</span> <X size={12} /></button>}
       </div>
       {loading ? <div className="h-24 grid place-items-center"><Spinner /></div> : !metrics.some((m) => m.n) ? (
-        <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet — collected from real visits (needs analytics consent).')}</div>
+        <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.wv.none', 'No performance samples yet, collected from real visits (needs analytics consent).')}</div>
       ) : <>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
           {metrics.map((m) => { const v = m[pct];
@@ -16686,7 +16702,7 @@ function SessionEventRow({ e, idx, t }) {
           <>
             <span className="text-[var(--faint)] shrink-0">{verb}</span>
             {e.label && <span className="font-medium text-[var(--text)] truncate">{e.label}</span>}
-            <span className="font-mono text-[10px] text-[var(--faint)]/70 truncate">· {e.path}</span>
+            <span className="font-mono text-[10px] text-[var(--faint)] truncate">· {e.path}</span>
           </>
         )}
       </div>
@@ -16701,7 +16717,7 @@ function SessionRow({ s }) {
   const nick = fakeNick(s.visitor);
   return (
     <div className="rounded-xl border border-[var(--line)] overflow-hidden">
-      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-start hover:bg-[var(--surface-2)]/50">
+      <button onClick={() => setOpen((x) => !x)} className="w-full flex items-center gap-3 p-3 text-start hover:panel">
         <span className="relative shrink-0">
           <Avatar seed={s.visitor} {...seededAvatar(s.visitor)} size={30} />
           {s.country && <span className="absolute -bottom-1 -right-1 rounded-[2px] overflow-hidden ring-1 ring-[var(--bg-solid)]"><Flag cc={s.country} className="w-3.5 h-2.5" /></span>}
@@ -16729,7 +16745,7 @@ function SessionRow({ s }) {
         <ChevronDown size={15} className={`text-[var(--faint)] transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="border-t border-[var(--line)] bg-[var(--surface)]/40 px-3 py-2">
+        <div className="border-t border-[var(--line)] panel-quiet px-3 py-2">
           {s.events.map((e, i) => <SessionEventRow key={i} e={e} idx={i} t={t} />)}
         </div>
       )}
@@ -17052,7 +17068,7 @@ function TrendsPanel() {
           </Field>
         </div>
         <p className="text-[11px] text-[var(--muted)] mt-2.5 leading-snug">
-          {t('an.tr.window.h2', 'Baseline window: the rolling median the line is compared against — shorter reacts faster and cries wolf more often.')}{' '}
+          {t('an.tr.window.h2', 'Baseline window: the rolling median the line is compared against, shorter reacts faster and cries wolf more often.')}{' '}
           {t('an.tr.sens.h2', 'Sensitivity: how far below normal, for two days running, counts as an event.')}
         </p>
       </Card>
@@ -17077,17 +17093,17 @@ function TrendsPanel() {
       )}
 
       <Card className="p-4 sm:p-5 mb-4">
-        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1">{t('an.tr.t1', 'Against your own normal — with auto-flagged drops')}</div>
+        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1">{t('an.tr.t1', 'Against your own normal, with auto-flagged drops')}</div>
         <p className="text-[11px] text-[var(--muted)] mb-3">{t('an.tr.t1s', 'The line is a 7-day average; the dashed one is the rolling median it is measured against. A marker is one episode, at its deepest day — not one per bad day.')}</p>
         {loading ? <div className="h-52 grid place-items-center"><Spinner /></div> : <BaselineChart a={a} unit={unit} />}
         {!loading && (a.events.length
           ? <p className="text-[11px] mt-2"><span className="text-error font-semibold">{t('an.tr.flagged', 'Flagged drops')}:</span>{' '}
             {a.events.map((e, i) => <span key={e.day} className="text-[var(--muted)]">{i ? ' · ' : ' '}{e.day} (<span className="text-error">{pct(e.drop)}</span>, {e.length}{t('an.tr.dshort', 'd')})</span>)}</p>
-          : <p className="text-[11px] mt-2 text-[var(--faint)]">{t('an.tr.none', 'Nothing crossed the threshold in this window — no sustained drop below normal.')}</p>)}
+          : <p className="text-[11px] mt-2 text-[var(--faint)]">{t('an.tr.none', 'Nothing crossed the threshold in this window, no sustained drop below normal.')}</p>)}
       </Card>
 
       <Card className="p-4 sm:p-5">
-        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1">{t('an.tr.t2', 'Distance from baseline — how far from normal')}</div>
+        <div className="text-xs font-semibold text-[var(--faint)] uppercase mb-1">{t('an.tr.t2', 'Distance from baseline, how far from normal')}</div>
         <p className="text-[11px] text-[var(--muted)] mb-3">{t('an.tr.t2s', 'Above the line is busier than usual, below is quieter. In percent, so a 200-view day and a 2000-view day are on the same scale.')}</p>
         {loading ? <div className="h-40 grid place-items-center"><Spinner /></div> : <DistanceChart a={a} />}
       </Card>
@@ -17235,7 +17251,7 @@ export function DistanceChart({ a }) {
   const [wrapRef, W] = useElementWidth(760);
   const [hover, setHover] = useState(null);
   const pts = a.dist.map((v, i) => ({ i, v })).filter((p) => p.v != null);
-  if (!pts.length) return <div className="h-40 grid place-items-center text-sm text-[var(--faint)]">{t('an.tr.warm2', 'Not enough history yet — the baseline needs a full window before there is a distance from it.')}</div>;
+  if (!pts.length) return <div className="h-40 grid place-items-center text-sm text-[var(--faint)]">{t('an.tr.warm2', 'Not enough history yet, the baseline needs a full window before there is a distance from it.')}</div>;
   const n = a.days.length;
   const H = 170, padL = 42, padR = 10, padT = 8, padB = 24;
   // Same story as the chart above, and one extra fact: a drop can never be worse than −100%,
@@ -17288,7 +17304,7 @@ export function DistanceChart({ a }) {
       <div className="flex justify-between text-[10px] text-[var(--faint)] -mt-3" style={{ paddingLeft: `${(padL / W) * 100}%`, paddingRight: `${(padR / W) * 100}%` }}>
         {a.days.filter((_, i) => i % every === 0).map((d) => <span key={d}>{d.slice(5)}</span>)}
       </div>
-      {over > 0 && <p className="text-[10px] text-[var(--faint)] mt-1"><b>{over}</b> {t('an.tr.overPct', 'day(s) sit beyond this scale and are drawn at its edge — hover, or read the table.')}</p>}
+      {over > 0 && <p className="text-[10px] text-[var(--faint)] mt-1"><b>{over}</b> {t('an.tr.overPct', 'day(s) sit beyond this scale and are drawn at its edge, hover, or read the table.')}</p>}
       {hover && a.dist[hover.i] != null && (
         <div className="absolute top-6 text-[11px] px-2.5 py-1.5 rounded-md bg-[var(--bg-solid)] border border-[var(--line)] shadow pointer-events-none whitespace-nowrap"
           style={{ left: `${Math.min(Math.max(hover.px, 80), (wrapRef.current?.clientWidth || W) - 80)}px`, transform: 'translateX(-50%)' }}>
@@ -17372,7 +17388,7 @@ function SessionsPanel({ days, hours }) {
         <ChevronDown size={16} className={`text-[var(--faint)] transition-transform ${collapsed ? '-rotate-90' : ''}`} />
       </button>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <p className="text-sm text-[var(--muted)]">{view === 'globe' ? t('an.sess.descGlobe2', 'Visitors aggregated by country/region — count, share of traffic, and change vs the previous period.') : t('an.sess.descList', 'Recent visitor sessions — click one to see its page-by-page journey. Live = active in the last 5 minutes.')}</p>
+        <p className="text-sm text-[var(--muted)]">{view === 'globe' ? t('an.sess.descGlobe2', 'Visitors aggregated by country/region, count, share of traffic, and change vs the previous period.') : t('an.sess.descList', 'Recent visitor sessions, click one to see its page-by-page journey. Live = active in the last 5 minutes.')}</p>
         <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0">
           {[['list', t('an.sess.list', 'List'), LayoutDashboard], ['globe', t('an.sess.globe', 'Globe'), Globe2]].map(([v, label, I]) => (
             <button key={v} onClick={() => setView(v)} className={`px-3 py-1 text-xs flex items-center gap-1.5 ${view === v ? 'bg-[var(--surface-2)] text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}><I size={12} /> {label}</button>
@@ -17382,7 +17398,7 @@ function SessionsPanel({ days, hours }) {
       {!collapsed && (!data ? <div className="h-20 grid place-items-center"><Spinner /></div>
         : view === 'globe' ? <GeoMap days={days} hours={hours} height={460} />
         : sessions.length ? <div className="space-y-2 max-h-[520px] overflow-auto pe-1">{sessions.map((s) => <SessionRow key={s.visitor + s.start} s={s} />)}</div>
-        : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet — needs visitors who accepted analytics cookies.')}</div>)}
+        : <div className="text-sm text-[var(--faint)] py-6 text-center">{t('an.sess.none', 'No sessions yet, needs visitors who accepted analytics cookies.')}</div>)}
     </Card>
   );
 }
@@ -17479,7 +17495,7 @@ function AdminGoals() {
         {/* Step 1 — pick what counts as a conversion (icon buttons, not a dropdown). */}
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-2">{t('goal.step1', 'What counts as a conversion?')}</div>
         <div className="flex flex-wrap gap-2 mb-4">
-          {GOAL_KINDS.map(([v, key, fb, Icon]) => <button key={v} type="button" onClick={() => setF((s) => ({ ...s, kind: v }))} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${f.kind === v ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={14} /> {t(key, fb)}</button>)}
+          {GOAL_KINDS.map(([v, key, fb, Icon]) => <button key={v} type="button" onClick={() => setF((s) => ({ ...s, kind: v }))} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border transition ${f.kind === v ? 'border-[var(--primary)] tint-primary text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`}><Icon size={14} /> {t(key, fb)}</button>)}
         </div>
         {/* Step 2 — a single contextual target field (+ optional page for interactions). */}
         <div className="grid sm:grid-cols-2 gap-3">
@@ -17492,7 +17508,7 @@ function AdminGoals() {
                   <Field label={t('goal.t.onpage', 'On page (optional)')}><Input value={f.path} onChange={(e) => setF({ ...f, path: e.target.value })} placeholder="/catalog…" /></Field>
                 </>}
           <Field label={<span className="flex items-center gap-1.5">{t('goal.name', 'Goal name')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.name.auto', '(auto if blank)')}</span></span>}><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={autoName()} /></Field>
-          <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional — e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
+          <Field label={<span className="flex items-center gap-1.5">{t('goal.target', 'Target')} <span className="text-[10px] text-[var(--faint)] normal-case font-normal">{t('goal.target.hint', '(optional, e.g. 1000 completions)')}</span></span>}><Input type="number" min="0" value={f.target} onChange={(e) => setF({ ...f, target: e.target.value })} placeholder="1000" /></Field>
         </div>
         <div className="text-xs text-[var(--muted)] mt-3 flex items-start gap-1.5"><Target size={13} className="text-[var(--primary-2)] mt-0.5 shrink-0" /> <span>{t('goal.preview', 'Counts a conversion when a visitor:')} <b>{autoName().toLowerCase()}</b>.</span></div>
         <div className="flex justify-end gap-2 mt-3">
@@ -17606,7 +17622,7 @@ function AdminFeedback() {
     <div className="space-y-4">
       <div>
         <h2 className="font-semibold flex items-center gap-2"><BugIcon size={16} className="text-[var(--primary-2)]" /> {t('fb.title', 'Feedback & crashes')}</h2>
-        <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps — one inbox per project, answered from here.')}</p>
+        <p className="text-sm text-[var(--muted)] mt-0.5">{t('fb.sub', 'What apps send through the feedback centre: suggestions, bug reports, crash dumps, one inbox per project, answered from here.')}</p>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         {projects.map((x) => <button key={x.key} onClick={() => { setProject(x.key); setPage(0); setOpen(null); setShowSettings(false); }} className={`px-3 py-1.5 rounded-lg text-sm border ${x.key === project ? 'bg-[var(--primary)] text-white border-transparent' : 'border-[var(--line)] hover:bg-[var(--surface-2)]'}`}>
@@ -17656,7 +17672,7 @@ function AdminFeedback() {
             <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.openThread} onChange={(e) => pd('openThread', e.target.checked)} /> {t('fb.cfg.thread', 'Linked senders get a thread in Messages & reports')}</label>
             <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={draft.project.mailFallback} onChange={(e) => pd('mailFallback', e.target.checked)} /> {t('fb.cfg.mail', 'Anonymous senders with an e-mail get a confirmation + replies by mail')}</label>
             <details className="rounded-xl border border-[var(--line)] p-3">
-            <summary className="cursor-pointer text-sm font-medium">{t('fb.cfg.advanced', 'Advanced — caps, sampling, filters')}</summary>
+            <summary className="cursor-pointer text-sm font-medium">{t('fb.cfg.advanced', 'Advanced, caps, sampling, filters')}</summary>
             <div className="grid grid-cols-2 gap-3 mt-3">
               <Field label={t('fb.cfg.sampling', 'Crash sampling (% kept)')}><Input type="number" min="0" max="100" value={draft.project.crashSampling} onChange={(e) => pd('crashSampling', num(e.target.value))} /></Field>
               <Field label={t('fb.cfg.dedupe', 'Dedupe window (min)')}><Input type="number" min="0" value={draft.project.dedupeMinutes} onChange={(e) => pd('dedupeMinutes', num(e.target.value))} /></Field>
@@ -17703,7 +17719,7 @@ function AdminFeedback() {
           {/* Severity has no column to order on, so it ranks a bounded window in memory. Say so
               when the window is smaller than the table, rather than letting the tail vanish. */}
           {data?.windowed && (
-            <div className="mt-2 text-[11.5px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 text-[var(--muted)] px-2.5 py-2 flex items-start gap-2">
+            <div className="mt-2 text-[11.5px] rounded-lg border border-[var(--line)] panel text-[var(--muted)] px-2.5 py-2 flex items-start gap-2">
               <AlertTriangle size={13} className="shrink-0 mt-0.5 text-warning" />
               <span>{t('fb.windowed', 'Sorting by severity ranks the {n} most recent of {all} reports. Switch to Newest or Oldest to page through all of them.').replace('{n}', data.windowSize).replace('{all}', data.totalAll)}</span>
             </div>
@@ -17749,7 +17765,7 @@ function AdminFeedback() {
             {open.meta && <details className="text-xs"><summary className="cursor-pointer text-[var(--muted)]">{t('fb.meta', 'Context (meta)')}</summary><pre className="mt-1 bg-[var(--surface-2)] rounded-xl p-3 overflow-auto max-h-64">{JSON.stringify(open.meta, null, 2)}</pre></details>}
             {(open.reportId || open.email) && <div className="space-y-2 pt-2 border-t border-[var(--line)]">
               <div className="text-sm font-semibold">{open.reportId ? t('fb.reply.thread', 'Reply in their thread') : t('fb.reply.mail', 'Reply by e-mail')}</div>
-              <Textarea rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('fb.reply.ph', 'Thanks — could you tell us…')} />
+              <Textarea rows={3} value={reply} onChange={(e) => setReply(e.target.value)} placeholder={t('fb.reply.ph', 'Thanks, could you tell us…')} />
               <Button variant="primary" size="sm" disabled={busy || !reply.trim()} onClick={send}>{busy ? <Spinner /> : t('fb.reply.send', 'Send')}</Button>
             </div>}
           </>}
@@ -17778,7 +17794,7 @@ function StackTrace({ text }) {
         return (
           <div key={i} className={vendor
             ? 'opacity-45 text-[var(--muted)]'
-            : isFrame ? 'text-[var(--text)] border-s-2 border-[var(--primary)]/50 ps-2 -ms-2' : 'text-[var(--muted)]'}>
+            : isFrame ? 'text-[var(--text)] border-s-2 b-primary ps-2 -ms-2' : 'text-[var(--muted)]'}>
             {ln || ' '}
           </div>
         );
@@ -17826,7 +17842,7 @@ function AdminErrors() {
   const [busyId, setBusyId] = useState(null);
   const markHandled = async (e) => {
     setBusyId(e.id);
-    try { await api.post('/admin/pending/dismiss', { queue: 'errors', itemId: e.id, mode: 'handled' }); toast.success(t('er.handled.ok', 'Marked handled — it leaves the Needs-attention digest too.')); pendingChanged(); reload(); }
+    try { await api.post('/admin/pending/dismiss', { queue: 'errors', itemId: e.id, mode: 'handled' }); toast.success(t('er.handled.ok', 'Marked handled, it leaves the Needs-attention digest too.')); pendingChanged(); reload(); }
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusyId(null); }
   };
@@ -17865,7 +17881,7 @@ function AdminErrors() {
       {unpersisted.length > 0 && (
         <div className="mb-4 rounded-lg border border-error-border bg-error-bg px-3 py-2.5">
           <div className="font-medium text-error flex items-center gap-2 text-sm"><AlertTriangle size={14} /> {t('er.dbdown.t', '{n} recent server error(s) could not be written to the database').replace('{n}', unpersisted.length)}</div>
-          <div className="text-xs text-[var(--muted)] mt-1">{t('er.dbdown.s', 'The data layer itself may be failing — which is why these are not in the list below. This tail is kept in memory. Newest:')} <span className="font-mono text-[var(--text)]">{unpersisted[0].path}</span> — {unpersisted[0].message}</div>
+          <div className="text-xs text-[var(--muted)] mt-1">{t('er.dbdown.s', 'The data layer itself may be failing, which is why these are not in the list below. This tail is kept in memory. Newest:')} <span className="font-mono text-[var(--text)]">{unpersisted[0].path}</span> — {unpersisted[0].message}</div>
         </div>
       )}
       <div className="flex flex-wrap gap-2 mb-4">
@@ -17896,7 +17912,7 @@ function AdminErrors() {
       {loading ? <Loading /> : errors.length ? <div className="space-y-2">
         {errors.map((e, i) => { const isOpen = open === i; return (
           <Card key={i} className="overflow-hidden">
-            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-start p-4 flex items-start gap-3 hover:bg-[var(--surface-2)]/40 transition">
+            <button onClick={() => setOpen(isOpen ? null : i)} className="w-full text-start p-4 flex items-start gap-3 hover:panel transition">
               <AlertTriangle size={16} className="text-error mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-sm text-error break-words">{e.message}</div>
@@ -18009,7 +18025,7 @@ function EventsFeed({ days, hours }) {
       <div className="flex flex-wrap gap-1.5 mb-3">
         {Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
           <button key={k} onClick={() => toggleKind(k)}
-            className={`text-[11px] px-2 py-1 rounded-lg ${kinds.includes(k) ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
+            className={`text-[11px] px-2 py-1 rounded-lg ${kinds.includes(k) ? 'tint-primary-strong text-[var(--primary)]' : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--text)]'}`}>
             {t(`an.ev.k.${k}`, k)} <span className="tabular-nums opacity-70">{n}</span>
           </button>
         ))}
@@ -18114,7 +18130,7 @@ function ReplaysPanel() {
 
       {loading ? <div className="py-8 text-center"><Spinner /></div>
         : !rows.length ? <EmptyState icon={PlayCircle} title={t('an.rep.none', 'No recording yet')}
-          sub={cfg.enabled ? t('an.rep.none.on', 'Recording is on — the first one appears when a sampled visitor leaves the page.')
+          sub={cfg.enabled ? t('an.rep.none.on', 'Recording is on, the first one appears when a sampled visitor leaves the page.')
             : t('an.rep.none.off', 'Recording is off. Nothing is being collected.')} />
         : (
           <Card className="divide-y divide-[var(--line)]">
@@ -18156,7 +18172,7 @@ function AdminAnalytics() {
   // dashboard is reachable ONLY through an authenticated BCWEB admin.
   const openTelemetry = async () => {
     try { const { url } = await api.post('/admin/telemetry/token', {}); window.open(url, '_blank', 'noopener'); }
-    catch (x) { toast.error(x.data?.error === 'no_telemetry_access' ? t('an.telemetry.noperm', 'You need the "telemetry" permission (Access & permissions) to open it.') : t('an.telemetry.err', 'Could not open telemetry — an admin account with 2FA is required.')); }
+    catch (x) { toast.error(x.data?.error === 'no_telemetry_access' ? t('an.telemetry.noperm', 'You need the "telemetry" permission (Access & permissions) to open it.') : t('an.telemetry.err', 'Could not open telemetry, an admin account with 2FA is required.')); }
   };
   const gran = data?.granularity || (hours ? 'hour' : 'day');
   // Ctrl+wheel on the chart: zoom in → hourly (24h); zoom out → back to daily.
@@ -18260,7 +18276,7 @@ function AdminAnalytics() {
                   <div className="flex-1 h-2 rounded-full bg-[var(--surface-2)] overflow-hidden"><div className="h-full bg-gradient-to-r from-sky-500 to-cyan-400" style={{ width: `${(r.count / maxRef) * 100}%` }} /></div>
                   <span className="w-10 text-end font-medium">{r.count}</span>
                 </div>); })
-                : <div className="text-sm text-[var(--faint)]">{t('an.norefs', 'No referrers yet — most visits are direct.')}</div>}
+                : <div className="text-sm text-[var(--faint)]">{t('an.norefs', 'No referrers yet, most visits are direct.')}</div>}
             </div>
           </Card>
         </div>
@@ -18526,7 +18542,7 @@ function AnnouncementSection({ value, onChange }) {
           <p className="text-[11px] text-[var(--faint)]">
             {value.announceShowPage
               ? 'The real page stays reachable; the countdown appears as its own first tab. Normal visibility rules apply.'
-              : 'Only the countdown is shown until it ends — the rest of the page is hidden from everyone. Visibility takes effect once it\'s over.'}
+              : 'Only the countdown is shown until it ends, the rest of the page is hidden from everyone. Visibility takes effect once it\'s over.'}
             {' '}Tip: to <b>swap in new content the moment the countdown ends</b>, use “Schedule an update” with the same date/time — a countdown can trigger an update, and an update can carry a countdown.
           </p>
         </div>
@@ -18627,7 +18643,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
         <Button variant="ghost" onClick={onClose}>{t('su.close', 'Close')}</Button>
         <Button variant="primary" disabled={busy} onClick={save}>{busy ? <Spinner /> : t('su.schedule', 'Schedule')}</Button>
       </>}>
-      <p className="text-sm text-[var(--muted)] mb-3">{t('su.desc', 'Stage new content below — it automatically replaces the current version at the date/time you pick. Nothing changes until then.')}</p>
+      <p className="text-sm text-[var(--muted)] mb-3">{t('su.desc', 'Stage new content below, it automatically replaces the current version at the date/time you pick. Nothing changes until then.')}</p>
       <Field label={t('su.switchat', 'Switch at')}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>
       {includeNameShort && (
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_110px] gap-3 mt-3">
@@ -18647,7 +18663,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
             try {
               const r = await api.get(`/admin/projects/${projectKey}/versions/${encodeURIComponent(v)}`);
               setConfigText(JSON.stringify(r.config, null, 2));
-              toast.success(t('su.loadedversion', 'Loaded {v} — adjust it or pick a date.').replace('{v}', v));
+              toast.success(t('su.loadedversion', 'Loaded {v}, adjust it or pick a date.').replace('{v}', v));
             } catch { toast.error(t('common.failed', 'Failed.')); }
             finally { setLoadingV(''); }
           }}>
@@ -18673,7 +18689,7 @@ function ScheduleUpdateModal({ title, current, includeNameShort, existing, onClo
               ? <div className="rounded-xl border border-[var(--line)] p-3 max-h-[46vh] overflow-auto bg-[var(--bg-solid)]">
                   <ProjectConfigEditor value={JSON.parse(configText || '{}')} onChange={(cfg) => setConfigText(JSON.stringify(cfg, null, 2))} slug={slug} isShowcase={isShowcase} />
                 </div>
-              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON — switch to the JSON tab to fix it.')}</div>)
+              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON, switch to the JSON tab to fix it.')}</div>)
           : <JsonEditor value={configText} onChange={setConfigText} minH={220} />}
       </div>
     </Modal>
@@ -18752,7 +18768,7 @@ function AdminShowcase() {
       </div> : <EmptyState icon={Sparkles} title={t('sh.empty', 'No projects yet')} sub={t('sh.emptysub', 'Add your first featured project.')} />}
       {editing && <ShowcaseEditModal project={editing === 'new' ? null : editing} canManage={canManage} onClose={() => setEditing(null)} onDone={reload} />}
       {scheduling && (
-        <ScheduleUpdateModal title={t('sh.schedmodal', 'Schedule an update — {name}').replace('{name}', scheduling.name)} includeNameShort existing={scheduling}
+        <ScheduleUpdateModal title={t('sh.schedmodal', 'Schedule an update: {name}').replace('{name}', scheduling.name)} includeNameShort existing={scheduling}
           slug={scheduling.slug} isShowcase
           current={{ name: scheduling.name, short: scheduling.short, config: scheduling.config }}
           onClose={() => setScheduling(null)}
@@ -18871,7 +18887,7 @@ function ShowcaseEditModal({ project, draft = null, onSubmit = null, canManage =
               ? <div className="rounded-xl border border-[var(--line)] p-3 max-h-[46vh] overflow-auto bg-[var(--bg-solid)]">
                   <ProjectConfigEditor value={JSON.parse(details || '{}')} onChange={(cfg) => setDetails(JSON.stringify(cfg, null, 2))} slug={(project?.short || 'project').toLowerCase()} isShowcase />
                 </div>
-              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON — switch to the JSON tab to fix it.')}</div>)
+              : <div className="text-sm text-[var(--muted)] p-3">{t('su.invalidjsontab', 'Invalid JSON, switch to the JSON tab to fix it.')}</div>)
           : <>
               <p className="text-[11px] text-[var(--faint)] mb-1.5">{t('sh.e.detailshint', 'links (github/source/discord/kofi/website/custom), downloads[], overview media (image/video/replayUrl/rrwebUrl), progressSource, releaseNotes, community, legal cards.')}</p>
               <JsonEditor value={details} onChange={setDetails} minH={220} />
@@ -18928,7 +18944,7 @@ function UnfurlPreview({ plat, title, desc, img, host, noImgHint }) {
   const url = `https://${host}`;
   const Img = ({ className = '' }) => (img
     ? <img src={img} alt="" className={`w-full object-cover ${className}`} style={{ aspectRatio: '1200 / 630' }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
-    : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))' }}>{noImgHint || t('ogp.prev.noimg', 'No preview image set — a shared link renders as plain text. Set a 1200×630 image.')}</div>);
+    : <div className={`w-full grid place-items-center text-[11px] text-[var(--faint)] p-6 text-center ${className}`} style={{ aspectRatio: '1200 / 630', background: 'var(--surface-3, var(--line))' }}>{noImgHint || t('ogp.prev.noimg', 'No preview image set, a shared link renders as plain text. Set a 1200×630 image.')}</div>);
   if (plat === 'x') return (
     <div className="w-full max-w-[440px] rounded-2xl overflow-hidden" style={{ background: '#fff', border: '1px solid #cfd9de' }}>
       <Img />
@@ -19013,16 +19029,16 @@ function SeoHealthCard() {
     const [sm, rb, cfg] = await Promise.all([text('/sitemap.xml'), text('/robots.txt'), fetch('/api/seo').then((r) => r.ok ? r.json() : null).catch(() => null)]);
     const smXml = sm.ok && /xml/i.test(sm.type);
     const urls = smXml ? (sm.body.match(/<loc>/g) || []).length : 0;
-    out.checks.push({ ok: smXml, label: t('seoh.sitemap', 'Sitemap'), detail: smXml ? t('seoh.sitemap.ok', '{n} URLs listed').replace('{n}', urls) : sm.ok ? t('seoh.sitemap.html', 'The app shell answered instead of XML — in production Caddy routes /sitemap.xml to the API; in dev this is expected.') : t('seoh.sitemap.no', 'Not reachable') });
+    out.checks.push({ ok: smXml, label: t('seoh.sitemap', 'Sitemap'), detail: smXml ? t('seoh.sitemap.ok', '{n} URLs listed').replace('{n}', urls) : sm.ok ? t('seoh.sitemap.html', 'The app shell answered instead of XML, in production Caddy routes /sitemap.xml to the API; in dev this is expected.') : t('seoh.sitemap.no', 'Not reachable') });
     const rbOk = rb.ok && /Sitemap:/i.test(rb.body || '') && !/text\/html/i.test(rb.type || '');
     out.checks.push({ ok: rbOk, label: t('seoh.robots', 'robots.txt'), detail: rbOk ? t('seoh.robots.ok', 'Points at the sitemap; private screens disallowed') : t('seoh.robots.no', 'Not served by the API (dev) or missing the Sitemap line') });
     // The tag: the env value is baked at build time; the saved one is what the site loads once
     // analytics consent is given. Either counts, but the screen says which.
     const envGtm = import.meta.env.VITE_GTM_ID || '';
-    out.checks.push({ ok: !!(envGtm || cfg?.gtmId), label: t('seoh.gtm', 'Google Tag Manager'), detail: envGtm ? t('seoh.gtm.env', 'From the build (VITE_GTM_ID)') : cfg?.gtmId ? t('seoh.gtm.saved', 'Saved here — loads after consent') : t('seoh.gtm.no', 'No container id — set it below'), soft: true });
-    out.checks.push({ ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'), detail: cfg?.googleVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.gsc.no', 'No token — set it in Site settings to verify the property and submit the sitemap') });
+    out.checks.push({ ok: !!(envGtm || cfg?.gtmId), label: t('seoh.gtm', 'Google Tag Manager'), detail: envGtm ? t('seoh.gtm.env', 'From the build (VITE_GTM_ID)') : cfg?.gtmId ? t('seoh.gtm.saved', 'Saved here, loads after consent') : t('seoh.gtm.no', 'No container id, set it below'), soft: true });
+    out.checks.push({ ok: !!cfg?.googleVerify, label: t('seoh.gsc', 'Google Search Console'), detail: cfg?.googleVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.gsc.no', 'No token, set it in Site settings to verify the property and submit the sitemap') });
     out.checks.push({ ok: !!cfg?.bingVerify, label: t('seoh.bing', 'Bing Webmaster'), detail: cfg?.bingVerify ? t('seoh.gsc.ok', 'Verification token set') : t('seoh.bing.no', 'No token (optional)'), soft: true });
-    out.checks.push({ ok: !!cfg?.description, label: t('seoh.desc', 'Site description'), detail: cfg?.description ? `${cfg.description.length} ${t('seoh.chars', 'chars')}${cfg.descriptionFr ? ' · FR ✓' : ` · ${t('seoh.nofr', 'no FR')}`}` : t('seoh.desc.no', 'Empty — the built-in one is used') });
+    out.checks.push({ ok: !!cfg?.description, label: t('seoh.desc', 'Site description'), detail: cfg?.description ? `${cfg.description.length} ${t('seoh.chars', 'chars')}${cfg.descriptionFr ? ' · FR ✓' : ` · ${t('seoh.nofr', 'no FR')}`}` : t('seoh.desc.no', 'Empty, the built-in one is used') });
     let ogOk = false;
     if (cfg?.ogImage) { ogOk = await new Promise((res) => { const im = new Image(); im.onload = () => res(im.naturalWidth >= 600); im.onerror = () => res(false); im.src = cfg.ogImage; }); }
     out.checks.push({ ok: cfg?.ogImage ? ogOk : true, label: t('seoh.og', 'Share image'), detail: cfg?.ogImage ? (ogOk ? t('seoh.og.ok', 'Loads, ≥ 600 px wide') : t('seoh.og.bad', 'Does not load or is too small (1200 × 630 recommended)')) : t('seoh.og.default', 'Built-in card (og-card.png)'), soft: true });
@@ -19077,7 +19093,7 @@ function SeoHealthCard() {
               </div>
             ))}
           </div>
-          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('seoh.pages', 'Key pages — what a search result shows ({l})').replace('{l}', lang.toUpperCase())}</div>
+          <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1.5">{t('seoh.pages', 'Key pages, what a search result shows ({l})').replace('{l}', lang.toUpperCase())}</div>
           <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
             {state.pages.map((p) => (
               <div key={p.path} className="px-3 py-2 text-xs flex items-start gap-3">
@@ -19123,7 +19139,7 @@ function SeoTagsInline() {
   };
   return (
     <details className="mt-3 rounded-lg border border-[var(--line)] p-3">
-      <summary className="cursor-pointer text-xs font-medium">{t('seoh.tags', 'Tag Manager & ownership tokens — set them here')}</summary>
+      <summary className="cursor-pointer text-xs font-medium">{t('seoh.tags', 'Tag Manager & ownership tokens, set them here')}</summary>
       <div className="grid sm:grid-cols-2 gap-2 mt-2">
         <Field label="GTM container id" className="!mb-0"><Input placeholder="GTM-XXXXXXX" value={v.gtmId} onChange={(e) => setV({ ...v, gtmId: e.target.value })} /></Field>
         <label className="flex items-center gap-2 text-sm self-end pb-2"><input type="checkbox" checked={v.gtmOn} onChange={(e) => setV({ ...v, gtmOn: e.target.checked })} /> {t('seoh.gtm.on', 'Load the tag (after analytics consent)')}</label>
@@ -19240,7 +19256,7 @@ function SitemapCard() {
           </div>
           {scan.deadExcludes?.length > 0 && (
             <div className="mb-1.5">
-              <div className="text-warning font-medium">{t('sm.scan.dead', 'Excluded, but no such page — so nothing is hidden:')}</div>
+              <div className="text-warning font-medium">{t('sm.scan.dead', 'Excluded, but no such page, so nothing is hidden:')}</div>
               {scan.deadExcludes.map((d) => (
                 <div key={d.path} className="ps-3 text-[var(--muted)]">
                   <code className="font-mono">{d.path}</code>
@@ -19251,7 +19267,7 @@ function SitemapCard() {
           )}
           {scan.unservedExtras?.length > 0 && (
             <div className="mb-1.5">
-              <div className="text-warning font-medium">{t('sm.scan.unserved', 'Added, but no route serves it — this offers a 404 to crawlers:')}</div>
+              <div className="text-warning font-medium">{t('sm.scan.unserved', 'Added, but no route serves it, this offers a 404 to crawlers:')}</div>
               <div className="ps-3 text-[var(--muted)] font-mono">{scan.unservedExtras.join(' · ')}</div>
             </div>
           )}
@@ -19271,7 +19287,7 @@ function SitemapCard() {
           <div className="flex-1" />
           <Input className="!w-48 !py-1 !text-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('sm.filter', 'Filter…')} />
         </div>
-        {urls == null ? <div className="text-xs text-[var(--faint)]">{t('sm.unreach', 'sitemap.xml is not reachable from here — in dev the app shell answers instead of the API.')}</div>
+        {urls == null ? <div className="text-xs text-[var(--faint)]">{t('sm.unreach', 'sitemap.xml is not reachable from here, in dev the app shell answers instead of the API.')}</div>
           : !groups.length ? <div className="text-xs text-[var(--faint)]">{t('sm.nomatch', 'Nothing matches.')}</div>
             : (
               <div className="space-y-1.5">
@@ -19303,7 +19319,7 @@ function SitemapCard() {
                 })}
               </div>
             )}
-        {excluded.size > 0 && <div className="text-[11px] text-warning mt-2">{t('sm.pending', '{n} exclusion(s) — press Save to apply them.').replace('{n}', excluded.size)}</div>}
+        {excluded.size > 0 && <div className="text-[11px] text-warning mt-2">{t('sm.pending', '{n} exclusion(s), press Save to apply them.').replace('{n}', excluded.size)}</div>}
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
@@ -19311,7 +19327,7 @@ function SitemapCard() {
         <Field label={t('sm.exclude', 'Leave out')} className="!mb-0"><Textarea rows={4} value={exclude} onChange={(e) => setExclude(e.target.value)} placeholder={'/2fa\n/polls'} /></Field>
       </div>
       {bad.length > 0 && <div className="text-[11px] text-error mt-1.5">{t('sm.badpath', 'Not a path: {x}. Every entry starts with / and has no spaces.').replace('{x}', bad.slice(0, 3).join(', '))}</div>}
-      <Field label={t('sm.robots', 'robots.txt — extra rules')} className="!mb-0 mt-3"
+      <Field label={t('sm.robots', 'robots.txt, extra rules')} className="!mb-0 mt-3"
         hint={t('sm.robots.h', 'Appended after the built-in rules (private screens stay disallowed, the sitemap stays advertised). One directive per line, e.g. “Disallow: /beta” or “Crawl-delay: 5”.')}>
         <Textarea rows={3} value={robots} onChange={(e) => setRobots(e.target.value)} placeholder={'Disallow: /beta\nCrawl-delay: 5'} />
       </Field>
@@ -19380,7 +19396,7 @@ function SeoPagesCard() {
     // Refused here as well as on the server, because the server answers with a field path
     // and an index — accurate, and not what somebody staring at a form needs to be told.
     const bad = rows.find((r) => badPath(r.path) || !String(r.path || '').trim());
-    if (bad) return toast.error(t('ogp.badpath', 'Every row needs a path starting with / — for example /hosting.'));
+    if (bad) return toast.error(t('ogp.badpath', 'Every row needs a path starting with /, for example /hosting.'));
     setBusy(true);
     try {
       await api.put('/admin/settings/seo.pages', { value: rows });
@@ -19411,9 +19427,9 @@ function SeoPagesCard() {
       {(() => {
         const sTitle = (lang === 'fr' ? settings['seo.titleFr'] : settings['seo.title']) || settings['seo.title'] || 'BetterCommunity';
         const sDesc = (lang === 'fr' ? settings['seo.descriptionFr'] : settings['seo.description']) || settings['seo.description']
-          || t('ogp.prev.defdesc', 'The home for every Better* project — catalogs, hosting, accounts and more.');
+          || t('ogp.prev.defdesc', 'The home for every Better* project, catalogs, hosting, accounts and more.');
         return (
-          <div className="rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/[0.04] p-3 mb-3">
+          <div className="rounded-lg border b-primary bg-[var(--primary)]/[0.04] p-3 mb-3">
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--primary-2)] flex items-center gap-1.5"><Globe size={12} /> {t('ogp.wholesite', 'Whole site (default)')}</span>
               <code className="text-[10px] text-[var(--faint)]">/*</code>
@@ -19461,7 +19477,7 @@ function SeoPagesCard() {
                   <Input className="!text-xs" value={r.titleFr || ''} onChange={(e) => set(i, { titleFr: e.target.value })} placeholder={t('ogp.titleFr', 'Title (FR)')} />
                   <Input className="!text-xs" value={r.description || ''} onChange={(e) => set(i, { description: e.target.value })} placeholder={t('ogp.descEn', 'Description (EN)')} />
                   <Input className="!text-xs" value={r.descriptionFr || ''} onChange={(e) => set(i, { descriptionFr: e.target.value })} placeholder={t('ogp.descFr', 'Description (FR)')} />
-                  <Input className="sm:col-span-2 !text-xs font-mono" value={r.image || ''} onChange={(e) => set(i, { image: e.target.value })} placeholder={t('ogp.img', 'Image URL — absolute, 1200×630')} />
+                  <Input className="sm:col-span-2 !text-xs font-mono" value={r.image || ''} onChange={(e) => set(i, { image: e.target.value })} placeholder={t('ogp.img', 'Image URL, absolute, 1200×630')} />
                   {/* Two lines are all a preview gets, and going over does not wrap: it is cut,
                       usually mid-word. Counted while typing rather than discovered on Discord. */}
                   <div className="sm:col-span-2 text-[10px] text-[var(--faint)]">
@@ -20082,7 +20098,7 @@ function AdminNav() {
         if (Array.isArray(parsed.downbar.items)) setDownbarItems(parsed.downbar.items.map((it) => ({ label: it.label || '', labelFr: it.labelFr || '', to: it.to || '/', icon: it.icon || 'Boxes' })));
       }
       if (parsed.layout && typeof parsed.layout === 'object') setLayout(readLayout(parsed.layout));
-      toast.success(t('nav.imported', 'Preset imported — review and save.'));
+      toast.success(t('nav.imported', 'Preset imported, review and save.'));
     } catch { toast.error(t('nav.importbad', 'Not a valid topbar preset JSON.')); }
   };
   const resetDefault = () => setItems(DEFAULT_NAV_SEED.map((x) => ({ ...x, children: (x.children || []).map((c) => ({ ...c })) })));
@@ -20111,7 +20127,7 @@ function AdminNav() {
         <button type="button" onClick={() => setEnabled((v) => !v)} aria-pressed={enabled} className={`w-11 h-6 rounded-full relative shrink-0 transition ${enabled ? 'bg-[var(--primary)]' : 'bg-[var(--surface-3,var(--line))]'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${enabled ? 'left-[22px]' : 'left-0.5'}`} /></button>
         <div className="min-w-0 flex-1">
           <div className="font-medium text-sm">{t('nav.enable', 'Use this custom navigation')}</div>
-          <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-warning"> · {t('nav.enable.empty', 'no valid items yet — the built-in nav still shows')}</span>}</div>
+          <div className="text-xs text-[var(--faint)]">{enabled ? t('nav.enable.on', 'The topbar shows your configured items below.') : t('nav.enable.off', 'The topbar shows the built-in navigation.')}{enabled && validCount === 0 && <span className="text-warning"> · {t('nav.enable.empty', 'no valid items yet, the built-in nav still shows')}</span>}</div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importPreset} />
@@ -20188,7 +20204,7 @@ function AdminNav() {
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
               <div className="min-w-0">
                 <div className="font-medium text-sm">{t('nav.downbar.custom', 'Custom buttons')}</div>
-                <div className="text-xs text-[var(--faint)]">{downbarItems.length ? t('nav.downbar.custom.on', 'These exact buttons, in order. Each is a plain link, the raised centre button, or a menu that opens upward.') : t('nav.downbar.custom.off', 'Empty — the bar follows your nav items (home + the first few links).')}</div>
+                <div className="text-xs text-[var(--faint)]">{downbarItems.length ? t('nav.downbar.custom.on', 'These exact buttons, in order. Each is a plain link, the raised centre button, or a menu that opens upward.') : t('nav.downbar.custom.off', 'Empty, the bar follows your nav items (home + the first few links).')}</div>
               </div>
               {downbarItems.length < 5 && <Button size="sm" variant="ghost" onClick={() => setDownbarItems((s) => [...s, { kind: 'link', label: '', labelFr: '', to: '/', icon: 'Boxes', children: [] }])}><Plus size={13} /> {t('nav.downbar.add', 'Add button')}</Button>}
             </div>
@@ -20198,7 +20214,7 @@ function AdminNav() {
                 const patch = (p) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, ...p } : x));
                 const patchKid = (j, p) => setDownbarItems((s) => s.map((x, k) => k === i ? { ...x, children: (x.children || []).map((c, m) => m === j ? { ...c, ...p } : c) } : x));
                 return (
-                <div key={i} className="rounded-lg border border-[var(--line)] p-2 bg-[var(--surface-2)]/40 space-y-2">
+                <div key={i} className="rounded-lg border border-[var(--line)] p-2 panel space-y-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Kind picker — plain link, the raised centre button, or an upward menu. */}
                     <div className="flex rounded-lg border border-[var(--line)] overflow-hidden shrink-0 text-[11px]">
@@ -20274,7 +20290,7 @@ function AdminNav() {
             <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--faint)] mb-1.5">{label}</div>
             <div className="space-y-1">
               {orderedU(keys).map((k, idx, arr) => (
-                <div key={k} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-1.5 bg-[var(--surface-2)]/40">
+                <div key={k} className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-2.5 py-1.5 panel">
                   <NavPvIcon name={UTIL_ICON[k]} size={15} />
                   <span className="flex-1 text-sm">{t('nav.util.' + k, UTIL_LABEL[k])}</span>
                   {k === 'lang' && (
@@ -20300,7 +20316,7 @@ function AdminNav() {
           <Card key={i} ref={(el) => { itemRefs.current[i] = el; }}
             onDragOver={dragIdx != null ? (e) => { e.preventDefault(); if (overIdx !== i) setOverIdx(i); } : undefined}
             onDrop={dragIdx != null ? (e) => { e.preventDefault(); onDrop(); } : undefined}
-            className={`p-4 space-y-3 transition-all ${flashIdx === i ? 'ring-2 ring-[var(--primary)] shadow-lg' : ''} ${dragIdx === i ? 'opacity-40' : ''} ${dragIdx != null && overIdx === i && dragIdx !== i ? 'ring-2 ring-[var(--primary)]/60' : ''}`}>
+            className={`p-4 space-y-3 transition-all ${flashIdx === i ? 'ring-2 ring-[var(--primary)] shadow-lg' : ''} ${dragIdx === i ? 'opacity-40' : ''} ${dragIdx != null && overIdx === i && dragIdx !== i ? 'ring-2 ring-[var(--primary)]' : ''}`}>
             <div className="flex items-center gap-2 flex-wrap">
               {/* Drag handle: only this is draggable, so the fields inside stay selectable. */}
               <button type="button" draggable
@@ -20333,9 +20349,9 @@ function AdminNav() {
 
             {it.type === 'group' && <div className="pt-2 border-t border-[var(--line)] space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)]">{t('nav.children', 'Dropdown links')}</div>
-              {it.children.length === 0 && <div className="text-xs text-[var(--faint)]">{t('nav.children.none', 'Add at least one link — an empty group is dropped on save.')}</div>}
+              {it.children.length === 0 && <div className="text-xs text-[var(--faint)]">{t('nav.children.none', 'Add at least one link, an empty group is dropped on save.')}</div>}
               {it.children.map((c, j) => (
-                <div key={j} className="rounded-xl border border-[var(--line)] p-2.5 space-y-2 bg-[var(--surface-2)]/40">
+                <div key={j} className="rounded-xl border border-[var(--line)] p-2.5 space-y-2 panel">
                   <div className="flex items-center gap-2">
                     <IconSelect value={c.icon} onChange={(v) => patchChild(i, j, { icon: v })} />
                     <div className="flex-1" />
@@ -20372,7 +20388,7 @@ function AdminNav() {
 
       {/* Save follows you down the page. It used to be the last thing after six cards, so
           editing an item near the top meant scrolling to the bottom to keep the change. */}
-      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)]">
+      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 scrim backdrop-blur border-t border-[var(--line)]">
         <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
           {validCount} {t('nav.valid', 'item(s) will be saved')}
         </span>
@@ -20666,7 +20682,7 @@ function OwnerCatalogItems({ catalog, onChange }) {
           <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} title={t('oc.it.upload', 'Upload a file to your pool instead of linking a URL')}><Upload size={13} /> {t('oc.it.uploadbtn', 'Upload')}</Button>
           <Button size="sm" variant="default" onClick={add} disabled={busy}>{busy ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} {t('oc.additem', 'Add')}</Button>
         </div>
-        <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('oc.it.hint', 'Link a download URL, or upload a file — uploads use your pool space (up to what is free).')}</p>
+        <p className="text-[11px] text-[var(--faint)] mt-1.5">{t('oc.it.hint', 'Link a download URL, or upload a file, uploads use your pool space (up to what is free).')}</p>
       </>}
     </div>
   );
@@ -20822,7 +20838,7 @@ function AdminCatalogExamine({ catalog, onClose }) {
                 </div> : (
                   inspect.data.text != null
                     ? <pre className="p-2 rounded bg-[var(--bg)] border border-[var(--line)] overflow-auto max-h-72 whitespace-pre-wrap break-words text-[11px] leading-relaxed">{inspect.data.text}</pre>
-                    : <p className="text-[var(--faint)]">{t('cc.ex.binary', 'Binary file — download to inspect.')} ({fmtBytes(inspect.data.size)})</p>
+                    : <p className="text-[var(--faint)]">{t('cc.ex.binary', 'Binary file, download to inspect.')} ({fmtBytes(inspect.data.size)})</p>
                 )
               ) : null}
             </div>}
@@ -20880,7 +20896,7 @@ function AdminBadges() {
             <Button size="sm" variant="ghost" className="!text-error" onClick={() => del(b)}><Trash2 size={13} /></Button>
           </Card>
         ))}
-      </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge — verified, developer, content creator…')} />}
+      </div> : <EmptyState icon={BadgeCheck} title={t('ab.none.t', 'No badges yet')} sub={t('ab.none.s', 'Create your first badge, verified, developer, content creator…')} />}
 
       {edit && <Modal open onClose={() => setEdit(null)} title={edit.id ? t('ab.edit', 'Edit badge') : t('ab.new', 'New badge')} icon={BadgeCheck} width="max-w-lg"
         footer={<><Button variant="ghost" onClick={() => setEdit(null)}>{t('common.cancel', 'Cancel')}</Button><Button variant="primary" onClick={save}>{t('common.save', 'Save')}</Button></>}>
@@ -20936,7 +20952,7 @@ function AdminBadges() {
             {rule.type === 'level_reached' && <Field label={t('ab.rule.lvl', 'Level')}><Input type="number" min="1" value={rule.level ?? 10} onChange={(e) => setRule({ ...rule, level: Math.max(1, Number(e.target.value) || 1) })} placeholder="10" /></Field>}
             {['messages_sent', 'purchases_made', 'polls_answered', 'items_published'].includes(rule.type) && <Field label={t('ab.rule.count', 'How many (N)')}><Input type="number" min="1" value={rule.count ?? 10} onChange={(e) => setRule({ ...rule, count: Math.max(1, Number(e.target.value) || 1) })} placeholder="10" /></Field>}
             <p className="text-[11px] text-[var(--faint)] -mt-1">{['signup_nth', 'signup_before', 'kofi_donation', 'polls_answered'].includes(rule.type)
-              ? t('ab.rulehint', 'Granted automatically when the event fires — e.g. a badge for the 100th, 200th… member, early adopters, or Ko-fi supporters.')
+              ? t('ab.rulehint', 'Granted automatically when the event fires, e.g. a badge for the 100th, 200th… member, early adopters, or Ko-fi supporters.')
               : t('ab.rulehint2', 'Granted the moment somebody qualifies, and once a day for everyone who already does — so a badge for “level 10” also reaches the members who were past it when you created it.')}</p>
           </>; })()}
           <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> {t('ab.active', 'Active')}</label>
@@ -20974,7 +20990,7 @@ function AdminBadgeHolders({ badge, onClose }) {
   const revoke = async (h) => { try { await api.del(`/admin/badges/${badge.id}/holders/${h.userId}`); reload(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
     <Modal open onClose={onClose} title={t('ab.holders.t', 'Grant: {n}').replace('{n}', badge.name)} icon={Users} width="max-w-lg">
-      <Field label={t('ab.grantto2', 'Grant to — search by name, e-mail, id or BC id')} className="mb-2">
+      <Field label={t('ab.grantto2', 'Grant to, search by name, e-mail, id or BC id')} className="mb-2">
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--faint)]" /><Input className="!ps-9" value={who} onChange={(e) => setWho(e.target.value)} placeholder="BC-XXXX-XXXX · name · user@example.com" autoFocus /></div>
       </Field>
       {who.trim().length >= 2 && (
@@ -21033,7 +21049,7 @@ export function MyReports() {
             </div>
           </Card></button>
         ); })}
-      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog — or start one here.')}><Button variant="primary" onClick={() => setNewOpen(true)}><Plus size={15} /> {t('mr.new2', 'New report / contact')}</Button></EmptyState>}
+      </div> : <EmptyState icon={MessageSquare} title={t('mr.none.t', 'No reports yet')} sub={t('mr.none.s', 'Use the Report button on a profile, repo or catalog, or start one here.')}><Button variant="primary" onClick={() => setNewOpen(true)}><Plus size={15} /> {t('mr.new2', 'New report / contact')}</Button></EmptyState>}
       {openId && <ReportThreadModal id={openId} admin={false} onClose={() => { setOpenId(null); reload(); }} />}
       {newOpen && <ReportModal targetType="general" targetId="" targetLabel="" onClose={() => { setNewOpen(false); reload(); }} />}
     </div>
@@ -21075,11 +21091,11 @@ function ReportThreadModal({ id, admin, onClose }) {
           <Badge tone={REPORT_STATUS_TONE[r.status]}>{r.status}</Badge>
           <span>{t('mr.on', 'on {t}').replace('{t}', r.targetType)}{r.reason ? ` · ${r.reason}` : ''}</span>
           {/* Full report subject: the reported entity's id (repo id / catalog slug / user id) + when. */}
-          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id — click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
+          {admin && r.targetId && <button onClick={() => { navigator.clipboard?.writeText(r.targetId); toast.success(t('ccp.copied', 'Copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1" title={t('ar.targetid', 'Reported {t} id, click to copy').replace('{t}', r.targetType)}><Fingerprint size={11} /> {r.targetId} <Copy size={9} /></button>}
           {admin && <span className="flex items-center gap-1"><Calendar size={11} /> {new Date(r.createdAt).toLocaleString()}</span>}
           {admin && r.reporter && <span className="flex items-center gap-1"><Users size={12} /> {r.reporter} · {r.reporterEmail} {r.reporterBcId && <button onClick={() => { navigator.clipboard?.writeText(r.reporterBcId); toast.success(t('prof.bcidcopied', 'BC id copied.')); }} className="font-mono hover:text-[var(--primary)] inline-flex items-center gap-1"><Fingerprint size={11} /> {r.reporterBcId} <Copy size={9} /></button>}</span>}
         </div>
-        {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report — reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
+        {own && <div className="text-xs rounded-lg px-3 py-2 bg-warning-bg border border-warning-border text-warning flex items-center gap-2"><AlertTriangle size={14} /> {t('ar.ownreport', 'You opened this report, reply to it from your dashboard (Reports & contact), not as staff here.')}</div>}
         {admin && !own && <div className="flex flex-wrap gap-2">
           {r.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus('open')}><RefreshCw size={13} /> {t('ar.reopen', 'Reopen')}</Button>}
           {r.status !== 'archived' && <Button size="sm" variant="ghost" onClick={() => setStatus('archived')}><Archive size={13} /> {t('ar.archive', 'Archive')}</Button>}
@@ -21097,7 +21113,7 @@ function ReportThreadModal({ id, admin, onClose }) {
         </div>}
         <div className="max-h-[45vh] overflow-y-auto pe-1"><ReportThread messages={r.messages} /></div>
         {own ? null
-          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed — reopen it above if you still need help.')}</p>
+          : r.status === 'closed' && !admin ? <p className="text-sm text-[var(--faint)] text-center py-2">{t('mr.closednote', 'This report is closed, reopen it above if you still need help.')}</p>
           : <ReportComposer onSend={send} sending={sending} placeholder={admin ? t('ar.reply', 'Reply as staff…') : t('rp.msgph', 'Write a message…')} />}
       </div>}
     </Modal>
@@ -21126,7 +21142,7 @@ function ReportPeoplePanel({ report, onChange }) {
   };
   const rmInvite = async (iv) => { try { await api.del(`/admin/reports/${report.id}/invites/${iv.id}`); onChange(); } catch { toast.error(t('acc.failed', 'Failed.')); } };
   return (
-    <div className="rounded-xl border border-[var(--line)] p-3 space-y-3 bg-[var(--surface-2)]/40">
+    <div className="rounded-xl border border-[var(--line)] p-3 space-y-3 panel">
       {/* Participants */}
       <div>
         <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] font-semibold mb-1.5">{t('rpp.participants', 'Participants')}</div>
@@ -21265,7 +21281,7 @@ function RightsNoticeModal({ id, onClose }) {
   useEffect(() => { if (n) setNote(n.internalNote || ''); }, [n]);
   const act = async (verb, body) => {
     setBusy(verb);
-    try { const r = await api.post(`/admin/rights/${id}/${verb}`, body); if (r.failed?.length) toast.error(t('rn.adm.partial', '{n} target(s) could not be handled — see the note.').replace('{n}', r.failed.length)); else toast.success(t('common.done', 'Done.')); reload(); }
+    try { const r = await api.post(`/admin/rights/${id}/${verb}`, body); if (r.failed?.length) toast.error(t('rn.adm.partial', '{n} target(s) could not be handled, see the note.').replace('{n}', r.failed.length)); else toast.success(t('common.done', 'Done.')); reload(); }
     catch (x) { toast.error(x.data?.error || t('acc.failed', 'Failed.')); }
     finally { setBusy(''); }
   };
@@ -21323,7 +21339,7 @@ function RightsNoticeModal({ id, onClose }) {
                   <Link to={`/admin?s=users&q=${encodeURIComponent(o.email || o.id)}`} className="text-[var(--primary-2)]">{o.displayName}</Link><span className="font-mono text-xs text-[var(--faint)]">{o.bcId}</span>
                   <Badge tone={o.strikes?.over ? 'error' : o.strikes?.strikes ? 'warning' : undefined}>{t('rn.adm.strikes', '{n} / {m} strikes in {d} days').replace('{n}', o.strikes?.strikes ?? 0).replace('{m}', o.strikes?.threshold ?? 3).replace('{d}', o.strikes?.windowDays ?? 365)}</Badge>
                   {o.prior?.length > 0 && <span className="text-xs text-[var(--faint)]">{o.prior.join(', ')}</span>}
-                  {o.strikes?.over && <span className="text-xs text-error">{t('rn.adm.repeat', 'Repeat infringer — consider the account screen.')}</span>}
+                  {o.strikes?.over && <span className="text-xs text-error">{t('rn.adm.repeat', 'Repeat infringer, consider the account screen.')}</span>}
                 </div>
               ))}
             </Card>
@@ -21396,7 +21412,7 @@ function ProtectedWorks() {
       <div className="flex gap-2 flex-wrap">
         <Button size="sm" variant="primary" onClick={() => setDraft(blank)}><Plus size={14} /> {t('rn.w.add', 'Register a work')}</Button>
         <Button size="sm" onClick={doScan} disabled={scan?.busy}>{scan?.busy ? <Spinner /> : <Search size={14} />} {t('rn.w.scan', 'Scan everything hosted now')}</Button>
-        {scan && !scan.busy && !scan.error && <span className="text-xs text-[var(--muted)] self-center">{t('rn.w.scanres', '{f} files, {i} items, {w} works — {m} new match(es)').replace('{f}', scan.files).replace('{i}', scan.items).replace('{w}', scan.works).replace('{m}', scan.matches?.length || 0)}</span>}
+        {scan && !scan.busy && !scan.error && <span className="text-xs text-[var(--muted)] self-center">{t('rn.w.scanres', '{f} files, {i} items, {w} works: {m} new match(es)').replace('{f}', scan.files).replace('{i}', scan.items).replace('{w}', scan.works).replace('{m}', scan.matches?.length || 0)}</span>}
       </div>
       {draft && (
         <Card className="p-4 space-y-2">
@@ -21404,9 +21420,9 @@ function ProtectedWorks() {
             <Field label={t('rn.wtitle', 'Its name')}><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></Field>
             <Field label={t('rn.w.owner', 'Rights holder')}><Input value={draft.owner} onChange={(e) => setDraft({ ...draft, owner: e.target.value })} /></Field>
             <Field label={t('rn.w.contact', 'Contact')}><Input value={draft.contact} onChange={(e) => setDraft({ ...draft, contact: e.target.value })} /></Field>
-            <Field label={t('rn.w.urls', 'Source URLs (one per line) — a listing pointing here matches')}><Textarea rows={2} value={Array.isArray(draft.urls) ? draft.urls.join('\n') : draft.urls} onChange={(e) => setDraft({ ...draft, urls: e.target.value })} /></Field>
-            <Field label={t('rn.w.hashes', 'SHA-256 of the files (one per line) — a file with this hash matches')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.hashes) ? draft.hashes.join('\n') : draft.hashes} onChange={(e) => setDraft({ ...draft, hashes: e.target.value })} /></Field>
-            <Field label={t('rn.w.patterns', 'Name patterns (regex, one per line) — a file or item NAME matching one is flagged for review')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.patterns) ? draft.patterns.join('\n') : draft.patterns} onChange={(e) => setDraft({ ...draft, patterns: e.target.value })} placeholder="^foo[-_ ]?pack" /></Field>
+            <Field label={t('rn.w.urls', 'Source URLs (one per line), a listing pointing here matches')}><Textarea rows={2} value={Array.isArray(draft.urls) ? draft.urls.join('\n') : draft.urls} onChange={(e) => setDraft({ ...draft, urls: e.target.value })} /></Field>
+            <Field label={t('rn.w.hashes', 'SHA-256 of the files (one per line), a file with this hash matches')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.hashes) ? draft.hashes.join('\n') : draft.hashes} onChange={(e) => setDraft({ ...draft, hashes: e.target.value })} /></Field>
+            <Field label={t('rn.w.patterns', 'Name patterns (regex, one per line), a file or item NAME matching one is flagged for review')}><Textarea rows={3} className="font-mono text-xs" value={Array.isArray(draft.patterns) ? draft.patterns.join('\n') : draft.patterns} onChange={(e) => setDraft({ ...draft, patterns: e.target.value })} placeholder="^foo[-_ ]?pack" /></Field>
           </div>
           <Field label={t('rn.w.notes', 'Notes')}><Textarea rows={2} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></Field>
           <div className="flex gap-2"><Button variant="primary" onClick={save} disabled={!draft.title.trim()}>{t('common.save', 'Save')}</Button><Button variant="ghost" onClick={() => setDraft(null)}>{t('common.cancel', 'Cancel')}</Button></div>
@@ -21522,7 +21538,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
       tone: 'success', cancelLabel: t('common.undo', 'Undo'),
       msg: mode === 'handled'
         ? t('nq.handled', 'Marked as dealt with.')
-        : t('nq.archived', 'Archived — it stays in its queue.'),
+        : t('nq.archived', 'Archived, it stays in its queue.'),
       onCommit: async () => {
         try { await api.post('/admin/pending/dismiss', { queue: it.queue, itemId: String(it.id), mode }); onReload?.(); pendingChanged(); }
         catch { toast.error(t('common.failed', 'Failed.')); }
@@ -21548,7 +21564,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
               const n = counts[q.key];
               return (
                 <Link key={q.key} to={q.to}>
-                  <Card className={`p-3.5 h-full transition-colors ${n > 0 ? 'border-[var(--primary)]/40' : ''} hover:border-[var(--primary)]`}>
+                  <Card className={`p-3.5 h-full transition-colors ${n > 0 ? 'b-primary' : ''} hover:border-[var(--primary)]`}>
                     <div className="flex items-center gap-2 text-xs text-[var(--muted)] mb-1"><q.icon size={13} /> {q.label(t)}</div>
                     <div className={`text-2xl font-semibold tabular-nums ${n > 0 ? 'text-[var(--primary-2)]' : 'text-[var(--faint)]'}`}>
                       {n == null ? '—' : n}
@@ -21561,7 +21577,7 @@ function AdminNeedsAttention({ data, loading, onReload }) {
 
           {items.length === 0 ? (
             <EmptyState icon={CheckCircle2} title={t('nq.clear.t', 'Nothing waiting')}
-              sub={data?.dismissed ? t('nq.clear.s2', 'Everything left has been ticked off this list. The queues themselves still hold {n} item(s) — clearing a row here never closes the work.').replace('{n}', String(data.total || 0)) : t('nq.clear.s', 'Every queue you can act on is empty.')} />
+              sub={data?.dismissed ? t('nq.clear.s2', 'Everything left has been ticked off this list. The queues themselves still hold {n} item(s), clearing a row here never closes the work.').replace('{n}', String(data.total || 0)) : t('nq.clear.s', 'Every queue you can act on is empty.')} />
           ) : (
             <Card className="divide-y divide-[var(--line)] overflow-hidden">
               {items.map((it) => (
@@ -21578,9 +21594,9 @@ function AdminNeedsAttention({ data, loading, onReload }) {
                       because the work has not — that number is the one staff trust, and a
                       to-do list anybody can tick off is not a count. */}
                   <span className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
-                    <button onClick={() => dismiss(it, 'handled')} title={t('nq.handled.h', 'Dealt with — take it off this list')}
+                    <button onClick={() => dismiss(it, 'handled')} title={t('nq.handled.h', 'Dealt with, take it off this list')}
                       className="text-[var(--faint)] hover:text-success"><CheckCircle2 size={14} /></button>
-                    <button onClick={() => dismiss(it, 'archived')} title={t('nq.archived.h', 'Not going to act on it — take it off this list')}
+                    <button onClick={() => dismiss(it, 'archived')} title={t('nq.archived.h', 'Not going to act on it, take it off this list')}
                       className="text-[var(--faint)] hover:text-[var(--primary-2)]"><Archive size={14} /></button>
                   </span>
                 </div>
@@ -21631,7 +21647,7 @@ function SocialIconPreview({ icon }) {
   }
   return (
     <span className={`w-7 h-7 shrink-0 grid place-items-center rounded-lg border ${bad ? 'border-error-border bg-error-bg' : 'border-[var(--line)]'}`}
-      title={bad ? t('afoot.icon.bad', 'No lucide icon with that name — it would render as an empty space.') : key}>
+      title={bad ? t('afoot.icon.bad', 'No lucide icon with that name, it would render as an empty space.') : key}>
       {bad
         ? <AlertTriangle size={13} className="text-error" />
         : <img src={`https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/${encodeURIComponent(lucideFileName(key))}.svg`}
@@ -21654,7 +21670,7 @@ function FooterStatusPicker({ value, style, onChange }) {
           <button key={sv.key} type="button" onClick={() => toggle(sv.key)} className={`text-xs px-2 py-1 rounded-lg border ${!value.length || value.includes(sv.key) ? 'border-[var(--primary)] text-[var(--text)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
             <span className={`inline-block w-1.5 h-1.5 rounded-full me-1 ${sv.state === 'up' ? 'bg-success' : sv.state === 'down' ? 'bg-error' : 'bg-warning'}`} />{sv.label}
           </button>
-        )) : <span className="text-[11px] text-[var(--faint)]">{t('afoot.status.none', 'No service is monitored yet — Server → Status page.')}</span>}
+        )) : <span className="text-[11px] text-[var(--faint)]">{t('afoot.status.none', 'No service is monitored yet: Server → Status page.')}</span>}
       </div>
       <p className="text-[11px] text-[var(--faint)]">{t('afoot.status.pick', 'Highlighted services are the ones the line reads; none highlighted = all of them.')}</p>
       <div className="flex items-center gap-3 text-sm">
@@ -21691,7 +21707,7 @@ function AdminFooter() {
       okLabel: t('afoot.load.ok', 'Load'),
     }))) return;
     setF({ ...f, ...defaultFooterConfig(t) });
-    toast.success(t('afoot.loaded', 'Built-in footer loaded — edit it, then Save.'));
+    toast.success(t('afoot.loaded', 'Built-in footer loaded, edit it, then Save.'));
   };
 
   // Hand the footer back to the site. Clearing the config rather than writing the built-in
@@ -21741,9 +21757,9 @@ function AdminFooter() {
     try {
       await api.put('/admin/footer', body);
       toast.success(!body.enabled
-        ? t('afoot.saved.off', 'Saved — but “Use this footer” is off, so visitors still see the built-in one.')
+        ? t('afoot.saved.off', 'Saved, but “Use this footer” is off, so visitors still see the built-in one.')
         : !(body.columns || []).length
-          ? t('afoot.saved.empty', 'Saved — no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
+          ? t('afoot.saved.empty', 'Saved, no columns yet, so the built-in columns still show. Use “Start from the built-in footer”.')
           : t('afoot.saved', 'Footer saved.'));
       reload();
     } catch (x) { toast.error(x.data?.detail || x.data?.error || t('common.failed', 'Failed.')); }
@@ -21779,7 +21795,7 @@ function AdminFooter() {
             <div className="font-semibold text-warning">{t('afoot.inactive', 'Visitors are seeing the built-in footer')}</div>
             <div className="text-[var(--muted)] mt-0.5">
               {!f.enabled
-                ? t('afoot.inactive.off', '“Use this footer” is off — nothing here is applied until you turn it on.')
+                ? t('afoot.inactive.off', '“Use this footer” is off, nothing here is applied until you turn it on.')
                 : t('afoot.inactive.empty', 'There are no columns, so the built-in ones stand. Start from the built-in footer and edit it.')}
             </div>
           </div>
@@ -21964,7 +21980,7 @@ function AdminFooter() {
                 <div key={li} className={`flex items-center gap-2 flex-wrap ${shows(l) ? '' : 'opacity-50'}`}>
                   <Input className="!w-40 !text-xs" value={l.label} onChange={(e) => setLink(ci, li, { label: e.target.value })} placeholder={t('afoot.label', 'Label')} />
                   <Input className="!w-40 !text-xs" value={l.labelFr || ''} onChange={(e) => setLink(ci, li, { labelFr: e.target.value })} placeholder={t('afoot.labelfr', 'Label (FR)')} />
-                  <Input className="!w-56 !text-xs font-mono" value={l.to} onChange={(e) => setLink(ci, li, { to: e.target.value })} placeholder="/blog — https://…" />
+                  <Input className="!w-56 !text-xs font-mono" value={l.to} onChange={(e) => setLink(ci, li, { to: e.target.value })} placeholder="/blog, https://…" />
                   <Select className="!w-auto !text-xs" value={l.on || 'both'} onChange={(e) => setLink(ci, li, { on: e.target.value })}>{ON_OPTS.map(([v, lb]) => <option key={v} value={v}>{lb}</option>)}</Select>
                   <button onClick={() => setCol(ci, { links: move(c.links, li, -1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↑</button>
                   <button onClick={() => setCol(ci, { links: move(c.links, li, 1) })} className="text-[var(--faint)] hover:text-[var(--text)] px-1">↓</button>
@@ -21979,7 +21995,7 @@ function AdminFooter() {
       </div>
       )}
 
-      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 bg-[var(--bg)]/85 backdrop-blur border-t border-[var(--line)]">
+      <div className="sticky bottom-0 -mx-1 px-1 py-2 flex items-center gap-2 scrim backdrop-blur border-t border-[var(--line)]">
         <span className="text-[11px] text-[var(--muted)] min-w-0 flex-1">
           {(f.columns || []).length} {t('afoot.ncols', 'column(s)')}
         </span>
@@ -22035,7 +22051,7 @@ function AppIconsCard() {
   const save = async () => {
     const clean = rows.map((r) => ({ key: String(r.key || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 24), label: String(r.label || '').trim(), url: String(r.url || '').trim() })).filter((r) => r.key && r.label && r.url);
     setBusy(true);
-    try { await api.put('/admin/site/app-icons', { icons: clean }); toast.success(t('ai.saved', 'App icons saved — visitors pick them up on their next page load.')); reload(); }
+    try { await api.put('/admin/site/app-icons', { icons: clean }); toast.success(t('ai.saved', 'App icons saved, visitors pick them up on their next page load.')); reload(); }
     catch { toast.error(t('ai.bad', 'Could not save: every row needs a key (letters, digits, dashes), a name and an image.')); }
     finally { setBusy(false); }
   };
@@ -22052,10 +22068,10 @@ function AppIconsCard() {
       <div className="flex flex-wrap gap-2 mb-3">
         {BUNDLED.map(([k, l, u]) => {
           const over = rows.find((r) => r.key === k);
-          return <span key={k} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/60" title={over ? t('ai.overridden', 'Replaced by the row below') : t('ai.bundled', 'Bundled — add a row with this key to replace it')}><span className="inline-grid place-items-center w-5 h-5 rounded bg-white p-0.5"><img src={over?.url || u} alt="" className="max-w-full max-h-full" /></span> {l} <code className="text-[10px] text-[var(--faint)]">app:{k}</code>{over && <Badge tone="amber">{t('ai.custom', 'custom')}</Badge>}</span>;
+          return <span key={k} className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border border-[var(--line)] panel" title={over ? t('ai.overridden', 'Replaced by the row below') : t('ai.bundled', 'Bundled, add a row with this key to replace it')}><span className="inline-grid place-items-center w-5 h-5 rounded bg-white p-0.5"><img src={over?.url || u} alt="" className="max-w-full max-h-full" /></span> {l} <code className="text-[10px] text-[var(--faint)]">app:{k}</code>{over && <Badge tone="amber">{t('ai.custom', 'custom')}</Badge>}</span>;
         })}
       </div>
-      {rows.length === 0 ? <div className="text-[12px] text-[var(--faint)]">{t('ai.none', 'No custom icons — the four bundled marks are offered.')}</div> : (
+      {rows.length === 0 ? <div className="text-[12px] text-[var(--faint)]">{t('ai.none', 'No custom icons, the four bundled marks are offered.')}</div> : (
         <div className="space-y-2">
           {rows.map((r, i) => (
             <div key={i} className="grid grid-cols-[auto_1fr_1fr_2fr_auto] gap-2 items-center">
@@ -22180,7 +22196,7 @@ function AdminSiteTheme() {
     if (had) {
       toast.action({
         tone: 'warning', duration: 8000, cancelLabel: t('common.undo', 'Undo'),
-        msg: t('st.preset.applied', 'Preset applied — it brings its own page colours and gradients, so your overrides were replaced.'),
+        msg: t('st.preset.applied', 'Preset applied, it brings its own page colours and gradients, so your overrides were replaced.'),
         onCommit: () => {},
         onCancel: () => setF((cur) => ({ ...cur, ...prev })),
       });
@@ -22256,7 +22272,7 @@ function AdminSiteTheme() {
         logoLight: /^(\/|https:\/\/)/.test(String(j.logoLight || '')) ? j.logoLight : '',
         logoDark: /^(\/|https:\/\/)/.test(String(j.logoDark || '')) ? j.logoDark : '',
       });
-      toast.success(t('st.imported', 'Theme loaded — review it, then Apply.'));
+      toast.success(t('st.imported', 'Theme loaded, review it, then Apply.'));
     } catch { toast.error(t('st.importbad', 'Not a valid theme file.')); }
   };
 
@@ -22273,7 +22289,7 @@ function AdminSiteTheme() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {THEME_PRESETS.map((p) => (
             <button key={p.id} type="button" onClick={() => pick(p)}
-              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-start transition-colors ${f.preset === p.id ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+              className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-start transition-colors ${f.preset === p.id ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
               {/* The swatch shows the LOOK, not just the accent: the preset's own light and dark
                   page colours beside the accent sweep, so picking one is not a guess about what
                   the page turns into. A preset with no page colours (the default) shows the
@@ -22413,7 +22429,7 @@ function AdminSiteTheme() {
                   <div className="flex items-center gap-2 pt-1">
                     {glows.length < 8 && <Button size="sm" variant="ghost" onClick={() => setGlows([...glows, { color: 'rgba(249,115,22,.10)', w: 50, h: 50, x: 50, y: 50, fade: 60 }])}><Plus size={13} /> {t('thm.bg.add', 'Add a glow')}</Button>}
                     <Button size="sm" variant="ghost" onClick={() => setGlows(null)}><RotateCcw size={13} /> {t('thm.bg.reset', 'Back to the built-in')}</Button>
-                    {glows.length === 0 && <span className="text-[11px] text-[var(--faint)]">{t('thm.bg.flat', 'No glows — a flat background.')}</span>}
+                    {glows.length === 0 && <span className="text-[11px] text-[var(--faint)]">{t('thm.bg.flat', 'No glows, a flat background.')}</span>}
                   </div>
                 </div>
               )}
@@ -22487,9 +22503,9 @@ function AdminSiteTheme() {
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] flex items-center gap-1.5">
                     {m === 'dark' ? <Moon size={12} /> : <Sun size={12} />} {m === 'dark' ? t('st.dark', 'Dark') : t('st.light', 'Light')}
                   </span>
-                  {editing && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--primary)]/10 text-[var(--primary-2)] font-medium">{t('st.editing', 'editing')}</span>}
+                  {editing && <span className="text-[10px] px-1.5 py-0.5 rounded-full tint-primary text-[var(--primary-2)] font-medium">{t('st.editing', 'editing')}</span>}
                 </div>
-                <div id={`st-preview-${m}`} className={`rounded-xl border p-3.5 space-y-3 transition ${editing ? 'border-[var(--primary)]/40 ring-1 ring-[var(--primary)]/20' : 'border-[var(--line)]'}`}
+                <div id={`st-preview-${m}`} className={`rounded-xl border p-3.5 space-y-3 transition ${editing ? 'b-primary ring-1 ring-[var(--primary)]' : 'border-[var(--line)]'}`}
                   style={{ background: 'var(--bg)', backgroundImage: previewGlowCss(f, m), color: 'var(--text)' }}>
                   {/* The site mark on this scheme's ground — the only place the two logos can
                       be judged, since a mark that vanishes only vanishes on its own page. */}
@@ -22511,7 +22527,7 @@ function AdminSiteTheme() {
                   <div className="rounded-lg p-3 space-y-2" style={{ background: 'var(--surface)', border: '1px solid var(--line)' }}>
                     <div className="font-semibold text-sm">{t('st.samplecard', 'A card on a surface')}</div>
                     <div className="text-sm" style={{ color: 'var(--muted)' }}>{t('st.samplemuted', 'Secondary text, the muted ramp.')}</div>
-                    <div className="text-xs" style={{ color: 'var(--faint)' }}>{t('st.samplefaint', 'Faint text — captions and hints.')}</div>
+                    <div className="text-xs" style={{ color: 'var(--faint)' }}>{t('st.samplefaint', 'Faint text, captions and hints.')}</div>
                     <input readOnly value={t('st.sampleinput', 'An input field')}
                       className="w-full rounded-lg px-3 py-1.5 text-sm outline-none"
                       style={{ background: 'var(--bg-solid)', border: '1px solid var(--control-border, var(--line))', color: 'var(--text)' }} />
@@ -22531,8 +22547,8 @@ function AdminSiteTheme() {
         </div>
         <div className={`text-[11px] mt-2 ${ratio >= 4.5 ? 'text-success' : 'text-warning'}`}>
           {ratio >= 4.5
-            ? t('st.contrastok', 'Button text contrast {n}:1 — clears WCAG AA (4.5:1).').replace('{n}', ratio.toFixed(2))
-            : t('st.contrastlow', 'Button text contrast {n}:1 — below WCAG AA (4.5:1). The ink already flipped to its best option; this accent is simply hard to write on.').replace('{n}', ratio.toFixed(2))}
+            ? t('st.contrastok', 'Button text contrast {n}:1, clears WCAG AA (4.5:1).').replace('{n}', ratio.toFixed(2))
+            : t('st.contrastlow', 'Button text contrast {n}:1, below WCAG AA (4.5:1). The ink already flipped to its best option; this accent is simply hard to write on.').replace('{n}', ratio.toFixed(2))}
         </div>
       </Card>
     </div>
@@ -22598,7 +22614,7 @@ function TempStorageManager({ open, onClose, onChange }) {
   const rejected = items.filter((i) => i.status === 'REJECTED');
   const fmtAge = (d) => { const days = Math.floor((Date.now() - new Date(d)) / 864e5); return days <= 0 ? t('ts.today', 'today') : t('ts.daysago', '{n}d ago').replace('{n}', days); };
   return (
-    <Modal open={open} onClose={onClose} title={t('ts.title', 'Temp storage — submission payloads')} icon={Upload} width="max-w-2xl"
+    <Modal open={open} onClose={onClose} title={t('ts.title', 'Temp storage, submission payloads')} icon={Upload} width="max-w-2xl"
       footer={rejected.length > 0 ? <Button variant="ghost" className="!text-error" disabled={busy === '__all__'} onClick={purgeAllRejected}>{busy === '__all__' ? <Spinner /> : <><Trash2 size={14} /> {t('ts.purgeallbtn', 'Purge all rejected ({n})').replace('{n}', rejected.length)}</>}</Button> : null}>
       {data == null ? <Loading /> : items.length === 0 ? (
         <EmptyState icon={CheckCircle2} title={t('ts.empty.t', 'Nothing held')} sub={t('ts.empty.s', 'No submission payloads are occupying the temp margin right now.')} />
@@ -22758,7 +22774,7 @@ function EconomySeasonCard() {
       confirmLabel: t('db.eco.season.end.ok', 'End it'), danger: true,
     })) return;
     setBusy(true);
-    try { const r = await api.post('/admin/economy/season/end', { resetXp: cfg.resetXp }); await reload(); toast.success(t('db.eco.season.ended', 'Season {s} ended — {n} member(s), {p} point(s) retired.').replace('{s}', r.entry.seasonNo).replace('{n}', r.entry.affected).replace('{p}', r.entry.points)); }
+    try { const r = await api.post('/admin/economy/season/end', { resetXp: cfg.resetXp }); await reload(); toast.success(t('db.eco.season.ended', 'Season {s} ended: {n} member(s), {p} point(s) retired.').replace('{s}', r.entry.seasonNo).replace('{n}', r.entry.affected).replace('{p}', r.entry.points)); }
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -22835,7 +22851,7 @@ function EcoResetControl() {
   return (
     <div className="rounded-xl border border-dashed border-error/40 p-3 flex items-center gap-3 flex-wrap text-sm">
       <RotateCcw size={16} className="text-error shrink-0" />
-      <span className="flex-1 text-[var(--muted)] min-w-[12rem]">{t('db.eco.reset.desc', 'Season reset — zero every member’s points at once. To reset a single member, use a negative grant on the Members page.')}</span>
+      <span className="flex-1 text-[var(--muted)] min-w-[12rem]">{t('db.eco.reset.desc', 'Season reset, zero every member’s points at once. To reset a single member, use a negative grant on the Members page.')}</span>
       <label className="flex items-center gap-1.5 text-xs text-[var(--muted)] cursor-pointer"><input type="checkbox" checked={xp} onChange={(e) => setXp(e.target.checked)} /> {t('db.eco.reset.xp', 'Also XP & level')}</label>
       <Button size="sm" variant="ghost" disabled={busy} onClick={resetAll} className="!text-error">{t('db.eco.reset.btn', 'Reset all points')}</Button>
     </div>
@@ -22927,7 +22943,7 @@ function DeliveryExplainer({ v }) {
     </div>
   );
   return (
-    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-[11px] space-y-1.5">
+    <div className="rounded-lg border border-[var(--line)] panel p-3 text-[11px] space-y-1.5">
       <div className="font-medium text-[var(--text)]">{t(mkdKey(v, 'l'), d.label)}</div>
       {row('d', t('mkadm.exp.what', 'What it is'), t(mkdKey(v, 'd'), d.desc))}
       {row('b', t('mkadm.exp.buyer', 'The buyer gets'), t(mkdKey(v, 'buyer'), d.buyer))}
@@ -23112,8 +23128,8 @@ function ProjectPayoutCard({ pages, onChanged }) {
               <div key={pg.scope} className="flex items-start gap-2 flex-wrap border-t border-[var(--line)] pt-2">
                 <span className="text-sm flex-1 min-w-[8rem] truncate">{pg.label}</span>
                 <div className="flex-1 min-w-[12rem] text-[11px]">
-                  {state === 'none' && <span className="text-[var(--warning)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected — the platform keeps every sale')}</span>}
-                  {state === 'onboarding' && <span className="text-[var(--muted)] flex items-center gap-1"><Loader2 size={11} /> {t('mkadm.po.pending', 'Stripe has not enabled it yet — sales still go to the platform')}</span>}
+                  {state === 'none' && <span className="text-[var(--warning)] flex items-center gap-1"><AlertTriangle size={11} /> {t('mkadm.po.none', 'Not connected, the platform keeps every sale')}</span>}
+                  {state === 'onboarding' && <span className="text-[var(--muted)] flex items-center gap-1"><Loader2 size={11} /> {t('mkadm.po.pending', 'Stripe has not enabled it yet, sales still go to the platform')}</span>}
                   {state === 'ready' && <span className="text-[var(--success)] flex items-center gap-1"><CheckCircle2 size={11} /> {t('mkadm.po.ready', 'Paid out at the moment of sale')}</span>}
                   {state === 'disabled' && <span className="text-[var(--error)] flex items-center gap-1"><AlertTriangle size={11} /> {sel.disabledReason}</span>}
                   {sel && <div className="text-[var(--faint)] font-mono mt-0.5 truncate">{sel.stripeAccountId}</div>}
@@ -23223,7 +23239,7 @@ function AdminMarketplace() {
     setMinting(pr.id);
     try {
       const r = await api.post(`/admin/marketplace/products/${pr.id}/keys/mint`, { count: Math.min(1000, count) });
-      toast.success(t('mkadm.mint.done', '{n} generated — {f} free of {t}.').replace('{n}', r.minted).replace('{f}', r.free).replace('{t}', r.total));
+      toast.success(t('mkadm.mint.done', '{n} generated: {f} free of {t}.').replace('{n}', r.minted).replace('{f}', r.free).replace('{t}', r.total));
       reload();
     } catch { toast.error(t('common.failed', 'Failed.')); } finally { setMinting(null); }
   };
@@ -23471,7 +23487,7 @@ function LocaleStringEditor({ locale, core, allKeys, onClose }) {
     for (const [k, v] of Object.entries(obj)) if (typeof v === 'string') { add[k] = v; n++; }
     setDraft((d) => ({ ...d, ...add }));
     setImporting(false); setImportText('');
-    toast.success(t('lc.imported', '{n} strings loaded — review, then Save.').replace('{n}', n));
+    toast.success(t('lc.imported', '{n} strings loaded, review, then Save.').replace('{n}', n));
   };
 
   return (
@@ -23607,7 +23623,7 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
         {MODES.map(([v, l, h]) => (
           <button key={v} type="button" onClick={() => set('mode', v)}
             className={`text-start rounded-xl border p-3 flex gap-3 items-start transition ${d.mode === v ? 'border-[var(--primary)] bg-[var(--primary)]/[0.06]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
-            <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)]/30 to-transparent border-[var(--primary)]/40' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
+            <span className={`w-12 h-9 rounded-md shrink-0 border ${v === 'default' ? 'bg-gradient-to-br from-[var(--primary)] to-transparent b-primary' : 'border-dashed border-[var(--line-strong)] bg-[var(--surface-2)]'} grid place-items-center`}>
               {v === 'default' ? <Heart size={14} className="text-[var(--primary-2)]" /> : <ImageIcon size={14} className="text-[var(--muted)]" />}
             </span>
             <span className="min-w-0"><span className="block text-sm font-medium">{l}</span><span className="block text-[11px] text-[var(--muted)] leading-snug">{h}</span></span>
@@ -23684,8 +23700,8 @@ function CharityDesignEditor({ design, onChange, pot, currency }) {
 
       <div className="mt-4">
         <div className="flex items-center justify-between gap-2 mb-1.5">
-          {secTitle(t('chc.design.preview', 'Preview — the card as the home page draws it'))}
-          {fit.k < 0.995 && <span className="text-[10px] text-[var(--faint)] tabular-nums">{t('chc.design.scaled', 'Shown at {p} % — the page draws it full size.').replace('{p}', Math.round(fit.k * 100))}</span>}
+          {secTitle(t('chc.design.preview', 'Preview, the card as the home page draws it'))}
+          {fit.k < 0.995 && <span className="text-[10px] text-[var(--faint)] tabular-nums">{t('chc.design.scaled', 'Shown at {p} %, the page draws it full size.').replace('{p}', Math.round(fit.k * 100))}</span>}
         </div>
         <div ref={outerRef} className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--bg)] p-2 overflow-hidden">
           <div style={{ height: fit.h || undefined }}>
@@ -23826,7 +23842,7 @@ function BotI18nCard() {
   const changed = Object.keys(draft).length;
   const save = async () => {
     setBusy(true);
-    try { const r = await api.put('/admin/bot/i18n', { lang, strings: draft }); toast.success(t('bi.saved', 'Saved — the bot picks it up within 30 s.')); setDraft({}); reload(); void r; }
+    try { const r = await api.put('/admin/bot/i18n', { lang, strings: draft }); toast.success(t('bi.saved', 'Saved, the bot picks it up within 30 s.')); setDraft({}); reload(); void r; }
     catch { toast.error(t('common.failed', 'Failed.')); }
     finally { setBusy(false); }
   };
@@ -23836,7 +23852,7 @@ function BotI18nCard() {
       <h2 className="font-semibold mb-1 flex items-center gap-2"><MessageSquare size={16} className="text-[var(--primary-2)]" /> {t('bi.title', 'Discord bot')}</h2>
       <p className="text-sm text-[var(--muted)] mb-3">{t('bi.sub', 'Every text the bot shows — buttons, cards, the casino, the onboarding — per language. The bot ships English, French, German and Spanish; edit any of them here, or add a language by code (missing keys fall back to English). A server’s manager picks the bot’s language on the welcome card (/setup); “auto” follows each member’s own Discord language.')}</p>
       {loading ? <Spinner /> : !keys.length ? (
-        <div className="text-sm text-[var(--faint)]">{t('bi.nobase', 'The bot has not reported its dictionary yet — it does on its first heartbeat after starting. Start the bot, then reload.')}</div>
+        <div className="text-sm text-[var(--faint)]">{t('bi.nobase', 'The bot has not reported its dictionary yet, it does on its first heartbeat after starting. Start the bot, then reload.')}</div>
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -23926,14 +23942,14 @@ function LanguagesCard() {
       <p className="text-sm text-[var(--muted)] mb-3">{t('lc.sub2', 'Edit every site string, in any language. English and French are the built-in base — edit them as an override; add more languages below. Saving applies live for everyone, and clearing a field falls back to the built-in text.')}</p>
 
       {/* A plain three-step so a translator knows where to start without reading the paragraph. */}
-      <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 mb-4 text-[12px] text-[var(--muted)] space-y-1.5">
+      <div className="rounded-xl border border-[var(--line)] panel p-3 mb-4 text-[12px] text-[var(--muted)] space-y-1.5">
         {[
-          t('lc.step1', 'Add a language below — or edit English / French, the built-in base.'),
+          t('lc.step1', 'Add a language below, or edit English / French, the built-in base.'),
           t('lc.step2', 'Click Translate to open the editor: search a key, or use “Next missing” to jump straight to the gaps.'),
-          t('lc.step3', 'Type the translation — it applies live for everyone. Leave a field empty to fall back to the built-in text.'),
+          t('lc.step3', 'Type the translation, it applies live for everyone. Leave a field empty to fall back to the built-in text.'),
         ].map((s, i) => (
           <div key={i} className="flex items-start gap-2">
-            <span className="grid place-items-center w-5 h-5 rounded-full bg-[var(--primary)]/15 text-[var(--primary-2)] text-[10px] font-bold shrink-0">{i + 1}</span>
+            <span className="grid place-items-center w-5 h-5 rounded-full tint-primary text-[var(--primary-2)] text-[10px] font-bold shrink-0">{i + 1}</span>
             <span>{s}</span>
           </div>
         ))}
@@ -24252,8 +24268,8 @@ function AdminSettings() {
           const isOpen = true;
           return (
           <div key={g.title} className="card rounded-2xl overflow-hidden">
-            <div className="w-full flex items-center gap-2.5 px-4 py-3 bg-[var(--surface-2)]/40 border-b border-[var(--line)] text-start">
-              <span className="grid place-items-center w-8 h-8 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
+            <div className="w-full flex items-center gap-2.5 px-4 py-3 panel border-b border-[var(--line)] text-start">
+              <span className="grid place-items-center w-8 h-8 rounded-lg tint-primary border b-primary shrink-0"><g.icon size={15} className="text-[var(--primary-2)]" /></span>
               <div className="min-w-0 flex-1"><div className="text-sm font-semibold">{t(`hs.g.${g.gk}`, g.title)}</div>{GROUP_DESC[g.title] && <div className="text-[11px] text-[var(--faint)]">{t(`hs.gd.${g.gk}`, GROUP_DESC[g.title])}</div>}</div>
               <span className="text-[10px] text-[var(--faint)] tabular-nums shrink-0">{g.keys.length}</span>
             </div>
@@ -24293,7 +24309,7 @@ function AdminSettings() {
                       so a setting reads as a control, not a manual (clamp + a "learn more" link). */}
                   <div className="text-[11px] text-[var(--faint)] mt-1.5 line-clamp-2">{D}</div>
                   <Link to={`?s=guide&g=hostingsettings&k=${encodeURIComponent(k)}`} className="text-[11px] text-[var(--primary-2)] hover:underline inline-flex items-center gap-0.5 mt-1">{t('hs.more', 'Learn more')} <ChevronRight size={10} /></Link>
-                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total — can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
+                  {k === 'hosting.totalCapacityGB' && c?.diskTotalGB != null && <div className="text-[11px] text-warning mt-1">{t('hs.realdiskcap', "Real disk: {free} GB free / {total} GB total, can't be set above this.").replace('{free}', c.diskFreeGB.toFixed(0)).replace('{total}', c.diskTotalGB.toFixed(0))}</div>}
                 </Card>
                 );
               })}

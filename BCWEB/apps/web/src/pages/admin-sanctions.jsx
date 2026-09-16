@@ -179,7 +179,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
           )}
           {s.meta?.cancelledSubs?.length > 0 && (
             <div className="text-[11px] text-[var(--muted)]">
-              {t('sanc.cancelled', '{n} subscription(s) cancelled — their term ended before the sanction did.').replace('{n}', String(s.meta.cancelledSubs.length))}
+              {t('sanc.cancelled', '{n} subscription(s) cancelled, their term ended before the sanction did.').replace('{n}', String(s.meta.cancelledSubs.length))}
               {s.meta.keptSubs?.length > 0 && ' ' + t('sanc.kept', '{n} kept.').replace('{n}', String(s.meta.keptSubs.length))}
             </div>
           )}
@@ -237,7 +237,7 @@ function Row({ s, onLift, onResend, onAnswer, onEdit, onArchive, onReapply, onCh
             {s.archivedAt
               ? <Button size="sm" variant="ghost" onClick={() => onArchive(s, false)}><ArchiveRestore size={12} /> {t('sanc.unarchive', 'Take out of the archive')}</Button>
               : <Button size="sm" variant="ghost" disabled={s.status === 'active' || (s.contestedAt && !s.contestOutcome)}
-                  title={s.status === 'active' ? t('sanc.arch.why', 'Still in force — lift it first.')
+                  title={s.status === 'active' ? t('sanc.arch.why', 'Still in force, lift it first.')
                        : (s.contestedAt && !s.contestOutcome) ? t('sanc.arch.why2', 'Somebody is waiting for an answer to their contest.') : ''}
                   onClick={() => onArchive(s, true)}><Archive size={12} /> {t('sanc.archive', 'Archive')}</Button>}
             <Button size="sm" variant="ghost" onClick={() => onResend(s)}><Send size={12} /> {t('sanc.resend', 'Re-send the notice')}</Button>
@@ -298,7 +298,7 @@ export function AdminSanctions() {
     try {
       await api.post(`/admin/sanctions/${s.id}/archive`, { archived });
       // Named for what it is: nothing was deleted, and it is one filter away.
-      toast.success(archived ? t('sanc.arch.ok', 'Filed away — find it again under “archived”.') : t('sanc.unarch.ok', 'Back in the list.'));
+      toast.success(archived ? t('sanc.arch.ok', 'Filed away, find it again under “archived”.') : t('sanc.unarch.ok', 'Back in the list.'));
       reload();
     } catch (e) { toast.error(String(e?.message || e)); }
   };
@@ -315,7 +315,7 @@ export function AdminSanctions() {
   };
 
   const resend = async (s) => {
-    try { const r = await api.post(`/admin/sanctions/${s.id}/resend`, {}); toast.success(r.sent ? t('sanc.resent', 'Sent again.') : t('sanc.nomail', 'Mail is off on this server — the in-app notice was still written.')); }
+    try { const r = await api.post(`/admin/sanctions/${s.id}/resend`, {}); toast.success(r.sent ? t('sanc.resent', 'Sent again.') : t('sanc.nomail', 'Mail is off on this server, the in-app notice was still written.')); }
     catch { toast.error(t('common.failed', 'Failed.')); }
   };
 
@@ -381,7 +381,7 @@ export function AdminSanctions() {
         </Card>
       )}
       {data?.total > list.length && (
-        <p className="text-[11px] text-[var(--faint)] mt-2">{t('sanc.more', 'Showing {n} of {t} — narrow the search to see the rest.').replace('{n}', String(list.length)).replace('{t}', String(data.total))}</p>
+        <p className="text-[11px] text-[var(--faint)] mt-2">{t('sanc.more', 'Showing {n} of {t}, narrow the search to see the rest.').replace('{n}', String(list.length)).replace('{t}', String(data.total))}</p>
       )}
 
       <ClosureSurveys />
@@ -481,7 +481,7 @@ export function ContentSanctionForm({ targetType, targetId, targetName, onDone }
 
   const submit = async (e) => {
     e.preventDefault();
-    if (f.reason.trim().length < 3) return toast.error(t('sanc.needreason', 'A reason is required — it is what they receive.'));
+    if (f.reason.trim().length < 3) return toast.error(t('sanc.needreason', 'A reason is required, it is what they receive.'));
     setBusy(true);
     try {
       const r = await api.post('/admin/sanctions/content', {
@@ -492,7 +492,7 @@ export function ContentSanctionForm({ targetType, targetId, targetName, onDone }
         // they decide "a week". Empty means indefinite, which is what it always was.
         expiresAt: f.days ? new Date(Date.now() + Number(f.days) * 86400000).toISOString() : undefined,
       });
-      toast.success(t('sanc.issued', 'Issued — {c}').replace('{c}', r.sanction.code));
+      toast.success(t('sanc.issued', 'Issued: {c}').replace('{c}', r.sanction.code));
       setF({ kind: 'warning', reason: '', request: '', days: '', internalNote: '' });
       onDone?.(r.sanction);
     } catch (x) {
@@ -503,12 +503,12 @@ export function ContentSanctionForm({ targetType, targetId, targetName, onDone }
   return (
     <form onSubmit={submit} className="space-y-2">
       <div className="text-[12px] text-[var(--muted)]">
-        {t('sanc.form.s', 'The notice goes to whoever answers for “{n}” — a repo cannot read its e-mail.').replace('{n}', targetName || targetId)}
+        {t('sanc.form.s', 'The notice goes to whoever answers for “{n}”, a repo cannot read its e-mail.').replace('{n}', targetName || targetId)}
       </div>
       <Field label={t('sanc.form.kind', 'What this is')}>
         <Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })}>
-          <option value="warning">{t('sanc.k.warning', 'Warning — the content stays up')}</option>
-          <option value="takedown">{t('sanc.k.takedown', 'Takedown — it stops being served now')}</option>
+          <option value="warning">{t('sanc.k.warning', 'Warning, the content stays up')}</option>
+          <option value="takedown">{t('sanc.k.takedown', 'Takedown, it stops being served now')}</option>
         </Select>
       </Field>
       <Field label={t('sanc.form.reason', 'Reason (they read this)')}>

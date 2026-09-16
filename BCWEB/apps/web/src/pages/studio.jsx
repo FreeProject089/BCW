@@ -201,16 +201,16 @@ export default function StudioPage() {
           <Button size="sm" variant="ghost" onClick={() => navigate(target.back || '/admin')}>{t('common.back', 'Back')}</Button>
         </div>
         {target.config.studioEnabled !== true && <p className="text-xs text-[var(--muted)] mb-3">{t('pce.studio.off', 'The studio is off for this page. An administrator can turn it on.')}</p>}
-        {!list.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.pick.empty', 'No studio pages yet — add one from the page settings.')}</div>}
+        {!list.length && <div className="text-xs text-[var(--faint)] text-center py-8 rounded-xl border border-dashed border-[var(--line)]">{t('cst.pick.empty', 'No studio pages yet, add one from the page settings.')}</div>}
         <div className="space-y-2">
           {list.map((cv, i) => (
-            <Link key={cv?.id || i} to={studioPath(kind, id, i)} className="flex items-center gap-2 rounded-xl border border-[var(--line)] p-3 hover:border-[var(--primary)]/50">
+            <Link key={cv?.id || i} to={studioPath(kind, id, i)} className="flex items-center gap-2 rounded-xl border border-[var(--line)] p-3 hover:b-primary">
               <span className="flex-1 min-w-0 truncate text-sm">{cv?.title || t('pce.canvases.untitled', 'Untitled page')}</span>
               <span className="text-[11px] text-[var(--faint)] tabular-nums">{t('pce.canvases.n', '{n} block(s)').replace('{n}', (cv?.blocks || []).length)}</span>
             </Link>
           ))}
         </div>
-        {index != null && !canvas && list.length > 0 && <p className="text-xs text-warning mt-3">{t('cst.pick.gone', 'There is no page at that position — pick one above.')}</p>}
+        {index != null && !canvas && list.length > 0 && <p className="text-xs text-warning mt-3">{t('cst.pick.gone', 'There is no page at that position, pick one above.')}</p>}
       </div>
     );
   }

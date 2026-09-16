@@ -25,7 +25,7 @@ function PollLink({ poll }) {
   // button on the site uses.
   const copy = async () => {
     if (await copyText(url)) { setDone(true); setTimeout(() => setDone(false), 1500); }
-    else toast.error(t('apoll.copy.failed', 'Could not copy — the link is selectable above.'));
+    else toast.error(t('apoll.copy.failed', 'Could not copy, the link is selectable above.'));
   };
   return (
     <div className="flex items-center gap-1.5 mt-1">
@@ -119,7 +119,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
       onSaved();
       onClose();
     } catch (x) {
-      toast.error(x?.data?.error === 'has_votes' ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : t('common.failed', 'Failed.'));
+      toast.error(x?.data?.error === 'has_votes' ? t('apoll.locked', 'People have already answered, the options can no longer be changed.') : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
 
@@ -162,11 +162,11 @@ function PollEditor({ open, initial, onClose, onSaved }) {
             the poll was a single choice before anybody had said so. */}
         {!editing ? (
           <Field label={t('apoll.questions', 'Questions')}
-            hint={t('apoll.questions.h', 'Every kind is available. A note is content rather than a question — a heading or an explanation between two of them.')}>
+            hint={t('apoll.questions.h', 'Every kind is available. A note is content rather than a question, a heading or an explanation between two of them.')}>
             <QuestionList qs={qs} setQs={setQs} t={t} />
           </Field>
         ) : (
-          <Field label={t('apoll.options', 'Options')} hint={locked ? t('apoll.locked', 'People have already answered — the options can no longer be changed.') : t('apoll.options.h', 'The original single-choice shape. Use the Questions button on the row to add more than one question.')}>
+          <Field label={t('apoll.options', 'Options')} hint={locked ? t('apoll.locked', 'People have already answered, the options can no longer be changed.') : t('apoll.options.h', 'The original single-choice shape. Use the Questions button on the row to add more than one question.')}>
             <div className="space-y-1.5">
               {d.options.map((o, i) => (
                 <div key={i} className="flex gap-2">
@@ -185,7 +185,7 @@ function PollEditor({ open, initial, onClose, onSaved }) {
 
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('apoll.audience', 'Who can answer')}
-            hint={d.audience === 'all' ? t('apoll.audience.all.h', 'Anyone. Anonymous answers are counted per device, so they are an estimate — reported separately, never merged into one figure.') : t('apoll.audience.users.h', 'Signed-in members only. One answer each, exactly.')}>
+            hint={d.audience === 'all' ? t('apoll.audience.all.h', 'Anyone. Anonymous answers are counted per device, so they are an estimate, reported separately, never merged into one figure.') : t('apoll.audience.users.h', 'Signed-in members only. One answer each, exactly.')}>
             <Select value={d.audience} onChange={(e) => set('audience', e.target.value)}>
               <option value="users">{t('apoll.aud.users', 'Members only')}</option>
               <option value="all">{t('apoll.aud.all', 'Everyone')}</option>
@@ -194,11 +194,11 @@ function PollEditor({ open, initial, onClose, onSaved }) {
           <Field label={t('apoll.visibility', 'Where it can be found')}
             hint={d.visibility === 'public' ? t('apoll.vis.public.h', 'Listed on the polls page, and on the home page when pinned.')
               : d.visibility === 'unlisted' ? t('apoll.vis.unlisted.h', 'Reachable only by its link. Not in any list, not in search. The link is shown on the poll once saved.')
-              : t('apoll.vis.private.h', 'Staff only. The link does nothing for anybody else — use this for a draft you want to read back in place.')}>
+              : t('apoll.vis.private.h', 'Staff only. The link does nothing for anybody else, use this for a draft you want to read back in place.')}>
             <Select value={d.visibility} onChange={(e) => set('visibility', e.target.value)}>
-              <option value="public">{t('apoll.vis.public', 'Public — listed')}</option>
-              <option value="unlisted">{t('apoll.vis.unlisted', 'Unlisted — link only')}</option>
-              <option value="private">{t('apoll.vis.private', 'Private — staff only')}</option>
+              <option value="public">{t('apoll.vis.public', 'Public, listed')}</option>
+              <option value="unlisted">{t('apoll.vis.unlisted', 'Unlisted, link only')}</option>
+              <option value="private">{t('apoll.vis.private', 'Private, staff only')}</option>
             </Select>
           </Field>
           <Field label={t('apoll.results', 'Show the tally')}>
@@ -299,7 +299,7 @@ function QuestionList({ qs, setQs, t }) {
             placeholder={HELP_LABEL(q.kind, t)} />
           {IS_NOTE(q.kind) && (
             <div className="text-[11px] text-[var(--muted)]">
-              {t('apq.note.hint', 'Rendered with the site’s markdown — links, lists and emphasis all work. The title above is optional.')}
+              {t('apq.note.hint', 'Rendered with the site’s markdown, links, lists and emphasis all work. The title above is optional.')}
             </div>
           )}
           <div className="flex items-center gap-3 text-xs">
@@ -599,7 +599,7 @@ function PollStats({ pollId, onClose }) {
     <Modal open onClose={onClose} title={t('apoll.stats', 'Results')}>
       <div className="text-sm font-semibold mb-1">{d.poll?.question}</div>
       <div className="text-[12px] text-[var(--muted)] mb-3">
-        {t('apoll.voters', '{n} people answered — {u} signed in, {a} anonymous.')
+        {t('apoll.voters', '{n} people answered: {u} signed in, {a} anonymous.')
           .replace('{n}', String(d.voters || 0)).replace('{u}', String(d.userVoters || 0)).replace('{a}', String(d.anonVoters || 0))}
         {d.anonIsEstimate && ` ${t('apoll.estimate', 'The anonymous figure is deduplicated per device: two people on one connection count once, one person on two devices counts twice.')}`}
       </div>
@@ -717,7 +717,7 @@ export function AdminPolls() {
         <Button size="sm" variant="primary" className="ms-auto" onClick={() => setEditor(emptyDraft())}><Plus size={13} /> {t('apoll.new', 'New poll')}</Button>
       </div>
 
-      {!polls.length ? <EmptyState icon={BarChart3} title={t('apoll.none', 'No poll yet.')} sub={t('apoll.none.s', 'Ask something — a two-option question gets more answers than a survey.')} /> : (
+      {!polls.length ? <EmptyState icon={BarChart3} title={t('apoll.none', 'No poll yet.')} sub={t('apoll.none.s', 'Ask something, a two-option question gets more answers than a survey.')} /> : (
         <div className="space-y-3">
           {polls.map((poll) => (
             <Card key={poll.id} className="p-4">
@@ -749,7 +749,7 @@ export function AdminPolls() {
                   </div>
                   <PollLink poll={poll} />
                   <div className="text-[11px] text-[var(--faint)] mt-0.5">
-                    {t('apoll.summary', '{n} answers — {u} signed in, {a} anonymous')
+                    {t('apoll.summary', '{n} answers: {u} signed in, {a} anonymous')
                       .replace('{n}', String(poll.total || 0)).replace('{u}', String(poll.userTotal || 0)).replace('{a}', String(poll.anonTotal || 0))}
                     {poll.closesAt && ` · ${t('apoll.closeson', 'closes {d}').replace('{d}', new Date(poll.closesAt).toLocaleDateString())}`}
                   </div>

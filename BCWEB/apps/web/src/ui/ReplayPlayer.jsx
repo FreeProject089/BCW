@@ -104,7 +104,7 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
   const fullscreen = () => { const el = wrap.current; if (!el) return; if (document.fullscreenElement) document.exitFullscreen?.(); else el.requestFullscreen?.(); };
 
   if (!src && !doc) {
-    return <div className="doc-replay doc-replay-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">{tr('Replay vide — fournis un « src » vers un fichier .bmmreplay.', 'Empty replay — provide a "src" to a .bmmreplay file.')}</div>;
+    return <div className="doc-replay doc-replay-empty text-sm text-[var(--faint)] rounded-xl border border-dashed border-[var(--line)] p-4">{tr('Replay vide, fournis un « src » vers un fichier .bmmreplay.', 'Empty replay, provide a "src" to a .bmmreplay file.')}</div>;
   }
 
   return (
@@ -115,7 +115,7 @@ export default function ReplayPlayer({ src = '', doc = null, title = '', autopla
         {!started && (
           <button type="button" onClick={() => setStarted(true)} className="absolute inset-0 grid place-items-center bg-black/50 hover:bg-black/40 transition group" aria-label={tr('Lire le replay', 'Play replay')}>
             <span className="flex flex-col items-center gap-2 text-white">
-              <span className="w-16 h-16 rounded-full bg-[var(--primary)]/90 grid place-items-center group-hover:scale-105 transition-transform"><Play size={28} className="translate-x-0.5" fill="currentColor" /></span>
+              <span className="w-16 h-16 rounded-full bg-[var(--primary)] grid place-items-center group-hover:scale-105 transition-transform"><Play size={28} className="translate-x-0.5" fill="currentColor" /></span>
               <span className="text-xs opacity-90">{tr('Lire la session', 'Play session')}</span>
             </span>
           </button>

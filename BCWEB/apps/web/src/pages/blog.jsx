@@ -123,7 +123,13 @@ export function BlogList() {
               </div>
             ); })}
           </div>
-        ) : <EmptyState icon={Newspaper} title={t('blog.empty', 'No posts yet')} sub={canWrite ? t('blog.writefirst', 'Write the first one.') : undefined}>{canWrite && <Button variant="primary" onClick={() => setEditing({})}><Plus size={16} /> {t('blog.newpost', 'New post')}</Button>}</EmptyState>}
+        ) : <EmptyState icon={Newspaper} title={t('blog.empty', 'No posts yet')}
+          sub={canWrite
+            ? t('blog.empty.s.w', 'This is where the team writes about releases and what changed, and nothing has been published yet.')
+            : t('blog.empty.s.r', 'Release notes and announcements are published here, and there is nothing yet.')}
+          action={canWrite
+            ? { label: t('blog.newpost', 'New post'), onClick: () => setEditing({}), icon: Plus }
+            : { label: t('blog.empty.a', 'Read the docs'), to: '/docs', icon: Newspaper }} />}
       {!loading && hasMore && <div className="flex justify-center mt-8">
         <Button onClick={loadMore} disabled={loadingMore}>{loadingMore ? <><Spinner /> {t('common.loading', 'Loading…')}</> : <><ChevronDown size={16} /> {t('blog.loadmore', 'Load more')}</>}</Button>
       </div>}
@@ -153,7 +159,7 @@ export function NewsletterSignup() {
       <h3 className="text-lg font-bold">{t('news.title', 'Get blog updates by email')}</h3>
       <p className="text-sm text-[var(--muted)] mt-1.5 max-w-md mx-auto">{t('news.sub', 'New posts, straight to your inbox. Double opt-in, and one-click unsubscribe in every email.')}</p>
       {state === 'done'
-        ? <p className="mt-4 text-sm text-[var(--primary-2)] font-semibold">{t('news.check', 'Almost there — check your inbox to confirm your subscription.')}</p>
+        ? <p className="mt-4 text-sm text-[var(--primary-2)] font-semibold">{t('news.check', 'Almost there, check your inbox to confirm your subscription.')}</p>
         : (
           <form onSubmit={submit} className="mt-4 flex flex-col sm:flex-row gap-2 max-w-md mx-auto">
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t('news.ph', 'you@example.com')}
@@ -161,7 +167,7 @@ export function NewsletterSignup() {
             <Button type="submit" variant="primary" disabled={state === 'sending'}>{state === 'sending' ? t('news.sending', 'Subscribing…') : t('news.cta', 'Subscribe')}</Button>
           </form>
         )}
-      {state === 'error' && <p className="mt-3 text-sm text-error">{t('news.err', 'Could not subscribe — check the address and try again.')}</p>}
+      {state === 'error' && <p className="mt-3 text-sm text-error">{t('news.err', 'Could not subscribe, check the address and try again.')}</p>}
     </div>
   );
 }
@@ -215,7 +221,7 @@ export function BlogPostPage() {
               const count = rx?.counts?.[type] || 0; const mine = rx?.mine === type;
               return (
                 <button key={type} onClick={() => react(type)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm transition ${mine ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                   <ReactionIcon name={type} size={16} />{count > 0 && <span className="text-xs tabular-nums">{count}</span>}
                 </button>
               );
@@ -360,8 +366,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         onCommit: async () => {
           try { if (post) await api.patch(`/blog/${post.id}`, body); else await api.post('/blog', body); onSaved(); }
           catch (x) {
-            if (post && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this — reopened so you can merge, then Save.')); reopenDraft(snapshot, { post, base: origBase, conflict: true }); }
-            else { toast.error(x.data?.error === 'blog_limit' ? t('be.full', 'Blog is full — trim or delete an article, or raise the limit.') : (x.data?.error || t('be.failed', 'Failed.'))); reopenDraft(snapshot, { post, base: origBase }); }
+            if (post && x.status === 409 && x.data?.current) { toast.error(t('be.conflict.reopen', 'Someone else edited this, reopened so you can merge, then Save.')); reopenDraft(snapshot, { post, base: origBase, conflict: true }); }
+            else { toast.error(x.data?.error === 'blog_limit' ? t('be.full', 'Blog is full, trim or delete an article, or raise the limit.') : (x.data?.error || t('be.failed', 'Failed.'))); reopenDraft(snapshot, { post, base: origBase }); }
           }
         },
         onCancel: () => reopenDraft(snapshot, { post, base: origBase }),
@@ -398,14 +404,14 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
         baseRef.current = { version: cur.version, body: cur.body || '', bodyFr: cur.bodyFr || '' };
         const totalConflicts = queue.length;
         setMerge({ conflicts: totalConflicts, pending: queue });
-        if (totalConflicts > 0) { setMergeUI({ queue }); toast.info(t('be.conflictvisual', 'Someone else edited this post — resolve the conflicts visually, then Save.')); }
-        else toast.info(t('be.mergedreview', 'Merged with edits made by someone else — review the content, then Save again.'));
+        if (totalConflicts > 0) { setMergeUI({ queue }); toast.info(t('be.conflictvisual', 'Someone else edited this post, resolve the conflicts visually, then Save.')); }
+        else toast.info(t('be.mergedreview', 'Merged with edits made by someone else, review the content, then Save again.'));
       } else if (x.status === 409 && x.data?.error === 'blog_limit') {
         const d = x.data;
         const where = d.scope === 'project' ? t('be.thispage', 'this page') : t('be.thesite', 'the site');
         toast.error(d.kind === 'count'
-          ? t('be.fullcount', 'Blog is full — {where} allows at most {limit} article(s) (currently {current}). Delete one or raise the limit.').replace('{where}', where).replace('{limit}', d.limit).replace('{current}', d.current)
-          : t('be.fullsize', "Blog is full — {where}'s size limit ({kb} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.").replace('{where}', where).replace('{kb}', d.limitKB));
+          ? t('be.fullcount', 'Blog is full: {where} allows at most {limit} article(s) (currently {current}). Delete one or raise the limit.').replace('{where}', where).replace('{limit}', d.limit).replace('{current}', d.current)
+          : t('be.fullsize', "Blog is full: {where}'s size limit ({kb} KB) would be exceeded. Trim this article, delete an old one, or raise the limit.").replace('{where}', where).replace('{kb}', d.limitKB));
       } else {
         toast.error(x.data?.error === 'forbidden' ? t('be.noperm', "You don't have permission to post in that blog.") : x.data?.error || t('be.failed', 'Failed.'));
       }
@@ -480,7 +486,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
       {/* body — full editor */}
       <div className="mt-4">
         <label className="text-xs font-semibold uppercase tracking-wider text-[var(--faint)] block mb-1.5">Content {fr && '· FR'}</label>
-        <MarkdownEditor full value={g('body')} onChange={(v) => setField('body', v)} minHeight={240} placeholder={fr ? 'Rédige en Markdown (même syntaxe que les notes BMM)…' : 'Write in Markdown — same syntax as the BMM update notes.'} />
+        <MarkdownEditor full value={g('body')} onChange={(v) => setField('body', v)} minHeight={240} placeholder={fr ? 'Rédige en Markdown (même syntaxe que les notes BMM)…' : 'Write in Markdown, same syntax as the BMM update notes.'} />
       </div>
 
       {/* table of contents (sommaire) */}
@@ -506,14 +512,14 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
               {REACTION_PALETTE.map((name) => {
                 const on = f.reactionTypes.includes(name); const disabled = !on && f.reactionTypes.length >= 3;
                 return <button key={name} type="button" disabled={disabled} title={name} onClick={() => toggleReaction(name)}
-                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary-2)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
+                  className={`w-9 h-9 rounded-lg border grid place-items-center transition ${on ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : disabled ? 'border-[var(--line)] opacity-30' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}><ReactionIcon name={name} size={17} /></button>;
               })}
             </div>
           )}
         </div>
         <div className="rounded-xl border border-[var(--line)] p-3">
           <div className="text-sm font-medium">{t('blg.collaborators', 'Collaborators')}</div>
-          <p className="text-xs text-[var(--faint)] mt-1">{t('blg.coauthorhint', 'Add co-authors by email — their avatars show on the post.')}</p>
+          <p className="text-xs text-[var(--faint)] mt-1">{t('blg.coauthorhint', 'Add co-authors by email, their avatars show on the post.')}</p>
           <div className="flex gap-1.5 mt-2">
             <Input value={collab} onChange={(e) => setCollab(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCoAuthor(); } }} placeholder="collaborator@email.com" className="!py-1.5 !text-sm" />
             <Button type="button" size="sm" onClick={addCoAuthor}><Plus size={14} /></Button>
@@ -530,7 +536,7 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
           <label className="flex items-start gap-2 mt-3 pt-3 border-t border-[var(--line)] cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={f.commentsPublic} onChange={(e) => setF({ ...f, commentsPublic: e.target.checked })} />
             <span className="text-xs"><span className="font-medium flex items-center gap-1">{f.commentsPublic ? <Globe size={12} className="text-success" /> : <MessageSquare size={12} />} Comments visible to readers</span>
-              <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post — comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
+              <span className="text-[var(--faint)]">{f.commentsPublic ? 'Readers can read the comment thread (they still can’t post, comments are an editor tool).' : 'Comments stay private to editors (author, co-authors, staff).'}</span></span>
           </label>
           {/* Newsletter announcement — send subscribers an email about this post (once).
               Uses the standard template; the subject/intro can be overridden. Staff only. */}
@@ -545,8 +551,8 @@ function BlogEditor({ post, scopes, onClose, onSaved, draft, draftBase, conflict
               </label>
               {f.notifyNewsletter && f.publish && (
                 <div className="mt-2.5 ms-6 space-y-2">
-                  <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional) — default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
-                  <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional) — defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
+                  <Input value={f.newsletterSubject} onChange={(e) => setF({ ...f, newsletterSubject: e.target.value })} placeholder={t('be.nl.subjectph', 'Subject (optional), default: “New on BetterCommunity: {title}”').replace('{title}', f.title || '…')} maxLength={200} className="!text-sm" />
+                  <Textarea rows={2} value={f.newsletterIntro} onChange={(e) => setF({ ...f, newsletterIntro: e.target.value })} placeholder={t('be.nl.introph', 'Intro message (optional), defaults to the post excerpt.')} maxLength={2000} className="!text-sm" />
                 </div>
               )}
             </>)}

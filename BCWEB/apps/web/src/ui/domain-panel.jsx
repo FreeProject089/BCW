@@ -30,7 +30,7 @@ export default function DomainPanel({ kind, id }) {
       // over a hostname field tells somebody nothing about which of the four it was.
       const e = x.data?.error;
       toast.error(
-        e === 'bad_host' ? t('dom.err.host', 'That is not a hostname we can serve. Use a subdomain like mods.example.com — no wildcards, no IP addresses.')
+        e === 'bad_host' ? t('dom.err.host', 'That is not a hostname we can serve. Use a subdomain like mods.example.com, no wildcards, no IP addresses.')
         : e === 'our_host' ? t('dom.err.ours', 'That name is ours. Point one of your own at us instead.')
         : e === 'host_taken' ? t('dom.err.taken', 'That hostname is already in use here.')
         : e === 'free_plan' ? t('dom.err.free', 'Custom domains are part of the paid pools.')
@@ -44,7 +44,7 @@ export default function DomainPanel({ kind, id }) {
     try {
       const d = await api.post(`/me/${kind}/${id}/domain/verify`, {});
       setState((s) => ({ ...s, domain: d.domain }));
-      if (d.ok) toast.success(t('dom.ok', 'Verified. The certificate is issued on the first visit — give it a minute.'));
+      if (d.ok) toast.success(t('dom.ok', 'Verified. The certificate is issued on the first visit, give it a minute.'));
       else toast.error(t('dom.notyet', 'Not there yet. DNS changes can take a while to travel; the record has to be readable from the public internet before this can pass.'));
     } catch { toast.error(t('repos.failed', 'Failed.')); } finally { setBusy(false); }
   };
@@ -72,7 +72,7 @@ export default function DomainPanel({ kind, id }) {
         <p className="text-[13px] text-[var(--muted)] leading-relaxed mt-2">
           {gate.reason === 'free_plan' ? t('dom.gate.free', 'Serving your own hostname means obtaining and renewing a certificate for it, so it comes with the paid pools. The free plan keeps its bettercommunity address.')
             : gate.reason === 'no_pool' ? t('dom.gate.nopool', 'This is not in a storage pool yet, so there is nothing here for a domain to point at.')
-            : gate.reason === 'not_hosted' ? t('dom.gate.ext', 'This repo lives on your own server, so it already answers at your own address — that is the thing a domain here would point to.')
+            : gate.reason === 'not_hosted' ? t('dom.gate.ext', 'This repo lives on your own server, so it already answers at your own address, that is the thing a domain here would point to.')
             : t('dom.gate.other', 'Not available for this one.')}
         </p>
         {gate.reason === 'free_plan' && <a href="/hosting#plans" className="inline-block mt-3"><Button size="sm" variant="secondary">{t('dom.gate.see', 'See the plans')}</Button></a>}

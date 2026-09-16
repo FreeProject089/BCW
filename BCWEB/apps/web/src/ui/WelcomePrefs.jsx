@@ -146,7 +146,7 @@ export default function WelcomePrefs() {
                         desc={t('wp.analytics.d', 'First-party only, no advertising, no third-party tracking. Off is a complete answer.')} />
                     <Toggle icon={Orbit} on={orb} onChange={setOrb}
                         title={t('wp.orb', '3D scene')}
-                        desc={t('wp.orb.d', 'The WebGL scene behind the pages. Off means it is never rendered — lighter on an older machine and on battery.')} />
+                        desc={t('wp.orb.d', 'The WebGL scene behind the pages. Off means it is never rendered, lighter on an older machine and on battery.')} />
                     <Toggle icon={Sparkles} on={intro} onChange={setIntro}
                         title={t('wp.intro', 'Intro animation')}
                         desc={t('wp.intro.d', 'Plays once per full page load.')} />

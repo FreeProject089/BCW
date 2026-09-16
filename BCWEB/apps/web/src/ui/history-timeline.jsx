@@ -80,7 +80,7 @@ export default function HistoryTimeline({ url }) {
 
   if (events === null) return <Card className="p-5 flex justify-center"><Spinner /></Card>;
   if (!events.length) {
-    return <EmptyState icon={History} title={t('hist.empty.t', 'Nothing yet')} sub={t('hist.empty.s', 'Changes appear here as they are made — what changed, when, and by whom.')} />;
+    return <EmptyState icon={History} title={t('hist.empty.t', 'Nothing yet')} sub={t('hist.empty.s', 'Changes appear here as they are made, what changed, when, and by whom.')} />;
   }
 
   return (

@@ -271,7 +271,7 @@ export default function DevMarkdown() {
       <header className="max-w-2xl">
         <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-gradient-to-br from-brand to-brand-2 text-white shadow-lg shadow-orange-500/25 mb-4"><Puzzle size={22} /></span>
         <h1 className="text-3xl sm:text-4xl font-extrabold leading-tight">
-          {t('devmd.title', 'B.MD — better.markdown')}
+          {t('devmd.title', 'B.MD, better.markdown')}
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--muted)]">
           {t('devmd.lede3', 'A block system on GitHub-flavoured Markdown — callouts, cards, tabs, steps, columns, brand buttons, file downloads, a roadmap, opening hours, API cards, embeds, live values, diagrams, maths. It is a React component you install or copy into your project, and it is the same one every page on this site renders with.')}
@@ -313,7 +313,7 @@ export default function DevMarkdown() {
                   noMatch: t('bmdc.nomatch', 'No block matches.'), count: t('bmdc.count', '{n} block(s)'),
                   preview: t('bmdc.preview', 'Preview'), drag: t('bmdc.drag', 'Drag to reorder'),
                   up: t('bmdc.up', 'Move up'), down: t('bmdc.down', 'Move down'), del: t('common.delete', 'Delete'),
-                  empty: t('bmdc.empty', 'Empty document — insert a block above.'),
+                  empty: t('bmdc.empty', 'Empty document, insert a block above.'),
                 }} /></div>
             : <Textarea ref={ta} rows={22} value={src} onChange={(e) => setSrc(e.target.value)}
                 className="!font-mono !text-[12.5px] !leading-relaxed" spellCheck={false} />}

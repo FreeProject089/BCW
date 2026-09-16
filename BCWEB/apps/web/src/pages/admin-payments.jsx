@@ -27,7 +27,7 @@ export function AdminPendingPayments() {
       const r = await api.post('/admin/payments/reconcile', { olderThanMin });
       setLast(r.summary);
       const s = r.summary || {};
-      toast.success(t('adpay.ran', 'Checked {n} — delivered {d}, failed {f}, still open {o}.').replace('{n}', s.scanned ?? 0).replace('{d}', s.delivered ?? 0).replace('{f}', s.failed ?? 0).replace('{o}', s.stillPending ?? 0));
+      toast.success(t('adpay.ran', 'Checked {n}, delivered {d}, failed {f}, still open {o}.').replace('{n}', s.scanned ?? 0).replace('{d}', s.delivered ?? 0).replace('{f}', s.failed ?? 0).replace('{o}', s.stillPending ?? 0));
       reload();
     } catch (e) {
       toast.error(e?.data?.error === 'stripe_not_configured' ? t('adpay.nostripe', 'Stripe is not configured on this server.') : t('common.failed', 'Failed.'));
@@ -80,7 +80,7 @@ export function AdminPendingPayments() {
           <span className="flex items-center gap-1"><XCircle size={12} className="text-[var(--faint)]" /> {t('adpay.last.failed', 'expired {n}').replace('{n}', last.failed)}</span>
           <span>{t('adpay.last.already', 'already delivered {n}').replace('{n}', last.alreadyDelivered ?? 0)}</span>
           <span>{t('adpay.last.open', 'still open {n}').replace('{n}', last.stillPending)}</span>
-          {last.errors > 0 && <span className="text-error">{t('adpay.last.errors', 'errors {n} — see the Errors page').replace('{n}', last.errors)}</span>}
+          {last.errors > 0 && <span className="text-error">{t('adpay.last.errors', 'errors {n}, see the Errors page').replace('{n}', last.errors)}</span>}
         </div>
       )}
 

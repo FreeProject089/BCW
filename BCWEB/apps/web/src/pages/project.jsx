@@ -388,7 +388,7 @@ export default function ProjectPage({ preview = null }) {
               "Sign in" at once. */}
           {canEditProject(user, key) && (
             <Link to={`/admin?s=projects&key=${key}`}>
-              <Button variant="ghost" title={t('proj.edit.h', 'Edit this page — text, links, downloads, and the How it runs diagram')}>
+              <Button variant="ghost" title={t('proj.edit.h', 'Edit this page, text, links, downloads, and the How it runs diagram')}>
                 <Pencil size={15} /> {t('proj.edit', 'Edit page')}
               </Button>
             </Link>
@@ -558,7 +558,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
     return <div className="space-y-6"><TimelineCard tl={tl} showBody={messages} onToggleBody={setMessages} t={t} /></div>;
   }
   const a = data || {};
-  if (a.computing) return <EmptyState icon={CalendarDays} title={t('act.computing', 'Preparing activity…')} sub={t('act.computing.d', 'GitHub is building this repository’s statistics — open this tab again in a moment.')} />;
+  if (a.computing) return <EmptyState icon={CalendarDays} title={t('act.computing', 'Preparing activity…')} sub={t('act.computing.d', 'GitHub is building this repository’s statistics, open this tab again in a moment.')} />;
 
   const weeks = [];
   for (let i = 0; i < (a.heatmap || []).length; i += 7) weeks.push(a.heatmap.slice(i, i + 7));
@@ -585,7 +585,7 @@ function ProjectActivity({ endpoint, timeline, githubUrl }) {
       {!!weeks.length && (
         <Card className="p-5 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span>{a.source?.branch && <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]" title={t('act.branch.h', 'This project pins a branch; the activity is read from its commits (a rolling year).')}><GitBranch size={10} /> {a.source.branch}</span>}{a.source?.imported && <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--muted)]" title={t('act.imported.h', 'Commits read from a git log the maintainers exported ({d}) — the whole history, not just what GitHub’s statistics cover.').replace('{d}', a.source.importedAt ? new Date(a.source.importedAt).toLocaleDateString() : '')}><GitBranch size={10} /> {t('act.imported', 'full history')}{a.source.importedFrom ? ` · ${a.source.importedFrom}` : ''}</span>}</div>
+            <div className="text-sm font-semibold flex items-center gap-2 flex-wrap">{t('act.heatmap', 'Commits per day')} <span className="text-[var(--faint)] font-normal">· {t('act.lastyear', 'last 12 months')}</span>{a.source?.branch && <span className="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--primary-2)]" title={t('act.branch.h', 'This project pins a branch; the activity is read from its commits (a rolling year).')}><GitBranch size={10} /> {a.source.branch}</span>}{a.source?.imported && <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] text-[var(--muted)]" title={t('act.imported.h', 'Commits read from a git log the maintainers exported ({d}), the whole history, not just what GitHub’s statistics cover.').replace('{d}', a.source.importedAt ? new Date(a.source.importedAt).toLocaleDateString() : '')}><GitBranch size={10} /> {t('act.imported', 'full history')}{a.source.importedFrom ? ` · ${a.source.importedFrom}` : ''}</span>}</div>
             <div className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]">
               {t('act.less', 'Less')}
               {[0, 2, 4, 8, 13].map((n) => <span key={n} className="w-3 h-3 rounded-sm border border-[var(--line)]" style={{ backgroundColor: heatColor(n) }} />)}
@@ -1063,7 +1063,7 @@ function Legal({ c }) {
   if (!docs.length) return <EmptyState icon={ShieldCheck} title={t('proj.legal.none', 'No legal documents')} sub={t('proj.legal.noneSub', 'License / ToS / Privacy / README are set in the admin dashboard.')} />;
   return (
     <div className="max-w-2xl">
-      {legacyLicense && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent">
+      {legacyLicense && <Card className="p-5 mb-4 flex items-center gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent">
         <ShieldCheck size={20} className="text-[var(--primary-2)]" />
         <div className="flex-1"><div className="font-semibold">{t('proj.licensedUnder', 'Licensed under')} {legacyLicense}</div><div className="text-xs text-[var(--muted)]">{t('proj.openSource', 'This project is open source.')}</div></div>
       </Card>}
@@ -1199,7 +1199,7 @@ function RequestListing() {
               <div className="flex flex-wrap gap-2 mb-3">
                 {[['open', true], ['closed', false]].map(([k, v]) => (
                   <button key={k} type="button" onClick={() => set({ isOpenSource: v, ownership: v ? f.ownership : 'owner' })}
-                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] bg-[var(--primary)]/5 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:border-[var(--primary)]/40'}`}>
+                    className={`px-3 py-1.5 rounded-lg border text-sm transition ${f.isOpenSource === v ? 'border-[var(--primary)] tint-primary text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:b-primary'}`}>
                     {k === 'open' ? t('rl.src.open', 'Open source') : t('rl.src.closed', 'Closed source')}
                   </button>
                 ))}
@@ -1218,7 +1218,7 @@ function RequestListing() {
                   </Field>
                 </div>
               ) : (
-                <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
+                <div className="rounded-lg border border-[var(--line)] panel p-3">
                   <p className="text-[11px] text-[var(--muted)] mb-2">{t('rl.closed.note', 'We list closed-source projects too — but only at the request of the rights-holder, and only with proof of rights (a licence, an invoice, a signed statement). Your document is stored privately, shown only to review staff, and deleted once we decide.')}</p>
                   <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
                     <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" className="hidden" onChange={(e) => uploadProof(e.target.files?.[0])} />
@@ -1233,7 +1233,7 @@ function RequestListing() {
           {/* Estimated wait \u2014 shown BEFORE paying. Queue-driven, and explicitly an estimate:
               paying is priority, not a guarantee. */}
           {est && (
-            <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 text-xs">
+            <div className="mt-4 rounded-lg border border-[var(--line)] panel p-3 text-xs">
               <div className="flex items-center gap-2 flex-wrap">
                 <Clock size={13} className="text-[var(--primary-2)]" />
                 <span className="text-[var(--muted)]">{t('rl.est.free', 'Typical wait: {r}').replace('{r}', `${dur(est.freeLowH)}\u2013${dur(est.freeHighH)}`)}</span>
@@ -1535,7 +1535,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
         toast.error(t('common.failed', 'Failed.'));
       } else {
         const r = await api.post(`/marketplace/products/${pr.id}/buy`, {});
-        if (r.ok) { setGot((g) => ({ ...g, [pr.id]: { ...(r.purchase?.delivery || {}), purchaseId: r.purchase?.id } })); onChanged?.(); toast.success(t('mk.done', 'Done — it’s yours.')); }
+        if (r.ok) { setGot((g) => ({ ...g, [pr.id]: { ...(r.purchase?.delivery || {}), purchaseId: r.purchase?.id } })); onChanged?.(); toast.success(t('mk.done', 'Done, it’s yours.')); }
       }
     } catch (x) {
       const e = x?.data?.error;
@@ -1553,7 +1553,9 @@ function Marketplace({ pkey, products = [], onChanged }) {
       : t('mk.per.n', '/ {n} months').replace('{n}', n);
   };
 
-  if (!products.length) return <EmptyState icon={ShoppingBag} title={t('mk.empty.t', 'Nothing for sale yet')} sub={t('mk.empty.s', 'This project has no marketplace items right now.')} />;
+  if (!products.length) return <EmptyState icon={ShoppingBag} title={t('mk.empty.t', 'Nothing for sale yet')}
+    sub={t('mk.empty.s2', 'This is the project’s marketplace, and its team has not put anything on sale.')}
+    action={{ label: t('mk.empty.a', 'Browse the catalogue'), to: '/catalog?project=bmm', icon: Boxes }} />;
   return (
     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {products.map((pr) => {
@@ -1581,7 +1583,7 @@ function Marketplace({ pkey, products = [], onChanged }) {
               </div>
             )}
             {d ? (
-              <div className="mt-auto rounded-lg border border-[var(--success)]/30 bg-[var(--success)]/[0.06] p-2.5">
+              <div className="mt-auto rounded-lg border b-success bg-[var(--success)]/[0.06] p-2.5">
                 <div className="text-[11px] font-semibold text-[var(--success)] uppercase tracking-wide mb-1">{t('mk.yours', 'Yours')}</div>
                 {d.key && <button type="button" onClick={() => { try { navigator.clipboard?.writeText(d.key); toast.success(t('common.copied', 'Copied.')); } catch { /* denied */ } }} className="inline-flex items-center gap-1.5 font-mono text-xs px-2 py-1 rounded bg-[var(--surface-2)] border border-[var(--line)] max-w-full"><Key size={12} className="shrink-0" /><span className="truncate">{d.key}</span><Copy size={11} className="opacity-60 shrink-0" /></button>}
                 {d.content && <div className="text-sm text-[var(--text)] whitespace-pre-wrap break-words">{d.content}</div>}
@@ -1595,8 +1597,8 @@ function Marketplace({ pkey, products = [], onChanged }) {
                   </Button>
                 )}
                 {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="btn btn-sm mt-1"><ExternalLink size={13} /> {t('mk.open', 'Open')}</a>}
-                {d.licensed && <div className="text-[11px] text-[var(--faint)] mt-1">{t('mk.licensed', 'This key is yours alone — keep it, it is recorded against this purchase.')}</div>}
-                {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue — contact the project.')}</div>}
+                {d.licensed && <div className="text-[11px] text-[var(--faint)] mt-1">{t('mk.licensed', 'This key is yours alone, keep it, it is recorded against this purchase.')}</div>}
+                {d.error && <div className="text-xs text-[var(--error)]">{t('mk.derr', 'Delivery issue, contact the project.')}</div>}
                 {/* Repeated here on purpose. This is the moment somebody is holding a key and
                     wondering what to do with it, and the copy above has scrolled away. */}
                 {pr.redeemUrl && <a href={pr.redeemUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] text-[var(--primary-2)] hover:underline mt-1.5 break-all"><ExternalLink size={11} /> {t('mk.redeem', 'Where to use it')}</a>}

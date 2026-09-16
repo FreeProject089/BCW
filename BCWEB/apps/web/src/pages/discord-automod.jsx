@@ -1,155 +1,38 @@
-// Automod + log routing — the two per-server bot shapes, edited from two places.
+// Automod, the warn ladder and log routing — the per-server bot shapes, edited from two places.
 //
-// The bot documents both shapes verbatim at the top of apps/bot/src/features/automod.mjs and
+// The bot documents all of them at the top of apps/bot/src/features/automod.mjs and
 // apps/bot/src/features/logs.mjs, and the API bounds them with MODERATION_SCHEMA / LOGS_SCHEMA
 // in routes/bot.mjs. This file is the dashboard's copy of that vocabulary — the rule names,
-// the per-rule thresholds, the 23 log categories in their 8 groups — plus the two editors
-// that render it. A server owner reaches them from their own dashboard (discord-servers.jsx);
-// an admin reaches the same editors, for the same guild subtree, from the bot tab.
+// the per-rule thresholds and parameters, the 23 log categories in their 8 groups — plus the
+// editors that render it. A server owner reaches them from their own dashboard
+// (discord-servers.jsx); an admin reaches the same editors, for the same guild subtree, from
+// the bot tab.
 //
-// One editor, two hosts, so the two doors cannot save different shapes. `normAutomod` /
-// `normLogs` turn whatever was stored into the full shape with the bot's defaults filled in,
-// and that is also what is SENT: the API's zod schemas want numbers as numbers and actions
-// from the enum, and a half-typed field must never reach them as an empty string.
+// One editor, several hosts, so the doors cannot save different shapes. `normAutomod` /
+// `normLogs` / `normLadder` turn whatever was stored into the full shape with the bot's
+// defaults filled in, and that is also what is SENT: the API's zod schemas want numbers as
+// numbers and actions from the enum, and a half-typed field must never reach them as an
+// empty string.
+//
+// THE RULE THIS FILE FOLLOWS: a control says what it DOES, in the words of the thing it does
+// it to. A log row does not say "Default", it says where the next event actually lands; a
+// rule does not hide "maxMessages" behind "Advanced", it says "more than 6 messages in 5
+// seconds" with 6 and 5 as the fields you type in.
 import { useEffect, useState } from 'react';
-import { ChevronDown, Plus, X, SlidersHorizontal } from 'lucide-react';
+import { ChevronDown, Plus, X, Trash2, Send, ArrowRight, ShieldOff } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { Input, Select, Field, Button } from '../ui/ui.jsx';
+import { ChannelPicker, PickerList, ChannelTag, CHANNEL_TYPES, channelOf } from './discord-pickers.jsx';
 
-// ── The vocabulary (mirrors the bot) ──────────────────────────────────────────────────────
-export const AUTOMOD_ACTIONS = ['log', 'delete', 'warn', 'timeout', 'kick', 'ban'];
-export const JOIN_ACTIONS = ['log', 'kick', 'ban', 'quarantine', 'timeout'];
-export const RAID_ACTIONS = ['log', 'timeout', 'kick', 'ban'];
-export const AUTOMOD_RULES = ['spam', 'mentions', 'invites', 'links', 'words', 'caps', 'zalgo', 'attachments', 'accountAge', 'selfbot', 'raid'];
+// The vocabulary and the pure rules live in lib/discord-config.js (testable without a DOM);
+// they are re-exported here so every importer keeps one address for them.
+import { clamp, actionsFor, AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute } from '../lib/discord-config.js';
 
-// DEFAULT_AUTOMOD in the bot, copied. If the bot's defaults move, move these.
-export const AUTOMOD_DEFAULTS = {
-  enabled: true,
-  exempt: { roles: [], channels: [], users: [], moderators: true },
-  warnDecayHours: 168,
-  rules: {
-    spam: { enabled: true, action: 'timeout', timeoutMin: 10, maxMessages: 6, windowSec: 5, maxRepeats: 3, repeatWindowSec: 30 },
-    mentions: { enabled: true, action: 'timeout', timeoutMin: 60, maxUsers: 6, maxRoles: 3, everyone: false },
-    invites: { enabled: true, action: 'delete', allowGuilds: [], allowCodes: [] },
-    links: { enabled: false, action: 'delete', allowDomains: [] },
-    words: { enabled: false, action: 'delete', patterns: [] },
-    caps: { enabled: false, action: 'delete', ratio: 0.7, minLetters: 12 },
-    zalgo: { enabled: true, action: 'delete', maxCombining: 6, maxRatio: 0.3 },
-    attachments: { enabled: true, action: 'delete', allowTypes: [], blockTypes: ['exe', 'bat', 'cmd', 'scr', 'msi', 'ps1', 'vbs', 'jar', 'com', 'dll', 'hta', 'lnk'] },
-    accountAge: { enabled: false, action: 'kick', minDays: 7, timeoutMin: 1440 },
-    selfbot: { enabled: true, action: 'kick', channelsPerWindow: 3, windowSec: 5, identicalAcrossSec: 10, maxPerMinute: 40 },
-    raid: { enabled: true, action: 'timeout', timeoutMin: 60, joins: 10, windowSec: 30, lockdownMin: 15, raiseVerification: true, alert: true },
-  },
-};
+export { AUTOMOD_ACTIONS, JOIN_ACTIONS, RAID_ACTIONS, AUTOMOD_RULES, JOIN_RULES, LADDER_ACTIONS, AUTOMOD_DEFAULTS, LADDER_DEFAULTS, RULE_FIELDS, LOG_GROUPS, LOG_CATEGORIES, LOG_CATEGORY_KEYS, LOG_GROUP_TAG, LOGS_DEFAULTS, normAutomod, normLadder, ladderForSave, normLogs, logsForSave, resolveLogRoute };
 
-// Every threshold a rule has, with the bounds the API enforces (routes/bot.mjs). `int` fields
-// are rounded; a value outside its bounds is clamped rather than refused, because the server
-// would refuse the WHOLE save over one field and say only "invalid_input".
-const N = (k, min, max, opt = {}) => ({ k, kind: 'num', min, max, int: opt.int !== false, step: opt.step });
-const B = (k) => ({ k, kind: 'bool' });
-const L = (k, max = 100) => ({ k, kind: 'list', max });
-export const RULE_FIELDS = {
-  spam: [N('timeoutMin', 1, 40320), N('maxMessages', 1, 100), N('windowSec', 1, 600), N('maxRepeats', 2, 50), N('repeatWindowSec', 1, 3600)],
-  mentions: [N('timeoutMin', 1, 40320), N('maxUsers', 1, 100), N('maxRoles', 1, 100), B('everyone')],
-  invites: [N('timeoutMin', 1, 40320), L('allowGuilds'), L('allowCodes')],
-  links: [N('timeoutMin', 1, 40320), L('allowDomains', 200)],
-  words: [N('timeoutMin', 1, 40320), L('patterns', 500)],
-  caps: [N('timeoutMin', 1, 40320), N('ratio', 0, 1, { int: false, step: 0.05 }), N('minLetters', 1, 4000)],
-  zalgo: [N('timeoutMin', 1, 40320), N('maxCombining', 1, 1000), N('maxRatio', 0, 1, { int: false, step: 0.05 })],
-  attachments: [N('timeoutMin', 1, 40320), L('allowTypes'), L('blockTypes')],
-  accountAge: [N('minDays', 0, 3650, { int: false, step: 0.5 }), N('timeoutMin', 1, 40320)],
-  selfbot: [N('timeoutMin', 1, 40320), N('channelsPerWindow', 2, 50), N('windowSec', 1, 600), N('identicalAcrossSec', 1, 3600), N('maxPerMinute', 1, 1000)],
-  raid: [N('timeoutMin', 1, 40320), N('joins', 2, 1000), N('windowSec', 1, 3600), N('lockdownMin', 1, 1440), B('raiseVerification'), B('alert')],
-};
-const actionsFor = (rule) => (rule === 'accountAge' ? JOIN_ACTIONS : rule === 'raid' ? RAID_ACTIONS : AUTOMOD_ACTIONS);
-// The two join-time rules have no message to delete, so `delete`/`warn` do not apply to them.
-export const JOIN_RULES = ['accountAge', 'raid'];
-
-// CATEGORIES / GROUPS in the bot's logs.mjs, copied — the routing keys the dashboard renders.
-export const LOG_GROUPS = ['messages', 'members', 'voice', 'automod', 'moderation', 'server', 'bot', 'economy'];
-export const LOG_CATEGORIES = {
-  'messages.delete': 'messages', 'messages.edit': 'messages', 'messages.bulk': 'messages',
-  'members.join': 'members', 'members.leave': 'members', 'members.kick': 'members', 'members.ban': 'members',
-  'members.unban': 'members', 'members.timeout': 'members', 'members.nick': 'members', 'members.roles': 'members',
-  voice: 'voice',
-  automod: 'automod',
-  modcmd: 'moderation',
-  'server.channels': 'server', 'server.roles': 'server', 'server.emoji': 'server', 'server.webhooks': 'server',
-  'bot.errors': 'bot', 'bot.config': 'bot',
-  'economy.casino': 'economy', 'economy.shop': 'economy', 'economy.season': 'economy',
-};
-export const LOG_CATEGORY_KEYS = Object.keys(LOG_CATEGORIES);
-export const LOGS_DEFAULTS = { enabled: true, forumId: '', channelId: '', forumMode: 'category', reaction: '', pinSummary: true, routes: {} };
-
-// ── Normalisation ─────────────────────────────────────────────────────────────────────────
-const clamp = (v, f, d) => {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return d;
-  const c = Math.min(f.max, Math.max(f.min, n));
-  return f.int ? Math.round(c) : Math.round(c * 1000) / 1000;
-};
-const strList = (v, max = 100) => (Array.isArray(v) ? v.map((x) => String(x ?? '').trim()).filter(Boolean).slice(0, max) : []);
-const idList = (v) => strList(v).map((x) => x.replace(/[^0-9]/g, '')).filter(Boolean);
-
-/** Whatever was stored under moderation.automod → the full shape, bounds applied. */
-export function normAutomod(raw) {
-  const r = raw && typeof raw === 'object' ? raw : {};
-  const ex = r.exempt && typeof r.exempt === 'object' ? r.exempt : {};
-  const rules = {};
-  for (const name of AUTOMOD_RULES) {
-    const d = AUTOMOD_DEFAULTS.rules[name];
-    const s = r.rules && r.rules[name] && typeof r.rules[name] === 'object' ? r.rules[name] : {};
-    const out = { enabled: typeof s.enabled === 'boolean' ? s.enabled : d.enabled };
-    const acts = actionsFor(name);
-    out.action = acts.includes(s.action) ? s.action : d.action;
-    for (const f of RULE_FIELDS[name]) {
-      const dv = d[f.k];
-      if (f.kind === 'num') out[f.k] = clamp(s[f.k] ?? dv ?? f.min, f, dv ?? f.min);
-      else if (f.kind === 'bool') out[f.k] = typeof s[f.k] === 'boolean' ? s[f.k] : dv;
-      else out[f.k] = strList(s[f.k] ?? dv, f.max);
-    }
-    rules[name] = out;
-  }
-  return {
-    enabled: r.enabled !== false,
-    exempt: { roles: idList(ex.roles), channels: idList(ex.channels), users: idList(ex.users), moderators: ex.moderators !== false },
-    warnDecayHours: clamp(r.warnDecayHours ?? AUTOMOD_DEFAULTS.warnDecayHours, { min: 0, max: 8760, int: true }, AUTOMOD_DEFAULTS.warnDecayHours),
-    rules,
-  };
-}
-
-/** Whatever was stored under `logs` → the full shape. Routes keep only known keys. */
-export function normLogs(raw) {
-  const r = raw && typeof raw === 'object' ? raw : {};
-  const routes = {};
-  for (const [k, v] of Object.entries(r.routes && typeof r.routes === 'object' ? r.routes : {})) {
-    if (!LOG_CATEGORIES[k] && !LOG_GROUPS.includes(k)) continue;
-    if (v === 'off' || v?.kind === 'off') { routes[k] = { kind: 'off', id: '', tags: [] }; continue; }
-    if (typeof v === 'string') { if (v.trim()) routes[k] = { kind: 'channel', id: v.trim(), tags: [] }; continue; }
-    if (v && typeof v === 'object' && (v.kind === 'forum' || v.kind === 'channel')) {
-      routes[k] = { kind: v.kind, id: String(v.id || '').trim(), tags: strList(v.tags, 5) };
-    }
-  }
-  return {
-    enabled: r.enabled !== false,
-    forumId: String(r.forumId || '').trim(), channelId: String(r.channelId || '').trim(),
-    forumMode: r.forumMode === 'day' ? 'day' : 'category',
-    reaction: String(r.reaction || '').trim().slice(0, 64),
-    pinSummary: r.pinSummary !== false,
-    routes,
-  };
-}
-
-/** What is sent: the normalised shape, minus routes that name no channel (they route nowhere). */
-export function logsForSave(v) {
-  const n = normLogs(v);
-  const routes = {};
-  for (const [k, r] of Object.entries(n.routes)) {
-    if (r.kind === 'off') routes[k] = 'off';
-    else if (r.id) routes[k] = r.kind === 'forum' ? { kind: 'forum', id: r.id, tags: r.tags } : { kind: 'channel', id: r.id };
-  }
-  return { ...n, routes };
-}
+// Private helpers the editors need from that module's own idiom.
+const FIELD = (rule, k) => RULE_FIELDS[rule].find((f) => f.k === k);
+const LADDER_TIMED = ['timeout', 'quarantine'];
 
 // ── Small controls ────────────────────────────────────────────────────────────────────────
 // A number that commits on blur / Enter and only forwards a valid value while typing, so a
@@ -159,15 +42,15 @@ function NumField({ value, onCommit, f, className = '' }) {
   useEffect(() => { setTxt(String(value ?? '')); }, [value]);
   const commit = () => { const v = clamp(txt, f, value); onCommit(v); setTxt(String(v)); };
   return (
-    <Input type="number" min={f.min} max={f.max} step={f.step ?? (f.int ? 1 : 0.1)} value={txt} className={`!py-1 text-xs tabular-nums ${className}`}
+    <Input type="number" min={f.min} max={f.max} step={f.step ?? (f.int ? 1 : 0.1)} value={txt} className={`!py-0.5 !px-1.5 text-xs tabular-nums !w-14 text-center ${className}`}
       onChange={(e) => { setTxt(e.target.value); const n = Number(e.target.value); if (e.target.value !== '' && Number.isFinite(n) && n >= f.min && n <= f.max) onCommit(f.int ? Math.round(n) : n); }}
       onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
   );
 }
 
-// Chips + an "add" box. With `options` (the bot's live role/channel list) the add box is a
-// picker; without one it is a plain input, so nothing is ever un-editable when the bot is off.
-function Chips({ items, onChange, options, placeholder, max = 100, mono = true, digitsOnly = false, prefix = '' }) {
+// Free-text chips (patterns, domains, file types). Ids get a real picker instead — see
+// discord-pickers.jsx — so this stays what it is: a list of words.
+function Chips({ items, onChange, placeholder, max = 100 }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState('');
   const list = Array.isArray(items) ? items : [];
@@ -176,49 +59,25 @@ function Chips({ items, onChange, options, placeholder, max = 100, mono = true, 
     if (!v || list.includes(v) || list.length >= max) return;
     onChange([...list, v]); setDraft('');
   };
-  const nameOf = (v) => options?.find((o) => o.id === v)?.name;
   return (
     <div className="space-y-1.5">
       {list.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {list.map((v) => (
-            <span key={v} className={`inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px] ${mono && !nameOf(v) ? 'font-mono' : ''}`}>
-              {nameOf(v) ? `${prefix}${nameOf(v)}` : v}
+            <span key={v} className="inline-flex items-center gap-1 ps-2 pe-1 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--line)] text-[11px]">
+              {v}
               <button type="button" onClick={() => onChange(list.filter((x) => x !== v))} className="text-[var(--faint)] hover:text-error" title={t('common.remove', 'Remove')}><X size={11} /></button>
             </span>
           ))}
         </div>
       )}
-      {options?.length ? (
-        <Select className="!py-1 text-xs" value="" onChange={(e) => add(e.target.value)}>
-          <option value="">{placeholder}</option>
-          {options.filter((o) => !list.includes(o.id)).map((o) => <option key={o.id} value={o.id}>{prefix}{o.name}</option>)}
-        </Select>
-      ) : (
-        <div className="flex gap-1.5">
-          <Input className={`!py-1 text-xs ${mono ? 'font-mono' : ''}`} value={draft} placeholder={placeholder}
-            onChange={(e) => setDraft(digitsOnly ? e.target.value.replace(/[^0-9]/g, '').slice(0, 32) : e.target.value.slice(0, 200))}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(draft); } }} />
-          <Button size="sm" variant="ghost" onClick={() => add(draft)} title={t('common.add', 'Add')}><Plus size={13} /></Button>
-        </div>
-      )}
+      <div className="flex gap-1.5">
+        <Input className="!py-1 text-xs" value={draft} placeholder={placeholder}
+          onChange={(e) => setDraft(e.target.value.slice(0, 200))}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(draft); } }} />
+        <Button size="sm" variant="ghost" onClick={() => add(draft)} title={t('common.add', 'Add')}><Plus size={13} /></Button>
+      </div>
     </div>
-  );
-}
-
-// Channel picker over the bot's live list (types: 0 text · 5 announcement · 15 forum), with
-// the id input as the fallback. Same idea as the dashboard's ChannelPicker, local so this file
-// does not reach into another page for a control.
-function ChanPick({ channels, types, value, onChange, placeholder }) {
-  const { t } = useI18n();
-  const list = (channels || []).filter((c) => types.includes(c.type));
-  if (!list.length) return <Input className="!py-1 text-xs font-mono" value={value || ''} onChange={(e) => onChange(e.target.value.replace(/[^0-9]/g, '').slice(0, 32))} placeholder={placeholder || t('ds.pick.chanph', 'Channel ID')} />;
-  return (
-    <Select className="!py-1 text-xs" value={value || ''} onChange={(e) => onChange(e.target.value)}>
-      <option value="">{t('ds.pick.none', '— none —')}</option>
-      {value && !list.some((c) => c.id === value) && <option value={value}>{t('pick.unknown', 'ID {v} (not in the bot’s list)').replace('{v}', value)}</option>}
-      {list.map((c) => <option key={c.id} value={c.id}>{c.type === 15 ? '' : '# '}{c.name}</option>)}
-    </Select>
   );
 }
 
@@ -232,36 +91,20 @@ const Check = ({ checked, onChange, children, className = '' }) => (
 function useAutomodLabels() {
   const { t } = useI18n();
   return {
-    rule: {
-      spam: [t('amod.r.spam', 'Spam'), t('amod.r.spam.d', 'Too many messages in a few seconds, or the same message repeated.')],
-      mentions: [t('amod.r.mentions', 'Mass mentions'), t('amod.r.mentions.d', 'Too many users or roles pinged in one message, or @everyone.')],
-      invites: [t('amod.r.invites', 'Invites'), t('amod.r.invites.d', 'Discord invite links to other servers. Your own server is always allowed.')],
-      links: [t('amod.r.links', 'Links'), t('amod.r.links.d', 'Any link. An empty allow-list means every link is caught.')],
-      words: [t('amod.r.words', 'Words'), t('amod.r.words.d', 'Patterns: a whole word, pre* / *mid* wildcards, or /regex/i.')],
-      caps: [t('amod.r.caps', 'Caps'), t('amod.r.caps.d', 'A message that is mostly upper-case, once it is long enough to matter.')],
-      zalgo: [t('amod.r.zalgo', 'Zalgo'), t('amod.r.zalgo.d', 'Text stacked with combining marks.')],
-      attachments: [t('amod.r.attachments', 'Attachments'), t('amod.r.attachments.d', 'Blocked file types, or anything outside an allow-list of types.')],
-      accountAge: [t('amod.r.accountAge', 'Account age'), t('amod.r.accountAge.d', 'On join: an account younger than the minimum. Quarantine = a timeout for the minutes below.')],
-      selfbot: [t('amod.r.selfbot', 'Selfbot'), t('amod.r.selfbot.d', 'The same text across several channels within seconds, or an inhuman message rate.')],
-      raid: [t('amod.r.raid', 'Raid'), t('amod.r.raid.d', 'A burst of joins. Can lock the server down, raise verification and alert you.')],
+    name: {
+      spam: t('amod.r.spam', 'Spam'), mentions: t('amod.r.mentions', 'Mass mentions'), invites: t('amod.r.invites', 'Invites'),
+      links: t('amod.r.links', 'Links'), words: t('amod.r.words', 'Words'), caps: t('amod.r.caps', 'Caps'), zalgo: t('amod.r.zalgo', 'Zalgo'),
+      attachments: t('amod.r.attachments', 'Attachments'), accountAge: t('amod.r.accountAge', 'New accounts'),
+      selfbot: t('amod.r.selfbot', 'Selfbot'), raid: t('amod.r.raid', 'Raid'),
     },
     action: {
-      log: t('amod.a.log', 'Log only'), delete: t('amod.a.delete', 'Delete'), warn: t('amod.a.warn', 'Delete + warn'),
-      timeout: t('amod.a.timeout', 'Delete + time out'), kick: t('amod.a.kick', 'Kick'), ban: t('amod.a.ban', 'Ban'), quarantine: t('amod.a.quarantine', 'Quarantine'),
+      log: t('amod.a.log', 'Log only'), delete: t('amod.a.delete', 'Delete'), warn: t('amod.a.warn', 'Warn'),
+      timeout: t('amod.a.timeout', 'Time out'), kick: t('amod.a.kick', 'Kick'), ban: t('amod.a.ban', 'Ban'), quarantine: t('amod.a.quarantine', 'Quarantine'),
     },
-    joinAction: { log: t('amod.a.log', 'Log only'), timeout: t('amod.a.timeoutj', 'Time out'), kick: t('amod.a.kick', 'Kick'), ban: t('amod.a.ban', 'Ban'), quarantine: t('amod.a.quarantine', 'Quarantine') },
     field: {
-      timeoutMin: t('amod.f.timeoutMin', 'Timeout (minutes)'), maxMessages: t('amod.f.maxMessages', 'Max messages'), windowSec: t('amod.f.windowSec', 'Window (seconds)'),
-      maxRepeats: t('amod.f.maxRepeats', 'Max repeats'), repeatWindowSec: t('amod.f.repeatWindowSec', 'Repeat window (seconds)'),
-      maxUsers: t('amod.f.maxUsers', 'Max users mentioned'), maxRoles: t('amod.f.maxRoles', 'Max roles mentioned'), everyone: t('amod.f.everyone', 'Catch @everyone / @here'),
       allowGuilds: t('amod.f.allowGuilds', 'Allowed server ids'), allowCodes: t('amod.f.allowCodes', 'Allowed invite codes'),
       allowDomains: t('amod.f.allowDomains', 'Allowed domains'), patterns: t('amod.f.patterns', 'Patterns'),
-      ratio: t('amod.f.ratio', 'Upper-case share (0–1)'), minLetters: t('amod.f.minLetters', 'Minimum letters'),
-      maxCombining: t('amod.f.maxCombining', 'Max combining marks'), maxRatio: t('amod.f.maxRatio', 'Max combining share (0–1)'),
       allowTypes: t('amod.f.allowTypes', 'Allowed file types'), blockTypes: t('amod.f.blockTypes', 'Blocked file types'),
-      minDays: t('amod.f.minDays', 'Minimum account age (days)'),
-      channelsPerWindow: t('amod.f.channelsPerWindow', 'Channels per window'), identicalAcrossSec: t('amod.f.identicalAcrossSec', 'Identical across (seconds)'), maxPerMinute: t('amod.f.maxPerMinute', 'Max messages per minute'),
-      joins: t('amod.f.joins', 'Joins'), lockdownMin: t('amod.f.lockdownMin', 'Lockdown (minutes)'), raiseVerification: t('amod.f.raiseVerification', 'Raise verification level'), alert: t('amod.f.alert', 'Alert the log'),
     },
   };
 }
@@ -279,114 +122,375 @@ function useLogLabels() {
       'members.ban': t('lg.c.members.ban', 'Member banned'), 'members.unban': t('lg.c.members.unban', 'Member unbanned'), 'members.timeout': t('lg.c.members.timeout', 'Member timed out'),
       'members.nick': t('lg.c.members.nick', 'Nickname changed'), 'members.roles': t('lg.c.members.roles', 'Roles changed'),
       voice: t('lg.c.voice', 'Voice activity'), automod: t('lg.c.automod', 'Automod action'), modcmd: t('lg.c.modcmd', 'Moderation command'),
-      'server.channels': t('lg.c.server.channels', 'Channel changed'), 'server.roles': t('lg.c.server.roles', 'Role changed'), 'server.emoji': t('lg.c.server.emoji', 'Emoji / sticker changed'), 'server.webhooks': t('lg.c.server.webhooks', 'Webhooks changed'),
+      'server.channels': t('lg.c.server.channels', 'Channel changed'), 'server.roles': t('lg.c.server.roles', 'Role changed'), 'server.emoji': t('lg.c.server.emoji', 'Emoji or sticker changed'), 'server.webhooks': t('lg.c.server.webhooks', 'Webhooks changed'),
       'bot.errors': t('lg.c.bot.errors', 'Bot error'), 'bot.config': t('lg.c.bot.config', 'Bot config changed'),
       'economy.casino': t('lg.c.economy.casino', 'Casino'), 'economy.shop': t('lg.c.economy.shop', 'Shop'), 'economy.season': t('lg.c.economy.season', 'Season'),
     },
   };
 }
 
+/** A resolved route, in words. Returns a node, because a channel is worth its own glyph. */
+function useDestination(channels) {
+  const { t } = useI18n();
+  return (route) => {
+    if (!route || route.kind === 'off') {
+      return {
+        short: t('lg.dest.off', 'nowhere'),
+        node: <span className="text-[var(--faint)] inline-flex items-center gap-1"><ShieldOff size={11} /> {t('lg.dest.off', 'nowhere')}</span>,
+      };
+    }
+    const ch = channelOf(channels, route.id);
+    const name = ch?.name || route.id;
+    if (route.kind === 'forum') {
+      const tag = (route.tags || []).join(', ');
+      return {
+        short: tag ? t('lg.dest.forum', 'the {c} forum, tag {t}').replace('{c}', name).replace('{t}', tag) : t('lg.dest.forum0', 'the {c} forum').replace('{c}', name),
+        node: (
+          <span className="inline-flex items-center gap-1 min-w-0">
+            <ChannelTag channel={ch || { type: 15, name }} id={route.id} />
+            {tag && <span className="text-[10px] text-[var(--faint)] shrink-0">{t('lg.dest.tag', 'tag {t}').replace('{t}', tag)}</span>}
+          </span>
+        ),
+      };
+    }
+    return { short: `#${name}`, node: <ChannelTag channel={ch || { type: 0, name }} id={route.id} /> };
+  };
+}
+
 // ── The automod editor ────────────────────────────────────────────────────────────────────
+// Each rule reads as two sentences: what it CATCHES (with its numbers as the fields you type
+// in) and what it THEN DOES. Nothing is behind a label like "maxMessages".
+
+/** A sentence with fields in it. `parts` is a list of strings and nodes. */
+const Sentence = ({ children, className = '' }) => (
+  <div className={`flex flex-wrap items-center gap-x-1 gap-y-1 text-[11.5px] text-[var(--muted)] leading-relaxed ${className}`}>{children}</div>
+);
+
+function CatchSentence({ name, r, setRule, LB }) {
+  const { t } = useI18n();
+  const num = (k, cls) => <NumField key={k} value={r[k]} f={FIELD(name, k)} onCommit={(n) => setRule({ [k]: n })} className={cls} />;
+  switch (name) {
+    case 'spam': return (
+      <Sentence>
+        {t('amod.s.spam1', 'More than')} {num('maxMessages')} {t('amod.s.spam2', 'messages in')} {num('windowSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.spam3', 'or the same message')} {num('maxRepeats')} {t('amod.s.spam4', 'times within')} {num('repeatWindowSec')} {t('amod.s.sec2', 'seconds.')}
+      </Sentence>
+    );
+    case 'mentions': return (
+      <Sentence>
+        {t('amod.s.men1', 'One message pinging more than')} {num('maxUsers')} {t('amod.s.men2', 'members or')} {num('maxRoles')} {t('amod.s.men3', 'roles.')}
+        <Check checked={!r.everyone} onChange={(on) => setRule({ everyone: !on })} className="!text-[11.5px]">{t('amod.s.men4', 'Also catch @everyone and @here')}</Check>
+      </Sentence>
+    );
+    case 'invites': return (
+      <div className="space-y-1.5">
+        <Sentence>{t('amod.s.inv', 'An invite link to another Discord server. Your own server is always allowed.')}</Sentence>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <Field label={LB.field.allowGuilds}><Chips items={r.allowGuilds} onChange={(l) => setRule({ allowGuilds: l })} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
+          <Field label={LB.field.allowCodes}><Chips items={r.allowCodes} onChange={(l) => setRule({ allowCodes: l })} placeholder={t('amod.list.ph', 'Type and press Enter')} /></Field>
+        </div>
+      </div>
+    );
+    case 'links': return (
+      <div className="space-y-1.5">
+        <Sentence>{r.allowDomains.length ? t('amod.s.link1', 'A link to any domain outside the list below.') : t('amod.s.link0', 'Any link at all: the allowed list is empty.')}</Sentence>
+        <Field label={LB.field.allowDomains}><Chips items={r.allowDomains} onChange={(l) => setRule({ allowDomains: l })} max={200} placeholder={t('amod.s.link.ph', 'example.com')} /></Field>
+      </div>
+    );
+    case 'words': return (
+      <div className="space-y-1.5">
+        <Sentence>{t('amod.s.words', 'A message matching one of these patterns. A plain word matches that whole word; pre* and *mid* are wildcards; /regex/i is the regex as written.')}</Sentence>
+        <Field label={LB.field.patterns}><Chips items={r.patterns} onChange={(l) => setRule({ patterns: l })} max={500} placeholder={t('amod.s.words.ph', 'word, pre*, /regex/i')} /></Field>
+      </div>
+    );
+    case 'caps': return (
+      <Sentence>
+        {t('amod.s.caps1', 'A message of at least')} {num('minLetters')} {t('amod.s.caps2', 'letters that is')}
+        <NumField value={Math.round(r.ratio * 100)} f={{ min: 0, max: 100, int: true }} onCommit={(n) => setRule({ ratio: Math.round(n) / 100 })} />
+        {t('amod.s.caps3', '% upper-case or more.')}
+      </Sentence>
+    );
+    case 'zalgo': return (
+      <Sentence>
+        {t('amod.s.zal1', 'Text carrying')} {num('maxCombining')} {t('amod.s.zal2', 'combining marks or more, or where they are')}
+        <NumField value={Math.round(r.maxRatio * 100)} f={{ min: 0, max: 100, int: true }} onCommit={(n) => setRule({ maxRatio: Math.round(n) / 100 })} />
+        {t('amod.s.zal3', '% of the characters.')}
+      </Sentence>
+    );
+    case 'attachments': return (
+      <div className="space-y-1.5">
+        <Sentence>{r.allowTypes.length ? t('amod.s.att1', 'Any attached file whose type is not in the allowed list.') : t('amod.s.att0', 'An attached file of one of the blocked types.')}</Sentence>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <Field label={LB.field.blockTypes}><Chips items={r.blockTypes} onChange={(l) => setRule({ blockTypes: l })} placeholder={t('amod.s.att.ph', 'exe')} /></Field>
+          <Field label={LB.field.allowTypes}><Chips items={r.allowTypes} onChange={(l) => setRule({ allowTypes: l })} placeholder={t('amod.s.att.ph2', 'png')} /></Field>
+        </div>
+      </div>
+    );
+    case 'accountAge': return (
+      <Sentence>{t('amod.s.age1', 'Someone joining with an account less than')} {num('minDays')} {t('amod.s.age2', 'days old.')}</Sentence>
+    );
+    case 'selfbot': return (
+      <Sentence>
+        {t('amod.s.self1', 'One member posting across')} {num('channelsPerWindow')} {t('amod.s.self2', 'channels within')} {num('windowSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.self3', 'the same text in two channels within')} {num('identicalAcrossSec')} {t('amod.s.sec', 'seconds,')}
+        {t('amod.s.self4', 'or more than')} {num('maxPerMinute')} {t('amod.s.self5', 'messages a minute.')}
+      </Sentence>
+    );
+    case 'raid': return (
+      <div className="space-y-1">
+        <Sentence>
+          {num('joins')} {t('amod.s.raid1', 'joins within')} {num('windowSec')} {t('amod.s.raid2', 'seconds locks the server down for')} {num('lockdownMin')} {t('amod.s.raid3', 'minutes.')}
+        </Sentence>
+        <Sentence>
+          <Check checked={r.raiseVerification} onChange={(on) => setRule({ raiseVerification: on })} className="!text-[11.5px]">{t('amod.s.raid4', 'Raise the verification level while it lasts')}</Check>
+          <Check checked={r.alert} onChange={(on) => setRule({ alert: on })} className="!text-[11.5px] ms-3">{t('amod.s.raid5', 'Mark the log entry as an alert')}</Check>
+        </Sentence>
+      </div>
+    );
+    default: return null;
+  }
+}
+
+/** What the rule does once it fires, in one sentence, from the action and its parameters. */
+function EffectSentence({ name, r, setRule, LB }) {
+  const { t } = useI18n();
+  const join = JOIN_RULES.includes(name);
+  const act = r.logOnly ? 'log' : r.action;
+  const mins = <NumField value={r.timeoutMin} f={FIELD(name, 'timeoutMin')} onCommit={(n) => setRule({ timeoutMin: n })} />;
+  const del = !join && act !== 'log' && r.deleteMessage;
+  const what = () => {
+    if (act === 'log') return t('amod.e.log', 'nothing is carried out: it is only recorded.');
+    if (act === 'delete') return t('amod.e.delete', 'the message is removed.');
+    if (act === 'warn') return t('amod.e.warn', 'a warning goes on their record, and the warn ladder below decides the rest.');
+    if (act === 'kick') return t('amod.e.kick', 'they are removed from the server.');
+    if (act === 'ban') return t('amod.e.ban', 'they are banned.');
+    return null; // timeout / quarantine carry a number, handled inline below
+  };
+  const timed = act === 'timeout' || act === 'quarantine';
+  return (
+    <Sentence className="!text-[var(--text)]">
+      <ArrowRight size={11} className="text-[var(--faint)] shrink-0" />
+      {del && <span>{t('amod.e.del', 'The message is removed and')}</span>}
+      {timed ? <>{del ? t('amod.e.timed2', 'they cannot post for') : t('amod.e.timed', 'They cannot post for')} {mins} {t('amod.e.min', 'minutes.')}</>
+        : <span>{del ? what() : `${what().charAt(0).toUpperCase()}${what().slice(1)}`}</span>}
+      {r.logOnly && r.action !== 'log' && (
+        <span className="text-warning">{t('amod.e.watch', 'Watch-only is on, so the action below is written down and not carried out.')}</span>
+      )}
+      {!r.logOnly && r.dm && <span>{t('amod.e.dm', 'They are told by DM.')}</span>}
+    </Sentence>
+  );
+}
+
 /**
  * `value` is a normalised automod object (normAutomod), `onChange` gets the next one.
- * `roles` / `channels` are the bot's live lists for pickers (optional). `hideEnable` when the
- * host card already carries the on/off switch.
+ * `roles` / `channels` are the bot's live lists for the pickers. `memberSearch(q)` feeds the
+ * member picker. `hideEnable` when the host card already carries the on/off switch.
  */
-export function AutomodEditor({ value, onChange, roles, channels, hideEnable }) {
+export function AutomodEditor({ value, onChange, roles, channels, memberSearch, hideEnable }) {
   const { t } = useI18n();
-  const L = useAutomodLabels();
+  const LB = useAutomodLabels();
   const v = value || normAutomod(null);
-  const [adv, setAdv] = useState({});   // rule → advanced open
+  const [open, setOpen] = useState({});   // rule → its exceptions panel is open
   const set = (patch) => onChange({ ...v, ...patch });
   const setEx = (patch) => set({ exempt: { ...v.exempt, ...patch } });
   const setRule = (name, patch) => set({ rules: { ...v.rules, [name]: { ...v.rules[name], ...patch } } });
-  const textChannels = (channels || []).filter((c) => [0, 5, 15].includes(c.type));
   return (
     <div className="space-y-4">
       {!hideEnable && (
         <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="text-sm font-medium">{t('amod.enabled', 'Automod on')}</Check>
       )}
-      <p className="text-[11px] text-[var(--faint)]">{t('amod.h', 'Every rule is checked on each message (or join). When several fire at once only the most severe action runs — they never stack. A warning counts toward the /warn ladder.')}</p>
+      <p className="text-[11.5px] text-[var(--muted)]">{t('amod.h2', 'Every rule is checked on each message, or on each join. When several fire at once only the most severe one is carried out, never both.')}</p>
 
-      {/* Exemptions */}
-      <div className="rounded-lg border border-[var(--line)] p-3 space-y-2.5">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('amod.ex', 'Never applies to')}</div>
-        <Check checked={v.exempt.moderators} onChange={(on) => setEx({ moderators: on })}>{t('amod.ex.mods', 'Moderators (Manage Messages / Manage Server / Administrator)')}</Check>
-        <div className="grid sm:grid-cols-3 gap-3">
-          <Field label={t('amod.ex.roles', 'Roles')}><Chips items={v.exempt.roles} onChange={(l) => setEx({ roles: l })} options={roles} placeholder={t('amod.ex.roleph', 'Add a role…')} digitsOnly prefix="@" /></Field>
-          <Field label={t('amod.ex.channels', 'Channels')}><Chips items={v.exempt.channels} onChange={(l) => setEx({ channels: l })} options={textChannels} placeholder={t('amod.ex.chanph', 'Add a channel…')} digitsOnly prefix="# " /></Field>
-          <Field label={t('amod.ex.users', 'Users (ids)')}><Chips items={v.exempt.users} onChange={(l) => setEx({ users: l })} placeholder={t('amod.ex.userph', 'User ID — press Enter')} digitsOnly /></Field>
-        </div>
-        <Field label={t('amod.decay', 'Warnings stop counting after (hours)')} hint={t('amod.decay.h', '0 = a warning counts for ever. The ladder (3 → timeout, 5 → kick, 7 → ban by default) only sees warnings younger than this.')}>
-          <NumField value={v.warnDecayHours} f={{ min: 0, max: 8760, int: true }} onCommit={(n) => set({ warnDecayHours: n })} className="!w-28" />
-        </Field>
-      </div>
-
-      {/* Rules */}
-      <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)]">
+      {/* The rules */}
+      <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] overflow-hidden">
         {AUTOMOD_RULES.map((name) => {
           const r = v.rules[name];
-          const [label, desc] = L.rule[name];
           const join = JOIN_RULES.includes(name);
           const acts = actionsFor(name);
-          const actLabel = join ? L.joinAction : L.action;
-          const open = !!adv[name];
-          const fields = RULE_FIELDS[name].filter((f) => f.k !== 'timeoutMin');
-          const wantsTimeout = r.action === 'timeout' || r.action === 'quarantine';
+          const isOpen = !!open[name];
+          const exCount = join ? 0 : (r.exempt.roles.length + r.exempt.channels.length);
           return (
-            <div key={name} className={`p-2.5 ${r.enabled ? '' : 'opacity-70'}`}>
+            <div key={name} className={`p-3 ${r.enabled ? '' : 'opacity-60'}`}>
               <div className="flex items-center gap-2 flex-wrap">
-                <Check checked={r.enabled} onChange={(on) => setRule(name, { enabled: on })} className="min-w-[140px] flex-1">
-                  <span className="text-sm font-medium">{label}</span>
+                <Check checked={r.enabled} onChange={(on) => setRule(name, { enabled: on })} className="min-w-[120px]">
+                  <span className="text-sm font-medium text-[var(--text)]">{LB.name[name]}</span>
                 </Check>
+                <span className="flex-1" />
                 <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => setRule(name, { action: e.target.value })} aria-label={t('amod.action', 'Action')}>
-                  {acts.map((a) => <option key={a} value={a}>{actLabel[a]}</option>)}
+                  {acts.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
                 </Select>
-                {wantsTimeout && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)]">
-                    <NumField value={r.timeoutMin} f={{ min: 1, max: 40320, int: true }} onCommit={(n) => setRule(name, { timeoutMin: n })} className="!w-20" /> {t('amod.min', 'min')}
-                  </span>
-                )}
-                {fields.length > 0 && (
-                  <button type="button" onClick={() => setAdv((s) => ({ ...s, [name]: !open }))} className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border transition ${open ? 'border-[var(--primary)]/40 text-[var(--primary-2)]' : 'border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]'}`} aria-expanded={open}>
-                    <SlidersHorizontal size={11} /> {t('amod.adv', 'Advanced')} <ChevronDown size={11} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-                  </button>
-                )}
               </div>
-              <div className="text-[11px] text-[var(--faint)] ps-6 mt-0.5">{desc}</div>
-              {open && (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5 mt-2.5 ps-6">
-                  {fields.map((f) => (
-                    f.kind === 'bool' ? (
-                      <Check key={f.k} checked={r[f.k]} onChange={(on) => setRule(name, { [f.k]: on })} className="self-end pb-1">{L.field[f.k]}</Check>
-                    ) : f.kind === 'num' ? (
-                      <Field key={f.k} label={L.field[f.k]}><NumField value={r[f.k]} f={f} onCommit={(n) => setRule(name, { [f.k]: n })} /></Field>
-                    ) : (
-                      <Field key={f.k} label={L.field[f.k]} className="sm:col-span-2 lg:col-span-3">
-                        <Chips items={r[f.k]} onChange={(l) => setRule(name, { [f.k]: l })} max={f.max} mono={false} digitsOnly={f.k === 'allowGuilds'} placeholder={t('amod.list.ph', 'Type and press Enter')} />
+              {r.enabled && (
+                <div className="mt-2 ps-6 space-y-2">
+                  <CatchSentence name={name} r={r} setRule={(p) => setRule(name, p)} LB={LB} />
+                  <EffectSentence name={name} r={r} setRule={(p) => setRule(name, p)} LB={LB} />
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                    {!join && r.action !== 'log' && (
+                      <Check checked={r.deleteMessage} onChange={(on) => setRule(name, { deleteMessage: on })}>{t('amod.p.del', 'Delete the message')}</Check>
+                    )}
+                    <Check checked={r.dm} onChange={(on) => setRule(name, { dm: on })}>{t('amod.p.dm', 'Tell the member by DM')}</Check>
+                    <Check checked={r.logOnly} onChange={(on) => setRule(name, { logOnly: on })}>{t('amod.p.watch', 'Watch only, carry nothing out')}</Check>
+                    {!join && (
+                      <button type="button" onClick={() => setOpen((s) => ({ ...s, [name]: !isOpen }))} aria-expanded={isOpen}
+                        className="inline-flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-[var(--text)]">
+                        {exCount ? t('amod.p.exn', 'Exceptions ({n})').replace('{n}', exCount) : t('amod.p.ex', 'Exceptions')}
+                        <ChevronDown size={11} className={`transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    )}
+                  </div>
+                  {!join && isOpen && (
+                    <div className="grid sm:grid-cols-2 gap-2.5 pt-1">
+                      <Field label={t('amod.p.exroles', 'Roles this rule ignores')}>
+                        <PickerList kind="role" items={r.exempt.roles} roles={roles} onChange={(l) => setRule(name, { exempt: { ...r.exempt, roles: l } })} />
                       </Field>
-                    )
-                  ))}
+                      <Field label={t('amod.p.exchans', 'Channels this rule ignores')}>
+                        <PickerList kind="channel" items={r.exempt.channels} channels={channels} types={CHANNEL_TYPES.postable} onChange={(l) => setRule(name, { exempt: { ...r.exempt, channels: l } })} />
+                      </Field>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* Exemptions that apply to every rule */}
+      <div className="rounded-xl border border-[var(--line)] p-3 space-y-2.5">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('amod.ex2', 'No rule applies to')}</div>
+        <Check checked={v.exempt.moderators} onChange={(on) => setEx({ moderators: on })}>{t('amod.ex.mods', 'Moderators (Manage Messages / Manage Server / Administrator)')}</Check>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <Field label={t('amod.ex.roles', 'Roles')}><PickerList kind="role" items={v.exempt.roles} roles={roles} onChange={(l) => setEx({ roles: l })} /></Field>
+          <Field label={t('amod.ex.channels', 'Channels')}><PickerList kind="channel" items={v.exempt.channels} channels={channels} types={CHANNEL_TYPES.postable} onChange={(l) => setEx({ channels: l })} /></Field>
+          <Field label={t('amod.ex.users2', 'Members')}><PickerList kind="user" items={v.exempt.users} search={memberSearch} onChange={(l) => setEx({ users: l })} /></Field>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── The warn ladder ───────────────────────────────────────────────────────────────────────
+/**
+ * "At N warnings, do X." `value` is moderation.warnThresholds (normLadder'd), `decayHours` is
+ * automod.warnDecayHours — it lives in another subtree but it belongs beside the ladder,
+ * because it is the ladder's units: a ladder counting warnings nobody can see the lifetime of
+ * is a ladder nobody can predict.
+ */
+export function WarnLadderEditor({ value, onChange, decayHours, onDecayChange }) {
+  const { t } = useI18n();
+  const LB = useAutomodLabels();
+  const rows = normLadder(value);
+  const set = (next) => onChange(normLadder(next));
+  const upd = (i, patch) => set(rows.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  const nextCount = () => Math.min(1000, (rows.length ? Math.max(...rows.map((r) => r.count)) : 0) + 2);
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[11.5px] text-[var(--muted)]">{t('wl.h', 'A warning on its own does nothing. These steps say what the Nth one costs. Only the step whose number the member has just reached fires, never the ones below it, and never twice.')}</p>
+      <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)]">
+        {rows.length === 0 && <div className="px-3 py-2.5 text-[11px] text-[var(--faint)]">{t('wl.none', 'No step: a warning never turns into anything else.')}</div>}
+        {rows.map((r, i) => (
+          <div key={i} className="px-3 py-2 flex items-center gap-2 flex-wrap text-[11.5px] text-[var(--muted)]">
+            <span>{t('wl.at', 'At')}</span>
+            <NumField value={r.count} f={{ min: 1, max: 1000, int: true }} onCommit={(n) => upd(i, { count: n })} />
+            <span>{t('wl.warnings', 'warnings,')}</span>
+            <Select className="!w-auto !py-1 text-xs" value={r.action} onChange={(e) => upd(i, { action: e.target.value })} aria-label={t('wl.action', 'What happens')}>
+              {LADDER_ACTIONS.map((a) => <option key={a} value={a}>{LB.action[a]}</option>)}
+            </Select>
+            {LADDER_TIMED.includes(r.action) && (<>
+              <span>{t('wl.for', 'for')}</span>
+              <NumField value={r.minutes} f={{ min: 1, max: 40320, int: true }} onCommit={(n) => upd(i, { minutes: n })} />
+              <span>{t('wl.min', 'minutes')}</span>
+            </>)}
+            {['log', 'delete', 'warn'].includes(r.action) && <span className="text-[var(--faint)]">{t('wl.noop', 'nothing is carried out: the step is written down and inert.')}</span>}
+            <span className="flex-1" />
+            <button type="button" onClick={() => set(rows.filter((_, k) => k !== i))} className="text-[var(--faint)] hover:text-error shrink-0" title={t('common.remove', 'Remove')}><Trash2 size={12} /></button>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {rows.length < 20 && (
+          <Button size="sm" variant="ghost" onClick={() => set([...rows, { count: nextCount(), action: 'timeout', minutes: 60 }])}>
+            <Plus size={13} /> {t('wl.add', 'Add a step')}
+          </Button>
+        )}
+        {onDecayChange && (
+          <span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--muted)] ms-auto">
+            {t('wl.decay', 'A warning counts for')}
+            <NumField value={decayHours} f={{ min: 0, max: 8760, int: true }} onCommit={onDecayChange} className="!w-16" />
+            {decayHours === 0 ? t('wl.decay0', 'hours: 0 means for ever') : t('wl.decayh', 'hours')}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One routing row: the category or group, where it lands RIGHT NOW in words, the control that
+ * changes it, and (for a category) the button that sends a sample entry there.
+ *
+ * Module scope on purpose. Declared inside LogsEditor it would be a new component type on
+ * every render, which unmounts and remounts the tag input after each keystroke.
+ */
+function RouteRow({ k, label, sub, ctx }) {
+  const { t } = useI18n();
+  const { v, channels, legacyChannelId, describe, setMode, setRoute, routeOf, resolve, onTest, testing, test } = ctx;
+  const r = routeOf(k);
+  const m = r?.kind || 'default';
+  // What "follow the default" resolves to for THIS row: the option is named after the place it
+  // ends at, so the list never offers the bare word "default".
+  const inherited = describe(resolveLogRoute({ ...v, routes: Object.fromEntries(Object.entries(v.routes).filter(([x]) => x !== k)) }, k, { legacyChannelId }));
+  const here = describe(resolve(k));
+  return (
+    <div className={`py-1.5 ${sub ? 'ps-6' : ''}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`min-w-[130px] ${sub ? 'text-xs text-[var(--muted)]' : 'text-sm font-medium'}`}>{label}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] min-w-0 flex-1">
+          <ArrowRight size={11} className="text-[var(--faint)] shrink-0" />
+          {here.node}
+        </span>
+        <Select className="!w-auto !py-1 text-xs" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
+          <option value="default">{sub ? t('lg.m.group2', 'Same as its group ({d})').replace('{d}', inherited.short) : t('lg.m.default2', 'The default ({d})').replace('{d}', inherited.short)}</option>
+          <option value="off">{t('lg.m.off2', 'Nowhere')}</option>
+          <option value="channel">{t('lg.m.channel', 'A text channel')}</option>
+          <option value="forum">{t('lg.m.forum', 'A forum')}</option>
+        </Select>
+        {onTest && sub && (
+          <button type="button" disabled={!!testing} onClick={() => test(k)} title={t('lg.test', 'Send a test entry')}
+            className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--primary-2)] hover:bg-[var(--surface-2)] disabled:opacity-50 shrink-0">
+            <Send size={12} />
+          </button>
+        )}
+      </div>
+      {(m === 'channel' || m === 'forum') && (
+        <div className="flex items-center gap-2 flex-wrap mt-1 sm:ps-[138px]">
+          <span className="w-52"><ChannelPicker channels={channels} types={m === 'forum' ? CHANNEL_TYPES.forum : CHANNEL_TYPES.postable} value={r?.id} onChange={(id) => setRoute(k, { ...r, id })} /></span>
+          {m === 'forum' && (
+            <Input className="!py-1 text-xs w-44" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph2', 'Tag names, comma separated')}
+              onChange={(e) => setRoute(k, { ...r, tags: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 5) })} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── The log routing editor ────────────────────────────────────────────────────────────────
-/** `value` is a normalised logs object (normLogs); `channels` the bot's live list (optional). */
-export function LogsEditor({ value, onChange, channels, hideEnable }) {
+/**
+ * `value` is a normalised logs object (normLogs); `channels` the bot's live list.
+ * `legacyChannelId` is the moderation log channel set elsewhere, so a row can say it is what
+ * an event falls back to. `onTest(category)` (optional) posts a sample entry and resolves to
+ * `{ ok, route }` — the host owns the network call and the toast.
+ */
+export function LogsEditor({ value, onChange, channels, legacyChannelId = '', onTest, hideEnable }) {
   const { t } = useI18n();
-  const L = useLogLabels();
+  const LB = useLogLabels();
+  const describe = useDestination(channels);
   const v = value || normLogs(null);
   const [openGroups, setOpenGroups] = useState({});
+  const [testing, setTesting] = useState('');
   const set = (patch) => onChange({ ...v, ...patch });
   const routeOf = (k) => v.routes[k] || null;
-  const mode = (k) => (routeOf(k)?.kind || 'default');
   const setRoute = (k, next) => {
     const routes = { ...v.routes };
     if (!next) delete routes[k]; else routes[k] = next;
@@ -398,69 +502,65 @@ export function LogsEditor({ value, onChange, channels, hideEnable }) {
     const cur = routeOf(k);
     setRoute(k, { kind: m, id: cur && cur.kind !== 'off' ? cur.id : '', tags: cur?.tags || [] });
   };
-  const hasForums = (channels || []).some((c) => c.type === 15);
-  const RouteRow = ({ k, label, sub }) => {
-    const r = routeOf(k);
-    const m = mode(k);
-    return (
-      <div className={`flex items-center gap-2 flex-wrap py-1.5 ${sub ? 'ps-6' : ''}`}>
-        <span className={`flex-1 min-w-[140px] ${sub ? 'text-xs text-[var(--muted)]' : 'text-sm font-medium'}`}>{label}</span>
-        <Select className="!w-auto !py-1 text-xs" value={m} onChange={(e) => setMode(k, e.target.value)} aria-label={t('lg.route', 'Route')}>
-          <option value="default">{sub ? t('lg.m.group', 'As its group') : t('lg.m.default', 'Default')}</option>
-          <option value="off">{t('lg.m.off', 'Off')}</option>
-          <option value="channel">{t('lg.m.channel', 'A text channel')}</option>
-          <option value="forum">{t('lg.m.forum', 'A forum')}</option>
-        </Select>
-        {(m === 'channel' || m === 'forum') && (
-          <span className="w-44"><ChanPick channels={channels} types={m === 'forum' ? [15] : [0, 5]} value={r?.id} onChange={(id) => setRoute(k, { ...r, id })} placeholder={m === 'forum' ? t('lg.forumph', 'Forum ID') : t('ds.pick.chanph', 'Channel ID')} /></span>
-        )}
-        {m === 'forum' && (
-          <Input className="!py-1 text-xs w-40" value={(r?.tags || []).join(', ')} placeholder={t('lg.tags.ph', 'Tags (names, comma)')}
-            onChange={(e) => setRoute(k, { ...r, tags: e.target.value.split(',').map((x) => x.trim()).filter(Boolean).slice(0, 5) })} />
-        )}
-      </div>
-    );
+  const resolve = (k) => resolveLogRoute(v, k, { legacyChannelId });
+  const test = async (k) => {
+    if (!onTest) return;
+    setTesting(k);
+    try { await onTest(k); } finally { setTesting(''); }
   };
+
+  const row = { v, channels, legacyChannelId, describe, setMode, setRoute, routeOf, resolve, onTest, testing, test };
+
   return (
     <div className="space-y-4">
       {!hideEnable && <Check checked={v.enabled} onChange={(on) => set({ enabled: on })} className="text-sm font-medium">{t('lg.enabled', 'Logs on')}</Check>}
-      <p className="text-[11px] text-[var(--faint)]">{t('lg.h', 'Where the bot writes what happens. A forum gets one tagged post per category (or per day); a text channel gets plain embeds. A category not routed below follows its group, and a group not routed follows the defaults here.')}</p>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <Field label={t('lg.forum', 'Log forum')} hint={hasForums ? t('lg.forum.h', 'A forum channel. Every category lands here by default, one post each, tagged with its group.') : t('lg.forum.h2', 'A forum channel id. Create a forum in Discord first — the bot lists it after its next heartbeat.')}>
-          <ChanPick channels={channels} types={[15]} value={v.forumId} onChange={(id) => set({ forumId: id })} placeholder={t('lg.forumph', 'Forum ID')} />
-        </Field>
-        <Field label={t('lg.channel', 'Fallback text channel')} hint={t('lg.channel.h', 'Used when no forum is set. Empty = the moderation log channel above.')}>
-          <ChanPick channels={channels} types={[0, 5]} value={v.channelId} onChange={(id) => set({ channelId: id })} />
-        </Field>
-        <Field label={t('lg.mode', 'Forum posts')}>
-          <Select className="!py-1 text-xs" value={v.forumMode} onChange={(e) => set({ forumMode: e.target.value })}>
-            <option value="category">{t('lg.mode.category', 'One post per category')}</option>
-            <option value="day">{t('lg.mode.day', 'One post per day')}</option>
-          </Select>
-        </Field>
-        <Field label={t('lg.reaction', 'Reaction on every post')} hint={t('lg.reaction.h', 'Empty = the icon set’s history glyph. Else a unicode emoji or <:name:id>.')}>
-          <Input className="!py-1 text-xs" value={v.reaction} onChange={(e) => set({ reaction: e.target.value.slice(0, 64) })} placeholder="<:name:id>" />
-        </Field>
-      </div>
-      <Check checked={v.pinSummary} onChange={(on) => set({ pinSummary: on })}>{t('lg.pin', 'Pin each post’s first message (what the post is for)')}</Check>
 
-      <div className="rounded-lg border border-[var(--line)] divide-y divide-[var(--line)] px-3">
-        {LOG_GROUPS.map((g) => {
-          const cats = LOG_CATEGORY_KEYS.filter((k) => LOG_CATEGORIES[k] === g);
-          const open = !!openGroups[g];
-          const overridden = cats.filter((k) => routeOf(k)).length;
-          return (
-            <div key={g}>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={() => setOpenGroups((s) => ({ ...s, [g]: !open }))} className="p-1 -ms-1 text-[var(--faint)] hover:text-[var(--text)]" aria-expanded={open} title={t('lg.cats', 'Categories')}>
-                  <ChevronDown size={13} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
-                </button>
-                <div className="flex-1 min-w-0"><RouteRow k={g} label={<>{L.group[g]} <span className="text-[10px] font-normal text-[var(--faint)]">· {cats.length}{overridden ? ` · ${t('lg.overridden', '{n} routed on their own').replace('{n}', overridden)}` : ''}</span></>} /></div>
+      {/* The screen's default destination: what every row below falls back to. */}
+      <div className="rounded-xl border border-[var(--line)] p-3 space-y-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('lg.def', 'By default, everything goes to')}</div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Field label={t('lg.forum', 'Log forum')} hint={t('lg.forum.h3', 'One post per category, tagged with its group. Used first when it is set.')}>
+            <ChannelPicker channels={channels} types={CHANNEL_TYPES.forum} value={v.forumId} onChange={(id) => set({ forumId: id })} />
+          </Field>
+          <Field label={t('lg.channel', 'Fallback text channel')} hint={t('lg.channel.h2', 'Used when no forum is set. Empty falls back to the moderation log channel.')}>
+            <ChannelPicker channels={channels} types={CHANNEL_TYPES.postable} value={v.channelId} onChange={(id) => set({ channelId: id })} />
+          </Field>
+          <Field label={t('lg.mode', 'Forum posts')}>
+            <Select className="!py-1 text-xs" value={v.forumMode} onChange={(e) => set({ forumMode: e.target.value })}>
+              <option value="category">{t('lg.mode.category', 'One post per category')}</option>
+              <option value="day">{t('lg.mode.day', 'One post per day')}</option>
+            </Select>
+          </Field>
+          <Field label={t('lg.reaction', 'Reaction on every post')} hint={t('lg.reaction.h2', 'Empty uses the icon set. Else a unicode emoji or <:name:id>.')}>
+            <Input className="!py-1 text-xs" value={v.reaction} onChange={(e) => set({ reaction: e.target.value.slice(0, 64) })} placeholder="<:name:id>" />
+          </Field>
+        </div>
+        <Check checked={v.pinSummary} onChange={(on) => set({ pinSummary: on })}>{t('lg.pin', 'Pin each post’s first message (what the post is for)')}</Check>
+      </div>
+
+      {/* The routing table. One sentence states the rule; every row states its answer. */}
+      <div>
+        <p className="text-[11.5px] text-[var(--muted)] mb-2">{t('lg.rule', 'A category goes where its group goes, and a group goes to the default above, unless you route it somewhere of its own. Each row already says where its next event will land.')}</p>
+        <div className="rounded-xl border border-[var(--line)] divide-y divide-[var(--line)] px-3">
+          {LOG_GROUPS.map((g) => {
+            const cats = LOG_CATEGORY_KEYS.filter((k) => LOG_CATEGORIES[k] === g);
+            const isOpen = !!openGroups[g];
+            const own = cats.filter((k) => routeOf(k)).length;
+            return (
+              <div key={g}>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => setOpenGroups((s) => ({ ...s, [g]: !isOpen }))} className="p-1 -ms-1 text-[var(--faint)] hover:text-[var(--text)]" aria-expanded={isOpen} title={t('lg.cats', 'Categories')}>
+                    <ChevronDown size={13} className={`transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <RouteRow k={g} ctx={row} label={<>{LB.group[g]}{own ? <span className="text-[10px] font-normal text-[var(--faint)]"> · {t('lg.own', '{n} routed on their own').replace('{n}', own)}</span> : null}</>} />
+                  </div>
+                </div>
+                {isOpen && <div className="pb-1.5">{cats.map((k) => <RouteRow key={k} k={k} ctx={row} label={LB.cat[k]} sub />)}</div>}
               </div>
-              {open && <div className="pb-1.5">{cats.map((k) => <RouteRow key={k} k={k} label={L.cat[k]} sub />)}</div>}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

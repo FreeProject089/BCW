@@ -120,7 +120,7 @@ export function PubkeyList({ items, onAdd, onRemove }) {
     // verify would be a requirement nothing could ever satisfy.
     if (!splitKey(line)) {
       setErr(/^ssh-dss/.test(line)
-        ? t('acck.wrongtype', 'DSA keys are not supported — OpenSSH removed them. Use ed25519, RSA or ECDSA.')
+        ? t('acck.wrongtype', 'DSA keys are not supported: OpenSSH removed them. Use ed25519, RSA or ECDSA.')
         : t('acck.malformed', 'That does not look like an OpenSSH public key line (ssh-ed25519 / ssh-rsa / ecdsa-sha2-… AAAA… comment).'));
       return;
     }

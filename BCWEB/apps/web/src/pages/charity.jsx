@@ -82,7 +82,7 @@ function ContributeModal({ pot, onClose }) {
           <Button variant="ghost" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
           <Button variant="primary" loading={busy} onClick={go}><Heart size={15} /> {t('ch.confirm', 'Confirm & pay')}</Button>
         </div>
-        <p className="text-[11px] text-[var(--faint)] text-center">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do — and gifts are final: donations are not refundable.')}</p>
+        <p className="text-[11px] text-[var(--faint)] text-center">{t('ch.securenote2', 'You’ll confirm on a secure payment page. Nothing is charged until you do, and gifts are final: donations are not refundable.')}</p>
       </div>
     </Modal>
   );
@@ -165,7 +165,7 @@ export function CharityCard({ pot, design, t, onGive, preview = false }) {
   const heading = (
     <>
       <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><Heart size={18} className={custom && d.ink !== 'auto' ? '' : 'text-[var(--primary-2)]'} /> {t('ch.title', 'Community Charity')}</div>
-      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'Every month a share of our revenue — plus your gifts — goes to a charity the community chooses.')}</p>
+      <p className={`text-xs mb-4 ${custom && d.ink !== 'auto' ? 'opacity-80' : 'text-[var(--muted)]'}`}>{t('ch.sub', 'Every month a share of our revenue, plus your gifts, goes to a charity the community chooses.')}</p>
     </>
   );
   if (!custom) {
@@ -264,7 +264,7 @@ export default function CharityPage() {
       <Card className="p-6 space-y-4">
         <h2 className="font-semibold flex items-center gap-2"><Info size={16} /> {t('ch.how.t', 'How it works')}</h2>
         <ol className="space-y-3 text-sm text-[var(--muted)] list-decimal ms-4">
-          <li>{t('ch.how.1', 'Each month BetterCommunity sets aside a percentage (up to 50%) of its eligible recurring revenue — what remains after recurring costs.')}</li>
+          <li>{t('ch.how.1', 'Each month BetterCommunity sets aside a percentage (up to 50%) of its eligible recurring revenue, what remains after recurring costs.')}</li>
           <li>{t('ch.how.2', 'You can add to the pot at any time. Your gifts and BetterCommunity’s share are tracked as two separate amounts and shown together in one pot.')}</li>
           <li>{t('ch.how.3', 'The community votes on which association receives the month’s pot.')}</li>
           <li>{t('ch.how.4', 'At the end of the month an admin sends the donation manually and posts the proof.')}</li>

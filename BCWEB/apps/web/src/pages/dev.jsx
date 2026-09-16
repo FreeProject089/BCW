@@ -27,12 +27,12 @@ export function epDesc(t, e) {
 
 const ENDPOINTS = [
   // Public
-  { m: 'GET', p: '/v1/scopes', scope: null, g: 'Public', d: 'Every scope and what it unlocks — no key needed' },
+  { m: 'GET', p: '/v1/scopes', scope: null, g: 'Public', d: 'Every scope and what it unlocks, no key needed' },
   { m: 'GET', p: '/v1/webhook-events', scope: null, g: 'Public', d: 'Every event you can subscribe a webhook to' },
   { m: 'GET', p: '/v1/catalog', scope: 'catalog:read', g: 'Public', d: 'The published catalog feed' },
   { m: 'GET', p: '/v1/catalog/changes', scope: 'catalog:read', g: 'Public', d: 'What changed in the feed, for syncing' },
   { m: 'GET', p: '/v1/users', scope: 'users:read', g: 'Public', d: 'The public member directory' },
-  { m: 'GET', p: '/v1/users/me', scope: 'users:read', g: 'Public', d: 'One public profile — swap `me` for any id' },
+  { m: 'GET', p: '/v1/users/me', scope: 'users:read', g: 'Public', d: 'One public profile, swap `me` for any id' },
 
   // You
   { m: 'GET', p: '/v1/account', scope: 'account:read', g: 'Your account', d: 'Who the key belongs to' },
@@ -40,21 +40,21 @@ const ENDPOINTS = [
   { m: 'GET', p: '/v1/notifications', scope: 'notifications:read', g: 'Your account', d: 'Your notifications' },
   { m: 'POST', p: '/v1/notifications/read-all', scope: 'notifications:write', g: 'Your account', d: 'Mark everything read', write: true },
   { m: 'GET', p: '/v1/favorites', scope: 'favorites:read', g: 'Your account', d: 'Repos and catalogs you starred' },
-  { m: 'GET', p: '/v1/payments', scope: 'payments:read', g: 'Your account', d: 'Your invoices — amounts and dates, never a card number' },
+  { m: 'GET', p: '/v1/payments', scope: 'payments:read', g: 'Your account', d: 'Your invoices, amounts and dates, never a card number' },
   { m: 'GET', p: '/v1/transfers', scope: 'transfers:read', g: 'Your account', d: 'Ownership transfers in either direction' },
 
   // Your content
   { m: 'GET', p: '/v1/repos', scope: 'repos:read', g: 'Your content', d: 'Your Server-Repos' },
-  { m: 'GET', p: '/v1/repos/ID/files', scope: 'repos:read', g: 'Your content', d: 'One repo\u2019s file list — replace ID' },
-  { m: 'GET', p: '/v1/repos/ID/changes', scope: 'repos:read', g: 'Your content', d: 'What changed in a repo — replace ID' },
+  { m: 'GET', p: '/v1/repos/ID/files', scope: 'repos:read', g: 'Your content', d: 'One repo\u2019s file list, replace ID' },
+  { m: 'GET', p: '/v1/repos/ID/changes', scope: 'repos:read', g: 'Your content', d: 'What changed in a repo, replace ID' },
   { m: 'GET', p: '/v1/catalogs', scope: 'catalogs:read', g: 'Your content', d: 'Catalogs you own, unpublished ones included' },
-  { m: 'GET', p: '/v1/catalogs/ID/items', scope: 'catalogs:read', g: 'Your content', d: 'What is inside one — replace ID' },
+  { m: 'GET', p: '/v1/catalogs/ID/items', scope: 'catalogs:read', g: 'Your content', d: 'What is inside one, replace ID' },
   { m: 'GET', p: '/v1/pools', scope: 'pools:read', g: 'Your content', d: 'Storage pools and what draws from them' },
 
   // Polls
   { m: 'GET', p: '/v1/polls', scope: 'polls:read', g: 'Polls', d: 'Polls open to you, and how you answered' },
-  { m: 'GET', p: '/v1/polls/ID', scope: 'polls:read', g: 'Polls', d: 'One poll — open or closed — with every option and question id, and its result once you may see it' },
-  { m: 'POST', p: '/v1/polls/ID/vote', scope: 'polls:write', g: 'Polls', d: 'Answer one — replace ID', write: true, body: '{\n  "optionIds": ["…"]\n}' },
+  { m: 'GET', p: '/v1/polls/ID', scope: 'polls:read', g: 'Polls', d: 'One poll, open or closed, with every option and question id, and its result once you may see it' },
+  { m: 'POST', p: '/v1/polls/ID/vote', scope: 'polls:write', g: 'Polls', d: 'Answer one, replace ID', write: true, body: '{\n  "optionIds": ["…"]\n}' },
 
   // Community
   { m: 'GET', p: '/v1/charity', scope: 'charity:read', g: 'Community', d: 'The Community Charity pot this month: association, totals, the vote' },
@@ -198,7 +198,7 @@ export function ApiConsole() {
               nothing and the console looked broken before anybody had typed a character. */}
           <Input className="mb-2" value={q} onChange={(e) => setQ(e.target.value)}
             name="endpoint-filter" autoComplete="off" spellCheck={false} type="search"
-            placeholder={t('dev.console.filter', 'Filter — path, description or scope')} />
+            placeholder={t('dev.console.filter', 'Filter, path, description or scope')} />
           <div className="rounded-lg border border-[var(--line)] max-h-64 overflow-auto divide-y divide-[var(--line)]">
             {(() => {
               const needle = q.trim().toLowerCase();
@@ -235,7 +235,7 @@ export function ApiConsole() {
           {' — '}
           {ep.scope
             ? t('dev.console.needs', 'Needs the {s} scope.').replace('{s}', ep.scope)
-            : t('dev.console.noauth', 'Public — no key required.')}
+            : t('dev.console.noauth', 'Public, no key required.')}
         </div>
 
         <Field label={t('dev.console.key', 'Your API key')}>
@@ -250,11 +250,11 @@ export function ApiConsole() {
             {/* Sandbox is ON by default for anything that writes, and saying what it does is
                 the point: it is not a pretend response, the key is authenticated and the
                 scope is checked exactly as usual — only the write is skipped. */}
-            <label className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-2.5">
+            <label className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] panel p-2.5">
               <input type="checkbox" className="mt-0.5" checked={sandbox} onChange={(e) => setSandbox(e.target.checked)} />
               <span>
                 <b className="flex items-center gap-1.5"><FlaskConical size={12} /> {t('dev.console.sandbox', 'Sandbox')}</b>
-                <span className="text-[var(--muted)]">{t('dev.console.sandbox.h', 'Your key is authenticated and the scope is checked, then nothing is written. Untick to make this call for real — it will change your data.')}</span>
+                <span className="text-[var(--muted)]">{t('dev.console.sandbox.h', 'Your key is authenticated and the scope is checked, then nothing is written. Untick to make this call for real, it will change your data.')}</span>
               </span>
             </label>
           </>
@@ -280,7 +280,7 @@ export function ApiConsole() {
               like code rather than like a paragraph. */}
           <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-[var(--surface-2)] rounded-lg p-3 max-h-52 overflow-auto"
             dangerouslySetInnerHTML={{ __html: highlightCode(snippetFor(lang, { method: ep.m, path: ep.p, body: ep.write ? body : '', sandbox, write: ep.write }), lang) }} />
-          <p className="text-[11px] text-[var(--muted)] mt-1">{t('dev.snip.h', 'The key is read from BCW_KEY in your environment — a snippet with a live credential in it is a snippet that ends up in a commit.')}</p>
+          <p className="text-[11px] text-[var(--muted)] mt-1">{t('dev.snip.h', 'The key is read from BCW_KEY in your environment, a snippet with a live credential in it is a snippet that ends up in a commit.')}</p>
         </div>
       </div>
 
@@ -295,7 +295,7 @@ export function ApiConsole() {
           <pre className="text-[11px] font-mono whitespace-pre-wrap break-all bg-[var(--surface-2)] rounded-lg p-3 max-h-72 overflow-auto">{res.body}</pre>
           {res.status === 403 && (
             <p className="text-[11px] text-warning mt-1">
-              {t('dev.console.403', 'The key authenticated but does not carry the scope this endpoint needs — add it to the key in your profile.')}
+              {t('dev.console.403', 'The key authenticated but does not carry the scope this endpoint needs, add it to the key in your profile.')}
             </p>
           )}
         </div>
@@ -317,7 +317,7 @@ export const DEFAULT_DEV_CARDS = [
     id: 'tools', icon: 'file-json', to: '/dev/tools', ctaKey: 'dev.hub.open',
     titleKey: 'dev.hub.tools', title: 'Tools',
     bodyKey: 'dev.hub.tools.s2',
-    body: 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing — refusals included.',
+    body: 'Try any call against the real API, check a catalog feed before you publish it, and see what your keys have been doing, refusals included.',
     // Named and linked, not summarised. Five tools live behind this card and the only way to
     // learn which was to open it — the same discoverability gap that hid a working Switch step
     // and a whole catalogue type elsewhere in this project.
@@ -347,16 +347,16 @@ export const DEFAULT_DEV_CARDS = [
     id: 'sso', icon: 'shield', to: '/docs/sso', ctaKey: 'dev.hub.ssodoc',
     titleKey: 'dev.hub.sso', title: 'Sign in with BetterCommunity',
     bodyKey: 'dev.hub.sso.s',
-    body: 'Standard OpenID Connect. Point your library at the discovery document — no in-house SDK.',
+    body: 'Standard OpenID Connect. Point your library at the discovery document, no in-house SDK.',
   },
   {
     id: 'markdown', icon: 'puzzle', to: '/dev/markdown', ctaKey: 'dev.hub.open',
-    titleKey: 'dev.hub.md', title: 'B.MD — the markdown kit',
+    titleKey: 'dev.hub.md', title: 'B.MD, the markdown kit',
     bodyKey: 'dev.hub.md.s3',
     body: 'The block system this site renders with — callouts, cards, tabs, steps, API cards, embeds, live values, diagrams — as the @bettercommunity/bmd package, with an editor package beside it.',
     chips: [
       { to: '/dev/markdown', labelKey: 'dev.hub.md.play', label: 'Playground', icon: 'puzzle', hintKey: 'dev.hub.md.play.h', hint: 'Type a block, see it, take the folder.' },
-      { to: '/dev/bmd', labelKey: 'dev.hub.md.install', label: 'Install it', icon: 'package', hintKey: 'dev.hub.md.install.h', hint: 'Vite, Next.js, Remix, Astro, Node — the wiring for each.' },
+      { to: '/dev/bmd', labelKey: 'dev.hub.md.install', label: 'Install it', icon: 'package', hintKey: 'dev.hub.md.install.h', hint: 'Vite, Next.js, Remix, Astro, Node, the wiring for each.' },
       { to: '/dev/editor', labelKey: 'dev.hub.md.editor', label: 'The editor', icon: 'pen-line', hintKey: 'dev.hub.md.editor.h', hint: 'Block menu, live preview, link check, export.' },
       { to: '/dev/tools#openapi', labelKey: 'dvt.oa.title', label: 'OpenAPI → B.MD', icon: 'file-json', hintKey: 'dev.hub.md.oa.h', hint: 'Paste a spec, get endpoint cards to publish.' },
     ],
@@ -424,7 +424,7 @@ export default function DevHub() {
           {hero.title || <>{t('dev.hub.h1a', 'Build on')} <span className="gradient-text">BetterCommunity</span></>}
         </h1>
         <p className="text-[var(--muted)] mt-3 text-base sm:text-lg">
-          {hero.body || t('dev.hub.h1b', 'Sign people in, read their content with their permission, get told when it changes. REST API, OpenID Connect, webhooks — no SDK to install.')}
+          {hero.body || t('dev.hub.h1b', 'Sign people in, read their content with their permission, get told when it changes. REST API, OpenID Connect, webhooks, no SDK to install.')}
         </p>
         {/* The first button depends on whether you already have a key.
             A developer who has been using this API for months arrived to "Get a key — takes
@@ -478,7 +478,7 @@ export default function DevHub() {
               <span className="font-semibold text-[15px] flex-1">{t('dev.hub.jobsso', 'Your app acts for OTHER people')}</span>
               <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
             </div>
-            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it — you never touch their password.')}</p>
+            <p className="text-[13px] text-[var(--muted)]">{t('dev.hub.jobsso.s', 'Anything with its own users. They authorise it, you never touch their password.')}</p>
           </Link>
         </div>
       )}
@@ -504,7 +504,7 @@ export default function DevHub() {
             <span className="font-semibold text-[15px] flex-1">{hero.refLabel || t('dev.landing.guidesT', 'Guides & API reference')}</span>
             <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
           </div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks — the full written reference.')}</p>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.guidesS', 'Endpoints, scopes, OpenID Connect and webhooks, the full written reference.')}</p>
         </Link>
         {/* The third door: the markdown kit this whole site is written in. It had a card in
             the old nine-tile wall and lost it when the wall went — so /dev/bmd, /dev/editor
@@ -512,10 +512,10 @@ export default function DevHub() {
         <Link to="/dev/bmd" className="group rounded-xl border border-[var(--line)] p-5 transition hover:border-[var(--primary)]" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center gap-2 mb-1">
             <Puzzle size={16} className="text-[var(--primary-2)]" />
-            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.bmdT', 'B.MD — the markdown kit')}</span>
+            <span className="font-semibold text-[15px] flex-1">{t('dev.landing.bmdT', 'B.MD, the markdown kit')}</span>
             <ArrowRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition text-[var(--primary-2)]" />
           </div>
-          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.bmdS', 'Callouts, cards, tabs, API cards, live values, diagrams — install it, try the playground, open the editor.')}</p>
+          <p className="text-[13px] text-[var(--muted)]">{t('dev.landing.bmdS', 'Callouts, cards, tabs, API cards, live values, diagrams, install it, try the playground, open the editor.')}</p>
           <div className="flex flex-wrap gap-1.5 mt-3">
             {[['/dev/bmd', t('dev.hub.md.install', 'Install it')], ['/dev/markdown', t('dev.hub.md.play', 'Playground')], ['/dev/editor', t('dev.hub.md.editor', 'The editor')], ['/dev/tools#openapi', t('dvt.oa.title', 'OpenAPI → B.MD')]].map(([to, label]) => (
               <span key={to} role="link" tabIndex={0} onClick={(e) => { e.preventDefault(); e.stopPropagation(); nav(to); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); nav(to); } }}

@@ -45,7 +45,7 @@ export default function DealRail({ cfg = {}, compact = false }) {
       note: priced && cfg.urgentConsultationCents && cfg.urgentConsultationCents !== cfg.consultationCents
         ? t('deal.urgentLine', '{p} if you need it urgently').replace('{p}', money(cfg.urgentConsultationCents))
         : '',
-      body: t('deal.1.d', 'This opens a private conversation with a consultant. It buys advice and a quote — it is not the price of the thing.'),
+      body: t('deal.1.d', 'This opens a private conversation with a consultant. It buys advice and a quote, it is not the price of the thing.'),
     },
     {
       pays: false,
@@ -103,7 +103,7 @@ export default function DealRail({ cfg = {}, compact = false }) {
                 ? 'mt-1 text-[11.5px] text-[var(--faint)] italic leading-snug'
                 : `inline-flex items-center rounded-full px-2 py-[3px] mt-1 text-[11.5px] font-semibold tabular-nums ${
                   s.pays
-                    ? 'bg-[var(--primary)]/12 text-[var(--primary-2)] border border-[var(--primary)]/35'
+                    ? 'tint-primary text-[var(--primary-2)] border b-primary'
                     : 'text-[var(--faint)] border border-[var(--line)]'
                 }`}>{s.amount}</div>
               {s.note && <div className="text-[11px] text-[var(--faint)] tabular-nums mt-1">{s.note}</div>}
@@ -117,7 +117,7 @@ export default function DealRail({ cfg = {}, compact = false }) {
       {!compact && (
         <p className="text-[11.5px] text-[var(--muted)] mt-4 flex items-center gap-2 justify-center text-center">
           <span aria-hidden className="w-2.5 h-2.5 rounded-full bg-[var(--primary)] shrink-0" />
-          {t('deal.legend', 'The two filled steps are the only moments you are charged — and the second one only after you have said yes.')}
+          {t('deal.legend', 'The two filled steps are the only moments you are charged, and the second one only after you have said yes.')}
         </p>
       )}
     </>

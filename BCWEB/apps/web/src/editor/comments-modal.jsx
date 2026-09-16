@@ -48,8 +48,8 @@ function CommentBody({ c, isReply, ctx }) {
         )}
       </div>
       {c.anchor && !isReply && (onJump
-        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)] hover:bg-[var(--primary)]/20 transition"><Hash size={10} /> {c.anchor}</button>
-        : <div className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[var(--primary)]/10 text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
+        ? <button onClick={() => { onJump(headingSlug(c.anchor)); onClose(); }} title={t('cm.jump', 'Jump to this section')} className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)] hover:tint-primary-strong transition"><Hash size={10} /> {c.anchor}</button>
+        : <div className="ms-8 mt-1 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded tint-primary text-[var(--primary-2)]"><Hash size={10} /> {c.anchor}</div>)}
       {editing?.id === c.id ? (
         <div className="ms-8 mt-1.5">
           <MarkdownEditor value={editing.body} onChange={(v) => setEditing({ ...editing, body: v })} full minHeight={120} placeholder={t('cm.ph.edit', "Edit comment \u2014 supports blocks, tables, images\u2026")} />
@@ -226,7 +226,7 @@ export default function CommentsModal({ base, onClose, readOnly, body, onJump })
               </div>
             )}
           </div>
-          <MarkdownEditor value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} full minHeight={110} placeholder="Leave a comment — use the Blocks button for cards, tables, images, video…" />
+          <MarkdownEditor value={draft.body} onChange={(v) => setDraft({ ...draft, body: v })} full minHeight={110} placeholder="Leave a comment, use the Blocks button for cards, tables, images, video…" />
           <div className="flex justify-end mt-1.5"><Button size="sm" variant="primary" disabled={busy || !draft.body.trim()} onClick={add}><Send size={14} /> Comment</Button></div>
         </div>
       )}

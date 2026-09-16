@@ -40,7 +40,7 @@ export default function KbdPicker({ onPick, onClose }) {
           <div className="flex flex-wrap gap-2">
             {MODS.map((m) => (
               <button key={m.id} type="button" onClick={() => setMods((s) => ({ ...s, [m.id]: !s[m.id] }))}
-                className={`min-w-[52px] px-3 py-2 rounded-lg border text-sm font-bold transition ${mods[m.id] ? 'border-[var(--primary)] bg-[var(--primary)]/12 text-[var(--primary)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
+                className={`min-w-[52px] px-3 py-2 rounded-lg border text-sm font-bold transition ${mods[m.id] ? 'border-[var(--primary)] tint-primary text-[var(--primary)]' : 'border-[var(--line)] text-[var(--muted)]'}`}>
                 {os === 'mac' ? `${m.mac} ${m.id === 'meta' ? 'Cmd' : m.id[0].toUpperCase() + m.id.slice(1)}` : m.win}
               </button>
             ))}

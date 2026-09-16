@@ -14,8 +14,8 @@ import { Card, Button, Input, Select, Field, useToast, copyText } from '../ui/ui
 // the browser, with the verifier shown so it can be stored where the callback will need it.
 
 const RESPONSE_TYPES = [
-  ['code', 'Authorization code — what almost everything should use'],
-  ['code id_token', 'Code + id_token (hybrid) — only if your library asks for it'],
+  ['code', 'Authorization code, what almost everything should use'],
+  ['code id_token', 'Code + id_token (hybrid), only if your library asks for it'],
 ];
 
 const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -66,7 +66,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
       </p>
 
       {!clients.length ? (
-        <p className="text-[13px] text-[var(--muted)]">{t('ourl.noapp', 'Register an app first — the generator needs its client id and a redirect URI.')}</p>
+        <p className="text-[13px] text-[var(--muted)]">{t('ourl.noapp', 'Register an app first, the generator needs its client id and a redirect URI.')}</p>
       ) : (<>
         <div className="grid sm:grid-cols-2 gap-3">
           <Field label={t('ourl.app', 'App')}>
@@ -81,7 +81,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
           </Field>
         </div>
 
-        <Field label={t('ourl.scopes', 'What to ask them for')} hint={t('ourl.scopes.h', 'Every scope is a line on the consent screen. Ask for what you use — a long list is where people press cancel.')}>
+        <Field label={t('ourl.scopes', 'What to ask them for')} hint={t('ourl.scopes.h', 'Every scope is a line on the consent screen. Ask for what you use, a long list is where people press cancel.')}>
           <div className="flex flex-wrap gap-1.5">
             {scopes.map((sc) => {
               const on = picked.includes(sc);
@@ -91,7 +91,7 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
               return (
                 <button key={sc} type="button" disabled={locked}
                   onClick={() => setPicked((v) => (on ? v.filter((x) => x !== sc) : [...v, sc]))}
-                  className={`text-[11px] font-mono px-2 py-1 rounded-lg border transition ${on ? 'bg-[var(--primary)]/15 border-[var(--primary)]/40 text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:border-[var(--ring)]'} ${locked ? 'opacity-70 cursor-default' : ''}`}>
+                  className={`text-[11px] font-mono px-2 py-1 rounded-lg border transition ${on ? 'tint-primary b-primary text-[var(--primary-2)]' : 'bg-[var(--surface-2)] border-[var(--line)] text-[var(--muted)] hover:border-[var(--ring)]'} ${locked ? 'opacity-70 cursor-default' : ''}`}>
                   {on && <Check size={10} className="inline me-1" />}{sc}
                 </button>
               );
@@ -110,10 +110,10 @@ export default function OAuthUrlBuilder({ clients = [], scopes = [] }) {
           </Field>
         </div>
 
-        <div className={`rounded-lg border p-3 mt-1 ${needsPkce && !pkce ? 'border-warning/50 bg-warning/10' : 'border-[var(--line)] bg-[var(--surface-2)]/40'}`}>
+        <div className={`rounded-lg border p-3 mt-1 ${needsPkce && !pkce ? 'border-warning/50 bg-warning/10' : 'border-[var(--line)] panel'}`}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[12px] font-semibold">PKCE</span>
-            {needsPkce && <span className="text-[11px] text-warning">{t('ourl.pkce.req', 'required — this app is a public client')}</span>}
+            {needsPkce && <span className="text-[11px] text-warning">{t('ourl.pkce.req', 'required, this app is a public client')}</span>}
             <Button size="sm" variant="ghost" className="ms-auto" onClick={async () => setPkce(await pkcePair())}>
               {pkce ? t('ourl.pkce.again', 'Generate another') : t('ourl.pkce.gen', 'Generate a pair')}
             </Button>

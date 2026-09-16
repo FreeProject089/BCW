@@ -58,7 +58,7 @@ export default function ClosureCancel() {
                 ? t('acl.cancelled', 'The scheduled closure has been called off. Nothing was deleted, and everything is exactly where you left it.')
                 // Not framed as an error: the reader only cares that the account is not
                 // closing, and that is true whether this is the first click or the third.
-                : t('acl.already', 'There was no closure scheduled — your account was already active. Nothing to do.')}
+                : t('acl.already', 'There was no closure scheduled, your account was already active. Nothing to do.')}
             </p>
             <div className="flex gap-2 mt-4">
               <Link to="/"><Button variant="primary">{t('acl.home', 'Back to the site')}</Button></Link>
@@ -87,7 +87,7 @@ export default function ClosureCancel() {
                 </div>
               </div>
             )}
-            {survey.sent && <p className="text-sm text-[var(--success)] mt-4 flex items-center gap-1.5"><Check size={14} /> {t('acl.survey.thanks', 'Thank you — that is genuinely useful.')}</p>}
+            {survey.sent && <p className="text-sm text-[var(--success)] mt-4 flex items-center gap-1.5"><Check size={14} /> {t('acl.survey.thanks', 'Thank you, that is genuinely useful.')}</p>}
           </>
         )}
 

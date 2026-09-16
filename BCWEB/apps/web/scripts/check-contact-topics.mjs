@@ -4,8 +4,10 @@
 // WHY THIS EXISTS
 //
 // The hosting page offers three ways to get in touch, and each button carries its own
-// `?topic=` — which picks the form's kind AND pre-fills the template that tells somebody what
-// to put in the message. contact.jsx keys that off a TOPICS map.
+// `?topic=` — which picks the form's DESTINATION (and with it the queue and the fields it
+// asks for) AND pre-fills the template that tells somebody what to put in the message. The
+// contact page keys that off a TOPICS map, which lives in contact-triage.js since the page
+// became a triage — this reader follows it there.
 //
 // The two live in different files, and a link naming a topic the map has never heard of does
 // not fail. The form opens with the generic template, the person writes whatever occurs to
@@ -25,13 +27,14 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PAGES = join(HERE, '../src/pages');
 
-const contact = readFileSync(join(PAGES, 'contact.jsx'), 'utf8');
+const TOPICS_FILE = 'contact-triage.js';
+const contact = readFileSync(join(PAGES, TOPICS_FILE), 'utf8');
 const block = contact.slice(contact.indexOf('const TOPICS = {'));
 const known = new Set(
   [...block.slice(0, block.indexOf('\n};')).matchAll(/^\s{2}'([a-z0-9-]+)':/gm)].map((m) => m[1]),
 );
 if (known.size < 2) {
-  console.error('✗ could not read TOPICS from contact.jsx');
+  console.error(`✗ could not read TOPICS from ${TOPICS_FILE} — this reader is broken, or the map moved again`);
   process.exit(1);
 }
 
@@ -75,9 +78,9 @@ if (linked.size === 0) {
 const fail = [];
 for (const [topic, file] of linked) {
   if (!known.has(topic)) {
-    fail.push(`${file} links ?topic=${topic}, which contact.jsx does not know\n`
+    fail.push(`${file} links ?topic=${topic}, which the contact form does not know\n`
       + '    The form would open with the generic template instead of that topic\'s, silently.\n'
-      + `    Add it to TOPICS in contact.jsx, or fix the link.`);
+      + `    Add it to TOPICS in ${TOPICS_FILE}, or fix the link.`);
   }
 }
 

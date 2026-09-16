@@ -66,7 +66,7 @@ function OpenApiTool() {
         <Field label={t('dvt.oa.filter', 'Only paths starting with (optional)')}><Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="/feedback" /></Field>
       </div>
       <Button className="mt-2" variant="primary" disabled={busy} onClick={run}>{busy ? <Spinner /> : t('dvt.oa.go', 'Generate')}</Button>
-      {sum && <p className="text-xs text-[var(--muted)] mt-3">{t('dvt.oa.sum', '{t} {v} — {p} paths, {o} operations, {n} tags').replace('{t}', sum.title).replace('{v}', sum.version).replace('{p}', sum.paths).replace('{o}', sum.operations).replace('{n}', sum.tags.length)}</p>}
+      {sum && <p className="text-xs text-[var(--muted)] mt-3">{t('dvt.oa.sum', '{t} {v}: {p} paths, {o} operations, {n} tags').replace('{t}', sum.title).replace('{v}', sum.version).replace('{p}', sum.paths).replace('{o}', sum.operations).replace('{n}', sum.tags.length)}</p>}
       {out && <div className="mt-3 space-y-2">
         <div className="flex items-center gap-2"><span className="text-xs font-semibold text-[var(--faint)] uppercase tracking-wider">{t('dvt.oa.md', 'The markdown')}</span><Button size="sm" onClick={() => { navigator.clipboard?.writeText(out); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /> {t('common.copy', 'Copy')}</Button></div>
         <Textarea rows={12} value={out} readOnly className="!font-mono !text-[12px]" />
@@ -154,7 +154,7 @@ function Validator() {
           </div>
           <div className="space-y-1">
             {(res.problems || []).map((pb, i) => (
-              <div key={i} className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-1.5">
+              <div key={i} className="flex items-start gap-2 text-[12px] rounded-lg border border-[var(--line)] panel px-2.5 py-1.5">
                 {pb.level === 'error'
                   ? <XCircle size={13} className="text-error shrink-0 mt-0.5" />
                   : <AlertTriangle size={13} className="text-warning shrink-0 mt-0.5" />}
@@ -208,19 +208,22 @@ function CallLog() {
             sample. A number that is quietly a sample is worse than no number, because it gets
             quoted. */}
         <p className="text-[11px] text-[var(--muted)] mb-2">
-          {t('dvt.calls.s', 'The totals are exact and cover 30 days. The list below is a sample of individual calls, kept for a few days — refusals are always kept.')}
+          {t('dvt.calls.s', 'The totals are exact and cover 30 days. The list below is a sample of individual calls, kept for a few days, refusals are always kept.')}
           {d.sampleRate < 1 ? ' ' + t('dvt.rate', 'Sample rate {r}.').replace('{r}', String(d.sampleRate)) : ''}
         </p>
 
         {!d.calls?.length ? (
-          <EmptyState icon={Activity} title={t('dvt.nocalls', 'Nothing yet')} sub={t('dvt.nocalls.s', 'Calls made with one of your API keys show up here — including the ones we refused, which are the useful half.')} />
+          <EmptyState icon={Activity} title={t('dvt.nocalls2', 'No API calls yet')}
+            sub={t('dvt.nocalls.s2', 'Calls made with one of your API keys are listed here, refusals included, and none has arrived yet.')}
+            action={{ label: t('dvt.nocalls.a', 'Create an API key'), to: '/dev/config', icon: Lock }}
+            hint={t('dvt.nocalls.h', 'Already have a key? Try a call from the console on this page.')} />
         ) : (
           <div className="space-y-0.5 max-h-96 overflow-auto">
             {d.calls.map((c) => (
               <div key={c.id} className="flex items-center gap-2 text-[12px] py-1">
                 <Badge tone={tone(c.status)}>{c.status}</Badge>
                 <code className="font-mono min-w-0 flex-1 truncate">{c.method} {c.path}</code>
-                {c.sandbox && <FlaskConical size={12} className="text-[var(--faint)]" title={t('dvt.sandboxcall', 'Sandbox — nothing was written')} />}
+                {c.sandbox && <FlaskConical size={12} className="text-[var(--faint)]" title={t('dvt.sandboxcall', 'Sandbox, nothing was written')} />}
                 {c.key && <span className="text-[10px] text-[var(--faint)] truncate max-w-[120px]">{c.key.label || c.key.prefix}{c.key.testMode ? ' · test' : ''}</span>}
                 <span className="text-[var(--faint)] tabular-nums">{c.ms}ms</span>
                 <span className="text-[var(--faint)]">{new Date(c.at).toLocaleTimeString()}</span>
@@ -291,7 +294,7 @@ function DeeplinkBuilder() {
         <LinkIcon size={16} className="text-[var(--primary-2)]" /> {t('dvt.dl.title', 'Build a bmm:// link')}
       </div>
       <p className="text-[12px] text-[var(--muted)] mb-3">
-        {t('dvt.dl.sub', 'An unencoded & in the address loses everything after it — BMM opens and adds half a source, and nothing reports it. This encodes for you.')}
+        {t('dvt.dl.sub', 'An unencoded & in the address loses everything after it: BMM opens and adds half a source, and nothing reports it. This encodes for you.')}
       </p>
       <Select value={spec.action} onChange={(e) => { setAction(e.target.value); setValues({}); }} className="mb-2">
         {ACTIONS.map((a) => (
@@ -383,7 +386,7 @@ function BmmScriptChecker() {
               <span>
                 {result.checkedNames
                   ? t('dvt.bms.okNames', 'Balanced, and every action, condition and engine it names exists in BMM.')
-                  : t('dvt.bms.okShape', 'Balanced. The NAMES went unchecked — see above.')}
+                  : t('dvt.bms.okShape', 'Balanced. The NAMES went unchecked, see above.')}
               </span>
             </div>
           ) : (
@@ -513,7 +516,7 @@ function CodeMapTool() {
       toast.error(
         x?.data?.error === 'not_a_github_repo' ? t('dvt.cm.notrepo', 'That is not a GitHub repository URL.')
           : x?.data?.error === 'incomplete_fetch' ? t('dvt.cm.partial', 'Only part of the repository could be read, so the result would be misleading. Try again in a minute.')
-            : x?.data?.error === 'github_unreachable' ? t('dvt.cm.unreachable', 'Could not read that repository — check it is public.')
+            : x?.data?.error === 'github_unreachable' ? t('dvt.cm.unreachable', 'Could not read that repository, check it is public.')
               : t('common.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -545,7 +548,7 @@ function CodeMapTool() {
           </Select>
         </div>
       )}
-      {busy && <div className="text-[12px] text-[var(--faint)]">{t('dvt.cm.busy', 'Reading the source — a few hundred files takes a moment.')}</div>}
+      {busy && <div className="text-[12px] text-[var(--faint)]">{t('dvt.cm.busy', 'Reading the source, a few hundred files takes a moment.')}</div>}
       {graph?.source === 'snapshot' && (
         <div className="text-[12px] text-[var(--muted)] mb-2">
           {t('dvt.cm.asof', 'Saved map, as of')} {graph.generatedAt ? new Date(graph.generatedAt).toLocaleString() : '—'}
@@ -612,7 +615,7 @@ function RecipeChecker() {
           </div>
 
           {res.dropped.map((d) => (
-            <div key={d.path} className="flex items-start gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/50 px-2.5 py-1.5 mb-1">
+            <div key={d.path} className="flex items-start gap-2 rounded-lg border border-[var(--line)] panel px-2.5 py-1.5 mb-1">
               <XCircle size={13} className="text-error shrink-0 mt-0.5" />
               <div className="min-w-0">
                 <code className="font-mono text-[11px]">{d.path}</code>

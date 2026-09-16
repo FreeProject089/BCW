@@ -36,7 +36,7 @@ export const DELIVERY_KINDS = [
     desc: 'One key drawn from a finite list you paste in, claimed race-safely so two buyers can never get the same one.',
     buyer: 'One key from the batch.',
     setup: 'Paste or generate the keys after saving. When the pool runs dry the product refuses to sell rather than taking money it cannot fulfil.',
-    when: 'Keys somebody else generated — a game bundle, a third-party licence batch, promo codes from a partner.',
+    when: 'Keys somebody else generated, a game bundle, a third-party licence batch, promo codes from a partner.',
   },
   {
     v: 'key_static', icon: 'Key',
@@ -59,7 +59,7 @@ export const DELIVERY_KINDS = [
     label: 'A link',
     desc: 'A plain URL, handed over as a real button.',
     buyer: 'A button to a page you control.',
-    setup: 'The URL. It does not expire and it is not secret — anyone the buyer forwards it to has it too.',
+    setup: 'The URL. It does not expire and it is not secret, anyone the buyer forwards it to has it too.',
     when: 'A page that does its own access check. For a file, use the file kind instead.',
   },
   {
@@ -67,7 +67,7 @@ export const DELIVERY_KINDS = [
     label: 'Revealed text',
     desc: 'Text kept hidden until the sale, then shown on the purchase.',
     buyer: 'The text, on their purchase, for as long as the purchase exists.',
-    setup: 'Write the text. Do NOT put a download link here — it becomes a permanent public URL the moment one buyer shares it.',
+    setup: 'Write the text. Do NOT put a download link here, it becomes a permanent public URL the moment one buyer shares it.',
     when: 'Instructions, a coupon, a server address, a short recipe.',
   },
   {
@@ -92,5 +92,5 @@ export const mkdKey = (v, part) => `mkd.${part}.${v}`;
 // than you planned.
 export const BILLING_MODES = [
   { v: 'one_time', label: 'One-off purchase', desc: 'Paid once, delivered once.' },
-  { v: 'subscription', label: 'Subscription', desc: 'Billed every cycle, and the delivery runs again on each renewal — a new key, a new link, a fresh file.' },
+  { v: 'subscription', label: 'Subscription', desc: 'Billed every cycle, and the delivery runs again on each renewal, a new key, a new link, a fresh file.' },
 ];

@@ -73,10 +73,10 @@ export function validateStep(step, d, t) {
   } else if (step === 'pricing') {
     const price = Number(d.priceCents);
     if (!Number.isFinite(price) || price < 0) e.priceCents = t('mkw.err.price', 'The price cannot be negative.');
-    if (price > 0 && price < 50) e.priceCents = t('mkw.err.pricemin', 'Stripe needs at least 0.50 — or set 0 for a free product.');
+    if (price > 0 && price < 50) e.priceCents = t('mkw.err.pricemin', 'Stripe needs at least 0.50, or set 0 for a free product.');
     if (!/^[a-z]{3}$/i.test(String(d.currency || ''))) e.currency = t('mkw.err.currency', 'A three-letter currency code (usd, eur, chf…).');
     if (d.stock !== '' && d.stock != null && (!Number.isInteger(Number(d.stock)) || Number(d.stock) < 0)) e.stock = t('mkw.err.stock', 'Stock is a whole number, or blank for unlimited.');
-    if (d.billing === 'subscription' && price <= 0) e.billing = t('mkw.err.subfree', 'A subscription needs a price — a free product cannot recur.');
+    if (d.billing === 'subscription' && price <= 0) e.billing = t('mkw.err.subfree', 'A subscription needs a price, a free product cannot recur.');
     if (d.feePercentBp !== '' && d.feePercentBp != null && (Number(d.feePercentBp) < 0 || Number(d.feePercentBp) > 10000)) e.feePercentBp = t('mkw.err.fee', 'The margin is between 0 and 100%.');
   }
   return e;
@@ -217,7 +217,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
       {restored && (
         <div className="mb-3 rounded-lg border border-[var(--line)] bg-[var(--surface-2)] px-3 py-2 text-xs flex items-center gap-2 flex-wrap">
           <RotateCcw size={13} className="text-[var(--primary-2)] shrink-0" />
-          <span className="flex-1">{t('mkw.restored', 'Picked up where you left off — this is your unsaved draft, not what is published.')}</span>
+          <span className="flex-1">{t('mkw.restored', 'Picked up where you left off, this is your unsaved draft, not what is published.')}</span>
           <Button size="sm" variant="ghost" onClick={discardRestored}>{t('mkw.restored.discard', 'Discard draft')}</Button>
         </div>
       )}
@@ -297,7 +297,7 @@ export function ProductWizard({ draft, setDraft, onClose, onPublish, targets, ta
               <Input value={draft.redeemUrl || ''} onChange={(e) => set('redeemUrl', e.target.value)} placeholder="https://…" aria-invalid={!!err('redeemUrl')} />
               <Err msg={err('redeemUrl')} />
             </Field>
-            <Field label={t('mkadm.f.redeemnote', 'How to use it')} hint={t('mkadm.f.redeemnote.h', 'One or two sentences. Sign in, open Settings, paste the key — that kind of thing.')}>
+            <Field label={t('mkadm.f.redeemnote', 'How to use it')} hint={t('mkadm.f.redeemnote.h', 'One or two sentences. Sign in, open Settings, paste the key, that kind of thing.')}>
               <Textarea rows={2} value={draft.redeemNote || ''} onChange={(e) => set('redeemNote', e.target.value)} />
             </Field>
           </div>

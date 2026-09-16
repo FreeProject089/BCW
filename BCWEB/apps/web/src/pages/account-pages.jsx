@@ -43,8 +43,8 @@ function TelemetryRequests({ Row }) {
       const r = await api.post('/me/telemetry/data-request', { creatorId, kind });
       if (r?.duplicate) toast.success(t('set.tele.dup', 'A request of this kind is already pending for this install.'));
       else toast.success(kind === 'delete'
-        ? t('set.tele.del.sent', 'Erasure requested — you will be e-mailed once it is done.')
-        : t('set.tele.exp.sent', 'Export requested — the package is e-mailed to your account address.'));
+        ? t('set.tele.del.sent', 'Erasure requested, you will be e-mailed once it is done.')
+        : t('set.tele.exp.sent', 'Export requested, the package is e-mailed to your account address.'));
     } catch (e) {
       const code = e?.data?.error || e?.error;
       toast.error(code === 'telemetry_not_configured' || code === 'telemetry_unreachable'
@@ -53,7 +53,7 @@ function TelemetryRequests({ Row }) {
     } finally { setBusy(''); }
   };
   return (
-    <Row icon={Package} title={t('set.tele', 'BMM telemetry — my data')} desc={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
+    <Row icon={Package} title={t('set.tele', 'BMM telemetry, my data')} desc={t('set.tele.d', 'Opt-in usage telemetry sent by Better Mods Manager, keyed by the creator id of each install you linked. Get a copy of everything held under it, or have it erased.')}>
       <div className="flex flex-col gap-1.5 items-end">
         {links.map((l) => (
           <div key={l.id} className="flex items-center gap-1.5">
@@ -92,7 +92,7 @@ export function Settings() {
   // A reload is required and is stated, rather than pretending the change is live: the
   // scene is mounted once at boot and tearing a WebGL context down mid-session is worse
   // than asking for a refresh.
-  const setOrb = (off) => { setOrbOff(off); setHero3dDisabled(off); toast.success(t('set.reload', 'Saved — reload the page to apply.')); };
+  const setOrb = (off) => { setOrbOff(off); setHero3dDisabled(off); toast.success(t('set.reload', 'Saved, reload the page to apply.')); };
   const setCookie = (v) => { setConsentState(v); setConsent(v); toast.success(t('set.saved', 'Saved.')); };
   const applyGlass = (next) => { setGlass(next); setGlassPrefs(next); };
   const setUndo = (off) => { setUndoOff(off); setUndoDisabled(off); };
@@ -115,7 +115,7 @@ export function Settings() {
   const Group = ({ icon: Icon, title, children, className = '' }) => (
     <Card className={`p-4 sm:p-5 ${className}`}>
       <div className="flex items-center gap-2.5 mb-2 pb-2.5 border-b border-[var(--line)]">
-        <span className="grid place-items-center w-7 h-7 rounded-lg bg-[var(--primary)]/10 border border-[var(--primary)]/20 shrink-0"><Icon size={14} className="text-[var(--primary-2)]" /></span>
+        <span className="grid place-items-center w-7 h-7 rounded-lg tint-primary border b-primary shrink-0"><Icon size={14} className="text-[var(--primary-2)]" /></span>
         <span className="text-sm font-semibold">{title}</span>
       </div>
       {children}
@@ -124,13 +124,13 @@ export function Settings() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <PageHeader icon={Sliders} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences — saved on this browser only.')} />
+      <PageHeader icon={Sliders} title={t('set.title', 'Settings')} subtitle={t('set.sub', 'Your device preferences, saved on this browser only.')} />
 
       {/* Two columns on desktop so the page uses the width instead of a long narrow strip;
           stacks on mobile. items-start keeps each card its own height (no stretched gaps). */}
       <div className="grid gap-4 lg:grid-cols-2 items-start">
         <Group icon={Palette} title={t('set.appearance', 'Appearance')}>
-          <Row icon={theme === 'dark' ? Sparkles : Palette} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark — applies instantly.')}>
+          <Row icon={theme === 'dark' ? Sparkles : Palette} title={t('set.theme', 'Theme')} desc={t('set.theme.d', 'Light or dark, applies instantly.')}>
             <Select value={theme} onChange={(e) => { if (e.target.value !== theme) toggleTheme(); }} className="!w-auto"><option value="light">{t('set.light', 'Light')}</option><option value="dark">{t('set.dark', 'Dark')}</option></Select>
           </Row>
           <Row icon={Globe} title={t('set.lang', 'Language')} desc={t('set.lang.d', 'Interface language.')}>
@@ -152,7 +152,7 @@ export function Settings() {
           <Row icon={Sparkles} title={t('set.intro', 'Intro animation')} desc={t('set.intro.d', 'Play the orb intro on each page load.')}>
             <Switch on={!skipIntro} onChange={(v) => setIntro(!v)} />
           </Row>
-          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely — lighter on an older machine, and on battery.')}>
+          <Row icon={Orbit} title={t('set.orb3d', '3D scene')} desc={t('set.orb3d.d', 'The WebGL shape behind the pages. Turning it off skips loading it entirely, lighter on an older machine, and on battery.')}>
             <Switch on={!orbOff} onChange={(v) => setOrb(!v)} />
           </Row>
           <Row icon={Orbit} title={t('set.orbtr', 'Orb page transitions')} desc={t('set.orbtr.d', 'On each navigation, the hero orb shatters and dives into a random shard, then rebuilds. Off by default.')}>
@@ -177,7 +177,7 @@ export function Settings() {
           <Row icon={Undo2} title={t('set.undo', 'Undo window')} desc={t('set.undo.d', 'Saving, publishing and deleting wait a few seconds behind an “Undo” toast, so a mistake costs nothing. Turn this off to apply every action immediately.')}>
             <Switch on={!undoOff} onChange={(v) => setUndo(!v)} />
           </Row>
-          <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile — and with 2FA on, getting back in is not one click.')}>
+          <Row icon={LogOut} title={t('set.logoutconfirm', 'Ask before signing out')} desc={t('set.logoutconfirm.d', 'The sign-out button is an icon in the topbar, one mis-click from your profile, and with 2FA on, getting back in is not one click.')}>
             <Switch on={logoutConfirm} onChange={(v) => { setLogoutConfirmState(v); setLogoutConfirm(v); }} />
           </Row>
           <Row icon={AlertTriangle} title={t('set.forceconfirm', 'Always ask, even with Shift held')}
@@ -218,7 +218,7 @@ export function VerifyEmail() {
         {state === 'ok' && <>
           <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--success-bg)] border border-[var(--success-border)] mx-auto mb-4"><CheckCircle2 size={24} className="text-[var(--success)]" /></span>
           <h1 className="text-xl font-semibold mb-1">{t('verify.ok.title', 'Email confirmed')}</h1>
-          <p className="text-[var(--muted)] mb-5">{t('verify.ok.sub', 'Your email address is verified — thanks!')}</p>
+          <p className="text-[var(--muted)] mb-5">{t('verify.ok.sub', 'Your email address is verified, thanks!')}</p>
           <Link to="/dashboard"><Button variant="primary">{t('verify.ok.cta', 'Go to dashboard')}</Button></Link>
         </>}
         {state === 'error' && <>
@@ -271,7 +271,7 @@ export function Authorize() {
     <div className="max-w-md mx-auto py-12">
       <Card className="p-7 text-center">
         <span className="grid place-items-center w-12 h-12 rounded-2xl bg-[var(--error-bg)] border border-[var(--error-border)] mx-auto mb-4"><Shield size={22} className="text-[var(--error)]" /></span>
-        <p className="text-sm text-[var(--muted)]">{t('oauth.err', 'This authorization request is invalid or expired — please start again from the app.')}</p>
+        <p className="text-sm text-[var(--muted)]">{t('oauth.err', 'This authorization request is invalid or expired, please start again from the app.')}</p>
       </Card>
     </div>
   );
@@ -293,7 +293,7 @@ export function Authorize() {
             screen says where this one came from rather than letting the name speak for
             itself — that is the single question a consent screen exists to answer. */}
         {!info.firstParty && (
-          <div className={`rounded-lg border p-3 mb-5 text-[12px] ${info.verified ? 'border-[var(--line)] bg-[var(--surface-2)]/50' : 'border-warning/50 bg-warning/10'}`}>
+          <div className={`rounded-lg border p-3 mb-5 text-[12px] ${info.verified ? 'border-[var(--line)] panel' : 'border-warning/50 bg-warning/10'}`}>
             {info.verified
               ? t('oauth.thirdparty.ok', 'A third-party app, reviewed by us. {who} registered it.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))
               : t('oauth.thirdparty.new', 'A third-party app registered by {who}, and NOT reviewed by us. Anyone can register an app under any name — only continue if you know what this is.').replace('{who}', info.ownerName || t('oauth.someone', 'A member'))}
@@ -316,7 +316,7 @@ export function Authorize() {
             </li>
           ); })}
         </ul>
-        <p className="text-xs text-[var(--muted)] mb-5 flex items-start gap-1.5"><Lock size={13} className="mt-0.5 shrink-0 text-[var(--faint)]" /> {t('oauth.readonly', "Read-only access — it can't change your password, spend money, or post as you.")}</p>
+        <p className="text-xs text-[var(--muted)] mb-5 flex items-start gap-1.5"><Lock size={13} className="mt-0.5 shrink-0 text-[var(--faint)]" /> {t('oauth.readonly', "Read-only access, it can't change your password, spend money, or post as you.")}</p>
         <form method="post" action="/oauth2/authorize/decision" className="flex gap-3">
           <input type="hidden" name="request_token" value={rt} />
           <button type="submit" name="decision" value="deny" className="btn flex-1">{t('oauth.deny', 'Deny')}</button>

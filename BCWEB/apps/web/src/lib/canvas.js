@@ -746,7 +746,7 @@ export const CANVAS_PRESETS = [
       P('box', 0, 0, 1200, 360, { bg: 'color-mix(in srgb, var(--primary) 8%, transparent)', radius: 24, pattern: { id: 'dots', color: '#000000', size: 20, opacity: 0.12 } }),
       { ...P('shape', 64, 48, 160, 160, { shape: 'blob', fill: 'var(--primary)', opacity: 0.9 }), anim: { kind: 'float', trigger: 'load' } },
       { ...P('shape', 992, 40, 144, 144, { shape: 'ring', stroke: 'var(--primary-2)', strokeWidth: 10, fill: 'none' }), anim: { kind: 'pulse', trigger: 'load' } },
-      P('text', 280, 72, 640, 216, { md: '# A page with shapes\n\nBlocks that are drawn, not uploaded — every colour follows the theme.', align: 'center' }),
+      P('text', 280, 72, 640, 216, { md: '# A page with shapes\n\nBlocks that are drawn, not uploaded, every colour follows the theme.', align: 'center' }),
       { ...P('shape', 64, 424, 344, 96, { shape: 'arrow', fill: 'var(--primary)', text: 'Next', textColor: '#fff' }), hover: 'grow' },
     ],
   },

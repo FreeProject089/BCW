@@ -102,19 +102,19 @@ function OfficialSubmit({ onBack }) {
           const m = JSON.parse(await mf.async('string'));
           setKind('PLUGIN'); setForm((s) => ({ ...s, name: m.name || s.name, version: m.version || s.version, description: m.description || s.description }));
           setMeta(JSON.stringify({ game: m.game || '', download_url: '' }, null, 2));
-          toast.success(t('sub2.parsed.plugin', 'Plugin manifest read — fields prefilled.'));
+          toast.success(t('sub2.parsed.plugin', 'Plugin manifest read, fields prefilled.'));
         }
       } else if (lower.endsWith('.json') || lower.endsWith('.bmmtheme')) {
         const json = JSON.parse(await f.text());
         const entries = catalogEntries(json, projectKey);
         if (entries.length > 0) {
           setBulk({ entries }); setFile(null);
-          toast.success(t('sub2.parsed.catalog', 'Catalog file detected — {n} entries to propose.').replace('{n}', entries.length));
+          toast.success(t('sub2.parsed.catalog', 'Catalog file detected: {n} entries to propose.').replace('{n}', entries.length));
           return;
         }
         if (json.vars || json.id) { // a single theme object
           setKind('THEME'); setForm((s) => ({ ...s, name: json.name || s.name, version: json.version || s.version, description: json.description || s.description }));
-          setMeta(JSON.stringify(json, null, 2)); toast.success(t('sub2.parsed.theme', 'Theme read — fields prefilled.'));
+          setMeta(JSON.stringify(json, null, 2)); toast.success(t('sub2.parsed.theme', 'Theme read, fields prefilled.'));
         } else if (kind === 'PRESET') {
           setForm((s) => ({ ...s, name: json.name || s.name, version: json.version || s.version })); setMeta(JSON.stringify(json, null, 2));
         }
@@ -132,7 +132,7 @@ function OfficialSubmit({ onBack }) {
       navigate('/dashboard');
     } catch (x) {
       const e = x.data?.error;
-      toast.error(e === 'too_many_pending' ? t('sub.toomanypending', 'You already have submissions awaiting review — wait for moderation.')
+      toast.error(e === 'too_many_pending' ? t('sub.toomanypending', 'You already have submissions awaiting review, wait for moderation.')
         : e === 'no_valid_entries' ? t('sub2.bulk.none', 'No entry had a usable download URL.')
         : e || t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
@@ -153,10 +153,10 @@ function OfficialSubmit({ onBack }) {
       navigate('/dashboard');
     } catch (x) {
       const e = x.data?.error;
-      toast.error(e === 'too_many_pending' ? t('sub.toomanypending', 'You already have submissions awaiting review — wait for moderation.')
+      toast.error(e === 'too_many_pending' ? t('sub.toomanypending', 'You already have submissions awaiting review, wait for moderation.')
         : e === 'too_large' ? t('sub2.toobig', 'Files over 100MB must be arranged via the contact page.')
-        : e === 'free_tier_full' ? t('sub.freetierfull', 'Free hosting for catalog files is full right now — self-host and paste a URL instead.')
-        : e === 'free_tier_already_used' ? t('sub.freeused', "You've used your one free hosted upload — self-host and paste a URL, or pay for hosting.")
+        : e === 'free_tier_full' ? t('sub.freetierfull', 'Free hosting for catalog files is full right now, self-host and paste a URL instead.')
+        : e === 'free_tier_already_used' ? t('sub.freeused', "You've used your one free hosted upload, self-host and paste a URL, or pay for hosting.")
         : e || x.message || t('repos.failed', 'Failed.'));
     } finally { setBusy(false); }
   };
@@ -174,7 +174,7 @@ function OfficialSubmit({ onBack }) {
               <label key={i} className="flex items-center gap-3 p-2.5 rounded-xl border border-[var(--line)] cursor-pointer">
                 <input type="checkbox" checked={e._skip !== true} onChange={(ev) => setBulk((b) => ({ entries: b.entries.map((x, j) => j === i ? { ...x, _skip: !ev.target.checked } : x) }))} />
                 <Badge tone="">{kindLabel(e.kind, projectKey)}</Badge>
-                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL — will be skipped')}</div>{e.kind === 'APP' && e.meta.download_url && !e.meta.sha256 && (<div className="text-[11px] text-[var(--warning,#f59e0b)]">{t('sub2.nosha', 'no checksum — BMM will warn before installing this one')}</div>)}</div>
+                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{e.name}</div><div className="text-xs text-[var(--faint)] truncate">{e.meta.download_url || t('sub2.nourl', 'no download URL, will be skipped')}</div>{e.kind === 'APP' && e.meta.download_url && !e.meta.sha256 && (<div className="text-[11px] text-[var(--warning,#f59e0b)]">{t('sub2.nosha', 'no checksum: BMM will warn before installing this one')}</div>)}</div>
               </label>
             ))}
           </div>
@@ -194,7 +194,7 @@ function OfficialSubmit({ onBack }) {
                 it. Somebody arriving here to list one would otherwise pick the closest wrong
                 type or give up, so the page says where that lives instead of pretending. */}
             <p className="text-[12px] text-[var(--muted)] -mt-1">
-              {t('sub.repohint', 'Looking to list a Server-Repo? That is not a catalog item — it has its own hosting and review flow.')}{' '}
+              {t('sub.repohint', 'Looking to list a Server-Repo? That is not a catalog item, it has its own hosting and review flow.')}{' '}
               <Link to="/repos" className="underline">{t('sub.repolink', 'Go to Server-Repos')}</Link>
             </p>
             <Field label={t('sub.name', 'Name')}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
@@ -206,7 +206,7 @@ function OfficialSubmit({ onBack }) {
           {file && <div className="text-xs text-[var(--faint)] flex items-center gap-1.5"><Package size={12} /> {file.name} ({(file.size / 1e6).toFixed(1)} MB)</div>}
           {file && file.size > MAX_UPLOAD && (
             <div className="rounded-lg border border-warning-border bg-warning/[0.06] p-2.5 text-xs text-warning">
-              {t('sub2.toobig.b', 'This file is over 100MB — direct uploads are capped there. To host a larger file, reach out via the contact page and we’ll arrange it.')} <Link to="/contact" className="underline font-medium">{t('sub2.contact', 'Contact us')}</Link>
+              {t('sub2.toobig.b', 'This file is over 100MB, direct uploads are capped there. To host a larger file, reach out via the contact page and we’ll arrange it.')} <Link to="/contact" className="underline font-medium">{t('sub2.contact', 'Contact us')}</Link>
             </div>
           )}
           <div>
@@ -219,7 +219,7 @@ function OfficialSubmit({ onBack }) {
               const next = !v;
               if (next && !metaHasContent(meta)) setMeta(metaTemplate(kind, form.name));
               return next;
-            })} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced — edit metadata JSON')}</button>
+            })} className="text-xs text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1.5"><ChevronDown size={13} className={advanced ? 'rotate-180' : ''} /> {t('sub2.advanced', 'Advanced, edit metadata JSON')}</button>
             {advanced && <div className="mt-2"><div className="flex justify-end mb-1"><button type="button" onClick={() => setMeta(metaTemplate(kind, form.name))} className="text-xs flex items-center gap-1 text-[var(--primary-2)]"><Wand2 size={12} /> {t('sub.gentmpl', 'Generate template')}</button></div><JsonBox value={meta} onChange={setMeta} /></div>}
           </div>
           <div className="flex justify-end pt-1"><Button variant="primary" disabled={busy} onClick={submitOne}>{busy ? <Spinner /> : <><Upload size={15} /> {t('sub.forreview', 'Submit for review')}</>}</Button></div>
@@ -278,7 +278,7 @@ function HostCatalog({ onBack }) {
       toast.success(t('sub2.raw.ok', 'Catalog feed read.'));
     } catch {
       toast.error(docField
-        ? t('sub2.raw.badDoc', 'That file has no "{f}" array — export it from BMM first.').replace('{f}', docField)
+        ? t('sub2.raw.badDoc', 'That file has no "{f}" array, export it from BMM first.').replace('{f}', docField)
         : t('sub2.raw.bad', 'Not a valid BMM catalog.json (needs plugins/themes/apps).'));
     }
   };
@@ -325,7 +325,7 @@ function HostCatalog({ onBack }) {
           toast.error(e === 'managed_needs_pool' ? t('sub2.pool.need', 'Pick a storage pool first.')
             : e === 'not_your_pool' ? t('sub2.pool.notyours', "That pool isn't yours.")
             : e === 'pool_exceeded' ? t('sub2.pool.toobig', 'That pool only has {n} GB free.').replace('{n}', (x.data?.freeGB ?? 0).toFixed(1))
-            : e === 'creator_link_required' ? t('sub2.needlink', 'Link your BMM account first (Dashboard → Connections) — hosting a catalog needs a creator id.')
+            : e === 'creator_link_required' ? t('sub2.needlink', 'Link your BMM account first (Dashboard → Connections), hosting a catalog needs a creator id.')
             : e || t('repos.failed', 'Failed.'));
         }
       },
@@ -385,7 +385,7 @@ function HostCatalog({ onBack }) {
               {[['raw', FileJson, t('sub2.mode.raw', 'Just my catalog.json'), t('sub2.mode.raw.d', 'Downloads stay on your own links. Free.')],
                 ...(isDocumentKind(form.kind) ? [] : [['managed', Rocket, t('sub2.mode.managed', 'Host files with us'), t('sub2.mode.managed.d', 'Upload items + files into a storage pool. Paid by size.')]]),
               ].map(([m, Icon, label, desc]) => (
-                <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] bg-[var(--primary)]/5' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
+                <button key={m} type="button" onClick={() => setForm({ ...form, mode: m })} className={`text-start p-3 rounded-xl border transition ${form.mode === m ? 'border-[var(--primary)] tint-primary' : 'border-[var(--line)] hover:border-[var(--line-strong)]'}`}>
                   <div className="flex items-center gap-2 font-medium text-sm"><Icon size={15} className="text-[var(--primary-2)]" /> {label}</div>
                   <div className="text-xs text-[var(--faint)] mt-0.5">{desc}</div>
                 </button>
@@ -398,7 +398,7 @@ function HostCatalog({ onBack }) {
               {rawJson && <div className="text-xs text-success mt-1 flex items-center gap-1.5"><CheckCircle2 size={12} /> {t('sub2.raw.entries', '{n} entries').replace('{n}', rawCount)}</div>}
             </Field>
           ) : (
-            <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool — the same space your repos use.')}>
+            <Field label={t('sub2.pool', 'Storage pool')} hint={t('sub2.pool.hint', 'A managed catalog draws from a storage pool, the same space your repos use.')}>
               {pools == null ? <Spinner /> : pools.length === 0 ? (
                 <div className="text-sm text-[var(--muted)]">{t('sub2.pool.none', 'You have no storage pool yet.')} <Link to="/hosting#plans" className="text-[var(--primary-2)] underline">{t('sub2.pool.buy', 'Get one on the Hosting page')}</Link>.</div>
               ) : (
@@ -420,7 +420,7 @@ function HostCatalog({ onBack }) {
 
         {step === 2 && (<>
           <div className="text-sm font-semibold flex items-center gap-2"><Lock size={15} className="text-[var(--primary-2)]" /> {t('sub2.step.access.t', 'Who may sync it?')}</div>
-          <p className="text-xs text-[var(--faint)] -mt-1">{t('sub2.step.access.d', 'All optional — leave everything blank for an open catalogue anyone can sync.')}</p>
+          <p className="text-xs text-[var(--faint)] -mt-1">{t('sub2.step.access.d', 'All optional, leave everything blank for an open catalogue anyone can sync.')}</p>
           <div className="grid sm:grid-cols-2 gap-2">
             <Field label={t('sub2.contactmail', 'Contact e-mail (optional)')} hint={t('sub2.contact.h', 'Shown on the catalogue page so people can reach you; messages also arrive in your dashboard.')}><Input type="email" value={form.contactEmail} onChange={(e) => setForm({ ...form, contactEmail: e.target.value })} /></Field>
             <Field label={t('sub2.phone', 'Phone (optional)')}><Input value={form.contactPhone} maxLength={40} onChange={(e) => setForm({ ...form, contactPhone: e.target.value })} /></Field>
@@ -477,7 +477,7 @@ export function Submit() {
         : (
           <div className="grid sm:grid-cols-2 gap-3">
             <button onClick={() => setPath('official')} className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition">
-              <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Boxes size={20} className="text-[var(--primary-2)]" /></div>
+              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Boxes size={20} className="text-[var(--primary-2)]" /></div>
               <div className="font-semibold">{t('sub2.official', 'Propose to the official catalog')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.official.d', 'Submit a plugin, theme, app or preset. Free, reviewed by our team. You can bulk-import a whole catalog.json.')}</div>
             </button>
@@ -492,7 +492,7 @@ export function Submit() {
                 actual case never. A LINK, not a third inline form: the hosting page already
                 carries pools, quotas and payment, and a duplicate here would drift. */}
             <Link to="/hosting#plans" className="text-start p-5 rounded-2xl border border-[var(--line)] hover:border-[var(--primary)] transition sm:col-span-2 block">
-              <div className="w-11 h-11 rounded-xl bg-[var(--primary)]/10 grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
+              <div className="w-11 h-11 rounded-xl tint-primary grid place-items-center mb-3"><Rocket size={20} className="text-[var(--primary-2)]" /></div>
               <div className="font-semibold">{t('sub2.repo', 'Host a Server-Repo')}</div>
               <div className="text-sm text-[var(--muted)] mt-1">{t('sub2.repo.d', 'The mods themselves, served for BMM to sync from — with a stable URL, access control (password, keys, allow lists) and storage pools. Opens the hosting page.')}</div>
             </Link>

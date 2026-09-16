@@ -78,7 +78,7 @@ export default function WebhooksPanel() {
 
   const create = async (e) => {
     e.preventDefault();
-    if (!f.events.length) return toast.error(t('wh.needevent', 'Pick at least one event — a subscription to nothing is silence.'));
+    if (!f.events.length) return toast.error(t('wh.needevent', 'Pick at least one event, a subscription to nothing is silence.'));
     try {
       const r = await api.post('/me/webhooks', { url: f.url.trim(), label: f.label.trim() || undefined, events: f.events });
       setSecret({ id: r.webhook.id, secret: r.secret });
@@ -135,7 +135,7 @@ export default function WebhooksPanel() {
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold flex items-center gap-2"><Webhook size={15} className="text-[var(--primary-2)]" /> {t('wh.title', 'Webhooks')}</div>
           <p className="text-xs text-[var(--muted)] mt-0.5">
-            {t('wh.sub', 'We call your server when something happens, so you stop asking. Every delivery is signed — check the signature before you act on one.')}
+            {t('wh.sub', 'We call your server when something happens, so you stop asking. Every delivery is signed, check the signature before you act on one.')}
           </p>
         </div>
         {!adding && <Button size="sm" onClick={() => setAdding(true)}><Plus size={13} /> {t('wh.add', 'Add')}</Button>}
@@ -145,7 +145,7 @@ export default function WebhooksPanel() {
           again. */}
       {secret && (
         <div className="rounded-lg border border-success/40 bg-success/10 p-3 my-3">
-          <div className="text-[12px] font-semibold mb-1">{t('wh.secret', 'Your signing secret — copy it now, it is not shown again')}</div>
+          <div className="text-[12px] font-semibold mb-1">{t('wh.secret', 'Your signing secret, copy it now, it is not shown again')}</div>
           <div className="flex items-center gap-2">
             <code className="font-mono text-[12px] break-all flex-1">{secret.secret}</code>
             <Button size="sm" variant="ghost" onClick={() => { copyText(secret.secret); toast.success(t('common.copied', 'Copied.')); }}><Copy size={12} /></Button>
@@ -185,7 +185,8 @@ export default function WebhooksPanel() {
 
       {!data.webhooks.length ? (
         <EmptyState icon={Webhook} title={t('wh.none', 'No endpoints')}
-          sub={t('wh.none.s', 'Without one, the only way to know something changed is to keep asking. Add an address and we will tell you instead.')} />
+          sub={t('wh.none.s', 'Without one, the only way to know something changed is to keep asking. Add an address and we will tell you instead.')}
+          action={{ label: t('wh.none.a', 'Add an endpoint'), icon: Plus, onClick: () => setAdding(true) }} />
       ) : (
         <div className="space-y-2 mt-2">
           {data.webhooks.map((w) => (
@@ -210,7 +211,7 @@ export default function WebhooksPanel() {
                   <Button size="sm" variant="ghost" onClick={() => remove(w)}><Trash2 size={12} className="text-error" /></Button>
                 </div>
               </div>
-              {openId === w.id && <div className="border-t border-[var(--line)] bg-[var(--surface-2)]/40"><Deliveries id={w.id} /></div>}
+              {openId === w.id && <div className="border-t border-[var(--line)] panel"><Deliveries id={w.id} /></div>}
             </div>
           ))}
         </div>

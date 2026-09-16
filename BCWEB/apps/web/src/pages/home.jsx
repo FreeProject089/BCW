@@ -441,7 +441,7 @@ export function Home({ draft = null }) {
           <h1 className="anim-slide font-extrabold leading-[0.98] tracking-[-0.035em] text-[clamp(2.25rem,9.5vw,7rem)]" style={{ animationDelay: '80ms' }}>
             {t('home.brand')}<span className="gradient-text">{t('home.brand2', 'Community')}</span>
           </h1>
-          <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project — browse them, publish your own, and host them here.')}</p>
+          <p className="anim-slide text-[var(--muted)] text-lg md:text-xl max-w-xl mx-auto mt-7 leading-relaxed" style={{ animationDelay: '160ms' }}>{t('home.sub2', 'Catalogues, presets and Server-Repos for every Better* project, browse them, publish your own, and host them here.')}</p>
           <div className="anim-slide flex flex-wrap gap-3 justify-center mt-10" style={{ animationDelay: '240ms' }}>
             {heroCtas(user, t).map((c) => (
               <Link key={c.to} to={c.to}>
@@ -599,17 +599,17 @@ export function Home({ draft = null }) {
           <Card hover className="p-6 group relative overflow-hidden">
             <div className="relative">
               <div className="flex items-start gap-4 flex-wrap">
-                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:border-[var(--primary)]/40 shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
+                <span className="grid place-items-center w-11 h-11 rounded-xl bg-[var(--surface-2)] border border-[var(--line)] transition-colors group-hover:b-primary shrink-0"><ShieldCheck size={20} className="text-[var(--primary-2)]" /></span>
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold">{t('home.feat.moderated', 'Every listing says how it was checked')}</div>
-                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two ways in: reviewed by us first, or posted straight by its maker. Every page tells you which — no guessing.')}</div>
+                  <div className="text-sm text-[var(--muted)] mt-1.5 leading-relaxed max-w-2xl">{t('home.feat.moderated.d', 'Two ways in: reviewed by us first, or posted straight by its maker. Every page tells you which, no guessing.')}</div>
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mt-5">
                 {/* Reviewed BEFORE. The badges are the real statuses a submission passes
                     through, not an illustration of a process. */}
-                <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
+                <div className="rounded-xl border border-[var(--line)] panel p-4">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
                     <BadgeCheck size={15} className="text-success shrink-0" />
                     {t('home.mod.official', 'The official catalogue')}
@@ -628,7 +628,7 @@ export function Home({ draft = null }) {
 
                 {/* Published FIRST. The same three badges would be a lie here, so this track
                     draws its own — and names the thing that actually holds it: reports. */}
-                <div className="rounded-xl border border-[var(--line)] bg-[var(--surface-2)]/40 p-4">
+                <div className="rounded-xl border border-[var(--line)] panel p-4">
                   <div className="flex items-center gap-2 text-[13px] font-semibold">
                     <Users size={15} className="text-[var(--primary-2)] shrink-0" />
                     {t('home.mod.community', 'Community catalogues and repositories')}
@@ -650,7 +650,7 @@ export function Home({ draft = null }) {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-5">
             {[[LayoutDashboard, t('home.feat.accounts'), t('home.feat.accounts.d')],
               [Zap, t('home.feat.hosting'), t('home.feat.hosting.d')],
-              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks — no manual downloads, no hunting for files.')],
+              [Link2, t('home.feat.install', 'One-click install'), t('home.feat.install.d', 'Catalog entries install straight into the app in one click through deeplinks, no manual downloads, no hunting for files.')],
               [Lock, t('home.feat.privacy', 'Privacy-first'), t('home.feat.privacy.d', 'No third-party trackers and no ads. Analytics are first-party and anonymous, off until you opt in, and you can turn them back off anytime.')]].map(([I, title, d]) => (
               // A rule instead of a border — four bordered boxes under a bordered card is
               // five rectangles competing for one attention. That part was right. What was
@@ -690,11 +690,11 @@ export function Home({ draft = null }) {
               promises a fourth one. */}
           <div aria-hidden className="absolute left-[15px] sm:left-[19px] top-6 bottom-6 w-px bg-[var(--line)]" />
           {[[Users, t('home.step1'), t('home.step1.d'), user ? '/profile' : '/auth',
-             user ? t('home.step1.done', "You're set — view profile") : t('home.step1.cta', 'Sign up free'), !!user],
+             user ? t('home.step1.done', "You're set, view profile") : t('home.step1.cta', 'Sign up free'), !!user],
             [Upload, t('home.step2'), t('home.step2.d'), '/catalog',
-             step2done ? t('home.step2.done', 'Seen — go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
+             step2done ? t('home.step2.done', 'Seen, go back to the catalogue') : t('home.step2.cta', 'Browse the catalog'), step2done],
             [Rocket, t('home.step3'), t('home.step3.d'), progress?.hosting ? '/dashboard' : '/hosting#plans',
-             progress?.hosting ? t('home.step3.done', 'Hosting is live — open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
+             progress?.hosting ? t('home.step3.done', 'Hosting is live, open your dashboard') : t('home.step3.cta', 'See hosting plans'), !!progress?.hosting],
           ].map(([I, title, d, to, cta, done], i) => (
             <li key={title} className="relative pb-9 last:pb-0">
               {/* The marker sits ON the spine. A done step is filled and shows a tick; the rest
@@ -812,7 +812,7 @@ export function Home({ draft = null }) {
                     promise nobody can keep. */}
                 {myo?.queueFull && (
                   <p className="text-[12px] text-[var(--warning)] mt-3 inline-flex items-center gap-1.5">
-                    <Clock size={12} /> {t('home.myo.full', 'The queue is full right now — new commissions are paused.')}
+                    <Clock size={12} /> {t('home.myo.full', 'The queue is full right now, new commissions are paused.')}
                   </p>
                 )}
               </div>
@@ -902,7 +902,7 @@ export function Home({ draft = null }) {
                   <div className="relative overflow-hidden">
                     {featured.cover ? <img src={thumb(featured.cover, 768)} alt="" className="w-full h-56 object-cover transition-transform duration-300 group-hover:scale-105" />
                       : <div className="w-full h-56 blog-nocover grid place-items-center"><Newspaper size={34} className="text-[var(--primary-2)]" /></div>}
-                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-[var(--bg-solid)]/85 backdrop-blur text-[var(--primary-2)] border border-[var(--line)]">Latest</span>
+                    <span className="absolute top-3 left-3 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full scrim backdrop-blur text-[var(--primary-2)] border border-[var(--line)]">Latest</span>
                   </div>
                   <div className="p-6 flex flex-col flex-1">
                     <Badge tone="primary" className="self-start">{featured.project?.name}</Badge>
@@ -1036,7 +1036,7 @@ function KofiGoalWidget() {
         <div className="absolute -bottom-16 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full opacity-30 pointer-events-none" style={{ background: 'radial-gradient(circle, var(--primary-glow), transparent 62%)' }} />
         <div className="relative reveal-stagger">
           <div className="inline-flex items-center gap-2 text-base font-bold mb-1"><KofiIcon size={18} className="text-orange-400" /> {goal?.title || t('home.kofi.goal.title', 'Support BetterCommunity')}</div>
-          <p className="text-xs text-[var(--muted)] mb-4">{t('home.kofi.goal.help', 'Help keep the servers running — every tip counts.')}</p>
+          <p className="text-xs text-[var(--muted)] mb-4">{t('home.kofi.goal.help', 'Help keep the servers running, every tip counts.')}</p>
           {goal && (<>
             <div className="h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
               <div className="h-full rounded-full bg-gradient-to-r from-brand to-brand-2 transition-all duration-700" style={{ width: `${pct}%` }} />

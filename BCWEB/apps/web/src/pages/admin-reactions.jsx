@@ -47,7 +47,7 @@ export function AdminReactions() {
       <Card className="p-4">
         <div className="text-sm font-semibold mb-1">{t('adm.react.blog', 'Blog reactions')}</div>
         <p className="text-[12px] text-[var(--muted)] mb-3">
-          {t('adm.react.blogsub', 'One reaction per person per post — a total is people, not clicks.')}
+          {t('adm.react.blogsub', 'One reaction per person per post, a total is people, not clicks.')}
         </p>
         {!blog.length ? (
           /* Two different empty states, because they need two different answers. "Nobody
@@ -58,7 +58,7 @@ export function AdminReactions() {
           data?.totals?.postsAcceptingReactions === 0 && data?.totals?.publishedPosts > 0 ? (
             <EmptyState icon={Heart}
               title={t('adm.react.off', 'No post accepts reactions yet.')}
-              sub={t('adm.react.offsub', 'Reactions are off by default on every post. Turn them on — and pick which emoji — in the post editor, under Reactions.')} />
+              sub={t('adm.react.offsub', 'Reactions are off by default on every post. Turn them on, and pick which emoji, in the post editor, under Reactions.')} />
           ) : (
             <EmptyState icon={Heart} title={t('adm.react.none', 'No reactions in this window.')} />
           )
@@ -93,7 +93,7 @@ export function AdminReactions() {
       </Card>
 
       <Card className="p-4">
-        <div className="text-sm font-semibold mb-1">{t('adm.react.docs', 'Was this helpful? — docs')}</div>
+        <div className="text-sm font-semibold mb-1">{t('adm.react.docs', 'Was this helpful?, docs')}</div>
         {/* Sorted by the share who said NO, not by how many voted. The most-voted page is
             usually just the most-visited one; the page a third of readers marked unhelpful is
             the one somebody has to go and rewrite. */}

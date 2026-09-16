@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Lock, ShieldCheck, Cookie, Sparkles, Receipt, FileText, FileSignature, Printer, History, ArrowLeft, ArrowRight } from 'lucide-react';
 import { PageHeader, Button, Card } from '../ui/ui.jsx';
 import { Loading } from './pages.jsx';
+import { DocSwitcher } from '../ui/doc-switcher.jsx';
 import { useI18n } from '../i18n.jsx';
 
 /* ─────────────────────────  Legal  ───────────────────────── */
@@ -496,24 +497,30 @@ export function Legal({ page: fixed }) {
   // The strip of other documents. From the live list, so a page an admin created appears in
   // it — and so does a rename. The five built-in labels stay translated through the
   // dictionary rather than through the stored English, because they always have been.
-  const tabs = (menu?.pages?.length ? menu.pages : BUILTIN_ORDER.filter((k) => !OPTIONAL_KEYS.includes(k)).map((k) => ({ key: k, builtIn: true })))
-    .map((x) => [x.key, builtinLabel(x.key, t) || (lang === 'fr' && x.labelFr) || x.label || x.key, x.icon || '']);
+  //
+  // A LIST for a switcher, not a row of buttons: see ui/doc-switcher.jsx for what the row
+  // did at each end of the width range. The "All" entry is the first option rather than a
+  // button beside it, so there is exactly one control here and it can never wrap or overflow.
+  const tabs = [
+    { key: '__all', to: '/legal', label: lang === 'fr' ? 'Tous les documents' : 'All documents', icon: <FileText size={15} className="text-[var(--primary-2)]" /> },
+    ...(menu?.pages?.length ? menu.pages : BUILTIN_ORDER.filter((k) => !OPTIONAL_KEYS.includes(k)).map((k) => ({ key: k, builtIn: true })))
+      .map((x) => ({
+        key: x.key,
+        to: `/legal/${x.key}`,
+        label: builtinLabel(x.key, t) || (lang === 'fr' && x.labelFr) || x.label || x.key,
+        icon: docIcon(x.key, x.icon || '', 15),
+      })),
+  ];
   return (
     <div className="max-w-5xl mx-auto" id="legal-print">
       <PageHeader icon={d.icon} title={d.title} subtitle={`${lang === 'fr' ? 'Mis à jour le' : 'Last updated'} ${new Date(`${updated}T00:00:00`).toLocaleDateString()}`} />
-      {/* One scrolling row rather than a wrapping block. With five documents it wrapped to
-          two lines; with a dozen — which is the point of letting an admin add them — it
-          became a paragraph of buttons above every policy on the site. */}
-      <div className="flex gap-2 mb-5 overflow-x-auto no-scrollbar print:hidden -mx-1 px-1">
-        <Link to="/legal" className="shrink-0"><Button size="sm" variant="default"><FileText size={14} /> {t('legal.all', 'All')}</Button></Link>
-        {tabs.map(([k, l, icon]) => (
-          <Link key={k} to={`/legal/${k}`} className="shrink-0">
-            <Button size="sm" variant={k === page ? 'primary' : 'default'}>{docIcon(k, icon, 14)} {l}</Button>
-          </Link>
-        ))}
+      {/* One control that names the document you are reading and opens the rest. */}
+      <div className="mb-5 flex items-center gap-2 flex-wrap">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{lang === 'fr' ? 'Document' : 'Document'}</span>
+        <DocSwitcher options={tabs} current={page} label={d.title} className="min-w-0 w-full sm:w-auto" />
       </div>
       {/* plain-language summary */}
-      <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)]/10 to-transparent print:border print:bg-none">
+      <Card className="p-4 mb-6 flex items-start gap-3 bg-gradient-to-r from-[var(--primary)] to-transparent print:border print:bg-none">
         <d.icon size={18} className="text-[var(--primary-2)] mt-0.5 shrink-0" />
         <div className="text-sm text-[var(--muted)]">{summary}</div>
       </Card>

@@ -606,7 +606,7 @@ function Nav() {
   const logout = async () => {
     if (getLogoutConfirm() && !(await dialog.confirm({
       title: t('nav.signout.t', 'Sign out?'),
-      message: t('nav.signout.m', 'You will need to sign in again — including your second factor if you use one.'),
+      message: t('nav.signout.m', 'You will need to sign in again, including your second factor if you use one.'),
       okLabel: t('nav.signout', 'Sign out'), danger: true,
     }))) return;
     rawLogout();
@@ -1035,9 +1035,9 @@ function FooterNewsletter({ cfg }) {
     setBusy(true);
     try {
       await api.post('/newsletter/subscribe', { email: email.trim(), locale: lang === 'fr' ? 'fr' : 'en' });
-      toast.success(t('news.check', 'Almost there — check your inbox to confirm your subscription.'));
+      toast.success(t('news.check', 'Almost there, check your inbox to confirm your subscription.'));
       setEmail('');
-    } catch { toast.error(t('news.err', 'Could not subscribe — check the address and try again.')); }
+    } catch { toast.error(t('news.err', 'Could not subscribe, check the address and try again.')); }
     finally { setBusy(false); }
   };
   return (
@@ -1141,7 +1141,7 @@ function Footer() {
   return (
     <footer className="mt-16 md:mt-24 relative clear-both">
       {/* gradient accent line */}
-      <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)]/40 to-transparent" />
+      <div className="h-px bg-gradient-to-r from-transparent via-[var(--primary)] to-transparent" />
       <div className={`max-w-6xl mx-auto px-4 py-14 md:grid md:gap-10 ${cfg?.mobile?.layout === 'grid' ? 'grid grid-cols-2 gap-x-6 gap-y-8' : 'flex flex-col'}`}
         style={{ gridTemplateColumns: `1.4fr repeat(${cols.length || 3}, 1fr)` }}>
         {/* brand block — hidden on a phone when the config says so */}
@@ -1302,7 +1302,7 @@ export default function App() {
   // any missing_permission 403, so the user is told exactly what they lack no matter which
   // screen triggered it.
   useEffect(() => {
-    const onForbidden = (e) => { const cap = e.detail?.capability; toast.error(t('perm.denied', "You don't have permission for this — “{cap}” is required.").replace('{cap}', t('perm.cap.' + cap, cap || 'this action'))); };
+    const onForbidden = (e) => { const cap = e.detail?.capability; toast.error(t('perm.denied', "You don't have permission for this: “{cap}” is required.").replace('{cap}', t('perm.cap.' + cap, cap || 'this action'))); };
     window.addEventListener('bcw:forbidden', onForbidden);
     return () => window.removeEventListener('bcw:forbidden', onForbidden);
     // eslint-disable-next-line
@@ -1351,7 +1351,7 @@ export default function App() {
       if (p.startsWith('/p/')) t = (p.split('/')[2] || '').toUpperCase();
       else if (p.startsWith('/project/') || p.startsWith('/item/') || p.startsWith('/blog/')) t = 'BetterCommunity';
     }
-    document.title = t && p !== '/' ? `${t} · BetterCommunity` : 'BetterCommunity — The home for all Better* projects';
+    document.title = t && p !== '/' ? `${t} · BetterCommunity` : 'BetterCommunity: The home for all Better* projects';
     let alive = true;
     fetchRouteMeta(p, lang).then((m) => { if (alive && m && m.path === p) applyRouteMeta(m); });
     return () => { alive = false; };

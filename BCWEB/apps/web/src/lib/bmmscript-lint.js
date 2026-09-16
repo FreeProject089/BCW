@@ -170,7 +170,7 @@ export function lintBmmScript(source, vocab) {
 
   // ── what a reader should be told, which is not the same as a problem ──────
   if (/\bscript[ \t]+\w+[ \t]*\{/.test(code) && !grants.includes('script')) {
-    problems.push({ line: 0, text: 'This runs a script and does not `allow script` — that step will fail.' });
+    problems.push({ line: 0, text: 'This runs a script and does not `allow script`, that step will fail.' });
   }
   if (grants.length) {
     notes.push(`It grants itself: ${grants.join(', ')}. Anyone opening this file has to read and confirm before BMM will run it.`);

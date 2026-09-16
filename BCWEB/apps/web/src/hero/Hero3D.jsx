@@ -408,13 +408,24 @@ export default function Hero3D() {
     const onResize = () => { camera.aspect = W() / H(); camera.updateProjectionMatrix(); renderer.setSize(W(), H()); measurePage(); };
     window.addEventListener('resize', onResize);
 
-    // ── scroll reactivity: a slow, sober parallax drift + a gentle recede on
-    //    deep scroll so the orb never competes with content further down ──
+    // ── scroll reactivity ─────────────────────────────────────────────────────
+    //
+    // The scroll drives a DRIFT, never a spin. A spin reads as wrong the instant you flick
+    // the wheel, because its speed *is* the scroll's speed: the orb looks thrown rather than
+    // carried, and a direction that fast has an obvious right and wrong. A drift is a
+    // position, not a rate. It only ever travels one way down the page, and arriving late
+    // looks deliberate instead of broken.
+    //
+    // The input is damped twice over. An exponential follow gives the motion its shape, and
+    // a hard ceiling on the follow's velocity means that however far the page jumps in one
+    // frame — a flick, a hash link, a programmatic scrollTo to the bottom — the orb moves at
+    // the same graceful rate and simply takes longer to get there.
     let scrollTarget = 0;
-    // The orb's spiral journey scales with the page: a tall page (many screens of
-    // content) gives it MORE turns + a deeper descent, a short page a shorter arc,
-    // so the length of the orb's animation tracks how much there is to scroll.
-    // ~3 screens is the baseline (×1); clamped so it never gets flat or dizzying.
+    const SCROLL_FOLLOW = 2.2;   // per second — how eagerly the orb chases the page
+    const SCROLL_MAX_VEL = 0.5;  // page-fractions per second — the ceiling on that chase
+    // The journey scales with the page: a tall page (many screens of content) gives the orb
+    // a deeper descent and a wider drift, a short page a shorter one. ~3 screens is the
+    // baseline (×1); clamped so it never gets flat or dizzying.
     let pageSpan = 1;
     const measurePage = () => {
       const screens = document.documentElement.scrollHeight / Math.max(1, window.innerHeight);
@@ -427,6 +438,10 @@ export default function Hero3D() {
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     let scrollNow = 0;
+    // How much the orb is MOVING right now, 0..1. A magnitude with no sign, so it cannot
+    // point the wrong way: it drives the breathing and the shard shimmer, which is a
+    // reaction to being scrolled that has no direction to get backwards.
+    let scrollEnergy = 0;
 
     // ── intro choreography: the orb IS the loading animation. It starts large
     //    and centered, "comes alive" (noise amplitude ramps up from a flat
@@ -474,16 +489,16 @@ export default function Hero3D() {
     let raf, t = 0, ctxLost = false;
     const rotTarget = { x: 0, y: 0 };
     const baseScale = new THREE.Vector3(1, 1, 1);
-    // ── per-page-load spiral personality: direction, number of turns, width,
-    //    vertical wobble and phase are all re-rolled every visit, so the orb
-    //    never flies the same path twice ──
-    const spiral = {
-      dir: Math.random() < 0.5 ? 1 : -1,               // clockwise or counter-clockwise
-      turns: Math.PI * (2.4 + Math.random() * 1.6),    // 1.2 – 2 full turns
-      radius: 3.2 + Math.random() * 1.8,               // how wide the arc sweeps
-      wobble: 0.9 + Math.random() * 0.9,               // vertical wave frequency
-      phase: Math.random() * Math.PI * 2,              // where on the circle it starts
-      drop: 3.0 + Math.random() * 0.9,                 // total descent depth
+    // ── per-page-load drift personality: which way it leans, how far it travels and
+    //    where its slow vertical sway starts are re-rolled every visit, so the orb never
+    //    takes exactly the same path twice. What is NOT re-rolled is the SHAPE: every roll
+    //    is a single monotonic glide, so no visit gets a version that loops back on itself.
+    const drift = {
+      side: Math.random() < 0.5 ? 1 : -1,   // which way it leans out of frame
+      sway: 2.2 + Math.random() * 1.4,      // how far sideways, in world units
+      depth: 1.6 + Math.random() * 1.0,     // how far it recedes from the camera
+      drop: 3.0 + Math.random() * 0.9,      // total descent
+      phase: Math.random() * Math.PI * 2,   // where the slow vertical sway starts
     };
     // Which side of the page the orb is currently on — exposed as a CSS custom
     // property so the homepage reveal animations slide IN FROM the orb's side
@@ -530,9 +545,17 @@ export default function Hero3D() {
       const now = performance.now();
       // Busy = full rate. Everything else waits for its slot in the budget. `- 2` so a
       // display at exactly the budget's rate is not skipped every other frame by jitter.
-      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001;
+      // Scrolling counts as busy: it is one of the moments a dropped frame reads as a
+      // stutter, and scrollEnergy decays to nothing about a second after the page stops,
+      // so this cannot pin the core on an idle page.
+      const busy = introRunning || hoverAmt.v > 0.001 || fractureState.value > 0.001 || orbTransition.amt > 0.001 || scrollEnergy > 0.02;
       const target = busy ? 60 : idleFps;
       if (!busy && now - lastDraw < 1000 / target - 2) return;
+      // Seconds since the frame we actually DREW, so the damping below runs at the same
+      // real-world rate whatever the frame budget is — a 30 fps budget used to halve every
+      // per-frame easing constant in this loop. Clamped: the first frame (lastDraw 0) and a
+      // frame after a long pause would otherwise integrate a huge step in one go.
+      const dt = Math.min(0.1, Math.max(0.001, (now - lastDraw) / 1000));
       lastDraw = now;
       if (!winStart) winStart = now;
       winFrames++;
@@ -555,13 +578,28 @@ export default function Hero3D() {
         if (HOVER !== 'swell' || hoverAmt.v < 0.001) baseScale.copy(orb.scale);
         uniforms.uTime.value = t;
         uniforms.uFracture.value = fractureState.value;
-        scrollNow += (scrollTarget - scrollNow) * 0.04;
-        // slow constant auto-rotation (noticeably livelier the deeper you scroll,
-        // to sell the "spiraling down" read), plus a small cursor-driven tilt on top
+        // ── the damped scroll input ──
+        // An exponential follow whose velocity is clipped: `want` is where an undamped
+        // follow would go this second, the clamp is the ceiling the eye is allowed to see,
+        // and the final min() stops the step overshooting the target on a slow frame. No
+        // allocation, four numbers.
+        const gap = scrollTarget - scrollNow;
+        let want = gap * SCROLL_FOLLOW;
+        if (want > SCROLL_MAX_VEL) want = SCROLL_MAX_VEL;
+        else if (want < -SCROLL_MAX_VEL) want = -SCROLL_MAX_VEL;
+        const step = want * dt;
+        scrollNow += Math.abs(step) > Math.abs(gap) ? gap : step;
+        // …and its magnitude, eased so it swells and fades rather than flickering.
+        const energyNow = Math.min(1, Math.abs(want) / SCROLL_MAX_VEL);
+        scrollEnergy += (energyNow - scrollEnergy) * Math.min(1, dt * 3);
+        // Slow CONSTANT auto-rotation, plus a small cursor-driven tilt on top. Constant is
+        // the point: this used to be multiplied by the scroll position, which is what made a
+        // fast scroll read as the orb being spun. Now the rotation is the orb's own pulse
+        // and the scroll is only ever a drift.
         // `swell` and `spin` ride on top of everything else rather than replacing it: the
         // scroll drift, the cursor tilt and the intro all still own what they owned.
         const hv = hoverAmt.v;
-        rotTarget.y += 0.0016 * sceneCfg.speed * (1 + scrollNow * 1.6) * (HOVER === 'spin' ? 1 + hv * 3.5 : 1);
+        rotTarget.y += 0.096 * sceneCfg.speed * dt * (HOVER === 'spin' ? 1 + hv * 3.5 : 1);
         rotTarget.x += (mouse.y * 0.35 - rotTarget.x) * 0.02;
         orb.rotation.y = rotTarget.y;
         orb.rotation.x += (rotTarget.x - orb.rotation.x) * 0.06;
@@ -572,36 +610,42 @@ export default function Hero3D() {
           // second and a half, and writing an absolute value here would fight it.
           const k = 1 + hv * 0.13;
           orb.scale.set(baseScale.x * k, baseScale.y * k, baseScale.z * k);
-          uniforms.uAmp.value = AMP * (1 + hv * 0.55);
+          uniforms.uAmp.value = AMP * (1 + hv * 0.55) * (1 + scrollEnergy * 0.3);
         } else if (HOVER === 'spin') {
           orb.rotation.x += hv * 0.004;
         }
-        // background-mode-only spiral descent: the orb corkscrews down and inward
-        // as you scroll — a wide, banking arc that sweeps across the page. The
-        // radius eases in (sin ramp) so the orbit opens gracefully instead of
-        // snapping wide at the first pixel of scroll, and the orb banks (subtle
-        // roll) into the turn like something actually flying the curve. Skipped
-        // while the intro timeline still owns orb.position.
+        // background-mode-only parallax descent. One monotonic glide: the orb leans out to
+        // its chosen side, sinks, and recedes — three curves that only ever go one way for
+        // the whole page, so there is no orbit whose rate could betray the scroll and no
+        // point at which the motion could be running "backwards". The vertical sway on top
+        // is driven by TIME, not by the scroll, so it keeps its own unhurried rhythm at any
+        // scroll speed. Skipped while the intro timeline still owns orb.position.
         if (!showOverlayRef.current) {
-          // pageSpan scales the journey with the page height (more turns + deeper
-          // descent on a long page, a shorter arc on a short one).
-          const spiralAngle = spiral.phase + scrollNow * spiral.turns * pageSpan * spiral.dir;
-          // ease-in-out radius: gentle at the very top + bottom, widest mid-scroll
-          const radiusEase = Math.sin(Math.min(1, scrollNow) * Math.PI) * 0.5 + scrollNow * 0.5;
-          const spiralRadius = radiusEase * spiral.radius;
-          orb.position.x = baseX + (Math.cos(spiralAngle) - Math.cos(spiral.phase)) * spiralRadius;
-          orb.position.y = baseY - scrollNow * spiral.drop * pageSpan + Math.sin(spiralAngle * spiral.wobble) * 0.55;
-          orb.position.z = baseZ + (Math.sin(spiralAngle) - Math.sin(spiral.phase)) * spiralRadius * 0.65;
-          // bank into the curve — a touch of roll that follows the orbit tangent
-          orb.rotation.z += (Math.sin(spiralAngle) * 0.35 * spiral.dir - orb.rotation.z) * 0.05;
+          // smoothstep: eases away from the top of the page and settles at the bottom
+          // instead of stopping dead, and stays monotonic in between.
+          const s = Math.min(1, Math.max(0, scrollNow));
+          const ease = s * s * (3 - 2 * s);
+          // pageSpan scales the journey with the page height (a deeper descent on a long
+          // page, a shorter one on a short page).
+          orb.position.x = baseX + drift.side * ease * drift.sway;
+          orb.position.y = baseY - ease * drift.drop * pageSpan + Math.sin(t * 0.35 + drift.phase) * 0.4;
+          orb.position.z = baseZ - ease * drift.depth;
+          // a touch of lean in the direction of travel — a position, not a rate, so it
+          // cannot spin however hard the page is flicked
+          orb.rotation.z += (drift.side * ease * 0.22 - orb.rotation.z) * 0.05;
+          // breathing: the displacement swells while the page is moving and settles the
+          // moment it stops. Amplitude, not angle — there is no wrong way to breathe.
+          if (HOVER !== 'swell') uniforms.uAmp.value = AMP * (1 + scrollEnergy * 0.3);
           // tell the page which side the orb is on, so reveals enter from there
           setRevealSide(orb.position.x >= 0 ? 1 : -1);
         }
         // ambience: the twinkle belt genuinely ORBITS the orb (its own spin on
-        // top of the orb's rotation) + a gentle breathing shimmer on the glow
+        // top of the orb's rotation) + a gentle breathing shimmer on the glow.
+        // Both catch a little extra light while the page is moving — the shards' answer
+        // to a fast scroll, in place of the old spin.
         twinkles.rotation.y = t * 0.3;
-        twinkleMat.opacity = twinkleBase + Math.sin(t * 0.8) * 0.16;
-        glowMat.opacity = 0.4 + Math.sin(t * 0.5) * 0.08;
+        twinkleMat.opacity = twinkleBase + Math.sin(t * 0.8) * 0.16 + scrollEnergy * 0.22;
+        glowMat.opacity = 0.4 + Math.sin(t * 0.5) * 0.08 + scrollEnergy * 0.12;
         // barely-there parallax on the camera itself too — smoothed into camBase
         // so the page-transition dive can be layered on top without the parallax
         // easing fighting/absorbing it frame to frame.

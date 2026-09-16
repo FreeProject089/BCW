@@ -138,7 +138,7 @@ export default function SanctionPage() {
             <div className="text-[11px] uppercase tracking-wider text-[var(--faint)] mb-1">{t('sanp.subs', 'Subscriptions')}</div>
             <p className="text-[var(--muted)]">
               {t('sanp.subs.s', '{n} cancelled, because their term ended before the sanction did. Nothing was taken out again on your behalf.').replace('{n}', String(s.cancelledSubs.length))}
-              {s.keptSubs?.length > 0 && ' ' + t('sanp.subs.k', '{n} kept — their term outlasts it.').replace('{n}', String(s.keptSubs.length))}
+              {s.keptSubs?.length > 0 && ' ' + t('sanp.subs.k', '{n} kept, their term outlasts it.').replace('{n}', String(s.keptSubs.length))}
             </p>
             <Link to="/dashboard?s=billing" className="text-[var(--primary-2)] hover:underline">{t('sanp.billing', 'Open billing')}</Link>
           </div>
@@ -163,7 +163,7 @@ export default function SanctionPage() {
                 <p className="text-[13px] whitespace-pre-wrap break-words">{s.contestAnswer}</p>
               </div>
             ) : (
-              <p className="text-[12px] text-[var(--muted)] mt-2">{t('sanp.waiting', 'Waiting for an answer. A person reads it — this is not automated.')}</p>
+              <p className="text-[12px] text-[var(--muted)] mt-2">{t('sanp.waiting', 'Waiting for an answer. A person reads it, this is not automated.')}</p>
             )}
           </>
         ) : (
