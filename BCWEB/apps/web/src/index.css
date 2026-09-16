@@ -317,37 +317,42 @@ code, .break-anywhere { overflow-wrap: anywhere; word-break: break-word; }
   .input[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 3px var(--error-bg); }
   /* Number fields: the native spinner (a grey 8px stub that differs per browser and is
      unreachable on a phone) is replaced by two real buttons drawn by <Input type="number">. */
-  /* Two shapes, by the field's own width (a container query, so a `!w-16` in a table and a
-     full-width field in a form each get the right one without a prop):
-       wide   [−] [ value ] [+]  — buttons 28px wide, the field's full height, at both ends;
-       narrow [ value ][−/+]     — under 9rem the two stack in a 28px column at the end, so a
-                                   64px field keeps room for its digits.
-     Revealed on hover and on focus; always drawn where there is no hover (touch). Logical
-     sides throughout, so RTL mirrors it. */
-  .num-wrap { position: relative; display: inline-flex; width: 100%; min-width: 0; container-type: inline-size; }
-  .num-wrap > .num-input { width: 100%; min-width: 0; padding-inline: 2.1rem; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+  /* A number field and its two buttons are ONE control, laid out in a grid. The buttons used
+     to be positioned ON TOP of the field, with padding reserving their space, and any field
+     narrower than that reservation drew its own value underneath them: "20" read as "2".
+     Nothing overlaps now, at any width, because each part owns a cell.
+       wide    [-] [ value ] [+]
+       narrow  [ value ][+]   under 9rem the two share the end column, so the value keeps
+               [ value ][-]   28px more room than it would with a button on each side.
+     The grid is declared once on the wrap; only the CHILDREN move under the container query,
+     because an element cannot query a container it declares on itself. That trap is why the
+     narrow shape never took effect before.
+     Always drawn, never revealed on hover: on a small field they are the point, and a control
+     you must hover to discover is one most people never find. Logical sides, so RTL mirrors. */
+  .num-wrap { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) 1.75rem; align-items: stretch;
+    width: 100%; min-width: 0; container-type: inline-size; }
+  .num-wrap > * { box-sizing: border-box; }
+  .num-wrap > .num-input { grid-column: 2; width: 100%; min-width: 0; padding-inline: 0.4rem; text-align: center;
+    appearance: textfield; -moz-appearance: textfield; border-radius: 0; }
   .num-input::-webkit-outer-spin-button, .num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  .num-wrap > button { position: absolute; inset-block: 3px; width: 1.75rem; min-width: 28px; min-height: 28px; display: grid; place-items: center;
-    border: 1px solid var(--control-border); border-radius: calc(var(--r-md) - 3px); background: var(--surface-2); color: var(--muted);
-    padding: 0; margin: 0; cursor: pointer; line-height: 1; opacity: 0; transition: opacity .12s ease, background-color .12s ease; }
-  .num-wrap > .num-dec { inset-inline-start: 3px; }
-  .num-wrap > .num-inc { inset-inline-end: 3px; }
+  .num-wrap > button { display: grid; place-items: center; min-width: 0; min-height: 28px;
+    border: 1px solid var(--control-border); background: var(--surface-2); color: var(--muted);
+    padding: 0; margin: 0; cursor: pointer; line-height: 1; transition: background-color .12s ease, color .12s ease; }
+  .num-wrap > .num-dec { grid-column: 1; border-start-start-radius: var(--r-md); border-end-start-radius: var(--r-md); border-inline-end: 0; }
+  .num-wrap > .num-inc { grid-column: 3; border-start-end-radius: var(--r-md); border-end-end-radius: var(--r-md); border-inline-start: 0; }
   .num-wrap > button svg { width: 13px; height: 13px; }
-  .num-wrap:hover > button, .num-wrap:focus-within > button { opacity: 1; }
   .num-wrap > button:hover { background: color-mix(in srgb, var(--primary) 14%, var(--surface-2)); color: var(--text); }
   .num-wrap > button:active { background: color-mix(in srgb, var(--primary) 26%, var(--surface-2)); }
-  .num-wrap:has(.num-input:disabled) > button, .num-wrap:has(.num-input[readonly]) > button { opacity: .35 !important; pointer-events: none; }
-  /* Narrow: one 28px column at the inline end, + above −. Each button is half the field
-     tall here (the one place the 28px target is not met), but the digits stay visible. */
-  /* 7rem = 112px: the narrowest width at which two 28px buttons still leave ~3 digits of
-     room. A `!w-28` field is the last one to get the side-by-side shape. */
-  @container (width < 7rem) {
-    .num-wrap > .num-input { padding-inline: 0.5rem 2.1rem; text-align: start; }
-    .num-wrap > .num-inc, .num-wrap > .num-dec { inset-inline-start: auto; inset-inline-end: 3px; min-height: 0; height: calc(50% - 3px); }
-    .num-wrap > .num-inc { inset-block: 3px auto; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
-    .num-wrap > .num-dec { inset-block: auto 3px; border-top-left-radius: 0; border-top-right-radius: 0; border-top-width: 0; }
+  .num-wrap:has(.num-input:disabled) > button, .num-wrap:has(.num-input[readonly]) > button { opacity: .35; pointer-events: none; }
+  /* 9rem = 144px: below it two 28px columns plus readable digits no longer fit. */
+  @container (width < 9rem) {
+    .num-wrap > .num-input { grid-column: 1 / span 2; grid-row: 1 / span 2; text-align: start;
+      border-start-start-radius: var(--r-md); border-end-start-radius: var(--r-md); }
+    .num-wrap > .num-inc { grid-column: 3; grid-row: 1; min-height: 0; border-inline-start: 0; border-block-end: 0;
+      border-start-end-radius: var(--r-md); border-end-end-radius: 0; }
+    .num-wrap > .num-dec { grid-column: 3; grid-row: 2; min-height: 0; border-inline-start: 0;
+      border-start-start-radius: 0; border-end-start-radius: 0; border-end-end-radius: var(--r-md); }
   }
-  @media (hover: none), (pointer: coarse) { .num-wrap > button { opacity: 1; } }
   /* Inputs (incl. search + filter bars — <Select> is a styled .input too) are
      SOLID by default so "Translucent surfaces = off" is actually honoured. The
      frosted variant lives under [data-surface-glass] below. */

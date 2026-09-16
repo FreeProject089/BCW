@@ -2,6 +2,10 @@
 // use the Dialog + Toast providers below. Icons come from lucide-react.
 import { createContext, useContext, useEffect, useState, useCallback, useRef, useId, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
+// Only for EmptyState's `action.to`. react-router is already in the entry chunk (App.jsx
+// is a router), so this costs nothing — and an empty state whose action is a full page
+// reload is not the same product as one that navigates.
+import { Link } from 'react-router-dom';
 import { X, Check, AlertTriangle, Info, Loader2, Eye, EyeOff, ChevronDown, Undo2, Star, MoreHorizontal, Plus, Minus } from 'lucide-react';
 import { useI18n } from '../i18n.jsx';
 import { getUndoDisabled, getForceConfirm } from '../lib/prefs.js';
@@ -233,12 +237,11 @@ function splitClasses(cls) {
  * would) and then raise `input` so React's onChange runs — the DOM value changed behind
  * React's back, and telling it is what makes a controlled field follow.
  *
- * Two shapes, chosen by the field's own width (a container query in index.css, `.num-wrap`):
- * side by side — [−] [value] [+], each button the field's full height and 28px wide — when
- * there is room, and a stacked column at the end when the field is narrower than 9rem, so
- * a 64px field still shows its digits. They are drawn on hover and focus, and always on a
- * touch screen, where there is no hover to reveal them. Layout is logical-side, so an RTL
- * page mirrors it for free.
+ * The buttons are laid out BESIDE the field, never over it: [-] [value] [+] when there is
+ * room, and one 28px column holding both when the field is narrower than 9rem. They used to
+ * float on top with padding reserving their space, which meant a field smaller than that
+ * reservation drew its own value underneath them, so "20" read as "2". A stepper that hides
+ * the number is not a stepper. Layout is logical-side, so an RTL page mirrors it for free.
  *
  * Keyboard arrows are the browser's own. The wheel is ours: browsers step a focused number
  * field on wheel only while it is ALSO under the pointer, and some not at all — so a focused
@@ -479,7 +482,25 @@ export function PageHeader({ icon: Icon, title, subtitle, actions }) {
     </div>
   );
 }
-export function EmptyState({ icon: Icon, title, sub, children }) {
+// An empty list has to answer three questions, and "Nothing here" answers none of them:
+// what is this, why is it empty, and what do I press to fill it. So `title` names the
+// thing, `sub` is the one sentence that says why it is empty, `action` is the ONE button
+// that fills it, and `hint` is the short aside for the case where that button is not for
+// this visitor ("an admin adds these") — an aside, deliberately quieter than the action.
+//
+// `action` is a descriptor, not a node: `{ label, to }` for a link, `{ label, onClick }`
+// for a handler, with an optional `icon`. The descriptor is what makes it possible to say
+// "every empty state's action is a primary button" and have it be true — a node would have
+// let each call site style its own. Passing a second, lesser action (or anything else)
+// still works through `children`, which renders beside it.
+export function EmptyState({ icon: Icon, title, sub, hint, action, children }) {
+  const A = action && action.label ? action : null;
+  const AIcon = A?.icon;
+  const btn = A ? (
+    <Button variant="primary" onClick={A.onClick} disabled={A.disabled}>
+      {AIcon ? <AIcon size={15} /> : null}{A.label}
+    </Button>
+  ) : null;
   return (
     <Card className="p-12 text-center">
       {Icon && <Icon size={32} className="mx-auto text-[var(--faint)] mb-3" />}
@@ -488,7 +509,13 @@ export function EmptyState({ icon: Icon, title, sub, children }) {
       {/* Center the action row explicitly: the card's `text-center` only centers inline
           content, so a caller passing a flex row (two buttons side by side) got them
           left-aligned under centered text. */}
-      {children && <div className="mt-4 flex flex-wrap justify-center gap-2">{children}</div>}
+      {(btn || children) && (
+        <div className="mt-4 flex flex-wrap justify-center gap-2">
+          {A && (A.to ? <Link to={A.to}>{btn}</Link> : btn)}
+          {children}
+        </div>
+      )}
+      {hint && <div className="text-xs text-[var(--faint)] mt-3">{hint}</div>}
     </Card>
   );
 }
