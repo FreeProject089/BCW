@@ -15,6 +15,7 @@ import {
   AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
   ArrowLeft, Save, Tablet, FileText, RotateCcw, Blocks, Puzzle, SlidersHorizontal, LayoutTemplate,
   Plus, RefreshCw, Unlink, ZoomIn, ZoomOut, Maximize, Grid3x3,
+  BringToFront, SendToBack, StretchHorizontal, StretchVertical, MoreHorizontal, Keyboard, PanelsTopLeft, X,
 } from 'lucide-react';
 import { Button, Field, Input, Textarea, Select, Modal, useToast } from '../ui/ui.jsx';
 import { useI18n } from '../i18n.jsx';
@@ -32,6 +33,10 @@ import { scopeCss } from '../lib/css-scope.js';
 const LazyMarkdownEditor = lazy(() => import('./markdown-editor.jsx').then((m) => ({ default: m.MarkdownEditor })));
 import CanvasView, { CanvasBlock } from '../ui/canvas-view.jsx';
 import {
+  DOCK_ZONES, DockZone, DockResizer, DockGhost, PanelsMenu, useDockLayout, useDockDrag, zoneOf, movePanel,
+} from './studio-dock.jsx';
+import ShortcutsModal from './studio-shortcuts.jsx';
+import {
   normalizeCanvas, paintOrder, dragTo, resizeTo, alignmentGuides, bringTo,
   emptyHistory, pushHistory, undo as undoHist, redo as redoHist,
   boundsOf, blocksInRect, moveMany, alignMany, distributeMany, phoneOrder, resolveBlock,
@@ -40,6 +45,15 @@ import {
 } from '../lib/canvas.js';
 
 const uid = () => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+
+/**
+ * The panels the dock knows about, in the order every menu and the phone's tab row lists them.
+ *
+ * Module scope, and a plain array, because the dock's stored layout is checked against it: a
+ * panel that is dropped from this list disappears from a layout saved by an older build
+ * instead of leaving an id nothing can render.
+ */
+const PANEL_IDS = ['blocks', 'layers', 'components', 'props'];
 
 const NEW_BLOCK = {
   text: { kind: 'text', w: 400, h: 160, props: { md: '## Titre\n\nÉcris ici.' } },
@@ -90,10 +104,11 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // Bumped to remount the preview, which is how "play the animations again" works: an
   // entrance animation runs when its element appears, and a fresh mount is an appearance.
   const [previewKey, setPreviewKey] = useState(0);
-  // Page mode: which of the left pane's tabs is open, and — below the three-pane width —
-  // which sheet is up. The canvas is always there; the two panels take turns over it.
-  const [leftTab, setLeftTab] = useState('blocks');   // 'blocks' | 'layers' | 'components'
-  const [pane, setPane] = useState('canvas');         // 'canvas' | 'blocks' | 'props'
+  // Page mode, on a phone: which single panel is up over the canvas, or the canvas alone.
+  // A dock is the wrong shape below the three-pane width — three zones on a 375px screen is
+  // three slivers — so there the panels take turns instead of sharing the width.
+  const [pane, setPane] = useState('canvas');         // 'canvas' | a panel id
+  const [keysOpen, setKeysOpen] = useState(false);
   const [wide, setWide] = useState(() => (
     typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(min-width: 1024px)').matches : true));
@@ -105,6 +120,24 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     mq.addEventListener?.('change', read);
     return () => mq.removeEventListener?.('change', read);
   }, []);
+  /**
+   * The dock: which panel sits where, how wide each zone is, what is folded or closed.
+   *
+   * The author's arrangement, not the page's — it lives in this browser (localStorage), so two
+   * people editing the same document each keep their own desk and neither can rearrange the
+   * other's. See studio-dock.jsx for what is and is not built.
+   */
+  const { layout: dock, apply: applyDock, reset: resetDock } = useDockLayout(PANEL_IDS);
+  const dockDrag = useDockDrag(applyDock);
+  const [panelsMenu, setPanelsMenu] = useState(false);
+  /** Bring a panel into view wherever it currently lives — the zone on a desktop, the sheet on
+   *  a phone — and reopen it if it had been closed. Every "go and look at X" goes through it. */
+  const showPanel = useCallback((id) => {
+    applyDock((l) => (zoneOf(l, id) ? l : movePanel(l, id, 'left')));
+    setPane(id);
+  }, [applyDock]);
+  /** The phone's tab row: pressing the panel you are already on puts the canvas back. */
+  const togglePane = useCallback((id) => setPane((cur) => (cur === id ? 'canvas' : id)), []);
   // Saved components: the author's own, per account, read once and written on every change.
   const [components, setComponents] = useState([]);
   const [compOpen, setCompOpen] = useState(false);
@@ -337,6 +370,42 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   const doAlign = (how) => emit(alignMany(canvas.blocks, selIds, how));
   const doDistribute = (axis) => emit(distributeMany(canvas.blocks, selIds, axis));
   const zoomBy = (dir) => setZoom(stepZoom(zoom, dir, fitScale));
+  /**
+   * Front and back for the WHOLE selection.
+   *
+   * The two buttons existed, in the inspector, and only ever moved one block — the inspector
+   * has a single `sel`, so with four blocks picked they silently did nothing to three of them.
+   * `bringTo` is applied per id in selection order, which is what keeps a group's own stacking
+   * intact instead of collapsing it to whatever the last call decided.
+   */
+  const doZ = (where) => {
+    if (!selIds.length) return;
+    const ordered = paintOrder(canvas.blocks).filter((b) => selIds.includes(b.id)).map((b) => b.id);
+    emit(ordered.reduce((list, id) => bringTo(list, id, where), canvas.blocks));
+  };
+  /**
+   * Give every selected block the width (or height) of the first one picked.
+   *
+   * The alignment row could line four cards up on their left edge and there was no way to make
+   * them the same size, so "aligned" still looked wrong — and typing the number into the
+   * inspector four times is the gesture this replaces. The FIRST of the selection is the model
+   * because that is the one the author clicked deliberately; the rest were shift-clicked onto it.
+   */
+  const matchSize = (axis) => {
+    if (selIds.length < 2) return;
+    const model = canvas.blocks.find((b) => b.id === selIds[0]);
+    if (!model) return;
+    emit(canvas.blocks.map((b) => (selIds.includes(b.id) && !b.locked
+      ? { ...b, [axis]: model[axis], ...(axis === 'w' ? { x: Math.min(b.x, boardW - model.w) } : {}) }
+      : b)));
+  };
+  /** Lock or hide the whole selection. The state flipped is the FIRST block's, so a mixed
+   *  selection lands on one answer instead of inverting each block against itself. */
+  const toggleFlag = (flag) => {
+    if (!selIds.length) return;
+    const next = !canvas.blocks.find((b) => b.id === selIds[0])?.[flag];
+    emit(canvas.blocks.map((b) => (selIds.includes(b.id) ? { ...b, [flag]: next } : b)));
+  };
 
   // ── Components ────────────────────────────────────────────────────────────
   // The selection, kept under a name; a copy of a kept one; the link forgotten; every copy
@@ -347,7 +416,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     if (components.length >= COMPONENT_LIMITS.count) { toast.error(t('cst.cmp.full', 'You have reached the limit of saved components, delete one first.')); return; }
     persistComponents([comp, ...components]);
     setCompOpen(false);
-    setLeftTab('components');
+    showPanel('components');
     toast.success(t('cst.cmp.saved', 'Component saved.'));
   };
   const insertComponent = (comp) => {
@@ -435,10 +504,13 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
   // Without a threshold every plain click on the background would end as a zero-size marquee
   // and clear the selection twice, which is harmless but makes the deselect feel twitchy.
   const marqueeRef = useRef(null);
+  // getBoundingClientRect() is the host's box on screen, which is where the board STARTS only
+  // while nothing is scrolled. Zoomed past "fit" the host scrolls, and without its scroll
+  // offset the rubber band was drawn one scrollLeft to the left of the pointer.
   const onCanvasDown = (e) => {
     const host = hostRef.current; if (!host) return;
     const r = host.getBoundingClientRect();
-    const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
+    const x = (e.clientX - r.left + host.scrollLeft) / scale, y = (e.clientY - r.top + host.scrollTop) / scale;
     marqueeRef.current = { x, y, additive: e.shiftKey || e.ctrlKey || e.metaKey, base: selIds };
     if (!marqueeRef.current.additive) setSelIds([]);
   };
@@ -446,7 +518,7 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     const m = marqueeRef.current; if (!m) return;
     const host = hostRef.current; if (!host) return;
     const r = host.getBoundingClientRect();
-    const rect = { x: m.x, y: m.y, w: (e.clientX - r.left) / scale - m.x, h: (e.clientY - r.top) / scale - m.y };
+    const rect = { x: m.x, y: m.y, w: (e.clientX - r.left + host.scrollLeft) / scale - m.x, h: (e.clientY - r.top + host.scrollTop) / scale - m.y };
     if (Math.abs(rect.w) < 4 && Math.abs(rect.h) < 4) return;   // a click, not a drag
     setMarquee(rect);
     const hit = blocksInRect(canvas.blocks, rect).map((b) => b.id);
@@ -482,6 +554,24 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       }
       if (mod && e.key.toLowerCase() === 'd' && !typing) {
         e.preventDefault(); duplicate(); return;
+      }
+      // The paint order, for the whole selection. Ctrl+] / Ctrl+[ are the pair every other
+      // design tool uses, and unlike Ctrl+L or Ctrl+T the browser leaves them to the page.
+      if (mod && (e.key === ']' || e.key === '[') && !typing) {
+        e.preventDefault(); doZ(e.key === ']' ? 'front' : 'back'); return;
+      }
+      // The view, on bare keys. Deliberately NOT Ctrl+= / Ctrl+- / Ctrl+0: those are the
+      // browser's own zoom, which a page cannot take back, so binding them would have given
+      // the author a shortcut that silently zooms the wrong thing.
+      if (!typing && !mod) {
+        if (e.key === '?' || (e.shiftKey && e.key === '/')) { e.preventDefault(); setKeysOpen(true); return; }
+        if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(1); return; }
+        if (e.key === '-') { e.preventDefault(); zoomBy(-1); return; }
+        if (e.key === '0') { e.preventDefault(); setZoom('fit'); return; }
+        if (e.key === '1') { e.preventDefault(); setZoom(1); return; }
+        if (e.key.toLowerCase() === 'g') { e.preventDefault(); setShowGrid((v) => !v); return; }
+        if (e.key.toLowerCase() === 'l' && selIds.length) { e.preventDefault(); toggleFlag('locked'); return; }
+        if (e.key.toLowerCase() === 'h' && selIds.length) { e.preventDefault(); toggleFlag('hidden'); return; }
       }
       // Copy / paste: the selection as JSON, kept in a ref and offered to the clipboard so a
       // page can be assembled from another one open in a second tab.
@@ -519,15 +609,20 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode]);
+    // `zoom` and `fitScale` are here because the bare +/- keys step FROM the current zoom:
+    // without them the handler kept the zoom it was created with and every press walked from
+    // the same place.
+  }, [selIds, canvas.blocks, emit, patch, doUndo, doRedo, chrome, pageMode, zoom, fitScale]);
 
   // ── The pieces, assembled differently by the two layouts ─────────────────
   const toolbarProps = {
     t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist,
     selCount: selIds.length, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
     pageMode, showGrid, setShowGrid, zoomBy, fitScale, onSaveComponent: () => setCompOpen(true),
+    doZ, matchSize, toggleFlag, selBlocks: chosen, onKeys: () => setKeysOpen(true),
   };
   const modals = (<>
+    {keysOpen && <ShortcutsModal t={t} onClose={() => setKeysOpen(false)} />}
     {pageOpen && <PagePanel t={t} canvas={canvas} emit={emit} add={add} onClose={() => setPageOpen(false)} />}
     {mdFor && (
       <Modal open onClose={() => setMdFor(null)} title={t('cst.md.editor', 'B.MD editor')} icon={Type} width="max-w-4xl">
@@ -577,7 +672,12 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
       onPointerUp={(e) => { onMarqueeUp(); onUp(e); }}
       onPointerCancel={(e) => { onMarqueeUp(); onUp(e); }}
       onPointerDown={onCanvasDown}>
-      <div style={{ height: boardH * scale, position: 'relative', ...(phoneBoard ? { width: boardW * scale, margin: '0 auto' } : {}) }}>
+      {/* The scaled board is `transform`ed, and a transform takes no room: with no width of
+          its own this wrapper was exactly as wide as the host, so zooming past "fit" produced
+          no horizontal scrollbar and the right-hand third of a 1200px board could not be
+          reached at all. The width is the board's OWN width times the scale, which is the
+          space the picture actually occupies. */}
+      <div style={{ width: boardW * scale, height: boardH * scale, position: 'relative', ...(phoneBoard ? { margin: '0 auto' } : {}) }}>
         <div style={{ width: boardW, height: boardH, transform: `scale(${scale})`, transformOrigin: 'top left', position: 'absolute', top: 0, left: 0 }}>
           {/* The grid, drawn so placement is legible rather than guessed at. Switchable: a
               finished page is easier to judge without it. */}
@@ -609,43 +709,106 @@ export default function CanvasStudio({ value, onChange, layout = 'modal', chrome
 
   // ── Page mode: the full-viewport studio ──────────────────────────────────
   if (pageMode) {
-    const leftPane = (
-      <LeftPane {...{ t, leftTab, setLeftTab, add, addShape, components, insertComponent, deleteComponent, canvas, view, selIds, setSelIds, patch, emit }} />
+    // What the dock can hold. The title is what every menu, tab and title bar shows, so it is
+    // written once here rather than at each of the four places that name a panel.
+    const panels = {
+      blocks: { title: t('cst.pane.blocks', 'Blocks'), icon: Blocks, render: () => <BlocksPanel {...{ t, add, addShape }} /> },
+      layers: { title: t('cst.layers', 'Layers'), icon: LayoutList, render: () => <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} bare /> },
+      components: { title: t('cst.cmp', 'Components'), icon: Puzzle, render: () => <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} /> },
+      props: { title: t('cst.pane.props', 'Properties'), icon: SlidersHorizontal, render: () => inspector },
+    };
+    // The grid's own columns and rows, so a drag of a resizer is one number changing rather
+    // than a re-layout. A zone with nothing in it takes no width at all — EXCEPT while a panel
+    // is being dragged, where a 0px track is a drop target with no surface: the "drop a panel
+    // here" strip rendered inside it, was clipped to nothing, and the drop silently failed.
+    const zoneSize = (z) => {
+      if (!dock.zones[z].panels.length) return dockDrag.drag ? 140 : 0;
+      return dock.zones[z].collapsed ? 28 : dock.zones[z].size;
+    };
+    const dockVars = wide ? {
+      '--cst-left': `${zoneSize('left')}px`,
+      '--cst-right': `${zoneSize('right')}px`,
+      '--cst-bottom': `${zoneSize('bottom')}px`,
+    } : undefined;
+    const openPane = pane !== 'canvas' && panels[pane] ? panels[pane] : null;
+    const centre = (
+      <section className="cst-center">
+        <Toolbar {...toolbarProps} narrow={!wide} />
+        <div className="flex items-center gap-2 mb-2 flex-wrap">{themeHints}</div>
+        {narrow && (
+          <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
+            <span className="flex-1 min-w-0">{stacked
+              ? t('cst.stack.h', 'Reading order, what a phone shows. Placement is a desktop thing.')
+              : t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
+            {stacked
+              ? <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely, easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
+              : <Button size="sm" variant="ghost" onClick={() => setPhoneMode('stack')}>{t('cst.board.list', 'List')}</Button>}
+          </div>
+        )}
+        {!canvas.blocks.length && <EmptyBoard t={t} onAdd={() => add('text')} onOpenBlocks={() => showPanel('blocks')} />}
+        {stacked ? stackList : board}
+      </section>
     );
     return (
-      <div className="cst-page" data-pane={pane} data-wide={wide ? '1' : '0'}>
-        <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage }} />
+      <div className="cst-page" data-pane={pane} data-wide={wide ? '1' : '0'}
+        // Every pointer move during a panel drag has to reach the dock even once the pointer
+        // has left the handle, and capture keeps them all on the handle's element — so they
+        // are caught here, at the one ancestor both ends of the gesture are inside.
+        onPointerMove={dockDrag.drag ? dockDrag.move : undefined}
+        onPointerUp={dockDrag.drag ? dockDrag.end : undefined}
+        onPointerCancel={dockDrag.drag ? dockDrag.end : undefined}>
+        <PageTopBar {...{ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage: !!renderPage,
+          wide, onKeys: () => setKeysOpen(true), panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock }} />
         {preview ? (
           <div className="cst-page-body cst-preview-body">{previewEl}</div>
+        ) : wide ? (
+          <div className="cst-page-body" style={dockVars} data-dock="1">
+            <DockZone {...{ t, zone: 'left', layout: dock, panels, apply: applyDock, drag: dockDrag.drag }}
+              onDragStart={dockDrag.start} className="cst-left" />
+            {centre}
+            <DockZone {...{ t, zone: 'bottom', layout: dock, panels, apply: applyDock, drag: dockDrag.drag }}
+              onDragStart={dockDrag.start} className="cst-bottom" />
+            <DockZone {...{ t, zone: 'right', layout: dock, panels, apply: applyDock, drag: dockDrag.drag }}
+              onDragStart={dockDrag.start} className="cst-right" />
+            {DOCK_ZONES.filter((z) => dock.zones[z].panels.length && !dock.zones[z].collapsed).map((z) => (
+              <DockResizer key={z} t={t} zone={z} layout={dock} apply={applyDock} />
+            ))}
+            <DockGhost drag={dockDrag.drag} panels={panels} />
+          </div>
         ) : (
+          /* A phone gets ONE thing at a time. The canvas keeps the whole width whatever is
+             open, and the panel arrives over its lower half rather than beside it — three
+             zones on a 375px screen would be three slivers and no board. */
           <div className="cst-page-body">
-            {(wide || pane === 'blocks') && <aside className={`cst-left ${wide ? '' : 'cst-sheet'}`}>{leftPane}</aside>}
-            <section className="cst-center">
-              <Toolbar {...toolbarProps} />
-              <div className="flex items-center gap-2 mb-2 flex-wrap">{themeHints}</div>
-              {narrow && (
-                <div className="text-[11px] text-[var(--muted)] mb-2 flex items-center gap-2">
-                  <span className="flex-1 min-w-0">{stacked
-                    ? t('cst.stack.h', 'Reading order, what a phone shows. Placement is a desktop thing.')
-                    : t('cst.board.h', 'The board is 1200px wide, scaled to fit. A phone reader gets the list order instead.')}</span>
-                  {stacked
-                    ? <Button size="sm" variant="ghost" onClick={() => setPhoneMode('canvas')} title={t('cst.stack.board.h', 'Place the blocks freely, easier on a big screen')}><Monitor size={14} /> {t('cst.stack.board', 'Board')}</Button>
-                    : <Button size="sm" variant="ghost" onClick={() => setPhoneMode('stack')}>{t('cst.board.list', 'List')}</Button>}
-                </div>
-              )}
-              {!canvas.blocks.length && <EmptyBoard t={t} onAdd={() => add('text')} onOpenBlocks={() => { setLeftTab('blocks'); if (!wide) setPane('blocks'); }} />}
-              {stacked ? stackList : board}
-            </section>
-            {(wide || pane === 'props') && <aside className={`cst-right ${wide ? '' : 'cst-sheet'}`}>{inspector}</aside>}
+            {centre}
+            {openPane && (
+              <aside className="cst-mobile-pane" aria-label={openPane.title}>
+                <header className="cst-mobile-head">
+                  <span className="flex-1 min-w-0 truncate" title={openPane.title}>{openPane.title}</span>
+                  <Button size="sm" variant="ghost" className="!px-2" onClick={() => setPane('canvas')}
+                    title={t('cst.pane.close', 'Back to the canvas')} aria-label={t('cst.pane.close', 'Back to the canvas')}><X size={15} /></Button>
+                </header>
+                <div className="cst-mobile-body">{openPane.render()}</div>
+              </aside>
+            )}
           </div>
         )}
         {!wide && !preview && (
+          /* Scrolls sideways rather than squeezing: five 48px targets do not fit across a
+             375px screen, and a tab squeezed to 40px is a tab nobody hits. Nothing is dropped
+             from the row, so no control is unreachable. */
           <nav className="cst-tabs" aria-label={t('cst.panes', 'Studio panes')}>
-            {[['blocks', Blocks, t('cst.pane.blocks', 'Blocks')], ['canvas', LayoutTemplate, t('cst.pane.canvas', 'Canvas')], ['props', SlidersHorizontal, t('cst.pane.props', 'Properties')]].map(([k, Icon, label]) => (
-              <button key={k} type="button" aria-pressed={pane === k} className={pane === k ? 'is-on' : ''} onClick={() => setPane(k)}>
-                <Icon size={16} /> <span>{label}</span>
-              </button>
-            ))}
+            <button type="button" aria-pressed={pane === 'canvas'} className={pane === 'canvas' ? 'is-on' : ''} onClick={() => setPane('canvas')}>
+              <LayoutTemplate size={16} /> <span>{t('cst.pane.canvas', 'Canvas')}</span>
+            </button>
+            {PANEL_IDS.map((id) => {
+              const Icon = panels[id].icon;
+              return (
+                <button key={id} type="button" aria-pressed={pane === id} className={pane === id ? 'is-on' : ''} onClick={() => togglePane(id)}>
+                  <Icon size={16} /> <span>{panels[id].title}</span>
+                </button>
+              );
+            })}
           </nav>
         )}
         {modals}
@@ -840,8 +1003,27 @@ function PreviewSurface({ t, preview, canvas, renderPage, onReplay }) {
   );
 }
 
-/** Page mode's top bar: the document, its save state, undo/redo, the board, the previews. */
-function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage }) {
+/**
+ * Page mode's top bar: the document, its save state, undo/redo, the board, the previews.
+ *
+ * This bar used to be a single wrapping flex row whose left-hand group was `flex-1 min-w-0`
+ * — flex-basis 0 — and that combination is the bug the studio was reported for. A flex-basis
+ * of 0 contributes NOTHING to where a wrapping container breaks its lines, so the browser
+ * packed every button onto the first line and then handed the document group whatever was
+ * left. Measured at a 700px pane the document's name was 5px wide out of the 306px it needed;
+ * at 480–560px it was 0px, and the "Unsaved changes" label — `whitespace-nowrap` in a box that
+ * had been squeezed to 39px — spilled out of that box and ran underneath the undo and redo
+ * icons. Below ~570px the controls finally did wrap and the bar grew from 42px to 108px,
+ * taking that much off the board on the smallest screen in the house.
+ *
+ * So: the bar no longer wraps. The document group has a real basis and clips its own overflow
+ * (with the full title one hover away, because a clipped value must stay readable), and below
+ * the three-pane width the secondary clusters move into one menu instead of onto a second
+ * line. One row at every width, and nothing falls off the screen.
+ */
+function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, themeSwitch, hasPage,
+  wide = true, onKeys, panelsMenu, setPanelsMenu, dock, panels, applyDock, resetDock }) {
+  const [more, setMore] = useState(false);
   const state = chrome?.state || 'saved';
   const stateLabel = {
     saved: t('cst.save.saved', 'Saved'),
@@ -850,67 +1032,95 @@ function PageTopBar({ t, chrome, hist, doUndo, doRedo, preview, setPreview, them
     error: t('cst.save.error', 'Save failed'),
   }[state] || '';
   const tog = (v) => setPreview((cur) => (cur === v ? '' : v));
+  const previewGroup = (
+    <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden" role="group" aria-label={t('cst.preview', 'Preview')}>
+      {[['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')], ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')], ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')],
+        ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
+        <button key={k} type="button" onClick={() => tog(k)} title={label} aria-label={label} aria-pressed={preview === k}
+          className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
+          <Icon size={13} />
+        </button>
+      ))}
+    </div>
+  );
+  const keysButton = (
+    <Button size="sm" variant="ghost" className="!px-2" onClick={onKeys} title={t('cst.keys.h2', 'Keyboard shortcuts (?)')} aria-label={t('cst.keys', 'Keyboard shortcuts')}><Keyboard size={14} /></Button>
+  );
   return (
     <header className="cst-topbar">
-      <Button size="sm" variant="ghost" onClick={chrome?.onBack} title={t('cst.back.h', 'Back to the page settings')} aria-label={t('common.back', 'Back')}><ArrowLeft size={15} /></Button>
-      <div className="min-w-0 flex-1 flex items-center gap-2">
-        <span className="font-medium text-sm truncate">{chrome?.title || t('pce.canvases.untitled', 'Untitled page')}</span>
+      {/* The document. A real basis, so it takes part in the layout instead of being handed
+          whatever is left, and `overflow:hidden` on the group so the save-state label cannot
+          run out of it and over the buttons after it. */}
+      <div className="cst-topbar-id">
+        <Button size="sm" variant="ghost" className="!px-2" onClick={chrome?.onBack} title={t('cst.back.h', 'Back to the page settings')} aria-label={t('common.back', 'Back')}><ArrowLeft size={15} /></Button>
+        <span className="font-medium text-sm truncate" title={chrome?.title || t('pce.canvases.untitled', 'Untitled page')}>{chrome?.title || t('pce.canvases.untitled', 'Untitled page')}</span>
         <span className={`text-[11px] whitespace-nowrap ${state === 'error' ? 'text-error' : state === 'dirty' ? 'text-warning' : 'text-[var(--faint)]'}`} data-save-state={state}>{stateLabel}</span>
         {chrome?.draftRestored && (
           <button type="button" className="text-[11px] text-[var(--accent-ink)] hover:underline whitespace-nowrap" onClick={chrome.onDiscardDraft} title={t('cst.draft.h', 'A draft from this tab was restored. Discard it to go back to what is saved.')}>{t('cst.draft.discard', 'Discard draft')}</button>
         )}
       </div>
-      <Button size="sm" variant="ghost" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} title={`Ctrl+Z · ${hist.past.length}`} aria-label={t('cst.undo', 'Undo')}><Undo2 size={14} /></Button>
-      <Button size="sm" variant="ghost" disabled={!hist.future.length} onClick={doRedo} title="Ctrl+Shift+Z" aria-label={t('cst.redo', 'Redo')}><Redo2 size={14} /></Button>
-      <span className="w-px h-5 bg-[var(--line)] mx-1 hidden sm:block" />
-      {!preview && themeSwitch}
-      <span className="w-px h-5 bg-[var(--line)] mx-1 hidden sm:block" />
-      <div className="inline-flex rounded-lg border border-[var(--line)] overflow-hidden" role="group" aria-label={t('cst.preview', 'Preview')}>
-        {[['desktop', Monitor, t('cst.preview.desktop', 'Desktop preview')], ['tablet', Tablet, t('cst.preview.tablet', 'Tablet preview')], ['phone', Smartphone, t('cst.phone.h', 'What a phone gets: the canvas stacks')],
-          ...(hasPage ? [['page', FileText, t('cst.preview.page', 'The whole project page, with this block in place')]] : [])].map(([k, Icon, label]) => (
-          <button key={k} type="button" onClick={() => tog(k)} title={label} aria-label={label} aria-pressed={preview === k}
-            className={`inline-flex items-center px-2 py-1 text-xs ${preview === k ? 'tint-primary text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Icon size={13} />
-          </button>
-        ))}
+      <div className="cst-topbar-tools">
+        <Button size="sm" variant="ghost" className="!px-2" disabled={!hist.past.length} onClick={doUndo} data-undo-steps={hist.past.length} title={`Ctrl+Z · ${hist.past.length}`} aria-label={t('cst.undo', 'Undo')}><Undo2 size={14} /></Button>
+        <Button size="sm" variant="ghost" className="!px-2" disabled={!hist.future.length} onClick={doRedo} title="Ctrl+Shift+Z" aria-label={t('cst.redo', 'Redo')}><Redo2 size={14} /></Button>
+        {wide ? (<>
+          <span className="cst-topbar-sep" />
+          {!preview && themeSwitch}
+          <span className="cst-topbar-sep" />
+          {previewGroup}
+          {keysButton}
+          <span className="cst-topbar-pop">
+            <Button size="sm" variant={panelsMenu ? 'primary' : 'ghost'} className="!px-2" onClick={() => setPanelsMenu((v) => !v)}
+              title={t('cst.dock.panels.h', 'Which panels are open, and where they sit')} aria-label={t('cst.dock.panels', 'Panels')} aria-expanded={!!panelsMenu}><PanelsTopLeft size={14} /></Button>
+            {panelsMenu && (
+              <PanelsMenu t={t} layout={dock} panels={panels} apply={applyDock} reset={resetDock} onClose={() => setPanelsMenu(false)} />
+            )}
+          </span>
+        </>) : (
+          /* Below the three-pane width the secondary clusters go into ONE opaque menu rather
+             than onto a second line: a bar that grows to 108px takes an eighth of a phone
+             away from the thing being edited. */
+          <span className="cst-topbar-pop">
+            <Button size="sm" variant={more ? 'primary' : 'ghost'} className="!px-2" onClick={() => setMore((v) => !v)}
+              title={t('cst.more', 'More')} aria-label={t('cst.more', 'More')} aria-expanded={more}><MoreHorizontal size={14} /></Button>
+            {more && (
+              <div className="cst-menu" role="menu">
+                <div className="cst-menu-h">{t('cst.theme.board', 'Board')}</div>
+                <div className="px-2 pb-1.5">{themeSwitch}</div>
+                <div className="cst-menu-sep" />
+                <div className="cst-menu-h">{t('cst.preview', 'Preview')}</div>
+                <div className="px-2 pb-1.5">{previewGroup}</div>
+                <div className="cst-menu-sep" />
+                <button type="button" className="cst-menu-item" onClick={() => { setMore(false); onKeys?.(); }}>
+                  <Keyboard size={12} /> {t('cst.keys', 'Keyboard shortcuts')}
+                </button>
+              </div>
+            )}
+          </span>
+        )}
+        {preview && <Button size="sm" variant="ghost" className="!px-2" onClick={() => setPreview('')} title={t('cst.preview.close', 'Close preview')} aria-label={t('cst.preview.close', 'Close preview')}><X size={14} /></Button>}
+        <Button size="sm" variant="primary" disabled={chrome?.canSave === false || state === 'saving'} onClick={chrome?.onSave} title="Ctrl+S"><Save size={14} /> <span className="cst-hide-narrow">{t('common.save', 'Save')}</span></Button>
       </div>
-      {preview && <Button size="sm" variant="ghost" onClick={() => setPreview('')}>{t('cst.preview.close', 'Close preview')}</Button>}
-      <Button size="sm" variant="primary" disabled={chrome?.canSave === false || state === 'saving'} onClick={chrome?.onSave} title="Ctrl+S"><Save size={14} /> {t('common.save', 'Save')}</Button>
     </header>
   );
 }
 
-/** Page mode's left pane: the palette, the layers, the saved components. */
-function LeftPane({ t, leftTab, setLeftTab, add, addShape, components, insertComponent, deleteComponent, canvas, view, selIds, setSelIds, patch, emit }) {
+/** The palette: every kind of block, and the shapes. One of the dock's panels. */
+function BlocksPanel({ t, add, addShape }) {
   const kinds = [['text', Type], ['image', ImageIcon], ['box', Square], ['button', MousePointerClick], ['video', Film], ['embed', Globe], ['replay', PlayCircle], ['svg', Sparkles]];
   return (
-    <div className="p-2 space-y-2">
-      <div className="inline-flex w-full rounded-lg border border-[var(--line)] overflow-hidden text-xs">
-        {[['blocks', Blocks, t('cst.pane.blocks', 'Blocks')], ['layers', LayoutList, t('cst.layers', 'Layers')], ['components', Puzzle, t('cst.cmp', 'Components')]].map(([k, Icon, label]) => (
-          <button key={k} type="button" onClick={() => setLeftTab(k)} aria-pressed={leftTab === k}
-            className={`flex-1 inline-flex items-center justify-center gap-1 px-1.5 py-1.5 ${leftTab === k ? 'tint-primary text-[var(--text)] font-medium' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
-            <Icon size={12} /> <span className="truncate" title={label}>{label}</span>
-          </button>
+    <div className="space-y-2">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('cst.pane.blocks.h', 'Add to the page')}</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {kinds.map(([k, Icon]) => (
+          <Button key={k} size="sm" variant="ghost" className="justify-start" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
         ))}
       </div>
-      {leftTab === 'blocks' && (
-        <div className="space-y-2">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">{t('cst.pane.blocks.h', 'Add to the page')}</div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {kinds.map(([k, Icon]) => (
-              <Button key={k} size="sm" variant="ghost" className="justify-start" onClick={() => add(k)}><Icon size={14} /> {t(`cst.add.${k}`, k)}</Button>
-            ))}
-          </div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">{t('cst.shape', 'Shape')}</div>
-          <div className="grid grid-cols-3 gap-1">
-            {SHAPES.map((s) => (
-              <button key={s} type="button" onClick={() => addShape(s)} className="text-[11px] px-1.5 py-1.5 rounded-lg border border-[var(--line)] hover:b-primary truncate">{t(`cst.shape.${s}`, s)}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      {leftTab === 'layers' && <LayersPanel {...{ t, canvas, view, selIds, setSelIds, patch, emit, add }} />}
-      {leftTab === 'components' && <ComponentsPanel {...{ t, components, insertComponent, deleteComponent }} />}
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] pt-1">{t('cst.shape', 'Shape')}</div>
+      <div className="grid grid-cols-3 gap-1">
+        {SHAPES.map((s) => (
+          <button key={s} type="button" onClick={() => addShape(s)} className="text-[11px] px-1.5 py-1.5 rounded-lg border border-[var(--line)] hover:b-primary truncate" title={t(`cst.shape.${s}`, s)}>{t(`cst.shape.${s}`, s)}</button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1008,14 +1218,18 @@ function EmptyBoard({ t, onAdd, onOpenBlocks }) {
  * and the two arrows. The one place a hidden block can be found again, and the one place a
  * block under three others can be selected without moving them.
  */
-function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add }) {
+function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add, bare = false }) {
   const rows = paintOrder(view.blocks).slice().reverse();
   return (
-    <div className="mb-3 rounded-xl border border-[var(--line)] p-2">
-      <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
-        <LayoutList size={12} /> {t('cst.layers', 'Layers')}
-        <span className="ms-auto tabular-nums font-normal">{rows.length}</span>
-      </div>
+    // `bare` is the dock's form: the panel already has a title bar and a border of its own, and
+    // a second one inside it reads as a box in a box.
+    <div className={bare ? '' : 'mb-3 rounded-xl border border-[var(--line)] p-2'}>
+      {!bare && (
+        <div className="flex items-center gap-1.5 mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)]">
+          <LayoutList size={12} /> {t('cst.layers', 'Layers')}
+          <span className="ms-auto tabular-nums font-normal">{rows.length}</span>
+        </div>
+      )}
       {!rows.length && (
         <div className="py-3 text-center">
           <div className="text-xs text-[var(--muted)]">{t('cst.layers.empty', 'No blocks yet, so there is no paint order to show.')}</div>
@@ -1024,7 +1238,7 @@ function LayersPanel({ t, canvas, view, selIds, setSelIds, patch, emit, add }) {
           </div>}
         </div>
       )}
-      <div className="max-h-56 overflow-auto space-y-0.5">
+      <div className={`${bare ? '' : 'max-h-56 overflow-auto '}space-y-0.5`}>
         {rows.map((b, i) => {
           const on = selIds.includes(b.id);
           return (
@@ -1322,10 +1536,15 @@ function CssFields({ t, p, setProp }) {
 }
 
 function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel, duplicate, remove, doUndo, doRedo, hist, selCount, doAlign, doDistribute, grid, setGrid, layersOpen, setLayersOpen, zoom, setZoom, pageOpen, setPageOpen,
-  pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent }) {
+  pageMode = false, showGrid = true, setShowGrid, zoomBy, fitScale = 1, onSaveComponent,
+  doZ, matchSize, toggleFlag, selBlocks = [], narrow = false, onKeys }) {
   const zoomPct = Math.round((zoom === 'fit' ? fitScale : Number(zoom)) * 100);
+  const anyLocked = selBlocks.some((b) => b.locked);
+  const anyHidden = selBlocks.some((b) => b.hidden);
   return (
-    <div className="flex flex-wrap items-center gap-1.5 mb-3">
+    // On a narrow screen this scrolls sideways instead of wrapping. Wrapping cost four rows of
+    // the board on a phone, which is the same complaint as the top bar one line up.
+    <div className={narrow ? 'cst-strip mb-3' : 'flex flex-wrap items-center gap-1.5 mb-3'}>
       {/* In page mode the palette is the left pane; here it would be the same buttons twice. */}
       {!pageMode && (<>
         <Button size="sm" variant="ghost" onClick={() => add('text')}><Type size={14} /> {t('cst.text', 'Text')}</Button>
@@ -1363,6 +1582,17 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
       <Button size="sm" variant="ghost" disabled={!selCount} onClick={duplicate} title="Ctrl+D"><Copy size={14} /> {t('cst.dup', 'Duplicate')}</Button>
       <Button size="sm" variant="ghost" disabled={!selCount} className="!text-error" onClick={remove} title={t('cst.del', 'Delete')} aria-label={t('cst.del', 'Delete')}><Trash2 size={14} /></Button>
       {onSaveComponent && <Button size="sm" variant="ghost" disabled={!selCount} onClick={onSaveComponent} title={t('cst.cmp.saveas.h2', 'Keep the selection as a reusable component')}><Puzzle size={14} /> {t('cst.cmp.saveas', 'Save as component')}</Button>}
+      {/* The paint order and the two flags, for the WHOLE selection. They existed only in the
+          inspector, which has one block: with four picked they quietly moved, locked or hid
+          exactly one of them. */}
+      {doZ && (<>
+        <Button size="sm" variant="ghost" className="!px-2" disabled={!selCount} onClick={() => doZ('front')} title={t('cst.front', 'Bring to front')} aria-label={t('cst.front', 'Bring to front')}><BringToFront size={14} /></Button>
+        <Button size="sm" variant="ghost" className="!px-2" disabled={!selCount} onClick={() => doZ('back')} title={t('cst.back', 'Send to back')} aria-label={t('cst.back', 'Send to back')}><SendToBack size={14} /></Button>
+      </>)}
+      {toggleFlag && (<>
+        <Button size="sm" variant={anyLocked ? 'primary' : 'ghost'} className="!px-2" disabled={!selCount} onClick={() => toggleFlag('locked')} title={t('cst.locked.h2', 'Lock or unlock the selection (L)')} aria-label={t('cst.locked', 'Locked')}>{anyLocked ? <Lock size={14} /> : <LockOpen size={14} />}</Button>
+        <Button size="sm" variant={anyHidden ? 'primary' : 'ghost'} className="!px-2" disabled={!selCount} onClick={() => toggleFlag('hidden')} title={t('cst.hidden.h2', 'Hide or show the selection (H)')} aria-label={t('cst.hidden', 'Hidden')}>{anyHidden ? <EyeOff size={14} /> : <Eye size={14} />}</Button>
+      </>)}
       {selCount > 1 && (<>
         <span className="w-px h-5 bg-[var(--line)] mx-1" />
         <span className="text-[11px] text-[var(--faint)] tabular-nums">{t('cst.nsel', '{n} selected').replace('{n}', selCount)}</span>
@@ -1373,6 +1603,13 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
           ['top', AlignStartHorizontal, 'Align top'], ['vmiddle', AlignCenterHorizontal, 'Centre vertically'], ['bottom', AlignEndHorizontal, 'Align bottom']].map(([how, I, label]) => (
           <Button key={how} size="sm" variant="ghost" onClick={() => doAlign(how)} title={t(`cst.al.${how}`, label)} aria-label={t(`cst.al.${how}`, label)}><I size={14} /></Button>
         ))}
+        {/* Aligning four cards on their left edge still looks wrong while they are four
+            different widths, and the only other way to fix that was typing the number into
+            the inspector once per block. The first block picked is the model. */}
+        {matchSize && (<>
+          <Button size="sm" variant="ghost" className="!px-2" onClick={() => matchSize('w')} title={t('cst.same.w', 'Same width as the first block picked')} aria-label={t('cst.same.w', 'Same width as the first block picked')}><StretchHorizontal size={14} /></Button>
+          <Button size="sm" variant="ghost" className="!px-2" onClick={() => matchSize('h')} title={t('cst.same.h', 'Same height as the first block picked')} aria-label={t('cst.same.h', 'Same height as the first block picked')}><StretchVertical size={14} /></Button>
+        </>)}
         {selCount > 2 && (<>
           <Button size="sm" variant="ghost" onClick={() => doDistribute('x')} title={t('cst.dist.x', 'Even gaps across')}><AlignHorizontalSpaceAround size={14} /></Button>
           <Button size="sm" variant="ghost" onClick={() => doDistribute('y')} title={t('cst.dist.y', 'Even gaps down')}><AlignVerticalSpaceAround size={14} /></Button>
@@ -1392,6 +1629,9 @@ function Toolbar({ t, preview, setPreview, snapOn, setSnapOn, add, addShape, sel
             version is what most visitors get. */}
         <Button size="sm" variant={preview === 'desktop' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'desktop' ? '' : 'desktop'))}><Eye size={14} /> {t('cst.preview', 'Preview')}</Button>
         <Button size="sm" variant={preview === 'phone' ? 'primary' : 'ghost'} onClick={() => setPreview((v) => (v === 'phone' ? '' : 'phone'))} title={t('cst.phone.h', 'What a phone gets: the canvas stacks')}><Smartphone size={14} /></Button>
+        {/* Page mode has this in its top bar; in the modal it would otherwise have no home,
+            and a shortcut nobody can find is a shortcut nobody has. */}
+        {onKeys && <Button size="sm" variant="ghost" className="!px-2" onClick={onKeys} title={t('cst.keys.h2', 'Keyboard shortcuts (?)')} aria-label={t('cst.keys', 'Keyboard shortcuts')}><Keyboard size={14} /></Button>}
         {preview && <span className="text-[11px] text-[var(--faint)] inline-flex items-center gap-1"><Monitor size={12} /> {t('cst.previewing', 'Preview, editing is paused')}</span>}
       </>)}
     </div>
